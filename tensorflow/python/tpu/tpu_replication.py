@@ -36,6 +36,7 @@ from tensorflow.python.util.tf_export import tf_export
 _MAX_WARNING_LINES = 5
 _TPU_REPLICATE_ATTR = "_tpu_replicate"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
+_MAP_OUTSIDE_COMPILATION_ATTR = "_xla_map_outside_compilation"
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
@@ -108,6 +109,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._outer_device_function_stack = None
     self._oc_dev_fn_stack = None
     self._outside_compilation_cluster = None
+    self._is_map_outside_compilation = False
     self._outside_compilation_v2_context = None
     self._outside_compilation_counter = 0
     self._in_gradient_colocation = None
@@ -298,8 +300,9 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
              f"expected {last_op}, got {op.name}")
         )
 
-  def _EnterOutsideCompilationScope(self, cluster: Optional[Text] = None):
-
+  def _EnterOutsideCompilationScope(
+      self, cluster: Optional[Text] = None, is_map_outside_compilation=False
+  ):
     class FakeOp(object):
       """A helper class to determine the current device.
 
@@ -334,6 +337,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     else:
       self._outside_compilation_cluster = str(self._outside_compilation_counter)
       self._outside_compilation_counter += 1
+    if is_map_outside_compilation:
+      self._is_map_outside_compilation = True
     graph = ops.get_default_graph()
     fake_op = FakeOp()
     graph._apply_device_functions(fake_op)  # pylint: disable=protected-access
@@ -350,6 +355,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       raise ValueError(
           "Attempted to exit outside_compilation scope when not in scope")
     self._outside_compilation_cluster = None
+    self._is_map_outside_compilation = False
     graph = ops.get_default_graph()
     graph._device_function_stack = self._oc_dev_fn_stack  # pylint: disable=protected-access
 
@@ -419,6 +425,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
           _OUTSIDE_COMPILATION_ATTR,
           attr_value_pb2.AttrValue(
               s=compat.as_bytes(self._outside_compilation_cluster)))
+    if self._is_map_outside_compilation:
+      op._set_attr(
+          _MAP_OUTSIDE_COMPILATION_ATTR,
+          attr_value_pb2.AttrValue(b=True),
+      )
     if self._num_replicas > 1 or not self._outside_compilation_cluster:
       # Prevent feeding or fetching anything that is being compiled,
       # and any replicated outside_compilation Op.
@@ -544,33 +555,106 @@ class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
   attribute.
   """
 
-  def __init__(self, name: Text):
+  def __init__(self, name: Text, is_map_outside_compilation=False):
     control_flow_ops.ControlFlowContext.__init__(self)
     self._name = name
+    self._is_map_outside_compilation = is_map_outside_compilation
 
   def AddOp(self, op: ops.Operation) -> None:
     if self._outer_context:
       self._outer_context.AddOp(op)
-    # pylint: disable=protected-access
-    op._set_attr("_xla_outside_compilation",
-                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
-    # pylint: enable=protected-access
+    self._set_outside_compilation_attributes(op)
 
   def AddInnerOp(self, op: ops.Operation) -> None:
     if self._outer_context:
       self._outer_context.AddInnerOp(op)
-    # pylint: disable=protected-access
-    op._set_attr("_xla_outside_compilation",
-                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
-    # pylint: enable=protected-access
+    self._set_outside_compilation_attributes(op)
 
   def to_control_flow_context_def(self, context_def, export_scope=None):
     raise NotImplementedError
 
+  def _set_outside_compilation_attributes(self, op: ops.Operation) -> None:
+    # pylint: disable=protected-access
+    op._set_attr(
+        _OUTSIDE_COMPILATION_ATTR,
+        attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)),
+    )
+    if self._is_map_outside_compilation:
+      op._set_attr(
+          _MAP_OUTSIDE_COMPILATION_ATTR, attr_value_pb2.AttrValue(b=True)
+      )
+    # pylint: enable=protected-access
+
+
+def outside_compilation_impl(
+    is_map, computation: Callable[..., Any], *args, **kwargs
+) -> Any:
+  """Tags ops in `computation` with outside compilation attributes for ordinary `outside_compilation` or `map_outside_compilation`."""
+  args = [] if args is None else args
+  graph = ops.get_default_graph()
+
+  # If we are in TF 2 functions (control flow V2 functions, or tf.function()),
+  # we need to attach _xla_outside_compilation attribute directly because we are
+  # not in TPUReplicateContext.
+  if isinstance(graph, func_graph.FuncGraph):
+    try:
+      tpu_context, _ = _enclosing_tpu_context_and_graph()
+    except ValueError:
+      logging.warning(
+          "Outside compilation attempted outside TPUReplicateContext "
+          "scope. As no enclosing TPUReplicateContext can be found, "
+          "returning the result of `computation` as is."
+      )
+      return computation(*args, **kwargs)
+
+    # pylint: disable=protected-access
+    outside_compilation_name = str(tpu_context._outside_compilation_counter)
+    tpu_context._outside_compilation_counter = (
+        tpu_context._outside_compilation_counter + 1
+    )
+    # pylint: enable=protected-access
+
+    outside_compilation_context = OutsideCompilationV2Context(
+        outside_compilation_name, is_map_outside_compilation=is_map
+    )
+    outside_compilation_context.Enter()
+    args = [] if args is None else args
+    retval = computation(*args, **kwargs)
+    outside_compilation_context.Exit()
+    return retval
+
+  # If we are in a TPUReplicateContext, signal that we are now
+  # outside_compilation
+  initial_context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  context = initial_context
+  while context:
+    if isinstance(context, TPUReplicateContext):
+      context._EnterOutsideCompilationScope(is_map_outside_compilation=is_map)  # pylint: disable=protected-access
+    context = context.outer_context
+
+  retval = computation(*args, **kwargs)
+
+  # If we are in a TPUReplicateContext, signal that we are no longer
+  # outside_compilation
+  final_context = graph._get_control_flow_context()  # pylint: disable=protected-access
+  if initial_context is not final_context:
+    raise NotImplementedError(
+        "Control-flow context cannot be different at start and end of an "
+        "outside_compilation scope"
+    )
+  context = initial_context
+  while context:
+    if isinstance(context, TPUReplicateContext):
+      context._ExitOutsideCompilationScope()  # pylint: disable=protected-access
+    context = context.outer_context
+
+  return retval
+
 
 @tf_export(v1=["tpu.outside_compilation"])
-def outside_compilation(computation: Callable[..., Any], *args,
-                        **kwargs) -> Any:
+def outside_compilation(
+    computation: Callable[..., Any], *args, **kwargs
+) -> Any:
   """Builds part of a computation outside any current TPU replicate scope.
 
   `tf.tpu.outside_compilation()` is used to run ops in `computation` on CPU
@@ -617,13 +701,12 @@ def outside_compilation(computation: Callable[..., Any], *args,
   computation as well, then this may lead to deadlock.
 
   Internally, `tf.tpu.outside_compilation()` adds outside compilation
-  attributes to all ops in `computation`. During later graph pass, these
-  ops with outside compilation attribute is extracted out and replicated
-  into a host-side graph. Inputs to this extract host-side graph is sent
-  from TPU computation graph to host graph via a pair of XlaSendToHost and
-  XlaRecvFromHost ops. Note that using `tf.tpu.outside_compilation()`
-  may result in tensor transfer between TPU and CPU, leading to non-trivial
-  performance impact.
+  attributes to all ops in `computation`. During a later passes ops with outside
+  compilation attributes are moved to a host-side graph. Inputs to this extract
+  host-side graph are sent from TPU computation graph to host graph via a pair
+  of XlaSendToHost and XlaRecvFromHost ops. Note that using
+  `tf.tpu.outside_compilation()` may result in tensor transfer between TPU and
+  CPU, leading to non-trivial performance impact.
 
   Args:
     computation: A Python function that builds the computation to place on the
@@ -634,58 +717,56 @@ def outside_compilation(computation: Callable[..., Any], *args,
   Returns:
     The Tensors returned by computation.
   """
-  args = [] if args is None else args
-  graph = ops.get_default_graph()
+  return outside_compilation_impl(False, computation, *args, **kwargs)
 
-  # If we are in TF 2 functions (control flow V2 functions, or tf.function()),
-  # we need to attach _xla_outside_compilation attribute directly because we are
-  # not in TPUReplicateContext.
-  if isinstance(graph, func_graph.FuncGraph):
-    try:
-      tpu_context, _ = _enclosing_tpu_context_and_graph()
-    except ValueError:
-      logging.warning(
-          "Outside compilation attempted outside TPUReplicateContext "
-          "scope. As no enclosing TPUReplicateContext can be found, "
-          "returning the result of `computation` as is.")
-      return computation(*args, **kwargs)
 
-    # pylint: disable=protected-access
-    outside_compilation_name = str(tpu_context._outside_compilation_counter)
-    tpu_context._outside_compilation_counter = (
-        tpu_context._outside_compilation_counter + 1)
-    # pylint: enable=protected-access
+def experimental_map_outside_compilation(
+    computation: Callable[..., Any], *args, **kwargs
+) -> Any:
+  """Maps `computation` onto shards and puts it outside any current TPU replicate scope.
 
-    outside_compilation_context = OutsideCompilationV2Context(
-        outside_compilation_name)
-    outside_compilation_context.Enter()
-    args = [] if args is None else args
-    retval = computation(*args, **kwargs)
-    outside_compilation_context.Exit()
-    return retval
+  `experimental_map_outside_compilation(f, x)` maps `f` onto the shards
+  of `x`, where `x` is split-sharded. Each invocation of `f` on a split occurs
+  on the CPU that's associated with the TPU that owns the split.
 
-  # If we are in a TPUReplicateContext, signal that we are now
-  # outside_compilation
-  initial_context = graph._get_control_flow_context()  # pylint: disable=protected-access
-  context = initial_context
-  while context:
-    if isinstance(context, TPUReplicateContext):
-      context._EnterOutsideCompilationScope()  # pylint: disable=protected-access
-    context = context.outer_context
+  Example usage:
 
-  retval = computation(*args, **kwargs)
+  ```python
+  def normalize_each_split(split):
+    return split - tf.math.reduce_mean(split)
 
-  # If we are in a TPUReplicateContext, signal that we are no longer
-  # outside_compilation
-  final_context = graph._get_control_flow_context()  # pylint: disable=protected-access
-  if initial_context is not final_context:
-    raise NotImplementedError(
-        "Control-flow context cannot be different at start and end of an "
-        "outside_compilation scope")
-  context = initial_context
-  while context:
-    if isinstance(context, TPUReplicateContext):
-      context._ExitOutsideCompilationScope()  # pylint: disable=protected-access
-    context = context.outer_context
+  def tpu_computation(x):
+    x_split = strategy.experimental_split_to_logical_devices(
+                x, [8 * num_cores_per_replica, 4])
+    y = experimental_map_outside_compilation(
+          normalize_each_split, x_split)
+    y_split = strategy.experimental_split_to_logical_devices(
+                x, [8 * num_cores_per_replica, 4])
+    return y_split
+  ```
 
-  return retval
+  `experimental_map_outside_compilation` should be called inside
+  TPUReplicateContext. That is, `outside_compilation()` should be called
+  inside a function that is passed to `tpu.split_compile_and_replicate()` --
+  this is implied when outside compilation is invoked inside a function passed
+  to TPUStrategy `run()`. It is invalid to invoke outside of
+  TPUReplicateContext.
+
+  `experimental_map_outside_compilation` should input and output tensors that
+  are located on the TPU.
+
+  Internally, `experimental_map_outside_compilation()` adds outside
+  compilation attributes to all ops in `computation` and moves outside-compiled
+  ops to a host-side graph. This is similar to `tf.tpu.outside_compilation()`.
+  Send/recv ops from/to the TPU send each split directly to the TPU's host.
+
+  Args:
+    computation: A Python function that builds the computation to place on the
+      host.
+    *args: the positional arguments for the computation.
+    **kwargs: the keyword arguments for the computation.
+
+  Returns:
+    The Tensors returned by computation.
+  """
+  return outside_compilation_impl(True, computation, *args, **kwargs)

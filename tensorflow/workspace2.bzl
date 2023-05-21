@@ -174,9 +174,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "bfcf778030831f325cfc13ae5995388cc834fbff2995a297ba580d9ec65ca3b6",
-        strip_prefix = "cudnn-frontend-0.8",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.8.zip"),
+        sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
+        strip_prefix = "cudnn-frontend-0.9",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
     )
 
     tf_http_archive(
@@ -506,10 +506,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "cdb38b72e36bc5d33d5b8810f8018ece1baa29a8f215b4495e495ded82bbf3c7",
-        strip_prefix = "curl-7.88.1",
+        sha256 = "5fd29000a4089934f121eff456101f0a5d09e2a3e89da1d714adf06c4be887cb",
+        strip_prefix = "curl-8.0.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.1.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.0.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -921,11 +921,14 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_ortools",
-        sha256 = "b87922b75bbcce9b2ab5da0221751a3c8c0bff54b2a1eafa951dbf70722a640e",
-        strip_prefix = "or-tools-7.3",
+        sha256 = "bc4b07dc9c23f0cca43b1f5c889f08a59c8f2515836b03d4cc7e0f8f2c879234",
+        strip_prefix = "or-tools-9.6",
         patch_file = ["//third_party/ortools:ortools.patch"],
-        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v7.3.tar.gz"),
-        repo_mapping = {"@com_google_protobuf_cc": "@com_google_protobuf"},
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.6.tar.gz"),
+        repo_mapping = {
+            "@com_google_protobuf_cc": "@com_google_protobuf",
+            "@eigen": "@eigen_archive",
+        },
     )
 
     tf_http_archive(
@@ -936,6 +939,23 @@ def _tf_repositories():
             "https://storage.googleapis.com/mirror.tensorflow.org/ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
             "http://ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
         ],
+    )
+
+    tf_http_archive(
+        name = "scip",
+        sha256 = "fe7636f8165a8c9298ff55ed3220d084d4ea31ba9b69d2733beec53e0e4335d6",
+        strip_prefix = "scip-803",
+        build_file = "//third_party/ortools:scip.BUILD",
+        patch_file = ["//third_party/ortools:scip.patch"],
+        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v803.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "bliss",
+        build_file = "//third_party/ortools:bliss.BUILD",
+        sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
+        urls = tf_mirror_urls("https://github.com/google/or-tools/releases/download/v9.0/bliss-0.73.zip"),
+        #url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

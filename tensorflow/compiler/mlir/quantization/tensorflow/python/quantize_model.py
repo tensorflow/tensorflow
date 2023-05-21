@@ -51,7 +51,7 @@ _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 _SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 
 # Default minimum number of elements in the weights for them to be quantized
-# during dynamic range quantization (DRQ).
+# during dynamic range quantization (DRQ) and weight-only quantization.
 _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
 
 # Name of the saved model assets directory.
@@ -1022,12 +1022,15 @@ def _populate_quantization_options_default_values(
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
 
-  if quantization_options.enable_per_channel_quantization and (
-      quantization_options.op_set != quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+  # TODO(b/281595329): Implement static range quantization per-channel support
+  if quantization_options.enable_per_channel_quantization and not (
+      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      or quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
   ):
     raise ValueError(
         'Currently, per-channel quantization is supported for Uniform '
-        'Quantized opset only.'
+        'Quantized opset and Weight-only.'
     )
 
   if (

@@ -973,12 +973,19 @@ StatusOr<std::vector<int>> GetTensorIndices(
   return indices;
 }
 
+// Given a list of tensor indices, returns true if any of the tensors have
+// non-empty name strings.
+bool HasNonEmptyNames(const tflite::SubGraphT& subgraph,
+                      ArrayRef<int32_t> indices) {
+  return llvm::any_of(
+      indices, [&](int i) { return !subgraph.tensors.at(i)->name.empty(); });
+}
+
 // Given a list of tensor indices, returns a string of concatenated tensor names
 // wrapped in a NamedAttribute.
-template <typename ContainerType>
 mlir::NamedAttribute BuildTFEntryFunctionAttribute(
-    const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
-    const ContainerType indices) {
+    const tflite::SubGraphT& subgraph, Builder* builder,
+    const std::string& name, ArrayRef<int32_t> indices) {
   auto tensor_names = llvm::map_range(
       indices, [&](int i) { return subgraph.tensors.at(i)->name; });
   return builder->getNamedAttr(
@@ -1351,15 +1358,17 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Set tf.entry_function attribute
   if (is_entry_point) {
     llvm::SmallVector<mlir::NamedAttribute, 2> attributes;
-    if (!func_inputs.empty()) {
+    if (HasNonEmptyNames(subgraph, func_inputs)) {
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "inputs", func_inputs));
     }
-    if (!func_outputs.empty()) {
+    if (HasNonEmptyNames(subgraph, func_outputs)) {
       attributes.push_back(BuildTFEntryFunctionAttribute(
           subgraph, &builder, "outputs", func_outputs));
     }
-    func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    if (!attributes.empty()) {
+      func->setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
+    }
   } else {
     func.setPrivate();
   }

@@ -18,6 +18,8 @@ import collections
 import typing
 import warnings
 
+import numpy as np
+
 from google.protobuf import text_format
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -401,6 +403,26 @@ class NestedStructureCoderTest(test.TestCase):
     text_format.Parse(expected_pbtxt, expected)
     self.assertEqual(expected, encoded)
     decoded = nested_structure_coder.decode_proto(encoded)
+    self.assertAllEqual(structure, decoded)
+
+  def testEncodeDecodeNumpy(self):
+    structure = np.array(1.0)
+    self.assertTrue(nested_structure_coder.can_encode(structure))
+    encoded = nested_structure_coder.encode_structure(structure)
+    expected_pbtxt = r"""
+      numpy_value {
+        dtype: DT_DOUBLE
+        tensor_shape {
+        }
+        double_val: 1.0
+      }
+    """
+    expected = struct_pb2.StructuredValue()
+    text_format.Parse(expected_pbtxt, expected)
+    self.assertEqual(expected, encoded)
+
+    decoded = nested_structure_coder.decode_proto(encoded)
+    self.assertIsInstance(decoded, np.ndarray)
     self.assertAllEqual(structure, decoded)
 
   def testNotEncodable(self):

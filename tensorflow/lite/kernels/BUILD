@@ -522,7 +522,12 @@ cc_test(
     }),
     tags = ["tflite_smoke_test"],
     deps = [
+        ":builtin_ops",  # build_cleaner: keep
         ":kernel_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core:cc_api_stable",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/strings",
@@ -1978,6 +1983,18 @@ cc_test(
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "fully_connected_4bit_test",
+    size = "small",
+    srcs = ["fully_connected_4bit_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "@com_google_googletest//:gtest",
     ],
 )
 

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -164,7 +165,8 @@ class GraphExecutor {
 
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
-    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder() const;
+    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder(
+        uint64_t normalize_ratio = 1) const;
 
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.
@@ -264,6 +266,14 @@ class GraphExecutor {
   tfrt::ResourceContext& resource_context() { return resource_context_; }
 
   const Options& options() const { return options_; }
+
+  // Compiles graph for `graph_name` and runs any initializers.
+  tensorflow::Status CompileGraph(
+      const std::string& graph_name,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names);
 
  private:
   // A set of methods to load a client graph.

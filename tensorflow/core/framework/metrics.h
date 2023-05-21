@@ -134,9 +134,10 @@ void RecordTFDataServiceClientIterators(
     const data::ProcessingModeDef& processing_mode, bool is_coordinated_read);
 
 // Records that a tf.data service worker client has been created that will use
-// `data_transfer_protocol` to get data from the worker server.
+// `data_transfer_protocol` to get data from the worker server and whether or
+// not the user explicitly specified the protocol.
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol);
+    const string& data_transfer_protocol, bool user_specified);
 
 // Records that a tf.data service worker client fell back to gRPC rather than
 // use `data_transfer_protocol` because of an error of type `code` with message
@@ -257,6 +258,13 @@ void IncrementFunctionGraphOptimizationCacheMissCount(
 
 // Gets the miss count for the graph optimization cache.
 int64_t GetFunctionGraphOptimizationCacheMissCount(
+    GraphOptimizationSource source);
+
+// Increments the number of restoring function graph optimization cache.
+void IncrementFunctionGraphOptimizationCacheLoadCount(
+    int count, GraphOptimizationSource source);
+
+int64_t GetFunctionGraphOptimizationCacheLoadCount(
     GraphOptimizationSource source);
 
 // Records the activity of the first phase of the mlir bridge using the

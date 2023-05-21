@@ -622,6 +622,7 @@ cc_library(
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -797,6 +798,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -2912,6 +2914,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

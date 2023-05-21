@@ -158,29 +158,3 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
   exit 0
 fi
 
-# Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
-reinstall_tensorflow_pip ${PIP_NAME}
-
-TF_GPU_COUNT=${TF_GPU_COUNT:-4}
-
-# Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
-# which will result testing system installed tensorflow
-# GPU tests are very flaky when running concurrently, so set local_test_jobs=1
-bazel test \
-  --experimental_cc_shared_library \
-  --announce_rc --config=opt -k --test_output=errors \
-  --test_env=TF_GPU_COUNT \
-  ${EXTRA_TEST_FLAGS} \
-  --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
-  --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,-oss_excluded,gpu,-v1only \
-  --build_tag_filters=-no_pip,-no_windows,-windows_excluded,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,-oss_excluded,gpu --build_tests_only \
-  --test_size_filters=small,medium \
-  --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
-  --flaky_test_attempts=2 \
-  --output_filter=^$ \
-  -- ${TEST_TARGET} -//${PY_TEST_DIR}/tensorflow/python/client:timeline_test_gpu
-# TODO(b/140106487): apply https://developer.nvidia.com/ERR_NVGPUCTRPERM to the
-# Kokoro machines and enable timeline_test_gpu again.
-

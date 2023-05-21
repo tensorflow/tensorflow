@@ -574,18 +574,6 @@ GpuConvAlgorithmPicker::AutotuneOneConvRunner(
     return result;
   };
 
-  // Workaround for crash on A100, see b/279920986
-  auto cudnn_version = GetCudnnVersion(stream_exec);
-  if (runtime_arguments.gpu_conv_config.kind ==
-          CudnnConvKind::kForwardActivation &&
-      GetComputeCapability(stream_exec).major() == 8 &&
-      cudnn_version.major() == 8 && cudnn_version.minor() == 7 &&
-      alg.algo_id() == 34 && !alg.tensor_ops_enabled()) {
-    return make_failure(AutotuneResult::DISQUALIFIED,
-                        "ForwardActivation algorithm 34 causes misaligned "
-                        "access on Ampere in cuDNN 8.7");
-  }
-
   AlgorithmDesc alg_key(alg.algo_id(), alg.tensor_ops_enabled(), std::nullopt);
 
   std::string instr_str = instruction_info.has_value()

@@ -35,12 +35,22 @@ tensorflow::StatusProto StatusToProto(const Status& s) {
   return status_proto;
 }
 
+#if defined(PLATFORM_GOOGLE)
 Status StatusFromProto(const tensorflow::StatusProto& proto,
-                       SourceLocation loc) {
+                       absl::SourceLocation loc) {
+  if (proto.code() == tensorflow::error::OK) {
+    return OkStatus();
+  }
+  return Status(static_cast<absl::StatusCode>(proto.code()), proto.message(),
+                loc);
+}
+#else
+Status StatusFromProto(const tensorflow::StatusProto& proto) {
   if (proto.code() == tensorflow::error::OK) {
     return OkStatus();
   }
   return Status(static_cast<absl::StatusCode>(proto.code()), proto.message());
 }
+#endif
 
 }  // namespace tsl

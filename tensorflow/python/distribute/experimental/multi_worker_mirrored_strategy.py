@@ -77,6 +77,9 @@ class MultiWorkerMirroredStrategy(distribute_lib.Strategy):
       raise ValueError('The mesh for MultiWorkerMirroredStrategy must be 1D, '
                        f'received: {len(mesh.shape())}D')
 
+  def reduce(self, reduce_op, value, axis):
+    return dtensor_util.dtensor_reduce(self, reduce_op, value, axis)
+
 
 def _parse_dtensor_env_var_from_cluster_resolver(cluster_resolver):
   """Parse the env vars for Dtensor based on the cluster resolver.

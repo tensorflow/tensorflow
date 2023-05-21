@@ -1414,6 +1414,14 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     return std::nullopt;
   }
 
+  // beta is not exposed from the TF API, assume only beta=1.0 is supported
+  // For more details: https://github.com/tensorflow/tensorflow/issues/60435
+  if (beta != 1.0) {
+    (void)rewriter.notifyMatchFailure(
+        op, "beta values other than 1.0 are not supported");
+    return std::nullopt;
+  }
+
   // reduce_sum on last dimension
   int32_t input_rank = input_type.getShape().size();
   ArrayRef<int64_t> logits_shape = output_type.getShape();

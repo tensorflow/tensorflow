@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/refcount.h"
 
 namespace tensorflow {
 
@@ -135,7 +136,7 @@ LocalRendezvous::~LocalRendezvous() {
     }
   }
   if (table_not_empty) {
-    StartAbort(errors::Cancelled("LocalRendezvous deleted"));
+    DoAbort(absl::CancelledError("LocalRendezvous deleted"));
   }
 }
 
@@ -379,7 +380,21 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   delete item;
 }
 
+mutex LocalRendezvous::aborted_rendezs_mu_;
+
+std::vector<tsl::core::RefCountPtr<Rendezvous> >
+    LocalRendezvous::aborted_rendezs_;
+
 void LocalRendezvous::StartAbort(const Status& status) {
+  DoAbort(status);
+
+  if (rc_owner_) {
+    mutex_lock l(aborted_rendezs_mu_);
+    aborted_rendezs_.push_back(tsl::core::GetNewRef(rc_owner_));
+  }
+}
+
+void LocalRendezvous::DoAbort(const Status& status) {
   CHECK(!status.ok());
   {
     mutex_lock l(mu_);

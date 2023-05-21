@@ -2107,10 +2107,10 @@ tsl::Status HloToLhloModule(const BufferAssignment& assignment,
 
   const std::vector<HloInstruction*>& ordering = schedule->instructions();
   TF_RETURN_IF_ERROR(computation->AcceptOrdered(&emitter, ordering));
-  TF_RETURN_IF_ERROR(tsl::FromAbslStatus(status_handler.ConsumeStatus()));
+  TF_RETURN_IF_ERROR(status_handler.ConsumeStatus());
 
   (void)mlir::verify(module);
-  return tsl::FromAbslStatus(status_handler.ConsumeStatus());
+  return status_handler.ConsumeStatus();
 }
 
 OwningOpRef<mlir::ModuleOp> HloTextToLhloTranslateFunction(

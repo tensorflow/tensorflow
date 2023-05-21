@@ -19,9 +19,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
@@ -57,15 +61,44 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
 }
 
 Status SnapshotManager::Start(const SnapshotRequest& request) {
+  LOG(INFO) << "Starting to write tf.data snapshot at " << request.path();
   if (env_->FileExists(request.path()).ok()) {
-    return InvalidArgument("Distributed tf.data snapshot at ", request.path(),
-                           " already exists.");
+    return errors::AlreadyExists("tf.data snapshot at ", request.path(),
+                                 " already exists.");
   }
-  TF_RETURN_IF_ERROR(CreateSplitProviders(request.dataset(), split_providers_));
+  TF_ASSIGN_OR_RETURN(sources_, CreateSources(request.dataset()));
+  TF_ASSIGN_OR_RETURN(num_total_splits_, CountSplits());
   TF_RETURN_IF_ERROR(WriteOnDiskSkeleton());
   TF_RETURN_IF_ERROR(WriteOnDiskMetadata(request));
   metadata_ = request.metadata();
+  LOG(INFO) << "Started writing tf.data distributed snapshot at " << path_;
   return OkStatus();
+}
+
+StatusOr<std::vector<SnapshotManager::Source>> SnapshotManager::CreateSources(
+    const DatasetDef& dataset_def) const {
+  std::vector<std::unique_ptr<SplitProvider>> split_providers;
+  TF_RETURN_IF_ERROR(CreateSplitProviders(dataset_def, split_providers));
+  std::vector<SnapshotManager::Source> sources;
+  sources.reserve(split_providers.size());
+  for (auto& split_provider : split_providers) {
+    sources.push_back({std::move(split_provider), /*repetition_index=*/0});
+  }
+  return sources;
+}
+
+StatusOr<int64_t> SnapshotManager::CountSplits() {
+  int64_t num_splits = 0;
+  for (const auto& source : sources_) {
+    Tensor tensor;
+    for (bool end_of_splits = false; !end_of_splits; ++num_splits) {
+      TF_RETURN_IF_ERROR(
+          source.split_provider->GetNext(&tensor, &end_of_splits));
+    }
+    --num_splits;
+    TF_RETURN_IF_ERROR(source.split_provider->Reset());
+  }
+  return num_splits;
 }
 
 Status SnapshotManager::WriteOnDiskSkeleton() {
@@ -114,6 +147,7 @@ Status SnapshotManager::Resume() {
   }
   TF_RETURN_IF_ERROR(ReadOnDiskMetadata());
   TF_RETURN_IF_ERROR(ReadOnDiskStreams());
+  LOG(INFO) << "Resumed writing tf.data distributed snapshot at " << path_;
   return OkStatus();
 }
 
@@ -133,7 +167,8 @@ Status SnapshotManager::ReadOnDiskMetadata() {
   TF_RETURN_IF_ERROR(
       ReadBinaryProto(env_, DatasetDefFilePath(path_), &dataset_def));
 
-  TF_RETURN_IF_ERROR(CreateSplitProviders(dataset_def, split_providers_));
+  TF_ASSIGN_OR_RETURN(sources_, CreateSources(dataset_def));
+  TF_ASSIGN_OR_RETURN(num_total_splits_, CountSplits());
   return OkStatus();
 }
 
@@ -229,35 +264,56 @@ Status SnapshotManager::ReadOnDiskStream(
 Status SnapshotManager::ReadOnDiskSource(
     int64_t stream_index, int64_t source_index,
     absl::flat_hash_set<int64_t>& global_split_indices) {
-  std::string source_path = SourceDirectory(path_, stream_index, source_index);
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> split_filenames,
-                      GetChildren(source_path, env_));
+  std::string source_directory =
+      SourceDirectory(path_, stream_index, source_index);
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
+                      GetChildren(source_directory, env_));
+  sources_[source_index].repetition_index =
+      repetition_directories.empty() ? 0 : repetition_directories.size() - 1;
 
-  Tensor unused_tensor;
-  bool unused_end_of_splits;
-  for (const auto& split_filename : split_filenames) {
-    std::string split_path = io::JoinPath(source_path, split_filename);
-    TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_filename));
-    auto [local_split_index, global_split_index] = split_indices;
-    if (local_split_index > split_filenames.size() - 1) {
-      return InvalidArgument(
-          "found conflict between the number of splits and name of ",
-          split_path);
+  for (const std::string& repetition : repetition_directories) {
+    std::string repetition_dir =
+        tsl::io::JoinPath(source_directory, repetition);
+    TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+                        GetChildren(repetition_dir, env_));
+    for (const std::string& split_file : split_files) {
+      std::string split_path = io::JoinPath(repetition_dir, split_file);
+      TF_RETURN_IF_ERROR(ReadOnDiskSplit(source_index, split_files, split_path,
+                                         global_split_indices));
     }
-    if (global_split_indices.contains(global_split_index)) {
-      return InvalidArgument("found duplicate global split index in name of ",
-                             split_path);
-    }
-
-    // To account for this split having been assigned, skip a split in the
-    // respective provider.
-    TF_RETURN_IF_ERROR(split_providers_[source_index]->GetNext(
-        &unused_tensor, &unused_end_of_splits));
-    global_split_indices.insert(global_split_index);
+    streams_[stream_index].num_assigned_splits_per_source[source_index] +=
+        split_files.size();
   }
+  return OkStatus();
+}
 
-  streams_[stream_index].num_assigned_splits[source_index] =
-      split_filenames.size();
+Status SnapshotManager::ReadOnDiskSplit(
+    int64_t source_index, const std::vector<std::string>& split_files,
+    const std::string& split_file,
+    absl::flat_hash_set<int64_t>& global_split_indices) {
+  // `split_file` must have this format:
+  // "split_<local_split_index>_<global_split_index>".
+  TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
+  auto [local_split_index, global_split_index] = split_indices;
+  if (global_split_indices.contains(global_split_index)) {
+    return InvalidArgument("found duplicate global split index in name of ",
+                           split_file);
+  }
+  global_split_indices.insert(global_split_index);
+
+  // To account for this split having been assigned, skip a split in the
+  // respective split provider.
+  return SkipSplit(*sources_[source_index].split_provider);
+}
+
+Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
+  Tensor tensor;
+  bool end_of_splits = false;
+  TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  while (end_of_splits) {
+    TF_RETURN_IF_ERROR(split_provider.Reset());
+    TF_RETURN_IF_ERROR(split_provider.GetNext(&tensor, &end_of_splits));
+  }
   return OkStatus();
 }
 
@@ -297,15 +353,19 @@ StatusOr<int64_t> SnapshotManager::CreateAndAssignNewStream(
     absl::string_view worker_address) {
   int64_t new_stream_index = streams_.size();
   for (int64_t source_index = 0; source_index < num_sources(); ++source_index) {
-    TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(
-        SourceDirectory(path_, new_stream_index, source_index)));
+    for (int64_t repetition_index = 0;
+         repetition_index <= sources_[source_index].repetition_index;
+         ++repetition_index) {
+      TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(
+          path_, new_stream_index, source_index, repetition_index)));
+    }
   }
   TF_RETURN_IF_ERROR(AtomicallyWriteStringToFile(
       StreamWorkerFilePath(path_, new_stream_index), worker_address, env_));
   streams_.push_back(Stream(num_sources()));
   assignments_[worker_address] = new_stream_index;
-  LOG(INFO) << "creating stream_ " << new_stream_index << " and assigning to "
-            << worker_address;
+  LOG(INFO) << "For snapshot at " << path_ << ", created stream_"
+            << new_stream_index << " and assigned to " << worker_address;
   return new_stream_index;
 }
 
@@ -321,15 +381,15 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     if (assigned_stream_index.has_value() &&
         *assigned_stream_index !=
             snapshot_progress->snapshot_task().stream_index()) {
-      return errors::Internal("worker ", worker_address,
-                              " think it's assigned stream ",
-                              " but it's actually assigned assigned stream ",
-                              *assigned_stream_index);
+      return absl::InternalError(absl::StrCat(
+          "Worker ", worker_address, " was assigned stream ",
+          snapshot_progress->snapshot_task().stream_index(),
+          ", but is now assigned a different stream ", *assigned_stream_index));
     }
     if (assigned_stream_index.has_value() && snapshot_progress->completed()) {
       TF_RETURN_IF_ERROR(HandleStreamCompletion(
           snapshot_progress->snapshot_task().stream_index(), worker_address));
-      assigned_stream_index.reset();
+      return std::optional<int64_t>();
     }
     if (snapshot_progress->status().code() != error::OK) {
       TF_RETURN_IF_ERROR(
@@ -344,11 +404,20 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
     TF_ASSIGN_OR_RETURN(assigned_stream_index,
                         CreateAndAssignNewStream(worker_address));
   }
+  if (assigned_stream_index &&
+      streams_[*assigned_stream_index].state == Stream::State::kDone) {
+    return std::optional<int64_t>();
+  }
   return assigned_stream_index;
 }
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
+  LOG_EVERY_N_SEC(INFO, 60)
+      << "tf.data snapshot progress [" << path_ << "]: " << num_assigned_splits_
+      << " of " << num_total_splits_
+      << " total splits have been assigned or completed.";
+
   dead_workers_.erase(request.worker_address());
 
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
@@ -361,6 +430,10 @@ Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
   if (auto it = request.snapshot_task_progress().find(path_);
       it != request.snapshot_task_progress().end()) {
     snapshot_progress = &it->second;
+  }
+  if (snapshot_progress && snapshot_progress->completed() &&
+      mode_ == Mode::kActive) {
+    mode_ = Mode::kWindingDown;
   }
   TF_ASSIGN_OR_RETURN(std::optional<int64_t> assigned_stream_index,
                       MaybeGetOrCreateStreamAssignment(request.worker_address(),
@@ -392,33 +465,45 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                             " but it's actually assigned stream ", it->second);
   }
 
-  Tensor split;
-  bool end_of_splits;
-  TF_RETURN_IF_ERROR(split_providers_[request.source_index()]->GetNext(
-      &split, &end_of_splits));
-
   Stream& stream = streams_[request.stream_index()];
   int64_t local_split_index =
-      stream.num_assigned_splits[request.source_index()];
+      stream.num_assigned_splits_per_source[request.source_index()];
   int64_t global_split_index = num_assigned_splits_;
   response.set_local_split_index(local_split_index);
-  if (end_of_splits) {
-    if (mode_ == Mode::kActive) {
-      mode_ = Mode::kWindingDown;
-    }
+
+  Source& source = sources_[request.source_index()];
+  if (request.repetition_index() < source.repetition_index) {
     response.set_end_of_splits(true);
     return OkStatus();
   }
 
-  std::string split_path =
-      SplitPath(path_, request.stream_index(), request.source_index(),
-                local_split_index, global_split_index);
+  Tensor split;
+  bool end_of_splits;
+  TF_RETURN_IF_ERROR(source.split_provider->GetNext(&split, &end_of_splits));
+  if (end_of_splits) {
+    response.set_end_of_splits(true);
+    return ResetSource(source, request.source_index());
+  }
+
+  std::string split_path = SplitPath(
+      path_, request.stream_index(), request.source_index(),
+      request.repetition_index(), local_split_index, global_split_index);
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
       split_path, {split}, tsl::io::compression::kNone, env_));
   split.AsProtoTensorContent(response.mutable_split());
 
-  ++stream.num_assigned_splits[request.source_index()];
+  ++stream.num_assigned_splits_per_source[request.source_index()];
   ++num_assigned_splits_;
+  return OkStatus();
+}
+
+Status SnapshotManager::ResetSource(Source& source, int64_t source_index) {
+  TF_RETURN_IF_ERROR(source.split_provider->Reset());
+  ++source.repetition_index;
+  for (int64_t i = 0; i < streams_.size(); ++i) {
+    TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(
+        path_, /*stream_index=*/i, source_index, source.repetition_index)));
+  }
   return OkStatus();
 }
 

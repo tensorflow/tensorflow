@@ -2509,15 +2509,16 @@ This is typically used by gradient computations for a concat operation.
 
   let arguments = (ins
     Arg<TF_Int32Tensor, [{The dimension along which to concatenate.}]>:$concat_dim,
-    Arg<Variadic<TF_Int32Tensor>, [{The `N` int32 vectors representing shape of tensors being concatenated.}]>:$shape
+    Arg<Variadic<TF_I32OrI64Tensor>, [{The `N` int32 or int64 vectors representing shape of tensors being concatenated.}]>:$shape
   );
 
   let results = (outs
-    Res<Variadic<TF_Int32Tensor>, [{The `N` int32 vectors representing the starting offset
-of input tensors within the concatenated output.}]>:$offset
+    Res<Variadic<TF_I32OrI64Tensor>, [{The `N` vectors representing the starting offset
+of input tensors within the concatenated output with type matching `shape`.}]>:$offset
   );
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
 
   let hasVerifier = 1;
 
@@ -4619,6 +4620,36 @@ This operation creates a tensor of `shape` and `dtype`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let hasFolder = 1;
+}
+
+def TF_EncodePngOp : TF_Op<"EncodePng", [Pure]> {
+  let summary = "PNG-encode an image.";
+
+  let description = [{
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
+
+*   1: for grayscale.
+*   2: for grayscale + alpha.
+*   3: for RGB.
+*   4: for RGBA.
+
+The ZLIB compression level, `compression`, can be -1 for the PNG-encoder
+default or a value from 0 to 9.  9 is the highest compression level, generating
+the smallest output, but is slower.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Uint16, TF_Uint8]>, [{3-D with shape `[height, width, channels]`.}]>:$image,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$compression
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{0-D. PNG-encoded image.}]>:$contents
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
@@ -21154,7 +21185,7 @@ for binary operators.
   }];
 }
 
-def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [Pure]> {
+def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let summary = "Invokes a StableHLO module.";
 
   let description = [{

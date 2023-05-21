@@ -101,19 +101,19 @@ static StatusOr<TypeT> ConvertTensorShapeToType(const Shape& xla_ty,
             i < layout.dim_unique().size() ? layout.dim_unique()[i] : true;
         switch (dlt) {
           case DimLevelType::DIM_DENSE:
-            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Dense, ordered, unique));
             break;
           case DimLevelType::DIM_COMPRESSED:
-            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Compressed, ordered, unique));
             break;
           case DimLevelType::DIM_SINGLETON:
-            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::Singleton, ordered, unique));
             break;
           case DimLevelType::DIM_COMPRESSED_WITH_HI:
-            dlts.push_back(*mlir::sparse_tensor::getDimLevelType(
+            dlts.push_back(*mlir::sparse_tensor::buildLevelType(
                 mlir::sparse_tensor::LevelFormat::CompressedWithHi, ordered,
                 unique));
             break;

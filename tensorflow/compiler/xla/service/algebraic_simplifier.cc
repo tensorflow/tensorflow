@@ -71,6 +71,8 @@ namespace {
 
 namespace m = match;
 
+using primitive_util::NativeTypeOf;
+
 // Unwraps broadcasts hunting for a constant.  If we find one, checks if the
 // constant contains only the given value.
 bool IsAll(const HloInstruction* op, int8_t value) {
@@ -144,18 +146,17 @@ std::optional<double> GetConstantValue(const HloInstruction* inst) {
   if (!ShapeUtil::IsEffectiveScalar(inst->shape())) {
     return std::nullopt;
   }
-  switch (inst->shape().element_type()) {
-    case F16:
-      return static_cast<float>(inst->literal().GetFirstElement<half>());
-    case BF16:
-      return static_cast<float>(inst->literal().GetFirstElement<bfloat16>());
-    case F32:
-      return inst->literal().GetFirstElement<float>();
-    case F64:
-      return inst->literal().GetFirstElement<double>();
-    default:
-      return std::nullopt;
-  }
+  return primitive_util::PrimitiveTypeSwitch<std::optional<double>>(
+      [&](auto primitive_type_constant) -> std::optional<double> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return static_cast<double>(
+              inst->literal().GetFirstElement<NativeT>());
+        }
+        return std::nullopt;
+      },
+      inst->shape().element_type());
 }
 
 static bool IsScalarConstant(const HloInstruction* hlo,
@@ -228,21 +229,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
                      m::Shape().IsEffectiveScalar())))) {
     return false;
   }
-  auto val = [&]() -> std::optional<double> {
-    switch (c->shape().element_type()) {
-      case BF16:
-        return static_cast<double>(c->literal().GetFirstElement<bfloat16>());
-      case F16:
-        return static_cast<double>(c->literal().GetFirstElement<Eigen::half>());
-      case F32:
-        return c->literal().GetFirstElement<float>();
-      case F64:
-        return c->literal().GetFirstElement<double>();
-      default:
-        // Cowardly refuse to consider complex types.
-        return std::nullopt;
-    }
-  }();
+  auto val = GetConstantValue(c);
   if (!val) {
     return false;
   }
@@ -453,18 +440,18 @@ bool IsOpCodeMultiplyCommutative(HloOpcode opcode) {
 
 std::unique_ptr<HloInstruction> MakeScalarInstruction(HloInstruction* target,
                                                       float multiplier) {
-  switch (target->shape().element_type()) {
-    case BF16:
-      return HloInstruction::CreateConstant(LiteralUtil::ConvertF32ToBF16(
-          LiteralUtil::CreateR0<float>(multiplier)));
-      break;
-    case F32:
-      return HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0<float>(multiplier));
-      break;
-    default:
-      LOG(FATAL) << "Unsupported data type: " << target->shape().element_type();
-  }
+  return primitive_util::PrimitiveTypeSwitch<std::unique_ptr<HloInstruction>>(
+      [&](auto primitive_type_constant) -> std::unique_ptr<HloInstruction> {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = NativeTypeOf<primitive_type_constant>;
+          return HloInstruction::CreateConstant(
+              LiteralUtil::CreateR0<NativeT>(static_cast<NativeT>(multiplier)));
+        }
+        LOG(FATAL) << "Unsupported data type: "
+                   << target->shape().element_type();
+      },
+      target->shape().element_type());
 }
 
 }  // namespace
@@ -2061,37 +2048,30 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
       (Match(b, m::Constant(&c)) || Match(b, m::Broadcast(m::Constant(&c))))) {
     Shape result_shape = c->literal().shape();
     Literal new_literal(result_shape);
-    switch (result_shape.element_type()) {
-      case F16:
-        TF_RETURN_IF_ERROR(InvertConstant<half>(*c, &new_literal));
-        break;
-      case F32:
-        TF_RETURN_IF_ERROR(InvertConstant<float>(*c, &new_literal));
-        break;
-      case BF16:
-        TF_RETURN_IF_ERROR(InvertConstant<bfloat16>(*c, &new_literal));
-        break;
-      case F64:
-        TF_RETURN_IF_ERROR(InvertConstant<double>(*c, &new_literal));
-        break;
-      case C64:
-        TF_RETURN_IF_ERROR(InvertConstant<complex64>(*c, &new_literal));
-        break;
-      case C128:
-        TF_RETURN_IF_ERROR(InvertConstant<complex128>(*c, &new_literal));
-        break;
-      default:
-        return OkStatus();
-    }
-    auto inverse = c->AddInstruction(
-        simplifier_->CreateConstantWithLayoutUpdated(new_literal.Clone()));
-    if (b != c) {
-      inverse = b->AddInstruction(HloInstruction::CreateBroadcast(
-          b->shape(), inverse, b->dimensions()));
-    }
-    TF_ASSIGN_OR_RETURN(auto new_divide,
-                        MakeBinaryHlo(HloOpcode::kMultiply, a, inverse));
-    return ReplaceInstruction(divide, new_divide);
+    return primitive_util::PrimitiveTypeSwitch<Status>(
+        [&](auto primitive_type_constant) -> Status {
+          if constexpr (primitive_util::IsFloatingPointType(
+                            primitive_type_constant) ||
+                        primitive_util::IsComplexType(
+                            primitive_type_constant)) {
+            using NativeT = NativeTypeOf<primitive_type_constant>;
+            TF_RETURN_IF_ERROR(InvertConstant<NativeT>(*c, &new_literal));
+
+            auto inverse =
+                c->AddInstruction(simplifier_->CreateConstantWithLayoutUpdated(
+                    new_literal.Clone()));
+            if (b != c) {
+              inverse = b->AddInstruction(HloInstruction::CreateBroadcast(
+                  b->shape(), inverse, b->dimensions()));
+            }
+            TF_ASSIGN_OR_RETURN(
+                auto new_divide,
+                MakeBinaryHlo(HloOpcode::kMultiply, a, inverse));
+            return ReplaceInstruction(divide, new_divide);
+          }
+          return OkStatus();
+        },
+        result_shape.element_type());
   }
 
   // (A / B) / (C / D)  =>  (A / B)*(D / C) => (A * D) / (B * C)

@@ -58,7 +58,7 @@ static absl::Status CholeskyImpl(const ServiceExecutableRunOptions* run_options,
                         a_buffer, workspace_buffer, info_buffer};
   auto executed = RunCholesky(xla::gpu::PtxOptsFromDebugOptions(*debug_options),
                               operand.dtype, &params, stream);
-  if (!executed.ok()) return ToAbslStatus(executed);
+  if (!executed.ok()) return executed;
 
   return absl::OkStatus();
 #else  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

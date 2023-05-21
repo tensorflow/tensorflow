@@ -30,8 +30,8 @@ StatusOr<std::unique_ptr<xla::PjRtClient>> GetGpuClient(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtClient> client,
       xla::GetStreamExecutorGpuClient(
-          option.gpu_options.asynchronous, option.gpu_options.allocator_config,
-          option.gpu_options.distributed_client, option.gpu_options.node_id,
+          option.gpu_options.asynchronous, /*allocator_config=*/{},
+          /*distributed_client=*/nullptr, option.gpu_options.node_id,
           option.gpu_options.allowed_devices,
           option.gpu_options.platform_name));
   return std::move(client);

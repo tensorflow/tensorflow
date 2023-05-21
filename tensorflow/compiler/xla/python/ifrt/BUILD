@@ -18,11 +18,11 @@ package_group(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         ":friends",
         ":internal",
     ],
-    licenses = ["notice"],
 )
 
 exports_files([
@@ -65,6 +65,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
@@ -211,32 +212,6 @@ xla_cc_test(
     srcs = [],
     deps = [
         ":client_impl_test_lib",
-        ":no_impl_test_main",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_library(
-    name = "executable_impl_test_lib",
-    testonly = 1,
-    srcs = ["executable_impl_test_lib.cc"],
-    deps = [
-        ":ifrt",
-        ":test_util",
-        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:statusor",
-        "//tensorflow/tsl/platform:test",
-        "@com_google_absl//absl/strings",
-    ],
-    alwayslink = 1,
-)
-
-xla_cc_test(
-    name = "executable_test_no_impl",
-    srcs = [],
-    deps = [
-        ":executable_impl_test_lib",
         ":no_impl_test_main",
         "@com_google_googletest//:gtest",
     ],

@@ -589,7 +589,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
+    auto error = EmitErrorAsync(exec_ctx, status);
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return error;

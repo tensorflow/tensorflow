@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -253,7 +254,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2))
+    EXPECT_TRUE(absl::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
@@ -312,7 +313,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2));
+    EXPECT_TRUE(absl::IsNotFound(status2));
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
@@ -2457,6 +2458,7 @@ class TestStackTrace : public AbstractStackTrace {
       : frames_(frames) {}
 
   absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+  std::vector<StackFrame> ToUncachedFrames() const override { return frames_; }
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
 
@@ -2568,15 +2570,17 @@ TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesDifferentFile) {
             "other_function_name");
 }
 
-TEST(StackTracesTest, CacheCleaningWorks) {
+TEST(StackTracesTest, ToFrames) {
   StackTracesMap map;
   std::vector<StackFrame> frames = {
       StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
       StackFrame({"other_file_name", 20, "other_function_name"})};
   auto stack_trace = TestStackTrace(frames);
   EXPECT_EQ(stack_trace.ToFrames().size(), 2);
-  stack_trace.WipeCache();
-  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+  auto uncached_frames = stack_trace.ToUncachedFrames();
+  EXPECT_EQ(uncached_frames.size(), 2);
+  EXPECT_EQ(frames[0], uncached_frames[0]);
+  EXPECT_EQ(frames[1], uncached_frames[1]);
 }
 
 }  // namespace

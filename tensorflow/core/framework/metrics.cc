@@ -186,6 +186,14 @@ auto* tf_data_service_data_transfer_protocol_used =
         "data transfer protocol.",
         "data_transfer_protocol");
 
+auto* tf_data_service_data_transfer_protocol_used_by_nature =
+    tsl::monitoring::Counter<2>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used_by_nature",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol and the nature ('default' or 'specified') "
+        "under which this protocol was chosen.",
+        "data_transfer_protocol", "nature");
+
 auto* tf_data_service_data_transfer_protocol_fallback =
     tsl::monitoring::Counter<3>::New(
         "/tensorflow/data/service/data_transfer_protocol_fallback",
@@ -290,6 +298,12 @@ auto* graph_optimization_cache_failure_count = tsl::monitoring::Counter<1>::New(
 auto* graph_optimization_cache_miss_count = tsl::monitoring::Counter<1>::New(
     "/tensorflow/core/graph_optimization_cache_miss_count",
     "The number of times the cache for the graph optimization is missed.",
+    "source"  // graph optimization source
+);
+
+auto* graph_optimization_cache_load_count = tsl::monitoring::Counter<1>::New(
+    "/tensorflow/core/graph_optimization_cache_load_count",
+    "The number of times loading an optimized function graph to RAM.",
     "source"  // graph optimization source
 );
 
@@ -449,8 +463,7 @@ void RecordTFDataServiceWorkerCreated() {
 }
 
 void RecordTFDataServiceJobsCreated(
-    const data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read) {
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read) {
   const std::string sharding_policy_str =
       data::ProcessingModeDef::ShardingPolicy_Name(
           processing_mode.sharding_policy());
@@ -463,8 +476,7 @@ void RecordTFDataServiceJobsCreated(
 
 void RecordTFDataServiceClientIterators(
     int64_t worker_uid, data::DeploymentMode deployment_mode,
-    const data::ProcessingModeDef& processing_mode,
-    bool is_coordinated_read) {
+    const data::ProcessingModeDef& processing_mode, bool is_coordinated_read) {
   const std::string deployment_mode_str =
       data::DeploymentMode_Name(deployment_mode);
   const std::string sharding_policy_str =
@@ -479,8 +491,10 @@ void RecordTFDataServiceClientIterators(
 }
 
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol) {
-  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+    const string& data_transfer_protocol, bool user_specified) {
+  std::string nature = user_specified ? "specified" : "default";
+  tf_data_service_data_transfer_protocol_used_by_nature
+      ->GetCell(data_transfer_protocol, nature)
       ->IncrementBy(1);
 }
 
@@ -519,8 +533,7 @@ void RecordTFDataFilename(const string& name, const string& filename) {
   tf_data_filename_counter->GetCell(name, filename)->IncrementBy(1);
 }
 
-void RecordTFDataAutoShard(const string& id,
-                           data::AutoShardPolicy policy,
+void RecordTFDataAutoShard(const string& id, data::AutoShardPolicy policy,
                            int64 num_workers, int64 num_replicas) {
   tf_data_auto_shard->GetCell(id, "policy")->Set(static_cast<int64_t>(policy));
   tf_data_auto_shard->GetCell(id, "num_workers")->Set(num_workers);
@@ -669,6 +682,19 @@ int64_t GetFunctionGraphOptimizationCacheMissCount(
     GraphOptimizationSource source) {
   std::string mapped_source = GraphOptimizationSourceMapping(source);
   return graph_optimization_cache_miss_count->GetCell(mapped_source)->value();
+}
+
+void IncrementFunctionGraphOptimizationCacheLoadCount(
+    int count, GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  graph_optimization_cache_load_count->GetCell(mapped_source)
+      ->IncrementBy(count);
+}
+
+int64_t GetFunctionGraphOptimizationCacheLoadCount(
+    GraphOptimizationSource source) {
+  std::string mapped_source = GraphOptimizationSourceMapping(source);
+  return graph_optimization_cache_load_count->GetCell(mapped_source)->value();
 }
 
 void UpdateTpuVariableDistributionTime(const uint64 distribution_time_usecs) {

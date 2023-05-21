@@ -167,6 +167,8 @@ cc_library(
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":pjrt_compiler",
+        ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:literal",
@@ -249,13 +251,23 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "pjrt_device_description",
+    hdrs = ["pjrt_device_description.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "pjrt_compiler",
     srcs = ["pjrt_compiler.cc"],
     hdrs = ["pjrt_compiler.h"],
     visibility = [":friends"],
     deps = [
-        ":pjrt_client",
+        ":pjrt_device_description",
         ":pjrt_executable",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -721,8 +733,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",

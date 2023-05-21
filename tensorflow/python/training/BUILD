@@ -117,7 +117,6 @@ py_library(
         "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
-        "//tensorflow/python/training/tracking:base_delegate",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -135,9 +134,6 @@ py_library(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
-        "//tensorflow/python/training/tracking:base",
-        "//tensorflow/python/training/tracking:python_state",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 

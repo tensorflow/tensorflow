@@ -25,7 +25,6 @@ package_group(
         "//tensorflow/compiler/jit/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
         "//tensorflow/core/tfrt/...",
-        "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tpu/...",
         "//tensorflow/dtensor/...",
         "//third_party/tf_runtime_google/...",
@@ -184,10 +183,6 @@ cc_library(
     name = "pjrt_client_factory_options",
     hdrs = ["pjrt_client_factory_options.h"],
     visibility = [":friends"],
-    deps = [
-        "//tensorflow/compiler/xla/pjrt/distributed:client",
-        "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
-    ],
 )
 
 cc_library(

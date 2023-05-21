@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -121,7 +122,7 @@ TEST(Journal, MissingFile) {
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(result, end_of_journal);
-  EXPECT_TRUE(errors::IsNotFound(s));
+  EXPECT_TRUE(absl::IsNotFound(s));
 }
 
 TEST(Journal, NonRecordData) {

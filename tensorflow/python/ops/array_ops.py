@@ -18,6 +18,7 @@
 import numbers
 import numpy as np
 
+from tensorflow.core.config import flags
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
@@ -589,8 +590,10 @@ def broadcast_static_shape(shape_x, shape_y):
 
 @tf_export("shape", v1=[])
 @dispatch.add_dispatch_support
-def shape_v2(input, out_type=dtypes.int32, name=None):
+def shape_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
+  # TODO(b/274626120) Update `tf_shape_default_int64` comment when it is better
+  # supported.
   """Returns a tensor containing the shape of the input tensor.
 
   See also `tf.size`, `tf.rank`.
@@ -630,18 +633,25 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   Args:
     input: A `Tensor` or `SparseTensor`.
     out_type: (Optional) The specified output type of the operation (`int32` or
-      `int64`). Defaults to `tf.int32`.
+      `int64`). Defaults to `tf.int32`. (Note: there is an experimental
+      flag, `tf_shape_default_int64` that changes the default to `tf.int64`.
+      This is an unsupported, experimental setting that causes known breakages.)
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape(input, name, out_type)
 
 
 @tf_export(v1=["shape"])
 @dispatch.add_dispatch_support
-def shape(input, name=None, out_type=dtypes.int32):
+def shape(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
@@ -663,6 +673,11 @@ def shape(input, name=None, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape_internal(input, name, optimize=True, out_type=out_type)
 
 

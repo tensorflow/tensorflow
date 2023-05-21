@@ -283,7 +283,7 @@ class TfrtCpuAsyncHostToDeviceTransferManager
 
   void SetBufferError(int buffer_index, Status error) override {
     absl::MutexLock l(&mu_);
-    avs_[buffer_index]->SetError(ToAbslStatus(error));
+    avs_[buffer_index]->SetError(error);
   }
 
   void AddTransferMetadata(const TransferMetadata& meta) override {

@@ -29,6 +29,7 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
         # copybara:uncomment "//learning/brain/mobile/lite/delegates/tfmrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
     ],
 )
 
@@ -68,7 +69,6 @@ cc_library(
     visibility = [
         ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/lite/delegates/flex:__pkg__",
     ],
@@ -107,6 +107,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:env_var",
+        "//tensorflow/tsl/platform:mutex",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <numeric>
 #include <set>
 #include <string>
@@ -2255,18 +2256,20 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteStartShape(
-    absl::Span<const Shape* const> operand_shapes) {
-  const Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
+    absl::Span<const Shape* const> operand_shapes,
+    absl::Span<const Shape> context_shapes) {
+  absl::InlinedVector<const Shape*, 4> shapes;
   if (operand_shapes.size() == 1) {
     TF_RETURN_IF_ERROR(ExpectArray(*(operand_shapes[0]),
                                    "operand of collective-permute-start"));
-    return ShapeUtil::MakeTupleShapeWithPtrs(
-        {operand_shapes[0], operand_shapes[0], &u32_scalar, &u32_scalar});
+    shapes = {operand_shapes[0], operand_shapes[0]};
   } else {
     TF_RET_CHECK(operand_shapes.size() == 4);
-    return ShapeUtil::MakeTupleShapeWithPtrs(
-        {operand_shapes[0], operand_shapes[1], &u32_scalar, &u32_scalar});
+    shapes = {operand_shapes[0], operand_shapes[1]};
   }
+  absl::c_transform(context_shapes, std::back_inserter(shapes),
+                    [](const Shape& shape) { return &shape; });
+  return ShapeUtil::MakeTupleShapeWithPtrs(shapes);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferCollectivePermuteDoneShape(
@@ -3204,7 +3207,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     if ((input_dim_end - input_dim_start) > 1 &&
         (output_dim_end - output_dim_start) > 1) {
       // We don't support the case when a dynamic dimension is both combined
-      // with and splitted into other dimensions:
+      // with and split into other dimensions:
       //
       //  [x, yz]
       //     | Reshape

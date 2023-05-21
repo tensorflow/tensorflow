@@ -1764,7 +1764,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     // finally to just name.
     if (auto stack_trace = node.GetStackTrace()) {
       DVLOG(1) << "Stack available for " << node.name();
-      absl::Span<const StackFrame> frames = stack_trace->ToFrames();
+      std::vector<StackFrame> frames = stack_trace->ToUncachedFrames();
       locations.reserve(frames.size());
       for (const StackFrame& frame : llvm::reverse(frames)) {
         auto file_name = mlir::StringAttr::get(context_, frame.file_name);
@@ -1773,7 +1773,6 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
             mlir::FileLineColLoc::get(file_name, frame.line_number, 1);
         locations.push_back(file_line_loc);
       }
-      stack_trace->WipeCache();
     } else {
       DVLOG(1) << "No stack trace for " << node.name();
       const auto location_it = debug_info.find(debug_info_key);

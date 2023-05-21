@@ -597,57 +597,59 @@ XlaOp PhiloxIncreaseCounter(XlaOp counter, XlaOp delta) {
 RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
                                const Shape& shape) {
   PrimitiveType type = shape.element_type();
-  switch (type) {
-    case S8:
-    case U8:
-    case F16:
-    case U16:
-    case S16:
-      return ThreeFryRngBitNarrow(key, initial_state, shape);
-    case F32:
-    case U32:
-    case S32:
-      return ThreeFryRngBit32(key, initial_state, shape);
-    case F64:
-    case U64:
-    case S64:
-      return ThreeFryRngBit64(key, initial_state, shape);
-    default:
-      return {
-          key.builder()->ReportError(Unimplemented(
-              "Types other than F16, F32, F64, U16, S16, U32, S32, U64 and S64 "
-              "are not implemented by ThreeFryBitGenerator; got %s",
-              primitive_util::LowercasePrimitiveTypeName(type))),
-          initial_state};
-  }
+  return primitive_util::PrimitiveTypeSwitch<RngOutput>(
+      [&](auto primitive_type_constant) -> RngOutput {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant) &&
+                      !primitive_util::IsComplexType(primitive_type_constant) &&
+                      primitive_type_constant != PRED) {
+          const int kBits = primitive_util::BitWidth(primitive_type_constant);
+          if (kBits < 32) {
+            return ThreeFryRngBitNarrow(key, initial_state, shape);
+          }
+          if (kBits == 32) {
+            return ThreeFryRngBit32(key, initial_state, shape);
+          }
+          if (kBits == 64) {
+            return ThreeFryRngBit64(key, initial_state, shape);
+          }
+        }
+        return {
+            key.builder()->ReportError(Unimplemented(
+                "Types other than F16, F32, F64, U16, S16, U32, S32, U64 and "
+                "S64 are not implemented by ThreeFryBitGenerator; got %s",
+                primitive_util::LowercasePrimitiveTypeName(type))),
+            initial_state};
+      },
+      type);
 }
 
 RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
                              const Shape& shape) {
   PrimitiveType type = shape.element_type();
-  switch (type) {
-    case S8:
-    case U8:
-    case F16:
-    case U16:
-    case S16:
-      return PhiloxRngBitNarrow(key, initial_state, shape);
-    case F32:
-    case U32:
-    case S32:
-      return PhiloxRngBit32(key, initial_state, shape);
-    case F64:
-    case U64:
-    case S64:
-      return PhiloxRngBit64(key, initial_state, shape);
-    default:
-      return {
-          key.builder()->ReportError(Unimplemented(
-              "Types other than F16, F32, F64, U16, S16, U32, S32, U64 and S64 "
-              "are not implemented by PhiloxBitGenerator; got %s",
-              primitive_util::LowercasePrimitiveTypeName(type))),
-          initial_state};
-  }
+  return primitive_util::PrimitiveTypeSwitch<RngOutput>(
+      [&](auto primitive_type_constant) -> RngOutput {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant) &&
+                      !primitive_util::IsComplexType(primitive_type_constant) &&
+                      primitive_type_constant != PRED) {
+          const int kBits = primitive_util::BitWidth(primitive_type_constant);
+          if (kBits < 32) {
+            return PhiloxRngBitNarrow(key, initial_state, shape);
+          }
+          if (kBits == 32) {
+            return PhiloxRngBit32(key, initial_state, shape);
+          }
+          if (kBits == 64) {
+            return PhiloxRngBit64(key, initial_state, shape);
+          }
+        }
+        return {
+            key.builder()->ReportError(Unimplemented(
+                "Types other than F16, F32, F64, U16, S16, U32, S32, U64 and "
+                "S64 are not implemented by PhiloxBitGenerator; got %s",
+                primitive_util::LowercasePrimitiveTypeName(type))),
+            initial_state};
+      },
+      type);
 }
 
 std::pair<XlaOp, XlaOp> ScramblePhiloxKey(XlaOp key) {

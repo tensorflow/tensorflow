@@ -2127,7 +2127,7 @@ TEST_F(HloVerifierTest, CollectivePermuteStartAndDoneWrongType) {
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
               HasSubstr("Expected instruction to have shape equal to "
-                        "(f32[2,3], f32[2,3], u32[], u32[])"));
+                        "(f32[2,3], f32[2,3])"));
 }
 
 TEST_F(HloVerifierTest, CollectivePermuteStartAndMultipleDone) {

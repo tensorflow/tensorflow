@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/topk_rewriter.h"
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -169,7 +170,8 @@ static bool IsNanSafeGt(HloComputation* comp) {
 // Look for the instructions emitted from: xla/client/lib/sorting.cc
 static bool HasIota(HloSortInstruction* sort, HloInstruction* data) {
   namespace m = match;
-  const auto sort_dims = {data->shape().dimensions(sort->sort_dimension())};
+  const std::array<int64_t, 1> sort_dims = {
+      data->shape().dimensions(sort->sort_dimension())};
   auto match_iota = [](auto dims) {
     return m::Iota().WithShape(m::Shape().WithElementType(S32).WithDims(dims));
   };

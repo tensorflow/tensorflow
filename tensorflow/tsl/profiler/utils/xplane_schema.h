@@ -71,6 +71,7 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 
 // GPU device vendors.
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
@@ -290,7 +291,16 @@ enum StatType {
   kDuration,
   kBufferSize,
   kTransfers,
-  kLastStatType = kTransfers,
+  // Dcn message Stats
+  kDcnLabel,
+  kDcnSourceSliceId,
+  kDcnSourcePerSliceDeviceId,
+  kDcnDestinationSliceId,
+  kDcnDestinationPerSliceDeviceId,
+  kDcnChunk,
+  kDcnLoopIndex,
+  kModelInfo,
+  kLastStatType = kModelInfo,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {

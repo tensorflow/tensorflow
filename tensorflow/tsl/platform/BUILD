@@ -1060,7 +1060,7 @@ cuda_cc_test(
 cc_library(
     name = "cuda",
     deps = [
-        "//tensorflow/tsl/platform/default/build_config:cuda",
+        "@local_config_cuda//cuda:cudart_static",
     ],
 )
 
@@ -1506,6 +1506,7 @@ tsl_cc_test(
         ":errors",
         ":test",
         ":test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

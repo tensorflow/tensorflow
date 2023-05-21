@@ -21,6 +21,8 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/vectorization/vectorization.h"
 #include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/MemRef/Utils/MemRefUtils.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 
 namespace mlir {
@@ -32,47 +34,33 @@ namespace {
 
 /// Custom vectorization pattern for small and non-contiguous memref::CopyOp.
 struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
-  using OpRewritePattern<memref::CopyOp>::OpRewritePattern;
+  CopyVectorizationPattern(MLIRContext *context, int64_t numElementsThreshold,
+                           mlir::PatternBenefit benefit = 1)
+      : OpRewritePattern<memref::CopyOp>(context, benefit),
+        numElementsThreshold(numElementsThreshold) {}
 
   LogicalResult matchAndRewrite(memref::CopyOp op,
                                 PatternRewriter &rewriter) const override {
-    auto srcType = op.getSource().getType().cast<BaseMemRefType>();
-    auto targetType = op.getTarget().getType().cast<BaseMemRefType>();
+    auto srcType = dyn_cast<MemRefType>(op.getSource().getType());
+    auto targetType = dyn_cast<MemRefType>(op.getTarget().getType());
 
-    auto isStaticShapeAndContiguousRowMajor = [](MemRefType type) {
-      if (!type.hasStaticShape()) return false;
+    if (!srcType || !targetType) return failure();
 
-      SmallVector<int64_t> strides;
-      int64_t offset;
-      if (failed(getStridesAndOffset(type, strides, offset))) return false;
-
-      int64_t runningStride = 1;
-      for (unsigned i = strides.size(); i > 0; --i) {
-        if (strides[i - 1] != runningStride) return false;
-        runningStride *= type.getDimSize(i - 1);
-      }
-      return true;
-    };
-
-    auto isContiguousMemrefType = [&](BaseMemRefType type) {
-      auto memrefType = type.dyn_cast<mlir::MemRefType>();
-      return memrefType && (memrefType.getLayout().isIdentity() ||
-                            isStaticShapeAndContiguousRowMajor(memrefType));
-    };
-
-    auto isSmallMemrefType = [&](BaseMemRefType type) {
-      auto memrefType = type.dyn_cast<mlir::MemRefType>();
-      return memrefType && memrefType.hasStaticShape() &&
-             memrefType.getNumElements() > 0 &&
-             memrefType.getNumElements() < kNumElementsThreshold;
-    };
+    if (!srcType.hasStaticShape() || !targetType.hasStaticShape())
+      return failure();
 
     // If memref has an identity layout or is contiguous with an arbitrary
     // offset, it will be turned into llvm.memcpy intrinsic later, do not
     // vectorize it.
-    if (isContiguousMemrefType(srcType) && isContiguousMemrefType(targetType)) {
+    if (memref::isStaticShapeAndContiguousRowMajor(srcType) &&
+        memref::isStaticShapeAndContiguousRowMajor(targetType)) {
       return failure();
     }
+
+    auto isSmallMemrefType = [&](MemRefType memrefType) {
+      return memrefType.getNumElements() > 0 &&
+             memrefType.getNumElements() < numElementsThreshold;
+    };
 
     // If memref is too big, vectorizing it actually explodes the compilation
     // time. Also, ignore empty memrefs, which will be handled by memrefCopy
@@ -82,16 +70,21 @@ struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
     }
     return linalg::vectorizeCopy(rewriter, op);
   }
+
+ private:
+  int64_t numElementsThreshold;
 };
 
 struct VectorizeCopyPass
     : public impl::VectorizeCopyPassBase<VectorizeCopyPass> {
+  using Base::Base;
+
   void runOnOperation() override {
     auto func = getOperation();
     auto *ctx = func.getContext();
 
     RewritePatternSet patterns(ctx);
-    patterns.add<CopyVectorizationPattern>(ctx);
+    patterns.add<CopyVectorizationPattern>(ctx, numElementsThreshold);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }
@@ -100,8 +93,11 @@ struct VectorizeCopyPass
 
 }  // namespace
 
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass() {
-  return std::make_unique<VectorizeCopyPass>();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
+    int64_t numElementsThreshold) {
+  VectorizeCopyPassOptions opts;
+  opts.numElementsThreshold = numElementsThreshold;
+  return std::make_unique<VectorizeCopyPass>(opts);
 }
 
 }  // namespace gml_st

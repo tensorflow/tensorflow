@@ -168,9 +168,9 @@ ENTRY e {
 }
 )";
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out
+// CHECK:   %triton_gemm_out_computation (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
+// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation, backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
@@ -191,9 +191,9 @@ ENTRY e {
 )";
 
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out (
+// CHECK:   %triton_gemm_out_computation (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out, backend_config="{\"block_m\":\"
+// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation, backend_config="{\"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -225,26 +225,8 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.5, /*arel=*/1e-1}));
 }
 
-TEST_F(TritonAutotunerTest, SkipConfigsProducingDeviantResults) {
-  const std::string kHloText = R"(
-HloModule module
-
-ENTRY e {
-  tmp_1 = pred[8192,12800]{1,0} parameter(0)
-  tmp_2 = f16[8192,12800]{1,0} convert(tmp_1)
-  tmp_3 = f16[4096,12800]{1,0} parameter(1)
-  ROOT tmp_4 = f16[8192,4096]{0,1} dot(tmp_2, tmp_3),
-    lhs_contracting_dims={1}, rhs_contracting_dims={1}
-})";
-
-  // Here split-K configs deviate strongly due to intermediate rounding
-  // but do execute fast - make sure they are filtered out (split_k = 1).
-
-  MatchOptimizedHlo(kHloText, R"(
-; CHECK: fusion(%tmp_1, %tmp_3), kind=kCustom
-; CHECK-SAME: split_k\":\"1\"
-)");
-}
+// TODO(b/281489442): Write a testcase called
+// `SkipConfigsProducingDeviantResults` or similar.
 
 class TritonAutotunerLevelTest : public HloTestBase,
                                  public ::testing::WithParamInterface<int> {

@@ -298,6 +298,17 @@ tsl::StatusOr<InterpreterValue> LiteralToValue(
   return LiteralToValue(deserialized);
 }
 
+tsl::StatusOr<InterpreterValue> LiteralToValue(const xla::LiteralProto& literal,
+                                               mlir::Type type) {
+  TF_ASSIGN_OR_RETURN(auto result, LiteralToValue(literal));
+  return {dispatchScalarType(type, [&](auto dummy) -> InterpreterValue {
+    TensorOrMemref<decltype(dummy)> cast;
+    cast.view = result.view();
+    cast.buffer = result.buffer();
+    return {cast};
+  })};
+}
+
 TracedValue ValueToTracedValue(const InterpreterValue& value) {
   TraceInterpreterValueVisitor visitor;
   std::visit(visitor, value.storage);

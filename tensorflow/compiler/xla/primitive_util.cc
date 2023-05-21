@@ -113,23 +113,6 @@ int OverflowExponent(PrimitiveType type) {
   }
 }
 
-xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
-  switch (src_bitwidth) {
-    case 4:
-      return xla::U4;
-    case 8:
-      return xla::U8;
-    case 16:
-      return xla::U16;
-    case 32:
-      return xla::U32;
-    case 64:
-      return xla::U64;
-    default:
-      return xla::PRIMITIVE_TYPE_INVALID;
-  }
-}
-
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
     case 4:
@@ -144,18 +127,6 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
       return xla::S64;
     default:
       return xla::PRIMITIVE_TYPE_INVALID;
-  }
-}
-
-PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
-  switch (complex_type) {
-    case C64:
-      return F32;
-    case C128:
-      return F64;
-    default:
-      LOG(FATAL) << "Primitive type is not complex: "
-                 << PrimitiveType_Name(complex_type);
   }
 }
 

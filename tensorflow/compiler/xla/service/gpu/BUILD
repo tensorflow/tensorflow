@@ -173,6 +173,19 @@ xla_cc_test(
     ]),
 )
 
+xla_cc_test(
+    name = "gpu_copy_insertion_test",
+    srcs = ["gpu_copy_insertion_test.cc"],
+    deps = [
+        ":gpu_compiler",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "hlo_to_ir_bindings",
     srcs = ["hlo_to_ir_bindings.cc"],
@@ -248,20 +261,24 @@ cc_library(
 
 xla_cc_test(
     name = "gpu_device_info_test",
-    srcs = if_cuda_is_configured(["gpu_device_info_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = if_cuda_is_configured([
+    srcs = ["gpu_device_info_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
         ":gpu_device_info",
         ":gpu_device_info_for_tests",
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor_header",
     ]),
 )
 
@@ -436,6 +453,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac"],
     deps = [
         ":gpu_device_info_for_tests",
@@ -487,6 +505,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac"],
     deps = [
         "//tensorflow/compiler/xla:comparison_util",
@@ -1301,6 +1320,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -1914,6 +1934,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service:reshape_mover",
@@ -2172,6 +2193,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:convolution_pred_expander",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:dot_decomposer",
+        "//tensorflow/compiler/xla/service:dot_dimension_merger",
         "//tensorflow/compiler/xla/service:dot_merger",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:dynamic_dimension_simplifier",
@@ -2248,6 +2270,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:AsmParser",

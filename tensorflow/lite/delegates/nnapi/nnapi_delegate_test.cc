@@ -54,6 +54,7 @@ MATCHER(QuantizedNear, "") {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() { options_.disallow_nnapi_cpu = false; }
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {

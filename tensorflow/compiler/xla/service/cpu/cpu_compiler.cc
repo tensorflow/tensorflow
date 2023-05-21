@@ -210,6 +210,35 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
   mlir::registerLLVMDialectTranslation(context);
 }
 
+xla::cpu::HloXlaRuntimePipelineOptions GetHloXlaRuntimePipelineOptions(
+    llvm::Triple target_triple, llvm::StringRef cpu_name) {
+  xla::cpu::HloXlaRuntimePipelineOptions options;
+  options.enable_tiling_and_fusion =
+      xla::GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  if (xla::GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+    options.matmul_tile_sizes = {
+        xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+        xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+        xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+  }
+  options.experimental_deallocation =
+      xla::GetDebugOptionsFromFlags()
+          .xla_cpu_enable_experimental_deallocation();
+  options.enable_avx2 = [&] {
+    // Derive whether this is an x86 CPU with AVX2 enabled.
+    if (!target_triple.isX86()) return false;
+    llvm::SmallVector<llvm::StringRef> cpu_features;
+    llvm::X86::getFeaturesForCPU(cpu_name, cpu_features);
+    return llvm::is_contained(cpu_features, "avx2");
+  }();
+  options.cpu_name = cpu_name;
+  if (xla::GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+    options.enable_fusion_outlining = true;
+    options.experimental_deallocation = true;
+  }
+  return options;
+}
+
 }  // namespace
 
 namespace xla {
@@ -339,22 +368,9 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
   opts.compiler
       .create_compilation_pipeline = [&module, copts](
                                          xla::runtime::PassManager& passes) {
-    HloXlaRuntimePipelineOptions options;
-    options.enable_tiling_and_fusion =
-        GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-    options.experimental_deallocation =
-        GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
-    options.cpu_name = llvm::sys::getHostCPUName();
-    if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
-      options.matmul_tile_sizes = {
-          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
-          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
-          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
-    }
-    if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
-      options.enable_fusion_outlining = true;
-      options.experimental_deallocation = true;
-    }
+    HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
+        llvm::Triple(llvm::sys::getProcessTriple()),
+        llvm::sys::getHostCPUName());
     options.xla_cpu_sparse_cuda_threads =
         GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
@@ -1081,32 +1097,10 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   }
 
   xla::runtime::PassManager xla_pm(&pm);
-  HloXlaRuntimePipelineOptions options;
-  options.enable_tiling_and_fusion =
-      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-  if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
-    options.matmul_tile_sizes = {
-        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
-        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
-        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
-  }
+  HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
+      target.getTargetTriple(), target.getTargetCPU());
   options.sparse_bufferization = false;
   options.outline_with_xla_framework = true;
-  options.experimental_deallocation =
-      GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
-  options.enable_avx2 = [&] {
-    // Derive whether this is an x86 CPU with AVX2 enabled.
-    if (!target.getTargetTriple().isX86()) return false;
-    llvm::SmallVector<llvm::StringRef> cpu_features;
-    llvm::X86::getFeaturesForCPU(target.getTargetCPU(), cpu_features);
-    return llvm::is_contained(cpu_features, "avx2");
-  }();
-  options.cpu_name = target.getTargetCPU();
-  if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
-    options.enable_fusion_outlining = true;
-    options.sparse_bufferization = false;
-    options.experimental_deallocation = true;
-  }
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
