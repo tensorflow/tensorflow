@@ -1,24 +1,3 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -11,7 +11,6 @@
- # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- # See the License for the specific language governing permissions and
- # limitations under the License.
--load("@bazel_skylib//rules:build_test.bzl", "build_test")
- load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "gentbl_filegroup", "td_library")
- 
- package(
-@@ -863,8 +862,8 @@
-     strip_include_prefix = ".",
-     deps = [
-         ":stablehlo_ops",
-+        ":tosa_pass_inc_gen",
-         ":tosa_pdll_inc_gen",
--        ":tosa_pass_inc_gen",
-         "@llvm-project//mlir:FuncDialect",
-         "@llvm-project//mlir:IR",
-         "@llvm-project//mlir:Parser",
 diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 --- stablehlo/CMakeLists.txt
 +++ stablehlo/CMakeLists.txt
@@ -32,18 +11,6 @@ diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
 +add_dependencies(check-stablehlo check-stablehlo-ci)
 +
  add_subdirectory(stablehlo)
-diff --ruN a/stablehlo/stablehlo/dialect/Version.h b/stablehlo/stablehlo/dialect/Version.h
---- stablehlo/stablehlo/dialect/Version.h
-+++ stablehlo/stablehlo/dialect/Version.h
-@@ -38,7 +38,7 @@
-   static FailureOr<Version> fromString(llvm::StringRef versionRef);
- 
-   /// Return a Version representing the current VHLO dialect version.
--  static Version getCurrentVersion() { return Version(0, 11, 4); }
-+  static Version getCurrentVersion() { return Version(0, 11, 5); }
- 
-   /// Return a Version representing the minimum supported VHLO dialect version.
-   static Version getMinimumVersion() { return Version(0, 9, 0); }
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
