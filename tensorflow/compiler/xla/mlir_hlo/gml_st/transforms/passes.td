@@ -73,10 +73,13 @@ def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
 def VectorizeCopyPass : Pass<"vectorize-copy", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize `memref.copy`.";
   let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect"];
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "vector::VectorDialect",
+  ];
   let options = [
     Option<"numElementsThreshold", "num-elements-threshold", "int64_t",
-           /*default=*/"1024",
+           /*default=*/"8",
            "Max number of elements in src and dst memref for a copy to be "
            "vectorized.">,
   ];

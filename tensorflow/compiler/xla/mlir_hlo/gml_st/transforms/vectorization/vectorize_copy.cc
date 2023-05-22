@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -31,6 +32,137 @@ namespace {
 
 #define GEN_PASS_DEF_VECTORIZECOPYPASS
 #include "gml_st/transforms/passes.h.inc"
+
+/// Transforms a big non-contiguous `memref.copy` into a loop over smaller
+/// copies that are either contiguous or can be vectorized.
+struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
+  TileCopyPattern(MLIRContext *context, int64_t tileSize,
+                  mlir::PatternBenefit benefit = 1)
+      : OpRewritePattern<memref::CopyOp>(context, benefit),
+        tileSize(tileSize) {}
+  LogicalResult matchAndRewrite(memref::CopyOp op,
+                                PatternRewriter &rewriter) const override {
+    auto srcType = dyn_cast<MemRefType>(op.getSource().getType());
+    auto targetType = dyn_cast<MemRefType>(op.getTarget().getType());
+
+    if (!srcType || !targetType) return failure();
+
+    if (!srcType.hasStaticShape() || !targetType.hasStaticShape())
+      return failure();
+
+    if (srcType.getShape() != targetType.getShape()) return failure();
+
+    if (memref::isStaticShapeAndContiguousRowMajor(srcType) &&
+        memref::isStaticShapeAndContiguousRowMajor(targetType)) {
+      return failure();
+    }
+
+    if (srcType.getNumElements() <= tileSize) return failure();
+
+    auto rank = srcType.getRank();
+    auto shape = srcType.getShape();
+
+    SmallVector<OpFoldResult> offsets(rank, rewriter.getIndexAttr(0));
+    SmallVector<OpFoldResult> sizes;
+    for (auto s : shape) sizes.push_back(rewriter.getIndexAttr(s));
+    SmallVector<OpFoldResult> strides(rank, rewriter.getIndexAttr(1));
+
+    createLoopsNest(rewriter, op.getLoc(), 0, op.getSource(), op.getTarget(),
+                    shape, offsets, sizes, strides);
+
+    rewriter.eraseOp(op);
+
+    return success();
+  }
+
+ private:
+  void createLoopsNest(PatternRewriter &rewriter, Location loc, int64_t dim,
+                       Value src, Value target, ArrayRef<int64_t> shape,
+                       SmallVector<OpFoldResult> &offsets,
+                       SmallVector<OpFoldResult> &sizes,
+                       SmallVector<OpFoldResult> &strides) const {
+    auto srcType = dyn_cast<MemRefType>(src.getType());
+    auto targetType = dyn_cast<MemRefType>(target.getType());
+
+    const bool isContiguous =
+        memref::isStaticShapeAndContiguousRowMajor(srcType) &&
+        memref::isStaticShapeAndContiguousRowMajor(targetType);
+    const bool isSmall = srcType.getNumElements() <= tileSize &&
+                         targetType.getNumElements() <= tileSize;
+
+    if (isContiguous || isSmall) {
+      rewriter.create<memref::CopyOp>(loc, src, target);
+      return;
+    }
+
+    const int64_t dimSize = shape[dim];
+    const int64_t sliceSize =
+        std::max(1L, tileSize * dimSize / srcType.getNumElements());
+
+    const int64_t remainderSize = dimSize % sliceSize;
+    const int64_t upperBound = shape[dim] - remainderSize;
+
+    Value zero = rewriter.create<arith::ConstantIndexOp>(loc, 0);
+    Value tileSizeValue =
+        rewriter.create<arith::ConstantIndexOp>(loc, sliceSize);
+    Value upperBoundValue =
+        rewriter.create<arith::ConstantIndexOp>(loc, upperBound);
+
+    auto loop = rewriter.create<scf::ForOp>(loc, zero, upperBoundValue,
+                                            tileSizeValue, target);
+
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPointToStart(loop.getBody());
+    offsets[dim] = loop.getInductionVar();
+    sizes[dim] = rewriter.getIndexAttr(sliceSize);
+
+    Value srcSubview =
+        getSubView(rewriter, loc, src, shape, offsets, sizes, strides);
+    Value targetSubview = getSubView(rewriter, loc, loop.getRegionIterArgs()[0],
+                                     shape, offsets, sizes, strides);
+
+    offsets[dim] = rewriter.getIndexAttr(0);
+
+    createLoopsNest(rewriter, loc, dim + 1, srcSubview, targetSubview, shape,
+                    offsets, sizes, strides);
+
+    rewriter.create<scf::YieldOp>(loc, loop.getRegionIterArgs()[0]);
+
+    // Remainder copy can only be created for the innermost loop, for other
+    // loops remainder size is guaranteed to be 0.
+    if (remainderSize > 0) {
+      rewriter.setInsertionPointAfter(loop);
+
+      offsets[dim] = rewriter.getIndexAttr(upperBound);
+      sizes[dim] = rewriter.getIndexAttr(remainderSize);
+
+      Value srcRemainderSubview =
+          getSubView(rewriter, loc, src, shape, offsets, sizes, strides);
+      Value targetRemainderSubview =
+          getSubView(rewriter, loc, target, shape, offsets, sizes, strides);
+
+      rewriter.create<memref::CopyOp>(loc, srcRemainderSubview,
+                                      targetRemainderSubview);
+    }
+  }
+
+  memref::SubViewOp getSubView(PatternRewriter &rewriter, Location loc,
+                               Value val, ArrayRef<int64_t> shape,
+                               SmallVector<OpFoldResult> &offsets,
+                               SmallVector<OpFoldResult> &sizes,
+                               SmallVector<OpFoldResult> &strides) const {
+    auto valType = cast<MemRefType>(val.getType());
+
+    auto valSubviewType =
+        cast<MemRefType>(memref::SubViewOp::inferRankReducedResultType(
+            shape, valType, offsets, sizes, strides));
+
+    return rewriter.create<memref::SubViewOp>(loc, valSubviewType, val, offsets,
+                                              sizes, strides);
+  }
+
+  int64_t tileSize;
+};
 
 /// Custom vectorization pattern for small and non-contiguous memref::CopyOp.
 struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
@@ -59,7 +191,7 @@ struct CopyVectorizationPattern : public OpRewritePattern<memref::CopyOp> {
 
     auto isSmallMemrefType = [&](MemRefType memrefType) {
       return memrefType.getNumElements() > 0 &&
-             memrefType.getNumElements() < numElementsThreshold;
+             memrefType.getNumElements() <= numElementsThreshold;
     };
 
     // If memref is too big, vectorizing it actually explodes the compilation
@@ -84,7 +216,8 @@ struct VectorizeCopyPass
     auto *ctx = func.getContext();
 
     RewritePatternSet patterns(ctx);
-    patterns.add<CopyVectorizationPattern>(ctx, numElementsThreshold);
+    patterns.add<TileCopyPattern, CopyVectorizationPattern>(
+        ctx, numElementsThreshold);
     if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
       return signalPassFailure();
     }
