@@ -46,21 +46,22 @@ TEST(PathUtilsTest, SplitsDirectory) {
 
 TEST(PathUtilsTest, SourceDirectory) {
   EXPECT_THAT(
-      SourceDirectory("/path/to/snapshot", /*stream_index=*/0, /*source_id=*/1),
+      SourceDirectory("/path/to/snapshot", /*stream_index=*/0,
+                      /*source_index=*/1),
       MatchesRegex("/path/to/snapshot.streams.stream_0.splits.source_1"));
 }
 
 TEST(PathUtilsTest, RepetitionDirectory) {
   EXPECT_THAT(
       RepetitionDirectory("/path/to/snapshot", /*stream_index=*/0,
-                          /*source_id=*/1, /*repetition_index=*/2),
+                          /*source_index=*/1, /*repetition_index=*/2),
       MatchesRegex(
           "/path/to/snapshot.streams.stream_0.splits.source_1.repetition_2"));
 }
 
 TEST(PathUtilsTest, SplitPath) {
   EXPECT_THAT(
-      SplitPath("/path/to/snapshot", /*stream_index=*/0, /*source_id=*/1,
+      SplitPath("/path/to/snapshot", /*stream_index=*/0, /*source_index=*/1,
                 /*repetition_index=*/2, /*local_index=*/3, /*global_index=*/4),
       MatchesRegex(
           "/path/to/"

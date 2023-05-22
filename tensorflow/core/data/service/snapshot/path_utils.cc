@@ -63,24 +63,24 @@ std::string SplitsDirectory(absl::string_view snapshot_path,
 }
 
 std::string SourceDirectory(absl::string_view snapshot_path,
-                            int64_t stream_index, int64_t source_id) {
+                            int64_t stream_index, int64_t source_index) {
   return tsl::io::JoinPath(SplitsDirectory(snapshot_path, stream_index),
-                           absl::StrCat("source_", source_id));
+                           absl::StrCat("source_", source_index));
 }
 
 std::string RepetitionDirectory(absl::string_view snapshot_path,
-                                int64_t stream_index, int64_t source_id,
+                                int64_t stream_index, int64_t source_index,
                                 int64_t repetition_index) {
   return tsl::io::JoinPath(
-      SourceDirectory(snapshot_path, stream_index, source_id),
+      SourceDirectory(snapshot_path, stream_index, source_index),
       absl::StrCat("repetition_", repetition_index));
 }
 
 std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
-                      int64_t source_id, int64_t repetition_index,
+                      int64_t source_index, int64_t repetition_index,
                       int64_t local_index, int64_t global_index) {
   return tsl::io::JoinPath(
-      RepetitionDirectory(snapshot_path, stream_index, source_id,
+      RepetitionDirectory(snapshot_path, stream_index, source_index,
                           repetition_index),
       absl::StrCat("split_", local_index, "_", global_index));
 }
