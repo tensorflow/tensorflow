@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
+#if defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
 #include <arm_neon.h>
 #include <stdint.h>
 
@@ -728,4 +728,4 @@ void NeonRunKernelNoSDot<4, 4, 32>(const uint8_t* lhs, const int8_t* rhs,
 
 }  // namespace optimized_4bit
 }  // namespace tflite
-#endif  // defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
+#endif  // defined(FC_4BIT_NEON)...
