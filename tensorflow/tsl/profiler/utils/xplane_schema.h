@@ -291,6 +291,14 @@ enum StatType {
   kDuration,
   kBufferSize,
   kTransfers,
+  // Dcn message Stats
+  kDcnLabel,
+  kDcnSourceSliceId,
+  kDcnSourcePerSliceDeviceId,
+  kDcnDestinationSliceId,
+  kDcnDestinationPerSliceDeviceId,
+  kDcnChunk,
+  kDcnLoopIndex,
   kModelInfo,
   kLastStatType = kModelInfo,
 };

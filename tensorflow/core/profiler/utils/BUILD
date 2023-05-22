@@ -505,3 +505,9 @@ tf_cuda_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "hlo_module_utils",
+    hdrs = ["hlo_module_utils.h"],
+    deps = ["//tensorflow/compiler/xla/hlo/ir:hlo"],
+)

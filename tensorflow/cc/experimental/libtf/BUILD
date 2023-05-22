@@ -183,13 +183,11 @@ tf_cc_test(
     size = "medium",
     srcs = [
         "tests/runtime_test_core.cc",
-        "tests/runtime_test_tfrt.cc",
     ],
     deps = [
         ":runtime_test",
         "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/cc/experimental/libtf/runtime/core",
-        "//tensorflow/cc/experimental/libtf/runtime/tfrt",
     ],
 )
 

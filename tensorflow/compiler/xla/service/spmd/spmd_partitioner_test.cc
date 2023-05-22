@@ -3526,6 +3526,31 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
 }
 
+TEST_F(SpmdPartitioningTest, ReshapePartialHaloExchange) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[4,14,4] parameter(0),
+    sharding={devices=[2,4,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %reshape = f32[2,2,2,7,2,2] reshape(%param0),
+    sharding={devices=[2,1,4,1,2,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto halo_exchange =
+      AllOf(op::Concatenate(op::Copy(op::Parameter()), op::CollectivePermute(),
+                            op::CollectivePermute(), op::CollectivePermute()));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Reshape(op::DynamicSlice(op::Pad(halo_exchange, _), _, _, _)),
+            op::Shape("f32[1,2,1,7,1,2]")));
+}
+
 TEST_F(SpmdPartitioningTest, ReshapeWithReshard) {
   absl::string_view hlo_string = R"(
 HloModule module

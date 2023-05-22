@@ -28,7 +28,7 @@ from tensorflow.python.eager import record
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
-from tensorflow.python.eager.polymorphic_function import function_spec
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.eager.polymorphic_function import saved_model_exported_concrete
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
@@ -1111,9 +1111,9 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         unconstrainted_poly_type,
     )
 
-    self._function_spec = function_spec.FunctionSpec(
+    self._function_spec = function_type_utils.FunctionSpec(
         func_type,
-        {d: function_spec.BOUND_VALUE for d in spec.default_values},
+        {d: function_type_utils.BOUND_VALUE for d in spec.default_values},
         spec.is_pure,
         name=self._func_graph.name,
     )
@@ -1266,7 +1266,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         of this `ConcreteFunction`.
     """
     args, kwargs, filtered_flat_args = (
-        self._function_spec.canonicalize_function_inputs(args, kwargs))
+        function_type_utils.canonicalize_function_inputs(
+            args,
+            kwargs,
+            self._function_spec.function_type,
+            self._function_spec.default_values,
+            self._function_spec.is_pure,
+        )
+    )
     return self._call_flat(
         filtered_flat_args,
         captured_inputs=self.captured_inputs)

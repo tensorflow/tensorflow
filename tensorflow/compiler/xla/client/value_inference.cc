@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1655,7 +1656,7 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto* inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   std::vector<Literal> operands;
-  auto output_shape = Shape(inst->shape());
+  auto output_shape = std::make_unique<const Shape>(inst->shape());
   switch (opcode) {
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
@@ -1676,23 +1677,23 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
       // Only identity kConvert can be optimized away.
       auto operand =
           builder_->LookUpInstructionByHandle(inst->operand_ids(0)).value();
-      if (Shape::Equal()(output_shape, Shape(operand->shape()))) {
+      if (Shape::Equal()(*output_shape, Shape(operand->shape()))) {
         // Forward operand handle as result.
         return SimplifyOp(inst->operand_ids(0));
       } else {
-        return CreateS64Literal(-1, output_shape);
+        return CreateS64Literal(-1, *output_shape);
       }
     }
     case HloOpcode::kAdd: {
       // a + (b - a) => b
       // a + b + (c - a) => b + c
-      if (output_shape.rank() == 0) {
+      if (output_shape->rank() == 0) {
         TF_ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
         TF_ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
         int64_t lhs_handle = lhs.Get<int64_t>({});
         int64_t rhs_handle = rhs.Get<int64_t>({});
         if (lhs_handle == -1 || rhs_handle == -1) {
-          return CreateS64Literal(-1, output_shape);
+          return CreateS64Literal(-1, *output_shape);
         }
         // Recursive lambda needs explicit signature.
         std::function<std::optional<int64_t>(int64_t, int64_t)>
@@ -1749,14 +1750,14 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
 
         return LiteralUtil::CreateR0<int64_t>(new_sum.handle());
       } else {
-        return CreateS64Literal(-1, output_shape);
+        return CreateS64Literal(-1, *output_shape);
       }
     }
     default: {
-      if (ShapeUtil::IsScalar(output_shape)) {
+      if (ShapeUtil::IsScalar(*output_shape)) {
         return LiteralUtil::CreateR0<int64_t>(handle);
       } else {
-        return CreateS64Literal(-1, output_shape);
+        return CreateS64Literal(-1, *output_shape);
       }
     }
   }

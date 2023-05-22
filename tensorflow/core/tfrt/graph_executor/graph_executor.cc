@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
@@ -119,8 +120,8 @@ tensorflow::Status RunMlrtFunction(
   //
   // TODO(chky, rohitju): Unify tfrt::SyncContext with tf_mlrt::Context.
   tfrt::ExecutionContext exec_ctx(request_context);
-  execution_context.AddUserContext(
-      std::make_unique<tfrt::SyncContext>(&exec_ctx, sync_resource_state));
+  execution_context.AddUserContext(std::make_unique<tfrt::SyncContext>(
+      *request_context->host(), sync_resource_state));
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
@@ -849,16 +850,6 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
           /*work_queue=*/nullptr,
           graph_name.empty() ? output_tensor_names[0] : graph_name));
 
-  TF_ASSIGN_OR_RETURN(
-      auto request_info,
-      CreateRequestInfo(options_, /*run_options=*/{},
-                        options_.runtime->work_queue(), &resource_context_,
-                        /*client_graph_resource_context=*/nullptr,
-                        &loaded_client_graph.runner_table(),
-                        &loaded_client_graph.resource_array(),
-                        fallback_state_));
-  tfrt::ExecutionContext exec_ctx{request_info->tfrt_request_context};
-
   // Get a shared_ptr of the executable so that during the current request the
   // executable to use is guaranteed to be alive.
   auto executable_context = loaded_client_graph.executable_context();
@@ -866,13 +857,18 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
       executable_context->bytecode_executable.get());
 
   auto sync_context = std::make_unique<tfrt::SyncContext>(
-      &exec_ctx, &loaded_client_graph.sync_resource_state());
+      *options_.runtime->core_runtime()->GetHostContext(),
+      &loaded_client_graph.sync_resource_state());
   execution_context.AddUserContext(std::move(sync_context));
 
+  tensorflow::tfd::KernelFallbackCompatRequestState kernel_fallback_state(
+      tfd::GetDefaultRunner(), &fallback_state_.get().device_manager(),
+      /*step_id=*/0, &loaded_client_graph.runner_table(),
+      &loaded_client_graph.resource_array(),
+      /*user_intra_op_threadpool=*/nullptr, /*model_metadata=*/std::nullopt,
+      &fallback_state_.get().process_function_library_runtime());
   auto tf_context = std::make_unique<tensorflow::tf_mlrt::Context>(
-      &request_info->tfrt_request_context
-           ->GetData<tensorflow::tfd::KernelFallbackCompatRequestState>(),
-      request_info->tfrt_request_context->resource_context());
+      &kernel_fallback_state, &resource_context_);
   execution_context.AddUserContext(std::move(tf_context));
 
   auto serving_function = executable_context->bytecode_executable->GetFunction(
@@ -939,6 +935,19 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
   // add a test kernel that examines the cost.
   executable_context_ = std::move(new_executable_context);
   return OkStatus();
+}
+
+tensorflow::Status GraphExecutor::CompileGraph(
+    const std::string& graph_name,
+    absl::Span<const std::string> input_tensor_names,
+    absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names) {
+  return GetOrCreateLoadedClientGraph(
+             /*run_options=*/{}, input_tensor_names, input_tensor_dtypes,
+             output_tensor_names, target_tensor_names,
+             /*work_queue=*/nullptr, graph_name)
+      .status();
 }
 
 }  // namespace tfrt_stub

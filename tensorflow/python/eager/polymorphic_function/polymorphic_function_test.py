@@ -1731,7 +1731,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined()
 
     with self.assertRaisesRegex(
-        TypeError, '.*was expected to be of type.* but is.*'
+        TypeError, r'Can not cast .*shape=\(3,\).* to .*shape=\(2,\).*'
     ):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
@@ -1746,13 +1746,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return x
 
       with self.assertRaisesRegex(
-          TypeError, 'Binding inputs to tf.function `f` failed .*'):
+          TypeError, 'Binding inputs to tf.function failed .*'):
         f.get_concrete_function(1)(constant_op.constant(1))
 
       f.get_concrete_function(constant_op.constant(1))(1)
 
       with self.assertRaisesRegex(
-          TypeError, 'Binding inputs to tf.function `f` failed .*'):
+          TypeError, 'Binding inputs to tf.function failed .*'):
         f.get_concrete_function(1)(2)
 
     run_test()

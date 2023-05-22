@@ -1553,13 +1553,8 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
       return reduce_window->sharding();
     }
     case HloOpcode::kReshape: {
-      auto reshaped_sharding = hlo_sharding_util::ReshapeSharding(
+      return hlo_sharding_util::PropagateShardingThroughReshape(
           user.shape(), instruction.shape(), user.sharding());
-      if (reshaped_sharding.has_value()) {
-        return reshaped_sharding;
-      }
-      return hlo_sharding_util::ReplicateAllDataDims(
-          user.sharding(), instruction.shape().rank());
     }
     case HloOpcode::kPad: {
       if (&instruction != user.operand(0)) {
@@ -2141,21 +2136,14 @@ bool ShardingPropagation::InferShardingFromOperands(
       if (!IsSpatiallyPartitioned(instruction->operand(0))) {
         return false;
       }
-      std::optional<HloSharding> new_sharding =
-          hlo_sharding_util::ReshapeSharding(
+      HloSharding new_sharding =
+          hlo_sharding_util::PropagateShardingThroughReshape(
               instruction->operand(0)->shape(), instruction->shape(),
               instruction->operand(0)->sharding());
-      if (new_sharding.has_value()) {
-        return MaybeImproveInstructionSharding(
-            std::move(*new_sharding), instruction, may_combine_partial_sharding,
-            /*allow_aggressive_resharding=*/
-            ComputeNonRootUsers(instruction) == 1);
-      }
-      if (!instruction->has_sharding()) {
-        instruction->set_sharding(hlo_sharding_util::ReplicateAllDataDims(
-            instruction->operand(0)->sharding(), instruction->shape().rank()));
-        return true;
-      }
+      return MaybeImproveInstructionSharding(
+          std::move(new_sharding), instruction, may_combine_partial_sharding,
+          /*allow_aggressive_resharding=*/
+          ComputeNonRootUsers(instruction) == 1);
       return false;
     }
     case HloOpcode::kReverse: {

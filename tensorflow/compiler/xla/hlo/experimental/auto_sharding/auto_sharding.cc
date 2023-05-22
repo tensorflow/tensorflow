@@ -4270,6 +4270,7 @@ StatusOr<bool> AutoSharding::Run(
     auto result = pass.RunAutoSharding(module, execution_threads);
     this->solver_optimal_objective_value_ =
         pass.GetSolverOptimalObjectiveValue();
+    this->chosen_mesh_shape_ = option_.device_mesh_shape;
     return result;
   }
 
@@ -4325,11 +4326,18 @@ StatusOr<bool> AutoSharding::Run(
     }
   }
 
+  CHECK_GE(min_mesh_shape_index, 0)
+      << "The auto-sharding pass could not find a device mesh that works for "
+         "this input. This could be the result of a low memory budget. If you "
+         "think you have a reasonably large memory budget, please report this "
+         "an a bug.";
+
   StatusOr<bool> module_is_changed;
   if (!changed[min_mesh_shape_index].ok()) {
     module_is_changed = changed[min_mesh_shape_index];
   } else {
     solver_optimal_objective_value_ = min_objective_value;
+    chosen_mesh_shape_ = mesh_shapes[min_mesh_shape_index];
     if (*changed[min_mesh_shape_index]) {
       VLOG(1) << "Choosing mesh shape "
               << spmd::ToString(mesh_shapes[min_mesh_shape_index])

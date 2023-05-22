@@ -25,6 +25,7 @@ import threading
 import time
 import traceback
 from absl.testing import parameterized
+import numpy as np
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
@@ -33,6 +34,7 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
+from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.coordinator import cluster_coordinator as coordinator_lib
 from tensorflow.python.distribute.coordinator import coordinator_context
@@ -44,9 +46,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -482,7 +486,7 @@ class TestCaseWithErrorReportingThread(test.TestCase):
       raise ErrorReportingThread.error  # pylint: disable=raising-bad-type
 
 
-def make_coordinator(num_workers, num_ps):
+def make_coordinator(num_workers, num_ps, partitioner=None):
   # TODO(rchao): Test the internal rpc_layer version.
   cluster_def = multi_worker_test_base.create_in_process_cluster(
       num_workers=num_workers, num_ps=num_ps, rpc_layer='grpc')
@@ -492,7 +496,7 @@ def make_coordinator(num_workers, num_ps):
   cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
       ClusterSpec(cluster_def), rpc_layer='grpc')
   strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-      cluster_resolver)
+      cluster_resolver, variable_partitioner=partitioner)
   return coordinator_lib.ClusterCoordinator(strategy)
 
 
@@ -1127,6 +1131,81 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
 
     with cls.coordinator.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
+
+
+class ShardedVariableTest(TestCaseWithErrorReportingThread):
+
+  @classmethod
+  def setUpClass(cls):
+    super().setUpClass()
+    cls.coordinator = make_coordinator(
+        num_workers=5, num_ps=2,
+        partitioner=sharded_variable.FixedShardsPartitioner(3))
+    cls.strategy = cls.coordinator.strategy
+
+  def testEmbeddingLookup(self):
+    # Verify lookup ops use optimized implementations with ClusterCoordinator
+    with self.strategy.scope():
+      sv = variables.Variable(initial_value=np.arange(10).reshape((5, 2)) + 1,
+                              dtype=dtypes.float32)
+
+    @def_function.function
+    def lookup():
+      ids = constant_op.constant([0, 3, 4])
+      return embedding_ops.embedding_lookup_v2(sv, ids)
+
+    @def_function.function
+    def sparse_lookup():
+      sp_ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[0, 3, 4, 1],
+          dense_shape=[3, 3])
+      return embedding_ops.embedding_lookup_sparse_v2(sv, sp_ids, None)
+
+    @def_function.function
+    def safe_sparse_lookup():
+      sp_ids = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[0, -1, 4, 1],
+          dense_shape=[3, 3])
+      sp_weights = sparse_tensor.SparseTensor(
+          indices=[[0, 0], [0, 1], [1, 0], [2, 2]],
+          values=[1., 1., -1., 1.],
+          dense_shape=[3, 3])
+      return embedding_ops.safe_embedding_lookup_sparse_v2(
+          sv, sp_ids, sp_weights)
+
+    results = []
+    for func in [lookup, sparse_lookup, safe_sparse_lookup]:
+      # Manually create Closure so we can inspect its graph
+      closure = coordinator_lib.Closure(
+          func,
+          self.coordinator._cluster.closure_queue._cancellation_mgr)  # pylint: disable=protected-access
+      result = closure.build_output_remote_value()
+      self.coordinator._cluster.closure_queue.put(closure)
+
+      graph = closure._concrete_function.graph
+      num_gather_ops = 0
+      num_rv_ops = 0
+      for op in graph.get_operations():
+        if op.type == 'ResourceGather':
+          num_gather_ops += 1
+        if op.type == 'ReadVariableOp':
+          num_rv_ops += 1
+      self.assertEqual(
+          num_gather_ops, len(sv.variables), 'Number of ResourceGather op '
+          f'({num_gather_ops}) does not match expected ({len(sv.variables)}), '
+          'possibly due to ShardedVariable accidentally being converted to '
+          f'tensor in {func.__name__} ops.')
+      self.assertEqual(
+          num_rv_ops, 0, f'Function {func.__name__} graph has some '
+          'ReadVariableOps, possibly due to ShardedVariable accidentally being '
+          'converted to tensor')
+      results.append(result)
+
+    self.assertAllEqual(results[0].fetch(), [[1., 2.], [7., 8.], [9., 10.]])
+    self.assertAllClose(results[1].fetch(), [[4., 5.], [9., 10.], [3., 4.]])
+    self.assertAllClose(results[2].fetch(), [[1., 2.], [0., 0.], [3., 4.]])
 
 
 class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):

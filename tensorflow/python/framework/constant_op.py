@@ -432,3 +432,32 @@ class _ConstantTensorCodec:
 
 
 nested_structure_coder.register_codec(_ConstantTensorCodec())
+
+
+class _NumpyCodec:
+  """Codec for Numpy."""
+
+  def can_encode(self, pyobj):
+    return isinstance(pyobj, np.ndarray)
+
+  def do_encode(self, numpy_value, encode_fn):
+    """Returns an encoded `TensorProto` for `np.ndarray`."""
+    del encode_fn
+    encoded_numpy = struct_pb2.StructuredValue()
+    encoded_numpy.numpy_value.CopyFrom(
+        tensor_util.make_tensor_proto(numpy_value)
+    )
+    return encoded_numpy
+
+  def can_decode(self, value):
+    return value.HasField("numpy_value")
+
+  def do_decode(self, value, decode_fn):
+    """Returns the `np.ndarray` encoded by the proto `value`."""
+    del decode_fn
+    tensor_proto = value.numpy_value
+    numpy = tensor_util.MakeNdarray(tensor_proto)
+    return numpy
+
+
+nested_structure_coder.register_codec(_NumpyCodec())

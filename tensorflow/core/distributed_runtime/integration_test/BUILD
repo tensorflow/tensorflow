@@ -33,6 +33,7 @@ tf_cuda_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_cuda_asan",  # TODO(b/193450885)
+        "no_oss",  # TODO(b/283120771)
         "no_windows",  # TODO(b/207281588)
     ],
     deps = [
@@ -57,7 +58,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_session_coordination_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_session_coordination_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
@@ -145,7 +146,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_recoverable_jobs_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_recoverable_jobs_test.cc"],
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [

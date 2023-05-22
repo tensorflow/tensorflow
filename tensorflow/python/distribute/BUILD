@@ -2107,6 +2107,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/283098184)
         "notsan",  # TODO(b/220133218)
     ],
     # b/155301154 broken with XLA:GPU
@@ -2340,6 +2341,10 @@ distribute_py_strict_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
+<<<<<<< HEAD
+=======
+        "no_oss",  # TODO(b/283033375)
+>>>>>>> upstream/master
     ],
     xla_enable_strict_auto_jit = True,
     deps = [
@@ -2375,6 +2380,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/283016506)
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,

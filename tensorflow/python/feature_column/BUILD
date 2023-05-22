@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,7 +7,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "feature_column_py",
     srcs = ["feature_column_lib.py"],
     srcs_version = "PY3",
@@ -16,16 +17,16 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
     srcs_version = "PY3",
     deps = [
         ":utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:cond",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
@@ -51,11 +52,12 @@ py_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "feature_column_v2",
     srcs = [
         "feature_column_v2.py",
@@ -67,9 +69,9 @@ py_library(
         ":feature_column",
         ":utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:cond",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework_ops",
@@ -84,18 +86,20 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/experimental/ops:lookup_ops",
+        "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/trackable:autotrackable",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
-        "//tensorflow/python/trackable:resource",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -116,7 +120,7 @@ filegroup(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "feature_column_test",
     srcs = ["feature_column_test.py"],
     tags = [
@@ -131,14 +135,14 @@ tf_py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "feature_column_test_main_lib",
     srcs = ["feature_column_test.py"],
     data = [":vocabulary_testdata"],
     srcs_version = "PY3",
     deps = [
         ":feature_column",
-        ":feature_column_py",
+        ":feature_column_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -152,16 +156,16 @@ py_library(
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "feature_column_v2_test",
     srcs = ["feature_column_v2_test.py"],
     shard_count = 5,
@@ -175,13 +179,13 @@ tf_py_test(
     deps = [":feature_column_v2_test_main_lib"],
 )
 
-py_library(
+py_strict_library(
     name = "feature_column_v2_test_main_lib",
     srcs = ["feature_column_v2_test.py"],
     data = [":vocabulary_testdata"],
     srcs_version = "PY3",
     deps = [
-        ":feature_column_py",
+        ":feature_column",
         ":feature_column_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -196,16 +200,16 @@ py_library(
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY3",
@@ -215,30 +219,33 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/util:nest",
+        "@six_archive//:six",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "sequence_feature_column_test",
     srcs = ["sequence_feature_column_test.py"],
     tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         ":feature_column_v2",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:test_lib",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
     python_version = "PY3",
@@ -246,18 +253,18 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":feature_column_v2",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python/util:compat",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "serialization_test",
     srcs = ["serialization_test.py"],
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

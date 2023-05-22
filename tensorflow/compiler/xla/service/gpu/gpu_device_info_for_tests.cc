@@ -55,14 +55,21 @@ GpuDeviceInfo TestGpuDeviceInfo::AMDMI210DeviceInfo() {
   info.block_dim_limit_x = 2'147'483'647;
   info.block_dim_limit_y = 2'147'483'647;
   info.block_dim_limit_z = 2'147'483'647;
+<<<<<<< HEAD
   info.memory_bandwidth = 1'638'400'000'000; 
+=======
+  info.memory_bandwidth = 1'638'400'000'000;
+>>>>>>> upstream/master
   info.l2_cache_size = 8 * 1024 * 1024;
   info.clock_rate_ghz = 1.7;
   info.device_memory_size = 67'628'957'696;
   return info;
 }
 
+<<<<<<< HEAD
 
 
+=======
+>>>>>>> upstream/master
 }  // namespace gpu
 }  // namespace xla

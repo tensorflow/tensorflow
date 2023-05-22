@@ -603,12 +603,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 2], func(numpy.array([[1, 1], [2, 2]])))
 
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `func` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       func([0.0, 1.0, 2.0])  # Wrong shape.
 
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `func` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       func([['wrong dtype']])
 
@@ -722,12 +722,12 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     a = array_ops.ones([1])
 
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `foo` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       defined([a, a, a], [a])
 
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `foo` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
@@ -746,7 +746,7 @@ class DefunTest(test.TestCase, parameterized.TestCase):
 
     x = constant_op.constant(1.0)
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `foo` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       foo(x, training=False)
 
@@ -840,21 +840,21 @@ class DefunTest(test.TestCase, parameterized.TestCase):
     # Different number of rows
     rt3 = ragged_factory_ops.constant([[1, 2], [3, 4], [5], [6]])
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `f` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       defined(rt3)
 
     # Different dtype
     rt4 = ragged_factory_ops.constant([[1.0, 2.0], [], [3.0]])
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `f` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       defined(rt4)
 
     # Different rank
     rt5 = ragged_factory_ops.constant([[[1]], [[2]], [[3]]])
     with self.assertRaisesRegex(
-        TypeError, 'Binding inputs to tf.function `f` failed'
+        TypeError, 'Binding inputs to tf.function failed'
     ):
       defined(rt5)
 

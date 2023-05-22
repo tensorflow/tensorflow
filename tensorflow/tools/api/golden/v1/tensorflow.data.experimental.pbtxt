@@ -205,6 +205,10 @@ tf_module {
     argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
   }
   member_method {
+    name: "pad_to_cardinality"
+    argspec: "args=[\'cardinality\', \'mask_key\'], varargs=None, keywords=None, defaults=[\'valid\'], "
+  }
+  member_method {
     name: "parallel_interleave"
     argspec: "args=[\'map_func\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\'], varargs=None, keywords=None, defaults=[\'1\', \'False\', \'None\', \'None\'], "
   }

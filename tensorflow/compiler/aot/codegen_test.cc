@@ -215,18 +215,22 @@ TEST(CodegenTest, Golden) {
   CompileResult compile_result;
   compile_result.aot.reset(new xla::cpu::CpuAotCompilationResult(
       {},
-      {BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/8, /*param_number=*/0),
+      {BufferInfo::MakeTempBuffer(3 * 8),
+       BufferInfo::MakeEntryParameter(/*size=*/8, /*entry_param_number=*/0),
        BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/1),
        BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/2),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/2),
        BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/3),
-       BufferInfo::MakeTempBuffer(1),
-       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/4),
-       BufferInfo::MakeTempBuffer(1), BufferInfo::MakeTempBuffer(120)},
-      11, {}));
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/3),
+       BufferInfo::MakeResultParameter(/*size=*/5 * 6 * 4,
+                                       /*result_param_number=*/0),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*entry_param_number=*/4),
+       BufferInfo::MakeResultParameter(/*size=*/1 * 4,
+                                       /*result_param_number=*/1),
+       BufferInfo::MakeResultParameter(/*size=*/5 * 4,
+                                       /*result_param_number=*/2)},
+      0, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {

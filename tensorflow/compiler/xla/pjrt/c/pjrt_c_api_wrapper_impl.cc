@@ -43,9 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-
-// TODO(b/238999986): Remove this.
-#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 
@@ -1007,6 +1004,73 @@ PJRT_Error* PJRT_SerializedExecutable_Data(
   return nullptr;
 }
 
+namespace {
+
+// Helper functions for copying data to possibly-inlined C arrays.
+
+// 'Src' and 'Dst' are allowed to be different types to make this usable with
+// memory-identical types, e.g. int64_t and int64_t. This should not be used
+// with types that require a static_cast.
+template <typename Src, typename Dst, typename DstList>
+static void CreateVectorBase(const absl::Span<Src> src, DstList* dst) {
+  dst->size = src.size();
+  if (dst->size > PJRT_C_API_MAX_INLINED) {
+    dst->heap = new Dst[dst->size];
+    std::copy(src.begin(), src.end(), dst->heap);
+  } else {
+    std::copy(src.begin(), src.end(), dst->inlined);
+  }
+}
+
+void CreateVector(const absl::Span<const int64_t> src, PJRT_Int64List* dst) {
+  return CreateVectorBase<const int64_t, int64_t, PJRT_Int64List>(src, dst);
+}
+void CreateVector(const absl::Span<const bool> src, PJRT_BoolList* dst) {
+  return CreateVectorBase<const bool, bool, PJRT_BoolList>(src, dst);
+}
+static void CreateVector(const absl::Span<const xla::DimLevelType> src,
+                         PJRT_IntList* dst) {
+  CreateVectorBase<const xla::DimLevelType, int, PJRT_IntList>(src, dst);
+}
+void CreateVector(const absl::Span<const bool> src, PJRT_IntList* dst) {
+  CreateVectorBase<const bool, int, PJRT_IntList>(src, dst);
+}
+
+void ToC(const xla::Tile& tile, PJRT_XLA_Tile* c_tile) {
+  CreateVector(tile.dimensions(), &c_tile->dimensions);
+}
+
+void CreateVector(const absl::Span<const xla::Tile> src,
+                  PJRT_XLA_TileList* dst) {
+  dst->size = src.size();
+  PJRT_XLA_Tile* c_tiles;
+  if (dst->size > PJRT_C_API_MAX_INLINED) {
+    dst->heap = new PJRT_XLA_Tile[dst->size];
+    c_tiles = dst->heap;
+  } else {
+    c_tiles = dst->inlined;
+  }
+  for (int i = 0; i < dst->size; ++i) {
+    ToC(src[i], &c_tiles[i]);
+  }
+}
+
+void ToC(const xla::Layout& layout, PJRT_XLA_Layout* c_layout) {
+  CreateVector(layout.minor_to_major(), &c_layout->minor_to_major);
+  CreateVector(layout.dim_level_types(), &c_layout->dim_level_types);
+  CreateVector(layout.dim_unique(), &c_layout->dim_unique);
+  CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
+  c_layout->index_primitive_type = layout.index_primitive_type();
+  c_layout->pointer_primitive_type = layout.pointer_primitive_type();
+  c_layout->element_size_in_bits = layout.element_size_in_bits();
+  c_layout->memory_space = layout.memory_space();
+  c_layout->dynamic_shape_metadata_prefix_bytes =
+      layout.dynamic_shape_metadata_prefix_bytes();
+  CreateVector(layout.tiles(), &c_layout->tiles);
+}
+
+}  // namespace
+
 // ---------------------------------- Buffers ----------------------------------
 // TODO(b/238999986): Replace this with decomposed shape methods.
 PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
@@ -1023,13 +1087,12 @@ PJRT_Error* PJRT_Buffer_OnDeviceTrimmedShape(
     shape = args->buffer->buffer->on_device_shape();
   }
   args->element_type = shape.element_type();
-  ApiConverter::CreateVector(shape.dimensions(), &args->dimensions);
-  ApiConverter::CreateVector(shape.dynamic_dimensions(),
-                             &args->dynamic_dimensions);
+  CreateVector(shape.dimensions(), &args->dimensions);
+  CreateVector(shape.dynamic_dimensions(), &args->dynamic_dimensions);
 
   if (shape.has_layout()) {
     args->has_layout = true;
-    ApiConverter::ToC(shape.layout(), &args->layout);
+    ToC(shape.layout(), &args->layout);
   } else {
     args->has_layout = false;
   }

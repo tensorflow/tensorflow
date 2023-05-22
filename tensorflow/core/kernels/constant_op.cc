@@ -336,14 +336,15 @@ REGISTER_KERNEL(complex64, GPU);
 REGISTER_KERNEL(complex128, GPU);
 #endif
 REGISTER_KERNEL(bfloat16, GPU);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
+#undef REGISTER_KERNEL
+
 REGISTER_KERNEL_BUILDER(Name("OnesLike")
                             .Device(DEVICE_DEFAULT)
                             .TypeConstraint<int32>("T")
                             .HostMemory("y"),
                         OnesLikeOp<CPUDevice, int32>);
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-#undef REGISTER_KERNEL
 
 PlaceholderOp::PlaceholderOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &expected_shape_));

@@ -658,7 +658,7 @@ namespace internal {
 
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
-// strucuture.
+// structure.
 struct DecodingOffsets {
   int64_t args = 0;
   int64_t attrs = 0;
@@ -857,8 +857,16 @@ class FfiHandler : public Ffi {
     // Check if all arguments, attributes and results were decoded;
     bool all_decoded = (std::get<Is>(fn_args).has_value() && ...);
     if (!all_decoded) {
-      return ToError(
-          api, FfiStatus::InvalidArgument("Failed to decode all FFI operands"));
+      std::array<bool, kSize> decoded = {std::get<Is>(fn_args).has_value()...};
+      std::string err = "Failed to decode all FFI operands (bad operands at: ";
+      for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
+        if (!decoded[idx]) {
+          if (cnt++) err.append(", ");
+          err.append(std::to_string(idx));
+        }
+      }
+      err.append(")");
+      return ToError(api, FfiStatus::InvalidArgument(err));
     }
 
     // Custom call returns `FfiStatus`, we can call it directly.

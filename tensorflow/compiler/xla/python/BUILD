@@ -363,6 +363,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
+        "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_ifrt",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -980,6 +981,7 @@ tsl_pybind_extension(
         "//tensorflow/compiler/xla/pjrt:interpreter_device",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_api",
+        "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
         "//tensorflow/compiler/xla/pjrt:tfrt_cpu_pjrt_client",
@@ -1008,8 +1010,8 @@ tsl_pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": [
-            "//tensorflow/compiler/xla/pjrt:pjrt_c_api_client",
             "//tensorflow/compiler/xla/pjrt:tpu_client",
+            "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         ],
         "//conditions:default": [],
     }) + select({

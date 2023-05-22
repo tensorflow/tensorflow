@@ -1595,8 +1595,9 @@ DTensorDevice::DTensorOperationToModule(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
       pass_runner_.ImportGraphToMlir(
-          device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
-          *result.graph, result.doperation_cache_key));
+          device_set, absl::string_view{doperation.name}, doperation.is_func(),
+          doperation.default_mesh, *flib_def, *result.graph,
+          result.doperation_cache_key));
 
   tsl::core::WeakPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
       manager{module_manager_.get()};

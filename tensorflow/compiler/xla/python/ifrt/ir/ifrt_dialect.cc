@@ -22,11 +22,16 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include "llvm/Support/Casting.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/DialectImplementation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/python/ifrt/ir/constants.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_ops.h"
 
 // Generated definitions.
@@ -53,6 +58,42 @@ void IfrtDialect::initialize() {
 #define GET_OP_LIST
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_ops.cc.inc"
       >();
+}
+
+mlir::LogicalResult IfrtDialect::verifyOperationAttribute(
+    mlir::Operation* op, mlir::NamedAttribute attr) {
+  if (attr.getName() == kIfrtFunctionAttrName) {
+    if (!llvm::isa<mlir::func::FuncOp>(op)) {
+      return op->emitOpError() << "has `" << kIfrtFunctionAttrName
+                               << "` attr but is not a function";
+    }
+    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+      return op->emitOpError() << "has `" << kIfrtFunctionAttrName
+                               << "` attr that is not a UnitAttr";
+    }
+  }
+  return mlir::success();
+}
+
+mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
+    mlir::Operation* op, unsigned regionIndex, unsigned argIndex,
+    mlir::NamedAttribute attr) {
+  if (attr.getName() == kIfrtDonatedArgAttrName) {
+    if (!llvm::isa<mlir::func::FuncOp>(op)) {
+      return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
+                               << "` arg attr but is not a function";
+    }
+    if (!attr.getValue().isa<mlir::UnitAttr>()) {
+      return op->emitOpError() << "has `" << kIfrtDonatedArgAttrName
+                               << "` arg attr that is not a UnitAttr";
+    }
+    if (!op->hasAttr(kIfrtFunctionAttrName)) {
+      return op->emitOpError()
+             << "has `" << kIfrtDonatedArgAttrName << "` arg attr but not has `"
+             << kIfrtFunctionAttrName << "` attr";
+    }
+  }
+  return mlir::success();
 }
 
 // static

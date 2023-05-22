@@ -221,6 +221,9 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         if (ignore_tiles_in_layout_) {
           equal.IgnoreTiles();
         }
+        if (ignore_element_size_in_layout_) {
+          equal.IgnoreElementSize();
+        }
         if (ignore_memory_space_in_layout_) {
           equal.IgnoreMemorySpace();
         }

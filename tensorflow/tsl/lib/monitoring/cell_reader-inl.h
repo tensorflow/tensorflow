@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/tsl/lib/monitoring/collected_metrics.h"
 #include "tensorflow/tsl/lib/monitoring/metric_def.h"
 #include "tensorflow/tsl/lib/monitoring/test_utils.h"
@@ -94,7 +95,7 @@ ValueType GetLatestValueOrDefault(const CollectedMetrics& metrics,
                                   const std::vector<std::string>& labels,
                                   const ValueType default_value = ValueType()) {
   StatusOr<Point> latest_point = GetLatestPoint(metrics, metric_name, labels);
-  if (errors::IsUnavailable(latest_point.status())) {
+  if (absl::IsUnavailable(latest_point.status())) {
     return std::move(default_value);
   }
   if (!latest_point.ok()) {

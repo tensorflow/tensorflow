@@ -31,7 +31,8 @@ namespace stablehlo {
 
 // Creates a pass that quantizes weight component of StableHLO graph.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
-    ::stablehlo::quantization::QuantizationOptions quantization_options);
+    ::stablehlo::quantization::QuantizationComponentSpec
+        quantization_component_spec);
 
 }  // namespace stablehlo
 }  // namespace mlir

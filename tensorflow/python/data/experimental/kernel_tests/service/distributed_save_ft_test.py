@@ -26,6 +26,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import test_mode
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
 # Enum value for `SnapshotStreamInfo` states.
@@ -58,6 +59,8 @@ def get_stream_assignments(cluster, n, snapshot_idx=0):
 
 class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
+  maxDiff = None
+
   def setUp(self):
     super().setUp()
     self._path = os.path.join(
@@ -75,9 +78,9 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     if num_sources > 1:
       ds = dataset_ops.Dataset.zip((ds,) * num_sources)
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
-    distributed_save_op.distributed_save(
+    self.evaluate(distributed_save_op.distributed_save(
         ds, self._path, cluster.dispatcher_address()
-    )
+    ))
     return cluster, ds
 
   def splits_dir(self, stream_idx=0, worker=0):
@@ -94,6 +97,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     return os.path.join(
         self.splits_dir(stream_idx, worker=worker),
         f"source_{source_idx}",
+        "repetition_0",
     )
 
   def _make_stream_dir(self, stream_name, worker=0):
@@ -103,24 +107,26 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         f"{worker}"
     )
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoverySucceeds(self):
     cluster, _ = self.setup()
     cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryBlocksOverwrite(self):
     cluster, ds = self.setup()
     cluster.restart_dispatcher()
-    with self.assertRaisesOpError("is already started or completed"):
-      distributed_save_op.distributed_save(
+    with self.assertRaisesRegex(
+        errors.AlreadyExistsError, "is already started or completed"
+    ):
+      self.evaluate(distributed_save_op.distributed_save(
           ds, self._path, cluster.dispatcher_address()
-      )
+      ))
 
   # TODO(b/250921378): Figure out why tsan times out when there is a worker.
   @combinations.generate(
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(
               bad_stream_dir_name=["stream_", "stream_x", "stream_-1"]
           ),
@@ -134,7 +140,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(
               bad_source_dir_name=["source_", "source_x", "source_-1"]
           ),
@@ -146,7 +152,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "can't parse"):
       cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithOutOfBoundsSourceName(self):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), "source_1"))
@@ -155,7 +161,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.default_test_combinations(),
           combinations.combine(
               bad_split_filename=[
                   "split_",
@@ -174,7 +180,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         ValueError, "Expected split_<local_split_index>_<global_split_index>"):
       cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithOutOfOrderSplitName(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_1_0"))
@@ -182,21 +188,14 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         ValueError, "The local split index 1 exceeds the global split index 0"):
       cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
-  def testSnapshotRecoveryFailsWithOutOfBoundsSplitName(self):
-    cluster, _ = self.setup(num_workers=0)
-    write_file(os.path.join(self.source_dir(), "split_1_1"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
-      cluster.restart_dispatcher()
-
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_0_1"))
     with self.assertRaisesRegex(ValueError, "found missing global"):
       cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithDuplicateGlobalIndexInSplitName(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(stream_idx=0), "split_0_1"))
@@ -206,7 +205,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "found duplicate global"):
       cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithDuplicateWorkerAssignment(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(stream_idx=0), "split_0_1"))
@@ -214,7 +213,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     with self.assertRaisesRegex(ValueError, "worker is already assigned"):
       cluster.restart_dispatcher()
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testStreamsReassignedAfterDispatcherRestart(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=10000)
@@ -228,16 +227,34 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       streams = get_streams()
     self.assertCountEqual([stream.index for stream in streams], range(n))
 
-  @combinations.generate(test_base.eager_only_combinations())
+  @combinations.generate(test_base.default_test_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
-    get_stream_assignments(cluster, n)  # Block until all workers have streams.
+    get_stream_assignments(cluster, n)  # Blocks until all workers have streams.
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
+    # TODO(b/250921378): Verify the number of elements.
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testRepeatedDatasetRecoversAndCompletes(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    ds = dataset_ops.Dataset.range(100)
+    ds = ds.repeat(10)
+    self.evaluate(distributed_save_op.distributed_save(
+        ds, self._path, cluster.dispatcher_address()
+    ))
+
+    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+    # TODO(b/250921378): Verify the number of elements.
 
   def _snapshot_is_done(self):
     return os.path.exists(os.path.join(self._path, "DONE"))

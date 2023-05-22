@@ -29,10 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace exhaustive_op_test {
@@ -97,59 +99,44 @@ struct ErrorSpecGenWrapper<T, 2> {
 template <PrimitiveType T, size_t N>
 typename ErrorSpecGenWrapper<T, N>::type GetDefaultSpecGenerator();
 
+// The primitive type used to compute the reference output.
+constexpr PrimitiveType Ref(PrimitiveType T) {
+  return !primitive_util::IsFloatingPointType(T) || T == F64 ? T : F32;
+}
+
+// The primitive type of the component of T. If T is not complex, then
+// ComponentT = T.
+constexpr PrimitiveType Component(PrimitiveType T) {
+  return primitive_util::IsComplexType(T)
+             ? primitive_util::ComplexComponentType(T)
+             : T;
+}
+
 // T: The primitive type being tested.
 // N: The number of operands that the function being tested takes.
 template <PrimitiveType T, size_t N>
 class ExhaustiveOpTestBase : public ClientLibraryTestBase {
  public:
   // Definitions depending on the primitive type T.
+  static constexpr bool kIsComplex = primitive_util::IsComplexType(T);
+  static constexpr PrimitiveType kComponent = Component(T);
+  static constexpr PrimitiveType kRef = Ref(T);
+  // Same as kComponent, but for the kRef primitive type.
+  static constexpr PrimitiveType kComponentRef = Component(kRef);
 
-  static constexpr bool kIsComplex = (T == C128 || T == C64);
-
-  // The primitive type used to compute the reference output.
-  struct RefT {
-    static constexpr PrimitiveType value = (T == F16 || T == BF16) ? F32 : T;
-  };
-
-  // The primitive type of the component of T. If T is not complex, then
-  // ComponentT = T.
-  struct ComponentT {
-    static constexpr PrimitiveType value = !kIsComplex ? T
-                                           : T == C128 ? F64
-                                           : T == C64  ? F32
-                                                       : PRIMITIVE_TYPE_INVALID;
-  };
-
-  // Same as ComponentT, but for the RefT primitive type.
-  struct ComponentRefT {
-    static constexpr PrimitiveType value = !kIsComplex           ? RefT::value
-                                           : RefT::value == C128 ? F64
-                                           : RefT::value == C64
-                                               ? F32
-                                               : PRIMITIVE_TYPE_INVALID;
-  };
-
-  // The primitive type of an unsigned integer that can be bitcasted to and from
-  // ComponentT.
-  struct ComponentIntegralT {
-    static constexpr PrimitiveType value = (T == C128 || T == F64)  ? U64
-                                           : (T == C64 || T == F32) ? U32
-                                           : (T == F16 || T == BF16)
-                                               ? U16
-                                               : PRIMITIVE_TYPE_INVALID;
-  };
+  // The primitive type of an unsigned integer that can be bitcasted to and
+  // from ComponentT.
+  static constexpr PrimitiveType kComponentIntegral =
+      primitive_util::UnsignedIntegralTypeForBitWidth(
+          primitive_util::BitWidth(kComponent));
 
   // Native types that correspond to the primitive types above.
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<T>::type;
-  using NativeRefT =
-      typename primitive_util::PrimitiveTypeToNative<RefT::value>::type;
-  using ComponentNativeT =
-      typename primitive_util::PrimitiveTypeToNative<ComponentT::value>::type;
-  using ComponentNativeRefT = typename primitive_util::PrimitiveTypeToNative<
-      ComponentRefT::value>::type;
+  using NativeT = primitive_util::NativeTypeOf<T>;
+  using NativeRefT = primitive_util::NativeTypeOf<kRef>;
+  using ComponentNativeT = primitive_util::NativeTypeOf<kComponent>;
+  using ComponentNativeRefT = primitive_util::NativeTypeOf<kComponentRef>;
   using ComponentIntegralNativeT =
-      typename primitive_util::PrimitiveTypeToNative<
-          ComponentIntegralT::value>::type;
+      primitive_util::NativeTypeOf<kComponentIntegral>;
 
   using InputLiterals = std::array<Literal, N>;
 

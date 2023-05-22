@@ -452,18 +452,12 @@ StatusOr<PyArray> PyArray::FullyReplicatedShard() {
         "FullyReplicatedShard() called on deleted or donated buffer");
   }
 
-  auto* client = llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleClient>(
-      ifrt_array()->client());
-  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array());
-  if (arr == nullptr) {
-    throw XlaRuntimeError(
-        "This operation is implemented for a PjRt-compatible backend only.");
-  }
-  auto fully_replicated_ifrt_shard =
-      ifrt::PjRtArray::Create(client, std::move(arr->pjrt_buffers().front()));
+  TF_ASSIGN_OR_RETURN(auto fully_replicated_ifrt_shard,
+                      ifrt_array()->FullyReplicatedShard(
+                          ifrt::ArrayCopySemantics::kReuseInput));
   return MakeFromSingleDeviceArray(py_client(), traceback(),
-                                   *fully_replicated_ifrt_shard, weak_type(),
-                                   committed());
+                                   std::move(fully_replicated_ifrt_shard),
+                                   weak_type(), committed());
 }
 
 Status PyArray::BlockUntilReady() const {
