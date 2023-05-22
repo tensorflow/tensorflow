@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/bisect_lib.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
@@ -37,8 +38,8 @@ bool IsTopLevelOp(Operation* op) {
   return !op->getBlock()->back().mightHaveTrait<OpTrait::IsTerminator>();
 }
 
-SmallVector<OwningOpRef<ModuleOp>> EraseOpWithoutResults(BisectState& state,
-                                                         Operation* op) {
+SmallVector<std::function<OwningOpRef<ModuleOp>()>> EraseOpWithoutResults(
+    BisectState& state, Operation* op) {
   // Only erase ops with results if they're unused.
   if (op->getNumResults() > 0 && !op->use_empty()) {
     return {};
@@ -49,18 +50,26 @@ SmallVector<OwningOpRef<ModuleOp>> EraseOpWithoutResults(BisectState& state,
     return {};
   }
 
-  auto [module, cloned_op] = CloneModuleFor(op);
-  cloned_op->erase();
-  SmallVector<OwningOpRef<ModuleOp>> ret;
-  ret.push_back(std::move(module));
+  SmallVector<std::function<OwningOpRef<ModuleOp>()>> ret;
+  ret.push_back([op]() {
+    auto [module, cloned_op] = CloneModuleFor(op);
+    cloned_op->erase();
+    return std::move(module);
+  });
   return ret;
 }
 
-llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithConstant(
+llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> ReplaceOpWithConstant(
     BisectState& state, Operation* op) {
-  llvm::SmallVector<OwningOpRef<ModuleOp>> result;
+  llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> result;
   if (op->hasTrait<OpTrait::ConstantLike>() || IsTopLevelOp(op) ||
       IsTerminator(op) || op->use_empty() || op->getNumResults() == 0) {
+    return result;
+  }
+
+  auto mii = llvm::dyn_cast<MemoryEffectOpInterface>(op);
+  if (mii && mii.hasEffect<MemoryEffects::Allocate>()) {
+    // Don't replace allocs with constants.
     return result;
   }
 
@@ -70,34 +79,33 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithConstant(
     assert(execution->results_size() == op->getNumResults() &&
            "unexpected number of results");
 
-    auto [module_clone, op_clone] = CloneModuleFor(op);
-    SmallVector<Value> results;
-    OpBuilder b(op_clone);
-    bool all_replaced = true;
-    for (int64_t i = 0; i < op->getNumResults(); ++i) {
-      auto type = op->getResultTypes()[i];
-      auto value = *interpreter::TracedValueToValue(
-          execution->results(static_cast<int>(i)));
-      auto attribute = interpreter::ValueToAttribute(value, type);
-      if (attribute.size() == 1) {
-        op_clone->getResults()[i].replaceAllUsesWith(
-            arith::ConstantOp::materialize(b, attribute.front(), type,
-                                           op_clone->getLoc()));
-      } else {
+    result.push_back([execution, op]() -> OwningOpRef<ModuleOp> {
+      auto [module_clone, op_clone] = CloneModuleFor(op);
+      SmallVector<Value> results;
+      OpBuilder b(op_clone);
+      for (int64_t i = 0; i < op->getNumResults(); ++i) {
+        auto type = op->getResultTypes()[i];
+        auto value = *interpreter::TracedValueToValue(
+            execution->results(static_cast<int>(i)));
+        auto attribute = interpreter::ValueToAttribute(value, type);
         // We don't currently support tuples.
-        all_replaced = false;
+        if (attribute.size() != 1) {
+          return nullptr;
+        }
+        op_clone->getResults()[i].replaceAllUsesWith(
+            b.create<arith::ConstantOp>(
+                op_clone->getLoc(), type,
+                llvm::cast<TypedAttr>(attribute.front())));
       }
-    }
-    if (all_replaced) {
-      result.push_back(std::move(module_clone));
-    }
+      return std::move(module_clone);
+    });
   }
   return result;
 }
 
-llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOperandWithConstant(
-    BisectState& state, Operation* op) {
-  llvm::SmallVector<OwningOpRef<ModuleOp>> result;
+llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>>
+ReplaceOperandWithConstant(BisectState& state, Operation* op) {
+  llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> result;
   if (IsTopLevelOp(op) || op->getNumOperands() == 0) {
     return result;
   }
@@ -109,18 +117,21 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOperandWithConstant(
           operand.getDefiningOp()->hasTrait<OpTrait::ConstantLike>()) {
         continue;
       }
-      auto type = op->getOperandTypes()[i];
-      auto value = *interpreter::TracedValueToValue(
-          execution->args(static_cast<int>(i)));
-      auto attribute = interpreter::ValueToAttribute(value, type);
-      if (attribute.size() == 1) {
+      result.push_back([execution, i, op]() -> OwningOpRef<ModuleOp> {
+        auto type = op->getOperandTypes()[i];
+        auto value = *interpreter::TracedValueToValue(
+            execution->args(static_cast<int>(i)));
+        auto attribute = interpreter::ValueToAttribute(value, type);
+        if (attribute.size() != 1) {
+          return nullptr;
+        }
         auto [module_clone, op_clone] = CloneModuleFor(op);
         OpBuilder b(op_clone);
-        op_clone->setOperand(
-            i, arith::ConstantOp::materialize(b, attribute.front(), type,
-                                              op_clone->getLoc()));
-        result.push_back(std::move(module_clone));
-      }
+        op_clone->setOperand(i, b.create<arith::ConstantOp>(
+                                    op_clone->getLoc(), type,
+                                    llvm::cast<TypedAttr>(attribute.front())));
+        return std::move(module_clone);
+      });
     }
   }
   return result;
@@ -128,9 +139,9 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOperandWithConstant(
 
 // Replaces an op's result with some other value with the same type defined
 // previously in the same region.
-llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithValue(BisectState&,
-                                                            Operation* op) {
-  llvm::SmallVector<OwningOpRef<ModuleOp>> ret;
+llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> ReplaceOpWithValue(
+    BisectState&, Operation* op) {
+  llvm::SmallVector<std::function<OwningOpRef<ModuleOp>()>> ret;
   if (op->hasTrait<OpTrait::ConstantLike>() || IsTopLevelOp(op) ||
       IsTerminator(op)) {
     return ret;
@@ -153,11 +164,13 @@ llvm::SmallVector<OwningOpRef<ModuleOp>> ReplaceOpWithValue(BisectState&,
 
     for (auto [new_result_op, new_result_index] :
          candidates_by_type[result.getType()]) {
-      auto [module_clone, op_clone] = CloneModuleFor(op);
-      op_clone->getResults()[index].replaceAllUsesWith(
-          FindInClone(new_result_op, module_clone.get())
-              ->getResults()[new_result_index]);
-      ret.push_back(std::move(module_clone));
+      ret.push_back(
+          [op, i = index, j = new_result_index, result_op = new_result_op]() {
+            auto [module_clone, op_clone] = CloneModuleFor(op);
+            op_clone->getResults()[i].replaceAllUsesWith(
+                FindInClone(result_op, module_clone.get())->getResults()[j]);
+            return std::move(module_clone);
+          });
     }
   }
   return ret;

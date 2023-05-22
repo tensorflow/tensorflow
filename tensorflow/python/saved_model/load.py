@@ -1055,7 +1055,9 @@ def load_partial(export_dir, filters, tags=None, options=None):
       raise ValueError("SavedModels saved from Tensorflow 1.x or Estimator (any"
                        " version) cannot be loaded with node filters.")
     with ops.init_scope():
-      root = load_v1_in_v2.load(export_dir, tags)
+      root = load_v1_in_v2.load(
+          export_dir, tags, options.experimental_skip_checkpoint
+      )
       root.graph_debug_info = debug_info
   # For privacy concerns, please see the note in
   #  tensorflow/cc/saved_model/metrics.h

@@ -1182,6 +1182,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],

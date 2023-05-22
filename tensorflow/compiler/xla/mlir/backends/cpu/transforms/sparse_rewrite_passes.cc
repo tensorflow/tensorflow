@@ -71,14 +71,11 @@ void getIntegersFromDenseElements(Value v, SmallVectorImpl<int64_t>& values) {
 
 struct SparseBatchedPackCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 3 && "Need two arrays (data/indices)");
     assert(op.getResults().size() == 1 && "Must be packing into one tensor");
-    llvm::APInt batchedLvls =
-        *getDenseIntAttrFromConstant(op.getInputs()[2]).begin();
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1],
-        IntegerAttr::get(rewriter.getIndexType(), batchedLvls));
+        op, ret_sp_tensor.getType(), op.getInputs()[0],  // sparse tensor values
+        op.getInputs().drop_front());                    // sparse tensor levels
     return success();
   }
 };
@@ -255,7 +252,7 @@ struct SparseSliceCallRewriter {
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     // TODO(peiming): add a getSliceEncodingFrom into MLIR upstream.
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getDimLevelType(), srcEnc.getDimOrdering(),
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimOrdering(),
         srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
         slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),
@@ -312,7 +309,7 @@ struct SparseDynSliceCallRewriter {
     auto srcEnc =
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getDimLevelType(), srcEnc.getDimOrdering(),
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimOrdering(),
         srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
         slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),

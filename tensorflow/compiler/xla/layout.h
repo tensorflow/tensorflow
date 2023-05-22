@@ -86,6 +86,8 @@ class Tile {
   absl::InlinedVector<int64_t, 2> dimensions_;
 };
 
+// TODO: Rename the `dim_level_types` field to `lvl_types`, so that it
+// matches `mlir::sparse_tensor::SparseTensorEncodingAttr`.
 class Layout {
  public:
   Layout();

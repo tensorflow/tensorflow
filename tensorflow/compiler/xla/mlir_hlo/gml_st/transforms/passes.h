@@ -63,7 +63,7 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
 
 /// Pass to vectorize `memref.copy`.
 std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
-    int64_t numElementsThreshold = 1024);
+    int64_t numElementsThreshold = 8);
 
 /// Pass to remove redundant `memref.copy` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();

@@ -626,9 +626,11 @@ cuda_py_strict_test(
     name = "scatter_ops_test",
     size = "medium",  # NOTE: This is not run by default.
     srcs = ["scatter_ops_test.py"],
-    flaky = True,
     shard_count = 2,
-    tags = ["optonly"],
+    tags = [
+        "no_oss",  # TODO(b/282985589)
+        "optonly",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",

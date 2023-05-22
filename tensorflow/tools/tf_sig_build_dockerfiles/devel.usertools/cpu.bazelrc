@@ -23,6 +23,10 @@ build --define=tf_api_version=2 --action_env=TF2_BEHAVIOR=1
 # Target the AVX instruction set
 build --copt=-mavx --host_copt=-mavx
 
+# Use lld as the linker
+build --linkopt="-fuse-ld=lld"
+build --linkopt="-lm"
+
 # Disable clang extention that rejects type definitions within offsetof. 
 # This was added in clang-16 by https://reviews.llvm.org/D133574.
 # Can be removed once upb is updated, since a type definition is used within

@@ -170,6 +170,9 @@ class SnapshotManager {
   // Creates sources for the specified dataset.
   StatusOr<std::vector<Source>> CreateSources(
       const DatasetDef& dataset_def) const;
+  // Counts the number of splits for a single repetition of the data in
+  // `sources_`.
+  StatusOr<int64_t> CountSplits();
   // Resets a source when it runs out of splits, to support repetitions.
   Status ResetSource(Source& source, int64_t source_index);
   int64_t num_sources() const { return sources_.size(); }
@@ -183,8 +186,8 @@ class SnapshotManager {
 
   // A counter of assigned splits for this snapshot.
   int64_t num_assigned_splits_ = 0;
-  // A counter of completed splits for this snapshot.
-  int64_t num_completed_splits_ = 0;
+  // The number of splits in a single repetition of the data in `sources_`.
+  int64_t num_total_splits_ = 0;
 
   enum class Mode {
     // No streams are done.

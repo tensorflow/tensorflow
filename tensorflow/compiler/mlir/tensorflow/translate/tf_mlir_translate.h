@@ -44,6 +44,7 @@ struct GraphdefToMlirOptions {
   bool upgrade_legacy;
   bool enable_shape_inference;
   bool unconditionally_use_set_output_shapes;
+  bool enable_soft_placement;
 };
 
 // TODO(antiagainst): Directly manipulating files in library functions is not

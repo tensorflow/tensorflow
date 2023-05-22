@@ -21,8 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/match.h"
-#include "absl/strings/str_split.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
@@ -152,9 +150,6 @@ class BasePattern {
   // results,
   ArrayAttr GetControlRetAttrs(ValueRange ctls, ValueRange args,
                                NameUniquer *name_uniquer) const;
-
-  // Strip out added names.
-  void StripAddedSuffix(Region &region) const;
 
   // Create a function with the given name and attributes. Use the types of the
   // block arguments and the given results types. Take the body of the region.
@@ -603,20 +598,6 @@ ArrayAttr BasePattern::GetControlRetAttrs(ValueRange ctls, ValueRange args,
   return ArrayAttr::get(ctx_, ctl_ret_attrs);
 }
 
-void BasePattern::StripAddedSuffix(Region &region) const {
-  StringAttr name_id = dialect_.getNameAttrIdentifier();
-  for (Operation &op : region.getOps()) {
-    if (auto name = op.getAttrOfType<StringAttr>(name_id)) {
-      if (absl::StrContains(name.getValue().str(), "_tfg_inlined_")) {
-        std::vector<std::string> name_components =
-            absl::StrSplit(name.getValue().str(), "_tfg_inlined_");
-        auto new_name = StringAttr::get(op.getContext(), name_components[0]);
-        op.setAttr(name_id, new_name);
-      }
-    }
-  }
-}
-
 GraphFuncOp BasePattern::CreateFunc(Location loc, const Twine &sym_name,
                                     Region &region, TypeRange res_types,
                                     NamedAttrList attrs) const {
@@ -663,8 +644,6 @@ FuncAttr BasePattern::Outline(Operation *op, PatternRewriter &rewriter,
                               ValueRange args, Region &region,
                               RegionAttr preserved, DictionaryAttr attrs,
                               const Twine &func_name) const {
-  StripAddedSuffix(region);
-
   // Create a name scope for the function.
   NameUniquer name_uniquer(ctx_);
 

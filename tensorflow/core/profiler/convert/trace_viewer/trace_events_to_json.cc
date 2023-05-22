@@ -55,7 +55,8 @@ std::string JsonEscape(absl::string_view raw) {
           escaped_string.push_back('t');
           break;
         default:
-          absl::StrAppendFormat(&escaped_string, "u%04x", static_cast<uint>(c));
+          absl::StrAppendFormat(&escaped_string, "u%04x",
+                                static_cast<unsigned int>(c));
       }
       continue;
     }
@@ -71,7 +72,8 @@ std::string JsonEscape(absl::string_view raw) {
       case '<':
       case '>':
       case '&': {
-        absl::StrAppendFormat(&escaped_string, "\\u%04x", static_cast<uint>(c));
+        absl::StrAppendFormat(&escaped_string, "\\u%04x",
+                              static_cast<unsigned int>(c));
         continue;
       }
       case '\xe2': {

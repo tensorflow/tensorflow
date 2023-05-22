@@ -89,7 +89,6 @@ cc_library(
     tags = ["no_oss"],
     visibility = [
         ":internal",
-        "//tensorflow/core/tfrt/eager:__subpackages__",
     ],
     deps = if_google([
         "//tensorflow/core/runtime_fallback/test:test_tf_opkernels_alwayslink",

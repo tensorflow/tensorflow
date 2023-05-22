@@ -32,6 +32,7 @@ namespace gpu {
 #define GEN_PASS_DECL_CONVERTLMHLOTOGPURUNTIMEPASS
 #define GEN_PASS_DECL_CONVERTMEMREFGETGLOBALTOARGPASS
 #define GEN_PASS_DECL_OUTLINECUDAGRAPHSPASS
+#define GEN_PASS_DECL_ADDCONCURRENTREGIONSPASS
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/passes.h.inc"
 
 class ThunkSequence;  // forward declare
@@ -100,6 +101,13 @@ createOutlineCudaGraphsPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createOutlineCudaGraphsPass(int32_t cuda_graph_level);
+
+//===----------------------------------------------------------------------===//
+// Passes for marking concurrent region in CUDA graph capture function.
+//===----------------------------------------------------------------------===//
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAddConcurrentRegionsPass();
 
 //===-----------------------------------------------------------------------===/
 

@@ -112,6 +112,10 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
 /// If `op_resolver_user_data` is non-null, its lifetime must be at least as
 /// long as the lifetime of the `TfLiteInterpreterOptions`.
 ///
+/// The TfLiteRegistrationExternal objects whose addresses are returned by
+/// `find_builtin_op` and `find_custom_op` must outlive both the
+/// InterpreterOptions object and any Interpreter object created from it.
+///
 /// WARNING: This is an experimental API and subject to change.
 void TfLiteInterpreterOptionsSetOpResolverExternal(
     TfLiteInterpreterOptions* options,

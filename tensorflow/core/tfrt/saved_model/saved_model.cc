@@ -135,7 +135,7 @@ auto* saved_model_init_time_seconds =
         "/tensorflow/tfrt/saved_model/init_time",
         "Record the initialization time for the savedmodel.", "model_name");
 
-// TODO(b/239749833) clean up this retention after input spec validation is
+// TODO(b/279197040) clean up this retention after input spec validation is
 // enabled everywhere.
 auto* saved_model_input_spec_validation_failure =
     tensorflow::monitoring::Gauge<bool, 1>::New(
@@ -857,7 +857,7 @@ tensorflow::Status SavedModelImpl::Run(
   OpKernelRunnerTable* runner_table = nullptr;
   tfd::FallbackResourceArray* resource_array = nullptr;
   if (options_.enable_lazy_loading) {
-    // TODO(b/216379787): Remove this lazy loading path once b/239749833 is
+    // TODO(b/216379787): Remove this lazy loading path once b/279197040 is
     // unblocked.
 
     // If lazy loading is enabled, no signature is loaded into `bef_file_`, so

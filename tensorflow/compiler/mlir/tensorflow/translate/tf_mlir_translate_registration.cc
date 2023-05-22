@@ -48,7 +48,8 @@ static OwningOpRef<mlir::ModuleOp> GraphdefToMlirTranslateFunction(
       debug_info_file,        xla_compile_device_type,
       prune_unused_nodes,     convert_legacy_fed_inputs,
       graph_as_function,      upgrade_legacy,
-      enable_shape_inference, unconditionally_use_set_output_shapes};
+      enable_shape_inference, unconditionally_use_set_output_shapes,
+      enable_soft_placement};
 
   auto module_or = tensorflow::GraphdefToMlirTranslateFunction(
       input, input_arrays, input_dtypes, input_shapes, output_arrays,

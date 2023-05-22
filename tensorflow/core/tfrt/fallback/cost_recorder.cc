@@ -45,9 +45,13 @@ uint64_t CostRecorder::GetCost(int64_t op_key) const {
   const auto total_cost = iter->second.first;
   const auto num_ops = iter->second.second;
 
-  return std::max(
-      static_cast<uint64_t>(1),
-      static_cast<uint64_t>(total_cost / num_ops / normalize_ratio_));
+  auto r =
+      std::max(static_cast<uint64_t>(1),
+               static_cast<uint64_t>(total_cost / num_ops / normalize_ratio_));
+
+  VLOG(2) << "Get cost for op_key=" << op_key << ", cost=" << r;
+
+  return r;
 }
 
 Status CostRecorder::WriteToFile() const {

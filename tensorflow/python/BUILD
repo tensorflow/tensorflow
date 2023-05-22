@@ -990,7 +990,7 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "composite_tensor_ops_gen",
-    visibility = [],
+    visibility = visibility + ["//tensorflow/python/kernel_tests:__pkg__"],
 )
 
 tf_gen_op_wrapper_private_py(

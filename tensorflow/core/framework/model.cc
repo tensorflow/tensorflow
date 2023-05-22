@@ -1432,9 +1432,9 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args) {
   return std::make_shared<Unknown>(std::move(args));
 }
 
-double Node::ComputeWaitTime(const double& producer_time,
-                             const double& consumer_time,
-                             const double& buffer_size,
+double Node::ComputeWaitTime(const double producer_time,
+                             const double consumer_time,
+                             const double buffer_size,
                              double* producer_time_derivative,
                              double* consumer_time_derivative,
                              double* buffer_size_derivative) {
@@ -3228,7 +3228,7 @@ double ModelTiming::ComputeInterleaveManyFirstInputTotalTime(const Node& node) {
 
 void ModelTiming::ComputeTotalTimes(const Node::NodeVector& reverse_bfs_nodes) {
   for (const auto& node : reverse_bfs_nodes) {
-    ComputeNodeTotalTime(*(node.get()));
+    ComputeNodeTotalTime(*(node));
   }
 }
 

@@ -521,13 +521,35 @@ template <size_t kBytes>
 using SignedIntegerTypeForSizeType =
     std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
+template <typename T>
+auto SignAndMagnitude(T x) {
+  using BitType = UnsignedIntegerTypeForSizeType<sizeof(T)>;
+  BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
+  const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
+  const BitType x_sign = x_bits ^ x_abs_bits;
+  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11>) {
+    //  f8e4m3b11 does not support -0, adjust negative numbers to fill in the
+    //  gap.
+    if (x_sign) {
+      x_abs_bits -= 1;
+    }
+  }
+  return std::make_pair(x_sign, x_abs_bits);
+}
+
+template <typename T>
+auto SignAndMagnitudeToTwosComplement(T sign, T magnitude) {
+  static_assert(!std::numeric_limits<T>::is_signed);
+  using SignedType = std::make_signed_t<T>;
+  return static_cast<SignedType>(magnitude) ^
+         (static_cast<SignedType>(sign) < 0 ? SignedType{-1} : SignedType{0});
+}
+
 // Returns the signed magnitude of T.
 template <typename T>
-SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
-  auto as_bits = absl::bit_cast<SignedIntegerTypeForSizeType<sizeof(T)>>(input);
-  auto sign_mask = absl::bit_cast<UnsignedIntegerTypeForSizeType<sizeof(T)>>(
-      tsl::MathUtil::Sign(as_bits));
-  return as_bits ^ (sign_mask >> 1);
+auto ToSignMagnitude(T input) {
+  auto [sign, magnitude] = SignAndMagnitude(input);
+  return SignAndMagnitudeToTwosComplement(sign, magnitude);
 }
 
 template <typename T>
