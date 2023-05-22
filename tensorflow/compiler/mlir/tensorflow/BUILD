@@ -1304,6 +1304,7 @@ cc_library(
         "transforms/tpu_variable_runtime_reformatting.cc",
         "transforms/update_control_dependencies.cc",
         "transforms/verify_suitable_for_graph_export_pass.cc",
+        "transforms/xla_call_module_custom_call_tf_function_renaming.cc",
         "transforms/xla_call_module_deserialization.cc",
         "transforms/xla_call_module_serialization.cc",
         "transforms/xla_cluster_formation.cc",
@@ -1348,6 +1349,7 @@ cc_library(
         ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
+        ":stablehlo_custom_call_utils",
         ":string_util",
         ":tensorflow",
         ":tensorflow_analysis",
@@ -1435,6 +1437,19 @@ cc_library(
     srcs = [],
     hdrs = ["utils/xla_call_module_attrs.h"],
     deps = ["@llvm-project//llvm:Support"],
+)
+
+cc_library(
+    name = "stablehlo_custom_call_utils",
+    srcs = ["utils/stablehlo_custom_call.cc"],
+    hdrs = ["utils/stablehlo_custom_call.h"],
+    deps = [
+        ":xla_call_module_attrs",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
 )
 
 cc_library(

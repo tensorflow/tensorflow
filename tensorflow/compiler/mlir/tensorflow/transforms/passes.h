@@ -337,6 +337,10 @@ CreateXlaCallModuleDeserializationPass();
 // `module` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaCallModuleSerializationPass();
 
+// Creates a pass that renames TF function names in `stablehlo.custom_call`.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateXlaCallModuleCustomCallTfFunctionRenamingPass();
+
 }  // namespace TF
 
 namespace tf_executor {
@@ -741,6 +745,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_VERIFYSUITABLEFOREXPORTPASS
 #define GEN_PASS_DECL_XLACALLMODULEDESERIALIZATIONPASS
 #define GEN_PASS_DECL_XLACALLMODULESERIALIZATIONPASS
+#define GEN_PASS_DECL_XLACALLMODULECUSTOMCALLTFFUNCTIONRENAMINGPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 }  // namespace detail
 using namespace detail;  // NOLINT
