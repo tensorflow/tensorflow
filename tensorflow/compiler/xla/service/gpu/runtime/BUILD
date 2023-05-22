@@ -104,6 +104,11 @@ cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
     deps = [
         ":support",
         ":triangular_solve",
@@ -329,6 +334,7 @@ cc_library(
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
     deps = [
+        ":concurrent_region",
         ":conv",
         ":gemm",
         ":kernel_launch",
@@ -341,7 +347,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",

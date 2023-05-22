@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/lite/quantization/tensorflow/passes.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/legalize_tf_xla_call_module_to_stablehlo_pass.h"
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/rename_entrypoint_to_main.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/fake_quant_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
@@ -124,6 +126,10 @@ void AddDynamicRangeQuantizationPasses(
 
 void AddConvertHloToTfPass(std::string entry_function_name,
                            mlir::OpPassManager* pass_manager) {
+  pass_manager->addPass(mlir::odml::CreateRenameEntrypointToMainPass());
+  pass_manager->addPass(
+      mlir::odml::CreateLegalizeTFXlaCallModuleToStablehloPass());
+  pass_manager->addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   // Legalize jax random to tflite custom op.
   // The CreateLegalizeJaxRandom Pass has to stay at because we need to replace
   // the random function body before being inlined.
@@ -151,6 +157,14 @@ void AddConvertHloToTfPass(std::string entry_function_name,
   // TF dialect passes
   pass_manager->addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateLegalizeHloToTfPass());
+
+  // folds tf.BroadcastTo ops with subsequent ops if they have built in
+  // broadcasting support. This needs to be run immediately after HLO->TF
+  // legalization; otherwise other passes like `ConvertTFBroadcastTo` will
+  // constant fold the newly generated TF broadcast ops and materialize the
+  // weights.
+  pass_manager->addNestedPass<mlir::func::FuncOp>(
+      mlir::TF::CreateBroadcastFoldPass());
 
   // Canonicalization after TF legalization.
   pass_manager->addNestedPass<mlir::func::FuncOp>(

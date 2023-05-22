@@ -54,10 +54,24 @@ Value castToIndex(OpBuilder& b, Location loc, TensorType originalType,
   Type elementTy = originalType.getElementType();
   if (elementTy.isIndex()) return value;
 
-  Type ty = RankedTensorType::get(originalType.getShape(), b.getIndexType());
-  return elementTy.isUnsignedInteger()
-             ? b.create<arith::IndexCastUIOp>(loc, ty, value).getResult()
-             : b.create<arith::IndexCastOp>(loc, ty, value).getResult();
+  Type indexType = b.getIndexType();
+  Value emptyTensor = b.create<tensor::EmptyOp>(
+      loc, tensor::getMixedSizes(b, loc, value), indexType);
+
+  auto map = b.create<linalg::MapOp>(
+      loc, value, emptyTensor,
+      [&](OpBuilder& nestedB, Location loc, ValueRange args) {
+        Value elem = args.front();
+        Value res =
+            elementTy.isUnsignedInteger()
+                ? nestedB.create<arith::IndexCastUIOp>(loc, indexType, elem)
+                      .getResult()
+                : nestedB.create<arith::IndexCastOp>(loc, indexType, elem)
+                      .getResult();
+
+        b.create<linalg::YieldOp>(loc, res);
+      });
+  return map->getResult(0);
 }
 
 struct ConcatenateOpPattern : public OpConversionPattern<mhlo::ConcatenateOp> {

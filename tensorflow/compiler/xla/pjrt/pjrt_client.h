@@ -356,16 +356,6 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
-struct LoadOptions {
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
-};
-
 class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.

@@ -98,8 +98,7 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
 }
 
-StatusOr<DevicePutResult> HandlePythonInt(py::handle obj,
-                                          ifrt::Client* client,
+StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
                                           ifrt::Device* to_device,
                                           const DevicePutOptions& options) {
   void* ptr;
@@ -147,28 +146,30 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj,
 }
 
 template <typename T, typename SquashedT = T>
-StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h,
-                                            ifrt::Client* client,
+StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
                                             ifrt::Device* to_device,
                                             const DevicePutOptions& options) {
   T data;
   SquashedT data_squashed;
   void* ptr;
   PrimitiveType type;
-  if (std::is_same<T, bfloat16>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
+  // For extension types, ScalarAsCtype returns a pointer to the data.
+  if (std::is_same<T, xla::s4>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = S4;
+  } else if (std::is_same<T, xla::u4>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = U4;
+  } else if (std::is_same<T, bfloat16>()) {
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = BF16;
   } else if (std::is_same<T, tsl::float8_e4m3fn>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = F8E4M3FN;
   } else if (std::is_same<T, tsl::float8_e4m3b11>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = F8E4M3B11FNUZ;
   } else if (std::is_same<T, tsl::float8_e5m2>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = F8E5M2;
   } else if (std::is_same<T, SquashedT>() || !options.squash_64bit_types) {
@@ -195,8 +196,7 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h,
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
 
-StatusOr<DevicePutResult> HandleNumpyArray(py::handle h,
-                                           ifrt::Client* client,
+StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
                                            ifrt::Device* to_device,
                                            const DevicePutOptions& options) {
   py::array array = py::cast<py::array>(h);
@@ -248,8 +248,7 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h,
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
 
-StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
-                                        ifrt::Client* client,
+StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
                                         ifrt::Device* to_device,
                                         const DevicePutOptions& options) {
   auto py_array = py::reinterpret_borrow<PyArray>(obj);
@@ -287,8 +286,7 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
 
 }  // namespace
 
-StatusOr<DevicePutResult> DevicePut(py::handle arg,
-                                    ifrt::Client* client,
+StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
                                     ifrt::Device* to_device,
                                     const DevicePutOptions& options) {
   tsl::profiler::TraceMe traceme("DevicePut");
@@ -313,18 +311,26 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg,
         // Numpy scalar types. For some of them, we share the handler with
         // Python types (np_int64, np_float64, np_complex128).
         (*p)[dtypes.np_bool.ptr()] = HandleNumpyScalar<bool>;
+        if (dtypes.np_int4) {
+          (*p)[dtypes.np_int4->ptr()] = HandleNumpyScalar<xla::s4>;
+        }
         (*p)[dtypes.np_int8.ptr()] = HandleNumpyScalar<int8_t>;
         (*p)[dtypes.np_int16.ptr()] = HandleNumpyScalar<int16_t>;
         (*p)[dtypes.np_int32.ptr()] = HandleNumpyScalar<int32_t>;
         (*p)[dtypes.np_int64.ptr()] = HandleNumpyScalar<int64_t, int32_t>;
+        if (dtypes.np_uint4) {
+          (*p)[dtypes.np_uint4->ptr()] = HandleNumpyScalar<xla::u4>;
+        }
         (*p)[dtypes.np_uint8.ptr()] = HandleNumpyScalar<uint8_t>;
         (*p)[dtypes.np_uint16.ptr()] = HandleNumpyScalar<uint16_t>;
         (*p)[dtypes.np_uint32.ptr()] = HandleNumpyScalar<uint32_t>;
         (*p)[dtypes.np_uint64.ptr()] = HandleNumpyScalar<uint64_t, uint32_t>;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fn>;
-        (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] =
-            HandleNumpyScalar<tsl::float8_e4m3b11>;
+        if (dtypes.np_float8_e4m3b11fnuz) {
+          (*p)[dtypes.np_float8_e4m3b11fnuz->ptr()] =
+              HandleNumpyScalar<tsl::float8_e4m3b11>;
+        }
         (*p)[dtypes.np_float8_e5m2.ptr()] = HandleNumpyScalar<tsl::float8_e5m2>;
         (*p)[dtypes.np_bfloat16.ptr()] = HandleNumpyScalar<bfloat16>;
         (*p)[dtypes.np_float16.ptr()] = HandleNumpyScalar<half>;
@@ -503,7 +509,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] = numpy_array_handler;
-        (*p)[dtypes.np_float8_e4m3b11fnuz.ptr()] = numpy_array_handler;
+        (*p)[dtypes.np_float8_e4m3b11fnuz->ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e5m2.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_bfloat16.ptr()] = numpy_array_handler;

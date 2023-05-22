@@ -17,16 +17,12 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/c/registration_external.h"
 #include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {
 namespace internal {
-
-static constexpr char kDataNullLog[] =
-    "The supplied 'data' argument must not be null.";
 
 TfLiteRegistrationExternal*
 CommonOpaqueConversionUtil::ObtainRegistrationExternal(
@@ -47,5 +43,6 @@ CommonOpaqueConversionUtil::ObtainRegistrationExternal(
       std::unique_ptr<TfLiteRegistrationExternal>(registration_external));
   return registration_external;
 }
+
 }  // namespace internal
 }  // namespace tflite

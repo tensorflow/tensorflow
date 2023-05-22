@@ -919,7 +919,7 @@ def safe_embedding_lookup_sparse(
 
   dtype = sparse_weights.dtype if sparse_weights is not None else None
   embedding_weights = [
-      w if (isinstance(w, resource_variable_ops.ResourceVariable)
+      w if (resource_variable_ops.is_resource_variable(w)
             and dtype in (None, w.dtype))
       else ops.convert_to_tensor(w, dtype=dtype)
       for w in embedding_weights

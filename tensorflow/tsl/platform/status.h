@@ -47,8 +47,9 @@ limitations under the License.
 
 namespace tsl {
 
-// Since April 2023, tensorflow::Status is an alias to absl::Status. TF 2.13 is
-// the first release including this change.
+// Since April 2023, tensorflow::Status is an alias to absl::Status. The first
+// TF release including this change will be TF 2.14 (the latest release in
+// April 2023 is 2.13).
 // At the same time `tsl::errors::Code` aliases `absl::StatusCode`.
 //
 // Here is a set of correspondences:

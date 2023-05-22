@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
@@ -102,6 +103,11 @@ class SnapshotManager {
   tsl::Status ReadOnDiskSource(
       int64_t stream_index, int64_t source_index,
       absl::flat_hash_set<int64_t>& global_split_indices);
+  tsl::Status ReadOnDiskSplit(
+      int64_t source_index, const std::vector<std::string>& split_files,
+      const std::string& split_file,
+      absl::flat_hash_set<int64_t>& global_split_indices);
+  tsl::Status SkipSplit(SplitProvider& split_provider);
 
   // Helpers for `WorkerHeartbeat` above. These may update the in-memory and
   // on-disk states.
@@ -132,12 +138,9 @@ class SnapshotManager {
   // timeout.
   absl::flat_hash_set<std::string> dead_workers_;
 
-  // A split provider for each input source of the dataset being snapshotted.
-  std::vector<std::unique_ptr<SplitProvider>> split_providers_;
-  int64_t num_sources() const { return split_providers_.size(); }
-
   struct Stream {
-    explicit Stream(int64_t num_sources) : num_assigned_splits(num_sources) {}
+    explicit Stream(int64_t num_sources)
+        : num_assigned_splits_per_source(num_sources) {}
 
     enum class State {
       // The stream is not finished and the worker is heartbeating.
@@ -147,17 +150,44 @@ class SnapshotManager {
     };
 
     // A counter of assigned splits for each source.
-    std::vector<int64_t> num_assigned_splits;
+    std::vector<int64_t> num_assigned_splits_per_source;
+
+    int64_t num_assigned_splits() const {
+      return absl::c_accumulate(num_assigned_splits_per_source, 0);
+    }
+
     State state = State::kActive;
   };
+
+  struct Source {
+    // A split provider for each input source of the dataset being snapshotted.
+    std::unique_ptr<SplitProvider> split_provider;
+    // The number of times the split provider has repeated.
+    int64_t repetition_index = 0;
+  };
+
+  std::vector<Source> sources_;
+  // Creates sources for the specified dataset.
+  StatusOr<std::vector<Source>> CreateSources(
+      const DatasetDef& dataset_def) const;
+  // Counts the number of splits for a single repetition of the data in
+  // `sources_`.
+  StatusOr<int64_t> CountSplits();
+  // Resets a source when it runs out of splits, to support repetitions.
+  Status ResetSource(Source& source, int64_t source_index);
+  int64_t num_sources() const { return sources_.size(); }
 
   // All streams for this snapshot.
   std::vector<Stream> streams_;
   // A mapping of assigned worker to stream index.
   absl::flat_hash_map<std::string, int64_t> assignments_;
+  // A counter of completed streams for this snapshot.
+  int64_t num_completed_streams_ = 0;
 
-  // A counter of assigned aplits for this snapshot.
+  // A counter of assigned splits for this snapshot.
   int64_t num_assigned_splits_ = 0;
+  // The number of splits in a single repetition of the data in `sources_`.
+  int64_t num_total_splits_ = 0;
 
   enum class Mode {
     // No streams are done.

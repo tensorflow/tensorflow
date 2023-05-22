@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -58,6 +59,9 @@ class XlaCallModuleLoader {
   tsl::Status ValidateModule();
 
   tsl::StatusOr<xla::XlaComputation> ToXlaComputation();
+
+  // Returns the deserialized stablehlo module.
+  mlir::OwningOpRef<mlir::ModuleOp> module() && { return std::move(module_); }
 
  private:
   XlaCallModuleLoader() = default;

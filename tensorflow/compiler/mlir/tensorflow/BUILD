@@ -1304,6 +1304,8 @@ cc_library(
         "transforms/tpu_variable_runtime_reformatting.cc",
         "transforms/update_control_dependencies.cc",
         "transforms/verify_suitable_for_graph_export_pass.cc",
+        "transforms/xla_call_module_deserialization.cc",
+        "transforms/xla_call_module_serialization.cc",
         "transforms/xla_cluster_formation.cc",
         "transforms/xla_inline_device_ops.cc",
         "transforms/xla_rewrite.cc",
@@ -1354,6 +1356,7 @@ cc_library(
         ":tensorflow_side_effects",
         ":tensorflow_types",
         ":tf_data_optimization",
+        ":tf_device_pass_inc_gen",
         ":tf_legalize_hlo",
         ":tf_ops_layout_helper",
         ":tf_pass_inc_gen",
@@ -1367,6 +1370,8 @@ cc_library(
         ":unroll_batch_matmul_pass",
         ":verification_utils",
         ":verify_suitable_for_graph_export",
+        ":visitor",
+        ":xla_call_module_attrs",
         ":xla_sharding_util",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -1374,6 +1379,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf",
         "//tensorflow/compiler/mlir/tf2xla/transforms:xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/tf2xla/kernels:xla_call_module_loader",
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -1409,13 +1415,26 @@ cc_library(
         "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
+        "@stablehlo//:stablehlo_ops",
+        "@stablehlo//:stablehlo_portable_api",
+        "@stablehlo//:stablehlo_serialization",
+        "@stablehlo//:vhlo_ops",
     ],
+)
+
+cc_library(
+    name = "xla_call_module_attrs",
+    srcs = [],
+    hdrs = ["utils/xla_call_module_attrs.h"],
+    deps = ["@llvm-project//llvm:Support"],
 )
 
 cc_library(
@@ -1933,6 +1952,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -2742,6 +2762,18 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "visitor",
+    srcs = ["utils/visitor.cc"],
+    hdrs = ["utils/visitor.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
     ],
 )

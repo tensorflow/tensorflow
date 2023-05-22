@@ -61,17 +61,17 @@ namespace {
 // version in the constructor in xla.py.
 // Version 1 used MHLO & CHLO, not supported anymore.
 // Version 2 supports StableHLO & CHLO. From 10/2022.
-const int VERSION_START_STABLE_HLO = 2;
+constexpr int VERSION_START_STABLE_HLO = 2;
 // Version 3 supports platform checking and multiple platforms. From 02/2023.
-const int VERSION_START_PLATFORMS = 3;
+constexpr int VERSION_START_PLATFORMS = 3;
 // Version 4 supports StableHLO with compatibility guarantees.
 // Used from 03/2023.
-const int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
+constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
 // Version 5 add support to stablehlo.custom_call for host call tf graph.
 // Used from 04/2023.
-const int VERSION_SUPPORT_CUSTOM_CALL = 5;
-const int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
-const int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
+constexpr int VERSION_SUPPORT_CUSTOM_CALL = 5;
+constexpr int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
+constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
 
 // Pretty-prints a module, optionally with debug information.
 std::string ModuleToString(mlir::ModuleOp mlir_module, bool with_debugging) {
@@ -315,15 +315,38 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
     TF_ASSIGN_OR_RETURN(
         mlir::Type element_type,
         ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
-    mlir::Type type = mlir::RankedTensorType::get(xla_dimensions, element_type);
+    mlir::RankedTensorType type =
+        mlir::RankedTensorType::get(xla_dimensions, element_type);
     // TODO(burmako): This fails with an obscure compilation error.
     // TF_ASSIGN_OR_RETURN(
     //     mlir::Type type,
     //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
     VLOG(3) << "XlaCallModule static array input type #" << i << ": "
             << mlir::debugString(type);
-    // TODO(b/278273480): Determine whether it's safe to override the element
-    // type using that from the input shape.
+    mlir::TensorType arg_type =
+        main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
+    if (arg_type == nullptr) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Argument ", i, " passed to XlaCallModule is not a tensor"));
+    }
+
+    if (arg_type.getElementType() != type.getElementType()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Element type mismatch for argument ", i,
+          " passed to XlaCallModule: ", "expecting ",
+          mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
+    }
+
+    if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
+      if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
+                                                   type.getShape()))) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Shape mismatch for argument ", i,
+            " passed to XlaCallModule: ", "expecting ",
+            mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
+      }
+    }
+
     static_array_input_types[i] = type;
   }
 
@@ -341,8 +364,10 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
                                 ModuleToString(*module_, VLOG_IS_ON(4))));
     return tsl::errors::InvalidArgument("Module inlining failed");
   }
-  XLA_VLOG_LINES(5, absl::StrCat("XlaCallModule module after inlining: ",
-                                 ModuleToString(*module_, VLOG_IS_ON(4))));
+  XLA_VLOG_LINES(
+      5, absl::StrCat(
+             "XlaCallModule module after setting input types and inlining: ",
+             ModuleToString(*module_, VLOG_IS_ON(4))));
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {

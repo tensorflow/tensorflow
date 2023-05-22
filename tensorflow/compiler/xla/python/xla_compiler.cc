@@ -968,6 +968,13 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def_static("from_proto",
                   xla::ValueOrThrowWrapper(xla::HloSharding::FromProto))
       .def_static("from_string", xla::ValueOrThrowWrapper(xla::ParseSharding))
+      .def_static(
+          "tuple_sharding",
+          [](xla::Shape shape,
+             std::vector<xla::HloSharding> shardings) -> xla::HloSharding {
+            return HloSharding::Tuple(shape, shardings);
+          },
+          "Constructs a tuple sharding.")
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
@@ -975,6 +982,8 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .def("is_replicated", &xla::HloSharding::IsReplicated)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
+      .def("tuple_elements",
+           [](const xla::HloSharding& self) { return self.tuple_elements(); })
       .def("__repr__",
            [](const xla::HloSharding& self) { return self.ToString(); })
       .def("to_proto", &xla::HloSharding::ToProto);

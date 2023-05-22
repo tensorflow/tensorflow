@@ -129,6 +129,7 @@ cc_library(
         # TODO: Only include tf_tstring_hdrs. Don't expose the implementation of TF_TString to API
         # users.
         ":tf_tstring",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -171,6 +172,7 @@ tf_cuda_library(
         ":tf_buffer_internal",
         ":tf_status_internal",
         ":tf_tensor_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -238,6 +240,7 @@ tf_cuda_library(
         ":tf_status_internal",
         ":tf_tensor_internal",
         ":tf_tstring",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/tsl/c:tsl_status",
     ] + select({
@@ -881,7 +884,7 @@ tf_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_test",
-    size = "small",
+    size = "medium",
     srcs = ["c_api_test.cc"],
     data = [
         ":test_op1.so",
@@ -1013,7 +1016,7 @@ tf_kernel_library(
 
 tf_cuda_cc_test(
     name = "env_test",
-    size = "small",
+    size = "medium",
     srcs = ["env_test.cc"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
@@ -1032,7 +1035,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "kernels_test",
-    size = "small",
+    size = "medium",
     srcs = ["kernels_test.cc"],
     linkopts = select({
         "//tensorflow:macos": ["-headerpad_max_install_names"],
@@ -1059,7 +1062,7 @@ tf_cuda_cc_test(
 
 tf_cc_test(
     name = "ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["ops_test.cc"],
     linkopts = select({
         "//conditions:default": [],

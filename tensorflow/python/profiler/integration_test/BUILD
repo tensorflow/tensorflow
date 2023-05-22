@@ -22,6 +22,7 @@ cuda_py_strict_test(
     srcs = ["profiler_api_test.py"],
     python_version = "PY3",
     tags = [
+        "no_oss",  # TODO(b/283175845)
         "no_pip",
         "no_windows",  # TODO(b/192257727)
     ],

@@ -28,6 +28,7 @@ void GraphDebugInfoBuilder::AccumulateStackTracesMap(
     const StackTracesMap& stack_traces_map, absl::string_view key_suffix,
     const GraphDebugInfoBuilder::Options& options) {
   for (const auto& [node_name, stack_trace] : stack_traces_map) {
+    if (stack_trace == nullptr) continue;
     std::string trace_key = absl::StrCat(node_name, key_suffix);
     AccumulateStackTrace(*stack_trace, trace_key, options);
   }

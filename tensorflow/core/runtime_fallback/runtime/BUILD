@@ -26,7 +26,6 @@ cc_library(
     visibility = [
         # copybara:uncomment "//learning/brain/experimental/tfrt/cpp_tests/saved_model:__subpackages__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
-        "//tensorflow/core/tfrt/eager:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/memory",
@@ -170,7 +169,6 @@ cc_library(
         # copybara:uncomment "//learning/brain/experimental/tfrt:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__pkg__",
         "//tensorflow/core/runtime_fallback:__subpackages__",
-        "//tensorflow/core/tfrt/eager:__subpackages__",
     ],
     deps = [
         "@com_google_absl//absl/strings",

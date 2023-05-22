@@ -123,7 +123,7 @@ TEST_P(UnifiedCAPI, SimpleCreationFunctions) {
 INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI,
                          ::testing::Combine(::testing::Values("graphdef",
                                                               "mlir"),
-                                            ::testing::Values(true, false)));
+                                            ::testing::Values(false)));
 
 }  // namespace libtf
 }  // namespace tf

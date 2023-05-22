@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -572,7 +573,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
   // function in flib_runtime_.
   auto status = GetFunctionBody(function, local_flib_runtime_, fbody);
   if (!status.ok()) {
-    if (!errors::IsNotFound(status)) {
+    if (!absl::IsNotFound(status)) {
       return status;
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_util.h"
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_host_recv_device_context.h"
+#include "tensorflow/compiler/jit/xla_host_send_device_context.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -247,6 +248,54 @@ xla::SendDeviceMemoryFunction GetSendDeviceMemoryFunction(
       };
 }
 
+// Provide RecvDeviceMemoryFunction for XLA host callbacks.  This callback
+// handles transferring from host to device.
+xla::RecvDeviceMemoryFunction GetRecvDeviceMemoryFunction(
+    OpKernelContext* ctx) {
+  return
+      [ctx](int64_t channel_id, se::Stream* stream, const xla::Shape& shape,
+            se::DeviceMemoryBase* device_memory_base,
+            const absl::flat_hash_map<std::string, std::string>& frontend_attrs)
+          -> StatusOr<tsl::AsyncValueRef<se::Event>> {
+        auto iter = frontend_attrs.find("_xla_host_transfer_rendezvous");
+
+        // Generate the Rendezvous key.
+        const std::string& rendezvous_key_base = iter->second;
+        const std::string& dst_device = ctx->device()->name();
+
+        std::string task_prefix;
+        TF_RETURN_IF_ERROR(GetTaskName(dst_device, &task_prefix));
+        const std::string src_device =
+            absl::StrCat(task_prefix, "/device:CPU:0");
+        const std::string& rendezvous_key =
+            Rendezvous::CreateKey(src_device, /*src_incarnation=*/1, dst_device,
+                                  rendezvous_key_base, FrameAndIter(0, 0));
+        VLOG(2) << "Rendezvous Key for sending from host: " << rendezvous_key;
+
+        RendezvousInterface::ParsedKey parsed_key;
+        TF_RETURN_IF_ERROR(Rendezvous::ParseKey(rendezvous_key, &parsed_key));
+
+        tsl::AsyncValueRef<se::Event> done_event =
+            tsl::MakeConstructedAsyncValueRef<se::Event>(stream->parent());
+        if (!done_event->Init()) {
+          return errors::Internal(
+              "Failed to initialize done event (channel_id=%d)", channel_id);
+        }
+
+        Rendezvous::Args args;
+        // Rendezvous::Args owns the device context pointer.
+        args.device_context = new XlaHostSendDeviceContext(
+            stream, device_memory_base, shape, done_event);
+
+        Tensor device_tensor;
+        bool is_dead;
+        TF_RETURN_IF_ERROR(ctx->rendezvous()->Recv(
+            parsed_key, args, &device_tensor, /*is_dead=*/&is_dead));
+
+        return std::move(done_event);
+      };
+}
+
 StatusOr<xla::ExecutionOutput> RunExecutable(
     const XlaPlatformInfo& platform_info,
     const XlaComputationLaunchContext& launch_context,
@@ -267,6 +316,9 @@ StatusOr<xla::ExecutionOutput> RunExecutable(
   xla::SendDeviceMemoryFunction send_function =
       GetSendDeviceMemoryFunction(ctx);
   run_options.set_send_device_memory_function(&send_function);
+  xla::RecvDeviceMemoryFunction recv_function =
+      GetRecvDeviceMemoryFunction(ctx);
+  run_options.set_recv_device_memory_function(&recv_function);
 
   StatusOr<xla::ExecutionOutput> execution_output;
   bool run_synchronous =
@@ -384,19 +436,9 @@ Status CompileToPjRtLoadedExecutable(
   }
 
   PjRtDeviceCompiler* pjrt_device_compiler;
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<PjRtDeviceCompiler>(
-      rm->default_container(), "pjrt_device_compiler", &pjrt_device_compiler,
-      [&](PjRtDeviceCompiler** pjrt_device_compiler) {
-        return BuildPjRtDeviceCompiler(platform_info, ctx.function_library(),
-                                       pjrt_device_compiler);
-      }));
   DeviceCompilationProfiler* profiler;
-  TF_RETURN_IF_ERROR(rm->LookupOrCreate<DeviceCompilationProfiler>(
-      rm->default_container(), "pjrt_device_compilation_profiler", &profiler,
-      [](DeviceCompilationProfiler** profiler) {
-        *profiler = new DeviceCompilationProfiler();
-        return OkStatus();
-      }));
+  TF_RETURN_IF_ERROR(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, ctx.function_library(), &pjrt_device_compiler, &profiler));
   // Hold the reference to the PJRT device compiler and profiler during
   // evaluation. (We could probably free them sooner because the ResourceMgr
   // will retain references, but this is more obviously correct.)

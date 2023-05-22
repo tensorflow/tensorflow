@@ -64,7 +64,9 @@ struct GraphExecutionOptions {
   bool enable_online_cost_analysis = false;
 
   // Normalize the op costs recorded during online cost analysis by dividing by
-  // this.
+  // this. Also, if greater than 1, record in CPU cycles (vs. wall time).
+  //
+  // TODO(b/278298965): Record in CPU cycles by default.
   uint64_t online_cost_analysis_normalize_ratio = 1;
 
   // If true, the MLRT interpreter will be used instead of the BEF executor.
@@ -88,7 +90,7 @@ struct GraphExecutionRunOptions {
   // will be raised upon mismatch.
   bool validate_input_specs = false;
 
-  // TODO(b/239749833) Remove after b/239749833 is fixed.
+  // TODO(b/279197040) Remove after b/279197040 is fixed.
   // If true, the input specs will be checked before running, and an error
   // will be logged upon mismatch.
   bool validate_input_specs_dry_run = false;

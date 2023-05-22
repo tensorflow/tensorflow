@@ -68,11 +68,20 @@ std::string SourceDirectory(absl::string_view snapshot_path,
                            absl::StrCat("source_", source_id));
 }
 
-std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
-                      int64_t source_id, int64_t local_index,
-                      int64_t global_index) {
+std::string RepetitionDirectory(absl::string_view snapshot_path,
+                                int64_t stream_index, int64_t source_id,
+                                int64_t repetition_index) {
   return tsl::io::JoinPath(
       SourceDirectory(snapshot_path, stream_index, source_id),
+      absl::StrCat("repetition_", repetition_index));
+}
+
+std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
+                      int64_t source_id, int64_t repetition_index,
+                      int64_t local_index, int64_t global_index) {
+  return tsl::io::JoinPath(
+      RepetitionDirectory(snapshot_path, stream_index, source_id,
+                          repetition_index),
       absl::StrCat("split_", local_index, "_", global_index));
 }
 
@@ -91,7 +100,8 @@ tsl::StatusOr<int64_t> ParseStreamDirectoryName(
 
 tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
     absl::string_view split_filename) {
-  std::vector<std::string> tokens = absl::StrSplit(split_filename, '_');
+  std::vector<std::string> tokens =
+      absl::StrSplit(tsl::io::Basename(split_filename), '_');
   int64_t local_split_index = 0, global_split_index = 0;
   if (tokens.size() != 3 || tokens[0] != "split" ||
       !absl::SimpleAtoi(tokens[1], &local_split_index) ||

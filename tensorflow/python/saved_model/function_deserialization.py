@@ -23,7 +23,7 @@ from absl import logging
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
-from tensorflow.python.eager.polymorphic_function import function_spec as function_spec_lib
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import op_def_registry
@@ -157,7 +157,7 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       saved_object_graph_pb2.FunctionSpec.JitCompile.OFF: False,
   }.get(function_spec_proto.jit_compile)
 
-  return function_spec_lib.FunctionSpec.from_fullargspec_and_signature(
+  return function_type_utils.FunctionSpec.from_fullargspec_and_signature(
       fullargspec=fullargspec,
       input_signature=input_signature,
       jit_compile=jit_compile)
@@ -200,7 +200,8 @@ class RestoredFunction(def_function.Function):
         autograph=False,
         jit_compile=function_spec.jit_compile)
     self.concrete_functions = concrete_functions
-    self._function_spec = function_spec
+    self._function_type = function_spec.function_type
+    self._default_values = function_spec.default_values
 
     # Prevent RestoredFunction from spamming users with frequent tracing
     # warnings.
@@ -228,7 +229,8 @@ class RestoredFunction(def_function.Function):
 
   def _compiler_with_scope(self, scope):
     func = super(RestoredFunction, self)._compiler_with_scope(scope)
-    func._function_spec = self._function_spec  # pylint: disable=protected-access
+    func._function_type = self._function_type  # pylint: disable=protected-access
+    func._default_values = self._default_values  # pylint: disable=protected-access
     return func
 
 

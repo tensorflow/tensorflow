@@ -303,7 +303,7 @@ def build_docs(output_dir, code_url_prefix, search_hints):
     raise ValueError("\n".join(error_msg_parts))
 
   rejected_path_contents = {
-      "tf/keras/optimizers.md": "keras/optimizers/__init__.py",
+      "tf/keras/optimizers.md": "api/_v2/keras/optimizers/__init__.py",
   }
 
   all_passed = True

@@ -51,7 +51,7 @@ class _PrivateSpecialType(extension_type.ExtensionType):
 @dispatch.dispatch_for_types(array_ops.shape_v2, _PrivateSpecialType)
 def shape_v2_special(
     input: _PrivateSpecialType,  # pylint: disable=redefined-builtin
-    out_type: dtypes.DType = dtypes.int32,
+    out_type: dtypes.DType = None,
     name: Optional[str] = None) -> DynamicRaggedShape:
   """Returns a DynamicRaggedShape containing the shape of the input."""
   del name
@@ -65,7 +65,7 @@ class _PrivateBrokenType(extension_type.ExtensionType):
 @dispatch.dispatch_for_types(array_ops.shape_v2, _PrivateBrokenType)
 def shape_v2_broken(
     input: _PrivateBrokenType,  # pylint: disable=redefined-builtin
-    out_type: dtypes.DType = dtypes.int32,
+    out_type: dtypes.DType = None,
     name: Optional[str] = None) -> DynamicRaggedShape:
   """Returns a DynamicRaggedShape containing the shape of the input."""
   del name

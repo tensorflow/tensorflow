@@ -52,17 +52,19 @@ StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
+  std::optional<pybind11::object> np_int4;
   pybind11::object np_int8;
   pybind11::object np_int16;
   pybind11::object np_int32;
   pybind11::object np_int64;
+  std::optional<pybind11::object> np_uint4;
   pybind11::object np_uint8;
   pybind11::object np_uint16;
   pybind11::object np_uint32;
   pybind11::object np_uint64;
   pybind11::object np_bfloat16;
   pybind11::object np_float8_e4m3fn;
-  pybind11::object np_float8_e4m3b11fnuz;
+  std::optional<pybind11::object> np_float8_e4m3b11fnuz;
   pybind11::object np_float8_e5m2;
   pybind11::object np_float16;
   pybind11::object np_float32;

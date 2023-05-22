@@ -15,14 +15,13 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_compiler.h"
 
-#include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
 
-#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
@@ -33,17 +32,22 @@ char PjRtCompiler::ID = 0;
 StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
     mlir::ModuleOp mlir_module, std::unique_ptr<CompileOptions> options) {
   DCHECK(this);
-  return PjRtLoadedExecutable::Create(client_, mlir_module,
-                                      *std::move(options));
+  TF_ASSIGN_OR_RETURN(auto xla_compile_options,
+                      GetXlaCompileOptions(std::move(options)));
+  return PjRtLoadedExecutable::Create(
+      client_, mlir_module, std::move(xla_compile_options->compile_options));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
 PjRtCompiler::DeserializeLoadedExecutable(
-    absl::string_view serialized, std::optional<xla::CompileOptions> options) {
+    absl::string_view serialized, std::unique_ptr<DeserializeOptions> options) {
   DCHECK(this);
-  TF_ASSIGN_OR_RETURN(auto pjrt_loaded_executble,
-                      client_->pjrt_client()->DeserializeExecutable(
-                          serialized, std::move(options)));
+  TF_ASSIGN_OR_RETURN(auto xla_deserialize_options,
+                      GetXlaDeserializeOptions(std::move(options)));
+  TF_ASSIGN_OR_RETURN(
+      auto pjrt_loaded_executble,
+      client_->pjrt_client()->DeserializeExecutable(
+          serialized, std::move(xla_deserialize_options->compile_options)));
   return PjRtLoadedExecutable::Create(client_,
                                       std::move(pjrt_loaded_executble));
 }

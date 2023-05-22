@@ -24,6 +24,7 @@ XLA_OPS_DEPS = [
     "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
     "//tensorflow/compiler/jit:xla_cluster_util",
     "//tensorflow/compiler/jit:xla_host_recv_device_context",
+    "//tensorflow/compiler/jit:xla_host_send_device_context",
     "//tensorflow/compiler/jit:xla_launch_util",
     "//tensorflow/compiler/tf2xla:common",
     "//tensorflow/compiler/tf2xla:tf2xla_util",
