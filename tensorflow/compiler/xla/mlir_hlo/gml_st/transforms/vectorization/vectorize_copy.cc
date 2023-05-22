@@ -97,7 +97,7 @@ struct TileCopyPattern : public OpRewritePattern<memref::CopyOp> {
 
     const int64_t dimSize = shape[dim];
     const int64_t sliceSize =
-        std::max(1L, tileSize * dimSize / srcType.getNumElements());
+        std::max((int64_t)1, tileSize * dimSize / srcType.getNumElements());
 
     const int64_t remainderSize = dimSize % sliceSize;
     const int64_t upperBound = shape[dim] - remainderSize;
