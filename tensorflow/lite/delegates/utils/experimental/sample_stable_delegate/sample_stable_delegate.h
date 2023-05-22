@@ -28,9 +28,9 @@ int CalculateNumElements(const TfLiteOpaqueTensor* opaque_tensor);
 }  // namespace helpers
 
 // LINT.IfChange
-static const char kSampleStableDelegateName[] = "SampleStableDelegate";
-static const char kSampleStableDelegateVersion[] = "1.0.0";
+static const char kSampleStableDelegateName[] = "google_sample_delegate";
 // LINT.ThenChange(Google-internal path)
+static const char kSampleStableDelegateVersion[] = "1.0.0";
 
 // A simple delegate that supports only addition and subtraction operations.
 // Implements SimpleOpaqueDelegateInterface, and therefore the delegate can be

@@ -41,10 +41,10 @@ cc_library(
     copts = tf_opts_nortti_if_lite_protos(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        ":util",
         ":buffer_map_util",
-        "//tensorflow/lite/core/c:common",
+        ":util",
         "//tensorflow/lite:string",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -63,8 +63,8 @@ cc_library(
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":util",
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/experimental/resource",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -162,21 +162,21 @@ cc_library(
     deps = [
         ":buffer_map",
         ":delegate_data",
-        ":util",
         ":tflite_subgraph_execute",
-        "@flatbuffers",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/core/c:common",
+        ":util",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
         "//tensorflow/lite/kernels:kernel_util",
-        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "@com_google_absl//absl/strings",
+        "@flatbuffers",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -216,13 +216,13 @@ cc_library(
         ":buffer_map",
         ":subgraph_resource",
         ":util",
+        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite:cc_api",
-        "//tensorflow/lite:util",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -262,8 +262,8 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:cc_api",
+        "//tensorflow/lite/core/c:common",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -317,12 +317,12 @@ cc_library(
     #TODO(b/206038955): Consider restrict the visibility to '//third_party/fcp/client:__subpackages__'.
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:kernel_api",
-        "@com_google_absl//absl/strings:str_format",
-        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite:util",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "@com_google_absl//absl/strings:str_format",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([
@@ -378,8 +378,8 @@ tf_cc_test(
     ],
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        ":delegate",
         ":allowlisted_flex_ops_lib",
+        ":delegate",
         "@com_google_googletest//:gtest_main",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -410,15 +410,15 @@ cc_library(
         ":buffer_map_util",
         ":subgraph_resource",
         ":util",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/lite/kernels/internal:tensor",
-        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/lite:cc_api",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
     ]) + if_not_mobile([

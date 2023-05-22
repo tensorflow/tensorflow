@@ -141,7 +141,7 @@ StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
                       "to layout : {1}. Found error {2}",
                       relayout->getName().getStringRef(),
                       target_layout.ToString(),
-                      value_or_status.status().error_message())
+                      value_or_status.status().message())
             .str());
   mlir::Value output = value_or_status.value();
   relayout.getOutput().replaceAllUsesWith(output);

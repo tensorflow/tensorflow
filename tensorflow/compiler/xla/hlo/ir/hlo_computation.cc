@@ -833,7 +833,7 @@ HloInstruction* HloComputation::CreateCallInstruction(
 
 StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     HloInstruction* instruction, absl::Span<const Shape> context_shapes,
-    absl::string_view async_execution_thread) {
+    absl::string_view async_execution_thread, bool replace) {
   Builder builder("async_computation");
   std::vector<HloInstruction*> parameters(instruction->operand_count());
   std::vector<Shape> parameter_shapes(instruction->operand_count());
@@ -863,7 +863,9 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
-  TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  if (replace) {
+    TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
+  }
   return async_done;
 }
 

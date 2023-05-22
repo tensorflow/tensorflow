@@ -108,7 +108,7 @@ class PrepareDynamicRangeQuantizableOp
       return failure();
     }
 
-    // 2. Quantize collected ops. It is immediatly quantized by inserting Q-DQ
+    // 2. Quantize collected ops. It is immediately quantized by inserting Q-DQ
     // pair for int8 while it is lazily applied for float16 by inserting CastOp.
     if (!(quantizeOps(rewriter, op, quantizable_ops))) {
       return failure();
@@ -160,7 +160,7 @@ class PrepareDynamicRangeQuantizableOp
   // Insert CastOp which is used to for converting float32 ConstantOp into
   // float16 quantization. If there is an existing CastOp connected to the
   // ConstantOp, the quantize_op will be rewired to the existing CastOp. This
-  // guarentees at most one CastOp is created for float32 to float16 conversion.
+  // guarantees at most one CastOp is created for float32 to float16 conversion.
   void quantizeOpAsFloat16(PatternRewriter& rewriter, arith::ConstantOp op,
                            std::pair<Operation*, int> quant_op) const {
     Operation* quantize_op = quant_op.first;

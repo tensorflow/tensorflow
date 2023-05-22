@@ -34,6 +34,17 @@ bool IsCollectiveCommunicationOp(HloOpcode op) {
          op == HloOpcode::kCollectivePermuteStart;
 }
 
+bool IsAsyncCollectiveStartOp(HloOpcode op) {
+  return op == HloOpcode::kAllReduceStart || op == HloOpcode::kAllGatherStart ||
+         op == HloOpcode::kCollectivePermuteStart ||
+         op == HloOpcode::kAsyncStart;
+}
+
+bool IsAsyncCollectiveDoneOp(HloOpcode op) {
+  return op == HloOpcode::kAllReduceDone || op == HloOpcode::kAllGatherDone ||
+         op == HloOpcode::kCollectivePermuteDone || op == HloOpcode::kAsyncDone;
+}
+
 bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   if (instruction->opcode() == HloOpcode::kConstant &&
       ShapeUtil::IsScalarWithElementType(instruction->shape(), F32)) {

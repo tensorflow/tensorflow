@@ -43536,7 +43536,8 @@ func SetSizeValidateIndices(value bool) SetSizeAttr {
 // allowed but ignored.
 //
 // If `validate_indices` is `True`, this op validates the order and range of `set`
-// indices.
+// indices. Setting is to `False` while passing invalid arguments results in
+// undefined behavior.
 //
 // Arguments:
 //
@@ -54011,6 +54012,14 @@ func TopKV2Sorted(value bool) TopKV2Attr {
 	}
 }
 
+// TopKV2IndexType sets the optional index_type attribute to value.
+// If not specified, defaults to DT_INT32
+func TopKV2IndexType(value tf.DataType) TopKV2Attr {
+	return func(m optionalAttr) {
+		m["index_type"] = value
+	}
+}
+
 // Finds values and indices of the `k` largest elements for the last dimension.
 //
 // If the input is a vector (rank-1), finds the `k` largest entries in the vector
@@ -57545,8 +57554,8 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 
 // Invokes a StableHLO module.
 //
-// This op is experimental and is intended for use with JAX native serialization
-// in a TensorFlow context.
+// This op is used with JAX native serialization in a TensorFlow context with
+// stability guarantees.
 //
 // Arguments:
 //
@@ -57560,7 +57569,8 @@ func XlaCallModulePlatforms(value []string) XlaCallModuleAttr {
 //
 // compatibility. Minimum supported version is 2. From
 // version 2, the op carries a StableHLO text or bytecode `module`. From
-// version 3, the op also supports the `platforms` attribute.
+// version 3, the op also supports the `platforms` attribute. From version 4,
+// the op carries a StableHLO module with compatibility guarantees.
 //
 //	module: A serialized computation, a text or bytecode representation of
 //

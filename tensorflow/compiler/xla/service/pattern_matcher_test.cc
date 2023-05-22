@@ -893,8 +893,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in a = s32[] add(s32[] c, s32[] c)");
 
   EXPECT_DESC_AND_EXPLANATION(
-      constant,
-      m::Op().WithPredicate([](const HloInstruction*) { return false; }),
+      constant, m::Op().WithPredicate(HloPredicateFalse),
       "an HloInstruction which matches a user-specified predicate",
       "HloInstruction does not match user-specified predicate\n"
       "in c = s32[] constant(0)");

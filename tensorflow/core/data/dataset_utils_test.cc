@@ -127,7 +127,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
   EXPECT_EQ(
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
-      s.error_message());
+      s.message());
 
   FunctionLibraryDefinition flib_1(OpRegistry::Global(), fdef_base);
   FunctionLibraryDefinition flib_to_add(OpRegistry::Global(), fdef_to_add);
@@ -136,7 +136,7 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
   EXPECT_EQ(
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
-      s.error_message());
+      s.message());
 }
 
 TEST(DatasetUtilsTest, StripDevicePlacement) {
@@ -193,16 +193,6 @@ TEST(DatasetUtilsTest, BoolConstructor) {
   EXPECT_FALSE(DeterminismPolicy(false).IsDeterministic());
   EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
 }
-
-template <int64_t rollout_pct>
-bool RandomJobSamplePercentage(std::function<uint64(const string&)> hash_func,
-                               const std::string& experiment_name,
-                               const std::string& job_name) {
-  return hash_func(strings::StrCat(job_name, experiment_name)) % 100 <
-         rollout_pct;
-}
-bool IndependentHostTasks(int64_t task_id) { return (task_id & 0x2) == 0x2; }
-bool AllTasks(int64_t task_id) { return true; }
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment_0",
                             RandomJobSamplePercentage<0>, AllTasks);
@@ -465,6 +455,7 @@ INSTANTIATE_TEST_SUITE_P(
             {"test_only_experiment_1", "test_only_experiment_99"}}));
 
 struct GetExperimentsJobNameTestCase {
+  uint64_t hash;
   string job_name;
   int64_t task_id;
   std::vector<string> expected_in;
@@ -478,7 +469,8 @@ TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
   const GetExperimentsJobNameTestCase test_case = GetParam();
   auto job_name = test_case.job_name;
   auto task_id = test_case.task_id;
-  auto hash_func = [](const string& str) { return 0; };
+  uint64 hash_result = test_case.hash;
+  auto hash_func = [hash_result](const string& str) { return hash_result; };
   auto experiments = GetExperiments(job_name, task_id, hash_func);
 
   absl::flat_hash_set<string> experiment_set(experiments.begin(),
@@ -493,10 +485,12 @@ TEST_P(GetExperimentsJobNameTest, DatasetUtils) {
   }
 }
 
+// TODO(mpcallanan): Remove randomness from unit tests (see go/python-tips/048).
 INSTANTIATE_TEST_SUITE_P(
     Test, GetExperimentsJobNameTest,
     ::testing::Values(
         GetExperimentsJobNameTestCase{
+            /*hash=*/0,
             /*job_name=*/"",
             /*task_id=*/0,
             /*expected_in=*/{},
@@ -506,6 +500,7 @@ INSTANTIATE_TEST_SUITE_P(
              "test_only_experiment_50", "test_only_experiment_99",
              "test_only_experiment_100", "test_only_task_experiment_100"}},
         GetExperimentsJobNameTestCase{
+            /*hash=*/0,
             /*job_name=*/"",
             /*task_id=*/-1,
             /*expected_in=*/{},
@@ -515,6 +510,7 @@ INSTANTIATE_TEST_SUITE_P(
              "test_only_experiment_50", "test_only_experiment_99",
              "test_only_experiment_100", "test_only_task_experiment_100"}},
         GetExperimentsJobNameTestCase{
+            /*hash=*/0,
             /*job_name=*/"",
             /*task_id=*/2,
             /*expected_in=*/{},
@@ -524,6 +520,7 @@ INSTANTIATE_TEST_SUITE_P(
              "test_only_experiment_50", "test_only_experiment_99",
              "test_only_experiment_100", "test_only_task_experiment_100"}},
         GetExperimentsJobNameTestCase{
+            /*hash=*/0,
             /*job_name=*/"job_name",
             /*task_id=*/-1,
             /*expected_in=*/{},
@@ -533,33 +530,58 @@ INSTANTIATE_TEST_SUITE_P(
              "test_only_experiment_50", "test_only_experiment_99",
              "test_only_experiment_100", "test_only_task_experiment_100"}},
         GetExperimentsJobNameTestCase{
+            /*hash=*/0,
             /*job_name=*/"job_name",
             /*task_id=*/0,
-            /*expected_in=*/
-            {"test_only_experiment_1", "test_only_experiment_5",
-             "test_only_experiment_10", "test_only_experiment_50",
-             "test_only_experiment_99", "test_only_experiment_100"},
-            /*expected_out=*/
-            {"test_only_experiment_0", "test_only_task_experiment_100"}},
-        GetExperimentsJobNameTestCase{
-            /*job_name=*/"job_name",
-            /*task_id=*/1,
-            /*expected_in=*/
-            {"test_only_experiment_1", "test_only_experiment_5",
-             "test_only_experiment_10", "test_only_experiment_50",
-             "test_only_experiment_99", "test_only_experiment_100"},
-            /*expected_out=*/
-            {"test_only_experiment_0", "test_only_task_experiment_100"}},
-        GetExperimentsJobNameTestCase{
-            /*job_name=*/"job_name",
-            /*task_id=*/2,
             /*expected_in=*/
             {"test_only_experiment_1", "test_only_experiment_5",
              "test_only_experiment_10", "test_only_experiment_50",
              "test_only_experiment_99", "test_only_experiment_100",
              "test_only_task_experiment_100"},
             /*expected_out=*/
-            {"test_only_experiment_0"}}));
+            {"test_only_experiment_0"}},
+        GetExperimentsJobNameTestCase{
+            /*hash=*/0,
+            /*job_name=*/"job_name",
+            /*task_id=*/1,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100",
+             "test_only_task_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0"}},
+        GetExperimentsJobNameTestCase{
+            /*hash=*/0,
+            /*job_name=*/"job_name",
+            /*task_id=*/2,
+            /*expected_in=*/
+            {"test_only_experiment_1", "test_only_experiment_5",
+             "test_only_experiment_10", "test_only_experiment_50",
+             "test_only_experiment_99", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*hash=*/95,
+            /*job_name=*/"job_name",
+            /*task_id=*/1,
+            /*expected_in=*/
+            {"test_only_experiment_99", "test_only_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50", "test_only_task_experiment_100"}},
+        GetExperimentsJobNameTestCase{
+            /*hash=*/95,
+            /*job_name=*/"job_name",
+            /*task_id=*/2,
+            /*expected_in=*/
+            {"test_only_experiment_99", "test_only_experiment_100",
+             "test_only_task_experiment_100"},
+            /*expected_out=*/
+            {"test_only_experiment_0", "test_only_experiment_1",
+             "test_only_experiment_5", "test_only_experiment_10",
+             "test_only_experiment_50"}}));
 
 struct GetOptimizationsTestCase {
   Options options;

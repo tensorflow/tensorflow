@@ -778,7 +778,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         Tensor error_code(DT_INT64, TensorShape({})),
             error_message(DT_STRING, TensorShape({}));
         error_code.scalar<int64_t>()() = status.raw_code();
-        error_message.scalar<tstring>()() = status.error_message();
+        error_message.scalar<tstring>()() = status.message();
 
         ctx->set_output(0, error_code);
         ctx->set_output(1, error_message);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <memory>
 #include <set>
 #include <unordered_map>
 #include <vector>
@@ -36,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
-namespace {
 
 REGISTER_OP("OneInput").Input("x: float");
 
@@ -70,6 +70,17 @@ class GraphTest : public ::testing::Test {
       out.push_back(e->dst());
     }
     EXPECT_EQ(Stringify(expected_out), Stringify(out));
+  }
+
+  std::unique_ptr<Edge> BuildEdge(int id = 0, Node* src = nullptr,
+                                  Node* dst = nullptr, int x = 0, int y = 0) {
+    Edge* e = new Edge;
+    e->id_ = id;
+    e->src_ = src;
+    e->dst_ = dst;
+    e->src_output_ = x;
+    e->dst_input_ = y;
+    return absl::WrapUnique(e);
   }
 
   void VerifyGraphStats() {
@@ -155,6 +166,8 @@ class GraphTest : public ::testing::Test {
     return result;
   }
 };
+
+namespace {
 
 TEST_F(GraphTest, Constructor) {
   Node* source = graph_.source_node();
@@ -431,20 +444,20 @@ TEST_F(GraphTest, IsValidNode) {
   // nullptr
   Status s = graph_.IsValidNode(nullptr);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(string("Node is null"), s.error_message());
+  EXPECT_EQ(string("Node is null"), s.message());
 
   // node id_ is too high
   s = graph_.IsValidNode(g2_node2);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(string("node id 3 is >= than number of nodes in graph 3"),
-            s.error_message());
+            s.message());
 
   // valid id_ but different ptr
   s = graph_.IsValidNode(g2_node1);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
                    "Does it belong to a different graph?"),
-            s.error_message());
+            s.message());
 }
 
 TEST_F(GraphTest, AddControlEdge) {
@@ -572,14 +585,14 @@ TEST_F(GraphTest, UpdateEdge) {
   Status s = graph_.UpdateEdge(a, 1, d, 0);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(
-      s.error_message(),
+      s.message(),
       "Node 'A' (type: 'OneOutput', num of outputs: 1) does not have output 1");
 
   // Update a's 1st input which is out of range.
   s = graph_.UpdateEdge(c, 0, a, 0);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(
-      s.error_message(),
+      s.message(),
       "Node 'A' (type: 'OneOutput', num of inputs: 0) does not have input 0");
 }
 
@@ -591,6 +604,30 @@ TEST_F(GraphTest, InputEdges) {
   EXPECT_EQ(error::INVALID_ARGUMENT, b->input_edges(&edges).code());
   graph_.AddEdge(a, 0, b, 1);
   TF_EXPECT_OK(b->input_edges(&edges));
+}
+
+TEST_F(GraphTest, EdgeDebugString) {
+  // Print valid edge
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "OneInput", 1);
+  auto e = graph_.AddEdge(a, 0, b, 0);
+  auto s = e->DebugString();
+  EXPECT_EQ(s, "[id=1 A:0 -> B:0]");
+
+  // Print empty edge
+  auto e1 = BuildEdge();
+  auto s1 = e1->DebugString();
+  EXPECT_EQ(s1, "[id=0 <NULL>:0 -> <NULL>:0]");
+
+  // Print edge with null src node
+  auto e2 = BuildEdge(2, 0, b, 1, 1);
+  auto s2 = e2->DebugString();
+  EXPECT_EQ(s2, "[id=2 <NULL>:1 -> B:1]");
+
+  // Print edge with null dst node
+  auto e3 = BuildEdge(3, a, 0, 2, 1);
+  auto s3 = e3->DebugString();
+  EXPECT_EQ(s3, "[id=3 A:2 -> <NULL>:1]");
 }
 
 TEST_F(GraphTest, AddFunctionLibrary) {
@@ -613,7 +650,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
       error_proto.function(0).node_def(0);
   Status s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'XTimesTwo' because a different function with "
             "the same name already exists.");
 
@@ -622,7 +659,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
   error_proto.mutable_function(0)->mutable_signature()->set_name("Add");
   s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'Add' because an op with the same name "
             "already exists.");
 
@@ -642,7 +679,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
   error_proto.mutable_gradient(0)->set_gradient_func("Undefined2");
   s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'Undefined2' to 'XTimesTwo' "
             "because it already has gradient function 'Undefined'");
 }

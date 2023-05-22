@@ -28,8 +28,12 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_replace.h"
+#include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
+#include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -69,6 +73,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_copy_node.h"
@@ -205,7 +210,7 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
         status.code(),
         absl::StrCat("Failed copying input tensor from ", handle_device->name(),
                      " to ", expected_input_device->name(), " in order to run ",
-                     op->Name(), ": ", status.error_message()));
+                     op->Name(), ": ", status.message()));
   }
 
   *result = result_handle;
@@ -350,11 +355,22 @@ Status GetDeviceForInput(const EagerOperation& op, const EagerContext& ctx,
     const bool is_tpu = device != nullptr && device->device_type() == "TPU";
     // int32 return values can be placed on TPUs.
     // int32 retrun values can be placed on device for eager operations.
+    FullTypeDef ft = tensor_handle->FullType();
     const bool use_host_memory =
         is_tpu || (!op.is_function() && device != cpu_device &&
                    !is_host_memory_arg)
             ? MTypeFromDTypeIntsOnDevice(tensor_handle->dtype)
             : MTypeFromDType(tensor_handle->dtype);
+    if (use_host_memory) {
+      Int32FulltypePass int32_ft("GetDeviceForInput");
+      TF_RETURN_IF_ERROR(int32_ft.Int32FullTypeForTensor(
+          tensor_handle->dtype, &ft, /*set_only_int32=*/false));
+      VLOG(2)
+          << "Full type information with TFT_SHAPE_TENSOR for int32 for eager '"
+          << tensor_handle->DebugString();
+    }
+    TF_RETURN_IF_ERROR(
+        tensorflow::full_type::CheckMemoryType(use_host_memory, ft));
     if (use_host_memory) {
       *result = cpu_device;
     } else {
@@ -1039,6 +1055,68 @@ bool IntArgsAndRetvalsOnDevice(EagerOperation* op,
   return true;
 }
 
+using BoolTensorInputs = std::vector<std::pair<std::string, bool>>;
+
+// Removes boolean tensor inputs from the EagerOperation and returns them.
+// Currently this is only useful to invoke when small_constants_optimizer is
+// enabled because the runtime will have equivalent FunctionDefs of the original
+// tf.function without the boolean tensor input.
+StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
+  BoolTensorInputs result;
+  if (!op->is_function()) return result;
+  // Extract tensor inputs.
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  if (!op->TensorHandleInputs(&inputs).ok()) return result;
+  // Extract the FunctionDef.
+  const FunctionDef* fdef = op->EagerContext().GetFunctionDef(op->Name());
+  if (fdef == nullptr) return result;
+  // Ensure the number of inputs matches the specification in the FunctionDef.
+  if (fdef->signature().input_arg_size() != inputs->size()) return result;
+
+  // Remove all boolean inputs.
+  absl::InlinedVector<TensorHandle*, 4> stripped_inputs;
+  for (int32_t i = 0; i < fdef->signature().input_arg_size(); ++i) {
+    const auto& input_arg = fdef->signature().input_arg(i);
+    // Identify non-boolean inputs to this EagerOperation.
+    if (input_arg.type() != DT_BOOL) {
+      stripped_inputs.push_back(inputs->at(i));
+      continue;
+    }
+    // Identify boolean inputs to this EagerOperation that are on host.
+    const TensorHandle* handle = inputs->at(i);
+    Status s;
+    const char* input_device = handle->DeviceType(&s);
+    if (!s.ok() || !absl::StrContains(input_device, "CPU")) {
+      return errors::InvalidArgument(
+          "Expecting boolean tensor to be on host when "
+          "small_constants_optimizer is enabled.");
+    }
+    const Tensor* tensor;
+    TF_RETURN_IF_ERROR(handle->Tensor(&tensor));
+    // small_constant_optimizer does not handle non-scalar boolean inputs.
+    if (tensor->NumElements() != 1) {
+      stripped_inputs.push_back(inputs->at(i));
+      continue;
+    }
+    const bool input_value = tensor->scalar<bool>()();
+    result.emplace_back(input_arg.name(), input_value);
+  }
+
+  // If we were able to identify all boolean inputs, update the op's inputs.
+  op->Clear();
+  for (auto* input : stripped_inputs) {
+    TF_RETURN_IF_ERROR(op->AddInput(input));
+  }
+  return result;
+}
+
+bool IsSmallConstantOptimizationEnabled(const EagerOperation& op) {
+  if (!op.is_function()) return false;
+  const FunctionDef* fdef = op.EagerContext().GetFunctionDef(op.Name());
+  if (fdef == nullptr) return false;
+  return small_constants_optimizer::IsSmallConstantOptimizationEnabled(*fdef);
+}
+
 StatusOr<Fprint128> GetKernelCacheKey(
     const EagerOperation& op, const Fprint128& op_cache_key,
     const std::vector<Device*>& input_device_ptrs,
@@ -1187,6 +1265,18 @@ Status GetOrCreateKernelAndDevice(
     core::RefCountPtr<KernelAndDevice>* out_kernel) {
   EagerContext& ctx = op->EagerContext();
   Device* device = absl::get<Device*>(op->Device());
+
+  // Update the EagerOperation with information about the boolean input tensors
+  // when small constant optimization is enabled.
+  if (IsSmallConstantOptimizationEnabled(*op)) {
+    TF_ASSIGN_OR_RETURN(BoolTensorInputs bool_inputs, RemoveBoolInputs(op));
+    string folded_name = op->Name();
+    for (const auto& [input_name, input_value] : bool_inputs) {
+      folded_name = small_constants_optimizer::FoldedFunctionName(
+          folded_name, input_name, input_value);
+    }
+    op->UpdateName(folded_name);
+  }
 
   // Set the EagerOperation's device prior to extracting the input_device_ptrs
   // to avoid any redundant H2D/D2H copies.
@@ -1926,8 +2016,8 @@ void CollectGraphs(EagerContext* ctx) {
 }
 }  // namespace
 
-Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
-                    int* num_retvals) {
+Status DoEagerExecute(EagerOperation* op, TensorHandle** retvals,
+                      int* num_retvals) {
   profiler::TraceMe activity([&] {
     return ::tensorflow::profiler::TraceMeEncode(
         "EagerExecute",
@@ -2012,6 +2102,31 @@ Status EagerKernelExecute(
   }
   return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
                           kernel.get(), eager_func_params);
+}
+
+Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
+                    int* num_retvals) {
+  if (VLOG_IS_ON(1) && op->is_function()) {
+    const std::string& op_name = op->Name();
+    const std::string& exec_mode = op->IsLocal() ? "local" : "remote";
+    const std::string& device_name = op->DeviceName();
+
+    auto msg = absl::StrCat("eager executing ", exec_mode, " operation '",
+                            op_name, "'");
+
+    if (!device_name.empty()) {
+      absl::StrAppend(&msg, " on device '", device_name, "'");
+    }
+
+    VLOG(1) << "Entering " << msg;
+
+    Status status = DoEagerExecute(op, retvals, num_retvals);
+
+    VLOG(1) << "Exiting " << msg << ", status code is " << status;
+
+    return status;
+  }
+  return DoEagerExecute(op, retvals, num_retvals);
 }
 
 namespace {

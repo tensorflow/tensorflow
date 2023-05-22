@@ -38,7 +38,6 @@ struct ThreadPoolDevice;
 }  // namespace Eigen
 
 namespace tsl {
-class Status;
 template <typename T>
 class StatusOr;
 template <typename T>
@@ -47,7 +46,6 @@ class AsyncValueRef;
 
 namespace xla {
 
-using ::tsl::Status;    // TENSORFLOW_STATUS_OK
 using ::tsl::StatusOr;  // TENSORFLOW_STATUS_OK
 
 class DeviceAssignment;

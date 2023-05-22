@@ -13,9 +13,11 @@ py_library(
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 

@@ -1275,6 +1275,9 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
     case PRED:
       SliceInternal<bool>(*this, start_indices, result_literal);
       break;
+    case U4:
+      SliceInternal<u4>(*this, start_indices, result_literal);
+      break;
     case U8:
       SliceInternal<uint8_t>(*this, start_indices, result_literal);
       break;
@@ -1286,6 +1289,9 @@ Literal LiteralBase::Slice(absl::Span<const int64_t> start_indices,
       break;
     case U64:
       SliceInternal<uint64_t>(*this, start_indices, result_literal);
+      break;
+    case S4:
+      SliceInternal<s4>(*this, start_indices, result_literal);
       break;
     case S8:
       SliceInternal<int8_t>(*this, start_indices, result_literal);

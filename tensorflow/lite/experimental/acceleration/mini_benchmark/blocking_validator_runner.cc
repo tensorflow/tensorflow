@@ -88,8 +88,7 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
   // Create a unique storage_path.
   std::string storage_path =
       absl::StrCat(storage_path_base_, ".", GenerateRandomString());
-  auto to_be_run =
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>();
+  std::vector<flatbuffers::FlatBufferBuilder> to_be_run;
   std::vector<TFLiteSettingsT> for_settings_obj;
   for_settings_obj.reserve(for_settings.size());
   for (auto settings : for_settings) {
@@ -97,7 +96,7 @@ std::vector<FlatBufferBuilder> BlockingValidatorRunner::TriggerValidation(
     settings->UnPackTo(&tflite_settings);
     flatbuffers::FlatBufferBuilder copy;
     copy.Finish(CreateTFLiteSettings(copy, &tflite_settings));
-    to_be_run->emplace_back(std::move(copy));
+    to_be_run.emplace_back(std::move(copy));
     for_settings_obj.emplace_back(tflite_settings);
   }
   validator_runner_impl_->TriggerValidationAsync(std::move(to_be_run),

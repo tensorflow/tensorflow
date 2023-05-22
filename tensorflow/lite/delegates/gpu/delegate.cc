@@ -216,15 +216,6 @@ class Delegate {
 
   bool async_;
 
-#if defined(__ANDROID__)
-  // TODO(b/245966018): While tflite async is in experimental stage, there's no
-  // clean way to deallocate a kernel via TfLiteRegistration::free. For now, we
-  // allow kernels to live until the Delegate is destroyed.
-  mutable absl::Mutex async_kernels_mutex_;
-  std::vector<std::unique_ptr<DelegateAsyncKernel>> async_kernels_
-      ABSL_GUARDED_BY(async_kernels_mutex_);
-#endif
-
   friend class DelegateKernelCore;
 #if defined(__ANDROID__)
   friend TfLiteRegistration CreateAsyncRegistration();
@@ -1432,16 +1423,11 @@ TfLiteRegistration CreateAsyncRegistration() {
                              std::string(status.message()).c_str());
           return nullptr;
         }
-        TfLiteAsyncKernel* tflite_async_kernel =
-            gpu_delegate_kernel.get()->kernel();
-        absl::MutexLock lock(&gpu_delegate->async_kernels_mutex_);
-        gpu_delegate->async_kernels_.emplace_back(
-            std::move(gpu_delegate_kernel));
-        return tflite_async_kernel;
+        return gpu_delegate_kernel.release();
       },
       // .free
       [](TfLiteContext*, void* buffer) -> void {
-        // Do nothing: See Delegate::async_kernels_.
+        delete reinterpret_cast<DelegateAsyncKernel*>(buffer);
       },
       // ,prepare
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
@@ -1464,7 +1450,14 @@ TfLiteRegistration CreateAsyncRegistration() {
       0,                        // .builtin_code
       kRegistrationCustomName,  // .custom_name
       1,                        // .version
-  };
+      nullptr,                  // .registration_external
+      // .async_kernel
+      [](TfLiteContext*, TfLiteNode* node) -> TfLiteAsyncKernel* {
+        if (node->user_data) {
+          return static_cast<DelegateAsyncKernel*>(node->user_data)->kernel();
+        }
+        return nullptr;
+      }};
 }
 #endif  // defined(__ANDROID__)
 
@@ -1483,9 +1476,17 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
     excluded_ops.insert(kTfLiteBuiltinSplit);
     excluded_ops.insert(kTfLiteBuiltinSplitV);
   }
+#ifndef TFLITE_DEBUG_DELEGATE
   TfLiteIntArray* ops_to_replace =
       GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
                       gpu_delegate->MaxDelegatedPartitions(), &excluded_ops);
+#else
+  TfLiteIntArray* ops_to_replace =
+      GetOpsToReplace(context, gpu_delegate->IsQuantOpsAllowed(),
+                      gpu_delegate->MaxDelegatedPartitions(), &excluded_ops,
+                      gpu_delegate->options().first_delegate_node_index,
+                      gpu_delegate->options().last_delegate_node_index);
+#endif
   const auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, kRegistration, ops_to_replace, delegate);
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Created %d GPU delegate kernels.",

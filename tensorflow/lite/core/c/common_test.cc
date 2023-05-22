@@ -83,6 +83,19 @@ TEST(FloatArray, TestFloatArrayCreate) {
   TfLiteFloatArrayFree(b);
 }
 
+TEST(FloatArray, TestFloatArrayCopy) {
+  TfLiteFloatArray* a = TfLiteFloatArrayCreate(2);
+  a->data[0] = 22.0;
+  a->data[1] = 24.0;
+  TfLiteFloatArray* b = TfLiteFloatArrayCopy(a);
+  ASSERT_NE(a, b);
+  ASSERT_EQ(a->size, b->size);
+  ASSERT_EQ(a->data[0], b->data[0]);
+  ASSERT_EQ(a->data[1], b->data[1]);
+  TfLiteFloatArrayFree(a);
+  TfLiteFloatArrayFree(b);
+}
+
 TEST(Types, TestTypeNames) {
   auto type_name = [](TfLiteType t) {
     return std::string(TfLiteTypeGetName(t));

@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/lib/monitoring/cell_reader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -29,6 +32,11 @@ using ::testing::_;
 using ::testing::NiceMock;
 using ::testing::Return;
 using ::testing::Test;
+
+constexpr char kOk[] = "OK";
+constexpr char kInvalidArgument[] = "INVALID_ARGUMENT";
+constexpr char kSuccess[] = "kSuccess";
+constexpr char kFailure[] = "kFailure";
 
 class MockMlirOptimizationPass : public MlirOptimizationPass {
  public:
@@ -129,6 +137,7 @@ class MlirGraphOptimizationPassTest : public Test {
           .WillByDefault(Return(pass_run_result));
       MlirOptimizationPassRegistry::Global().Add(pass_priority++,
                                                  std::move(optimization_pass));
+      pass_result_expected_[pass_state][pass_run_result.ok()]++;
     }
 
     flib_ = std::make_unique<FunctionLibraryDefinition>(graph_->flib_def());
@@ -143,6 +152,7 @@ class MlirGraphOptimizationPassTest : public Test {
         .WillByDefault(Return(pass_state));
     MlirOptimizationPassRegistry::Global().Add(10,
                                                std::move(optimization_pass));
+    pass_result_expected_[pass_state][run_status.ok()]++;
   }
 
   void TearDown() override {
@@ -166,6 +176,16 @@ class MlirGraphOptimizationPassTest : public Test {
 #endif
   }
 
+  void verifyCounters() {
+    EXPECT_EQ(mlir_function_pass_fallback_count_.Read(kSuccess),
+              pass_result_expected_[MlirOptimizationPassState::FallbackEnabled]
+                                   [true]);
+    EXPECT_EQ(mlir_function_pass_fallback_count_.Read(kFailure),
+              pass_result_expected_[MlirOptimizationPassState::FallbackEnabled]
+                                   [false]);
+    EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 1);
+  }
+
   ConfigProto config_proto_;
   MlirFunctionOptimizationPass function_optimization_pass_;
   DeviceSet device_set_;
@@ -174,10 +194,26 @@ class MlirGraphOptimizationPassTest : public Test {
   std::vector<std::string> control_ret_node_names_;
   std::string xla_compile_device_type_;
   bool control_rets_updated_{false};
+  monitoring::testing::CellReader<int64_t> mlir_function_pass_fallback_count_ =
+      monitoring::testing::CellReader<int64_t>(
+          /* metric name */
+          "/tensorflow/core/mlir_function_pass_fallback_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_graph_optimization_pass_fallback_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/mlir_graph_optimization_pass_fallback_count");
+  monitoring::testing::CellReader<int64_t>
+      mlir_function_pass_graph_conversion_count_ =
+          monitoring::testing::CellReader<int64_t>(
+              /* metric name */
+              "/tensorflow/core/mlir_function_pass_graph_conversion_count");
+  std::map<MlirOptimizationPassState, std::map<bool, int64_t>>
+      pass_result_expected_;
 };
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
-  Init(Status(error::Code::ABORTED, "aborted"),
+  Init(Status(absl::StatusCode::kAborted, "aborted"),
        {MlirOptimizationPassState::Enabled});
 
   GraphDef original_graph_def;
@@ -187,12 +223,13 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
                 "test_func", device_set_, config_proto_,
                 xla_compile_device_type_, &graph_, flib_.get(),
                 &control_ret_node_names_, &control_rets_updated_),
-            Status(error::Code::ABORTED, "aborted"));
+            Status(absl::StatusCode::kAborted, "aborted"));
   verifyGraph(original_graph_def);
+  verifyCounters();
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
-  Init(Status(error::Code::ABORTED, "aborted"),
+  Init(Status(absl::StatusCode::kAborted, "aborted"),
        {MlirOptimizationPassState::Disabled,
         MlirOptimizationPassState::FallbackEnabled});
 
@@ -207,7 +244,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
-                            Status(error::Code::ABORTED, "aborted"));
+                            Status(absl::StatusCode::kAborted, "aborted"));
 
   EXPECT_EQ(function_optimization_pass_.Run(
                 "test_func", device_set_, config_proto_,
@@ -215,6 +252,7 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
                 &control_ret_node_names_, &control_rets_updated_),
             OkStatus());
   verifyGraph(original_graph_def);
+  verifyCounters();
 }
 
 TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
@@ -232,6 +270,26 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
             OkStatus());
 
   verifyGraph(original_graph_def, true);
+  verifyCounters();
+}
+
+TEST_F(MlirGraphOptimizationPassTest, GraphDoesntConvertUpdatesCounter) {
+  Init(OkStatus(), {MlirOptimizationPassState::FallbackEnabled});
+
+  graph_ = std::make_unique<Graph>(OpRegistry::Global());
+  control_ret_node_names_.push_back("foo");
+
+  AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
+                            OkStatus());
+  EXPECT_EQ(function_optimization_pass_.Run(
+                "test_func", device_set_, config_proto_,
+                xla_compile_device_type_, &graph_, flib_.get(),
+                &control_ret_node_names_, &control_rets_updated_),
+            OkStatus());
+
+  EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
+  EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kInvalidArgument),
+            1);
 }
 
 TEST(MlirOptimizationPassRegistry, RegisterPassesWithTheSamePriorityFails) {

@@ -1291,8 +1291,7 @@ Status HloEvaluator::EvaluateInternal(
             EvaluateParameterFromCallerArgument(instruction, shape_index);
         if (!argument_eval_status.ok()) {
           VLOG(4) << "Failed to evaluate parameter " << instruction->name()
-                  << " from caller. Reason: "
-                  << argument_eval_status.error_message();
+                  << " from caller. Reason: " << argument_eval_status.message();
         } else {
           VLOG(4) << "Successfully evaluated parameter: "
                   << instruction->name();

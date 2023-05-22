@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_TSL_DISTRIBUTED_RUNTIME_RPC_GRPC_STATE_H_
 
 #include <queue>
+#include <string>
 #include <utility>
 
 #include "grpcpp/generic/generic_stub.h"
@@ -183,7 +184,7 @@ class RPCState : public GrpcClientCQTag {
                                         [this]() { StartCall(); });
     } else {
       // Attach additional GRPC error information if any to the final status
-      string error_msg = s.error_message();
+      string error_msg = std::string(s.message());
       strings::StrAppend(&error_msg, "\nAdditional GRPC error information");
       if (target_) {
         strings::StrAppend(&error_msg, " from remote target ", *target_);

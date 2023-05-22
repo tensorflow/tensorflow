@@ -191,21 +191,22 @@ llvm::SmallVector<mlir::Attribute> ValueToAttribute(
     return {};
   }
 
-  return {
-      dispatchScalarType(type.cast<ShapedType>().getElementType(),
-                         [&](auto dummy) -> mlir::Attribute {
-                           using T = decltype(dummy);
-                           auto& t = std::get<TensorOrMemref<T>>(value.storage);
-                           SmallVector<T> vals;
-                           for (const auto& index : t.view.indices()) {
-                             vals.push_back(t.at(index));
-                           }
-                           if constexpr (std::is_same_v<T, bool>) {
-                             return mlir::DenseElementsAttr::get(type, vals);
-                           } else {
-                             return mlir::DenseElementsAttr::get<T>(type, vals);
-                           }
-                         })};
+  auto shaped_ty = type.cast<ShapedType>();
+  return {dispatchScalarType(shaped_ty, [&](auto dummy) -> mlir::Attribute {
+    using T = decltype(dummy);
+    auto& t = std::get<TensorOrMemref<T>>(value.storage);
+    SmallVector<T> vals;
+    for (const auto& index : t.view.indices()) {
+      vals.push_back(t.at(index));
+    }
+    auto attr_ty =
+        shaped_ty.cloneWith(/*shape=*/t.view.sizes, shaped_ty.getElementType());
+    if constexpr (std::is_same_v<T, bool>) {
+      return mlir::DenseElementsAttr::get(attr_ty, vals);
+    } else {
+      return mlir::DenseElementsAttr::get<T>(attr_ty, vals);
+    }
+  })};
 }
 
 namespace {

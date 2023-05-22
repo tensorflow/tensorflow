@@ -136,6 +136,11 @@ TEST(MeshTest, ToStringMeshWithXLASPMD) {
   EXPECT_THAT(mesh.ToString(), ContainsRegex(Mesh::kUseXLASPMDString));
 }
 
+TEST(MeshTest, FromStringInvalidSingleDeviceMesh) {
+  EXPECT_THAT(Mesh::FromString("/job:localhost/device:CPU:0"),
+              StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
 TEST(MeshTest, FromStringSingleDeviceMesh) {
   TF_ASSERT_OK_AND_ASSIGN(
       Mesh mesh, Mesh::FromString("/job:localhost/task:0/device:CPU:0"));

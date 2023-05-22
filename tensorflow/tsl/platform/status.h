@@ -104,14 +104,6 @@ class Status {
   /// human-readable string containing more detailed information.
   Status(absl::StatusCode code, absl::string_view msg,
          SourceLocation loc = SourceLocation::current());
-  // Deprecated constructor using the Tensorflow protobuf enum error code.
-#ifndef SWIG
-  ABSL_DEPRECATED(
-      "Use `Status(absl::StatusCode, ...) instead of Status(tsl::errors::Code, "
-      "...).")
-#endif
-  Status(tsl::error::Code code, absl::string_view msg,
-         SourceLocation loc = SourceLocation::current());
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -132,6 +124,13 @@ class Status {
   const std::string& error_message() const {
     return ok() ? empty_string() : state_->msg;
   }
+  // Status::message()
+  //
+  // Returns the error message associated with this error code, if available.
+  // Note that this message rarely describes the error code.  It is not unusual
+  // for the error message to be the empty string. As a result, prefer
+  // `operator<<` or `Status::ToString()` for debug logging.
+  absl::string_view message() const;
 
   bool operator==(const Status& x) const;
   bool operator!=(const Status& x) const;
@@ -260,6 +259,13 @@ Status FromAbslStatus(const absl::Status& s,
                       SourceLocation loc = SourceLocation::current());
 absl::Status ToAbslStatus(const ::tsl::Status& s,
                           SourceLocation loc = SourceLocation::current());
+
+// Given `Status.message()` does not guarantee to be always backed by a
+// null-terminated string, we have this utility function when it's needed for
+// the Tensorflow C-API.
+// A more robust API would be to get both a `char*` of the beginning of the
+// string, plus the size (see e.g. `XlaCustomCallStatusSetFailure`).
+const char* NullTerminatedMessage(const Status& status);
 
 // TODO(b/197552541) Move this namespace to errors.h.
 namespace errors {

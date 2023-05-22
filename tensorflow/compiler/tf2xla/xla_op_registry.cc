@@ -222,7 +222,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
       const OpDef* op_def;
       Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
       if (!lookup_status.ok()) {
-        LOG(ERROR) << lookup_status.error_message();
+        LOG(ERROR) << lookup_status.message();
         XLA_LOG_LINES(
             ERROR,
             "Ops registered: \n" +

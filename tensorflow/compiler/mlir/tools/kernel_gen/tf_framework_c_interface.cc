@@ -108,8 +108,9 @@ extern "C" void _mlir_ciface_tf_report_error(void* op_kernel_ctx,
     return;
   }
   auto* ctx = static_cast<tensorflow::OpKernelContext*>(op_kernel_ctx);
-  ctx->CtxFailureWithWarning(
-      tensorflow::Status{ConvertAttrToEnumValue(symbol.value()), msg});
+  ctx->CtxFailureWithWarning(tensorflow::Status{
+      static_cast<absl::StatusCode>(ConvertAttrToEnumValue(symbol.value())),
+      msg});
 }
 
 static void ReportError(void* op_kernel_ctx, ErrorCode error_code,
@@ -130,8 +131,8 @@ std::string GetFileCachePath(const std::string cache_dir,
 llvm::orc::SymbolMap TFFrameworkSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
   auto bind = [&](llvm::StringRef name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
   // Register TF framework symbols.

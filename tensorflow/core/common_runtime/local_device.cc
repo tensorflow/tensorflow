@@ -39,7 +39,7 @@ bool OverrideGlobalThreadPoolFromEnvironment() {
     auto status = ReadBoolFromEnvVar("TF_OVERRIDE_GLOBAL_THREADPOOL",
                                      /*default_val=*/false, &flag);
     if (!status.ok()) {
-      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.error_message();
+      LOG(ERROR) << "OverrideGlobalThreadPool: " << status.message();
       return false;
     }
     return flag;

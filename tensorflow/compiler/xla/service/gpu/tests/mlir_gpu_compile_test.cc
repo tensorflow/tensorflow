@@ -32,7 +32,7 @@ TEST_F(CompileTest, InvalidCollectivePermuteOp) {
       })";
   auto executable = CompileMlirText(mlir_text);
   ASSERT_FALSE(executable.ok());
-  EXPECT_THAT(executable.status().error_message().c_str(),
+  EXPECT_THAT(executable.status().message(),
               ::testing::HasSubstr("expect source_target_pairs attribute of "
                                    "shape (N, 2), but got (1, 3)"));
 }

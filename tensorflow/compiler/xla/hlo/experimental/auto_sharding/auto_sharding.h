@@ -340,8 +340,16 @@ class AutoSharding : public HloModulePass {
   //     tensorflow/compiler/xla/pjrt/utils.cc
   Status CanonicalizeLayouts(HloModule* module);
 
+  // Returns the optimal objective value that the ILP solver computes
+  double GetSolverOptimalObjectiveValue() {
+    return solver_optimal_objective_value_;
+  }
+
  private:
   AutoShardingOption option_;
+
+  // The optimal objective value that the ILP solver computes
+  double solver_optimal_objective_value_;
 };
 
 namespace spmd {
@@ -427,7 +435,6 @@ bool HasReduceScatterOpportunity(
 HloSharding GetReduceScatterOutput(const HloInstruction* ins,
                                    const ShardingStrategy& strategy,
                                    const ClusterEnvironment& cluster_env);
-
 }  // namespace spmd
 }  // namespace xla
 

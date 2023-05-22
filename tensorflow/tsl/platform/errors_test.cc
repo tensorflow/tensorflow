@@ -24,8 +24,7 @@ TEST(AppendToMessageTest, PayloadsAreCopied) {
   status.SetPayload("payload_key", absl::Cord("payload_value"));
   errors::AppendToMessage(&status, "Appended Message");
 
-  EXPECT_EQ(status.error_message(),
-            "Aborted Error Message\n\tAppended Message");
+  EXPECT_EQ(status.message(), "Aborted Error Message\n\tAppended Message");
   EXPECT_EQ(status.GetPayload("payload_key"), absl::Cord("payload_value"));
 }
 

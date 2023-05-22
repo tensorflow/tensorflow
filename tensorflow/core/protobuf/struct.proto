@@ -72,6 +72,8 @@ message StructuredValue {
     DictValue dict_value = 53;
     // Represents Python's namedtuple.
     NamedTupleValue named_tuple_value = 54;
+    // Represents a value for tf.Tensor.
+    tensorflow.TensorProto tensor_value = 55;
   }
 }
 

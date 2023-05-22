@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -89,6 +89,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_SPACE_TO_BATCH_ND, 1}, "1.6.0"},
            {{BuiltinOperator_SPACE_TO_BATCH_ND, 2}, "1.14.0"},
            {{BuiltinOperator_SPACE_TO_BATCH_ND, 3}, "2.3.0"},
+           {{BuiltinOperator_SPACE_TO_BATCH_ND, 4}, "2.12.0"},
            {{BuiltinOperator_SUB, 1}, "1.6.0"},
            {{BuiltinOperator_SUB, 2}, "1.14.0"},
            {{BuiltinOperator_SUB, 3}, "2.3.0"},
@@ -100,6 +101,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_BATCH_TO_SPACE_ND, 1}, "1.6.0"},
            {{BuiltinOperator_BATCH_TO_SPACE_ND, 2}, "1.14.0"},
            {{BuiltinOperator_BATCH_TO_SPACE_ND, 3}, "2.3.0"},
+           {{BuiltinOperator_BATCH_TO_SPACE_ND, 4}, "2.12.0"},
            {{BuiltinOperator_CAST, 1}, "1.5.0"},
            {{BuiltinOperator_CAST, 2}, "2.7.0"},
            {{BuiltinOperator_CAST, 3}, "2.8.0"},
@@ -162,6 +164,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_MUL, 4}, "2.3.0"},
            {{BuiltinOperator_MUL, 5}, "2.6.0"},
            {{BuiltinOperator_MUL, 6}, "2.11.0"},
+           {{BuiltinOperator_MUL, 7}, "2.13.0"},
            {{BuiltinOperator_NON_MAX_SUPPRESSION_V4, 1}, "2.1.0"},
            {{BuiltinOperator_NON_MAX_SUPPRESSION_V5, 1}, "2.1.0"},
            {{BuiltinOperator_PAD, 1}, "1.5.0"},
@@ -246,6 +249,7 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_STRIDED_SLICE, 6}, "2.6.0"},
            {{BuiltinOperator_TOPK_V2, 1}, "1.7.0"},
            {{BuiltinOperator_TOPK_V2, 2}, "1.14.0"},
+           {{BuiltinOperator_TOPK_V2, 3}, "2.13.0"},
            {{BuiltinOperator_ARG_MAX, 1}, "1.9.0"},
            {{BuiltinOperator_ARG_MAX, 2}, "1.14.0"},
            {{BuiltinOperator_ARG_MAX, 3}, "2.9.0"},
@@ -407,7 +411,10 @@ std::string FindMinimumRuntimeVersionForOp(tflite::BuiltinOperator op_code,
            {{BuiltinOperator_UNSORTED_SEGMENT_SUM, 1}, "2.10.0"},
            {{BuiltinOperator_ATAN2, 1}, "2.10.0"},
            {{BuiltinOperator_SIGN, 1}, "2.11.0"},
-           {{BuiltinOperator_SIGN, 2}, "2.12.0"}});
+           {{BuiltinOperator_SIGN, 2}, "2.12.0"},
+           {{BuiltinOperator_BITCAST, 1}, "2.13.0"},
+           {{BuiltinOperator_BITWISE_XOR, 1}, "2.13.0"},
+           {{BuiltinOperator_RIGHT_SHIFT, 1}, "2.13.0"}});
 
   std::pair<BuiltinOperator, int> version_key = {op_code, op_version};
   auto it = op_version_map->find(version_key);

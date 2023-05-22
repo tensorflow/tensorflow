@@ -625,7 +625,7 @@ TEST(ShapeUtilTest, ForEachIndexWithStatus) {
       increment_func);
 
   EXPECT_FALSE(error_status.ok());
-  EXPECT_THAT(error_status.error_message(),
+  EXPECT_THAT(error_status.message(),
               ::testing::HasSubstr("Cannot increment beyond 5."));
   EXPECT_EQ(invocations, 5);
 }
@@ -1036,6 +1036,32 @@ TEST(ShapeUtilTest, DeleteDimensionsUnsorted) {
   EXPECT_EQ(a, ShapeUtil::MakeShapeWithDenseLayout(F32, {5, 9}, {0, 1}));
 }
 
+TEST(ShapeUtilTest, IsEffectivelyMostMajorDimension) {
+  // f32[1,1,16,1,279]{4,0,1,2,3}
+  // Dim 3 in front of 2 has size 1, so 2 is effectively most major dim.
+  Shape shape0 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 279},
+                                                     {4, 0, 1, 2, 3});
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(shape0, 2));
+
+  // f32[1,1,16,1,279]{4,1,2,3,0}
+  // Dims 3 and 0 in from of 2 havs size 1.
+  Shape shape1 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 279},
+                                                     {4, 1, 2, 3, 0});
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(shape1, 2));
+
+  // f32[1,1,16,1,279]{0,1,2,3,4}
+  // Dim 4 in front of 2 has size > 1, so 2 is not most effectively most major.
+  Shape shape2 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 279},
+                                                     {0, 1, 2, 3, 4});
+  EXPECT_FALSE(ShapeUtil::IsEffectivelyMostMajorDimension(shape2, 2));
+
+  // f32[1,1,16,1,1]{0,1,2,3,4}
+  // Dim 4 is of size 1, and can be returned as most major even if size is 1.
+  Shape shape3 = ShapeUtil::MakeShapeWithDenseLayout(F32, {1, 1, 16, 1, 1},
+                                                     {0, 1, 2, 3, 4});
+  EXPECT_TRUE(ShapeUtil::IsEffectivelyMostMajorDimension(shape2, 4));
+}
+
 TEST(ShapeUtilTest, B_250640044) {
   // This case failed the fuzzer; see b/250640044.
   ShapeProto proto;
@@ -1091,6 +1117,21 @@ TEST(ShapeUtilTest, B_251055887) {
       &proto));
   Shape shape(proto);
   EXPECT_FALSE(ShapeUtil::ValidateShape(shape).ok());
+}
+
+TEST(ShapeUtilTest, Int4ShapeSize) {
+  Shape int4_shape = ShapeUtil::MakeShape(S4, {64, 128});
+  EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape), 64 * 128 / 2);
+
+  // Ensure the size is correct with int4 tiling.
+  Shape int4_shape2 = ShapeUtil::MakeShape(S4, {9216, 6144});
+  auto* layout = int4_shape2.mutable_layout();
+  layout->clear_tiles();
+  layout->add_tiles();
+  layout->add_tiles();
+  *layout->mutable_tiles(0) = Tile({8 * (32 / 4), 128});
+  *layout->mutable_tiles(1) = Tile({32 / 4, 1});
+  EXPECT_EQ(ShapeUtil::ArrayDataSize(int4_shape2), 9216 * 6144 / 2);
 }
 
 TEST(Transpose021Test, NoTranspose) {
@@ -1243,6 +1284,17 @@ TEST(Transpose021Test, Large) {
   EXPECT_EQ(std::make_optional(Vector3{8, 65, 961}),
             ShapeUtil::GetNormalizedTransposeShape(shape, transposed,
                                                    Vector3{0, 2, 1}));
+}
+
+TEST(Transpose210Test, LogicalTranspose) {
+  Shape shape =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {10, 11, 12, 13}, {3, 2, 1, 0});
+  Shape transposed =
+      ShapeUtil::MakeShapeWithDenseLayout(F32, {13, 12, 10, 11}, {3, 2, 1, 0});
+  std::vector<int64_t> dimensions = {3, 2, 0, 1};
+  EXPECT_EQ(std::make_optional(Vector3{13, 12, 110}),
+            ShapeUtil::GetNormalizedLogicalTransposeShape(
+                shape, transposed, dimensions, Vector3{2, 1, 0}));
 }
 
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {

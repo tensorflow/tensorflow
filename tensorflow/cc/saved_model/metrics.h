@@ -20,11 +20,13 @@ limitations under the License.
 
 #ifndef TENSORFLOW_CC_SAVED_MODEL_METRICS_H_
 #define TENSORFLOW_CC_SAVED_MODEL_METRICS_H_
-#include <string>
+#include <utility>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
 
 namespace tensorflow {
 namespace metrics {
@@ -49,6 +51,12 @@ monitoring::GaugeCell<string>& SavedModelWriteFingerprint();
 // the saved_model_path of the SM when it is exported.
 monitoring::GaugeCell<string>& SavedModelWritePath();
 
+// Returns "/tensorflow/core/saved_model/write/path_and_fingerprint" cell, which
+// contains the path (saved_model_path) and fingerprint (concatenation of
+// graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
+// and checkpoint_hash) of the SavedModel when it is exported.
+monitoring::GaugeCell<string>& SavedModelWritePathAndSingleprint();
+
 // Returns "/tensorflow/core/saved_model/read/fingerprint" cell, wich contains
 // the saved_model_checksum of the SM's fingerprint when it is imported.
 monitoring::GaugeCell<string>& SavedModelReadFingerprint();
@@ -56,6 +64,24 @@ monitoring::GaugeCell<string>& SavedModelReadFingerprint();
 // Returns "/tensorflow/core/saved_model/read/path" cell, wich contains
 // the saved_model_path of the SM when it is imported.
 monitoring::GaugeCell<string>& SavedModelReadPath();
+
+// Returns "/tensorflow/core/saved_model/read/path_and_fingerprint" cell, which
+// contains the path (saved_model_path) and singleprint (concatenation of
+// graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
+// and checkpoint_hash) of the SavedModel when it is imported.
+monitoring::GaugeCell<string>& SavedModelReadPathAndSingleprint();
+
+// Returns the fingerprint as a Json string.
+string MakeFingerprintJson(FingerprintDef fingerprint_serialized);
+
+// Returns canonical string concatenation of path and singleprint.
+string MakeSavedModelPathAndSingleprint(string path, string singleprint);
+
+// TODO(adamcogdell): change to StatusOr<> to account for missing delimiter
+// Returns path and singleprint as a pair, parsed canonically from the string
+// metric.
+std::pair<string, string> ParseSavedModelPathAndSingleprint(
+    string path_and_singleprint);
 
 // Returns "/tensorflow/core/saved_model/write/api" cell. This metric has 1
 // field "api_label" which corresponds to a SavedModel write API. The cell for

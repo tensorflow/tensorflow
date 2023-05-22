@@ -27,9 +27,9 @@ using ::tsl::testing::StatusIs;
 
 TEST(CreatePjRtClientTest, GetNotExistPjRtClientNotImplemented) {
   EXPECT_THAT(
-      GetOrCreatePjRtClient(DEVICE_TPU),
+      GetOrCreatePjRtClient(DEVICE_CPU),
       StatusIs(error::UNIMPLEMENTED,
-               HasSubstr("The PJRT client for TPU is not created explicitly "
+               HasSubstr("The PJRT client for CPU is not created explicitly "
                          "before its first use and creating this PJRT client "
                          "on the first use is not implemented.")));
 }

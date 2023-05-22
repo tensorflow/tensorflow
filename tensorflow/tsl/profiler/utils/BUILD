@@ -2,12 +2,13 @@ load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -35,7 +36,7 @@ cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":math_utils",
     ] + if_static([
@@ -50,11 +51,11 @@ cc_library(
         "time_utils.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     deps = [
         ":math_utils",
         "@com_google_absl//absl/time",
@@ -113,12 +114,13 @@ cc_library(
     srcs = ["xplane_schema.cc"],
     hdrs = ["xplane_schema.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":tf_op_utils",
         "//tensorflow/tsl/lib/gtl:map_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:macros",
+        "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/lib:context_types_hdrs",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -133,7 +135,7 @@ cc_library(
     srcs = ["xplane_visitor.cc"],
     hdrs = ["xplane_visitor.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":timespan",
         "//tensorflow/tsl/platform:logging",
@@ -150,7 +152,7 @@ cc_library(
     srcs = ["xplane_builder.cc"],
     hdrs = ["xplane_builder.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":math_utils",
         ":timespan",
@@ -183,12 +185,14 @@ cc_library(
     name = "trace_utils",
     hdrs = ["trace_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -197,7 +201,7 @@ cc_library(
     srcs = ["xplane_utils.cc"],
     hdrs = ["xplane_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":math_utils",
         ":tf_xplane_visitor",
@@ -244,7 +248,7 @@ cc_library(
     name = "tf_xplane_visitor",
     hdrs = ["tf_xplane_visitor.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":xplane_schema",
         ":xplane_visitor",
@@ -257,7 +261,7 @@ cc_library(
     srcs = ["parse_annotation.cc"],
     hdrs = ["parse_annotation.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         "@com_google_absl//absl/strings",
     ],
@@ -279,7 +283,7 @@ cc_library(
     srcs = ["group_events.cc"],
     hdrs = ["group_events.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":tf_xplane_visitor",
         ":xplane_builder",
@@ -307,7 +311,7 @@ cc_library(
     srcs = ["xplane_test_utils.cc"],
     hdrs = ["xplane_test_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = [":friends"],
+    visibility = set_external_visibility([":friends"]),
     deps = [
         ":xplane_builder",
         ":xplane_schema",
@@ -380,10 +384,10 @@ cc_library(
     srcs = ["buffer_pool.cc"],
     hdrs = ["buffer_pool.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla/backends/profiler/gpu:__pkg__",
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:mutex",
@@ -399,5 +403,44 @@ tsl_cc_test(
         ":buffer_pool",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
+    name = "preprocess_xplane",
+    srcs = ["preprocess_xplane.cc"],
+    hdrs = ["preprocess_xplane.h"],
+    copts = tf_profiler_copts(),
+    visibility = [":friends"],
+    deps = [
+        ":trace_utils",
+        ":xplane_builder",
+        ":xplane_schema",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
+        "//tensorflow/tsl/profiler/lib:context_types",
+        "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tsl_cc_test(
+    name = "preprocess_xplane_test",
+    srcs = ["preprocess_xplane_test.cc"],
+    deps = [
+        ":preprocess_xplane",
+        ":tf_xplane_visitor",
+        ":xplane_builder",
+        ":xplane_schema",
+        ":xplane_test_utils",
+        ":xplane_visitor",
+        "//tensorflow/tsl/platform:test",
+        "//tensorflow/tsl/platform:test_main",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
     ],
 )

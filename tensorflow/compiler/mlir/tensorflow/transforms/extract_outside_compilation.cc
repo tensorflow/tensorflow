@@ -332,14 +332,6 @@ bool HasDynamicExternalValues(Operation* op) {
       .wasInterrupted();
 }
 
-// Checks if `type` is allowed for XLA. String and resources are not XLA types.
-// There are other TF types that are not XLA types which will be removed by
-// successive passes in TF/XLA bridge phase 2.
-bool TypeValidForXLA(const Type& type) {
-  const Type elem = getElementTypeOrSelf(type);
-  return !elem.isa<TF::ResourceType>() && !elem.isa<TF::StringType>();
-}
-
 // Returns operands of `cluster_ops` that need to be
 // communicated from device->host. This is for the case when all operands have a
 // static shape.
@@ -354,7 +346,7 @@ llvm::SmallSetVector<Value, 4> GetStaticExternalOperands(
               walked_op))
         return WalkResult::advance();
       for (Value v : walked_op->getOperands()) {
-        if (!TypeValidForXLA(v.getType())) continue;
+        if (!tensorflow::TypeValidForXLA(v.getType())) continue;
         if (auto* defining_op = v.getDefiningOp()) {
           if (!op->isAncestor(defining_op) &&
               device_cluster->isAncestor(defining_op) &&
@@ -385,7 +377,7 @@ llvm::SmallSetVector<Value, 4> GetAllExternalOperands(
   for (Operation* op : cluster_ops) {
     op->walk([&](Operation* walked_op) {
       for (Value v : walked_op->getOperands()) {
-        if (!TypeValidForXLA(v.getType())) continue;
+        if (!tensorflow::TypeValidForXLA(v.getType())) continue;
         Operation* defining_op = v.getDefiningOp();
         if (!defining_op || !cluster_ops.count(defining_op)) {
           external_values.insert(v);
@@ -431,8 +423,8 @@ void GetExternalOutputs(const llvm::SmallSetVector<Operation*, 4>& cluster_ops,
           HasDynamicOutputs(user)) {
         if (!user_set.insert(user).second) continue;
         for (Value v : user->getOperands()) {
-          if (TypeValidForXLA(v.getType()) && v.getDefiningOp() == op &&
-              !isa<tf_device::ReturnOp>(user))
+          if (tensorflow::TypeValidForXLA(v.getType()) &&
+              v.getDefiningOp() == op && !isa<tf_device::ReturnOp>(user))
             external_outputs.insert(v);
           if (v.getDefiningOp() == op && isa<tf_device::ReturnOp>(user))
             tmp_host_outputs.push_back(v);
@@ -489,7 +481,7 @@ bool ShouldCloseCluster(llvm::ArrayRef<Value> outputs) {
           return true;
       }
     }
-    if (!TypeValidForXLA(v.getType()))
+    if (!tensorflow::TypeValidForXLA(v.getType()))
       for (const Operation* user : v.getUsers())
         if (!isa<tf_device::ReturnOp>(user)) has_nonxla_output = true;
   }
@@ -1167,7 +1159,7 @@ LogicalResult CreateParallelExecuteForOutsideCompilation(
 // have a valid XLA type.
 LogicalResult CheckClusterResults(tf_device::ClusterOp cluster) {
   for (OpResult result : cluster.getResults()) {
-    if (!TypeValidForXLA(result.getType())) {
+    if (!tensorflow::TypeValidForXLA(result.getType())) {
       cluster.emitError()
           << "The ExtractHeadTailOutsideCompilation pass produced a Device "
              "cluster with a result with a non-XLA type: "

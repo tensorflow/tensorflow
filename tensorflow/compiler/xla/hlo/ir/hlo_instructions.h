@@ -1324,7 +1324,7 @@ class HloFusionInstruction : public HloCallableInstruction {
   HloInstruction* fused_parameter(int64_t parameter_number) const;
 
   // Returns the vector of fused parameters inside this fusion instruction.
-  const std::vector<HloInstruction*>& fused_parameters() const;
+  const HloInstruction::InstructionVector& fused_parameters() const;
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.

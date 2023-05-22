@@ -18,9 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
@@ -47,6 +49,11 @@ namespace tensorflow {
 namespace {
 
 const char kScopedAllocatorAttrName[] = "_scoped_allocator";
+
+// For stateless RNGs ops, they are pure but device-dependent. Those ops are not
+// constant-foldable.
+static absl::flat_hash_set<std::string>* kBlockList =
+    new absl::flat_hash_set<std::string>({"StatelessRandomGetKeyCounter"});
 
 // Test to see if the Op is one that turns into a constant when its
 // inputs' shapes are known.
@@ -282,6 +289,11 @@ bool IsConstantFoldable(
   if (n->attrs().Find(kScopedAllocatorAttrName) != nullptr) {
     VLOG(2) << "Skip node [" << n->DebugString()
             << "] for constant folding due to scoped allocator";
+    return false;
+  }
+  if (kBlockList->contains(n->type_string())) {
+    VLOG(2) << "Skip node [" << n->DebugString()
+            << "] for constant folding, it is in constant folding block list";
     return false;
   }
   return true;

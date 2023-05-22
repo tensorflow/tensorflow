@@ -701,10 +701,25 @@ bool LayoutUtil::ValidateDimLevel(DimLevelType dim_level_type, bool dim_unique,
       return dim_unique && dim_ordered;
     case DIM_COMPRESSED:
     case DIM_SINGLETON:
+    case DIM_COMPRESSED_WITH_HI:
       return true;
     default:
       return false;
   }
+}
+
+/*static*/ bool LayoutUtil::ByteStridesIsMajorToMinor(
+    absl::Span<const int64_t> byte_strides, absl::Span<const int64_t> dims,
+    PrimitiveType element_type) {
+  CHECK_EQ(dims.size(), byte_strides.size());
+  int64_t stride = ShapeUtil::ByteSizeOfPrimitiveType(element_type);
+  for (int i = dims.size() - 1; i >= 0; --i) {
+    if (byte_strides[i] != stride) {
+      return false;
+    }
+    stride *= dims[i];
+  }
+  return true;
 }
 
 }  // namespace xla

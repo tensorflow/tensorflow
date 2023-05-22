@@ -642,7 +642,6 @@ cc_library(
         ":remapper",
         ":scoped_allocator_optimizer",
         ":shape_optimizer",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -658,6 +657,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
+        "@com_google_absl//absl/strings",
     ] + select({
         #TODO(b/200087693): LLVM does not build on Fuchsia.
         "//tensorflow:fuchsia": [],
@@ -874,7 +874,6 @@ tf_kernel_library(
     deps = [
         ":constant_folding",
         ":graph_optimizer",
-        "@com_google_absl//absl/container:flat_hash_set",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -885,9 +884,10 @@ tf_kernel_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:graph_view",
+        "//tensorflow/core/grappler/utils:pattern_utils",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
-        "//tensorflow/core/grappler/utils:pattern_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util"]),
 )
 

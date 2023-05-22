@@ -32,7 +32,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import composite_tensor
@@ -74,6 +74,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -706,9 +707,9 @@ def _get_session(op_input_list=()):
         _SESSION.session.graph is not _current_graph(op_input_list)):
       # If we are creating the Session inside a tf.distribute.Strategy scope,
       # we ask the strategy for the right session options to use.
-      if distribution_strategy_context.has_strategy():
+      if distribute_lib.has_strategy():
         configure_and_create_distributed_session(
-            distribution_strategy_context.get_strategy())
+            distribute_lib.get_strategy())
       else:
         _SESSION.session = session_module.Session(
             config=get_default_session_config())
@@ -1185,7 +1186,7 @@ def _initialize_variables(session):
     # This step is expensive, so we only run it on variables not already
     # marked as initialized.
     is_initialized = session.run(
-        [variables_module.is_variable_initialized(v) for v in candidate_vars])
+        [variable_v1.is_variable_initialized(v) for v in candidate_vars])
     # TODO(kathywu): Some metric variables loaded from SavedModel are never
     # actually used, and do not have an initializer.
     should_be_initialized = [

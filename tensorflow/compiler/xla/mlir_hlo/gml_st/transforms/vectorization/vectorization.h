@@ -50,9 +50,6 @@ struct VectorizationPattern : public mlir::OpRewritePattern<OpTy> {
   llvm::function_ref<bool(OpTy)> filterFn;
 };
 
-void populateTransferReadOfOneDimExpandShapePattern(
-    RewritePatternSet &patterns);
-
 RewritePatternSet getDefaultVectorizationPatterns(MLIRContext *ctx);
 
 }  // namespace gml_st

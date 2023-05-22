@@ -121,10 +121,9 @@ objc_library(
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/multi_signatures.bin",
     ],
+    sdk_frameworks = ["XCTest"],
     tags = TFL_DEFAULT_TAGS + ["builder_default_ios_x86_64"],
-    deps = [
-        ":TensorFlowLite",
-    ],
+    deps = [":TensorFlowLite"],
 )
 
 ios_application(
@@ -156,8 +155,8 @@ objc_library(
     ],
     module_name = "TestApp",
     tags = TFL_DEFAULT_TAGS + [
-        "manual",
         "builder_default_ios_x86_64",
+        "manual",
     ],
     deps = [
         ":TensorFlowLite",

@@ -97,7 +97,8 @@ class FuseMhloMulAndConvolutionPattern : public OpRewritePattern<mhlo::MulOp> {
     }
 
     // Rewrite
-    broadcast_dims = broadcast_op.getBroadcastDimensions();
+    broadcast_dims =
+        broadcast_op ? broadcast_op.getBroadcastDimensions() : nullptr;
     if (broadcast_dims == nullptr) {
       const auto filter_rank = filter_value.getType().getRank();
       auto dimsType = RankedTensorType::get({1}, rewriter.getIntegerType(64));

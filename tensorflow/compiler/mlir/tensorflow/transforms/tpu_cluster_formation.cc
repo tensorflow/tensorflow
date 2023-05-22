@@ -142,6 +142,7 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
                                         std::string& device) {
   bool has_replicated_compiled_op = false;
   bool has_non_replicated_compiled_op = false;
+  bool has_local_device_name_collisions = false;
   // Use ordered set here to make error message below deterministic.
   std::set<llvm::StringRef> device_types;
   std::unordered_map<std::string, std::string> devices;
@@ -197,17 +198,20 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       // information such as task, replica, job etc. An example fullname is
       // "/job:foo_bar/replica:1/task:2/device:GPU:3"
       if (devices.count(device_local_name)) {
+        std::string device1 = devices[device_local_name];
+        std::string device2 = device_attr.str();
+        // Is either of the two devices just a substring of the other? If
+        // not, we treat them as different devices, and we have a collision.
+        if (device1.find(device2) == std::string::npos &&
+            device2.find(device1) == std::string::npos) {
+          has_local_device_name_collisions = true;
+          LOG(WARNING) << "found two devices with same local name "
+                       << device_local_name
+                       << " but conflicting fullname: " << device1 << " and "
+                       << device2;
+        }
+        // Always keep the longer name.
         if (devices[device_local_name].size() < device_attr.str().size()) {
-          // If for same local name, the smaller device fullname is not
-          // a substring of larger device fullname, then there is definitely
-          // some issue with device names.
-          if (device_attr.str().find(devices[device_local_name]) ==
-              std::string::npos) {
-            LOG(WARNING) << "found two devices with same local name but "
-                            "conflicting fullname: "
-                         << device_attr.str() << " and "
-                         << devices[device_local_name];
-          }
           devices[device_local_name] = device_attr.str();
         }
       } else {
@@ -233,9 +237,10 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       for (const auto& device_names : devices) {
         LOG(WARNING) << device_names.first << ", " << device_names.second;
       }
-    }
-    if (devices.size() == 1 &&
-        absl::StrContains(devices.begin()->second, "TPU:")) {
+    } else if (has_local_device_name_collisions) {
+      LOG(WARNING) << "Not assigning device because of conflicting fullnames.";
+    } else if (devices.size() == 1 &&
+               absl::StrContains(devices.begin()->second, "TPU:")) {
       device = devices.begin()->second;
     }
   }

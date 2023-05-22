@@ -140,7 +140,7 @@ TEST(Journal, NonRecordData) {
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(result, end_of_journal);
-  EXPECT_THAT(s.error_message(), HasSubstr("corrupted record"));
+  EXPECT_THAT(s.message(), HasSubstr("corrupted record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }
 
@@ -161,7 +161,7 @@ TEST(Journal, InvalidRecordData) {
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(result, end_of_journal);
-  EXPECT_THAT(s.error_message(), HasSubstr("Failed to parse journal record"));
+  EXPECT_THAT(s.message(), HasSubstr("Failed to parse journal record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }
 }  // namespace data

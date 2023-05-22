@@ -139,6 +139,7 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
     split_dimension = 1 : i64,
     concat_dimension = 0 : i64,
     split_count = 4 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 2, type = 0>,
     replica_groups = dense<[[0, 1, 2, 3]]> : tensor<1x4xi64>
   } : (tensor<4x16xf32>) -> tensor<16x4xf32>
   func.return %0 : tensor<16x4xf32>
@@ -148,7 +149,9 @@ func.func @all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
 //  CHECK-SAME: %[[ARG0:.*]]: tensor<4x16xf32>
 //       CHECK: %[[DST:.*]] = tensor.empty() : tensor<16x4xf32>
 //       CHECK: %[[RET:.*]] = "xla_cpu.all_to_all"(%[[ARG0]], %[[DST]]) {
+//  CHECK-SAME:    channel_id_present = 1
 //  CHECK-SAME:    concat_dimension = 0
+//  CHECK-SAME:    op_id = 2
 //  CHECK-SAME:    replica_groups = dense<
 //  CHECK-SAME:    split_count = 4
 //  CHECK-SAME:    split_dimension = 1

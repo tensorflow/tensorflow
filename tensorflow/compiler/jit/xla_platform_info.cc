@@ -235,6 +235,7 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
   auto device = static_cast<Device*>(device_base);
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
+  const PjRtBaseDevice::Metadata* pjrt_device_metadata = nullptr;
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
 
   if (device->device_type() == DEVICE_CPU) {
@@ -258,10 +259,14 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
     platform_id = xla_device_metadata->platform()->id();
     custom_allocator =
         xla_device_metadata->client()->backend().shared_memory_allocator();
+  } else if (auto metadata = PjRtBaseDevice::GetMetadataFromDevice(device);
+             metadata.ok()) {
+    pjrt_device_metadata = *metadata;
   }
 
   return XlaPlatformInfo(DeviceType(device->device_type()), platform_id,
-                         xla_device_metadata, custom_allocator);
+                         xla_device_metadata, pjrt_device_metadata,
+                         custom_allocator);
 }
 
 std::shared_ptr<se::DeviceMemoryAllocator> GetAllocator(

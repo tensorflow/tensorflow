@@ -1,0 +1,13 @@
+==== triton/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h#8 - triton/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h#9 ====
+# action=edit type=text
+--- triton/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h	2023-04-04 11:00:49.000000000 -0700
++++ triton/lib/Conversion/TritonGPUToLLVM/TritonGPUToLLVMBase.h	2023-04-11 10:54:59.000000000 -0700
+@@ -78,7 +78,7 @@
+     auto varargsAttr = funcOp->getAttrOfType<BoolAttr>("func.varargs");
+     TypeConverter::SignatureConversion result(funcOp.getNumArguments());
+     auto llvmType = getTypeConverter()->convertFunctionSignature(
+-        funcOp.getFunctionType(), varargsAttr && varargsAttr.getValue(),
++        funcOp.getFunctionType(), varargsAttr && varargsAttr.getValue(), false,
+         result);
+     if (!llvmType)
+       return nullptr;

@@ -21,8 +21,6 @@ tf_cc_test(
         ":path_utils",
         ":snapshot_reader",
         ":test_utils",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -39,6 +37,8 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
 )
 
@@ -180,6 +180,7 @@ cc_library(
         "//tensorflow/tsl/platform:status_to_from_proto",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/time",
     ],
 )

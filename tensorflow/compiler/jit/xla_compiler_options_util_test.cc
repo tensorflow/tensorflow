@@ -24,6 +24,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/test_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -53,8 +54,8 @@ XlaDeviceCompiler* CreateXlaDeviceCompiler(
                                std::move(compiler_client));
 }
 
-std::unique_ptr<XlaDevice::Metadata> CreateXlaDeviceMetadata(
-    DeviceType compilation_device_type) {
+std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
+GetShapeDeterminationFns() {
   XlaHelpers::ShapeRepresentationFn shape_representation_fn =
       [](const TensorShape&, DataType, bool, XlaLayoutPreference) {
         return xla::Shape();
@@ -63,13 +64,22 @@ std::unique_ptr<XlaDevice::Metadata> CreateXlaDeviceMetadata(
       [](const TensorShape&, DataType, std::optional<XlaArgument::Kind>) {
         return tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout;
       };
-  std::vector<XlaShapeLayoutHelpers::ShapeDeterminationFns>
-      shape_determination_fns = {XlaShapeLayoutHelpers::ShapeDeterminationFns{
-          layout_preference_fn, shape_representation_fn}};
+  return {XlaShapeLayoutHelpers::ShapeDeterminationFns{
+      layout_preference_fn, shape_representation_fn}};
+}
+
+std::unique_ptr<XlaDevice::Metadata> CreateXlaDeviceMetadata(
+    DeviceType compilation_device_type) {
   return std::make_unique<XlaDevice::Metadata>(
       /*device_ordinal=*/0, /*platform=*/nullptr, compilation_device_type,
-      shape_determination_fns, XlaDevice::PaddedShapeFn(),
+      GetShapeDeterminationFns(), XlaDevice::PaddedShapeFn(),
       /*use_multiple_streams=*/false);
+}
+
+std::unique_ptr<PjRtBaseDevice::Metadata> CreatePjRtDeviceMetadata(
+    DeviceType compilation_device_type) {
+  return std::make_unique<PjRtBaseDevice::Metadata>(compilation_device_type,
+                                                    GetShapeDeterminationFns());
 }
 
 class XlaCompilerOptionsTest : public ::testing::Test {
@@ -89,8 +99,45 @@ TEST_F(XlaCompilerOptionsTest, PjRtOptionsXlaDevice) {
   se::Platform::Id platform_id = nullptr;
   auto xla_device_metadata = CreateXlaDeviceMetadata(compilation_device_type);
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
-  XlaPlatformInfo platform_info(compilation_device_type, platform_id,
-                                xla_device_metadata.get(), custom_allocator);
+  XlaPlatformInfo platform_info(
+      compilation_device_type, platform_id, xla_device_metadata.get(),
+      /*pjrt_device_metadata=*/nullptr, custom_allocator);
+
+  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
+      *device_setup_.flr(), device, platform_info);
+
+  EXPECT_EQ(options.device_type, compilation_device_type);
+  EXPECT_EQ(options.device_ordinal, 0);
+  EXPECT_NE(options.flib_def, nullptr);
+  EXPECT_EQ(options.graph_def_version, TF_GRAPH_DEF_VERSION);
+  EXPECT_FALSE(options.allow_cpu_custom_calls);
+  EXPECT_FALSE(options.alias_passthrough_params);
+  EXPECT_FALSE(options.detailed_logging);
+  // Check if options have the supplied shape determination functions set.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto shape, options.shape_determination_fns.shape_representation_fn(
+                      TensorShape(), DT_FLOAT, false,
+                      tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout));
+  EXPECT_EQ(shape, xla::Shape());
+  EXPECT_EQ(options.shape_determination_fns.layout_preference_fn(
+                TensorShape(), DT_FLOAT, std::nullopt),
+            tensorflow::XlaLayoutPreference::kTpuPreferLinearLayout);
+}
+
+TEST_F(XlaCompilerOptionsTest, PjRtOptionsPjRtBaseDevice) {
+  // Although DEVICE_CPU isn't a PjRtBaseDevice, we use it here just for testing
+  // purposes and to keep things simple. Creating a TpuDevice or
+  // NextPluggableDevice in the context of this unit test is non-trivial.
+  device_setup_.AddDevicesAndSetUp({DEVICE_CPU});
+  Device* device = device_setup_.GetDevice(DEVICE_CPU);
+  DeviceType compilation_device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+
+  auto pjrt_device_metadata = CreatePjRtDeviceMetadata(compilation_device_type);
+  XlaPlatformInfo platform_info(
+      compilation_device_type, /*platform_id=*/nullptr,
+      /*xla_device_metadata=*/nullptr,
+      /*pjrt_device_metadata=*/pjrt_device_metadata.get(),
+      /*device_allocator=*/nullptr);
 
   XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
       *device_setup_.flr(), device, platform_info);
@@ -128,8 +175,9 @@ TEST_F(XlaCompilerOptionsTest, XlaOptions) {
   se::Platform::Id platform_id = se::host::kHostPlatformId;
   auto xla_device_metadata = CreateXlaDeviceMetadata(compilation_device_type);
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
-  XlaPlatformInfo platform_info(device_type, platform_id,
-                                xla_device_metadata.get(), custom_allocator);
+  XlaPlatformInfo platform_info(
+      device_type, platform_id, xla_device_metadata.get(),
+      /*pjrt_device_metadata=*/nullptr, custom_allocator);
 
   XlaCompiler::Options options =
       GenerateCompilerOptions(*xla_device_compiler, *device_setup_.flr(),
@@ -166,8 +214,9 @@ TEST_F(XlaCompilerOptionsTest, XlaOptionsHasRefVarsNoXlaDeviceMetadata) {
 
   se::Platform::Id platform_id = se::host::kHostPlatformId;
   std::shared_ptr<se::DeviceMemoryAllocator> custom_allocator;
-  XlaPlatformInfo platform_info(device_type, platform_id, nullptr,
-                                custom_allocator);
+  XlaPlatformInfo platform_info(
+      device_type, platform_id, /*xla_device_metadata=*/nullptr,
+      /*pjrt_device_metadata=*/nullptr, custom_allocator);
 
   XlaCompiler::Options options =
       GenerateCompilerOptions(*xla_device_compiler, *device_setup_.flr(),

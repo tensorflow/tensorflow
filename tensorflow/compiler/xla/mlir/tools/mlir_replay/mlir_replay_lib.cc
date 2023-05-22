@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/mlir_replay_lib.h"
 
-#include <complex>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <random>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
+#include "llvm/ADT/APInt.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -34,11 +35,11 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Tools/ParseUtilities.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/tools/mlir_interpreter/framework/interpreter.h"
 #include "tensorflow/compiler/xla/mlir_hlo/tools/mlir_interpreter/framework/interpreter_value.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -112,12 +113,52 @@ mlir::FailureOr<mlir::interpreter::InterpreterValue> MakeRandomInput(
   return failure();
 }
 
+// TODO(jreiffers): Add a flag to intentionally alias as many buffers as
+// possible (in particular, all non-variable inputs).
+// Extracts a mapping from function arguments to allocated buffers.
+// The buffer assignment is only relevant once the program is bufferized and
+// memref results were converted to arguments.
+std::vector<int64_t> extractXlaBufferAssignment(func::FuncOp main) {
+  std::vector<int64_t> buffer_assignment(main.getNumArguments());
+  auto result_mapping =
+      main->getAttrOfType<IntegerAttr>("xla_framework.result_mapping");
+  if (!result_mapping) {
+    // No attribute, fall back to unique buffers for each argument.
+    std::iota(buffer_assignment.begin(), buffer_assignment.end(), 0);
+    return buffer_assignment;
+  }
+
+  std::vector<int64_t> result_to_buffer;
+  if (auto inner_mapping = main->getAttrOfType<ArrayAttr>(
+          "xla_framework.result_inner_mapping")) {
+    llvm::copy(llvm::map_range(inner_mapping.getAsValueRange<IntegerAttr>(),
+                               [](const llvm::APInt& value) {
+                                 return value.getSExtValue();
+                               }),
+               std::back_inserter(result_to_buffer));
+  } else {
+    result_to_buffer = {result_mapping.getInt()};
+  }
+
+  int64_t result_index = 0;
+  for (int64_t arg_index : llvm::seq<int64_t>(0, main.getNumArguments())) {
+    if (auto input_buffer_index = main.getArgAttrOfType<IntegerAttr>(
+            arg_index, "xla_framework.input_mapping")) {
+      buffer_assignment[arg_index] = input_buffer_index.getInt();
+    } else {
+      buffer_assignment[arg_index] = result_to_buffer[result_index++];
+    }
+  }
+
+  return buffer_assignment;
+}
+
 }  // namespace
 
 tsl::StatusOr<SmallVector<InterpreterValue>> Run(
     MLIRContext& context, const std::string& mlir_ir,
     const xla::HloSnapshot& snapshot, ExecutionTrace* trace,
-    const std::string& entry) {
+    const std::vector<std::string>& entry) {
   auto sourceMgr = std::make_shared<llvm::SourceMgr>();
   sourceMgr->AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(mlir_ir),
                                 mlir::SMLoc());
@@ -128,10 +169,16 @@ tsl::StatusOr<SmallVector<InterpreterValue>> Run(
   }
 
   SymbolTable symbols(*module);
-  auto main = llvm::dyn_cast_or_null<func::FuncOp>(symbols.lookup(entry));
+  func::FuncOp main;
+  for (const std::string& candidate : entry) {
+    main = llvm::dyn_cast_or_null<func::FuncOp>(symbols.lookup(candidate));
+    if (main && !main.getBody().empty()) {
+      break;
+    }
+  }
+
   if (!main) {
-    return tsl::errors::InvalidArgument("failed to find entry function \"" +
-                                        entry + "\"");
+    return tsl::errors::InvalidArgument("failed to find entry point");
   }
 
   if (trace) {
@@ -143,28 +190,56 @@ tsl::StatusOr<SmallVector<InterpreterValue>> Run(
   // argument. The interpreter currently cannot deal with these things, so we
   // fail in that case.
   auto function_args = main.getBody().getBlocks().front().getArguments();
-  if (!llvm::all_of(function_args, [](Value arg) {
-        return arg.getType().isa<ShapedType>();
+  auto buffer_type = xla_framework::BufferType::get(main.getContext());
+  if (!llvm::all_of(function_args, [&](Value arg) {
+        return arg.getType().isa<ShapedType>() || arg.getType() == buffer_type;
       })) {
     return tsl::errors::InvalidArgument(
         "expected all function arguments to be shaped types");
   }
 
+  auto args_to_buffers = extractXlaBufferAssignment(main);
   TF_ASSIGN_OR_RETURN(auto args, LoadArgs(snapshot));
   auto out_args =
       main.getBody().getBlocks().front().getArguments().drop_front(args.size());
+
+  absl::flat_hash_map<int64_t, InterpreterValue> buffer_to_value;
+  // None of the input arguments will be statically known to alias.
+  for (auto [index, value] : llvm::enumerate(args)) {
+    buffer_to_value[args_to_buffers[index]] = value;
+  }
 
   std::seed_seq my_seed_seq({0});
   absl::BitGen bitgen(my_seed_seq);
   llvm::SmallVector<InterpreterValue> out_buffers;
   // Add random inputs for output arguments and unspecified inputs.
   for (auto arg : out_args) {
-    auto arg_or = MakeRandomInput(bitgen, arg.getType());
+    auto ty = arg.getType();
+    if (ty == buffer_type) {
+      // Buffers are used exactly once, in a buffer_to_mem op.
+      if (!arg.hasOneUse()) {
+        return tsl::errors::InvalidArgument(
+            "expected buffer argument to be used eactly once");
+      }
+      ty = arg.getUsers().begin()->getResultTypes().front();
+    }
+
+    int64_t buffer_index = args_to_buffers[arg.getArgNumber()];
+    // If we already have a buffer for this argument, use it.
+    if (buffer_to_value.contains(buffer_index)) {
+      auto& value = buffer_to_value[buffer_index];
+      out_buffers.push_back(value);
+      args.push_back(value);
+      continue;
+    }
+
+    auto arg_or = MakeRandomInput(bitgen, ty);
     if (!succeeded(arg_or)) {
       return tsl::errors::InvalidArgument("failed to create input");
     }
     out_buffers.push_back(*arg_or);
     args.push_back(*arg_or);
+    buffer_to_value[buffer_index] = *arg_or;
   }
 
   InterpreterOptions options;

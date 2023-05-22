@@ -13,7 +13,6 @@ py_library(
     deps = [
         ":feature_column",
         ":feature_column_v2",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -44,10 +43,13 @@ py_library(
         "//tensorflow/python:template",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -80,7 +82,6 @@ py_library(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:training",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
@@ -88,6 +89,10 @@ py_library(
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:data_structures",
         "//tensorflow/python/trackable:resource",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -207,7 +212,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -241,7 +246,7 @@ py_test(
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -251,7 +256,6 @@ tf_py_test(
     deps = [
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:util",
         "@absl_py//absl/testing:parameterized",
     ],
 )

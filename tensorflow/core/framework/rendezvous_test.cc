@@ -165,7 +165,7 @@ TEST_F(LocalRendezvousTest, CancelBeforeRecv) {
   auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(errors::IsCancelled(s));
-  EXPECT_EQ("RecvAsync is cancelled.", s.error_message());
+  EXPECT_EQ("RecvAsync is cancelled.", s.message());
   delete cm;
 }
 
@@ -184,7 +184,7 @@ TEST_F(LocalRendezvousTest, CancelAfterRecv) {
   auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
   EXPECT_FALSE(s.ok());
   EXPECT_TRUE(errors::IsCancelled(s));
-  EXPECT_EQ("RecvAsync is cancelled.", s.error_message());
+  EXPECT_EQ("RecvAsync is cancelled.", s.message());
   n.WaitForNotification();
   delete cm;
 }

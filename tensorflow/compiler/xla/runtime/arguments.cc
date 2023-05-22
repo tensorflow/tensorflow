@@ -323,18 +323,13 @@ AsyncMemrefArg::AsyncMemrefArg(tsl::AsyncValueRef<MemrefDesc> value)
   auto write = [](const MemrefDesc* v, std::byte* store) {
     MemrefDescriptor* store_t = reinterpret_cast<MemrefDescriptor*>(store);
     auto rank = v->rank();
-    size_t total_size = 0;
     for (unsigned i = 0; i < rank; ++i) {
       store_t->dims[i] = v->size(i);
       store_t->dims[i + rank] = v->stride(i);
-      total_size += v->size(i);
     }
-    total_size = total_size * primitive_util::ByteWidth(v->dtype());
-    void* allocated_ptr = std::malloc(total_size);
-    std::memcpy(allocated_ptr, v->data(), total_size);
 
-    store_t->allocated_ptr = allocated_ptr;
-    store_t->aligned_ptr = allocated_ptr;
+    store_t->allocated_ptr = v->data();
+    store_t->aligned_ptr = v->data();
     store_t->offset = 0;
   };
 

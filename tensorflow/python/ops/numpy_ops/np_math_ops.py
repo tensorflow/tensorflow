@@ -1428,6 +1428,7 @@ def enable_numpy_methods_on_tensor():
   # TODO(b/178540516): Make a custom `setattr` that changes the method's
   #   docstring to the TF one.
   setattr(ops.Tensor, 'transpose', np_array_ops.transpose)
+  setattr(ops.Tensor, 'flatten', np_array_ops.flatten)
   setattr(ops.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
   setattr(ops.Tensor, 'ravel', np_array_ops.ravel)
   setattr(ops.Tensor, 'clip', clip)

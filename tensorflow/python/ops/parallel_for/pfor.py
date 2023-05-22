@@ -4498,12 +4498,18 @@ def _convert_function_call(func, converter, inputs):
       converter._add_conversion(inp, arg)
     # Convert output tensors.
     return tuple(
-        [converter._convert_helper(x).t for x in func._func_graph_outputs])
+        [
+            converter._convert_helper(x).t
+            for x in func._graph_artifacts.func_graph_outputs
+        ]
+    )
 
   call_outputs = f(*inputs)
-  assert len(call_outputs) == len(func._func_graph_outputs)
+  assert len(call_outputs) == len(func._graph_artifacts.func_graph_outputs)
   outputs = []
-  for call_output, output_tensor in zip(call_outputs, func._func_graph_outputs):
+  for call_output, output_tensor in zip(
+      call_outputs, func._graph_artifacts.func_graph_outputs
+  ):
     func_output = converter._convert_helper(output_tensor)
     outputs.append(
         wrap(call_output, func_output.is_stacked,

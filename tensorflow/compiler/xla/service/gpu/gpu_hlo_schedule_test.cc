@@ -20,15 +20,13 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
@@ -48,11 +46,14 @@ class GpuHloScheduleTest : public HloTestBase {
     return SequentialHloOrdering{module->schedule()};
   }
 
-  HloModuleConfig GetModuleConfig(bool enable_latency_hiding_scheduler) {
+  HloModuleConfig GetModuleConfig(bool enable_latency_hiding_scheduler,
+                                  bool enable_gpu_async_tracker = false) {
     HloModuleConfig config;
     DebugOptions debug_options = GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_latency_hiding_scheduler(
         enable_latency_hiding_scheduler);
+    debug_options.set_xla_gpu_lhs_enable_gpu_async_tracker(
+        enable_gpu_async_tracker);
     config.set_debug_options(debug_options);
     return config;
   }
@@ -61,6 +62,17 @@ class GpuHloScheduleTest : public HloTestBase {
       bool enable_latency_hiding_scheduler = false) {
     return std::make_unique<HloModule>(
         "test_module", GetModuleConfig(enable_latency_hiding_scheduler));
+  }
+
+  static bool HasValidFingerprint(HloModule* module) {
+    // Verify that the fingerprint of HLO prior to LHS is present.
+    const HloInstruction* root =
+        module->entry_computation()->root_instruction();
+    const FrontendAttributes& attrs = root->frontend_attributes();
+    auto it = attrs.map().find(kFingerprintBeforeLHS);
+
+    // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
+    return it != attrs.map().end() && it->second.size() == 128 / 4;
   }
 };
 
@@ -88,6 +100,7 @@ TEST_F(GpuHloScheduleTest, SequentialMatMul) {
   EXPECT_TRUE(order.ExecutesBefore(z, dot1));
   EXPECT_TRUE(order.ExecutesBefore(z, dot2));
   EXPECT_TRUE(order.ExecutesBefore(dot1, dot2));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 // Test of a single stream, where data dependencies do not fully determine the
@@ -117,6 +130,7 @@ TEST_F(GpuHloScheduleTest, SequentialAdd) {
   EXPECT_TRUE(order.ExecutesBefore(z, add2));
   EXPECT_TRUE(order.ExecutesBefore(add1, add2));
   EXPECT_TRUE(order.ExecutesBefore(add2, add3));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
@@ -176,6 +190,7 @@ TEST_F(GpuHloScheduleTest, AsyncCustomCall) {
   // LATEST is in effect.
   EXPECT_TRUE(order.ExecutesBefore(add3, blocking_call));
   EXPECT_TRUE(order.ExecutesBefore(blocking_call, add4));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
@@ -231,6 +246,7 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   // Test that all_reduce_done is scheduled after add3.
   EXPECT_TRUE(order.ExecutesBefore(add3, collective_permute_done));
   EXPECT_TRUE(order.ExecutesBefore(collective_permute_done, add4));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 TEST_F(GpuHloScheduleTest, LHSCostModel) {
@@ -247,7 +263,7 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
     p1 = f32[32, 32] parameter(1)
     p2 = f32[32, 32] parameter(2)
     p3 = f32[32] parameter(3)
-   
+
     dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
     dot1 = f32[32,32]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$gemm"
     dot2 = f32[32,32]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$gemm"
@@ -255,7 +271,7 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
     dot4 = f32[32,32]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$gemm"
     dot5 = f32[32,32]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$gemm"
     dot6 = f32[32,32]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$gemm"
-  
+
     ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
     ar-done = f32[32] all-reduce-done(ar-start)
 
@@ -268,7 +284,7 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
     add3 = f32[32,32] add(add2, dot4)
     add4 = f32[32,32] add(add3, dot5)
     add5 = f32[32,32] add(add4, dot6)
-   
+
     ROOT t = (f32[32], f32[32], f32[32,32]) tuple(ar-done, ar-done1, add5)
   })";
 
@@ -299,6 +315,7 @@ TEST_F(GpuHloScheduleTest, LHSCostModel) {
   EXPECT_EQ(count_between_pairs.size(), 2);
   EXPECT_GT(count_between_pairs[0], 0);
   EXPECT_GT(count_between_pairs[1], 0);
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 class GpuHloScheduleParameterizedTest
@@ -375,6 +392,78 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   // Test that all_reduce_done is scheduled after add3.
   EXPECT_TRUE(order.ExecutesBefore(add3, all_reduce_done));
   EXPECT_TRUE(order.ExecutesBefore(all_reduce_done, add4));
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
+TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
+  const char* hlo_text = R"(
+  HloModule AsyncModule
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[32] parameter(0)
+    p1 = f32[32, 32] parameter(1)
+    p2 = f32[32, 32] parameter(2)
+    p3 = f32[32] parameter(3)
+
+    dot0 = f32[32,32]{1,0} custom-call(p1, p2), custom_call_target="__cublas$gemm"
+    dot1 = f32[32,32]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$gemm"
+    dot2 = f32[32,32]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$gemm"
+    dot3 = f32[32,32]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$gemm"
+    dot4 = f32[32,32]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$gemm"
+    dot5 = f32[32,32]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$gemm"
+    dot6 = f32[32,32]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$gemm"
+
+    ar-start = f32[32] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[32] all-reduce-done(ar-start)
+
+    %ag-start = (f32[32], f32[64]) all-gather-start(p3), dimensions={0}
+    %ag-done = f32[64] all-gather-done(%ag-start)
+
+    add0 = f32[32,32] add(dot0, dot1)
+    add1 = f32[32,32] add(add0, dot2)
+    add2 = f32[32,32] add(add1, dot3)
+    add3 = f32[32,32] add(add2, dot4)
+    add4 = f32[32,32] add(add3, dot5)
+    add5 = f32[32,32] add(add4, dot6)
+
+    ROOT t = (f32[32], f32[64], f32[32,32]) tuple(ar-done, %ag-done, add5)
+  })";
+
+  const bool enable_gpu_async_tracker = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module,
+      ParseAndReturnVerifiedModule(
+          hlo_text,
+          GetModuleConfig(
+              /*enable_latency_hiding_scheduler=*/true,
+              /*enable_gpu_async_tracker=*/enable_gpu_async_tracker)));
+  SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+  // Count the number of collectives in flight. Without gpu async tracker, we
+  // will incorrectly have 2 in-flight (as base async tracker assumes each
+  // collective can be scheduled independently as they use different resource
+  // types), but with gpu async tracker we will have 1.
+  uint32_t in_flight = 0;
+  uint32_t max_in_flight = 0;
+  for (const HloInstruction* inst :
+       order.SequentialOrder(*module->entry_computation())->instructions()) {
+    HloOpcode op = inst->opcode();
+    if (hlo_query::IsAsyncCollectiveStartOp(op)) {
+      in_flight++;
+      max_in_flight = std::max(max_in_flight, in_flight);
+    } else if (hlo_query::IsAsyncCollectiveDoneOp(op)) {
+      in_flight--;
+    }
+  }
+
+  const uint32_t expected_max_in_flight = enable_gpu_async_tracker ? 1 : 2;
+  EXPECT_EQ(expected_max_in_flight, max_in_flight);
+  EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
 INSTANTIATE_TEST_SUITE_P(GpuHloScheduleParameterizedTest,

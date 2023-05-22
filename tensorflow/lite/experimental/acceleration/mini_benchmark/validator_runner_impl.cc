@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <ostream>
 #include <string>
 #include <thread>  // NOLINT: code only used on Android, where std::thread is allowed
@@ -206,9 +205,9 @@ MinibenchmarkStatus ValidatorRunnerImpl::Init() {
 }
 
 void ValidatorRunnerImpl::TriggerValidationAsync(
-    std::unique_ptr<std::vector<FlatBufferBuilder>> tflite_settings,
+    std::vector<FlatBufferBuilder> tflite_settings,
     absl::string_view storage_path) {
-  if (!tflite_settings || tflite_settings->empty()) {
+  if (tflite_settings.empty()) {
     return;
   }
 
@@ -240,7 +239,7 @@ void ValidatorRunnerImpl::TriggerValidationAsync(
         std::string model_path = original_model_path;
         std::unique_ptr<FdHolder> fd_holder =
             UpdateModelPathIfUsingFd(model_path);
-        for (auto& one_setting : *tflite_settings) {
+        for (auto& one_setting : tflite_settings) {
           FlatbufferStorage<BenchmarkEvent> storage(storage_path);
           TFLiteSettingsT tflite_settings_obj;
           flatbuffers::GetRoot<TFLiteSettings>(one_setting.GetBufferPointer())

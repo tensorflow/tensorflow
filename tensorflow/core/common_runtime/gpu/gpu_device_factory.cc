@@ -203,7 +203,7 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
     int num_numa_nodes = options.config.experimental().use_numa_affinity()
                              ? port::NUMANumNodes()
                              : 1;
-    int max_stream_group_count(1);
+    int64_t gpu_stream_group_count = 1;
     if (is_multi_stream_) {
       bool use_per_stream_host_allocator;
       TF_CHECK_OK(ReadBoolFromEnvVar("TF_PER_STREAM_HOST_ALLOCATOR",
@@ -212,23 +212,16 @@ class GPUCompatibleCPUDeviceFactory : public DeviceFactory {
       if (!use_per_stream_host_allocator) {
         return OkStatus();
       }
-      std::vector<int64_t> gpu_stream_group_count;
-      TF_CHECK_OK(ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
-                                       /*default_val=*/1,
-                                       &gpu_stream_group_count));
-      max_stream_group_count = gpu_stream_group_count[0];
-      for (auto cnt : gpu_stream_group_count) {
-        if (cnt > max_stream_group_count) {
-          max_stream_group_count = cnt;
-        }
-      }
+      TF_CHECK_OK(ReadInt64FromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
+                                      /*default_val=*/1,
+                                      &gpu_stream_group_count));
     }
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:CPU:", i);
       int numa_node = i % num_numa_nodes;
       DeviceLocality locality;
       locality.set_numa_node(numa_node);
-      for (int j = 0; j < max_stream_group_count; ++j) {
+      for (int j = 0; j < gpu_stream_group_count; ++j) {
         if (is_multi_stream_) {
           name = strings::StrCat(name_prefix, "/device:STREAM_CPU_", i, ":", j);
           devices->push_back(absl::make_unique<StreamCompatibleCPUDevice>(

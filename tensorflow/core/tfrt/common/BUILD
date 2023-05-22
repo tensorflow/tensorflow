@@ -4,6 +4,7 @@ load(
     "//tensorflow/tsl/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
+load("//tensorflow/tsl:tsl.bzl", "if_not_windows")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -20,6 +21,7 @@ package_group(
         # copybara:uncomment "//learning/brain/google/xla/...",
         # copybara:uncomment "//learning/brain/tfrc/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//platforms/xla/megascale/tensorflow/...",
         "//tensorflow/c/...",
         "//tensorflow/compiler/jit/...",
         "//tensorflow/core/common_runtime/next_pluggable_device/...",
@@ -75,9 +77,8 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
-        ":global_state",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ],
@@ -124,7 +125,10 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/platform:errors",
-    ],
+    ] + if_not_windows(
+        # pjrt_c_api_client depends on //third_party/tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper, which does not support windows.
+        ["//tensorflow/compiler/xla/pjrt:pjrt_c_api_client"],
+    ),
 )
 
 tf_cc_test(

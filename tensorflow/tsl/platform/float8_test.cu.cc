@@ -76,6 +76,49 @@ TEST(Float8E4m3Test, NumericLimits) {
   EXPECT_EQ(
       static_cast<float>(std::numeric_limits<float8_e4m3fn>::denorm_min()),
       std::exp2(-9));
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::digits, 4);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::digits10, 0);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::max_digits10, 3);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::min_exponent, -5);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::min_exponent10, -1);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::max_exponent, 9);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::max_exponent10, 2);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::is_iec559, false);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::has_infinity, false);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3fn>::has_signaling_NaN, false);
+}
+
+TEST(Float8E4m3b11Test, NumericLimits) {
+  EXPECT_TRUE(
+      Eigen::numext::isnan(std::numeric_limits<float8_e4m3b11>::quiet_NaN()));
+  EXPECT_TRUE(Eigen::numext::isnan(
+      std::numeric_limits<float8_e4m3b11>::signaling_NaN()));
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3b11>::min()),
+            std::exp2(-10));
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3b11>::max()), 30);
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3b11>::lowest()),
+            -30);
+  EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e4m3b11>::epsilon()),
+            0.125);
+  EXPECT_EQ(
+      static_cast<float>(std::numeric_limits<float8_e4m3b11>::round_error()),
+      0.5);
+  // No infinity, represent as NaN.
+  EXPECT_TRUE(
+      Eigen::numext::isnan(std::numeric_limits<float8_e4m3b11>::infinity()));
+  EXPECT_EQ(
+      static_cast<float>(std::numeric_limits<float8_e4m3b11>::denorm_min()),
+      std::exp2(-13));
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::digits, 4);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::digits10, 0);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::max_digits10, 3);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::min_exponent, -9);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::min_exponent10, -3);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::max_exponent, 5);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::max_exponent10, 1);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::is_iec559, false);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::has_infinity, false);
+  EXPECT_EQ(std::numeric_limits<float8_e4m3b11>::has_signaling_NaN, false);
 }
 
 TEST(Float8E5m2Test, NumericLimits) {
@@ -96,6 +139,16 @@ TEST(Float8E5m2Test, NumericLimits) {
       Eigen::numext::isinf(std::numeric_limits<float8_e5m2>::infinity()));
   EXPECT_EQ(static_cast<float>(std::numeric_limits<float8_e5m2>::denorm_min()),
             std::exp2(-16));
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::digits, 3);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::digits10, 0);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::max_digits10, 2);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::min_exponent, -13);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::min_exponent10, -4);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::max_exponent, 16);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::max_exponent10, 4);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::is_iec559, true);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::has_infinity, true);
+  EXPECT_EQ(std::numeric_limits<float8_e5m2>::has_signaling_NaN, true);
 }
 
 TYPED_TEST(Float8Test, FromRep) {
@@ -284,14 +337,6 @@ TYPED_TEST(Float8Test, ConvertTo) {
 }
 
 TEST(Float8Test, Float8E5m2_To_Float8E4m3) {
-  for (int i = 0x00; i <= 0xFF; ++i) {
-    float8_e5m2 e5m2 = float8_e5m2::FromRep(i);
-    float8_e4m3fn e4m3 = static_cast<float8_e4m3fn>(e5m2);
-    float8_e4m3fn expected =
-        static_cast<float8_e4m3fn>(static_cast<float>(e5m2));
-    EXPECT_EQ(e4m3.rep(), expected.rep()) << i;
-  }
-
   // Saturation.
   float8_e5m2 max = std::numeric_limits<float8_e5m2>::max();
   float8_e4m3fn saturated = float8_e4m3fn::ConvertFrom</*kSaturate=*/true>(max);
@@ -320,14 +365,6 @@ TEST(Float8Test, Half_To_Float8E4m3) {
 }
 
 TEST(Float8Test, Float8E5m2_To_Float8E4m3b11) {
-  for (int i = 0x00; i <= 0xFF; ++i) {
-    float8_e5m2 e5m2 = float8_e5m2::FromRep(i);
-    float8_e4m3b11 e4m3 = static_cast<float8_e4m3b11>(e5m2);
-    float8_e4m3b11 expected =
-        static_cast<float8_e4m3b11>(static_cast<float>(e5m2));
-    EXPECT_EQ(e4m3.rep(), expected.rep()) << i;
-  }
-
   // Saturation.
   float8_e5m2 max = std::numeric_limits<float8_e5m2>::max();
   float8_e4m3b11 saturated =
@@ -377,14 +414,6 @@ TEST(Float8Test, Float8E5m2_To_Float8E4m3b11) {
 }
 
 TEST(Float8Test, Float8E4m3b11_To_Float8E4m3) {
-  for (int i = 0x00; i <= 0xFF; ++i) {
-    float8_e4m3b11 e4m3b11 = float8_e4m3b11::FromRep(i);
-    float8_e4m3fn e4m3 = static_cast<float8_e4m3fn>(e4m3b11);
-    float8_e4m3fn expected =
-        static_cast<float8_e4m3fn>(static_cast<float>(e4m3b11));
-    EXPECT_EQ(e4m3.rep(), expected.rep()) << i;
-  }
-
   // Saturation.
   float8_e4m3b11 max = std::numeric_limits<float8_e4m3b11>::max();
   float8_e4m3fn saturated = float8_e4m3fn::ConvertFrom</*kSaturate=*/true>(max);
@@ -431,13 +460,6 @@ TEST(Float8Test, Float8E4m3b11_To_Float8E4m3) {
 }
 
 TEST(Float8Test, Float8E4m3_To_Float8E5m2) {
-  for (int i = 0x00; i <= 0xFF; ++i) {
-    float8_e4m3fn e4m3 = float8_e4m3fn::FromRep(i);
-    float8_e5m2 e5m2 = static_cast<float8_e5m2>(e4m3);
-    float8_e5m2 expected = static_cast<float8_e5m2>(static_cast<float>(e4m3));
-    EXPECT_EQ(e5m2.rep(), expected.rep()) << i;
-  }
-
   // Truncation and rounding of a number ever-so-slightly less than 2.
   float8_e4m3fn less_than_two = float8_e4m3fn::FromRep(0x3F);
   float8_e5m2 truncated =
@@ -594,20 +616,27 @@ struct Float8CastTestParamNames {
   }
 };
 
-using Float8CastTypePairs = ::testing::Types<
 #if !defined(EIGEN_USE_GPU) && !defined(EIGEN_GPU_COMPILE_PHASE)
-    // long double doesn't work on GPU - it is treated as a regular 8-byte
-    // double, which differs in size from the 16-byte long double on intel CPU.
-    std::pair<float8_e5m2, long double>, std::pair<float8_e4m3fn, long double>,
+// long double doesn't work on GPU - it is treated as a regular 8-byte
+// double, which differs in size from the 16-byte long double on intel CPU.
+#define GEN_LONG_DOUBLE_PAIR(Type) std::pair<Type, long double>,
+#else
+#define GEN_LONG_DOUBLE_PAIR(Type)
 #endif
-    std::pair<float8_e4m3fn, double>, std::pair<float8_e4m3fn, float>,
-    std::pair<float8_e4m3fn, Eigen::bfloat16>,
-    std::pair<float8_e4m3fn, Eigen::half>, std::pair<float8_e4m3fn, bool>,
-    std::pair<float8_e4m3fn, int32_t>, std::pair<float8_e4m3fn, int64_t>,
-    std::pair<float8_e5m2, double>, std::pair<float8_e5m2, float>,
-    std::pair<float8_e5m2, Eigen::bfloat16>,
-    std::pair<float8_e5m2, Eigen::half>, std::pair<float8_e5m2, bool>,
-    std::pair<float8_e5m2, int32_t>, std::pair<float8_e5m2, int64_t> >;
+
+#define GEN_DEST_TYPES(Type)                                           \
+  GEN_LONG_DOUBLE_PAIR(Type)                                           \
+  std::pair<Type, double>, std::pair<Type, float>,                     \
+      std::pair<Type, Eigen::bfloat16>, std::pair<Type, Eigen::half>,  \
+      std::pair<Type, float8_e4m3fn>, std::pair<Type, float8_e4m3b11>, \
+      std::pair<Type, float8_e5m2>, std::pair<Type, bool>,             \
+      std::pair<Type, int32_t>, std::pair<Type, int64_t>
+
+#define GEN_TYPE_PAIRS()                                         \
+  GEN_DEST_TYPES(float8_e4m3fn), GEN_DEST_TYPES(float8_e4m3b11), \
+      GEN_DEST_TYPES(float8_e5m2)
+
+using Float8CastTypePairs = ::testing::Types<GEN_TYPE_PAIRS()>;
 
 template <typename CastPair>
 class Float8CastTest : public ::testing::Test {};
@@ -620,14 +649,14 @@ TYPED_TEST(Float8CastTest, CastThroughFloat) {
   for (int i = 0x00; i <= 0xFF; ++i) {
     Float8 f8 = Float8::FromRep(i);
 
-    if ((!Eigen::numext::isnan(f8) ||
-         std::numeric_limits<DestType>::has_quiet_NaN) &&
-        (!Eigen::numext::isinf(f8) ||
-         std::numeric_limits<DestType>::has_infinity)) {
-      DestType dest = static_cast<DestType>(f8);
-      DestType expected = static_cast<DestType>(static_cast<float>(f8));
-      EXPECT_THAT(dest, EqOrIsNan(expected));
+    if constexpr (std::numeric_limits<DestType>::is_integer) {
+      if (!Eigen::numext::isfinite(f8)) {
+        continue;
+      }
     }
+    DestType dest = static_cast<DestType>(f8);
+    DestType expected = static_cast<DestType>(static_cast<float>(f8));
+    EXPECT_THAT(dest, EqOrIsNan(expected));
   }
 }
 

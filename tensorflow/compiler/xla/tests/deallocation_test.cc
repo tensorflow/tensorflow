@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
@@ -59,7 +60,7 @@ TEST_F(DeallocationTest, DeallocateScalar) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_THAT(transfer_status.status().error_message(),
+  ASSERT_THAT(transfer_status.status().message(),
               HasSubstr("was previously deallocated"));
 }
 
@@ -72,7 +73,7 @@ TEST_F(DeallocationTest, DeallocateVector) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_THAT(transfer_status.status().error_message(),
+  ASSERT_THAT(transfer_status.status().message(),
               HasSubstr("was previously deallocated"));
 }
 
@@ -85,7 +86,7 @@ TEST_F(DeallocationTest, DeallocateEmptyVector) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_THAT(transfer_status.status().error_message(),
+  ASSERT_THAT(transfer_status.status().message(),
               HasSubstr("was previously deallocated"));
 }
 
@@ -99,11 +100,15 @@ XLA_TEST_F(DeallocationTest, DeallocateTuple) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_THAT(transfer_status.status().error_message(),
+  ASSERT_THAT(transfer_status.status().message(),
               HasSubstr("was previously deallocated"));
 }
 
 XLA_TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Nested tuples not supported by MLIR";
+  }
+
   XlaBuilder builder(TestName());
   auto element = ConstantR0<float>(&builder, 42.0);
   auto inner_tuple =
@@ -115,11 +120,15 @@ XLA_TEST_F(DeallocationTest, DeallocateTupleWithRepeatedElements) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_THAT(transfer_status.status().error_message(),
+  ASSERT_THAT(transfer_status.status().message(),
               HasSubstr("was previously deallocated"));
 }
 
 XLA_TEST_F(DeallocationTest, DeallocateNestedTuple) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Nested tuples not supported by MLIR";
+  }
+
   XlaBuilder builder(TestName());
   auto inner_tuple =
       Tuple(&builder, {ConstantR0<float>(&builder, 42.0),
@@ -131,7 +140,7 @@ XLA_TEST_F(DeallocationTest, DeallocateNestedTuple) {
 
   auto transfer_status = client_->Transfer(*global_data);
   ASSERT_FALSE(transfer_status.ok());
-  ASSERT_THAT(transfer_status.status().error_message(),
+  ASSERT_THAT(transfer_status.status().message(),
               HasSubstr("was previously deallocated"));
 }
 

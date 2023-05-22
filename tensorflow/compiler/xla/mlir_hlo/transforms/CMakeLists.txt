@@ -56,6 +56,8 @@ add_mlir_library(MLIRBufferTransforms
   MLIRShapeDialect
   MLIRTransformDialectTransforms
   MLIRTransforms
+  MLIRX86VectorDialect
+  MLIRX86VectorTransforms
   MhloDialect
   THLODialect
   ThloBufferizableOpInterface

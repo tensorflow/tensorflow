@@ -98,6 +98,23 @@ class Fingerprint(object):
         pass
     return False
 
+  def __str__(self):
+    return "\n".join([
+        f"SavedModel Fingerprint",
+        f"  saved_model_checksum: {self.saved_model_checksum}",
+        f"  graph_def_program_hash: {self.graph_def_program_hash}",
+        f"  signature_def_hash: {self.signature_def_hash}",
+        f"  saved_object_graph_hash: {self.saved_object_graph_hash}",
+        f"  checkpoint_hash: {self.checkpoint_hash}"
+    ])
+
+  def __repr__(self):
+    return (f"Fingerprint({self.saved_model_checksum}, "
+            f"{self.graph_def_program_hash}, "
+            f"{self.signature_def_hash}, "
+            f"{self.saved_object_graph_hash}, "
+            f"{self.checkpoint_hash})")
+
   def singleprint(self):
     """Canonical fingerprinting ID for a SavedModel.
 
@@ -107,7 +124,7 @@ class Fingerprint(object):
 
     Returns:
       The string concatenation of `graph_def_program_hash`,
-      `signature_def_hash`, and `saved_object_graph_hash`
+      `signature_def_hash`, `saved_object_graph_hash`, and `checkpoint_hash`
       fingerprint attributes (separated by '/').
 
     Raises:

@@ -1612,8 +1612,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
         model_control_dependencies[subgraph_index]);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
-                 << subgraph->name << ": "
-                 << func_or_error.status().error_message(),
+                 << subgraph->name << ": " << func_or_error.status().message(),
              nullptr;
     }
     module.push_back(std::move(func_or_error).value());

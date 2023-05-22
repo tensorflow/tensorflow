@@ -752,7 +752,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
     // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
     // CHECK-SAME: ([%[[A_OUTPUT]], %[[ARG_0]]] as %[[RI_0:[a-z0-9]*]]: tensor<?xi32>)
-    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"], TPU_REPLICATED_HOST_0 = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:CPU:0"]}
     // CHECK-SAME: n = 2
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[RI_0]])
@@ -1585,7 +1585,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   // CHECK-LABEL: func @replicated_parallel_execute
   func.func @replicated_parallel_execute(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
     // CHECK: tf_device.replicate
-    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"], TPU_REPLICATED_HOST = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"]}
+    // CHECK-SAME: devices = {TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"], TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"], TPU_REPLICATED_HOST_0 = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"], TPU_REPLICATED_HOST_1 = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:1/device:CPU:0"]}
     %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
       // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
       // CHECK-NEXT:   "tf._TPUCompileMlir"()
@@ -2693,3 +2693,40 @@ func.func private @_func(%arg0: tensor<?xi32, #mhlo.type_extensions<bounds = [51
     return %0 : tensor<512xi32>
   }
 }
+
+// -----
+
+// The following xla.OpSharding is used:
+// Proto debug string:
+//   type : OTHER
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 1
+//   tile_assignment_dimensions: 4
+//   tile_assignment_devices: 0
+//   tile_assignment_devices: 1
+//   tile_assignment_devices: 2
+//   tile_assignment_devices: 3
+//   last_tile_dims: REPLICATED
+// Serialized string:
+//   "\08\03\1A\03\01\01\04\22\04\00\01\02\03B\01\00"
+
+// Test that SplitOp is not generated when an input sharding has 
+// last_tile_dims REPLICATED and more tile_assignment_dimensions 
+// than tensor dimenstions, even when the SPMD sharding is enabled and
+// num_cores_per_replica is more than 1.
+// Test that ConcatV2 Op is not generated when a output sharding has 
+// last_tile_dims REPLICATED and more tile_assignment_dimensions 
+// than tensor dimenstions, even when the SPMD sharding is enabled and
+// num_cores_per_replica is more than 1.
+//CHECK-NOT: tf.Split
+// CHECK-NOT: tf.ConcatV2
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1", "/job:worker/replica:0/task:0/device:TPU:2", "/job:worker/replica:0/task:0/device:TPU:3"]} {
+  func.func @cluster_to_single_core(%arg0: tensor<4x128xf32>) -> tensor<4x128xf32> {
+    %0 = "tf_device.cluster_func"(%arg0) {_xla_compile_device_type = "TPU", _replication_info = "cluster1", func = @_func, num_replica = 1, num_cores_per_replica = 4, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "\0A\04\02\02\01\01\10\01\18\04\22\10\00\00\00\00\01\00\00\00\00\01\00\00\01\01\00\00", device_assignment = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0], input_sharding_configuration = ["\08\03\1A\03\01\01\04\22\04\00\01\02\03B\01\00"], output_sharding_configuration = ["\08\03\1A\03\01\01\04\22\04\00\01\02\03B\01\00"], use_spmd_for_xla_partitioning = true, use_tpu = true} : (tensor<4x128xf32>) -> tensor<4x128xf32>
+    func.return %0 : tensor<4x128xf32>
+  }
+  func.func @_func(%arg0: tensor<4x128xf32>) -> tensor<4x128xf32> {
+    func.return %arg0 : tensor<4x128xf32>
+  }
+}
+

@@ -640,8 +640,8 @@ LogicalResult ConstantOp::inferReturnTypes(
 
 bool ConstantOp::isCompatibleReturnTypes(TypeRange l, TypeRange r) {
   if (l.size() != r.size() || l.size() != 1) return false;
-  auto lhsTy = l.front().cast<TensorType>();
-  auto rhsTy = r.front().cast<TensorType>();
+  auto lhsTy = l.front().cast<ShapedType>();
+  auto rhsTy = r.front().cast<ShapedType>();
   // For comparisons of the uniform quantized element based tensor type, use the
   // storage type since the constant value will be stored through the underlying
   // storage type.
@@ -1597,8 +1597,8 @@ struct ConvolutionIsDot : public OpRewritePattern<mhlo::ConvolutionOp> {
   using OpRewritePattern<mhlo::ConvolutionOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(mhlo::ConvolutionOp op,
                                 PatternRewriter& rewriter) const override {
-    auto lhs = op.getLhs();
-    auto rhs = op.getRhs();
+    Value lhs = op.getLhs();
+    Value rhs = op.getRhs();
     auto lhsTy = lhs.getType().cast<RankedTensorType>();
     auto rhsTy = rhs.getType().cast<RankedTensorType>();
     auto resultTy = op.getType().cast<RankedTensorType>();

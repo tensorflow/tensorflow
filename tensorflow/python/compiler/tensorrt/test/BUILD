@@ -118,8 +118,8 @@ tensorrt_py_test(
     name = "tf_function_test",
     tags = base_tags + [
         "manual",  # TODO(b/231239602): re-enable once naming issue is resolved.
-        "notap",  # TODO(b/231239602): re-enable once naming issue is resolved.
         "no_oss",  # TODO(b/231239602): re-enable once naming issue is resolved.
+        "notap",  # TODO(b/231239602): re-enable once naming issue is resolved.
     ],
 )
 

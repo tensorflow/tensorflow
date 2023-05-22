@@ -201,7 +201,7 @@ void GenerateTiledMean(const NodeShader::GenerationContext& ctx,
 
   std::vector<Variable> shared_variables = {
       {"tile_sum",
-       std::vector<float4>((w / kTileSize.x) * (h / kTileSize.y) * s)}};
+       std::vector<float4>((w / kTileSize.x) * (h / kTileSize.y) * s * 4)}};
 
   std::string source = R"(
   ivec2 tile_size = ivec2($tile_size_w$, $tile_size_h$);

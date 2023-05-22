@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 
 #include "tensorflow/compiler/jit/device_compiler.h"
+#include "tensorflow/compiler/jit/pjrt_base_device.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/xla/stream_executor/tf_allocator_adapter.h"
 
@@ -27,7 +28,8 @@ namespace tensorflow {
 
 // Holds some information about the platform on which an
 // XlaLaunch/_XlaCompile/_XlaRun op must run on. Provides a common layer of
-// abstraction for normal and XLA devices.
+// abstraction for normal, XLA devices and devices inheriting from
+// PjRtBaseDevice.
 class XlaPlatformInfo {
  public:
   XlaPlatformInfo() : device_type_("") {}
@@ -35,10 +37,12 @@ class XlaPlatformInfo {
   explicit XlaPlatformInfo(
       const DeviceType device_type, se::Platform::Id platform_id,
       const XlaDevice::Metadata* xla_device_metadata,
+      const PjRtBaseDevice::Metadata* pjrt_device_metadata,
       std::shared_ptr<se::DeviceMemoryAllocator> device_allocator)
       : device_type_(device_type),
         platform_id_(platform_id),
         xla_device_metadata_(xla_device_metadata),
+        pjrt_device_metadata_(pjrt_device_metadata),
         device_allocator_(device_allocator) {}
 
   XlaPlatformInfo& operator=(XlaPlatformInfo&& other) = default;
@@ -65,6 +69,10 @@ class XlaPlatformInfo {
   }
   bool is_on_xla_device() const { return xla_device_metadata() != nullptr; }
 
+  const PjRtBaseDevice::Metadata* pjrt_device_metadata() const {
+    return pjrt_device_metadata_;
+  }
+
  private:
   DeviceType device_type_;
   se::Platform::Id platform_id_;
@@ -73,6 +81,11 @@ class XlaPlatformInfo {
   // XlaLaunch/_XlaCompile/_XlaRun op is placed and thus does not die before the
   // XlaLaunch/_XlaCompile/_XlaRun OpKernel.
   const XlaDevice::Metadata* xla_device_metadata_;
+
+  // pjrt_device_metadata_ lives in tensorflow::PjRtBaseDevice in which the
+  // XlaLaunch/XlaCompileOnDemand op is placed and thus does not die before the
+  // op kernel.
+  const PjRtBaseDevice::Metadata* pjrt_device_metadata_;
 
   // If the op associated with this XlaPlatformInfo is placed on an XLA device
   // then device_allocator_ is the xla::Backend's memory allocator.  If the op

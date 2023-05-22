@@ -23,14 +23,14 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
     ]) + [
-        "@com_google_protobuf//:protobuf",
-        "@com_google_absl//absl/memory",
-        "@flatbuffers",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_protobuf//:protobuf",
+        "@flatbuffers",
     ],
 )
 
@@ -42,6 +42,7 @@ cc_test(
         "//tensorflow/lite:testdata/add.bin",
     ],
     tags = [
+        "no_oss",
         "tflite_not_portable",
     ],
     deps = [
@@ -92,6 +93,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_mac",
+        "no_oss",
     ],
     visibility = ["//visibility:public"],
     deps = [

@@ -155,7 +155,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       IsConstantOrPersistentTensor(limit) &&
       IsConstantOrPersistentTensor(delta)) {
     SetTensorToPersistentRo(output);
-    ResizeOutput(context, start, limit, delta, output);
+    TF_LITE_ENSURE_OK(context,
+                      ResizeOutput(context, start, limit, delta, output));
 
     op_data->noop = true;
     return EvalImpl(context, start, delta, output);

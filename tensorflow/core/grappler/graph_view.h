@@ -329,7 +329,7 @@ class GraphViewInternal {
   // TODO(ezhulenev): Remove this function.
   void AddUniqueNodeOrDie(NodeDefT* node) {
     Status st = AddUniqueNode(node);
-    CHECK(st.ok()) << st.error_message();
+    CHECK(st.ok()) << st.message();
   }
 
   // TODO(lyandy): Checks for self loops, Switch control dependencies, fanins

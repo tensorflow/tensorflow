@@ -2516,7 +2516,7 @@ class FunctionalInputLayerTest(test.TestCase):
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
       self.assertIsInstance(cols_to_vars[some_embedding_column][0],
-                            variables_lib.VariableV1)
+                            variables_lib.Variable)
       self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
 
   def test_fills_cols_to_vars_shared_embedding(self):

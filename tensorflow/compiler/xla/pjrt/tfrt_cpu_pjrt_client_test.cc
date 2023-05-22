@@ -67,13 +67,12 @@ ENTRY DonationWithExecutionError() -> f32[2, 2] {
   auto result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                          /*options=*/{});
   ASSERT_FALSE(result.ok());
-  EXPECT_THAT(result.status().error_message(),
-              ::testing::HasSubstr("test error."));
+  EXPECT_THAT(result.status().message(), ::testing::HasSubstr("test error."));
 
   result = pjrt_executable->Execute(/*argument_handles=*/{{buffer.get()}},
                                     /*options=*/{});
   ASSERT_FALSE(result.ok());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr("buffer has been deleted or donated."));
 }
 

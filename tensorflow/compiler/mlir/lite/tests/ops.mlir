@@ -352,6 +352,22 @@ func.func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   func.return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testMul32BitUInt
+func.func @testMul32BitUInt(tensor<? x ui32>, tensor<? x ui32>) -> tensor<? x ui32> {
+^bb0(%arg0: tensor<? x ui32>, %arg1: tensor<? x ui32>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x ui32>
+  func.return %0#0 : tensor<? x ui32>
+}
+
+// CHECK-LABEL: testMul16BitInt
+func.func @testMul16BitInt(tensor<? x i16>, tensor<? x i16>) -> tensor<? x i16> {
+^bb0(%arg0: tensor<? x i16>, %arg1: tensor<? x i16>):
+  // CHECK: tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i16>
+  func.return %0#0 : tensor<? x i16>
+}
+
 // CHECK-LABEL: testMulComplex
 func.func @testMulComplex(tensor<? x complex<f32>>, tensor<? x complex<f32>>) -> tensor<? x complex<f32>> {
 ^bb0(%arg0: tensor<? x complex<f32>>, %arg1: tensor<? x complex<f32>>):
@@ -392,6 +408,14 @@ func.func @mul_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi3
 ^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
   // expected-error @+1 {{Operands do not have valid shapes}}
   %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
+  func.return %0#0 : tensor<1x1x1x1x1xi32>
+}
+
+// -----
+
+func.func @add_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
+^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
   func.return %0#0 : tensor<1x1x1x1x1xi32>
 }
 
@@ -3120,4 +3144,35 @@ func.func @testUnsortedSegmentMin(%arg0: tensor<8xf32>, %arg1: tensor<8xi32>,  %
   %0 = "tfl.unsorted_segment_min"(%arg0, %arg1, %arg2) : (tensor<8xf32>, tensor<8xi32>, tensor<i32>) -> tensor<8xf32>
   func.return %0 : tensor<8xf32>
   // CHECK: return %0 : tensor<8xf32>
+}
+
+
+// -----
+
+// CHECK-LABEL: testBitcast
+func.func @testBitcast(%arg0: tensor<8xui32>) -> tensor<8xi32> {
+  // CHECK: "tfl.bitcast"(%arg0)
+  %0 = "tfl.bitcast"(%arg0) : (tensor<8xui32>) -> tensor<8xi32>
+  func.return %0 : tensor<8xi32>
+  // CHECK: return %0 : tensor<8xi32>
+}
+
+// -----
+
+// CHECK-LABEL: testBitwiseXor
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.bitwise_xor"(%arg0, %arg1)
+  %0 = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
+}
+
+// -----
+
+// CHECK-LABEL: testRightShift
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  // CHECK: "tfl.right_shift"(%arg0, %arg1)
+  %0 = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+  // CHECK: return %0 : tensor<8xui32>
 }

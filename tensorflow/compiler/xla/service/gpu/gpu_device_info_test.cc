@@ -13,48 +13,72 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <memory>
-#include <string>
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {
 namespace {
 
-TEST(DeviceInfoTest, DeviceInfo) {
-  ASSERT_FALSE(cuInit(/*Flags=*/0));
-  std::unique_ptr<DeviceDescription> d =
-      GpuExecutor::CreateDeviceDescription(/*device_ordinal=*/0).value();
-  absl::string_view name(d->name());
+namespace se = stream_executor;
+
+TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
+  se::Platform* platform =
+      se::MultiPlatformManager::PlatformWithName("cuda").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+  const xla::gpu::GpuDeviceInfo dev_info = xla::gpu::GetGpuDeviceInfo(executor);
+  absl::string_view name(dev_info.name);
   if (name == "NVIDIA RTX A6000") {
     xla::gpu::GpuDeviceInfo test_info =
         xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo();
-    EXPECT_EQ(test_info.name, d->name());
-    EXPECT_EQ(test_info.threads_per_block_limit, d->threads_per_block_limit());
-    EXPECT_EQ(test_info.threads_per_warp, d->threads_per_warp());
-    EXPECT_EQ(test_info.shared_memory_per_block, d->shared_memory_per_block());
-    EXPECT_EQ(test_info.shared_memory_per_core, d->shared_memory_per_core());
-    EXPECT_EQ(test_info.threads_per_core_limit, d->threads_per_core_limit());
-    EXPECT_EQ(test_info.core_count, d->core_count());
-    EXPECT_EQ(test_info.fpus_per_core, d->fpus_per_core());
-    EXPECT_EQ(test_info.block_dim_limit_x, d->block_dim_limit().x);
-    EXPECT_EQ(test_info.block_dim_limit_y, d->block_dim_limit().y);
-    EXPECT_EQ(test_info.block_dim_limit_z, d->block_dim_limit().z);
-    EXPECT_EQ(test_info.memory_bandwidth, d->memory_bandwidth());
-    EXPECT_EQ(test_info.l2_cache_size, d->l2_cache_size());
-    // Clock rate can vary between base and boost values.
-    EXPECT_LE(test_info.clock_rate_ghz, d->clock_rate_ghz());
+    EXPECT_THAT(
+        dev_info,
+        ::testing::FieldsAre(
+            test_info.name, test_info.threads_per_block_limit,
+            test_info.threads_per_warp, test_info.shared_memory_per_block,
+            test_info.shared_memory_per_core, test_info.threads_per_core_limit,
+            test_info.core_count, test_info.fpus_per_core,
+            test_info.block_dim_limit_x, test_info.block_dim_limit_y,
+            test_info.block_dim_limit_z, test_info.memory_bandwidth,
+            test_info.l2_cache_size,
+            // Clock rate can vary between base and boost values.
+            ::testing::Ge(test_info.clock_rate_ghz),
+            dev_info.device_memory_size));
   } else if (name == "Quadro P1000") {
-    EXPECT_EQ(d->fpus_per_core(), 128);
-    EXPECT_EQ(d->l2_cache_size(), 1024 * 1024);
+    EXPECT_THAT(
+        dev_info,
+        ::testing::FieldsAre(
+            name, /*threads_per_block_limit=*/1024,
+            /*threads_per_warp=*/32, /*shared_memory_per_block=*/48 * 1024,
+            /*shared_memory_per_core=*/96 * 1024,
+            /*threads_per_core_limit=*/2048, /*core_count=*/5,
+            /*fpus_per_core=*/128,
+            /*block_dim_limit_x=*/2'147'483'647,
+            /*block_dim_limit_y=*/65535,
+            /*block_dim_limit_z=*/65535,
+            /*memory_bandwidth=*/80'160'000'000, /*l2_cache_size=*/1024 * 1024,
+            /*clock_rate_ghz=*/::testing::Ge(1.4),
+            /*device_memory_size=*/4'234'346'496));
   } else if (name == "Tesla P100-SXM2-16GB") {
-    EXPECT_EQ(d->fpus_per_core(), 64);
-    EXPECT_EQ(d->l2_cache_size(), 4 * 1024 * 1024);
+    EXPECT_THAT(
+        dev_info,
+        ::testing::FieldsAre(name, /*threads_per_block_limit=*/1024,
+                             /*threads_per_warp=*/32,
+                             /*shared_memory_per_block=*/48 * 1024,
+                             /*shared_memory_per_core=*/64 * 1024,
+                             /*threads_per_core_limit=*/2048, /*core_count=*/56,
+                             /*fpus_per_core=*/64,
+                             /*block_dim_limit_x=*/2'147'483'647,
+                             /*block_dim_limit_y=*/65535,
+                             /*block_dim_limit_z=*/65535,
+                             /*memory_bandwidth=*/732'160'000'000,
+                             /*l2_cache_size=*/4 * 1024 * 1024,
+                             /*clock_rate_ghz=*/::testing::Ge(1.4),
+                             /*device_memory_size=*/17'066'622'976));
   } else {
     VLOG(1) << "Not tested for " << name;
   }

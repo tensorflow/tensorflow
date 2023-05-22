@@ -67,6 +67,12 @@ class RewriteXlaHostComputeMlir
 
   LogicalResult matchAndRewrite(TF::_XlaHostComputeMlirOp op,
                                 PatternRewriter& rewriter) const override {
+    if (op.getManualSharding()) {
+      op.emitOpError() << "manual_sharding not supported with fallback of "
+                          "phase 2 legalize TF/XLA bridge. manual_sharding is "
+                          "used by map_outside_compilation";
+      return failure();
+    }
     llvm::SmallVector<Attribute> shape_attrs;
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {

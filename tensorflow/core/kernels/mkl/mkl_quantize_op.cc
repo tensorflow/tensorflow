@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #define EIGEN_USE_THREADS
 
@@ -491,11 +491,12 @@ class MklQuantizeV2Op : public OpKernel {
     fwdParams.post_op_params.name = "scale";
     fwdParams.post_op_params.param.push_back(scale_factor);
 
+    MklDnnThreadPool eigen_tp(ctx);
     MklReorderWithScalePrimitive* reorder_prim =
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
+
     cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
     reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
                           cpu_stream);
@@ -524,4 +525,4 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                         MklQuantizeV2Op<CPUDevice, qint8, true>);
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

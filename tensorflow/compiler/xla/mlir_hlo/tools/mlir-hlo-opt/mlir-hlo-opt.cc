@@ -57,11 +57,6 @@ int main(int argc, char** argv) {
         gml_st::addDefaultCPUTilingPipeline(pm, /*cpuName=*/"");
       });
 
-  PassPipelineRegistration<> genericHostToLLVMPass(
-      "generic-host-to-llvm",
-      "Pipeline to lower common dialects resulting from HLO to LLVM",
-      hlo::createGenericHostToLLVMPipeline);
-
   DialectRegistry registry;
   registerAllDialects(registry);
   mhlo::registerAllMhloDialects(registry);

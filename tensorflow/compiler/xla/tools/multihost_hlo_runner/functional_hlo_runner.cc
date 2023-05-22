@@ -238,6 +238,40 @@ std::string AbslUnparseFlag(
   }
 }
 
+bool AbslParseFlag(absl::string_view text,
+                   FunctionalHloRunner::ModuleOutputMode* output_mode,
+                   std::string* error) {
+  if (text == "return_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kReturnOutputs;
+    return true;
+  }
+  if (text == "not_return_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+    return true;
+  }
+  if (text == "return_device_0_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kReturnDevice0Outputs;
+    return true;
+  }
+  *error =
+      "Unrecognized module output mode specified. Expect \"return_outputs\", "
+      "\"not_return_outputs\", or \"return_device_0_outputs\".";
+  return false;
+}
+
+std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode) {
+  switch (output_mode) {
+    case FunctionalHloRunner::ModuleOutputMode::kReturnOutputs:
+      return "return_outputs";
+    case FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs:
+      return "not_return_outputs";
+    case FunctionalHloRunner::ModuleOutputMode::kReturnDevice0Outputs:
+      return "return_device_0_outputs";
+    default:
+      LOG(FATAL) << "Unexpected output mode.";
+  }
+}
+
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
   return GetStreamExecutorGpuClient(
       /*asynchronous=*/true, GpuAllocatorConfig(),
@@ -284,7 +318,11 @@ StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
   if (task_id == 0) {
-    debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    // Overwrite xla_dump_to only if it's not empty, to preserve `xla_dump_to`
+    // from parsed XLA_FLAGS env (already populated in debug_options).
+    if (!raw_options.xla_dump_to.empty()) {
+      debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    }
     debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
                                            XlaTextDumpMode::kDumpAsText);
     debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==
@@ -887,8 +925,7 @@ std::vector<std::vector<PjRtBuffer*>> CreateArgumentPointersBasedOnAliasing(
 }
 
 std::vector<Shape> GetArgumentShapes(const HloModule& module) {
-  const std::vector<HloInstruction*>& params =
-      module.entry_computation()->parameter_instructions();
+  const auto& params = module.entry_computation()->parameter_instructions();
   std::vector<Shape> argument_shapes;
   argument_shapes.reserve(params.size());
   for (int i = 0; i < static_cast<int>(params.size()); ++i) {
@@ -1010,6 +1047,9 @@ FunctionalHloRunner::RunInternal(
             << repeat << ").";
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
+      if (running_options.profiler != nullptr) {
+        running_options.profiler->CreateSession();
+      }
     }
     TF_ASSIGN_OR_RETURN(output_buffers,
                         executable->Execute(argument_ptrs, execute_options));
@@ -1034,6 +1074,10 @@ FunctionalHloRunner::RunInternal(
       }
     }
   }
+  if (running_options.profiler != nullptr) {
+    running_options.profiler->UploadSession();
+  }
+
   TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,

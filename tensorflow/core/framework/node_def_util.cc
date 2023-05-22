@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -910,7 +911,7 @@ Status AttachDef(const Status& status, const NodeDef& node_def,
   Status ret = status;
   string node_error;
   if (!allow_multiple_formatted_node &&
-      status.error_message().find("{{node ") != string::npos) {
+      absl::StrContains(status.message(), "{{node ")) {
     node_error = node_def.name();
   } else {
     node_error = FormatNodeDefForError(node_def);

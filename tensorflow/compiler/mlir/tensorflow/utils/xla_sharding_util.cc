@@ -41,6 +41,47 @@ namespace {
 
 constexpr char kNumSplitAttr[] = "num_split";
 
+// Gets the proper tensor dimension from XLA OpSharding.
+// "replicate_on_last_tile_dim" and "last_tile_dims" should be deducted from the
+// real Tensor dimensions when tiled.
+// For example:
+// f32[8,512](sharding={devices=[1,1,2]0,1 last_tile_dims={REPLICATED})
+// also means a replicated tensor over all devices.
+//
+// See xla_data.proto for detailed explanations on the fields.
+int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding) {
+  return xla_sharding.tile_assignment_dimensions_size() -
+         (xla_sharding.replicate_on_last_tile_dim() ? 1 : 0) -
+         xla_sharding.last_tile_dims_size();
+}
+
+// A sharding with OTHER type may be REPLICATED if:
+// 'replicate_on_last_tile_dim' is true OR
+// 'last_tile_dims' is not empty
+// AND
+// other than replicated last tile dims, all other dims are not sharded.
+bool IsOtherReplicatedSharding(const xla::OpSharding& xla_sharding) {
+  int max_dim = GetDimsFromXLAShardingTiled(xla_sharding);
+  for (int i = 0; i < max_dim; ++i) {
+    if (xla_sharding.tile_assignment_dimensions(i) != 1) {
+      return false;
+    }
+  }
+  return xla_sharding.type() == xla::OpSharding::OTHER &&
+         (xla_sharding.replicate_on_last_tile_dim() ||
+          !xla_sharding.last_tile_dims().empty());
+}
+
+bool IsSplitSharding(const xla::OpSharding& sharding) {
+  return sharding.type() == xla::OpSharding::OTHER &&
+         !IsOtherReplicatedSharding(sharding);
+}
+
+bool IsReplicatedSharding(const xla::OpSharding& sharding) {
+  return sharding.type() == xla::OpSharding::REPLICATED ||
+         IsOtherReplicatedSharding(sharding);
+}
+
 // Creates a tf::SplitOp that splits 'src_input' into 'num_splits' ways
 // in 'split_dimension' dimension and returns the split values.
 mlir::LogicalResult CreateSplitOp(const int num_split,
@@ -186,14 +227,9 @@ mlir::LogicalResult HandleTileShardedInputs(
   // from which sharded data will be fed into TPUExcute ops -- sorted by
   // row major order.
   tiled_inputs->reserve(input_sharding.tile_assignment_devices_size());
-  // No split happens. Insert the original value.
-  if (split_ops_for_tiled_input.empty()) {
-    tiled_inputs->push_back(original_source);
-  } else {
-    for (auto split_op : split_ops_for_tiled_input)
-      tiled_inputs->append(split_op.getResults().begin(),
-                           split_op.getResults().end());
-  }
+  for (auto split_op : split_ops_for_tiled_input)
+    tiled_inputs->append(split_op.getResults().begin(),
+                         split_op.getResults().end());
 
   return mlir::success();
 }
@@ -282,7 +318,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
       continue;
     }
 
-    if (input_sharding_type == xla::OpSharding::OTHER) {
+    if (IsSplitSharding(sharding)) {
       llvm::SmallVector<mlir::Value, 4> tiled_inputs;
       auto result = HandleTileShardedInputs(
           cluster_func.getLoc(), sharding, input_value, builder, &tiled_inputs);
@@ -296,7 +332,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
         const int assigned_logical_device = sharding.tile_assignment_devices(i);
         (*input_list)[assigned_logical_device].emplace_back(tiled_inputs[i]);
       }
-    } else if (input_sharding_type == xla::OpSharding::REPLICATED) {
+    } else if (IsReplicatedSharding(sharding)) {
       for (auto& inputs : *input_list) inputs.emplace_back(input_value);
     } else {
       assert(input_sharding_type == xla::OpSharding::MAXIMAL);
@@ -525,14 +561,13 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
        llvm::enumerate(cluster_func.getResults())) {
     const auto output_index = result_and_index.index();
     const auto& output_sharding = output_sharding_config[output_index];
-    const auto output_sharding_type = output_sharding.type();
     const auto cluster_func_output_type =
         result_and_index.value().getType().cast<mlir::TensorType>();
 
     // If output shape of cluster func is statically known and output is tiled
     // sharded, then the corresponding output shape of cluster func must be
     // evenly divisible number of shardings.
-    if (output_sharding_type == xla::OpSharding::OTHER) {
+    if (IsSplitSharding(output_sharding)) {
       mlir::Type tiled_logical_computation_type;
       if (cluster_func_output_type.hasRank()) {
         auto result = ValidateAndGetTiledExecuteOutputShape(
@@ -544,7 +579,7 @@ mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
       }
       cluster_to_core_index->emplace_back(core_index++);
       output_types->emplace_back(tiled_logical_computation_type);
-    } else if (output_sharding_type == xla::OpSharding::REPLICATED ||
+    } else if (IsReplicatedSharding(output_sharding) ||
                IsAssignedToLogicalDevice(core_id, output_sharding)) {
       cluster_to_core_index->emplace_back(core_index++);
       output_types->emplace_back(cluster_func_output_type);
@@ -634,7 +669,7 @@ mlir::LogicalResult RemapOutputsFromLogicalDevices(
       continue;
     }
 
-    if (output_sharding_type == xla::OpSharding::OTHER) {
+    if (IsSplitSharding(output_sharding)) {
       if (failed(HandleTileShardedOutputs(
               tpu_cluster_output_index, output_sharding_config,
               cluster_to_core_index, location, old_parallel_execute_output,

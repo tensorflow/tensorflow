@@ -14,14 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/device.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/tfrt/eager/virtual_device.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
@@ -38,20 +39,6 @@ limitations under the License.
 namespace tfrt {
 
 using ::tensorflow::StatusOr;
-
-Expected<const char*> ConvertTfDeviceNameToTfrt(
-    const char* device_name, tensorflow::EagerContext* eager_context) {
-  // NOTE(fishx): We need to get tf_device first because DeviceMgr in current TF
-  // allows us get the device with simplified name like "CPU:0". However, TFRT
-  // DeviceManager only allows get device via its fullname.
-  tensorflow::Device* tf_device;
-  tensorflow::Status s =
-      eager_context->FindDeviceFromName(device_name, &tf_device);
-  if (!s.ok()) {
-    return MakeStringError(s.error_message());
-  }
-  return tf_device->name().c_str();
-}
 
 DType ConvertTfDTypeToTfrtDType(tensorflow::DataType dtype) {
   switch (dtype) {
@@ -137,6 +124,10 @@ StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
 int64_t GetUniqueInt() {
   static std::atomic<int64_t> id(0);
   return id.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint64_t GetCpuClockCycle() {
+  return tensorflow::profile_utils::CpuUtils::GetCurrentClockCycle();
 }
 
 }  // namespace tfrt

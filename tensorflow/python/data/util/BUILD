@@ -10,7 +10,9 @@ py_library(
     name = "nest",
     srcs = ["nest.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:util"],
+    deps = [
+        "//tensorflow/python/util:nest_util",
+    ],
 )
 
 py_test(
@@ -41,7 +43,6 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:util",
         "//tensorflow/python/user_ops:ops",
     ],
 )
@@ -76,10 +77,12 @@ py_library(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
         "//tensorflow/python/framework:type_spec_registry",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/user_ops:ops",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
         "@wrapt",
     ],
 )
@@ -109,6 +112,7 @@ py_test(
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
+        "//tensorflow/python/util:compat",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
         "@wrapt",
@@ -156,8 +160,8 @@ py_test(
         ":convert",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/util:compat",
     ],
 )
 
@@ -166,9 +170,12 @@ py_library(
     srcs = ["random_seed.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:random_seed",
     ],
 )
 
@@ -182,7 +189,6 @@ py_test(
         ":random_seed",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:util",
         "//tensorflow/python/data/kernel_tests:test_base",
     ],
 )

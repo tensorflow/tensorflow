@@ -37,7 +37,7 @@ Status TryDlopenCUDALibraries() {
       !cufft_status.status().ok() || !curand_status.status().ok() ||
       !cusolver_status.status().ok() || !cusparse_status.status().ok() ||
       !cudnn_status.status().ok() || !cublaslt_status.status().ok()) {
-    return Status(error::INTERNAL,
+    return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all CUDA libraries."));
   } else {
     return tsl::OkStatus();
@@ -51,7 +51,7 @@ Status TryDlopenROCmLibraries() {
   auto rocrand_status = GetRocrandDsoHandle();
   if (!rocblas_status.status().ok() || !miopen_status.status().ok() ||
       !rocfft_status.status().ok() || !rocrand_status.status().ok()) {
-    return Status(error::INTERNAL,
+    return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all ROCm libraries."));
   } else {
     return tsl::OkStatus();
@@ -73,7 +73,7 @@ Status TryDlopenTensorRTLibraries() {
   auto nvinfer_status = GetNvInferDsoHandle();
   auto nvinferplugin_status = GetNvInferPluginDsoHandle();
   if (!nvinfer_status.status().ok() || !nvinferplugin_status.status().ok()) {
-    return Status(error::INTERNAL,
+    return Status(absl::StatusCode::kInternal,
                   absl::StrCat("Cannot dlopen all TensorRT libraries."));
   } else {
     return tsl::OkStatus();

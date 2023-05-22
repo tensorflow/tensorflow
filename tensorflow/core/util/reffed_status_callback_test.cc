@@ -59,8 +59,8 @@ TEST(TestReffedStatusCallback, CallsBackFail) {
   EXPECT_THAT(status.code(),
               ::testing::AnyOf(error::INTERNAL, error::INVALID_ARGUMENT));
   // Both errors are reported.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "1"));
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "2"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "1"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "2"));
 }
 
 TEST(TestReffedStatusCallback, RefMulti) {
@@ -81,8 +81,8 @@ TEST(TestReffedStatusCallback, RefMulti) {
   cb->Unref();  // Created by constructor.
   EXPECT_TRUE(called);
   // Both errors are reported.
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "1"));
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "2"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "1"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "2"));
 }
 
 TEST(TestReffedStatusCallback, MultiThreaded) {
@@ -114,7 +114,7 @@ TEST(TestReffedStatusCallback, MultiThreaded) {
 
   EXPECT_EQ(num_called.load(), 1);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
-  EXPECT_TRUE(absl::StrContains(status.error_message(), "err"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "err"));
 }
 
 }  // namespace

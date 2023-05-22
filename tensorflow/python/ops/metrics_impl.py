@@ -13,7 +13,7 @@
 # ==============================================================================
 """Implementation of tf.metrics module."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -53,7 +53,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
       the final answer should be computed once instead of in every
       replica. Both of these are accomplished by running the computation
       of the final result value inside
-      `distribution_strategy_context.get_replica_context().merge_call(fn)`.
+      `distribute_lib.get_replica_context().merge_call(fn)`.
       Inside the `merge_call()`, ops are only added to the graph once
       and access to a sync on read variable in a computation returns
       the sum across all replicas.
@@ -306,7 +306,7 @@ def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
       ops.add_to_collections(metrics_collections, metric_value)
     return metric_value
 
-  return distribution_strategy_context.get_replica_context().merge_call(
+  return distribute_lib.get_replica_context().merge_call(
       fn, args=args)
 
 

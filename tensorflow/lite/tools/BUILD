@@ -82,6 +82,7 @@ py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -129,7 +130,7 @@ py_library(
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
         "@flatbuffers//:runtime_py",
     ],
 )
@@ -208,7 +209,7 @@ cc_library_with_tflite(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     tflite_deps = [
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_stable",
     ],
     deps = [
         ":verifier_internal",
@@ -411,7 +412,7 @@ cc_library(
 cc_test(
     name = "model_loader_test",
     srcs = ["model_loader_test.cc"],
-    data = ["//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite"],
+    data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
     deps = [
         ":model_loader",
         "//tensorflow/lite:model_builder",

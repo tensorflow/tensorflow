@@ -31,7 +31,6 @@ from tensorflow.python.data.ops import optional_ops
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
@@ -303,9 +302,9 @@ class DistributedIteratorBase(collections_abc.Iterator,
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
-    with distribution_strategy_context.enter_or_assert_strategy(
+    with distribute_lib.enter_or_assert_strategy(
         self._strategy):
-      if distribution_strategy_context.get_replica_context() is not None:
+      if distribute_lib.get_replica_context() is not None:
         raise ValueError("next(iterator) should be called from outside of "
                          "replica_fn. e.g. strategy.run(replica_fn, "
                          "args=(next(iterator),))")
@@ -1754,12 +1753,12 @@ class MultiStepContext(object):
         `_last_step_outputs_reduce_ops` for later interpreting of the
         outputs as already reduced or not.
     """
-    if distribution_strategy_context.in_cross_replica_context():
+    if distribute_lib.in_cross_replica_context():
       self._last_step_outputs_reduce_ops[name] = reduce_op
       if reduce_op is None:
         self._last_step_outputs[name] = output
       else:
-        distribution = distribution_strategy_context.get_strategy()
+        distribution = distribute_lib.get_strategy()
         self._last_step_outputs[name] = distribution.reduce(reduce_op, output,
                                                             axis=None)
     else:
@@ -1772,7 +1771,7 @@ class MultiStepContext(object):
         # the replicas are trying to set the same value).
         self._last_step_outputs_reduce_ops[name] = reduce_op
 
-      distribution_strategy_context.get_replica_context().merge_call(
+      distribute_lib.get_replica_context().merge_call(
           merge_fn, args=(output,))
 
   @property
@@ -1782,7 +1781,7 @@ class MultiStepContext(object):
 
   def set_non_tensor_output(self, name, output):
     """Set `output` with `name` to be captured as a non tensor output."""
-    if distribution_strategy_context.in_cross_replica_context():
+    if distribute_lib.in_cross_replica_context():
       self._non_tensor_outputs[name] = output
     else:
       def merge_fn(distribution, value):
@@ -1790,7 +1789,7 @@ class MultiStepContext(object):
         # in a list as reduction doesn't make sense on non tensors.
         self._non_tensor_outputs[name] = (
             distribution.experimental_local_results(value))
-      distribution_strategy_context.get_replica_context().merge_call(
+      distribute_lib.get_replica_context().merge_call(
           merge_fn, args=(output,))
 
 

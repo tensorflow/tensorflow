@@ -111,6 +111,8 @@ static std::unique_ptr<Type> ConvertCanonicalType(
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isIndex()) return PrimitiveType::S64;
+  if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
+  if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isBF16()) return PrimitiveType::BF16;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;

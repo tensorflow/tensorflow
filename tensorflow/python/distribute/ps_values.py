@@ -23,7 +23,6 @@ import numpy as np
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.coordinator import coordinator_context
@@ -82,7 +81,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     Raises:
       RuntimeError: If trying to deepcopy into a different strategy.
     """
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       v = copy.deepcopy(self._v, memo)
 
     copied_variable = type(self)(
@@ -105,9 +104,9 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     return getattr(self._v, name)
 
   def _assign_func(self, *args, **kwargs):
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       f = kwargs.pop("f")
-      if ds_context.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         if distribute_lib.get_update_replica_id() is not None:
           # We are calling an assign function in an update context.
           return f(self._v, *args, **kwargs)
@@ -117,7 +116,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
         return self._distribute_strategy.extended.update(
             self, f, args=args, kwargs=kwargs)
       else:
-        replica_context = ds_context.get_replica_context()
+        replica_context = distribute_lib.get_replica_context()
         assert replica_context
         # We are calling an assign function in replica context.
         # We reduce the value we want to assign/add/sub. More details about how

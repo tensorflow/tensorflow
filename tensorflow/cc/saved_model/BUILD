@@ -26,7 +26,9 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["loader.h"])
+exports_files([
+    "loader.h",
+])
 
 cc_library(
     name = "constants",
@@ -58,9 +60,9 @@ cc_library(
     hdrs = ["reader.h"],
     deps = [
         ":constants",
-        "//tensorflow/core:protos_all_cc",
         ":metrics",
         ":util",
+        "//tensorflow/core:protos_all_cc",
     ] + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
@@ -158,6 +160,7 @@ cc_library(
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -186,6 +189,11 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -331,7 +339,12 @@ cc_library(
         "//tensorflow/python:__pkg__",
         "//tensorflow/security/fuzzing/cc/ops:__pkg__",  # TODO(b/261455394): Remove.
     ],
-    deps = if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+    deps = [
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@jsoncpp_git//:jsoncpp",
+    ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )
 
@@ -341,7 +354,11 @@ cc_library(
     visibility = ["//tensorflow/python/saved_model:__subpackages__"],
     deps = if_static([
         ":metrics_impl",
-    ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
+    ]) + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]) + [
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 tf_cc_test(
@@ -350,9 +367,10 @@ tf_cc_test(
     srcs = ["metrics_test.cc"],
     deps = [
         ":metrics",
-        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest_main",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -392,14 +410,14 @@ cc_library(
     ],
     deps = [
         ":constants",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/graph/regularization:simple_delete",
         "//tensorflow/core/graph/regularization:util",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:naming",
         "//tensorflow/tsl/platform:types",
-        "@com_google_protobuf//:protobuf_headers",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/strings",
+        "@com_google_protobuf//:protobuf_headers",
     ] + if_not_mobile(["//tensorflow/core:lib"]) + if_android(["//tensorflow/core:portable_tensorflow_lib_lite"]),
     alwayslink = True,
 )

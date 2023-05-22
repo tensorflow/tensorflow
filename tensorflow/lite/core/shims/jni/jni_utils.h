@@ -15,16 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
 #define TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_
 
-#include <jni.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-bool TfLiteCheckInitializedOrThrow(JNIEnv* env);
-
-#ifdef __cplusplus
-}  // extern "C"
-#endif
+#include "tensorflow/lite/c/jni/jni_utils.h"
 
 #endif  // TENSORFLOW_LITE_CORE_SHIMS_JNI_JNI_UTILS_H_

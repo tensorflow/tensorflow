@@ -944,8 +944,18 @@ class Model {
                           CancellationManager* cancellation_manager);
 
   // This is the first part of the stage-based optimization that optimizes
-  // tunable parallelism parameters.
-  void OptimizeStageBasedParallelism(
+  // tunable parallelism parameters for async interleave many nodes only. We
+  // separately optimize async interleave many nodes more aggressively because
+  // the variance of IO is difficult to predict.
+  void OptimizeStageBasedAsyncInterleaveManyNodes(
+      std::shared_ptr<Node> snapshot,
+      const OptimizationParams& optimization_params,
+      CancellationManager* cancellation_manager);
+
+  // This is the second part of the stage-based optimization that optimizes
+  // tunable parallelism parameters for all nodes other than async interleave
+  // many nodes.
+  void OptimizeStageBasedNonAsyncInterleaveManyNodes(
       std::shared_ptr<Node> snapshot, double target_time_nsec,
       const OptimizationParams& optimization_params,
       CancellationManager* cancellation_manager);

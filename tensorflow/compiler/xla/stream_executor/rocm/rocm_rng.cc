@@ -73,32 +73,32 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetRocrandDsoHandle();          \
-      return s.value();                                                   \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),  \
-                                                         kName, &f);      \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in rocrand DSO; dlerror: " << s.error_message(); \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    hiprandStatus operator()(GpuExecutor* parent, Args... args) {         \
-      gpu::ScopedActivateExecutorContext sac{parent};                     \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
+#define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                        \
+  struct DynLoadShim__##__name {                                    \
+    static const char* kName;                                       \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;    \
+    static void* GetDsoHandle() {                                   \
+      auto s = internal::CachedDsoLoader::GetRocrandDsoHandle();    \
+      return s.value();                                             \
+    }                                                               \
+    static FuncPtrT LoadOrDie() {                                   \
+      void* f;                                                      \
+      auto s = tsl::Env::Default()                                  \
+          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);       \
+      CHECK(s.ok()) << "could not find " << kName                   \
+                    << " in rocrand DSO; dlerror: " << s.message(); \
+      return reinterpret_cast<FuncPtrT>(f);                         \
+    }                                                               \
+    static FuncPtrT DynLoad() {                                     \
+      static FuncPtrT f = LoadOrDie();                              \
+      return f;                                                     \
+    }                                                               \
+    template <typename... Args>                                     \
+    hiprandStatus operator()(GpuExecutor* parent, Args... args) {   \
+      gpu::ScopedActivateExecutorContext sac{parent};               \
+      return DynLoad()(args...);                                    \
+    }                                                               \
+  } __name;                                                         \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -308,8 +308,7 @@ void initialize_rocrand() {
             });
 
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to register rocRAND factory: "
-                 << status.error_message();
+      LOG(ERROR) << "Unable to register rocRAND factory: " << status.message();
     }
 
     PluginRegistry::Instance()->SetDefaultFactory(

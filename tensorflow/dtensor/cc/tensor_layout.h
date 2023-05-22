@@ -217,6 +217,7 @@ class Mesh {
   int64 size() const;
   bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
+  absl::string_view single_device() const { return single_device_; }
 
   // Global unique fingerprint. Same on different workers.
   uint64 GlobalFingerprint() const;
@@ -316,7 +317,6 @@ class Layout {
   static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
                                  int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
-  static StatusOr<Layout> SingleDeviceOnMesh(const Mesh& mesh);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
   void set_mesh(Mesh mesh) { mesh_ = mesh; }

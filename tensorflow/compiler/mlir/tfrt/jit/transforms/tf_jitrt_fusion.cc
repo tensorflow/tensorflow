@@ -39,7 +39,6 @@ using mlir::AffineMap;
 using mlir::MLIRContext;
 using mlir::Operation;
 using mlir::OpOperand;
-using mlir::OpResult;
 using mlir::RewritePatternSet;
 
 namespace linalg = mlir::linalg;

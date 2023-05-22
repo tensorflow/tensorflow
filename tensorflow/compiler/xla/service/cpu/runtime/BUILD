@@ -14,6 +14,13 @@ package_group(
 )
 
 cc_library(
+    name = "retain",
+    srcs = ["retain.cc"],
+    visibility = ["//visibility:public"],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "collectives",
     srcs = ["collectives.cc"],
     hdrs = ["collectives.h"],

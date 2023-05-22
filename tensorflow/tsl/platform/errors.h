@@ -140,9 +140,9 @@ inline ::tsl::Status CreateWithUpdatedMessage(const ::tsl::Status& status,
 // to be several layers of additional context.
 template <typename... Args>
 void AppendToMessage(::tsl::Status* status, Args... args) {
-  auto new_status = ::tsl::Status(
-      status->code(),
-      ::tsl::strings::StrCat(status->error_message(), "\n\t", args...));
+  auto new_status =
+      ::tsl::Status(status->code(),
+                    ::tsl::strings::StrCat(status->message(), "\n\t", args...));
   CopyPayloads(*status, new_status);
   *status = std::move(new_status);
 }
@@ -511,7 +511,7 @@ inline Status ReplaceErrorFromNonCommunicationOps(const Status s,
   return Status(
       absl::StatusCode::kInternal,
       strings::StrCat(
-          s.error_message(), "\nExecuting non-communication op <", op_name,
+          s.message(), "\nExecuting non-communication op <", op_name,
           "> originally returned UnavailableError, and was replaced by "
           "InternalError to avoid invoking TF network error handling logic."));
 }

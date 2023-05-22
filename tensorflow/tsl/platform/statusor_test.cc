@@ -165,12 +165,12 @@ TEST(StatusOr, TestMoveWithValuesAndErrors) {
   // Overwrite the value in status_or with an error.
   status_or = std::move(error1);
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error1", status_or.status().error_message());
+  EXPECT_EQ("error1", status_or.status().message());
 
   // Overwrite the error in status_or with another error.
   status_or = std::move(error2);
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error2", status_or.status().error_message());
+  EXPECT_EQ("error2", status_or.status().message());
 
   // Overwrite the error with a value.
   status_or = std::move(value2);
@@ -196,12 +196,12 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
   // Overwrite the value in status_or with an error.
   status_or = error1;
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error1", status_or.status().error_message());
+  EXPECT_EQ("error1", status_or.status().message());
 
   // Overwrite the error in status_or with another error.
   status_or = error2;
   ASSERT_FALSE(status_or.ok());
-  EXPECT_EQ("error2", status_or.status().error_message());
+  EXPECT_EQ("error2", status_or.status().message());
 
   // Overwrite the error with a value.
   status_or = value2;
@@ -210,8 +210,8 @@ TEST(StatusOr, TestCopyWithValuesAndErrors) {
 
   // Verify original values unchanged.
   EXPECT_EQ(std::string(1000, '1'), value1.value());
-  EXPECT_EQ("error1", error1.status().error_message());
-  EXPECT_EQ("error2", error2.status().error_message());
+  EXPECT_EQ("error1", error1.status().message());
+  EXPECT_EQ("error2", error2.status().message());
   EXPECT_EQ(std::string(1000, '2'), value2.value());
 }
 

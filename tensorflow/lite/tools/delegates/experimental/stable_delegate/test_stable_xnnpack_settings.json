@@ -6,7 +6,7 @@
 {
   "delegate": "XNNPACK",
   "stable_delegate_loader_settings": {
-    "delegate_path": "third_party/tensorflow/lite/delegates/utils/experimental/stable_delegate/libtensorflowlite_stable_xnnpack_delegate.so"
+    "delegate_path": "tensorflow/lite/delegates/utils/experimental/stable_delegate/libtensorflowlite_stable_xnnpack_delegate.so"
   },
   "xnnpack_settings": {
     "num_threads": 5

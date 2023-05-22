@@ -68,7 +68,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -138,9 +137,13 @@ Status NewThreadPoolFromThreadPoolOptions(
   return OkStatus();
 }
 
-thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
+// Function to create a global thread pool for sessions. The thread number is
+// set as `num_threads` if `num_threads` > 0, otherwise it will be parsed from
+// SessionOptions.
+thread::ThreadPool* GlobalThreadPool(const SessionOptions& options,
+                                     int32_t num_threads) {
   static thread::ThreadPool* const thread_pool =
-      NewThreadPoolFromSessionOptions(options);
+      NewThreadPoolFromSessionOptions(options, num_threads);
   return thread_pool;
 }
 
@@ -338,7 +341,6 @@ DirectSession::DirectSession(const SessionOptions& options,
     thread_pools_.emplace_back(NewThreadPoolFromSessionOptions(options_),
                                true /* owned */);
   } else {
-    thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
     // Run locally if environment value of TF_NUM_INTEROP_THREADS is negative
     // and config.inter_op_parallelism_threads is unspecified or negative.
     static const int env_num_threads = NumInterOpThreadsFromEnvironment();
@@ -347,13 +349,20 @@ DirectSession::DirectSession(const SessionOptions& options,
          env_num_threads < 0)) {
       run_in_caller_thread_ = true;
     }
+
+    // `run_in_caller_thread_` means the session is expected to run with single
+    // thread, but it will be dispatched to global thread pool if there're
+    // multiple executors. To keep consistent behavior, set thread number to 1.
+    thread_pools_.emplace_back(
+        GlobalThreadPool(options, run_in_caller_thread_ ? 1 : 0),
+        false /* owned */);
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
   const Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   session_handle_ =
       strings::StrCat("direct", strings::FpToString(random::New64()));
@@ -567,8 +576,7 @@ Status DirectSession::RunInternal(
     }
     if (!collective_executor_mgr_) {
       collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
-          options_.config, device_mgr_.get(),
-          MaybeCreateNcclCommunicator(options_.config));
+          options_.config, device_mgr_.get());
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
@@ -577,7 +585,7 @@ Status DirectSession::RunInternal(
 
   // Decide the best stream group for each GPU device.
   std::unordered_map<Device*, int> stream_group_map;
-  int max_stream_group_idx(-1);
+  int max_stream_group_idx = -1;
   std::unordered_set<Device*> cpu_devices;
   for (const auto& item : executors_and_keys->items) {
     if (item.device->parsed_name().type == "CPU") {
@@ -931,7 +939,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
   const Status s = call_frame.SetArgs(feed_args);
   if (errors::IsInternal(s)) {
-    return errors::InvalidArgument(s.error_message());
+    return errors::InvalidArgument(s.message());
   } else if (!s.ok()) {
     return s;
   }
@@ -952,7 +960,7 @@ Status DirectSession::Run(const RunOptions& run_options,
     const Status s = call_frame.ConsumeRetvals(
         &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
-      return errors::InvalidArgument(s.error_message());
+      return errors::InvalidArgument(s.message());
     } else if (!s.ok()) {
       return s;
     }

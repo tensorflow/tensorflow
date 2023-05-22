@@ -15,6 +15,7 @@
 """Fault tolerance test for parameter server training in TF2."""
 
 import gc
+import os
 import sys
 import threading
 import time
@@ -119,25 +120,34 @@ class Model(object):
 
 class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
 
-  def setUp(self, num_workers, num_ps):
+  def setUp(self, num_workers, num_ps, use_cs=False):
     super(BaseFaultToleranceTest, self).setUp()
 
     self._cluster = multi_worker_test_base.create_multi_process_cluster(
-        num_workers=num_workers, num_ps=num_ps, rpc_layer="grpc")
+        num_workers=num_workers,
+        num_ps=num_ps,
+        rpc_layer="grpc",
+        stream_output=True,
+    )
     self._cluster_def = self._cluster.cluster_resolver.cluster_spec().as_dict()
     self._cluster_def["chief"] = [
         "localhost:%d" % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
-        server_lib.ClusterSpec(self._cluster_def), rpc_layer="grpc")
+        server_lib.ClusterSpec(self._cluster_def), rpc_layer="grpc"
+    )
 
+    if use_cs:
+      os.environ["TF_PSS_ENABLE_COORDINATION_SERVICE"] = "1"
     # The strategy's constructor would connect to the cluster.
     self.strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
-        cluster_resolver)
+        cluster_resolver
+    )
     self.cluster_coord = cluster_coordinator.ClusterCoordinator(self.strategy)
 
     self.thread_coord = thread_coordinator.Coordinator(
-        clean_stop_exception_types=[])
+        clean_stop_exception_types=[]
+    )
     self.num_workers = num_workers
     self.num_ps = num_ps
 
@@ -273,11 +283,14 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     self.cluster_coord.schedule(error_function)
 
     time.sleep(1)  # Let it run a couple steps.
-    self._restart(1, "worker")
+    self._restart(2, "worker")
 
+    # InvalidArgumentError thrown from the error_function.
     with self.assertRaises(errors.InvalidArgumentError):
       self.cluster_coord.join()
 
+    # CancelledError thrown by ClusterCoordinator after cancelling due to user
+    # error.
     with self.assertRaises(errors.CancelledError):
       long_function_result.fetch()
 
@@ -561,8 +574,8 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
   def testFetchFromPSAfterWorkerFailure(self):
     # Test for flaky failures when reading from a parameter server while a
     # worker is recovering.
-    # Place some variables on PSes using distribute_datasets_from_function,
-    # kill a worker, and continuously poll one of those variables.
+    # Place some variables on PSes, kill a worker, and continuously poll one of
+    # those variables.
 
     model = Model(self.cluster_coord)
 
@@ -626,20 +639,21 @@ class BaseFaultToleranceTest(object):  # pylint: disable=missing-docstring
     # self.testTwoWorkersPreempted()
     # self.testWorkerContinuousFailure()
 
-  def testJoinRaisesUnavailableErrorAtPsFailure(self):
+  def _run_and_kill_ps_task(self):
     self._create_model_and_run_indefinitely()
     self._cluster.kill_task("ps", 0)
     while self.cluster_coord._cluster.closure_queue._error is None:
       time.sleep(1)
+    logging.info("Trying to join, expecting error")
+
+  def testJoinRaisesUnavailableErrorAtPsFailure(self):
+    self._run_and_kill_ps_task()
     with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
                             errors.FailedPreconditionError)):
       self.cluster_coord.join()
 
   def testScheduleRaisesUnavailableErrorAtPsFailure(self):
-    self._create_model_and_run_indefinitely()
-    self._cluster.kill_task("ps", 0)
-    while self.cluster_coord._cluster.closure_queue._error is None:
-      time.sleep(1)
+    self._run_and_kill_ps_task()
     with self.assertRaises((errors.UnavailableError, errors.NotFoundError,
                             errors.FailedPreconditionError)):
       self.cluster_coord.schedule(def_function.function(lambda: None))

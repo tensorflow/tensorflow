@@ -26,12 +26,6 @@ namespace tensorflow {
 namespace tfd {
 namespace {
 
-using ::tensorflow::tfrt_stub::OpKernelRunner;
-using ::tensorflow::tfrt_stub::OpKernelRunState;
-using ::tfrt::AsyncValue;
-using ::tfrt::AsyncValueRef;
-using ::tfrt::Chain;
-using ::tfrt::RCReference;
 using ::tfrt::string_view;
 
 constexpr char kOpKernelRunnerTableResourceName[] =

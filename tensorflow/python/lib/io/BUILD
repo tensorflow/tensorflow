@@ -42,7 +42,9 @@ py_library(
         ":_pywrap_record_io",
         "//tensorflow/python:errors",
         "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -92,7 +94,6 @@ tf_py_test(
     deps = [
         ":lib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

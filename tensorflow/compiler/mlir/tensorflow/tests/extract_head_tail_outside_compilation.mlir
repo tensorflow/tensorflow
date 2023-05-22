@@ -152,7 +152,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:     %[[A_OUT:.*]] = "tf.A"(%[[RI]])
     // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return %[[A_OUT]]
-    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
+    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST_0"
     //
     // CHECK:        "tf_device.cluster"
     // CHECK-NEXT:     "tf.B"(%[[LAUNCH_OUT]])
@@ -370,7 +370,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:     %[[B_OUT:.*]] = "tf.B"(%[[CLUSTER_OUT]], %[[RI]])
     // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return
-    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
+    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST_0"
     tf_device.replicate([%arg0, %arg1] as %ri : tensor<i32>) {n = 2 : i32} {
       "tf_device.cluster"() ({
         %a = "tf.A"(%ri) : (tensor<i32>) -> tensor<i32>
@@ -439,7 +439,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:     %[[A_OUT:.*]] = "tf.A"(%[[RI]])
     // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return %[[A_OUT]]
-    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
+    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST_0"
     //
     // CHECK:        %[[CLUSTER_OUT:.*]] = "tf_device.cluster"
     // CHECK-NEXT:     %[[B_OUT:.*]] = "tf.B"
@@ -456,7 +456,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NEXT:     "tf.D"(%[[HEAD_LAUNCH_OUT]], %[[CLUSTER_OUT]], %[[RI]])
     // CHECK-NOT:      _xla_outside_compilation
     // CHECK-NEXT:     tf_device.return
-    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST"
+    // CHECK-NEXT:   device = "TPU_REPLICATED_HOST_0"
     tf_device.replicate([%arg0, %arg1] as %ri : tensor<i32>) {n = 2 : i32} {
       "tf_device.cluster"() ({
         %a = "tf.A"(%ri) {_xla_outside_compilation = "cluster1"} : (tensor<i32>) -> tensor<i32>

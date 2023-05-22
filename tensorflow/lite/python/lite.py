@@ -622,6 +622,8 @@ class TFLiteConverterBase:
     # If unset, bias:int32 is by default except 16x8 quant.
     # For 16x8 quant, bias:int64 is used to prevent any overflow by default.
     self._experimental_full_integer_quantization_bias_type = None
+    # Provides specs for quantization, whether preset or custom.
+    self._experimental_quantization_options = None
     # Initializes conversion metadata.
     self.exclude_conversion_metadata = False
     self._metadata = conversion_metdata_fb.ConversionMetadataT()
@@ -773,6 +775,7 @@ class TFLiteConverterBase:
         ),
         "allow_all_select_tf_ops": self._experimental_allow_all_select_tf_ops,
         "disable_fuse_mul_and_fc": self._experimental_disable_fuse_mul_and_fc,
+        "quantization_options": self._experimental_quantization_options,
     }
 
     if self.saved_model_dir:
@@ -1728,19 +1731,27 @@ class TFLiteJaxConverterV2(TFLiteConverterBaseV2):
         functools.partial(model, params=params)`)
       inputs: Array of input tensor placeholders tuple,s like `jnp.zeros`. For
         example, wrapped in an array like "[('input1', input1), ('input2',
-        input2)]]". Jax function is polymorphic, for example: ```python def
-        add(a, b): return a + b ``` Will yield different computations if
-        different input signatures are passed
+        input2)]]".
+
+    Jax functions are polymorphic, for example:
+
+    ```python
+    def add(a, b):
+      return a + b
+    ```
+
+    Will yield different computations if different input signatures are passed
     in: Pass `add(10.0, 20.0)` will yield a scalar `add` while pass
-      `add(np.random((100, 1)), np.random(100, 100))` will yield a broadcasting
-      add.  We will need the input information to do tracing for the converter
-      to properly convert the model. So it's important to pass in the desired
-      `input placeholders` with the correct input shape/type.  In the converted
-      tflite model:
-    Currently: the function name will be default to main, the output names will
-      be the traced outputs. The output ordering shall match the serving
-      function.
-    """
+    `add(np.random((100, 1)), np.random(100, 100))` will yield a broadcasting
+    add.  We will need the input information to do tracing for the converter
+    to properly convert the model. So it's important to pass in the desired
+    `input placeholders` with the correct input shape/type.
+
+    In the converted tflite model, the function name will be default to "main",
+    the output names will be the traced outputs. The output ordering shall
+    match the serving function.
+    """  # fmt: skip
+
     super(TFLiteJaxConverterV2, self).__init__()
     self._serving_funcs = serving_funcs
     self._inputs = inputs
@@ -1869,19 +1880,29 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       change. Enables [resource
       variables](https://tensorflow.org/guide/migrate/tf1_vs_tf2#resourcevariables_instead_of_referencevariables)
       to be converted by this converter. This is only allowed if the
-      from_saved_model interface is used. (default True)  Example usage:
-      ```python # Converting a SavedModel to a TensorFlow Lite model. converter
-      = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir) tflite_model =
-      converter.convert()  # Converting a tf.Keras model to a TensorFlow Lite
-      model. converter = tf.lite.TFLiteConverter.from_keras_model(model)
-      tflite_model = converter.convert()  # Converting ConcreteFunctions to a
-      TensorFlow Lite model. converter =
-      tf.lite.TFLiteConverter.from_concrete_functions([func], model)
-      tflite_model = converter.convert()  # Converting a Jax model to a
-      TensorFlow Lite model. converter =
-      tf.lite.TFLiteConverter.experimental_from_jax([func], [[ ('input1',
-      input1), ('input2', input2)]]) tflite_model = converter.convert() ```
-  """
+      from_saved_model interface is used. (default True)
+
+  Example usage:
+
+  ```python
+  # Converting a SavedModel to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+  tflite_model = converter.convert()
+
+  # Converting a tf.Keras model to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.from_keras_model(model)
+  tflite_model = converter.convert()
+
+  # Converting ConcreteFunctions to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.from_concrete_functions([func], model)
+  tflite_model = converter.convert()
+
+  # Converting a Jax model to a TensorFlow Lite model.
+  converter = tf.lite.TFLiteConverter.experimental_from_jax(
+      [func], [[ ('input1', input1), ('input2', input2)]])
+  tflite_model = converter.convert()
+  ```
+  """  # fmt: skip
 
   # pylint: disable=useless-super-delegation
   def __init__(self, funcs, trackable_obj=None):
@@ -1994,6 +2015,10 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
 
     if not signature_keys:
       raise ValueError("Only support at least one signature key.")
+
+    # Default `serve` endpoint for `model.export`
+    if len(signature_keys) > 1 and hasattr(saved_model, "serve"):
+      signature_keys = ["serve"]
 
     funcs = []
     for key in signature_keys:

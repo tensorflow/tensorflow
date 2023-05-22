@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
@@ -37,11 +38,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-// Returns the square root of the input rounded up to the nearest square.
-static int64_t SqrtOfRoundUpToSquare(int64_t input) {
-  return static_cast<int64_t>(std::ceil(std::sqrt(input)));
-}
 
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
@@ -110,19 +106,45 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     VLOG(1) << "Input: " << hlo->ToString();
-    int64_t reduced_dim_size = input_shape_dims[reduced_input_dimension];
-    VLOG(3) << "reduced_dim_size = " << reduced_dim_size;
+    int64_t n = input_shape_dims[reduced_input_dimension];
+    VLOG(3) << "n = " << n;
 
-    // We pad to a nearest square (ceil(sqrt(x)))^2.  Given that:
+    // We will do this reduction in two stages.  The first will reduce from n
+    // elements to k elements in the reduction dimension.  The second will
+    // reduce further, from k to 1 element.
     //
-    // (n + 1)^2 = n^2 + (2n+1)
+    // We do this by splitting the input shape [a, n, b] into [a, k, n / k, b].
     //
-    // it can be seen that the distance to the nearest square is at most twice
-    // the square root of the input number.
-    int64_t num_fit = SqrtOfRoundUpToSquare(reduced_dim_size);
+    // We want to choose k to be roughly equal to sqrt(n) so that we process
+    // "most of" the reduction in the first step.  We also want k to be a power
+    // of 2, so that the GPU kernel doesn't spend all its time doing slow
+    // integer divmods to compute indices into the shape [a,k,n/k,b].  This
+    // means we may need to pad n so that n is divisible by k.
+    //
+    // Thus we consider two options for k:
+    //
+    //   k1 = round_up_pow2(sqrt(n))
+    //   k2 = round_down_pow2(sqrt(n))
+    //
+    // and we choose the value of k that results in the least amount of padding.
+    int64_t k1 = absl::bit_ceil(static_cast<uint64_t>(std::ceil(std::sqrt(n))));
+    int64_t k2 =
+        absl::bit_floor(static_cast<uint64_t>(std::floor(std::sqrt(n))));
+    int64_t padded_n_k1 = RoundUpTo(n, k1);
+    int64_t padded_n_k2 = RoundUpTo(n, k2);
+
+    int64_t k;
+    int64_t padded_n;
+    if (padded_n_k1 < padded_n_k2) {
+      k = k1;
+      padded_n = padded_n_k1;
+    } else {
+      k = k2;
+      padded_n = padded_n_k2;
+    }
 
     // Pad reduced dimension to the required number of elements.
-    bool no_padding_necessary = reduced_dim_size % num_fit == 0;
+    bool no_padding_necessary = n == padded_n;
     using InstructionVector = absl::InlinedVector<HloInstruction *, 2>;
     auto padded = [&]() -> InstructionVector {
       if (no_padding_necessary) {
@@ -130,14 +152,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
                                  reduce->inputs().end());
       }
 
-      int64_t padded_num_elements = num_fit * num_fit;
       PaddingConfig padding_config =
           MakeNoPaddingConfig(input_shape_dims.size());
       padding_config.mutable_dimensions(reduced_input_dimension)
-          ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
+          ->set_edge_padding_high(padded_n - n);
       std::vector<int64_t> padded_dimensions(input_shape_dims.begin(),
                                              input_shape_dims.end());
-      padded_dimensions[reduced_input_dimension] = padded_num_elements;
+      padded_dimensions[reduced_input_dimension] = padded_n;
 
       absl::InlinedVector<HloInstruction *, 2> out;
       out.reserve(reduce->input_count());
@@ -159,13 +180,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     for (int64_t dim_idx = 0; dim_idx < padded[0]->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
-        if (no_padding_necessary) {
-          reshaped_dimensions.push_back(reduced_dim_size / num_fit);
-        } else {
-          reshaped_dimensions.push_back(num_fit);
-        }
-
-        reshaped_dimensions.push_back(num_fit);
+        reshaped_dimensions.push_back(k);
+        reshaped_dimensions.push_back(padded_n / k);
       } else {
         reshaped_dimensions.push_back(padded[0]->shape().dimensions(dim_idx));
       }
@@ -173,9 +189,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     absl::InlinedVector<int64_t, 3> inner_reduce_dimensions =
         reshaped_dimensions;
+    // We split reduced_input_dimension into two new dims.  We have the choice
+    // of reducing along either of them.  We choose to reduce along the second,
+    // more-minor dimension, because this should use the GPU caches better.
     int64_t inner_reduced_dimension = is_row_reduction
                                           ? inner_reduce_dimensions.size() - 1
-                                          : reduced_input_dimension;
+                                          : reduced_input_dimension + 1;
     VLOG(2) << "inner_reduced_dimension = " << inner_reduced_dimension;
     inner_reduce_dimensions.erase(inner_reduce_dimensions.begin() +
                                   inner_reduced_dimension);

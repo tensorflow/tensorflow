@@ -621,7 +621,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       0, true);
   if (!attr_status.ok()) {
     LOG(ERROR) << "Failed to instantiate default attribute values: "
-               << attr_status.error_message();
+               << attr_status.message();
     return nullptr;
   }
 
@@ -641,7 +641,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     VLOG(1) << "Pruning graph...";
     auto status = PruneGraph(new_item.get());
     if (!status.ok()) {
-      LOG(ERROR) << "Pruning failed: " << status.error_message();
+      LOG(ERROR) << "Pruning failed: " << status.message();
       return nullptr;
     }
     VLOG(1) << "Number of nodes in graph after pruning: "

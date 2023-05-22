@@ -22,11 +22,9 @@ limitations under the License.
 #include "gml_st/transforms/passes.h"
 #include "gml_st/transforms/transforms.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/DestinationStyleOpInterface.h"
 #include "mlir/Interfaces/TilingInterface.h"
@@ -218,23 +216,22 @@ struct FusionPlanningForCpuPass
 
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext* context = &getContext();
+    MLIRContext* ctx = &getContext();
 
     // Cleanup passes to prepare ops for better clustering.
     {
-      RewritePatternSet patterns(context);
+      RewritePatternSet patterns(ctx);
       // Duplicate linalg.fill and tensor.empty that used as init parameters.
       patterns.add(duplicateInitOps<linalg::FillOp>);
       patterns.add(duplicateInitOps<tensor::EmptyOp>);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
-      }
     }
 
     // Move ops to gml_st.fusion clusters.
     {
-      RewritePatternSet patterns(context);
+      RewritePatternSet patterns(ctx);
       patterns.add(fusionPattern<linalg::MapOp>);
       patterns.add(fusionPattern<linalg::MatmulOp>);
       patterns.add(fusionPattern<linalg::ReduceOp>);
@@ -256,12 +253,11 @@ struct FusionPlanningForCpuPass
 
     // Add attributes with tile sizes.
     {
-      RewritePatternSet patterns(context);
-      patterns.add<ComputeTileSizesPattern>(context, vectorSize);
+      RewritePatternSet patterns(ctx);
+      patterns.add<ComputeTileSizesPattern>(ctx, vectorSize);
 
-      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
         return signalPassFailure();
-      }
     }
   }
 };
@@ -270,14 +266,13 @@ struct InlineFusionClustersPass
     : public impl::InlineFusionClustersPassBase<InlineFusionClustersPass> {
   void runOnOperation() override {
     func::FuncOp f = getOperation();
-    MLIRContext* context = &getContext();
+    MLIRContext* ctx = &getContext();
 
-    RewritePatternSet patterns(context);
+    RewritePatternSet patterns(ctx);
     patterns.add(inlineFusionCluster);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 

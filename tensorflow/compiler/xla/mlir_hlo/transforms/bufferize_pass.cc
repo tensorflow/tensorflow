@@ -84,6 +84,9 @@ namespace mlir {
 
 namespace {
 
+// Label for functions created by fusion outlining.
+static constexpr char kFusionFunctionLabel[] = "fusion";
+
 /// A helper type converter class that automatically populates the relevant
 /// materializations and type conversions for bufferization.
 
@@ -234,8 +237,19 @@ struct OneShotBufferizePass
     bufferization::OneShotBufferizationOptions opts;
     opts.allowReturnAllocs = true;
     opts.bufferizeFunctionBoundaries = true;
-    opts.functionBoundaryTypeConversion =
-        bufferization::LayoutMapOption::IdentityLayoutMap;
+    opts.functionArgTypeConverterFn =
+        [=](TensorType tensorType, Attribute memorySpace, func::FuncOp funcOp,
+            const bufferization::BufferizationOptions& options) {
+          // Functions created by fusion outlining should have fully dynamic
+          // layout. All other functions (for now only "main") gets static
+          // layout.
+          if (funcOp->hasAttr(kFusionFunctionLabel))
+            return bufferization::getMemRefTypeWithFullyDynamicLayout(
+                tensorType, memorySpace);
+          return bufferization::getMemRefTypeWithStaticIdentityLayout(
+              tensorType, memorySpace);
+        };
+    opts.inferFunctionResultLayout = false;
     opts.createDeallocs = false;
     opts.bufferAlignment = 64;
 

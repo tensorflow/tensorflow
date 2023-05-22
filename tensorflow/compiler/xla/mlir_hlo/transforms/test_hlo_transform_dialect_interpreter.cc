@@ -138,7 +138,8 @@ class TestHloTransformDialectInterpreterPass
     options = options.enableExpensiveChecks(enableExpensiveChecks);
     if (failed(transform::detail::interpreterBaseRunOnOperationImpl(
             getOperation(), getArgument(), getSharedTransformModule(),
-            extraMapping, options, transformFileName, debugPayloadRootTag,
+            getTransformLibraryModule(), extraMapping, options,
+            transformFileName, transformLibraryFileName, debugPayloadRootTag,
             debugTransformRootTag, getBinaryName())))
       return signalPassFailure();
   }
@@ -180,6 +181,11 @@ class TestHloTransformDialectInterpreterPass
           "Optional filename containing a transform dialect specification to "
           "apply. If left empty, the IR is assumed to contain one top-level "
           "transform dialect operation somewhere in the module.")};
+  Option<std::string> transformLibraryFileName{
+      *this, "transform-library-file-name", llvm::cl::init(""),
+      llvm::cl::desc(
+          "Optional name of the file containing transform dialect symbol "
+          "definitions to be injected into the transform module.")};
   Option<std::string> debugPayloadRootTag{
       *this, "debug-payload-root-tag", llvm::cl::init(""),
       llvm::cl::desc(

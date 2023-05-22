@@ -1,3 +1,4 @@
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -6,7 +7,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//learning/brain/google/monitoring:__subpackages__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
@@ -23,7 +24,7 @@ package(
         "//tensorflow/compiler/xla/service:__subpackages__",
         "//tensorflow/tsl/framework:__subpackages__",
         "//tensorflow/tsl/distributed_runtime:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -91,10 +92,10 @@ cc_library(
 cc_library(
     name = "metric_def",
     hdrs = ["metric_def.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//learning/brain/google/monitoring:__subpackages__",
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":types",
         "//tensorflow/tsl/platform:stringpiece",
@@ -107,9 +108,9 @@ cc_library(
     name = "collection_registry",
     srcs = ["collection_registry.cc"],
     hdrs = ["collection_registry.h"],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__subpackages__",
-    ],
+    ]),
     deps = [
         ":collected_metrics",
         ":metric_def",
@@ -227,10 +228,10 @@ filegroup(
         "timed.h",
         "types.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/monitoring:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -248,10 +249,10 @@ filegroup(
         "timed.h",
         "types.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/monitoring:__pkg__",
-    ],
+    ]),
 )
 
 filegroup(
@@ -268,8 +269,8 @@ filegroup(
         "test_utils.h",
         "types.h",
     ],
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/monitoring:__pkg__",
-    ],
+    ]),
 )

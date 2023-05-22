@@ -26,7 +26,6 @@ namespace tensorflow {
 using tsl::ReadBoolFromEnvVar;
 using tsl::ReadFloatFromEnvVar;
 using tsl::ReadInt64FromEnvVar;
-using tsl::ReadInt64sFromEnvVar;
 using tsl::ReadStringFromEnvVar;
 using tsl::ReadStringsFromEnvVar;
 

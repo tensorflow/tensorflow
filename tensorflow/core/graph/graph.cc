@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/full_type.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_properties.h"
@@ -460,7 +462,7 @@ Graph::Graph(const FunctionLibraryDefinition& flib_def)
     versions_->set_min_consumer(12);
   }
   Status s = ops_.AddLibrary(flib_def);
-  CHECK(s.ok()) << s.error_message();
+  CHECK(s.ok()) << s.message();
 }
 
 Graph::~Graph() {
@@ -763,12 +765,43 @@ Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
   return OkStatus();
 }
 
-Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
+                                 const StackTracesMap& stack_traces) {
+  return AddFunctionLibrary(FunctionDefLibrary(fdef_lib), stack_traces);
+}
+
+Status Graph::AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
+                                 const StackTracesMap& stack_traces) {
   // Need a new-enough consumer to support the functions we add to the graph.
   if (fdef_lib.function_size() > 0 && versions_->min_consumer() < 12) {
     versions_->set_min_consumer(12);
   }
-  return ops_.AddLibrary(fdef_lib);
+  return ops_.AddLibrary(std::move(fdef_lib), stack_traces);
+}
+
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  return AddFunctionLibrary(fdef_lib, /*stack_traces=*/{});
+}
+
+Status Graph::AddFunctionLibrary(FunctionDefLibrary&& fdef_lib) {
+  return AddFunctionLibrary(std::move(fdef_lib), /*stack_traces=*/{});
+}
+
+Status Graph::AddFunctionDef(const FunctionDef& fdef,
+                             const StackTracesMap& stack_traces) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddFunctionDef(fdef, stack_traces);
+}
+
+Status Graph::AddGradientDef(const GradientDef& gdef) {
+  // Need a new-enough consumer to support the functions we add to the graph.
+  if (versions_->min_consumer() < 12) {
+    versions_->set_min_consumer(12);
+  }
+  return ops_.AddGradientDef(gdef);
 }
 
 namespace {
@@ -785,8 +818,8 @@ void AddInput(NodeDef* dst, StringPiece src_name, int src_slot) {
 
 }  // namespace
 
-void Graph::ToGraphDef(GraphDef* graph_def) const {
-  ToGraphDefSubRange(graph_def, 0);
+void Graph::ToGraphDef(GraphDef* graph_def, bool include_flib_def) const {
+  ToGraphDefSubRange(graph_def, /*from_node_id=*/0, include_flib_def);
 }
 
 GraphDef Graph::ToGraphDefDebug() const {
@@ -795,10 +828,14 @@ GraphDef Graph::ToGraphDefDebug() const {
   return ret;
 }
 
-void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
+void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
+                               bool include_flib_def) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();
-  *graph_def->mutable_library() = ops_.ToProto();
+
+  if (include_flib_def) {
+    *graph_def->mutable_library() = ops_.ToProto();
+  }
 
   graph_def->mutable_node()->Reserve(std::max(1, num_nodes() - from_node_id));
 
@@ -1008,8 +1045,10 @@ void Graph::NodeType(StringPiece name, const FullTypeDef** result) {
 }
 
 std::string Edge::DebugString() const {
-  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_->name().c_str(),
-                         src_output_, dst_->name().c_str(), dst_input_);
+  auto src_name = src_ ? src_->name().c_str() : "<NULL>";
+  auto dst_name = dst_ ? dst_->name().c_str() : "<NULL>";
+  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
+                         dst_name, dst_input_);
 }
 
 }  // namespace tensorflow

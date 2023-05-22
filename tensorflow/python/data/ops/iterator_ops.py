@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_utils
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import parsing_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.training.saver import BaseSaverBuilder
@@ -783,6 +784,26 @@ class OwnedIterator(IteratorBase):
         return self._element_spec._from_compatible_tensor_list(ret)  # pylint: disable=protected-access
       except AttributeError:
         return structure.from_compatible_tensor_list(self._element_spec, ret)
+
+  def _save(self):
+    external_state_policy = None
+    if (
+        self._dataset
+        and self._dataset.options().experimental_external_state_policy
+    ):
+      external_state_policy = (
+          self._dataset.options().experimental_external_state_policy.value
+      )
+    state_variant = gen_dataset_ops.serialize_iterator(
+        self._iterator_resource, external_state_policy
+    )
+    return parsing_ops.serialize_tensor(state_variant)
+
+  def _restore(self, state):
+    state_variant = parsing_ops.parse_tensor(state, dtypes.variant)
+    return gen_dataset_ops.deserialize_iterator(
+        self._iterator_resource, state_variant
+    )
 
   @property
   def _type_spec(self):

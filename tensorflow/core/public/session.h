@@ -355,6 +355,9 @@ Status Reset(const SessionOptions& options,
 /// which contains more helpful error information.
 Session* NewSession(const SessionOptions& options);
 
+/// \brief Export the metric that indicates the session is created.
+void SetSessionCreatedMetric();
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PUBLIC_SESSION_H_

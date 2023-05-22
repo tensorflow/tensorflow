@@ -80,8 +80,14 @@ struct MklDnnThreadPool : public threadpool_iface {
     eigen_interface_ = ctx->device()
                            ->tensorflow_cpu_worker_threads()
                            ->workers->AsEigenThreadPool();
-    num_threads_ =
-        (num_threads == -1) ? eigen_interface_->NumThreads() : num_threads;
+    if (num_threads == -1) {
+      dnnl_threadpool_interop_set_max_concurrency(
+          eigen_interface_->NumThreads());
+      num_threads_ = eigen_interface_->NumThreads();
+    } else {
+      dnnl_threadpool_interop_set_max_concurrency(num_threads);
+      num_threads_ = num_threads;
+    }
   }
   virtual int get_num_threads() const override { return num_threads_; }
   virtual bool get_in_parallel() const override {

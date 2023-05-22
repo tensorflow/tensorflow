@@ -19,8 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/tsl/python/lib/core/bfloat16.h"
-#include "tensorflow/tsl/python/lib/core/float8.h"
 
 namespace xla {
 
@@ -56,6 +54,20 @@ xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
 }
 
 xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+  struct FloatTypes {
+    py::dtype bfloat16;
+    py::dtype float8_e4m3fn;
+    py::dtype float8_e5m2;
+  };
+
+  static const FloatTypes& float_types = *[]() {
+    py::module ml_dtypes = py::module::import("ml_dtypes");
+    return new FloatTypes{
+        py::dtype::from_args(ml_dtypes.attr("bfloat16")),
+        py::dtype::from_args(ml_dtypes.attr("float8_e4m3fn")),
+        py::dtype::from_args(ml_dtypes.attr("float8_e5m2")),
+    };
+  }();
   switch (type) {
     case PRED:
       return py::dtype::of<bool>();
@@ -75,19 +87,12 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<uint32_t>();
     case U64:
       return py::dtype::of<uint64_t>();
-    case F8E4M3FN: {
-      py::handle f8_e4m3fn(tsl::Float8e4m3fnDtype());
-      return py::dtype::from_args(
-          py::reinterpret_borrow<py::object>(f8_e4m3fn));
-    }
-    case F8E5M2: {
-      py::handle f8_e5m2(tsl::Float8e5m2Dtype());
-      return py::dtype::from_args(py::reinterpret_borrow<py::object>(f8_e5m2));
-    }
-    case BF16: {
-      py::handle bfloat16(tsl::Bfloat16Dtype());
-      return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
-    }
+    case F8E4M3FN:
+      return float_types.float8_e4m3fn;
+    case F8E5M2:
+      return float_types.float8_e5m2;
+    case BF16:
+      return float_types.bfloat16;
     case F16:
       return py::dtype("e");  // PEP 3118 code for "float16
     case F32:
@@ -107,7 +112,8 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
 const NumpyScalarTypes& GetNumpyScalarTypes() {
   static const NumpyScalarTypes* singleton = []() {
     NumpyScalarTypes* dtypes = new NumpyScalarTypes();
-    const auto numpy = py::module::import("numpy");
+    py::module numpy = py::module::import("numpy");
+    py::module ml_dtypes = py::module::import("ml_dtypes");
     dtypes->np_bool = py::object(numpy.attr("bool_"));
     dtypes->np_int8 = py::object(numpy.attr("int8"));
     dtypes->np_int16 = py::object(numpy.attr("int16"));
@@ -117,12 +123,9 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
     dtypes->np_uint16 = py::object(numpy.attr("uint16"));
     dtypes->np_uint32 = py::object(numpy.attr("uint32"));
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
-    dtypes->np_bfloat16 =
-        py::reinterpret_borrow<py::object>(tsl::Bfloat16Dtype());
-    dtypes->np_float8_e4m3fn =
-        py::reinterpret_borrow<py::object>(tsl::Float8e4m3fnDtype());
-    dtypes->np_float8_e5m2 =
-        py::reinterpret_borrow<py::object>(tsl::Float8e5m2Dtype());
+    dtypes->np_bfloat16 = py::object(ml_dtypes.attr("bfloat16"));
+    dtypes->np_float8_e4m3fn = py::object(ml_dtypes.attr("float8_e4m3fn"));
+    dtypes->np_float8_e5m2 = py::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));

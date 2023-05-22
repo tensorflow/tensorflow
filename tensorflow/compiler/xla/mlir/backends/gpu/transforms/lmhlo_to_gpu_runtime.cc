@@ -13,10 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <iterator>
+#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -38,7 +37,6 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/gpu/transforms/uid_generator.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
@@ -541,26 +539,24 @@ class CollectiveUidGenerator {
 template <typename CollectiveOp>
 class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
   static StringRef Target(AllGatherOp) { return "xla.gpu.all_gather"; }
+  static StringRef Target(AllGatherStartOp) { return "xla.gpu.all_gather"; }
+
   static StringRef Target(AllReduceOp) { return "xla.gpu.all_reduce"; }
+  static StringRef Target(AllReduceStartOp) { return "xla.gpu.all_reduce"; }
+
   static StringRef Target(AllToAllOp) { return "xla.gpu.all_to_all"; }
+  static StringRef Target(AllToAllStartOp) { return "xla.gpu.all_to_all"; }
+
   static StringRef Target(ReduceScatterOp) { return "xla.gpu.reduce_scatter"; }
+  static StringRef Target(ReduceScatterStartOp) {
+    return "xla.gpu.reduce_scatter";
+  }
+
   static StringRef Target(CollectivePermuteOp) {
     return "xla.gpu.collective_permute";
   }
   static StringRef Target(CollectivePermuteStartOp) {
-    return "xla.gpu.collective_permute_start";
-  }
-  static StringRef Target(AllReduceStartOp) {
-    return "xla.gpu.all_reduce_start";
-  }
-  static StringRef Target(AllGatherStartOp) {
-    return "xla.gpu.all_gather_start";
-  }
-  static StringRef Target(ReduceScatterStartOp) {
-    return "xla.gpu.reduce_scatter_start";
-  }
-  static StringRef Target(AllToAllStartOp) {
-    return "xla.gpu.all_to_all_start";
+    return "xla.gpu.collective_permute";
   }
 
   template <typename ReduceOrGatherOp>
@@ -640,44 +636,67 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                          num_partitions, rewriter);
   }
 
-  static bool CanImplement(AllGatherOp op) {
-    return NcclAllGatherThunk::CanImplement(op);
+  static Status CheckImplementable(AllGatherOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllGatherThunk::CheckImplementable(op, replica_count,
+                                                  num_partitions);
   }
 
-  static bool CanImplement(AllGatherStartOp op) {
-    return NcclAllGatherStartThunk::CanImplement(op);
+  static Status CheckImplementable(AllGatherStartOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllGatherStartThunk::CheckImplementable(op, replica_count,
+                                                       num_partitions);
   }
 
-  static bool CanImplement(AllReduceOp op) {
-    return NcclAllReduceThunk::CanImplement(op);
+  static Status CheckImplementable(AllReduceOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllReduceThunk::CheckImplementable(op, replica_count,
+                                                  num_partitions);
   }
 
-  static bool CanImplement(AllReduceStartOp op) {
-    return NcclAllReduceStartThunk::CanImplement(op);
+  static Status CheckImplementable(AllReduceStartOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllReduceStartThunk::CheckImplementable(op, replica_count,
+                                                       num_partitions);
   }
 
-  static bool CanImplement(ReduceScatterOp op) {
-    return NcclReduceScatterThunk::CanImplement(op);
+  static Status CheckImplementable(ReduceScatterOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclReduceScatterThunk::CheckImplementable(op, replica_count,
+                                                      num_partitions);
   }
 
-  static bool CanImplement(AllToAllOp op) {
-    return NcclAllToAllThunk::CanImplement(op);
+  static Status CheckImplementable(AllToAllOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllToAllThunk::CheckImplementable(op, replica_count,
+                                                 num_partitions);
   }
 
-  static bool CanImplement(AllToAllStartOp op) {
-    return NcclAllToAllStartThunk::CanImplement(op);
+  static Status CheckImplementable(AllToAllStartOp op, int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclAllToAllStartThunk::CheckImplementable(op, replica_count,
+                                                      num_partitions);
   }
 
-  static bool CanImplement(CollectivePermuteOp op) {
-    return NcclCollectivePermuteThunk::CanImplement(op);
+  static Status CheckImplementable(CollectivePermuteOp op,
+                                   int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclCollectivePermuteThunk::CheckImplementable(op, replica_count,
+                                                          num_partitions);
   }
 
-  static bool CanImplement(CollectivePermuteStartOp op) {
-    return NcclCollectivePermuteStartThunk::CanImplement(op);
+  static Status CheckImplementable(CollectivePermuteStartOp op,
+                                   int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclCollectivePermuteStartThunk::CheckImplementable(
+        op, replica_count, num_partitions);
   }
 
-  static bool CanImplement(ReduceScatterStartOp op) {
-    return NcclReduceScatterStartThunk::CanImplement(op);
+  static Status CheckImplementable(ReduceScatterStartOp op,
+                                   int64_t replica_count,
+                                   int64_t num_partitions) {
+    return NcclReduceScatterStartThunk::CheckImplementable(op, replica_count,
+                                                           num_partitions);
   }
 
   template <typename OpT>
@@ -698,22 +717,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         b.getI64IntegerAttr(static_cast<int64_t>(reduction_kind.value())));
 
     return success();
-  }
-
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b, AllReduceOp op,
-                                        func::CallOp call) {
-    auto attr = op->getAttrOfType<BoolAttr>("allow_all_reduce_kernel");
-    call->setAttr(b.getStringAttr("allow_all_reduce_kernel"),
-                  attr ? attr : b.getBoolAttr(false));
-    return SetSpecificAttrs<AllReduceOp>(b, op, call);
-  }
-  static LogicalResult SetSpecificAttrs(ImplicitLocOpBuilder& b,
-                                        AllReduceStartOp op,
-                                        func::CallOp call) {
-    auto attr = op->getAttrOfType<BoolAttr>("allow_all_reduce_kernel");
-    call->setAttr(b.getStringAttr("allow_all_reduce_kernel"),
-                  attr ? attr : b.getBoolAttr(false));
-    return SetSpecificAttrs<AllReduceStartOp>(b, op, call);
   }
 
   template <typename OpT>
@@ -739,8 +742,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto source_target_pairs_or =
         ConvertNx2Attribute(op.getSourceTargetPairs());
     if (!source_target_pairs_or.ok()) {
-      return op.emitOpError()
-             << source_target_pairs_or.status().error_message();
+      return op.emitOpError() << source_target_pairs_or.status().message();
     }
 
     // Pass an array of pairs as two vectors.
@@ -811,13 +813,10 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
       return success();
     }
 
-    if (!CanImplement(op)) {
-      return op.emitOpError()
-             << "Requested " << Target(op)
-             << " not implemented on GPU; replica_count: " << replica_count
-             << ", num_partitions: " << num_partitions << ", group_mode: "
-             << CollectiveOpGroupModeToString(config.group_mode)
-             << ", NCCL support: " << NcclCollectiveThunk::NcclIsEnabled();
+    Status implementable_status =
+        CheckImplementable(op, replica_count, num_partitions);
+    if (!implementable_status.ok()) {
+      return op.emitOpError() << implementable_status.message();
     }
 
     // Check that we have and assigned unique collective operation id.
@@ -873,6 +872,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     auto result = SetSpecificAttrs(b, op, call);
     if (failed(result)) return result;
 
+    bool is_async = false;
     // For asynchonous start operation we need to produce a fake token, that
     // will be later removed, because corresponding `done` operation doesn't
     // have a token argument. We rely on the `unrealized_conversion_cast`
@@ -881,11 +881,13 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if constexpr (is_any<CollectiveOp, AllGatherStartOp, AllReduceStartOp,
                          AllToAllStartOp, CollectivePermuteStartOp,
                          ReduceScatterStartOp>) {
+      is_async = true;
       Value token = op.getToken();
       Value c0 = b.create<arith::ConstantOp>(b.getI8IntegerAttr(0));
       auto fake = b.create<UnrealizedConversionCastOp>(token.getType(), c0);
       token.replaceAllUsesWith(fake.getResult(0));
     }
+    call->setAttr(b.getStringAttr("is_async"), b.getBoolAttr(is_async));
 
     // Erase the original collective operation.
     rewriter.eraseOp(op);
@@ -923,7 +925,6 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
   AsyncDoneOpLowering(MLIRContext* ctx, CollectiveUidGenerator& uid,
                       CustomCallDeclarations& custom_calls)
       : OpRewritePattern<OpT>(ctx),
-        custom_call_target_(Derived::kCustomCallTarget),
         uid_(uid),
         custom_calls_(custom_calls) {}
 
@@ -931,8 +932,8 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
                                 PatternRewriter& rewriter) const override {
     // Get or create a custom call function declaration.
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    func::FuncOp callee = custom_calls_.GetOrCreate(b, custom_call_target_,
-                                                    TypeRange(), TypeRange());
+    func::FuncOp callee = custom_calls_.GetOrCreate(
+        b, "xla.gpu.collective_done", TypeRange(), TypeRange());
 
     // Get a unique collective operation id.
     FailureOr<int32_t> uid = uid_.AssignedUid(op);
@@ -940,7 +941,8 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
       return op.emitOpError("failed to get a unique collective operation id");
 
     llvm::SmallVector<NamedAttribute> custom_call_attributes = {
-        {b.getStringAttr("uid"), b.getI32IntegerAttr(*uid)}};
+        {b.getStringAttr("uid"), b.getI32IntegerAttr(*uid)},
+        {b.getStringAttr("done_type"), b.getStringAttr(Derived::kDoneType)}};
 
     // Convert AllReduceDone to a function call.
     auto call = rewriter.replaceOpWithNewOp<func::CallOp>(op, callee.getName(),
@@ -951,24 +953,22 @@ class AsyncDoneOpLowering : public OpRewritePattern<OpT> {
   }
 
  private:
-  const char* custom_call_target_;
   CollectiveUidGenerator& uid_;
   CustomCallDeclarations& custom_calls_;
 };
 
-#define DEFINE_COLLECTIVE_DONE_OP_LOWERING(OP, custom_call)            \
+#define DEFINE_COLLECTIVE_DONE_OP_LOWERING(OP, done_type)              \
   struct OP##Lowering : public AsyncDoneOpLowering<OP, OP##Lowering> { \
-    static constexpr const char kCustomCallTarget[] = custom_call;     \
+    static constexpr const char kDoneType[] = done_type;               \
     using AsyncDoneOpLowering::AsyncDoneOpLowering;                    \
   }
 
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllGatherDoneOp, "xla.gpu.all_gather_done");
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllReduceDoneOp, "xla.gpu.all_reduce_done");
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllToAllDoneOp, "xla.gpu.all_to_all_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllGatherDoneOp, "all_gather_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllReduceDoneOp, "all_reduce_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(AllToAllDoneOp, "all_to_all_done");
 DEFINE_COLLECTIVE_DONE_OP_LOWERING(CollectivePermuteDoneOp,
-                                   "xla.gpu.collective_permute_done");
-DEFINE_COLLECTIVE_DONE_OP_LOWERING(ReduceScatterDoneOp,
-                                   "xla.gpu.reduce_scatter_done");
+                                   "collective_permute_done");
+DEFINE_COLLECTIVE_DONE_OP_LOWERING(ReduceScatterDoneOp, "reduce_scatter_done");
 
 #undef DEFINE_COLLECTIVE_DONE_OP_LOWERING
 

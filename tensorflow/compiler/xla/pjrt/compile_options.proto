@@ -80,6 +80,13 @@ message ExecutableBuildOptionsProto {
   repeated bool allow_spmd_sharding_propagation_to_output = 12;
 }
 
+message OptionOverrideProto {
+  oneof value {
+    string string_field = 1;
+    bool bool_field = 2;
+  }
+}
+
 message CompileOptionsProto {
   // Refer CompileOptions for documentation of fields.
   repeated ShapeProto argument_layouts = 1;
@@ -88,4 +95,11 @@ message CompileOptionsProto {
   bool compile_portable_executable = 4;
   int64 profile_version = 5;
   bytes serialized_multi_slice_config = 6;
+  map<string, OptionOverrideProto> env_option_overrides = 7;
+}
+
+// Helper for serializing opaque executables alongside CompileOptions.
+message ExecutableAndOptionsProto {
+  bytes serialized_executable = 1;
+  CompileOptionsProto compile_options = 2;
 }

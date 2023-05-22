@@ -410,7 +410,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
         // that we should terminate the iteration early.
         return errors::InvalidArgument(
             "Function invocation produced OutOfRangeError: ",
-            result->status.error_message());
+            result->status.message());
       }
       *end_of_sequence = result->end_of_input;
       return result->status;
@@ -561,8 +561,8 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           key, kErrorCode, static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(
-            writer->WriteScalar(key, kErrorMessage, status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(key, kErrorMessage,
+                                               std::string(status.message())));
       }
       return OkStatus();
     }

@@ -29,7 +29,7 @@ message QuantizationMethod {
 // NEXT ID: 2
 message PresetQuantizationMethod {
   // Preset quantization methods that are supported as a stable API.
-  // NEXT ID: 3
+  // NEXT ID: 5
   enum PresetMethod {
     // TODO(b/266173150): Update preset methods after redefining quantization
     // pattern matching in DarwiNN.
@@ -37,14 +37,24 @@ message PresetQuantizationMethod {
     METHOD_UNSPECIFIED = 0;  // go/do-include-enum-unspecified
 
     // Apply default weight-only quantization. Weights are quantized during
-    // conversion, then dequantized during inference. Data type is as follows:
-    // Weight: i8, Bias: f32, Activation: f32, Input/output: f32
+    // conversion, then dequantized during inference.
+    // Activation: f32, Weight: qi8, Bias: f32
     WEIGHT_ONLY = 1;
 
     // Apply default dynamic range quantization. Quantized tensor value's
-    // ranges are determined during graph runtime. Data type is as follows:
-    // Weight: i8, Bias: f32, Activation: f32, Input/output: f32
-    DYNAMIC_RANGE = 2;
+    // ranges are determined during graph runtime.
+    // Activation: f32, Weight: qi8, Bias: f32
+    POST_TRAINING_QUANTIZATION_DYNAMIC_RANGE = 2;
+
+    // Apply float16 quantization to all the weights. Quantized weights will be
+    // dequantized before running inference.
+    // Activation: f32, Weight: f16, Bias: f16
+    FLOAT16 = 3;
+
+    // Apply static range quantization. The quantization range is determined
+    // via calibration phase and quantized during conversion.
+    // Activation: qi8, Weight: qi8, Bias: qi32
+    POST_TRAINING_QUANTIZATION_STATIC_RANGE = 4;
   }
   PresetMethod preset_method = 1;
 }

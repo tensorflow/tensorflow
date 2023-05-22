@@ -333,7 +333,7 @@ Stream &Stream::ThenRecordEvent(Event *event) {
 
   tsl::Status status = parent_->RecordEvent(this, event);
   if (!status.ok()) {
-    LOG(ERROR) << "Error recording event in stream: " << status.error_message()
+    LOG(ERROR) << "Error recording event in stream: " << status.message()
                << "; not marking stream as bad, as the Event object may be "
                << "at fault. Monitor for further errors.";
   }
@@ -1117,8 +1117,7 @@ Stream &Stream::ThenWaitFor(Event *event) {
   if (ok()) {
     tsl::Status status = parent_->WaitForEvent(this, event);
     if (!status.ok()) {
-      LOG(ERROR) << "Error waiting for event in stream: "
-                 << status.error_message()
+      LOG(ERROR) << "Error waiting for event in stream: " << status.message()
                  << "; not marking stream as bad, as the Event object may be "
                  << "at fault. Monitor for further errors.";
     }

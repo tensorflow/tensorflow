@@ -52,7 +52,8 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
         errors::InvalidArgument("Unable to parse compilation result proto");
   }
   if (!status.ok() || proto.status_code() != error::Code::OK) {
-    status.Update(Status(proto.status_code(), proto.status_error_message()));
+    status.Update(Status(static_cast<absl::StatusCode>(proto.status_code()),
+                         proto.status_error_message()));
     LOG(WARNING) << "TPU compilation failed: " << status;
     errors::AppendToMessage(&status, "TPU compilation failed");
     if (tensorflow::internal::TpuCompilationFailureClosesChips()) {
@@ -68,7 +69,7 @@ void TpuCompileSucceededAssertOp::Compute(OpKernelContext* ctx) {
       Status close_status = TpuNodeContext::CloseTpuHost();
 
       if (!close_status.ok()) {
-        errors::AppendToMessage(&status, close_status.error_message());
+        errors::AppendToMessage(&status, close_status.message());
       }
     }
     ctx->CtxFailure(status);

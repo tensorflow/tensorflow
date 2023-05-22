@@ -568,9 +568,7 @@ bool GpuExecutor::HostCallback(Stream* stream,
                                       InternalHostCallback, callback_ptr);
 }
 
-/* static */ void GpuExecutor::InternalHostCallback(GpuStreamHandle stream,
-                                                    hipError_t status,
-                                                    void* data) {
+/* static */ void GpuExecutor::InternalHostCallback(void* data) {
   auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
   std::move (*callback)();
   delete callback;
@@ -594,7 +592,7 @@ tsl::Status GpuExecutor::WaitForEvent(Stream* stream, Event* event) {
     return tsl::OkStatus();
   } else {
     return tsl::Status{
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat("error recording waiting for ROCM event on stream %p",
                         stream)};
   }
@@ -663,7 +661,7 @@ blas::BlasSupport* GpuExecutor::CreateBlas() {
                                                         plugin_config_.blas());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
@@ -677,7 +675,7 @@ dnn::DnnSupport* GpuExecutor::CreateDnn() {
                                                        plugin_config_.dnn());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve DNN factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
@@ -691,7 +689,7 @@ fft::FftSupport* GpuExecutor::CreateFft() {
                                                        plugin_config_.fft());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
@@ -705,7 +703,7 @@ rng::RngSupport* GpuExecutor::CreateRng() {
                                                        plugin_config_.rng());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve RNG factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
@@ -961,8 +959,7 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxThreadsPerMultiprocessor(device).value());
   builder.set_registers_per_block_limit(
       GpuDriver::GetMaxRegistersPerBlock(device).value());
-  builder.set_threads_per_warp(
-      GpuDriver::GetThreadsPerWarp(device).value());
+  builder.set_threads_per_warp(GpuDriver::GetThreadsPerWarp(device).value());
   builder.set_registers_per_core_limit(64 * 1024);
 
   int cc_major = 0;

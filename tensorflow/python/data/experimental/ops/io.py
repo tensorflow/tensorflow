@@ -100,10 +100,15 @@ def save(dataset,
       then checkpointing will not be performed. The `save()` implementation
       creates a `tf.train.Checkpoint` object internally, so users should not
       set the `checkpoint` argument in `checkpoint_args`.
+
+  Returns:
+    An operation which when executed performs the save. When writing
+    checkpoints, returns None. The return value is useful in unit tests.
+
   Raises:
     ValueError if `checkpoint` is passed into `checkpoint_args`.
   """
-  dataset.save(path, compression, shard_func, checkpoint_args)
+  return dataset.save(path, compression, shard_func, checkpoint_args)
 
 
 @tf_export("data.experimental.load", v1=[])

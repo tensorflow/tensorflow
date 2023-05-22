@@ -262,7 +262,7 @@ absl::Status Execute(RunnerFlags flags,
   if (auto st = ReadFileToString(env, flags.module_path, &module); !st.ok()) {
     return InternalError(
         StrFormat("failed to read module input from %s, error: %s",
-                  flags.module_path, st.error_message()));
+                  flags.module_path, st.message()));
   }
 
   // Read arguments from the input file.

@@ -18,6 +18,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -28,6 +29,24 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+
+
+def _ragged_factory(x):
+  return lambda: ragged_factory_ops.constant(x)
+
+
+def _adjust_expected_rank1(x, minlength, maxlength):
+  """Trim or pad an expected result based on minlength and maxlength."""
+  n = len(x)
+  if (minlength is not None) and (n < minlength):
+    x = x + [0] * (minlength - n)
+  if (maxlength is not None) and (n > maxlength):
+    x = x[:maxlength]
+  return x
+
+
+def _adjust_expected_rank2(x, minlength, maxlength):
+  return [_adjust_expected_rank1(i, minlength, maxlength) for i in x]
 
 
 class TestSparseCount(test.TestCase, parameterized.TestCase):
@@ -775,6 +794,216 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
         self.evaluate(
             bincount_ops.bincount(
                 arr=x, weights=weights, minlength=size, axis=-1)))
+
+  @parameterized.product(
+      (
+          dict(
+              tid="_r2",
+              x_factory=_ragged_factory([[], [1], [2, 2], [3, 3, 3]]),
+              expected=[0, 1, 2, 3],  # no implied zeros
+          ),
+          dict(
+              tid="_r3",
+              x_factory=_ragged_factory([[[], [1]], [[2, 2], [3, 3, 3]]]),
+              expected=[0, 1, 2, 3],  # no implied zeros
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+      ),
+  )
+  def test_default(self, x_factory, minlength, maxlength, expected, tid=None):
+    x = x_factory()
+    expected = _adjust_expected_rank1(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(x, minlength=minlength, maxlength=maxlength)
+        ),
+    )
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x, minlength=minlength, maxlength=maxlength, axis=0
+            )
+        ),
+    )
+
+  @parameterized.product(
+      (
+          dict(
+              tid="_r2",
+              x_factory=_ragged_factory([[], [1], [2, 2], [3, 3, 3]]),
+              # no implied zeros
+              expected=[[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 2, 0], [0, 0, 0, 3]],
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+      ),
+  )
+  def test_axis_neg_1(self, tid, x_factory, minlength, maxlength, expected):
+    x = x_factory()
+    expected = _adjust_expected_rank2(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x, minlength=minlength, maxlength=maxlength, axis=-1
+            )
+        ),
+    )
+
+  @parameterized.product(
+      (
+          dict(
+              tid="_r2",
+              x_factory=_ragged_factory([[], [1], [2, 2], [3, 3, 3]]),
+              weights_factory=_ragged_factory([[], [1], [2, 3], [4, 5, 6]]),
+              axis=None,
+              expected=[0, 1, 5, 15],  # no implied zeros
+          ),
+          dict(
+              tid="_r3",
+              x_factory=_ragged_factory([[[], [1]], [[2, 2], [3, 3, 3]]]),
+              weights_factory=_ragged_factory([[[], [1]], [[2, 3], [4, 5, 6]]]),
+              expected=[0, 1, 5, 15],  # no implied zeros
+              axis=None,
+          ),
+          dict(
+              tid="_r2_axis_neg_1",
+              x_factory=_ragged_factory([[], [1], [2, 2], [3, 3, 3]]),
+              weights_factory=_ragged_factory([[], [1], [2, 3], [4, 5, 6]]),
+              # no implied zeros
+              expected=[
+                  [0, 0, 0, 0],
+                  [0, 1, 0, 0],
+                  [0, 0, 5, 0],
+                  [0, 0, 0, 15],
+              ],
+              axis=-1,
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+      ),
+  )
+  def test_weights(
+      self,
+      tid,
+      x_factory,
+      weights_factory,
+      minlength,
+      maxlength,
+      expected,
+      axis,
+  ):
+    if "GPU" in set([d.device_type for d in tf_config.list_physical_devices()]):
+      self.skipTest(
+          "b/263004039 The DenseBincount GPU kernel does not support weights."
+          " unsorted_segment_sum should be used instead on GPU."
+      )
+    x = x_factory()
+    weights = weights_factory()
+    if axis == -1:
+      expected = _adjust_expected_rank2(expected, minlength, maxlength)
+    else:
+      expected = _adjust_expected_rank1(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x,
+                weights=weights,
+                minlength=minlength,
+                maxlength=maxlength,
+                axis=axis,
+            )
+        ),
+    )
+
+  @parameterized.product(
+      (
+          dict(
+              tid="_r2",
+              x_factory=_ragged_factory([[], [1], [2, 2], [3, 3, 3]]),
+              expected=[0, 1, 1, 1],  # no implied zeros
+              axis=None,
+          ),
+          dict(
+              tid="_r3",
+              x_factory=_ragged_factory([[[], [1]], [[2, 2], [3, 3, 3]]]),
+              expected=[0, 1, 1, 1],  # no implied zeros
+              axis=None,
+          ),
+          dict(
+              tid="_r2_axis_neg_1",
+              x_factory=_ragged_factory([[], [1], [2, 2], [3, 3, 3]]),
+              # no implied zeros
+              expected=[[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]],
+              axis=-1,
+          ),
+      ),
+      (
+          dict(minlength=None, maxlength=None),
+          dict(minlength=3, maxlength=None),
+          dict(minlength=5, maxlength=None),
+          dict(minlength=None, maxlength=3),
+          dict(minlength=None, maxlength=5),
+          dict(minlength=2, maxlength=3),
+          dict(minlength=3, maxlength=5),
+          dict(minlength=5, maxlength=10),
+      ),
+  )
+  def test_binary_output(
+      self,
+      tid,
+      x_factory,
+      minlength,
+      maxlength,
+      expected,
+      axis=None,
+      skip=False,
+  ):
+    x = x_factory()
+    if axis == -1:
+      expected = _adjust_expected_rank2(expected, minlength, maxlength)
+    else:
+      expected = _adjust_expected_rank1(expected, minlength, maxlength)
+    self.assertAllEqual(
+        expected,
+        self.evaluate(
+            bincount_ops.bincount(
+                x,
+                minlength=minlength,
+                maxlength=maxlength,
+                binary_output=True,
+                axis=axis,
+            )
+        ),
+    )
 
 
 class TestSparseCountFailureModes(test.TestCase):

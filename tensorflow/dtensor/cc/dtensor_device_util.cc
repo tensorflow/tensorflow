@@ -21,13 +21,16 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/parallel_device/parallel_device_lib.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -61,16 +64,14 @@ struct FunctionArgument {
 };
 
 std::unique_ptr<parallel_device::ParallelTensor>
-BroadcastTensorHandleToParallelTensor(TFE_Context* context,
-                                      TFE_TensorHandle* tensor,
-                                      const MeshWithParallelDevice& mesh,
-                                      TF_Status* status) {
+BroadcastTensorHandleToParallelTensor(
+    TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+    const parallel_device::ParallelDevice& parallel_device, TF_Status* status) {
   // Broadcast tensor value to local devices.
-  const Mesh& target_mesh = mesh.mesh_config();
   absl::Span<const std::string> local_devices = target_mesh.local_devices();
   const int num_local_devices = local_devices.size();
 
-  std::vector<parallel_device::TensorHandlePtr> components;
+  std::vector<TensorHandlePtr> components;
   components.reserve(num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
     // Create tensor copies to each local devices specifie by `target_mesh`.
@@ -89,7 +90,7 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
       parallel_device::ParallelTensor::FromTensorHandles(
-          mesh.parallel_device(), std::move(components), status);
+          parallel_device, std::move(components), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   return parallel_tensor;
 }
@@ -97,8 +98,8 @@ BroadcastTensorHandleToParallelTensor(TFE_Context* context,
 // Broadcast a single non-parallel resource tensor onto `mesh` with a fully
 // replicated sharding spec. Does not take ownership of `tensor`.
 std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
-    TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, TF_Status* status) {
+    TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+    const parallel_device::ParallelDevice& parallel_device, TF_Status* status) {
   // Only broadcast resource tensors that point to scalars since they are
   // always replicated. We also still want to catch honest user errors so
   // error out on non-scalars.
@@ -111,7 +112,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
   if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
     TF_SetStatus(status, TF_INTERNAL,
                  absl::StrCat("TF_TensorToTensor() Conversion failed:",
-                              convert_status.error_message())
+                              convert_status.message())
                      .c_str());
     return nullptr;
   }
@@ -119,7 +120,6 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
   // associated device of the resource itself.
   ResourceHandle r = t.flat<ResourceHandle>()(0);
 
-  const Mesh& target_mesh = mesh.mesh_config();
   // Only broadcast resource tensors onto a CPU mesh. Copying
   // resource tensors to non CPU device is not supported.
   if (!target_mesh.is_cpu_mesh()) {
@@ -144,27 +144,27 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     if (TF_GetCode(status) != TF_OK) return nullptr;
     auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, layout);
     return ret;
   }
 
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
-      BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
+      BroadcastTensorHandleToParallelTensor(context, tensor, target_mesh,
+                                            parallel_device, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   int rank = r.dtypes_and_shapes().empty()
                  ? 0
                  : r.dtypes_and_shapes().begin()->shape.dims();
 
-  StatusOr<std::unique_ptr<TensorWithLayoutTf>> result =
-      CreateTensorWithLayout(std::move(parallel_tensor), target_mesh,
-                             Layout::ReplicatedOnMesh(target_mesh, rank));
+  StatusOr<std::unique_ptr<TensorWithLayoutTf>> result = CreateTensorWithLayout(
+      std::move(parallel_tensor), Layout::ReplicatedOnMesh(target_mesh, rank));
   if (!result.ok()) {
     TF_SetStatus(
         status, TF_INTERNAL,
         absl::StrCat("Error creating a TensorWithLayout from a resource tensor "
                      "during broadcasting with original error message:",
-                     result.status().error_message())
+                     result.status().message())
             .c_str());
     return nullptr;
   }
@@ -182,7 +182,7 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
           status, TF_INTERNAL,
           absl::StrCat(
               "Error updating shape and dtype of the resource tensor: ",
-              s.error_message())
+              s.message())
               .c_str());
       return nullptr;
     }
@@ -278,6 +278,16 @@ StatusOr<Layout> GetLayoutThroughIdentityOps(Node* op, int output_index) {
 
 char TensorWithLayoutTf::ID = 0;
 
+TF_DataType TensorWithLayoutTf::dtype() const {
+  if (dtype_.has_value()) {
+    return dtype_.value();
+  }
+  if (single_tensor_) {
+    return TFE_TensorHandleDataType(single_tensor_.get());
+  }
+  return tensor_->dtype();
+}
+
 tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
   tensorflow::Fprint128 f = tensorflow::Fingerprint128(layout_.ToString());
   // Use exact shape to compute the key.
@@ -294,21 +304,21 @@ tensorflow::Fprint128 TensorWithLayoutTf::CacheKey() const {
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
-    TFE_Context* context, TFE_TensorHandle* tensor,
-    const MeshWithParallelDevice& mesh, TF_Status* status) {
+    TFE_Context* context, TFE_TensorHandle* tensor, const Mesh& target_mesh,
+    const parallel_device::ParallelDevice& parallel_device, TF_Status* status) {
   // Handle resource tensor broadcasting to the mesh.
   if (TFE_TensorHandleDataType(tensor) == TF_RESOURCE) {
-    return BroadcastResourceTensor(context, tensor, mesh, status);
+    return BroadcastResourceTensor(context, tensor, target_mesh,
+                                   parallel_device, status);
   }
 
-  const Mesh& target_mesh = mesh.mesh_config();
   if (target_mesh.is_remote()) {
     TF_DataType dtype = TFE_TensorHandleDataType(tensor);
     std::vector<int64_t> shape(TensorShapeAsVector(tensor, status));
     if (TF_GetCode(status) != TF_OK) return nullptr;
     auto layout = Layout::ReplicatedOnMesh(target_mesh, shape.size());
 
-    auto ret = CreateDummyTensorWithLayout(shape, dtype, target_mesh, layout);
+    auto ret = CreateDummyTensorWithLayout(shape, dtype, layout);
     std::optional<NodeDef> const_value =
         ExtractSmallTensorValue(context, tensor, layout, status);
     if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -319,14 +329,15 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
   }
 
   std::unique_ptr<parallel_device::ParallelTensor> parallel_tensor =
-      BroadcastTensorHandleToParallelTensor(context, tensor, mesh, status);
+      BroadcastTensorHandleToParallelTensor(context, tensor, target_mesh,
+                                            parallel_device, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   const std::vector<int64_t>* shape;
   Status s = parallel_tensor->Shape(&shape);
   if (!s.ok()) {
     TF_SetStatus(status, static_cast<TF_Code>(s.code()),
-                 s.error_message().c_str());
+                 tsl::NullTerminatedMessage(s));
     return nullptr;
   }
   size_t num_dims = shape->size();
@@ -337,27 +348,26 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Broadcast(
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
   std::unique_ptr<TensorWithLayoutTf> result(new TensorWithLayoutTf(
-      std::move(parallel_tensor), target_mesh, std::move(layout), *shape,
+      std::move(parallel_tensor), std::move(layout), *shape,
       /*dtype=*/std::nullopt, std::move(const_value)));
   return result;
 }
 
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> TensorWithLayoutTf::Wrap(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    std::unique_ptr<parallel_device::ParallelTensor> tensor,
     const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
 
   return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(tensor), mesh, layout, *shape));
+      new TensorWithLayoutTf(std::move(tensor), layout, *shape));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
-    parallel_device::TensorHandlePtr single_tensor, const Mesh& mesh,
-    const Layout& layout, TF_Status* status) {
-  if (!mesh.IsSingleDevice() || !layout.IsSingleDevice()) {
+    TensorHandlePtr single_tensor, const Layout& layout, TF_Status* status) {
+  if (!layout.IsSingleDevice()) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
-                 "Input mesh or layout is not for single device.");
+                 "Input layout is not for single device.");
     return nullptr;
   }
   std::vector<int64_t> shape = TensorShapeAsVector(single_tensor.get(), status);
@@ -366,21 +376,24 @@ std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Wrap(
   }
 
   return absl::WrapUnique(
-      new TensorWithLayoutTf(std::move(single_tensor), mesh, layout, shape));
+      new TensorWithLayoutTf(std::move(single_tensor), layout, shape));
 }
 
 std::unique_ptr<TensorWithLayoutTf> TensorWithLayoutTf::Dummy(
     const std::vector<int64_t>& local_shape, const TF_DataType dtype,
-    const Mesh& mesh, const Layout& layout) {
+    const Layout& layout) {
   return absl::WrapUnique(
       new TensorWithLayoutTf(std::unique_ptr<parallel_device::ParallelTensor>(),
-                             mesh, layout, local_shape, dtype));
+                             layout, local_shape, dtype));
 }
 
 std::string TensorWithLayoutTf::SummarizeValue() const {
   std::string value_summary;
   Status status;
-  if (layout().IsFullyReplicated()) {
+  if (layout_.IsSingleDevice()) {
+    status =
+        tensorflow::unwrap(single_tensor_.get())->SummarizeValue(value_summary);
+  } else if (layout_.IsFullyReplicated()) {
     status =
         tensorflow::unwrap(tensor_->tensor(0))->SummarizeValue(value_summary);
   } else {
@@ -395,7 +408,8 @@ std::string TensorWithLayoutTf::SummarizeValue() const {
 }
 
 std::string TensorWithLayoutTf::DebugString() const {
-  auto dtype = static_cast<DataType>(tensor_->dtype());
+  TF_DataType tf_dtype = dtype();
+  auto dtype = static_cast<DataType>(tf_dtype);
 
   const auto& shape_vector = global_shape();
   return absl::StrCat("DTensor(", SummarizeValue(),
@@ -407,19 +421,18 @@ char ResourceHandleWithLayout::ID = 0;
 
 StatusOr<std::unique_ptr<ResourceHandleWithLayout>>
 ResourceHandleWithLayout::Wrap(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    std::unique_ptr<parallel_device::ParallelTensor> tensor,
     const Layout& layout) {
   const std::vector<int64_t>* shape;
   TF_RETURN_IF_ERROR(tensor->Shape(&shape));
   return absl::WrapUnique(
-      new ResourceHandleWithLayout(std::move(tensor), mesh, layout, *shape));
+      new ResourceHandleWithLayout(std::move(tensor), layout, *shape));
 }
 
 std::unique_ptr<ResourceHandleWithLayout> ResourceHandleWithLayout::Dummy(
-    const std::vector<int64_t>& local_shape, const Mesh& mesh,
-    const Layout& layout) {
+    const std::vector<int64_t>& local_shape, const Layout& layout) {
   return absl::WrapUnique(new ResourceHandleWithLayout(
-      /*tensor=*/nullptr, mesh, layout, local_shape));
+      /*tensor=*/nullptr, layout, local_shape));
 }
 
 void ResourceHandleWithLayout::EncodeAttributes(
@@ -487,11 +500,10 @@ StatusOr<std::unique_ptr<SparseTensorWithLayout>> SparseTensorWithLayout::Wrap(
     std::unique_ptr<parallel_device::ParallelTensor> indices_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> values_tensor,
     std::unique_ptr<parallel_device::ParallelTensor> shapes_tensor,
-    const Mesh& mesh, const Layout& layout,
-    const std::vector<int64_t>& local_shape) {
+    const Layout& layout, const std::vector<int64_t>& local_shape) {
   return absl::WrapUnique(new SparseTensorWithLayout(
       std::move(indices_tensor), std::move(values_tensor),
-      std::move(shapes_tensor), mesh, layout, local_shape));
+      std::move(shapes_tensor), layout, local_shape));
 }
 
 std::string SparseTensorWithLayout::SummarizeValue() const {
@@ -547,7 +559,7 @@ TF_DataType SparseTensorWithLayout::dtype() const {
 }
 
 TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
-  int num_sparse_tensors = num_tensors() / 3;
+  int num_sparse_tensors = num_tensors() / kSparseTensorNum;
   if (index < num_sparse_tensors) {
     return indices_->tensor(index);
   } else if (index < 2 * num_sparse_tensors) {
@@ -559,23 +571,23 @@ TFE_TensorHandle* SparseTensorWithLayout::get_tensor(size_t index) const {
 
 std::unique_ptr<TensorWithLayoutTf> CreateDummyTensorWithLayout(
     const std::vector<int64_t>& local_shape, TF_DataType dtype,
-    const Mesh& mesh, const Layout& layout) {
+    const Layout& layout) {
   switch (dtype) {
     case TF_RESOURCE:
-      return ResourceHandleWithLayout::Dummy(local_shape, mesh, layout);
+      return ResourceHandleWithLayout::Dummy(local_shape, layout);
     default:
-      return TensorWithLayoutTf::Dummy(local_shape, dtype, mesh, layout);
+      return TensorWithLayoutTf::Dummy(local_shape, dtype, layout);
   }
 }
 
 StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
-    std::unique_ptr<parallel_device::ParallelTensor> tensor, const Mesh& mesh,
+    std::unique_ptr<parallel_device::ParallelTensor> tensor,
     const Layout& layout) {
   switch (tensor->dtype()) {
     case TF_RESOURCE:
-      return ResourceHandleWithLayout::Wrap(std::move(tensor), mesh, layout);
+      return ResourceHandleWithLayout::Wrap(std::move(tensor), layout);
     default:
-      return TensorWithLayoutTf::Wrap(std::move(tensor), mesh, layout);
+      return TensorWithLayoutTf::Wrap(std::move(tensor), layout);
   }
 }
 
@@ -1042,11 +1054,10 @@ StatusOr<std::map<int64_t, std::vector<Node*>>> GetTPUEmbeddingInputNodes(
     const Status status = resource->UpdateAttrs(embedding_input_attrs);
     if (!status.ok()) {
       TF_SetStatus(s, static_cast<TF_Code>(status.code()),
-                   status.error_message().c_str());
-      // TODO(b/256016071): Try finding a way to append source locations.
+                   tsl::NullTerminatedMessage(status));
       return errors::Internal(
           "Failed to set embedding resource attrs. \n Got error: ",
-          status.error_message());
+          status.message());
     }
   }
   return table_id_node_map;
@@ -1085,7 +1096,7 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
   StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =
       GetTPUEmbeddingInputNodes(status, *graph, inputs);
   if (!table_id_node_map.ok()) {
-    return errors::Internal(table_id_node_map.status().error_message());
+    return errors::Internal(table_id_node_map.status().message());
   }
 
   StatusOr<std::string> mesh_str = ValidateResourceMeshConsistency(inputs);

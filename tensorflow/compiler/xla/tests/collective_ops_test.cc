@@ -21,7 +21,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -49,14 +48,17 @@ class CollectiveOpsTest : public HloTestBase {
   CollectiveOpsTest() : num_devices_(backend().device_count()) {
     VLOG(1) << "Running with " << num_devices_ << " devices";
   }
-  static void SetUpTestSuite() {
-    // Not needed structly, since this test exercises cross replica collective
-    // permute which does not use NCCL. But keeping it here for testing.
-    tsl::setenv("NCCL_LAUNCH_MODE", "PARALLEL", /*overwrite=*/1);
-    HloTestBase::SetUpTestSuite();
-  }
 
  protected:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    // Disable async->sync collective conversion pass to enable unit testing
+    // of async collectives.
+    debug_options.add_xla_disable_hlo_passes(
+        "convert-async-collectives-to-sync");
+    return debug_options;
+  }
+
   std::unique_ptr<HloModule> MakeCrsModule(
       const Shape& shape, std::vector<std::vector<int64_t>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
@@ -1689,6 +1691,37 @@ XLA_TEST_F(CollectiveOpsTest, DISABLED_ON_CPU(AsyncAllToAll)) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
+}
+
+// Test for all-gather with unit dims to verify that dimension check works
+// correctly in the presence of unit dimensions.
+XLA_TEST_F(CollectiveOpsTest, AllGather_Dim1UnitDimensions) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[1, 1, 2, 1, 2] broadcast(id), dimensions={}
+    offset = u32[4] iota(), iota_dimension=0
+    offset_reshape = u32[1, 1, 2, 1, 2] reshape(offset)
+    agi = u32[1, 1, 2, 1, 2] add(id2, offset_reshape)
+    allgather = u32[1, 1, 4, 1, 2] all-gather(agi), dimensions={2}
+    ROOT out = u32[8] reshape(allgather)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {}, kNumReplicas,
+                        /*use_threads=*/true, /*run_hlo_passes=*/true));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (const Literal& result : results) {
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 1, 2, 3, 1, 2, 3, 4}, result);
+  }
 }
 
 }  // namespace

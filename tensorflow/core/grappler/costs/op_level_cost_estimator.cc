@@ -16,6 +16,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 
+#include <optional>
+
 #include "absl/strings/match.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -2669,13 +2671,15 @@ Status OpLevelCostEstimator::PredictCropAndResize(const OpContext& op_context,
   bool found_unknown_shapes = false;
 
   const auto method = op_context.op_info.attr().find("method");
-  bool use_bilinear_interp;
+  std::optional<bool> use_bilinear_interp;
   if (method == op_context.op_info.attr().end() ||
       method->second.s() == "bilinear") {
     use_bilinear_interp = true;
   } else if (method->second.s() == "nearest") {
     use_bilinear_interp = false;
-  } else {
+  }
+  if (!use_bilinear_interp.has_value() ||
+      op_context.op_info.outputs().empty()) {
     LOG(WARNING) << "method attr in CropAndResize invalid; expected bilinear "
                     "or nearest.";
     return PredictCostOfAnUnknownOp(op_context, node_costs);
@@ -2730,7 +2734,7 @@ Status OpLevelCostEstimator::PredictCropAndResize(const OpContext& op_context,
   // Ops for variable in_x (same computation across both branches).
   ops += (mul_cost * 2 + sub_cost + add_cost) * crop_volume;
   // Specify op_cost based on the method.
-  if (use_bilinear_interp) {
+  if (*use_bilinear_interp) {
     // Ops for variables top_y_index, bottom_y_index, y_lerp.
     ops += (floor_cost + ceil_cost + sub_cost) * crop_depth;
     // Ops for variables left_x, right_x, x_lerp;

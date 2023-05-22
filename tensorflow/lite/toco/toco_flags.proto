@@ -15,17 +15,18 @@ syntax = "proto2";
 
 package toco;
 
+import "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.proto";
 import "tensorflow/lite/toco/types.proto";
 
 // Supported I/O file formats. Some formats may be input-only or output-only.
 enum FileFormat {
   FILE_FORMAT_UNKNOWN = 0;
 
-  // GraphDef, third_party/tensorflow/core/framework/graph.proto
+  // GraphDef, tensorflow/core/framework/graph.proto
   TENSORFLOW_GRAPHDEF = 1;
 
   // Tensorflow's mobile inference model.
-  // third_party/tensorflow/lite/schema/schema.fbs
+  // tensorflow/lite/schema/schema.fbs
   TFLITE = 2;
 
   // GraphViz
@@ -38,7 +39,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 54.
+// Next ID to use: 55.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -310,4 +311,9 @@ message TocoFlags {
 
   // If true, disable folding mul->fc as in layer norm during optimize pass.
   optional bool disable_fuse_mul_and_fc = 53 [default = false];
+
+  // Indicates the quantization specs. Quantization spec can be set to either
+  // a preset method or a custom method.
+  // Note: This is an experimental feature
+  optional stablehlo.quantization.QuantizationOptions quantization_options = 54;
 }

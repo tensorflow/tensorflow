@@ -394,7 +394,11 @@ TfLiteStatus Interpreter::ModifyGraphWithDelegateImpl(
     TfLiteDelegate* delegate) {
   TfLiteStatus status = kTfLiteOk;
   for (auto& subgraph : subgraphs_) {
-    if (IsValidationSubgraph(subgraph->GetName().c_str())) {
+    if (IsValidationSubgraph(subgraph->GetName().c_str()) ||
+        subgraph->IsDelegationSkippable()) {
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Skipping calling ModifyGraphWithDelegate on Subgraph %i: %s",
+                 subgraph->GetSubgraphIndex(), subgraph->GetName().c_str());
       continue;
     }
     status = subgraph->ModifyGraphWithDelegate(delegate);

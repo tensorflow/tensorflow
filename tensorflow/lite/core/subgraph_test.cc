@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
-#include <algorithm>
+#include <memory>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
 
@@ -69,6 +70,64 @@ TEST(RemoveUnusedInputs, BypassInputsWithoutOp) {
 
   ASSERT_EQ(subgraph.RemoveUnusedInputs(), kTfLiteOk);
   ASSERT_EQ(subgraph.inputs(), std::vector<int>({0, -1, 2}));
+}
+
+TEST(GetSubgraphContext, NonConstGetSubgraphContext) {
+  Interpreter interpreter;
+  auto& subgraph = interpreter.primary_subgraph();
+  TfLiteContext* context;
+
+  context = subgraph.GetSubgraphContext(0);
+  ASSERT_NE(context, nullptr);
+
+  context = subgraph.GetSubgraphContext(-1);
+  ASSERT_EQ(context, nullptr);
+
+  context = subgraph.GetSubgraphContext(1);
+  ASSERT_EQ(context, nullptr);
+
+  const auto& const_subgraph = interpreter.primary_subgraph();
+  const_subgraph.GetSubgraphContext(1);
+}
+
+TEST(GetSubgraphContext, ConstGetSubgraphContext) {
+  Interpreter interpreter;
+  const auto& subgraph = interpreter.primary_subgraph();
+  const TfLiteContext* context;
+
+  context = subgraph.GetSubgraphContext(0);
+  ASSERT_NE(context, nullptr);
+
+  context = subgraph.GetSubgraphContext(-1);
+  ASSERT_EQ(context, nullptr);
+
+  context = subgraph.GetSubgraphContext(1);
+  ASSERT_EQ(context, nullptr);
+}
+
+TEST(MarkSubgraphAsDelegationSkippable, MarkSubgraphAsDelegationSkippable) {
+  static StderrReporter* error_reporter = new StderrReporter;
+  // Construct a mock subgraph vector with two entries.
+  std::vector<std::unique_ptr<Subgraph>> subgraphs;
+  for (int i = 0; i < 2; ++i) {
+    subgraphs.emplace_back(new Subgraph(/*error_reporter=*/error_reporter,
+                                        /*external_contexts=*/nullptr,
+                                        /*subgraphs=*/&subgraphs,
+                                        /*resources=*/nullptr,
+                                        /*resource_ids=*/nullptr,
+                                        /*initialization_status_map=*/nullptr,
+                                        /*subgraph_index=*/i));
+  }
+
+  // The primary subgraph shouldn't be delegation-skippable.
+  ASSERT_EQ(subgraphs[0]->MarkSubgraphAsDelegationSkippable(0), kTfLiteError);
+  ASSERT_FALSE(subgraphs[0]->IsDelegationSkippable());
+
+  // The subgraph_index shouldn't exceed the total number of subgraphs.
+  ASSERT_EQ(subgraphs[0]->MarkSubgraphAsDelegationSkippable(2), kTfLiteError);
+
+  ASSERT_EQ(subgraphs[0]->MarkSubgraphAsDelegationSkippable(1), kTfLiteOk);
+  ASSERT_TRUE(subgraphs[1]->IsDelegationSkippable());
 }
 
 }  // namespace

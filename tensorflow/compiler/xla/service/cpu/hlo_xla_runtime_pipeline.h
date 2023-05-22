@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_HLO_XLA_RUNTIME_PIPELINE_H_
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/xla/runtime/compiler.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -37,6 +38,7 @@ struct HloXlaRuntimePipelineOptions {
   bool enable_avx2 = true;
   // Optional CPU name, similar to llc's -mcpu flag.
   std::string cpu_name = "";
+  std::vector<int64_t> matmul_tile_sizes = {};
 };
 
 // Creates a pipeline that lowers modules from HLO to Linalg on buffers.

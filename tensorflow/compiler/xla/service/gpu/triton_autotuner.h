@@ -15,28 +15,31 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 
-#include <optional>
-#include <string>
-#include <variant>
+#include <memory>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 
 // Find best tiling configuration for each triton fusion outlined.
-// num_extra_threads: number of threads the pass can use to perform compilation.
 class TritonAutotuner : public HloModulePass {
  public:
   explicit TritonAutotuner(const AutotuningConfig& config,
-                           int num_extra_threads = 0)
-      : config_(config), num_extra_threads_(num_extra_threads) {}
+                           tsl::thread::ThreadPool* thread_pool)
+      : config_(config), thread_pool_(thread_pool) {}
 
   absl::string_view name() const override { return "triton-autotuner"; }
 
   static void ClearAutotuneResults();
+  static void ClearCompilationCache();
   static Status WriteAutotuneResults(AutotuneResults* results);
   static Status LoadAutotuneResults(const AutotuneResults& results);
 
@@ -47,8 +50,18 @@ class TritonAutotuner : public HloModulePass {
 
  private:
   AutotuningConfig config_;
-  int num_extra_threads_;
+  tsl::thread::ThreadPool* thread_pool_;
 };
+
+// TODO(b/266210099): have a way to generate/load these dynamically.
+// Returns a list of possible tilings for a gemm performed in Triton.
+std::vector<tensorflow::AutotuneResult::TritonGemmKey>
+GetPossibleMatmulAutotuneConfigs(se::CudaComputeCapability compute_capability);
+
+// Extracts an HLO instruction into a new HLO module replacing its operands
+// with parameter instructions.
+std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
+    const HloInstruction& hlo);
 
 }  // namespace gpu
 }  // namespace xla

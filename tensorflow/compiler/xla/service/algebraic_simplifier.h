@@ -186,6 +186,17 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
+  // If true, always simplify reduce(transpose(x)) and reduce(reshape(x)), even
+  // if the transpose/reshape has multiple users.  This can be beneficial
+  // on platforms where the extra transpose/reshape isn't as expensive as
+  // the optimization benefits brought about by simplifying the graph.
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape() const {
+    return unconditionally_simplify_reduce_of_transpose_or_reshape_;
+  }
+  void set_unconditionally_simplify_reduce_of_transpose_or_reshape(bool val) {
+    unconditionally_simplify_reduce_of_transpose_or_reshape_ = val;
+  }
+
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
   //
   // TODO(b/209827141): Remove this and make minmax_propagate_nan uncondtionally
@@ -220,6 +231,7 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool enable_sink_broadcast_{true};
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   Metadata metadata_;

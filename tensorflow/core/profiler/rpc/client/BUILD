@@ -58,15 +58,15 @@ cc_library(
         "//tensorflow/python:__pkg__",
     ],
     deps = [
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client",
         "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = True,
 )

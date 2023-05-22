@@ -201,11 +201,9 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     if (async_context_it != computations_in_async_context_.end()) {
       const HloComputation* async_context = async_context_it->second;
       CHECK(async_context->IsAsyncComputation());
-      auto async_done_it = absl::c_find_if(
-          async_context->AsyncInstructions(),
-          [](const HloInstruction* instruction) {
-            return instruction->opcode() == HloOpcode::kAsyncDone;
-          });
+      auto async_done_it =
+          absl::c_find_if(async_context->AsyncInstructions(),
+                          HloPredicateIsOp<HloOpcode::kAsyncDone>);
       CHECK(async_done_it != async_context->AsyncInstructions().end());
       definition_end_time =
           std::max(definition_end_time, instruction_schedule_[*async_done_it]);

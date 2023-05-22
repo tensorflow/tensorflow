@@ -46,6 +46,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -172,8 +173,8 @@ class TestStateSaverWithCounters(TestStateSaver):
   @test_util.run_v1_only("b/124229375")
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
-    self._num_state_calls = variables_lib.VariableV1(0)
-    self._num_save_state_calls = variables_lib.VariableV1(0)
+    self._num_state_calls = variable_v1.VariableV1(0)
+    self._num_save_state_calls = variable_v1.VariableV1(0)
 
   def state(self, name):
     with ops.control_dependencies(
@@ -1358,6 +1359,25 @@ class LSTMTest(test.TestCase):
               forget_bias=forget_bias,
               cell_clip=cell_clip,
               use_peephole=use_peephole))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellEmptyInputRaisesError(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "is empty"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=constant_op.constant(0, shape=[2, 16], dtype=dtypes.half),
+              cs_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              h_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              w=constant_op.constant(0, shape=[16, 0], dtype=dtypes.half),
+              wci=constant_op.constant(0, shape=[5], dtype=dtypes.half),
+              wcf=constant_op.constant(0, shape=[16], dtype=dtypes.half),
+              wco=constant_op.constant(0, shape=[13], dtype=dtypes.half),
+              b=constant_op.constant(0, shape=[0], dtype=dtypes.half),
+              forget_bias=112.66590343649887,
+              cell_clip=67.12389445926587,
+              use_peephole=False,
+          )
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def testLSTMBlockCellGradErrorHandling(self):

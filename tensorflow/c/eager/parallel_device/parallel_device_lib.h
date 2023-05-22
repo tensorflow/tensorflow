@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/tfe_op_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
@@ -35,19 +36,7 @@ limitations under the License.
 namespace tensorflow {
 namespace parallel_device {
 
-// Functor for making unique_ptrs slightly more ergonomic. Using
-// decltype(delete_fn) in the unique_ptr's second template argument requires
-// passing a function pointer to delete_fn when constructing the unique_ptr.
-class TensorHandleDeleter {
- public:
-  void operator()(TFE_TensorHandle* to_delete) const {
-    TFE_DeleteTensorHandle(to_delete);
-  }
-};
-
-// TODO(b/256016071): Replace this with `Safe_TFE_TensorHandlePtr` when
-// `Safe_TFE_TensorHandlePtr` is marked to be compatible on non-prod env.
-using TensorHandlePtr = std::unique_ptr<TFE_TensorHandle, TensorHandleDeleter>;
+using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
 
 class ParallelTensor;
 class DeviceThread;

@@ -464,6 +464,7 @@ def _run_graph_for_calibration(
     signature_keys: Sequence[str],
     tags: Collection[str],
     representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    force_graph_mode_calibration: bool,
 ) -> None:
   """Runs the graph for calibration using representative datasets.
 
@@ -478,6 +479,8 @@ def _run_graph_for_calibration(
       `signature_keys` contains more than one signature key,
       `representative_datsaet` should be a mapping that maps each signature keys
       to the corresponding representative dataset.
+    force_graph_mode_calibration: If set to true, it forces calibration in graph
+      model instead of eager mode when the context is in eager mode.
 
   Raises:
     ValueError iff:
@@ -498,11 +501,13 @@ def _run_graph_for_calibration(
     representative_dataset_map = {signature_keys[0]: representative_dataset}
 
   try:
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not force_graph_mode_calibration:
+      logging.info('Calibration step is executed in eager mode.')
       _run_graph_for_calibration_eager_mode(
           float_model_dir, tags, representative_dataset_map
       )
     else:
+      logging.info('Calibration step is executed in graph mode.')
       _run_graph_for_calibration_graph_mode(
           float_model_dir, tags, representative_dataset_map
       )
@@ -512,85 +517,6 @@ def _run_graph_for_calibration(
     ) from ex
 
   logging.info('Calibration step complete.')
-
-
-def _run_static_range_qat(
-    src_saved_model_path: str,
-    dst_saved_model_path: str,
-    signature_def_keys: Sequence[str],
-    tags: Collection[str],
-    quant_opts: quant_opts_pb2.QuantizationOptions,
-    signature_def_map: _SignatureDefMap,
-) -> None:
-  """Runs static-range quantization for a Quantization-Aware Trained model.
-
-  Runs the quantization for a model trained using QAT.
-
-  Args:
-    src_saved_model_path: Path to the source SavedModel directory.
-    dst_saved_model_path: Path to the destination SavedModel directory.
-    signature_def_keys: Keys of the signatures of the functions that are the
-      target for quantization.
-    tags: Tags identifying the MetaGraphDef.
-    quant_opts: Quantization options.
-    signature_def_map: Signature def key -> SignatureDef mapping.
-  """
-  logging.info('Running static-range quantization for QAT model.')
-  exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
-      src_saved_model_path,
-      list(signature_def_keys),
-      set(tags),
-      quant_opts.SerializeToString(),
-  )
-
-  exported_model = exported_model_pb2.ExportedModel.FromString(
-      exported_model_serialized
-  )
-
-  save_model.save_model_v1(
-      exported_model.graph_def,
-      dst_saved_model_path,
-      signature_def_map,
-      tags,
-      init_op_name=exported_model.init_node_name,
-      saver_def=_get_saver_def_or_none(exported_model),
-      checkpoint_dir=exported_model.checkpoint_dir,
-      function_aliases=exported_model.function_aliases,
-      asset_file_defs=exported_model.asset_file_defs,
-  )
-
-
-def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
-  """Adds calibration statistics to the graph def.
-
-  This function must be run after running the graph with a representative
-  dataset. Retrieves calibration statistics from the global calibrator and adds
-  them to the corresponding nodes as attributes.
-
-  Args:
-    graph_def: GraphDef to add calibration statistics to.
-  """
-  for function_def in graph_def.library.function:
-    for node_def in function_def.node_def:
-      if node_def.op != 'CustomAggregator':
-        continue
-
-      node_id = node_def.attr['id'].s
-      try:
-        min_val = pywrap_quantize_model.get_min_from_calibrator(node_id)
-        max_val = pywrap_quantize_model.get_max_from_calibrator(node_id)
-        pywrap_quantize_model.clear_data_from_calibrator(node_id)
-        node_def.attr['min'].f = float(min_val)
-        node_def.attr['max'].f = float(max_val)
-      except ValueError:
-        logging.warn(
-            (
-                'CustomAggregator id "%s" from FunctionDef "%s" does not have '
-                'min or max values. Parts of this function are not quantized.'
-            ),
-            node_id.decode('utf-8'),
-            function_def.signature.name,
-        )
 
 
 def _copy_assets(src_path: str, dst_path: str) -> None:
@@ -624,6 +550,94 @@ def _copy_assets(src_path: str, dst_path: str) -> None:
       logging.info(
           'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
       )
+
+
+def _run_static_range_qat(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    signature_def_keys: Sequence[str],
+    tags: Collection[str],
+    quant_opts: quant_opts_pb2.QuantizationOptions,
+    signature_def_map: _SignatureDefMap,
+) -> None:
+  """Runs static-range quantization for a Quantization-Aware Trained model.
+
+  Runs the quantization for a model trained using QAT.
+
+  Args:
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
+    signature_def_keys: Keys of the signatures of the functions that are the
+      target for quantization.
+    tags: Tags identifying the MetaGraphDef.
+    quant_opts: Quantization options.
+    signature_def_map: Signature def key -> SignatureDef mapping.
+  """
+  logging.info('Running static-range quantization for QAT model.')
+
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
+  exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
+      src_saved_model_path,
+      list(signature_def_keys),
+      set(tags),
+      quant_opts.SerializeToString(),
+      dict(function_aliases),
+  )
+
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+
+  _copy_assets(src_saved_model_path, dst_saved_model_path)
+
+
+def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
+  """Adds calibration statistics to the graph def.
+
+  This function must be run after running the graph with a representative
+  dataset. Retrieves calibration statistics from the global calibrator and adds
+  them to the corresponding nodes as attributes.
+
+  Args:
+    graph_def: GraphDef to add calibration statistics to.
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'CustomAggregator':
+        continue
+
+      node_id = node_def.attr['id'].s
+      try:
+        min_val = pywrap_quantize_model.get_min_from_calibrator(node_id)
+        max_val = pywrap_quantize_model.get_max_from_calibrator(node_id)
+        pywrap_quantize_model.clear_data_from_calibrator(node_id)
+        node_def.attr['min'].f = float(min_val)
+        node_def.attr['max'].f = float(max_val)
+      except ValueError:
+        logging.warn(
+            (
+                'CustomAggregator id "%s" from FunctionDef "%s" does not have '
+                'min or max values. Parts of this function are not quantized.'
+            ),
+            node_id.decode('utf-8'),
+            function_def.signature.name,
+        )
 
 
 def _get_saver_def_or_none(
@@ -724,6 +738,7 @@ def _run_static_range_ptq(
       signature_def_keys,
       tags,
       representative_dataset,
+      quant_opts.force_graph_mode_calibration,
   )
   _add_calibration_statistics(graph_def)
 

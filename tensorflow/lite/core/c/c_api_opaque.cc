@@ -49,6 +49,20 @@ const TfLiteContext* Convert(const TfLiteOpaqueContext* opaque_context) {
   return reinterpret_cast<const TfLiteContext*>(opaque_context);
 }
 
+TfLiteContext* Convert(TfLiteOpaqueContext* opaque_context) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  return reinterpret_cast<TfLiteContext*>(opaque_context);
+}
+
+TfLiteOpaqueContext* Convert(TfLiteContext* tflite_context) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteOpaqueContext and TfLiteContext being equivalent.
+  return reinterpret_cast<TfLiteOpaqueContext*>(tflite_context);
+}
+
 const ::tflite::Subgraph* GetSubgraph(
     const TfLiteOpaqueContext* opaque_context) {
   // The following cast is safe only because this code is part of the
@@ -58,6 +72,12 @@ const ::tflite::Subgraph* GetSubgraph(
       Convert(opaque_context)->impl_);
 }
 
+::tflite::Subgraph* GetSubgraph(TfLiteOpaqueContext* opaque_context) {
+  // The following cast is safe only because this code is part of the
+  // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+  // TfLiteContext::impl_ having type ::tflite::Subgraph*.
+  return reinterpret_cast<::tflite::Subgraph*>(Convert(opaque_context)->impl_);
+}
 }  // namespace
 
 TfLiteType TfLiteOpaqueTensorType(const TfLiteOpaqueTensor* opaque_tensor) {
@@ -358,6 +378,18 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
   TfLiteContext* tflite_context = reinterpret_cast<TfLiteContext*>(context);
   return tflite_context->ResizeTensor(
       tflite_context, reinterpret_cast<TfLiteTensor*>(tensor), new_size);
+}
+
+TfLiteOpaqueContext* TfLiteOpaqueContextGetSubgraphContext(
+    struct TfLiteOpaqueContext* opaque_context, int subgraph_index) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  return Convert(subgraph->GetSubgraphContext(subgraph_index));
+}
+
+TfLiteStatus TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(
+    TfLiteOpaqueContext* opaque_context, int subgraph_index) {
+  auto* subgraph = GetSubgraph(opaque_context);
+  return subgraph->MarkSubgraphAsDelegationSkippable(subgraph_index);
 }
 
 void TfLiteOpaqueContextReportError(struct TfLiteOpaqueContext* opaque_context,

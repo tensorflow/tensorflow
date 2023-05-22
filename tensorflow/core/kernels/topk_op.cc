@@ -37,7 +37,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename Tidx>
 class TopK : public OpKernel {
  public:
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
@@ -56,7 +56,22 @@ class TopK : public OpKernel {
       OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_in.shape()),
                   errors::InvalidArgument("k must be scalar, got shape ",
                                           k_in.shape().DebugString()));
-      k = k_in.scalar<int32>()();
+      switch (k_in.dtype()) {
+        case DT_INT16:
+          k = k_in.scalar<int16_t>()();
+          break;
+        case DT_INT32:
+          k = k_in.scalar<int32_t>()();
+          break;
+        case DT_INT64:
+          k = k_in.scalar<int64_t>()();
+          break;
+        default:
+          OP_REQUIRES(context, false,
+                      errors::InvalidArgument(
+                          "k must have dtype in {int16, int32, int64}, got  ",
+                          k_in.dtype()));
+      }
     }
     OP_REQUIRES(context, k >= 0,
                 errors::InvalidArgument("Need k >= 0, got ", k));
@@ -73,16 +88,14 @@ class TopK : public OpKernel {
 
     const int64_t num_rows = input.dimension(0);  // generally batch_size
     const int64_t num_cols = input.dimension(1);
-    OP_REQUIRES(
-        context, num_rows <= std::numeric_limits<int32>::max(),
-        errors::InvalidArgument(
-            "First dimension of flattened input must be <= INT_MAX, got ",
-            num_rows));
-    OP_REQUIRES(
-        context, num_cols <= std::numeric_limits<int32>::max(),
-        errors::InvalidArgument(
-            "Second dimension of flattened input must be <= INT_MAX, got ",
-            num_cols));
+    OP_REQUIRES(context, num_rows <= std::numeric_limits<Tidx>::max(),
+                errors::InvalidArgument(
+                    "First dimension of flattened input must be <= ",
+                    std::numeric_limits<Tidx>::max(), ", got ", num_rows));
+    OP_REQUIRES(context, num_cols <= std::numeric_limits<Tidx>::max(),
+                errors::InvalidArgument(
+                    "Second dimension of flattened input must be <= ",
+                    std::numeric_limits<Tidx>::max(), ", got ", num_cols));
 
     TensorShape output_shape = input_in.shape();
     output_shape.set_dim(input_in.dims() - 1, k);
@@ -97,8 +110,8 @@ class TopK : public OpKernel {
     if (k == 0 || num_rows == 0) return;
 
     auto values = values_out->flat_inner_dims<T>();
-    auto indices = indices_out->flat_inner_dims<int32>();
-    Status s = functor::TopKFunctor<Device, T>::Compute(
+    auto indices = indices_out->flat_inner_dims<Tidx>();
+    Status s = functor::TopKFunctor<Device, T, Tidx>::Compute(
         context, sorted_, k, input, num_rows, num_cols, values, indices);
     OP_REQUIRES_OK(context, s);
   }
@@ -110,13 +123,13 @@ class TopK : public OpKernel {
 
 namespace functor {
 
-template <typename T>
-struct TopKFunctor<CPUDevice, T> {
+template <typename T, typename Tidx>
+struct TopKFunctor<CPUDevice, T, Tidx> {
   static EIGEN_ALWAYS_INLINE Status Compute(
       OpKernelContext* context, bool sorted, int k,
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows,
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,
-      typename TTypes<int, 2>::Tensor indices) {
+      typename TTypes<Tidx, 2>::Tensor indices) {
     const CPUDevice& d = context->eigen_device<CPUDevice>();
 
     // Special case for k == 1.
@@ -129,10 +142,10 @@ struct TopKFunctor<CPUDevice, T> {
           input.maximum(/*dims=*/reduce_on_cols).eval().reshape(rows_by_one);
       // Get the indices of the maximum values.
       for (int r = 0; r < num_rows; ++r) {
-        indices(r, 0) = 0;
+        indices(r, 0) = Tidx(0);
         for (int c = 0; c < num_cols; ++c) {
           if (values(r, 0) == input(r, c)) {
-            indices(r, 0) = c;
+            indices(r, 0) = static_cast<Tidx>(c);
             break;
           }
         }
@@ -187,15 +200,15 @@ struct TopKFunctor<CPUDevice, T> {
           }
         } else {
           // Use the TopN heap object to sort.
-          gtl::TopN<int32, decltype(stable_comp)> filter(k, stable_comp);
+          gtl::TopN<Tidx, decltype(stable_comp)> filter(k, stable_comp);
           filter.reserve(num_cols);
-          for (int32_t c = 0; c < num_cols; ++c) {
+          for (Tidx c = 0; c < num_cols; ++c) {
             filter.push(c);
           }
 
           int32_t i = 0;
           if (sorted) {
-            std::unique_ptr<std::vector<int32>> top_k(filter.Extract());
+            std::unique_ptr<std::vector<Tidx>> top_k(filter.Extract());
             for (auto top_k_it = top_k->begin(); top_k_it != top_k->end();
                  ++top_k_it, ++i) {
               indices(b, i) = *top_k_it;
@@ -209,15 +222,14 @@ struct TopKFunctor<CPUDevice, T> {
         }
         // Now that the indices are sorted, copy the values over in
         // sorted order.
-        std::transform(
-            &indices(b, 0), &indices(b, k), &values(b, 0),
-            [b, &input](const int32_t loc) { return input(b, loc); });
-      }  // for (int32 b = ...
+        std::transform(&indices(b, 0), &indices(b, k), &values(b, 0),
+                       [b, &input](const Tidx loc) { return input(b, loc); });
+      }  // for (Tidx b = ...
     };
 
     // Guesstimate of cost; 4*N*log(K) where N == num_cols.
     // If K == N, assume the cost is N*log(K + 1).
-    const double cmp_cost = 3 * Eigen::TensorOpCost::AddCost<int32>() +
+    const double cmp_cost = 3 * Eigen::TensorOpCost::AddCost<Tidx>() +
                             Eigen::TensorOpCost::AddCost<T>();
     const double base_cost =
         cmp_cost *
@@ -239,51 +251,68 @@ struct TopKFunctor<CPUDevice, T> {
 
 }  // namespace functor
 
-#define REGISTER_KERNELS_NAME(name, type)                       \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name(#name).Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      TopK<CPUDevice, type>)
+#define REGISTER_KERNELS_NAME(name, type, index_type)                    \
+  REGISTER_KERNEL_BUILDER(Name(#name)                                    \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<index_type>("index_type"), \
+                          TopK<CPUDevice, type, index_type>)
 
-#define REGISTER_KERNELS(type)       \
-  REGISTER_KERNELS_NAME(TopK, type); \
-  REGISTER_KERNELS_NAME(TopKV2, type)
+#define REGISTER_KERNELS_WITH_INDEX(type, index_type) \
+  REGISTER_KERNELS_NAME(TopK, type, index_type);      \
+  REGISTER_KERNELS_NAME(TopKV2, type, index_type);
+
+#define REGISTER_KERNELS(type)              \
+  REGISTER_KERNELS_WITH_INDEX(type, int16); \
+  REGISTER_KERNELS_WITH_INDEX(type, int32); \
+  REGISTER_KERNELS_WITH_INDEX(type, int64_t);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS_NAME
+#undef REGISTER_KERNELS_WITH_INDEX
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                                    \
+#define DECLARE_GPU_SPEC_WITH_INDEX(T, Tidx)                                   \
   template <>                                                                  \
-  Status TopKFunctor<GPUDevice, T>::Compute(                                   \
+  Status TopKFunctor<GPUDevice, T, Tidx>::Compute(                             \
       OpKernelContext* context, bool sorted, int k,                            \
       const typename TTypes<T, 2>::ConstTensor& input, const int64_t num_rows, \
       const int64_t num_cols, typename TTypes<T, 2>::Tensor values,            \
-      typename TTypes<int, 2>::Tensor indices);                                \
-  extern template struct functor::TopKFunctor<GPUDevice, T>;
+      typename TTypes<Tidx, 2>::Tensor indices);                               \
+  extern template struct functor::TopKFunctor<GPUDevice, T, Tidx>;
+
+#define DECLARE_GPU_SPEC(T) DECLARE_GPU_SPEC_WITH_INDEX(T, int32)
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
 
 #undef DECLARE_GPU_SPEC
+#undef DECLARE_GPU_SPEC_WITH_INDEX
 
 }  // namespace functor
 
-#define REGISTER_KERNELS(type)                                   \
-  REGISTER_KERNEL_BUILDER(                                       \
-      Name("TopK").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
-      TopK<GPUDevice, type>)                                     \
-  REGISTER_KERNEL_BUILDER(Name("TopKV2")                         \
-                              .Device(DEVICE_GPU)                \
-                              .TypeConstraint<type>("T")         \
-                              .HostMemory("k"),                  \
-                          TopK<GPUDevice, type>)
+#define REGISTER_KERNELS_WITH_INDEX(type, index_type)                    \
+  REGISTER_KERNEL_BUILDER(Name("TopK")                                   \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<index_type>("index_type"), \
+                          TopK<GPUDevice, type, index_type>)             \
+  REGISTER_KERNEL_BUILDER(Name("TopKV2")                                 \
+                              .Device(DEVICE_GPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<index_type>("index_type")  \
+                              .HostMemory("k"),                          \
+                          TopK<GPUDevice, type, index_type>)
+
+#define REGISTER_KERNELS(type) REGISTER_KERNELS_WITH_INDEX(type, int32)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+#undef REGISTER_KERNELS_WITH_INDEX
 
 #endif  // end GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

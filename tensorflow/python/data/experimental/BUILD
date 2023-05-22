@@ -9,10 +9,10 @@ py_library(
     srcs = ["__init__.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//tensorflow/python/data/experimental/ops:dataset_ops",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/experimental/ops:lookup_ops",
         "//tensorflow/python/data/experimental/service",
+        "//tensorflow/python/util:all_util",
     ],
 )

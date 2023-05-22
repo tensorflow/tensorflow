@@ -584,6 +584,11 @@ class HloModule {
 
   CompilationEnvironments& comp_envs() const { return *comp_envs_; }
 
+  // Get 128-bit fingerprint of the module by printing it using the given print
+  // options.
+  std::string GetFingerprint128(const HloPrintOptions& options =
+                                    HloPrintOptions::ModuleFingerprint()) const;
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,

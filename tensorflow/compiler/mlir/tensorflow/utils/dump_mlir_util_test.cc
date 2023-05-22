@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/InitAllPasses.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"  // from @llvm-project
@@ -88,6 +89,7 @@ TEST(DumpMlirModuleTest, Valid) {
 }
 
 TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
+  mlir::registerPassManagerCLOptions();
   mlir::MLIRContext context;
   mlir::OwningOpRef<mlir::ModuleOp> module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
@@ -119,11 +121,13 @@ TEST(DumpCrashReproducerTest, RoundtripDumpAndReadValid) {
   mlir::registerTensorFlowPasses();
 
   EXPECT_TRUE(mlir::MlirOptMain(output_stream->os(), std::move(input_file),
-                                passPipeline, registry,
-                                /*splitInputFile=*/false,
-                                /*verifyDiagnostics=*/false,
-                                /*verifyPasses=*/false,
-                                /*allowUnregisteredDialects=*/false)
+                                registry,
+                                mlir::MlirOptMainConfig{}
+                                    .splitInputFile(false)
+                                    .verifyDiagnostics(false)
+                                    .verifyPasses(false)
+                                    .allowUnregisteredDialects(false)
+                                    .setPassPipelineParser(passPipeline))
                   .succeeded());
 }
 

@@ -157,6 +157,10 @@ int TfLiteFloatArrayGetSizeInBytes(int size);
 // This returns a pointer, that you must free using TfLiteFloatArrayFree().
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size);
 
+// Create a copy of an array passed as `src`.
+// You are expected to free memory with TfLiteFloatArrayFree.
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src);
+
 // Free memory of array `a`.
 void TfLiteFloatArrayFree(TfLiteFloatArray* a);
 #endif  // TF_LITE_STATIC_MEMORY
@@ -961,7 +965,14 @@ typedef struct TfLiteRegistration {
   TfLiteRegistrationExternal* registration_external;
 
   // Retrieves asynchronous kernel.
-  // If the node is not capable of asynchronous execution, returns nullptr.
+  //
+  // If the `async_kernel` field is nullptr, it means the operation described by
+  // this TfLiteRegistration object does not support asynchronous execution.
+  // Otherwise, the function that the field points to should only be called for
+  // delegate kernel nodes, i.e. `node` should be a delegate kernel node created
+  // by applying a delegate.
+  // If the function returns nullptr, that means that the underlying delegate
+  // does not support asynchronous execution for this `node`.
   struct TfLiteAsyncKernel* (*async_kernel)(TfLiteContext* context,
                                             TfLiteNode* node);
 } TfLiteRegistration;

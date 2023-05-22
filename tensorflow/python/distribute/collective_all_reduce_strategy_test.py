@@ -29,7 +29,6 @@ from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import reduce_util
@@ -716,7 +715,7 @@ class CollectiveAllReduceStrategyV2Test(test.TestCase, parameterized.TestCase):
   def test_replica_id_in_sync_group(self, strategy):
 
     def replica_fn():
-      replica_ctx = distribution_strategy_context.get_replica_context()
+      replica_ctx = distribute_lib.get_replica_context()
       return replica_ctx.replica_id_in_sync_group, replica_ctx._replica_id
 
     results = test_util.gather(strategy, strategy.run(replica_fn))
@@ -764,7 +763,7 @@ class ExperimentalCompatibilityTest(test.TestCase):
 
 def _replica_id_f32():
   return math_ops.cast(
-      distribution_strategy_context.get_replica_context()
+      distribute_lib.get_replica_context()
       .replica_id_in_sync_group, dtypes.float32)
 
 

@@ -16,10 +16,11 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -32,6 +33,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -50,6 +52,7 @@ tf_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
@@ -69,9 +72,10 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -85,6 +89,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
@@ -258,7 +263,7 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_circulant",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
-        "//tensorflow/python/ops/signal",
+        "//tensorflow/python/ops/signal:fft_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -483,7 +488,6 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/linalg:linear_operator_toeplitz",
-        "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
     ],
 )
@@ -562,7 +566,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -578,6 +582,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -592,6 +597,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -605,6 +611,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -619,6 +626,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -632,6 +640,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -704,8 +713,10 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -723,6 +734,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//third_party/py/numpy",
@@ -764,9 +776,11 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
     # TODO(b/127344411): This test passes because XLA does not actually cluster
@@ -781,8 +795,10 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradient_checker_v2",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )
@@ -800,6 +816,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python/ops/linalg:linalg_impl",
+        "//tensorflow/python/platform:benchmark",
         "//third_party/py/numpy",
     ],
 )

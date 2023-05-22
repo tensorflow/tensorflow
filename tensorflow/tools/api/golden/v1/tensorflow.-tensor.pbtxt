@@ -1,6 +1,7 @@
 path: "tensorflow.Tensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Tensor\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyTensor\'>"
   is_instance: "<class \'tensorflow.python.types.internal.NativeObject\'>"
   is_instance: "<class \'tensorflow.python.types.core.Symbol\'>"
   is_instance: "<class \'tensorflow.python.types.core.Tensor\'>"
@@ -43,11 +44,9 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'op\', \'value_index\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "consumers"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "eval"

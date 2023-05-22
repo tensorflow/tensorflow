@@ -169,7 +169,7 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
 
   // Check that send error safely rejected and we do not dead lock.
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
-  EXPECT_TRUE(absl::StrContains(result.status().error_message(),
+  EXPECT_TRUE(absl::StrContains(result.status().message(),
                                 "Uh-oh, can send chunk to host"));
 }
 
@@ -207,7 +207,7 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
 
   // Check that invalid chunk safely rejected and we do not dead lock.
   auto result = executable->Execute(/*argument_handles=*/{{}}, opts);
-  EXPECT_TRUE(absl::StrContains(result.status().error_message(),
+  EXPECT_TRUE(absl::StrContains(result.status().message(),
                                 "Adding chunk of size 40 would overflow buffer "
                                 "of size 8 (0 already transferred)"));
 }

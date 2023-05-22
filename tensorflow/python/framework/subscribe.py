@@ -42,7 +42,7 @@ def _recursive_apply(tensors, apply_fn):
     `TypeError` if undefined type in the tensors structure.
   """
   tensors_type = type(tensors)
-  if tensors_type is ops.Tensor:
+  if isinstance(tensors, ops.Tensor):
     return apply_fn(tensors)
   elif isinstance(tensors, variables.Variable):
     return apply_fn(tensors.value())

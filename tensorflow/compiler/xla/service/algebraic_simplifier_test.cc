@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 
 #include <memory>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -729,6 +731,87 @@ TEST_F(AlgebraicSimplifierTest, TwoReducesToOne) {
   HloInstruction* root = m->entry_computation()->root_instruction();
   EXPECT_THAT(root, GmockMatch(m::Reduce(m::Parameter(0), m::Op().Is(zero))));
   EXPECT_EQ(root->dimensions(), std::vector<int64_t>({0, 2, 3}));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfMergeNoncontractingDims) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[3,5,7] parameter(0)
+      reshape = f32[15,7] reshape(p)
+      ROOT reduce = f32[15] reduce(reshape, f32[] constant(0)), dimensions={1}, to_apply=add_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Reduce()
+                                .WithShape(F32, {3, 5})
+                                .WithPredicate([](const HloInstruction* instr) {
+                                  return instr->dimensions() ==
+                                         std::vector<int64_t>({2});
+                                }))
+                     .WithShape(F32, {15})));
+}
+
+TEST_F(AlgebraicSimplifierTest, ReduceOfSplitNoncontractingDims) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      p = f32[3,35] parameter(0)
+      reshape = f32[3,5,7] reshape(p)
+      ROOT reduce = f32[5,7] reduce(reshape, f32[] constant(0)), dimensions={0}, to_apply=add_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+  ASSERT_TRUE(AlgebraicSimplifier(options).Run(m.get()).value());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Reshape(m::Reduce().WithShape(F32, {35}).WithPredicate(
+                                [](const HloInstruction* instr) {
+                                  return instr->dimensions() ==
+                                         std::vector<int64_t>({0});
+                                }))
+                     .WithShape(F32, {5, 7})));
+}
+
+TEST_F(AlgebraicSimplifierTest,
+       ReduceOfReshapeOfContractingAndNoncontractingDims) {
+  const char* kModuleStr = R"(
+    HloModule m
+    add_f32 {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT r = f32[] add(p0, p1)
+    }
+
+    ENTRY test {
+      ROOT reduce = f32[8] reduce(
+        f32[8,4] reshape(f32[32] parameter(0)), f32[] constant(0)),
+        dimensions={1}, to_apply=add_f32
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  AlgebraicSimplifierOptions options = default_options_;
+  options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(true);
+  ASSERT_FALSE(AlgebraicSimplifier(options).Run(m.get()).value());
 }
 
 // Test that Const + A is canonicalized to A + Const.
@@ -8398,10 +8481,9 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  int64_t reduce_count = absl::c_count_if(
-      m->entry_computation()->instructions(), [](const HloInstruction* hlo) {
-        return hlo->opcode() == HloOpcode::kReduce;
-      });
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
   // Expect one Reduce operation after simplification.
   EXPECT_EQ(1, reduce_count);
   auto variadic_reduce = m::Reduce().WithShape(m::Shape().IsTuple());
@@ -8459,10 +8541,9 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
-  int64_t reduce_count = absl::c_count_if(
-      m->entry_computation()->instructions(), [](const HloInstruction* hlo) {
-        return hlo->opcode() == HloOpcode::kReduce;
-      });
+  int64_t reduce_count =
+      absl::c_count_if(m->entry_computation()->instructions(),
+                       HloPredicateIsOp<HloOpcode::kReduce>);
   // Expect one Reduce operation after simplification.
   EXPECT_EQ(1, reduce_count);
   auto variadic_reduce = m::Reduce().WithShape(m::Shape().IsTuple());
@@ -9215,6 +9296,42 @@ TEST_F(AlgebraicSimplifierTest, MultiplyOfConvertedPred) {
   // Also run the HloVerifier on the resulting module to check that the
   // generated instructions don't have an invalid layout change now.
   EXPECT_TRUE(verifier().Run(m.get()).status().ok());
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcast) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4] broadcast(f32[2,4] parameter(0)), dimensions={1,3}
+     ROOT trans = f32[2,3,10,4] transpose(bcast), dimensions={1,2,0,3}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  EXPECT_TRUE(
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value());
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::Broadcast(m::Parameter(0))
+              .WithPredicate([](const HloInstruction* instr) {
+                return instr->dimensions() == std::vector<int64_t>({0, 3});
+              })));
+}
+
+TEST_F(AlgebraicSimplifierTest, TransposeOfBroadcastSkipped) {
+  const char* kModuleStr = R"(
+   HloModule m
+   test {
+     bcast = f32[10,2,3,4] broadcast(f32[2,4] parameter(0)), dimensions={1,3}
+     ROOT trans = f32[4,2,3,10] transpose(bcast), dimensions={3,1,2,0}
+   }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  bool changed =
+      RunHloPass(AlgebraicSimplifier(default_options_), m.get()).value();
+  SCOPED_TRACE(m->ToString());
+  EXPECT_FALSE(changed);
 }
 
 }  // namespace

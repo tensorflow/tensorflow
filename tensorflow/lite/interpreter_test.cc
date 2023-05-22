@@ -575,7 +575,7 @@ TEST(BasicInterpreter, ResizingTensorsStrictInvalid) {
   EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
-  // Invalid becuase `dims_signature` is not specified.
+  // Invalid because `dims_signature` is not specified.
   ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 3}), kTfLiteError);
   EXPECT_EQ(tensor->bytes, 3 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
@@ -612,6 +612,17 @@ TEST(BasicInterpreter, ResizingTensorsStrict) {
 
   // Assert that ResizeInputTensor works for this value.
   ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Resizing to a smaller rank isn't permitted.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {8}), kTfLiteError);
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1}), kTfLiteError);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Resizing to a larger rank isn't permitted either.
+  ASSERT_EQ(interpreter.ResizeInputTensorStrict(t, {1, 2, 4, 1}), kTfLiteError);
   EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 }

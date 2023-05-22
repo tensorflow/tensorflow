@@ -168,19 +168,22 @@ void Emplace(void* int_ptr, AsyncValue* dst) {
   v = *reinterpret_cast<int32_t*>(int_ptr);
 }
 
-struct ReturnI32 {
+template <typename T>
+struct ReturnScalar {
   LogicalResult operator()(unsigned result_index, const Type* type,
                            const Type* runtime_type, void* ret) const {
-    auto* scalar = llvm::dyn_cast<ScalarType>(type);
-    if (scalar && scalar->type() == PrimitiveType::S32) {
-      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(ret, sizeof(int32_t));
-      *ptr = *reinterpret_cast<int32_t*>(ret);
+    PrimitiveType dtype = primitive_util::NativeToPrimitiveType<T>();
+
+    if (auto* s = llvm::dyn_cast<ScalarType>(type); s && s->type() == dtype) {
+      ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(ret, sizeof(T));
+      *ptr = *reinterpret_cast<T*>(ret);
       return success();
     }
+
     return failure();
   }
 
-  int32_t* ptr = nullptr;
+  T* ptr = nullptr;
 };
 
 struct ReturnMemref {
@@ -248,6 +251,26 @@ struct ReturnAsyncI32 {
   AsyncValuePtr<int32_t> ptr;
 };
 
+template <typename MemrefImpl>
+struct FetchMemrefDescFromAsyncValue {
+  void operator()(AsyncValue* value, MemrefDesc&& desc) const;
+};
+
+template <>
+struct FetchMemrefDescFromAsyncValue<OwnedMemref> {
+  void operator()(AsyncValue* value, MemrefDesc&& desc) const {
+    value->get<OwnedMemref>().desc = std::move(desc);
+  }
+};
+
+template <>
+struct FetchMemrefDescFromAsyncValue<MemrefDesc> {
+  void operator()(AsyncValue* value, MemrefDesc&& desc) const {
+    value->get<MemrefDesc>() = std::move(desc);
+  }
+};
+
+template <typename MemrefImpl>
 struct ReturnAsyncMemref {
   LogicalResult operator()(unsigned result_index, const Type* type,
                            const Type* runtime_type, void* result_ptr) const {
@@ -261,15 +284,16 @@ struct ReturnAsyncMemref {
     auto* memref = llvm::dyn_cast<MemrefType>(&value_type->value_type());
 
     if (memref) {
-      // TODO(ezhulenev): Emplace function captures `memref` by reference, and
-      // if `value` is not available, then it will lead to asan errors. We need
-      // an `ExtractAsyncValue` that can take absl::AnyInvocable callback, that
-      // will capture all referenced values. Alternative solution is a large
-      // switch statement that will dispatch for different types and ranks.
-      ExtractAsyncValue(value, ptr.value(), [&](void* data, AsyncValue* dst) {
-        auto desc = ConvertReturnedMemref<MemrefDesc>(*this, memref, data);
-        if (succeeded(desc)) dst->get<OwnedMemref>().desc = std::move(*desc);
-      });
+      ExtractAsyncValue(
+          value, ptr.value(),
+          [converter = *this, m = *memref](void* data, AsyncValue* dst) {
+            auto desc = ConvertReturnedMemref<MemrefDesc>(converter, &m, data);
+            if (succeeded(desc)) {
+              FetchMemrefDescFromAsyncValue<MemrefImpl>()(dst,
+                                                          std::move(*desc));
+              dst->SetStateConcrete();
+            }
+          });
       return success();
     }
 
@@ -283,8 +307,11 @@ struct ReturnAsyncMemref {
     return MemrefDesc(element_type, base_ptr, offset, sizes, strides);
   }
 
-  AsyncValuePtr<OwnedMemref> ptr;
+  AsyncValuePtr<MemrefImpl> ptr;
 };
+
+using ReturnAsyncOwnedMemref = ReturnAsyncMemref<OwnedMemref>;
+using ReturnAsyncMemrefDesc = ReturnAsyncMemref<MemrefDesc>;
 
 // Execute all tasks in the caller thread immediately.
 class InlineAsyncTaskRunner : public AsyncTaskRunner {
@@ -307,7 +334,7 @@ TEST(ExecutableTest, ReturnScalar) {
   )";
 
   int32_t result = 0;
-  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+  ResultConverterSet converter(AssertNoError, ReturnScalar<int32_t>{&result});
 
   ASSERT_TRUE(CompileAndExecute(module, {}, converter).ok());
   EXPECT_EQ(result, 42);
@@ -342,12 +369,33 @@ TEST(ExecutableTest, ScalarArgs) {
   )";
 
   int32_t result = 0;
-  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+  ResultConverterSet converter(AssertNoError, ReturnScalar<int32_t>{&result});
 
   ScalarArg arg0(static_cast<int32_t>(20));
   ScalarArg arg1(static_cast<int32_t>(22));
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0, arg1}, converter).ok());
+  EXPECT_EQ(result, 42);
+}
+
+TEST(ExecutableTest, MemrefF8Arg) {
+  absl::string_view module = R"(
+    func.func @test(%arg0: memref<?xf8E4M3FN>) -> index {
+      %c0 = arith.constant 0 : index
+      %0 = memref.dim %arg0, %c0 : memref<?xf8E4M3FN>
+      return %0 : index
+    }
+  )";
+
+  int64_t result = 0;
+  ResultConverterSet converter(AssertNoError, ReturnScalar<int64_t>{&result});
+
+  MemrefDesc arg0(PrimitiveType::F8E4M3FN, nullptr, 0, {42}, {1});
+
+  Arguments<MemrefDesc> args(1);
+  args.emplace_back(std::move(arg0));
+
+  ASSERT_TRUE(CompileAndExecute(module, args, converter).ok());
   EXPECT_EQ(result, 42);
 }
 
@@ -369,7 +417,7 @@ TEST(ExecutableTest, MultipleFunctions) {
   EXPECT_EQ(compiled->num_functions(), 2);
 
   int32_t result = 0;
-  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+  ResultConverterSet converter(AssertNoError, ReturnScalar<int32_t>{&result});
 
   ScalarArg arg0(static_cast<int32_t>(20));
   ScalarArg arg1(static_cast<int32_t>(22));
@@ -420,7 +468,7 @@ TEST(ExecutableTest, AssertionFailureOrResult) {
 
   {
     int32_t result = 0;
-    ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+    ResultConverterSet converter(AssertNoError, ReturnScalar<int32_t>{&result});
 
     ScalarArg arg0(int32_t{20});
     EXPECT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
@@ -429,7 +477,7 @@ TEST(ExecutableTest, AssertionFailureOrResult) {
 
   {
     int32_t result = 0;
-    ResultConverterSet converter(IgnoreError, ReturnI32{&result});
+    ResultConverterSet converter(IgnoreError, ReturnScalar<int32_t>{&result});
 
     ScalarArg arg0(int32_t{42});
     auto executed = CompileAndExecute(module, {arg0}, converter);
@@ -453,7 +501,7 @@ TEST(ExecutableTest, AsyncExecuteAndAwait) {
   )";
 
   int32_t result = 0;
-  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+  ResultConverterSet converter(AssertNoError, ReturnScalar<int32_t>{&result});
 
   ScalarArg arg0(static_cast<int32_t>(20));
   ScalarArg arg1(static_cast<int32_t>(22));
@@ -545,33 +593,42 @@ TEST(ExecutableTest, AsyncScalarArg) {
 
 TEST(ExecutableTest, AsyncMemrefArg) {
   absl::string_view module = R"(
-    async.func @test(%arg0: !async.value<memref<?xf32>>) ->
-    !async.value<memref<?xf32>> {
-      %0 = async.await %arg0 : !async.value<memref<?xf32>>
-      return %0 : memref<?xf32>
+    async.func @test(%arg0: !async.value<memref<?x?xf32>>) ->
+    !async.value<memref<?x?xf32>> {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+
+      %0 = async.await %arg0 : !async.value<memref<?x?xf32>>
+      %dim0 = memref.dim %0, %c0 : memref<?x?xf32>
+      %dim1 = memref.dim %0, %c1 : memref<?x?xf32>
+      %1 = memref.alloc(%dim0, %dim1) : memref<?x?xf32>
+
+      memref.copy %0, %1 : memref<?x?xf32> to memref<?x?xf32>
+
+      return %1 : memref<?x?xf32>
     }
   )";
 
   AsyncValueRef<OwnedMemref> result =
       MakeConstructedAsyncValueRef<OwnedMemref>();
   ResultConverterSet converter(AssertNoError,
-                               ReturnAsyncMemref{result.AsPtr()});
-  std::vector<float> input = {42.0, 42.0, 42.0, 42.0};
+                               ReturnAsyncOwnedMemref{result.AsPtr()});
+  std::vector<float> input = {42.0, 42.0, 42.0, 42.0, 42.0, 42.0, 42.0, 42.0};
   MemrefDesc memref{
-      PrimitiveType::F32, input.data(), 0, {4}, {4} /*fake strides*/};
+      PrimitiveType::F32, input.data(), 0, {4, 2}, {4, 2} /*fake strides*/};
   AsyncValueRef<MemrefDesc> async_memref =
       tsl::MakeAvailableAsyncValueRef<MemrefDesc>(std::move(memref));
 
   AsyncMemrefArg arg0(async_memref);
 
   ASSERT_TRUE(CompileAndExecute(module, {arg0}, converter).ok());
-
   ASSERT_TRUE(result.get().desc.has_value());
-  EXPECT_EQ(result.get()->rank(), 1);
+  EXPECT_EQ(result.get()->rank(), 2);
   EXPECT_EQ(result.get()->size(0), 4);
+  EXPECT_EQ(result.get()->size(1), 2);
 
   float* data = reinterpret_cast<float*>(result.get()->data());
-  EXPECT_TRUE(std::all_of(data, data + 4, [](float v) { return v == 42.0f; }));
+  EXPECT_TRUE(std::all_of(data, data + 8, [](float v) { return v == 42.0f; }));
 }
 
 TEST(ExecutableTest, AsyncMemrefRet) {
@@ -593,7 +650,7 @@ TEST(ExecutableTest, AsyncMemrefRet) {
   AsyncValueRef<OwnedMemref> result =
       MakeConstructedAsyncValueRef<OwnedMemref>();
   ResultConverterSet converter(AssertNoError,
-                               ReturnAsyncMemref{result.AsPtr()});
+                               ReturnAsyncOwnedMemref{result.AsPtr()});
 
   ScalarArg arg0(static_cast<int64_t>(32));
 
@@ -604,6 +661,90 @@ TEST(ExecutableTest, AsyncMemrefRet) {
 
   float* data = reinterpret_cast<float*>(result.get()->data());
   EXPECT_TRUE(std::all_of(data, data + 32, [](float v) { return v == 42.0f; }));
+}
+
+TEST(ExecutableTest, AsyncMemrefInputsAndRets) {
+  absl::string_view module = R"(
+    func.func private @custom_call(%arg0: memref<2x2xf32>,
+                                   %arg1: memref<2x2xf32>)
+      attributes { rt.dynamic, rt.custom_call = "test.double" }
+
+    async.func @test(%input: !async.value<memref<2x2xf32>>,
+                     %output: memref<2x2xf32>)
+      -> !async.value<memref<2x2xf32>> {
+      %token, %result = execute -> !async.value<memref<2x2xf32>> {
+        %0 = async.await %input : !async.value<memref<2x2xf32>>
+        func.call @custom_call(%0, %output)
+            : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+        async.yield %output : memref<2x2xf32>
+      }
+      %1 = async.await %result : !async.value<memref<2x2xf32>>
+      return %1 : memref<2x2xf32>
+    }
+  )";
+
+  // Doubles every element in the array.
+  auto test_double = [&](MemrefView input, MemrefView output) {
+    float* in = reinterpret_cast<float*>(input.data);
+    float* out = reinterpret_cast<float*>(output.data);
+    for (int i = 0; i < 4; ++i) {
+      out[i] = in[i] * 2;
+    }
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.double")
+                          .Arg<MemrefView>()  // input
+                          .Arg<MemrefView>()  // output
+                          .To(test_double));
+  }};
+
+  // Allocates storage and sets the initial data.
+  // In this test case, this buffer is shared across all inputs and outputs,
+  // which mimics the buffer reuse behavior in XLA.
+  std::array<float, 4> storage = {1.0, 2.0, 3.0, 4.0};
+  std::array<int64_t, 2> sizes = {2, 2};
+  const auto& fake_strides = sizes;
+
+  // Constructs inputs and output for the first run.
+  AsyncValueRef<MemrefDesc> input_1 =
+      tsl::MakeAvailableAsyncValueRef<MemrefDesc>(
+          PrimitiveType::F32, storage.data(), 0, sizes, fake_strides);
+  // Wraps the output fed in the parameter packs as an async output.
+  auto result_1 = MakeConstructedAsyncValueRef<MemrefDesc>(
+      PrimitiveType::F32, storage.data(), 0, sizes, fake_strides);
+  ResultConverterSet first_converter(AssertNoError,
+                                     ReturnAsyncMemrefDesc{result_1.AsPtr()});
+
+  Arguments<AsyncMemrefArg, MemrefDesc> args_1(2);
+  args_1.emplace_back(AsyncMemrefArg(input_1));
+  args_1.push_back(
+      MemrefDesc(PrimitiveType::F32, storage.data(), 0, sizes, fake_strides));
+
+  LazyAsyncTaskRunner runner;
+  auto exec_ref =
+      CompileAndExecute(module, args_1, first_converter, &runner, registry,
+                        /*use_lazy_runner=*/true);
+  ASSERT_TRUE(exec_ref.ok());
+  result_1.AndThen([exec_ref = *std::move(exec_ref)] {});
+
+  // Constructs inputs and output for the second run.
+  auto result_2 = MakeConstructedAsyncValueRef<MemrefDesc>(
+      MemrefDesc(PrimitiveType::F32, storage.data(), 0, sizes, fake_strides));
+  ResultConverterSet second_converter(AssertNoError,
+                                      ReturnAsyncMemrefDesc{result_2.AsPtr()});
+  Arguments<AsyncMemrefArg, MemrefDesc> args_2(2);
+  args_2.emplace_back(AsyncMemrefArg(result_1));
+  args_2.push_back(
+      MemrefDesc(PrimitiveType::F32, storage.data(), 0, sizes, fake_strides));
+  exec_ref =
+      CompileAndExecute(module, args_2, second_converter, &runner, registry,
+                        /*use_lazy_runner=*/true);
+  result_2.AndThen([exec_ref = *std::move(exec_ref)] {});
+  tsl::BlockUntilReady(result_2.GetAsyncValue());
+
+  EXPECT_THAT(storage, testing::ElementsAre(4.0, 8.0, 12.0, 16.0));
 }
 
 TEST(ExecutableTest, AsyncWaiting) {
@@ -761,7 +902,7 @@ void BM_AsyncExecuteAndAwait(benchmark::State& state) {
   )";
 
   int32_t result = 0;
-  ResultConverterSet converter(AssertNoError, ReturnI32{&result});
+  ResultConverterSet converter(AssertNoError, ReturnScalar<int32_t>{&result});
 
   ScalarArg arg0(static_cast<int32_t>(20));
   ScalarArg arg1(static_cast<int32_t>(22));

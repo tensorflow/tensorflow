@@ -50,6 +50,7 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
@@ -57,6 +58,7 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import unconnected_gradients
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.nn_ops import bias_add
@@ -319,7 +321,7 @@ class GradientsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testVariableRefGradient(self):
     with ops.Graph().as_default():
       init = constant_op.constant(100.0)
-      var = variables.VariableV1(init)
+      var = variable_v1.VariableV1(init)
       gradient = gradients.gradients(var._ref(), var)
       self.assertIsNotNone(gradient)
 
@@ -1030,7 +1032,7 @@ class GetDependentVariablesTest(test_util.TensorFlowTestCase):
     with context.graph_mode():
       init = constant_op.constant(100.0)
       var = variable_scope.variable(init, name="a/replica_1")
-      if isinstance(var, variables.RefVariable):
+      if isinstance(var, ref_variable.RefVariable):
         var._variable = array_ops.identity(var, name="a")
       else:
         var._handle = array_ops.identity(var, name="a")

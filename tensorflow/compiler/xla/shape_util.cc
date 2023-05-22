@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include <algorithm>
+#include <climits>
 #include <functional>
 #include <numeric>
 #include <optional>
@@ -526,6 +527,24 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     to->set_dynamic_dimension(i, from.is_dynamic_dimension(i));
   }
   TF_DCHECK_OK(ValidateShape(*to));
+}
+
+/* static */ bool ShapeUtil::IsEffectivelyMostMajorDimension(
+    const Shape& shape, int64_t dimension) {
+  // Check if the dimension is most major as returned by LayoutUtil::Major(0).
+  // If not, and the most major dimension's size is 1, then we can repeat the
+  // same check for next most major dimension as returned by
+  // LayoutUtil::Major(1) and so on.
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+    int64_t major_dimension = LayoutUtil::Major(shape.layout(), i);
+    if (major_dimension == dimension) {
+      return true;
+    }
+    if (shape.dimensions(major_dimension) != 1) {
+      return false;
+    }
+  }
+  return false;
 }
 
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
@@ -1989,7 +2008,9 @@ Status ShapeUtil::ByteStrides(const Shape& shape, absl::Span<int64_t> strides) {
     indices.push_back(dim - 1);
   }
   int64_t size = LayoutUtil::LinearIndex(shape, indices) + 1;
-  return (size * ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type()));
+  int64_t num_bits = size * primitive_util::BitWidth(shape.element_type());
+
+  return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);
 }
 
 int64_t ShapeUtil::ForEachState::CalculateNumSteps() const {

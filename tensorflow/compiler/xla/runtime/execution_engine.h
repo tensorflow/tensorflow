@@ -70,9 +70,8 @@ class ExecutionEngine {
   using OptimizingTransformer = std::function<llvm::Error(llvm::Module *)>;
 
   // Callback to construct an optimizing transformer for the given options.
-  using MakeOptimizingTransformer = std::function<OptimizingTransformer(
-      unsigned opt_level, unsigned size_level,
-      llvm::TargetMachine *targetMachine)>;
+  using MakeOptimizingTransformer =
+      std::function<OptimizingTransformer(llvm::TargetMachine *targetMachine)>;
 
   // Compose multiple symbol bindings into a single symbol binding function.
   static SymbolsBinding BindAll(std::vector<SymbolsBinding> bindings);

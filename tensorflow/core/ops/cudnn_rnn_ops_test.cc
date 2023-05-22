@@ -24,6 +24,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+static string JoinedCopies(const string& s, int copies) {
+  string res;
+  for (int i = 0; i < copies; ++i) {
+    strings::StrAppend(&res, i > 0 ? ";" : "", s);
+  }
+  return res;
+}
+
 TEST(CudnnRNNOpsTest, ParamsSize_ShapeFn) {
   ShapeInferenceTestOp op("CudnnRNNParamsSize");
   INFER_OK(op, "[];[];[]", "[1]");
@@ -193,6 +201,85 @@ TEST(CudnnRNNOpsTest, ForwardV3Gru) {
   INFER_ERROR("Shape must be rank 3 ", op, "[?,?,?];[];[];[?];[?]");
   INFER_ERROR("Shape must be rank 1 ", op, "[?,?,?];[?,?,?];[];[];[?]");
   INFER_ERROR("Shape must be rank 1 ", op, "[?,?,?];[?,?,?];[];[?];[]");
+}
+
+TEST(CudnnRNNOpsTest, LSTMBlockCell_ShapeFn) {
+  ShapeInferenceTestOp op("LSTMBlockCell");
+
+  // Last 6 inputs don't affect shape inference.
+  string input_suffix = strings::StrCat(";", JoinedCopies("?", 6));
+
+  // Rank checks.
+  INFER_ERROR("must be rank 2", op, "[?];?" + input_suffix);
+  INFER_ERROR("must be rank 2", op, "?;[?]" + input_suffix);
+
+  // Output
+  INFER_OK(op, "?;?" + input_suffix, JoinedCopies("[?,?]", 7));
+  INFER_OK(op, "[?,?];[?,?]" + input_suffix, JoinedCopies("[d0_0,d1_1]", 7));
+}
+
+TEST(CudnnRNNOpsTest, BlockLSTM_ShapeFn) {
+  ShapeInferenceTestOp op("BlockLSTM");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTM")
+                   .Input({"seq_len_max", 0, DT_INT64})
+                   .Input({"x", 0, DT_FLOAT})
+                   .Input({"cs_prev", 0, DT_FLOAT})
+                   .Input({"h_prev", 0, DT_FLOAT})
+                   .Input({"w", 0, DT_FLOAT})
+                   .Input({"wci", 0, DT_FLOAT})
+                   .Input({"wcf", 0, DT_FLOAT})
+                   .Input({"wco", 0, DT_FLOAT})
+                   .Input({"b", 0, DT_FLOAT})
+                   .Finalize(&op.node_def));
+
+  // Middle inputs don't affect shape inference.
+  string infix = ";" + JoinedCopies("?", 6) + ";";
+
+  // Rank checks.
+  INFER_ERROR("must be rank 3", op, "?;[?]" + infix + "?");
+  INFER_ERROR("must be rank 1", op, "?;?" + infix + "[?,?]");
+
+  // Output
+  INFER_OK(op, "?;?" + infix + "?", JoinedCopies("[?,?,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "?", JoinedCopies("[d1_0,d1_1,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "[?]", JoinedCopies("[d1_0,d1_1,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "[20]", JoinedCopies("[d1_0,d1_1,5]", 7));
+
+  // cell_size must be divisible by 4.
+  INFER_ERROR("must be evenly divisible", op, "?;?" + infix + "[11]");
+}
+
+TEST(CudnnRNNOpsTest, BlockLSTMV2_ShapeFn) {
+  ShapeInferenceTestOp op("BlockLSTMV2");
+
+  TF_ASSERT_OK(NodeDefBuilder("test", "BlockLSTMV2")
+                   .Input({"seq_len_max", 0, DT_INT64})
+                   .Input({"x", 0, DT_FLOAT})
+                   .Input({"cs_prev", 0, DT_FLOAT})
+                   .Input({"h_prev", 0, DT_FLOAT})
+                   .Input({"w", 0, DT_FLOAT})
+                   .Input({"wci", 0, DT_FLOAT})
+                   .Input({"wcf", 0, DT_FLOAT})
+                   .Input({"wco", 0, DT_FLOAT})
+                   .Input({"b", 0, DT_FLOAT})
+                   .Finalize(&op.node_def));
+
+  // Middle inputs don't affect shape inference.
+  string infix = ";" + JoinedCopies("?", 6) + ";";
+
+  // Rank checks.
+  INFER_ERROR("must be rank 3", op, "?;[?]" + infix + "?");
+  INFER_ERROR("must be rank 1", op, "?;?" + infix + "[?,?]");
+
+  // Output
+  INFER_OK(op, "?;?" + infix + "?", JoinedCopies("[?,?,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "?", JoinedCopies("[d1_0,d1_1,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "[?]", JoinedCopies("[d1_0,d1_1,?]", 7));
+  INFER_OK(op, "?;[?,?,?]" + infix + "[20]", JoinedCopies("[d1_0,d1_1,5]", 7));
+
+  // cell_size must be divisible by 4.
+  INFER_ERROR("must be evenly divisible", op, "?;?" + infix + "[11]");
 }
 
 }  // end namespace tensorflow

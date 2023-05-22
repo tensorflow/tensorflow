@@ -52,7 +52,8 @@ py_strict_library(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/util",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
     ],
 )

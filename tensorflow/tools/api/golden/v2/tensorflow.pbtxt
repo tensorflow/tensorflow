@@ -22,7 +22,7 @@ tf_module {
   }
   member {
     name: "Graph"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "IndexedSlices"
@@ -38,7 +38,7 @@ tf_module {
   }
   member {
     name: "Operation"
-    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "OptionalSpec"
@@ -759,6 +759,10 @@ tf_module {
   member_method {
     name: "inside_function"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_symbolic_tensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_tensor"

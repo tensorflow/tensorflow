@@ -21,6 +21,7 @@ import warnings
 from google.protobuf import text_format
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import extension_type
 from tensorflow.python.framework import ops
@@ -28,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -381,6 +383,25 @@ class NestedStructureCoderTest(test.TestCase):
     encoded = nested_structure_coder.encode_structure(structure)
     decoded = nested_structure_coder.decode_proto(encoded)
     self.assertEqual(structure, decoded)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testEncodeDecodeTensor(self):
+    structure = constant_op.constant(1)
+    self.assertTrue(nested_structure_coder.can_encode(structure))
+    encoded = nested_structure_coder.encode_structure(structure)
+    expected_pbtxt = r"""
+      tensor_value {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    """
+    expected = struct_pb2.StructuredValue()
+    text_format.Parse(expected_pbtxt, expected)
+    self.assertEqual(expected, encoded)
+    decoded = nested_structure_coder.decode_proto(encoded)
+    self.assertAllEqual(structure, decoded)
 
   def testNotEncodable(self):
 

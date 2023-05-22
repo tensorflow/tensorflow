@@ -49,7 +49,7 @@ ENTRY main {
   EXPECT_EQ(status.code(), tsl::error::UNIMPLEMENTED);
 
   ASSERT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Gather operations with more than 2147483647 gather "
                            "indices are not supported."));
 }

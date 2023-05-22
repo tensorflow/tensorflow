@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 
-#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -1221,6 +1221,44 @@ TEST(CustomCallTest, DictionaryAttr) {
   EXPECT_EQ(foo, "Uh oh");
   EXPECT_EQ(bar, 42);
   EXPECT_EQ(baz, std::vector<int32_t>({1, 2}));
+}
+
+TEST(CustomCallTest, MemrefF8Arg) {
+  absl::string_view source = R"(
+    func.func private @custom_call(%arg0: memref<?xf8E4M3FN>)
+      attributes { rt.dynamic, rt.custom_call = "test.custom_call" }
+
+    func.func @test(%arg0: memref<?xf8E4M3FN>) {
+      call @custom_call(%arg0) : (memref<?xf8E4M3FN>) -> ()
+      return
+    }
+  )";
+
+  xla::PrimitiveType dtype = xla::PrimitiveType::PRIMITIVE_TYPE_INVALID;
+  std::vector<int64_t> sizes;
+
+  auto handler = [&](StridedMemrefView arg0) {
+    dtype = arg0.dtype;
+    sizes.assign(arg0.sizes.begin(), arg0.sizes.end());
+    return success();
+  };
+
+  CustomCallRegistry registry = {[&](DynamicCustomCallRegistry& registry) {
+    registry.Register(CustomCall::Bind("test.custom_call")
+                          .Arg<StridedMemrefView>()
+                          .To(handler));
+  }};
+
+  std::vector<std::byte> data(42);
+  MemrefDesc arg0(PrimitiveType::F8E4M3FN, data.data(), 0, {42}, {1});
+
+  Arguments<MemrefDesc> args(1);
+  args.emplace_back(std::move(arg0));
+
+  ASSERT_TRUE(CompileAndExecute(source, args, registry).ok());
+  EXPECT_EQ(dtype, PrimitiveType::F8E4M3FN);
+  EXPECT_EQ(sizes.size(), 1);
+  EXPECT_EQ(sizes[0], 42);
 }
 
 //===----------------------------------------------------------------------===//

@@ -155,7 +155,7 @@ class CTCLossOp : public OpKernel {
     Status labels_sp_valid = labels_sp.IndicesValid();
     OP_REQUIRES(ctx, labels_sp_valid.ok(),
                 errors::InvalidArgument("label SparseTensor is not valid: ",
-                                        labels_sp_valid.error_message()));
+                                        labels_sp_valid.message()));
 
     typename ctc::CTCLossCalculator<T>::LabelSequences labels_t(batch_size);
     for (const auto& g : labels_sp.group({0})) {  // iterate by batch

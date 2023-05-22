@@ -55,9 +55,11 @@ class NcclAllToAllThunk : public NcclAllToAllThunkBase {
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static bool CanImplement(mlir::lmhlo::AllToAllOp op);
+  static Status CheckImplementable(mlir::lmhlo::AllToAllOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
 
-  static const char* GetName() { return "AllToAll"; }
+  static const char* GetHloOpName() { return "all-to-all"; }
   static bool IsDegenerate(mlir::lmhlo::AllToAllOp op, int64_t replica_count,
                            int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllToAllOp op);
@@ -76,9 +78,11 @@ class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {
 
   // Returns whether the given instruction can be lowered to a nccl all-to-all
   // call.
-  static bool CanImplement(mlir::lmhlo_gpu::AllToAllStartOp op);
+  static Status CheckImplementable(mlir::lmhlo_gpu::AllToAllStartOp op,
+                                   int64_t replica_count,
+                                   int64_t partition_count);
 
-  static const char* GetName() { return "AllToAllStart"; }
+  static const char* GetHloOpName() { return "all-to-all-start"; }
   static bool IsDegenerate(mlir::lmhlo_gpu::AllToAllStartOp op,
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(

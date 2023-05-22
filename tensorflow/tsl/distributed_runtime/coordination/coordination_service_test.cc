@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "tensorflow/tsl/distributed_runtime/call_options.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "tensorflow/tsl/distributed_runtime/coordination/coordination_service_error_util.h"
 #include "tensorflow/tsl/distributed_runtime/coordination/test_device.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/env.h"
@@ -210,9 +211,11 @@ class CoordinateTwoTasksTest : public ::testing::Test {
   }
 
   // Set up coordination service.
-  void EnableCoordinationService(bool has_service_to_client_connection = true,
-                                 bool enable_shutdown_barrier = false,
-                                 bool set_worker_job_recoverable = false) {
+  void EnableCoordinationService(
+      bool has_service_to_client_connection = true,
+      bool enable_shutdown_barrier = false,
+      bool set_worker_job_recoverable = false,
+      bool allow_new_incarnation_to_reconnect = false) {
     CoordinationServiceConfig config =
         GetCoordinationServiceConfig(/*num_tasks=*/2);
     auto client_cache = std::make_unique<TestCoordinationClientCache>();
@@ -230,6 +233,9 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     if (enable_shutdown_barrier) {
       config.set_shutdown_barrier_timeout_in_ms(kShutdownBarrierTimeout /
                                                 absl::Milliseconds(1));
+    }
+    if (allow_new_incarnation_to_reconnect) {
+      config.set_allow_new_incarnation_to_reconnect(true);
     }
     // Init service.
     coord_service_ = CoordinationServiceInterface::EnableCoordinationService(
@@ -351,7 +357,7 @@ TEST(CoordinationServiceTest, TestCoordinatedJobs) {
   // Registering the evaluator task is unexpected
   Status status = coord_service->RegisterTask(evaluator, /*incarnation=*/0);
   EXPECT_TRUE(errors::IsInvalidArgument(status)) << status;
-  EXPECT_TRUE(!status.error_message().empty());
+  EXPECT_TRUE(!status.message().empty());
 }
 
 // RegisterTask() may succeed in the service, but the agent response times out.
@@ -396,7 +402,7 @@ TEST(CoordinationServiceTest,
   const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/1);
 
   EXPECT_TRUE(errors::IsAborted(status)) << status;
-  EXPECT_TRUE(!status.error_message().empty());
+  EXPECT_TRUE(!status.message().empty());
 }
 
 TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
@@ -419,7 +425,7 @@ TEST(CoordinationServiceTest, RegisterTask_AlreadyInError_Fails) {
   const Status status = coord_service->RegisterTask(task_0, /*incarnation=*/0);
 
   EXPECT_TRUE(errors::IsAborted(status)) << status;
-  EXPECT_TRUE(!status.error_message().empty());
+  EXPECT_TRUE(!status.message().empty());
 }
 
 TEST_F(CoordinateTwoTasksTest, TestTaskHeartbeatTimeout) {
@@ -1429,4 +1435,17 @@ TEST_F(CoordinateTwoTasksTest,
   TF_EXPECT_OK(client_1_.GetStatus());
 }
 
+TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
+  EnableCoordinationService(/*has_service_to_client_connection=*/true,
+                            /*enable_shutdown_barrier=*/false,
+                            /*set_worker_job_recoverable=*/false,
+                            /*allow_new_incarnation_to_reconnect=*/true);
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_));
+
+  TF_ASSERT_OK(coord_service_->ReportTaskError(
+      task_0_, MakeCoordinationError(errors::Unavailable("test_error"))));
+
+  TF_EXPECT_OK(coord_service_->RegisterTask(task_0_, incarnation_0_new_));
+}
 }  // namespace tsl

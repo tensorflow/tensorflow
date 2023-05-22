@@ -569,7 +569,7 @@ class TensorHolder {
 
  private:
   mutex lock_;
-  std::vector<std::unique_ptr<TensorReference>> tensors_ GUARDED_BY(lock_);
+  std::vector<std::unique_ptr<TensorReference>> tensors_ TF_GUARDED_BY(lock_);
 };
 
 class OpKernelContext {

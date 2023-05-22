@@ -1343,7 +1343,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (!can_inline_function_call.ok() &&
           (is_aggressive || force_inline_as_multi_device)) {
-        VLOG(2) << "Ignore error: " << can_inline_function_call.error_message();
+        VLOG(2) << "Ignore error: " << can_inline_function_call.message();
         can_inline_function_call = OkStatus();
       }
     }
@@ -1362,7 +1362,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
     } else {
       VLOG(2) << "Failed to inline function call node: "
-              << can_inline_function_call.error_message();
+              << can_inline_function_call.message();
     }
   }
 
@@ -1498,7 +1498,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
       if (!status.ok() && is_graph_modified()) {
         return status;
       } else if (!status.ok() && !is_graph_modified()) {
-        VLOG(3) << "Skip specialization error: " << status.error_message();
+        VLOG(3) << "Skip specialization error: " << status.message();
         copy_node();
       }
       continue;

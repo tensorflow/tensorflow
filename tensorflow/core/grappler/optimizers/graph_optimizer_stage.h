@@ -263,8 +263,7 @@ class GraphOptimizerStagePipeline {
         if (!stage_status.ok()) {
           VLOG(2) << "Failed to run optimizer " << stage->optimizer_name()
                   << ", stage " << stage->stage_name() << " node "
-                  << node->name()
-                  << ". Error: " << stage_status.error_message();
+                  << node->name() << ". Error: " << stage_status.message();
         }
         if (break_predicate_(*result)) return true;
       }

@@ -66,7 +66,7 @@ ConvertRuntimeFallbackToKernelFallbackTensor(
   const tensorflow::Tensor *tf_tensor;
   Status s = tensor.GetTensorHandle()->Tensor(&tf_tensor);
   if (!s.ok()) {
-    return tfrt::MakeErrorAsyncValueRef(s.error_message());
+    return tfrt::MakeErrorAsyncValueRef(s.message());
   }
   auto src_knfb_tensor =
       KernelFallbackTensor(tensor.shape(), tensor.dtype(), *tf_tensor);

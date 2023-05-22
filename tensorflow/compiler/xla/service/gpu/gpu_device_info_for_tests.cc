@@ -15,26 +15,29 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+
 namespace xla {
 namespace gpu {
 
-/*static*/ GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
-  GpuDeviceInfo d;
-  d.name = "NVIDIA RTX A6000";
-  d.threads_per_block_limit = 1024;
-  d.threads_per_warp = 32;
-  d.shared_memory_per_block = 49152;
-  d.shared_memory_per_core = 100 * 1024;
-  d.threads_per_core_limit = 1536;
-  d.core_count = 84;
-  d.fpus_per_core = 128;
-  d.block_dim_limit_x = 2'147'483'647;
-  d.block_dim_limit_y = 65535;
-  d.block_dim_limit_z = 65535;
-  d.memory_bandwidth = 768'096'000'000;
-  d.l2_cache_size = 6 * 1024 * 1024;
-  d.clock_rate_ghz = 1.410;
-  return d;
+GpuDeviceInfo TestGpuDeviceInfo::RTXA6000DeviceInfo() {
+  GpuDeviceInfo info;
+  info.name = "NVIDIA RTX A6000";
+  info.threads_per_block_limit = 1024;
+  info.threads_per_warp = 32;
+  info.shared_memory_per_block = 49152;
+  info.shared_memory_per_core = 100 * 1024;
+  info.threads_per_core_limit = 1536;
+  info.core_count = 84;
+  info.fpus_per_core = 128;
+  info.block_dim_limit_x = 2'147'483'647;
+  info.block_dim_limit_y = 65535;
+  info.block_dim_limit_z = 65535;
+  info.memory_bandwidth = 768'096'000'000;
+  info.l2_cache_size = 6 * 1024 * 1024;
+  info.clock_rate_ghz = 1.410;
+  info.device_memory_size = 51'050'250'240;
+  return info;
 }
 
 }  // namespace gpu

@@ -19,7 +19,7 @@ import numbers
 import numpy as np
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
@@ -1435,12 +1435,6 @@ def parallel_stack(values, name="parallel_stack"):
         [expand_dims(value, 0) for value in values], shape=output_shape)
 
 
-# This function is deprecated. Use the one in array_ops_stack.py instead.
-# TODO(b/269481974): Delete this function when all references have been moved.
-def stack(values, axis=0, name="stack"):
-  return array_ops_stack.stack(values, axis, name)
-
-
 # pylint: disable=invalid-name
 def _autopacking_helper(list_or_tuple, dtype, name):
   """Converts the given list or tuple to a tensor by packing.
@@ -1559,12 +1553,6 @@ def _autopacking_conversion_function(v, dtype=None, name=None, as_ref=False):
 # assumes every element is a value.
 tensor_conversion_registry.register_tensor_conversion_function(
     (list, tuple), _autopacking_conversion_function, 99)
-
-
-# This function is deprecated. Use the one in array_ops_stack.py instead.
-# TODO(b/269481974): Delete this function when all references have been moved.
-def unstack(value, num=None, axis=0, name="unstack"):
-  return array_ops_stack.unstack(value, num, axis, name)
 
 
 @tf_export("concat")
@@ -6874,7 +6862,7 @@ def stop_gradient(input, name=None):  # pylint: disable=redefined-builtin
   # since the backward function doesn't run in the forward pass. Pausing the
   # tape around this op instructs any tf.GradientTapes to ignore the
   # forward-pass output of StopGradient, which may be much more efficient.
-  with tape.stop_recording():
+  with record.stop_recording():
     return gen_array_ops.stop_gradient(input, name=name)
 
 

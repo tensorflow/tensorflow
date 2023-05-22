@@ -22,7 +22,7 @@ from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management as ckpt_manager
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
@@ -352,7 +352,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def assign():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -488,7 +488,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_sub():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops_stack.stack([
@@ -513,7 +513,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_add():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops_stack.stack([replica_id, replica_id + 1]),
@@ -534,7 +534,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_div():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops.reshape(replica_id + 2, [1]),
@@ -555,7 +555,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_mul():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops.reshape(
@@ -979,7 +979,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables_lib.global_variables_initializer())
 
       def assign(v=v):
-        ctx = ds_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -1011,7 +1011,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     self.evaluate(variables_lib.global_variables_initializer())
 
     def all_reduce():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       return ctx.all_reduce("SUM", v) + math_ops.cast(replica_id,
                                                       dtypes.float32)
@@ -1044,7 +1044,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       self.evaluate(variables_lib.global_variables_initializer())
 
       def assign(var=v):
-        ctx = ds_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return var.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -1105,7 +1105,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def assign():
-        ctx = ds_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -1147,7 +1147,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         @def_function.function
         def assign_fn():
           cluster_resolver = strategy.cluster_resolver
-          replica_ctx = ds_context.get_replica_context()
+          replica_ctx = distribute_lib.get_replica_context()
           if ((cluster_resolver and cluster_resolver.task_type == "worker") or
               math_ops.equal(replica_ctx.replica_id_in_sync_group,
                              constant_op.constant(1))):

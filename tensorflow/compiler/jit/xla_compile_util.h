@@ -44,7 +44,9 @@ StatusOr<std::unique_ptr<Graph>> CreateSingleOpGraph(
     const NodeDef& node_def, absl::Span<const XlaArgument> args,
     absl::Span<const DataType> result_types);
 
-bool UsePjRtForSingleDeviceCompilation();
+// Checks if single device compilation and execution with PJRT is enabled for
+// `device_type` in either the XlaLaunch op or the XlaCompileOnDemand op.
+bool UsePjRtForSingleDeviceCompilation(const DeviceType& device_type);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_COMPILE_UTIL_H_

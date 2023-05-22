@@ -486,6 +486,11 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
     std::vector<TensorHandlePtr> components, absl::Span<const int64_t> shape,
     TF_Status* status) {
+  if (components.empty()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "No components are provide for creating a ParallelTensor");
+    return nullptr;
+  }
   TFE_TensorHandleGetStatus(components[0].get(), status);
   if (!status->status.ok()) {
     return nullptr;
@@ -513,6 +518,11 @@ std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
 std::unique_ptr<ParallelTensor> ParallelTensor::FromTensorHandles(
     const ParallelDevice& parallel_device,
     std::vector<TensorHandlePtr> components, TF_Status* status) {
+  if (components.empty()) {
+    TF_SetStatus(status, TF_INTERNAL,
+                 "No components are provided for creating a ParallelTensor");
+    return nullptr;
+  }
   TFE_TensorHandleGetStatus(components[0].get(), status);
   if (!status->status.ok()) {
     return nullptr;

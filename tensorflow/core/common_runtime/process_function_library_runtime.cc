@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/optimize_function_graph_utils.h"
 #include "tensorflow/core/common_runtime/partitioning_utils.h"
@@ -564,11 +566,14 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       options.lib_def != nullptr
           ? options.lib_def->FindOptimizedFunctionGraph(function_name)
           : lib_def_->FindOptimizedFunctionGraph(function_name);
+  if (optimized_graph_proto != nullptr) {
+    LOG(INFO) << "Found AOT'd graph for function: " << function_name;
+  }
   StatusOr<OptimizedFunctionGraphInfo> optimized_graph_info =
       optimized_graph_proto == nullptr
-          ? OptimizeFunctionGraph(function_name, attrs, options, *dev_set,
-                                  lib_def_, composite_devices, cpu_device,
-                                  default_device, env_)
+          ? OptimizeFunctionGraphOrReadFromFileCache(
+                function_name, attrs, options, *dev_set, lib_def_,
+                composite_devices, cpu_device, default_device, env_)
           : OptimizedFunctionGraphInfo::FromProto(*optimized_graph_proto);
   if (!optimized_graph_info.ok()) return optimized_graph_info.status();
 
@@ -578,8 +583,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   TF_ASSIGN_OR_RETURN(
       auto subgraphs,
-      PreprocessAndPartitionGraph(*optimized_graph_info, options, *dev_set,
-                                  lib_def_, composite_devices, env_));
+      PreprocessAndPartitionGraph(function_name, *optimized_graph_info, options,
+                                  *dev_set, lib_def_, composite_devices, env_));
   const uint64 optimization_end_time_usecs = Env::Default()->NowMicros();
   const uint64 graph_optimization_duration =
       optimization_end_time_usecs - optimization_start_time_usecs;
@@ -670,6 +675,13 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       bool ints_on_device =
           (device_type == "TPU" || device_type == "XLA_CPU" ||
            device_type == "XLA_GPU" || options.int_args_and_retvals_on_device);
+      Int32FulltypePass int32_fulltype(
+          "ProcessFunctionLibraryRuntime::InstantiateMultiDevice");
+      status->Update(int32_fulltype.ProcessGraph(subgraph, ints_on_device));
+      if (!status->ok()) {
+        counter.DecrementCount();
+        return;
+      }
       status->Update(UpdateArgAndRetvalMetadata(
           subgraph, &comp_data->arg_indices, &comp_data->ret_indices,
           &comp_data->arg_alloc_attrs, &comp_data->ret_alloc_attrs,
@@ -922,7 +934,7 @@ Status ProcessFunctionLibraryRuntime::RunMultiDeviceSync(
         VLOG(2) << "Component function execution failed: " << run_status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            run_status.error_message());
+            run_status.message());
         if (opts.rendezvous != nullptr) opts.rendezvous->StartAbort(run_status);
         return errors::CreateWithUpdatedMessage(run_status, function_and_msg);
       } else {
@@ -1012,7 +1024,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDeviceAsync(
                 << comp_handle << " failed: " << status;
         const string function_and_msg = strings::StrCat(
             errors::FormatFunctionForError(data->function_name_), " ",
-            status.error_message());
+            status.message());
         refcounted_done->UpdateStatus(
             errors::CreateWithUpdatedMessage(status, function_and_msg));
         // Cancel the execution of other component functions.
@@ -1216,12 +1228,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
 void ProcessFunctionLibraryRuntime::CleanupCreatedRendezvous(
     const Rendezvous* created_rendezvous, const int64_t step_id) const {
   if (created_rendezvous) {
-    DCHECK(rendezvous_factory_);
     created_rendezvous->Unref();
-    Status s = rendezvous_factory_.CleanUp(step_id);
-    if (!s.ok()) {
-      LOG(ERROR) << s;
-    }
   }
 }
 
@@ -1231,13 +1238,9 @@ ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     FunctionLibraryRuntime::DoneCallback done,
     const FunctionLibraryRuntime::Options& opts,
     const Rendezvous* created_rendezvous) const {
-  const Rendezvous* rendezvous_to_cleanup = nullptr;
-  if (opts.cleanup_rendezvous_after_run) {
-    rendezvous_to_cleanup = created_rendezvous;
-  }
   return [this, items, done = std::move(done), step_id = opts.step_id,
-          rendezvous_to_cleanup](const Status& status) {
-    this->CleanupCreatedRendezvous(rendezvous_to_cleanup, step_id);
+          created_rendezvous](const Status& status) {
+    this->CleanupCreatedRendezvous(created_rendezvous, step_id);
     auto* local_status = new Status(status);
     CleanUp(items, [local_status, done](const Status& cleanup_status) {
       local_status->Update(cleanup_status);
@@ -1526,9 +1529,7 @@ Status ProcessFunctionLibraryRuntime::RunSync(
 
     Status status = RunMultiDeviceSync(new_opts, handle, &function_rets,
                                        std::move(get_component_args));
-    if (new_opts.cleanup_rendezvous_after_run) {
-      CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
-    }
+    CleanupCreatedRendezvous(created_rendezvous, new_opts.step_id);
     status.Update(FunctionRetsToTensors(&function_rets, rets));
     return status;
   } else {

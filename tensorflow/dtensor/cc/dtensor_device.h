@@ -38,6 +38,7 @@ namespace dtensor {
 // TODO(b/268241383): Remove the `status = nullptr` overload.
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info,
+                           bool is_async, int in_flight_nodes_limit,
                            TF_Status* status = nullptr);
 
 // Add a mesh to the `DTensorDevice` indicated by `device_info`.
@@ -56,8 +57,7 @@ void AllocateDTensorDevice(absl::string_view device_name,
 // async executors used by DTensor. The throttling bounds the memory usage
 // of an eager training loop. Python API sets this value to 8 by default.
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
-             TF_Status* status);
+             bool is_host_mesh, TF_Status* status);
 
 // Sets a requested layout for outputs of all operations.
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,

@@ -51,6 +51,10 @@ namespace internal {
 class CommonOpaqueConversionUtil;  // Class for friend declarations.
 }
 
+namespace async {
+class AsyncSubgraph;  // Class for friend declarations.
+}
+
 namespace impl {
 class Interpreter;         // Class for friend declarations.
 class InterpreterBuilder;  // Class for friend declarations.
@@ -460,17 +464,40 @@ class Subgraph {
   // index. If an invalid subgraph index is given, then returns nullptr.
   TfLiteContext* GetSubgraphContext(int subgraph_index);
 
+  // Retrieves a const pointer to the corresponding TfLiteContext of a subgraph
+  // given a subgraph index. If an invalid subgraph index is given, then returns
+  // nullptr.
+  const TfLiteContext* GetSubgraphContext(int subgraph_index) const;
+
   // Marks the subgraph with the given index as "delegation-skippable". Returns
   // kTfLiteOk if the given subgraph index is valid and is successfully marked
-  // as delegation-skippable.
+  // as delegation-skippable, and an error status if the subgraph index is
+  // invalid.
   // If a subgraph is delegation-skippable, then the subgraph will be handled by
   // a TfLiteDelegate (and that the delegate is supposed to be already aware of
   // this state), and therefore, TfLiteInterpreter can skip invoking
   // `ModifyGraphWithDelegate` on this subgraph.
-  // NOTE: This function is expected to be called only when the subgraph will be
-  // skipped by the interpreter (e.g. the subgraph is part of the list of callee
-  // subgraphs of the same control flow node, and all of those callees are
-  // supported by the same delegate at once).
+  // NOTE: This function is expected to be called only when the subgraph that
+  // `subgraph_index` is pointing to should be skipped by
+  // interpreter::ModifyGraphWithDelegate (e.g. the subgraph is part of the list
+  // of callee subgraphs of the same control flow node, and all of those callees
+  // are supported by the same delegate at once).
+  //
+  // For example, this function can be used when the delegate is handling
+  // control flow ops like while op. E.g. A while op has condition subgraph
+  // indexed at `i` and body subgraph indexed at `j`. The op can be delegated
+  // when the following condition satisfied:
+  //   1. The delegate supports while op
+  //   2. Both condition subgraph `i` and body subgraph `j` can be fully
+  //      delegated by the delegate.
+  // Then if the delegate decides to support the while node along with both body
+  // and condition subgraphs, it should mark subgraphs `i` and `j` skippable so
+  // those two subgraphs won't be delegated separately again after being
+  // absorbed by the parent subgraph.
+  // WARNING: It is the delegate's responsibility to define when to skip
+  // subgraph->ModifyGraphWithDelegate, to check any edge cases (i.e. multiple
+  // references to the subgraph that `subgraph_index` is pointing to), and to
+  // mark that subgraph as skippable using this function.
   TfLiteStatus MarkSubgraphAsDelegationSkippable(int subgraph_index);
 
   // Returns whether this subgraph is delegation-skippable.
@@ -488,6 +515,7 @@ class Subgraph {
  private:
 #ifndef DOXYGEN_SKIP
   friend class tflite::impl::InterpreterBuilder;
+  friend class tflite::async::AsyncSubgraph;
   friend class TestDelegate;
 #endif  // DOXYGEN_SKIP
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a

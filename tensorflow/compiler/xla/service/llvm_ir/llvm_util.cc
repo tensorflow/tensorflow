@@ -76,16 +76,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-std::unique_ptr<llvm::Module> DropConstantInitializers(
-    const llvm::Module& module) {
-  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
-  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
-    global_var.setInitializer(nullptr);
-    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
-  }
-  return cloned_module;
-}
-
 std::string DumpToString(const llvm::Module* module) {
   return DumpToStringTempl(module);
 }
@@ -616,7 +606,6 @@ static Status CreateAndWriteStringToFile(const std::string& directory_name,
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized,
                      absl::string_view filename_suffix) {
-  const auto& debug_opts = hlo_module.config().debug_options();
   if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
@@ -628,15 +617,6 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
                    filename_suffix.empty() ? "" : ".", filename_suffix);
   DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpToString(&llvm_module));
-
-  // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.  Skip
-  // this if we're dumping to stdout; there's no point in duplicating everything
-  // when writing to the terminal.
-  if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
-                    DumpToString(DropConstantInitializers(llvm_module).get()));
-  }
 }
 
 llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,

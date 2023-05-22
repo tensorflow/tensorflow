@@ -33,10 +33,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
+#include "tensorflow/core/distributed_runtime/rpc/rpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
@@ -101,11 +101,10 @@ class GrpcWorkerServiceThread {
  public:
   explicit GrpcWorkerServiceThread(
       GrpcWorker* worker, ::grpc::ServerBuilder* builder,
-      std::unordered_map<int, int> queue_depth, GrpcResponseCache* cache,
+      std::unordered_map<int, int> queue_depth,
       grpc::WorkerService::AsyncService* worker_service)
       : worker_(worker),
         queue_depth_(queue_depth),
-        cache_(cache),
         worker_service_(worker_service),
         is_shutdown_(false) {
     cq_ = builder->AddCompletionQueue();
@@ -358,7 +357,6 @@ class GrpcWorkerServiceThread {
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
   std::unique_ptr<Thread> thread_;
   std::unordered_map<int, int> queue_depth_;
-  GrpcResponseCache* cache_;
   grpc::WorkerService::AsyncService* const worker_service_;
 
   mutex shutdown_mu_;
@@ -374,9 +372,8 @@ class GrpcWorkerService : public tsl::AsyncServiceInterface {
     builder->RegisterService(&worker_service_);
 
     for (int i = 0; i < options.num_serving_threads; i++) {
-      threads_.emplace_back(
-          new GrpcWorkerServiceThread(worker, builder, options.queue_depth,
-                                      cache_.get(), &worker_service_));
+      threads_.emplace_back(new GrpcWorkerServiceThread(
+          worker, builder, options.queue_depth, &worker_service_));
     }
   }
 
@@ -411,7 +408,6 @@ class GrpcWorkerService : public tsl::AsyncServiceInterface {
   grpc::WorkerService::AsyncService worker_service_;
   std::vector<std::unique_ptr<GrpcWorkerServiceThread>> threads_;
 
-  std::unique_ptr<GrpcResponseCache> cache_;
   mutex service_shutdown_mu_;
   bool is_shutdown_ TF_GUARDED_BY(service_shutdown_mu_);
 
@@ -433,7 +429,7 @@ GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
 
 void GrpcWorker::EnableResponseCache() {
   VLOG(3) << "Enabling gRPC tensor response cache.";
-  response_cache_ = std::make_unique<GrpcResponseCache>();
+  response_cache_ = std::make_unique<RpcResponseCache>();
 }
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
@@ -472,7 +468,7 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                              const Status& status) {
     if (cache_enabled) {
       // Data is ready. Process all pending requests in the response cache.
-      response_cache_->OnRequestFinished(request_id, tensor, is_dead, status);
+      response_cache_->RequestFinished(request_id, tensor, is_dead, status);
     } else {
       do_response(tensor, is_dead, status);
     }
@@ -623,7 +619,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
                              const Tensor& tensor, const Status& status) {
     if (cache_enabled) {
       // Data is ready. Process all pending requests in the response cache.
-      response_cache_->OnRequestFinished(request_id, tensor, false, status);
+      response_cache_->RequestFinished(request_id, tensor, false, status);
     } else {
       do_response(tensor, false, status);
     }
@@ -760,7 +756,7 @@ void GrpcWorker::RemoveCacheEntryForId(int64_t request_id) {
 
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env,
                                           const ConfigProto& config) {
-  return std::unique_ptr<GrpcWorker>(new GrpcWorker(env, config));
+  return std::make_unique<GrpcWorker>(env, config);
 }
 
 std::unique_ptr<tsl::AsyncServiceInterface> NewGrpcWorkerService(

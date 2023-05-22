@@ -30,7 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import monitored_session
@@ -42,7 +42,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self.session_root = tempfile.mkdtemp()
 
-    self.v = variables.VariableV1(10.0, dtype=dtypes.float32, name="v")
+    self.v = variable_v1.VariableV1(10.0, dtype=dtypes.float32, name="v")
     self.delta = constant_op.constant(1.0, dtype=dtypes.float32, name="delta")
     self.eta = constant_op.constant(-1.4, dtype=dtypes.float32, name="eta")
     self.inc_v = state_ops.assign_add(self.v, self.delta, name="inc_v")

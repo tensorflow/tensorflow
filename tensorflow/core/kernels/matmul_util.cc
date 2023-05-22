@@ -71,7 +71,7 @@ int MatmulMaxAutotuneAlgorithmCount() {
   Status status =
       ReadInt64FromEnvVar("TF_MATMUL_AUTOTUNE_MAX_ALGORITHMS", 10, &value);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   static constexpr const int kMaxValue = std::numeric_limits<int>::max();
   if (value < 1 || value > kMaxValue) {

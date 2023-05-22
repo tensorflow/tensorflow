@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/cloud/compute_engine_metadata_client.h"
 
+#include <cstdlib>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/tsl/platform/cloud/curl_http_request.h"
 
 namespace tsl {
 
 namespace {
+
+// The environment variable to override the compute engine metadata endpoint.
+constexpr char kGceMetadataHost[] = "GCE_METADATA_HOST";
 
 // The URL to retrieve metadata when running in Google Compute Engine.
 constexpr char kGceMetadataBaseUrl[] =
@@ -38,8 +43,16 @@ ComputeEngineMetadataClient::ComputeEngineMetadataClient(
 Status ComputeEngineMetadataClient::GetMetadata(
     const string& path, std::vector<char>* response_buffer) {
   const auto get_metadata_from_gce = [path, response_buffer, this]() {
+    string metadata_url;
+    const char* metadata_url_override = std::getenv(kGceMetadataHost);
+    if (metadata_url_override) {
+      metadata_url = absl::StrCat("http://", metadata_url_override,
+                                  "/computeMetadata/v1/");
+    } else {
+      metadata_url = kGceMetadataBaseUrl;
+    }
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-    request->SetUri(kGceMetadataBaseUrl + path);
+    request->SetUri(metadata_url + path);
     request->AddHeader("Metadata-Flavor", "Google");
     request->SetResultBuffer(response_buffer);
     TF_RETURN_IF_ERROR(request->Send());

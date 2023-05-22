@@ -28,8 +28,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
@@ -1184,9 +1184,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(v2.read_value().numpy(), 0.8, delta=1e-6)
 
   def testRunAndReduce(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
 
       expected_result = (4. * self.strategy.num_replicas_in_sync,
@@ -1198,7 +1198,7 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
         def replica_fn(input_tensor):
           # Within `replica_fn`, it has to be in a replica context.
           self.assertFalse(
-              distribution_strategy_context.in_cross_replica_context())
+              distribute_lib.in_cross_replica_context())
           return input_tensor + v, input_tensor - v
 
         run_result = self.strategy.run(replica_fn, args=(input_tensor,))
@@ -1218,9 +1218,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(result.fetch(), expected_result)
 
   def testRunAndReduceWithAssignAdd(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(initial_value=1.)
       v1 = variables.Variable(
           initial_value=0.,
@@ -1235,7 +1235,7 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
         def replica_fn(input_tensor):
           # Within `replica_fn`, it has to be in a replica context.
           self.assertFalse(
-              distribution_strategy_context.in_cross_replica_context())
+              distribute_lib.in_cross_replica_context())
 
           v1.assign_add(input_tensor)
           return input_tensor + v, input_tensor - v
@@ -1258,9 +1258,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v1, 6.)
 
   def testVariableAggregation(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(
           initial_value=1.,
           aggregation=variable_scope.VariableAggregation.SUM)
@@ -1270,7 +1270,7 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
 
         def replica_fn():
           value = math_ops.cast(
-              distribution_strategy_context.get_replica_context()
+              distribute_lib.get_replica_context()
               .replica_id_in_sync_group + 1, v.dtype)
           v.assign(value)
 
@@ -1284,9 +1284,9 @@ class StrategyIntegrationTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(v, expected_result)
 
   def testVariableCaching(self):
-    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    self.assertFalse(distribute_lib.in_cross_replica_context())
     with self.strategy.scope():
-      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      self.assertTrue(distribute_lib.in_cross_replica_context())
       v = variables.Variable(
           initial_value=1.,
           aggregation=variable_scope.VariableAggregation.ONLY_FIRST_REPLICA)

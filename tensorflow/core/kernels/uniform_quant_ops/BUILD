@@ -34,13 +34,13 @@ filegroup(
     ] + [
         "math_utils.cc",
         "tensor_utils.cc",
+        "uniform_dequantize_op.cc",
         "uniform_quantize_op.cc",
         "uniform_quantized_add_op.cc",
-        "uniform_dequantize_op.cc",
-        "uniform_requantize_op.cc",
-        "uniform_quantized_dot_ops.cc",
-        "uniform_quantized_convolution_ops.cc",
         "uniform_quantized_clip_by_value_op.cc",
+        "uniform_quantized_convolution_ops.cc",
+        "uniform_quantized_dot_ops.cc",
+        "uniform_requantize_op.cc",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

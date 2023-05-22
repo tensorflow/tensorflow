@@ -1382,7 +1382,7 @@ Status OptimizeGraph(
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
     Status added_device = item.AddDevice(d->name());
-    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    if (!added_device.ok()) VLOG(3) << added_device.message();
   }
   VLOG(3) << "Grappler available devices: "
           << absl::StrJoin(item.devices(), ", ");

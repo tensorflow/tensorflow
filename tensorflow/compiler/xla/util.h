@@ -682,6 +682,9 @@ class HloModule;
 using HloPredicate = std::function<bool(const HloInstruction*)>;
 using HloModulePredicate = std::function<bool(const HloModule*)>;
 
+inline bool HloPredicateTrue(const HloInstruction*) { return true; }
+inline bool HloPredicateFalse(const HloInstruction*) { return false; }
+
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;
 

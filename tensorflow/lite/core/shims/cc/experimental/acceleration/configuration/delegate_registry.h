@@ -17,9 +17,9 @@ limitations under the License.
 
 // NOLINTBEGIN(whitespace/line_length)
 /// For documentation, see
-/// third_party/tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h.
+/// third_party/tensorflow/lite/acceleration/configuration/delegate_registry.h.
 // NOLINTEND(whitespace/line_length)
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/acceleration/configuration/delegate_registry.h"
 
 namespace tflite_shims {
 namespace delegates {

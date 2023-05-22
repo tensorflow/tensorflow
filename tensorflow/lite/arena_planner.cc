@@ -41,6 +41,7 @@ bool ShareFirstInputWithFirstOutputForNode(const TfLiteRegistration& node_reg) {
     case kTfLiteBuiltinExpandDims:
     case kTfLiteBuiltinReshape:
     case kTfLiteBuiltinSqueeze:
+    case kTfLiteBuiltinBitcast:
       return true;
     default:
       return false;

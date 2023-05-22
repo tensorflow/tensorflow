@@ -93,6 +93,9 @@ void AddQuantizePtqDynamicRangePasses(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::TF::CreateUnrollBatchMatMulPassPass());
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
+  if (quantization_options.experimental_enable_tpu_model_support()) {
+    pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
+  }
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::quant::CreatePrepareLiftingPass(quantization_options.op_set()));
   pm.addPass(mlir::quant::CreateLiftQuantizableSpotsAsFunctionsDRQPass(
@@ -134,7 +137,6 @@ void AddQuantizePtqPreCalibrationPasses(
         mlir::TF::CreateUnrollBatchMatMulPassPass());
   }
   pm.addPass(mlir::TF::CreateTFShapeInferencePass());
-  // TODO(b/274029756): Add the TpuToCpu pass to dynamic PTQ and QAT pipelines.
   if (quantization_options.experimental_enable_tpu_model_support()) {
     pm.addPass(mlir::quant::CreateConvertTpuModelToCpuPass());
   }

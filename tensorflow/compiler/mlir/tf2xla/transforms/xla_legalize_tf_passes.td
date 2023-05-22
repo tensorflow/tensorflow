@@ -17,7 +17,7 @@ limitations under the License.
 
 include "mlir/Pass/PassBase.td"
 
-def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
+def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
   let summary = "Legalize from TF dialect's or HLO dialect's control flow.";
 
   let description = [{
@@ -44,7 +44,12 @@ def LegalizeTF : Pass<"xla-legalize-tf", "mlir::func::FuncOp"> {
     Option<"prefer_tf2xla_", "prefer-tf2xla", "bool",
         /*default=*/"false",
         "Prioritize tf2xla fallback legalization over MLIR legalization "
-        "patterns">
+        "patterns">,
+    Option<"use_tf2xla_hlo_importer_", "use-tf2xla-hlo-importer",
+       "bool", /*default=*/"false",
+        "Use the experimental HLO to MHLO importer for per-op fallback calls "
+        " from MLIR bridge to TF2XLA."
+        "Users should not set this flag and ideally this goes away.">
   ];
 
   let constructor = "mlir::mhlo::createLegalizeTFPass()";

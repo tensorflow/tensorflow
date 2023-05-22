@@ -50,6 +50,8 @@ class DeviceNameUtils {
   static std::string FullName(const std::string& job, int replica, int task,
                               const std::string& type, int id);
 
+  // TODO(b/278776328): Convert this to a Protobuf, since emptiness of a field
+  // is a standardized pattern in Protobuf.
   struct ParsedName {
     void Clear() {
       has_job = false;
@@ -77,6 +79,55 @@ class DeviceNameUtils {
 
     bool operator!=(const ParsedName& other) const {
       return !operator==(other);
+    }
+
+    bool operator<(const ParsedName& other) const {
+      if (has_job != other.has_job) return !has_job;
+      if (has_job) {
+        if (job < other.job) {
+          return true;
+        }
+        if (job > other.job) {
+          return false;
+        }
+      }
+      if (has_replica != other.has_replica) return !has_replica;
+      if (has_replica) {
+        if (replica < other.replica) {
+          return true;
+        }
+        if (replica > other.replica) {
+          return false;
+        }
+      }
+      if (has_task != other.has_task) return !has_task;
+      if (has_task) {
+        if (task < other.task) {
+          return true;
+        }
+        if (task > other.task) {
+          return false;
+        }
+      }
+      if (has_type != other.has_type) return !has_type;
+      if (has_type) {
+        if (type < other.type) {
+          return true;
+        }
+        if (type > other.type) {
+          return false;
+        }
+      }
+      if (has_id != other.has_id) return !has_id;
+      if (has_id) {
+        if (id < other.id) {
+          return true;
+        }
+        if (id > other.id) {
+          return false;
+        }
+      }
+      return false;
     }
 
     bool has_job = false;
@@ -216,6 +267,17 @@ class DeviceNameUtils {
   // `device_name`.
   static Status DeviceNameToCpuDeviceName(const std::string& device_name,
                                           std::string* host_device_name);
+
+  static bool CompareFullNames(const StringPiece& a, const StringPiece& b) {
+    ParsedName parsed_a;
+    ParsedName parsed_b;
+    bool a_status = ParseFullName(a, &parsed_a);
+    bool b_status = ParseFullName(b, &parsed_b);
+    // Orders unparsable names first.
+    if (a_status != b_status) return !a_status;
+    if (!a_status) return a < b;
+    return parsed_a < parsed_b;
+  }
 
   // Returns true iff the device_name is in the format of
   // ".*STREAM_(C|G)PU_\d+:\d+$".

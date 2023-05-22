@@ -279,6 +279,7 @@ TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
                                         /*.free =*/nullptr,
                                         /*.prepare =*/nullptr,
                                         /*.invoke =*/nullptr,
+                                        /*.async_kernel =*/nullptr,
                                         /*.builtin_code =*/builtin_code,
                                         /*.node_index =*/-1};
 }
@@ -312,6 +313,13 @@ void TfLiteRegistrationExternalSetInvoke(
     TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
                            TfLiteOpaqueNode* node)) {
   registration->invoke = invoke;
+}
+
+void TfLiteRegistrationExternalSetAsyncKernel(
+    TfLiteRegistrationExternal* registration,
+    TfLiteAsyncKernel* (*async_kernel)(TfLiteOpaqueContext* context,
+                                       TfLiteOpaqueNode* node)) {
+  registration->async_kernel = async_kernel;
 }
 
 TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(

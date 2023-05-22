@@ -25,7 +25,6 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
@@ -60,7 +59,7 @@ PS = run_config.TaskType.PS
 
 
 def _get_replica_id_integer():
-  replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+  replica_id = distribute_lib.get_replica_context().replica_id_in_sync_group
   if isinstance(replica_id, ops.Tensor):
     replica_id = tensor_util.constant_value(replica_id)
   return replica_id

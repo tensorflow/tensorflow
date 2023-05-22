@@ -18,8 +18,8 @@
 
 import abc
 
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -612,7 +612,7 @@ class Optimizer(
   def _scale_loss(loss_value):
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_utils.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
+      num_replicas = distribute_lib.get_strategy().num_replicas_in_sync
       if num_replicas > 1:
         loss_value *= (1. / num_replicas)
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
@@ -666,14 +666,14 @@ class Optimizer(
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    if distribute_ctx.has_strategy() and not skip_gradients_aggregation:
+    if distribute_lib.has_strategy() and not skip_gradients_aggregation:
       # Handle DistributionStrategy case.
-      if distribute_ctx.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         raise RuntimeError("Use `_distributed_apply()` instead of "
                            "`apply_gradients()` in a cross-replica context.")
 
       grads_and_vars = get_filtered_grad_fn(lambda: grads_and_vars)()
-      return distribute_ctx.get_replica_context().merge_call(
+      return distribute_lib.get_replica_context().merge_call(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
@@ -918,7 +918,7 @@ class Optimizer(
     v = self._non_slot_dict.get(key, None)
     if v is None:
       self._maybe_initialize_trackable()
-      distribution_strategy = distribute_ctx.get_strategy()
+      distribution_strategy = distribute_lib.get_strategy()
       with distribution_strategy.extended.colocate_vars_with(colocate_with):
         if eager:
           restored_initial_value = self._preload_simple_restoration(

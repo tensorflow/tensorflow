@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -95,8 +96,9 @@ void CollectiveExecutorMgr::RefreshStepIdSequenceAsync(
 }
 
 std::unique_ptr<CollectiveExecutorMgr> CreateProdLocalCollectiveExecutorMgr(
-    const ConfigProto& config, const DeviceMgr* device_mgr,
-    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator) {
+    const ConfigProto& config, const DeviceMgr* device_mgr) {
+  std::unique_ptr<NcclCommunicatorInterface> nccl_communicator =
+      MaybeCreateNcclCommunicator(config);
   auto device_resolver = std::make_unique<DeviceResolverLocal>(device_mgr);
   auto param_resolver = std::make_unique<CollectiveParamResolverLocal>(
       config, device_mgr, device_resolver.get(), nccl_communicator.get(),

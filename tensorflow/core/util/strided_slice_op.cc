@@ -138,6 +138,9 @@ static Status TF_MUST_USE_RESULT BuildDenseSpec(
         dense->final_shape_gather_indices_sparse.push_back(-1);
       } else {
         if (full_index == dense->begin.size()) {
+          if (dense->dims == 0) {
+            return errors::InvalidArgument("Attempting to slice scalar input.");
+          }
           return errors::InvalidArgument("Index out of range using input dim ",
                                          full_index, "; input has only ",
                                          dense->dims, " dims");

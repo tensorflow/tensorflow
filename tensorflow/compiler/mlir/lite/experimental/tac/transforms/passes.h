@@ -39,9 +39,10 @@ std::unique_ptr<OperationPass<func::FuncOp>> CreateTargetAnnotationPass(
 
 // Create an instance of the RaiseTargetSubgraphsPass. If `skip_raise_cpu_ops`,
 // we skip clustering for CPU ops for better clustering of ops running on other
-// ML accelerators.
+// ML accelerators. When `ignore_inference_type` is set to true, the inference
+// types are set to "NOT_CARE" for better clustering.
 std::unique_ptr<OperationPass<ModuleOp>> CreateRaiseTargetSubgraphsPass(
-    bool skip_raise_cpu_ops = false);
+    bool skip_raise_cpu_ops = false, bool ignore_inference_type = false);
 
 // Create an instance of the AlternativeSubgraphPass.
 std::unique_ptr<OperationPass<ModuleOp>> CreateAlternativeSubgraphPass(

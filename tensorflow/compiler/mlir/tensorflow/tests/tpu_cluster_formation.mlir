@@ -707,6 +707,19 @@ func.func @valid_compilation_cluster_no_replication_op_device() {
 
 // -----
 
+// Check conflicting device names
+// CHECK: "tf_device.cluster"()
+// CHECK:    "tf.opA"()
+// CHECK:    "tf.opB"()
+// CHECK-NOT: device =
+func.func @do_nothing_if_short_names_conflict() {
+  "tf.opA"() { _xla_compile_device_type = "TPU", device = "/replica:1/task:2/device:TPU:1"} : () -> ()
+  "tf.opB"() { _xla_compile_device_type = "TPU", device = "/replica:3/task:4/device:TPU:1"} : () -> ()
+  func.return
+}
+
+// -----
+
 // Check non-replicated case, including expected device attr in cluster.
 // CHECK: "tf_device.cluster"()
 // CHECK:    "tf.opA"()

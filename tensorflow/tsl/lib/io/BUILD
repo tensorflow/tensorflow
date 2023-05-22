@@ -1,4 +1,5 @@
 load("//tensorflow/tsl/platform:build_config.bzl", "tsl_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load(
     "//tensorflow/tsl/platform:rules_cc.bzl",
@@ -7,7 +8,7 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         "//tensorflow/tsl/lib/io/snappy:__pkg__",
@@ -17,7 +18,7 @@ package(
         "//tensorflow/core:__pkg__",
         "//tensorflow/core/lib/io:__subpackages__",
         "//tensorflow/tsl/profiler:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -371,7 +372,7 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -389,7 +390,7 @@ filegroup(
         "table_builder.h",
         "table_options.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -405,7 +406,7 @@ filegroup(
         "//tensorflow/tsl/lib/io/snappy:snappy_inputstream.h",
         "//tensorflow/tsl/lib/io/snappy:snappy_outputbuffer.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 filegroup(
@@ -415,7 +416,7 @@ filegroup(
         "block_builder.h",
         "format.h",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = set_external_visibility(["//tensorflow/core:__pkg__"]),
 )
 
 tsl_cc_test(

@@ -19,6 +19,7 @@ See the [constants guide](https://tensorflow.org/api_guides/python/constant_op).
 
 # Must be separate from array_ops to avoid a cyclic dependency.
 
+import numpy as np
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
@@ -78,6 +79,11 @@ def convert_to_eager_tensor(value, ctx, dtype=None):
   Raises:
     TypeError: if `dtype` is not compatible with the type of t.
   """
+  if isinstance(value, np.ndarray):
+    # Make a copy explicitly because the EagerTensor might share the underlying
+    # memory with the input array. Without this copy, users will be able to
+    # modify the EagerTensor after its creation by changing the input array.
+    value = value.copy()
   if isinstance(value, ops.EagerTensor):
     if dtype is not None and value.dtype != dtype:
       raise TypeError(f"Expected tensor {value} with dtype {dtype!r}, but got "

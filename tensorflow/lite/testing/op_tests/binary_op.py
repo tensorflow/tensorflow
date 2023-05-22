@@ -322,6 +322,22 @@ def make_mul_tests(options):
           "fully_quantize": [False],
           "dynamic_range_quantize": [False],
       },
+      {
+          "dtype": [tf.int16],
+          "input_shape_1": [[1, 3, 3, 3]],
+          "input_shape_2": [[3], [1, 3, 3, 3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
+      {
+          "dtype": [tf.uint32],
+          "input_shape_1": [[1, 3, 3, 3]],
+          "input_shape_2": [[3], [1, 3, 3, 3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
+      },
   ]
   make_binary_op_tests(
       options,

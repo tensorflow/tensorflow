@@ -218,6 +218,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
 endif()
 if(CMAKE_SYSTEM_NAME MATCHES "Android")
   find_library(ANDROID_LOG_LIB log)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES
+    log
+  )
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
@@ -237,13 +240,19 @@ if(_TFLITE_ENABLE_MMAP)
 else()
   list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*mmap_allocation\\.cc$")
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_android\\.cc$")
+
+# Handle TFLite logging source.
+list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_.*\\.cc$")
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Android")
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_android.cc)
+elseif("${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_ios.cc)
+else()
+  list(APPEND TFLITE_SRCS ${TFLITE_SOURCE_DIR}/minimal_logging_default.cc)
 endif()
-if(NOT "${CMAKE_SYSTEM_NAME}" STREQUAL "iOS")
-  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*minimal_logging_ios\\.cc$")
-endif()
+
 populate_tflite_source_vars("core" TFLITE_CORE_SRCS)
+populate_tflite_source_vars("core/acceleration/configuration" TFLITE_CORE_ACCELERATION_SRCS)
 populate_tflite_source_vars("core/api" TFLITE_CORE_API_SRCS)
 populate_tflite_source_vars("core/async" TFLITE_CORE_ASYNC_SRCS)
 populate_tflite_source_vars("core/async/c" TFLITE_CORE_ASYNC_C_SRCS)
@@ -511,6 +520,7 @@ endif()
 
 # TFLite library
 set(_ALL_TFLITE_SRCS
+  ${TFLITE_CORE_ACCELERATION_SRCS}
   ${TFLITE_CORE_API_SRCS}
   ${TFLITE_CORE_C_SRCS}
   ${TFLITE_CORE_EXPERIMENTAL_SRCS}

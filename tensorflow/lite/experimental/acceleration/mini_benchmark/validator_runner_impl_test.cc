@@ -142,10 +142,8 @@ TEST_F(ValidatorRunnerImplTest,
                            CreateNNAPISettings(tflite_settings[0])));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)),
-      options_.storage_path);
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -189,10 +187,8 @@ TEST_F(ValidatorRunnerImplTest,
   tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)),
-      options_.storage_path);
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -236,10 +232,8 @@ TEST_F(ValidatorRunnerImplTest,
   tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)),
-      options_.storage_path);
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,
@@ -281,10 +275,8 @@ TEST_F(ValidatorRunnerImplTest,
   tflite_settings[0].Finish(CreateTFLiteSettings(tflite_settings[0]));
 
   // Run.
-  validator.TriggerValidationAsync(
-      std::make_unique<std::vector<flatbuffers::FlatBufferBuilder>>(
-          std::move(tflite_settings)),
-      options_.storage_path);
+  validator.TriggerValidationAsync(std::move(tflite_settings),
+                                   options_.storage_path);
 
   // Validate.
   FlatbufferStorage<BenchmarkEvent> storage(options_.storage_path,

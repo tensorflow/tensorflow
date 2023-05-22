@@ -150,7 +150,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   // Postpone allocation of output if any of the indexing tensors is not
   // constant, or the input tensor has dynamic dimension.
-  if (!(IsConstantTensor(begin) && IsConstantTensor(size)) ||
+  if (!(IsConstantOrPersistentTensor(begin) &&
+        IsConstantOrPersistentTensor(size)) ||
       HasUnspecifiedDimension(input)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;

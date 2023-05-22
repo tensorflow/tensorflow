@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -182,6 +183,89 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
   return config;
 }
 
+// GPU specific resources for latency hiding scheduler.
+enum class GpuResourceType {
+  kGpuAsyncStream = 0,  // The async stream for collectives.
+  kNumTargetResources = 1,
+};
+
+// GPU async tracker maps all collectives onto an async stream resource.
+class GpuAsyncTracker : public AsyncTracker {
+ public:
+  explicit GpuAsyncTracker(const SchedulerConfig& config)
+      : AsyncTracker(config) {}
+
+  ResourcesVector GetResourcesFromInstruction(
+      const HloInstruction& instr) const override {
+    CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
+    if (op.outer == HloOpcode::kAsyncStart ||
+        op.outer == HloOpcode::kAsyncDone) {
+      ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
+                                    ? ResourceUsageType::kResourceRelease
+                                    : ResourceUsageType::kResourceOccupy;
+
+      const int64_t gpu_stream_resource =
+          GetFirstTargetDefinedResource() +
+          static_cast<int64_t>(GpuResourceType::kGpuAsyncStream);
+      return {std::make_pair(gpu_stream_resource, usage)};
+    }
+    return AsyncTracker::GetResourcesFromInstruction(instr);
+  }
+
+  int64_t GetNumTargetDefinedResources() const override {
+    return static_cast<int64_t>(GpuResourceType::kNumTargetResources);
+  };
+
+  // Returns how many instructions using the given resource_type we can overlap
+  int64_t GetNumAvailableResources(int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return AsyncTracker::GetNumAvailableResources(resource_type);
+    }
+    CHECK_EQ(resource_type,
+             first_target_resource +
+                 static_cast<int64_t>(GpuResourceType::kGpuAsyncStream));
+
+    // We will allow upto 1 outstanding collective on the async stream. This
+    // controls the number of collectives in flight in the schedule (a
+    // collective is in flight if the start is issued but not done). As an
+    // example, with 1, LHS will generate the schedule: s0,e0,s1,e1, i.e., s1
+    // is not scheduled until e0 is scheduled. With 2, the scheduler can
+    // schedule s0,s1,e0,e1, because it assumes that the 2 instances of the
+    // resources do not interfere with each other. If we do want to support > 1
+    // async stream, we can increase this number and then do a post-pass on the
+    // scheduled code to assign async stream-id to collectives (and actually
+    // support > 1 async stream in the runtime).
+    return 1;
+  }
+
+  absl::string_view GetResourceName(int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return AsyncTracker::GetResourceName(resource_type);
+    }
+    CHECK_LE(resource_type,
+             first_target_resource + GetNumTargetDefinedResources());
+    switch (resource_type - first_target_resource) {
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStream):
+        return "kGpuAsyncStream";
+      default:
+        return "kUnsupportedResource";
+    }
+  }
+
+  ResourceHazardType GetResourceHazardType(
+      int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return AsyncTracker::GetResourceHazardType(resource_type);
+    }
+    CHECK_LE(resource_type,
+             first_target_resource + GetNumTargetDefinedResources());
+    return ResourceHazardType::kUnshareable;
+  }
+};
+
 class GpuLatencyEstimator : public ApproximateLatencyEstimator {
  public:
   TimeCost NodeCost(const HloInstruction* instr) const override {
@@ -225,12 +309,30 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                                            !enable_latency_hiding_scheduler));
   TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
 
+  // Tag the module with its 128 bit fingeprint. The fingerprint should include
+  // instruction name with ids
+  std::string fingerprint = module->GetFingerprint128(
+      HloPrintOptions::Canonical().set_print_backend_config(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
+  root->add_frontend_attributes(attributes);
+  VLOG(1) << "Fingerprint before LHS for module " << module->name() << " = "
+          << fingerprint;
+
   if (!enable_latency_hiding_scheduler) {
     return OkStatus();
   }
+
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
   auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
-  auto async_tracker = std::make_unique<AsyncTracker>(config);
+  auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
+    return module->config()
+                   .debug_options()
+                   .xla_gpu_lhs_enable_gpu_async_tracker()
+               ? std::make_unique<GpuAsyncTracker>(config)
+               : std::make_unique<AsyncTracker>(config);
+  }();
 
   auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
     return GetSizeOfShape(shape, pointer_size);

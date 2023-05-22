@@ -137,6 +137,8 @@ def AllToAllOp : XlaCpu_Op<"all_to_all",
       Variadic<TensorOrMemref>:$operand,
       Variadic<TensorOrMemref>:$dst,
       I64ElementsAttr:$replica_groups,
+      I32Attr:$channel_id_present,
+      I64Attr:$op_id,
       OptionalAttr<I64Attr>:$split_dimension,
       OptionalAttr<I64Attr>:$concat_dimension,
       OptionalAttr<I64Attr>:$split_count

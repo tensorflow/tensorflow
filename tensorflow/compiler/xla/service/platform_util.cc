@@ -72,7 +72,7 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
         if (!supported) {
           LOG(INFO) << "platform " << platform->Name() << " present but no "
                     << "XLA compiler available: "
-                    << compiler_status.status().error_message();
+                    << compiler_status.status().message();
         }
         return supported;
       });
@@ -181,13 +181,11 @@ PlatformUtil::GetStreamExecutors(
         GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
   }
   std::vector<std::vector<se::StreamExecutor*>> stream_executors(device_count);
-  std::vector<int64_t> gpu_stream_group_count;
+  int64_t gpu_stream_group_count = 1;
   if (platform->Name() == "CUDA") {
-    TF_CHECK_OK(tsl::ReadInt64sFromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
-                                          /*default_val=*/1,
-                                          &gpu_stream_group_count));
-  } else {
-    gpu_stream_group_count.push_back(1);
+    TF_CHECK_OK(tsl::ReadInt64FromEnvVar("TF_GPU_STREAM_GROUP_COUNT",
+                                         /*default_val=*/1,
+                                         &gpu_stream_group_count));
   }
   if (allowed_devices) {
     int count = 0;
@@ -195,16 +193,12 @@ PlatformUtil::GetStreamExecutors(
       if (count >= device_count) {
         break;
       }
-      stream_executors[count].resize(gpu_stream_group_count.size() > 1
-                                         ? gpu_stream_group_count[i]
-                                         : gpu_stream_group_count[0]);
+      stream_executors[count].resize(gpu_stream_group_count, nullptr);
       count++;
     }
   } else {
     for (int i = 0; i < device_count; ++i) {
-      stream_executors[i].resize(gpu_stream_group_count.size() > 1
-                                     ? gpu_stream_group_count[i]
-                                     : gpu_stream_group_count[0]);
+      stream_executors[i].resize(gpu_stream_group_count, nullptr);
     }
   }
   VLOG(1) << "Initializing devices";
@@ -229,7 +223,7 @@ PlatformUtil::GetStreamExecutors(
               LOG(WARNING) << "unable to create StreamExecutor for "
                            << platform->Name() << ":" << device_ordinal << ": "
                            << "Stream ID :" << stream_id << ": "
-                           << executor_status.status().error_message();
+                           << executor_status.status().message();
             }
           }
           VLOG(1) << "Finished device init " << device_ordinal;

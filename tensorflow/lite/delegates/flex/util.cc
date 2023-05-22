@@ -32,7 +32,7 @@ static constexpr char kResourceVariablePrefix[] = "tflite_resource_variable";
 TfLiteStatus ConvertStatus(TfLiteContext* context,
                            const tensorflow::Status& status) {
   if (!status.ok()) {
-    TF_LITE_KERNEL_LOG(context, "%s", status.error_message().c_str());
+    TF_LITE_KERNEL_LOG(context, "%s", tsl::NullTerminatedMessage(status));
     return kTfLiteError;
   }
   return kTfLiteOk;

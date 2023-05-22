@@ -253,6 +253,7 @@ class ImmediateExecutionContext : public AbstractContext {
     int64_t kernel_cache_size;
     int64_t device_cache_size;
     std::map<std::string, int64_t> func_kernel_cache_entries;
+    int64_t local_rendezvous_cache_active_size;
   };
   virtual CacheStats GetCacheStats() = 0;
 

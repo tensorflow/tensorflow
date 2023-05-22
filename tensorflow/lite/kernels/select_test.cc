@@ -205,6 +205,30 @@ TEST(SelectOpTest, ScalarTrueConditionInt32) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 2, 1}));
 }
 
+TEST(SelectOpTest, ScalarFalseConditionFloat32) {
+  SelectOpModel model({1}, {1, 1, 2, 2}, {1, 1, 2, 2}, TensorType_FLOAT32);
+
+  model.PopulateTensor<bool>(model.input1(), {false});
+  model.PopulateTensor<float>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<float>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({5, 6, 7, 8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 2}));
+}
+
+TEST(SelectOpTest, ScalarTrueConditionFloat32) {
+  SelectOpModel model({1}, {1, 1, 2, 2}, {1, 1, 2, 2}, TensorType_FLOAT32);
+
+  model.PopulateTensor<bool>(model.input1(), {true});
+  model.PopulateTensor<float>(model.input2(), {1, 2, 3, 4});
+  model.PopulateTensor<float>(model.input3(), {5, 6, 7, 8});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(model.GetOutput<float>(), ElementsAreArray({1, 2, 3, 4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 2, 2}));
+}
+
 TEST(SelectOpTest, RankZeroSelectInt32) {
   SelectOpModel model({1}, {1, 2, 2, 1}, {1, 2, 2, 1}, TensorType_INT32);
 

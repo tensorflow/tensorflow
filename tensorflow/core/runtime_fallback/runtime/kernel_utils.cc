@@ -33,7 +33,7 @@ tfrt::Expected<OwnedEagerContext> InitEagerContext(
   tensorflow::Status status = tensorflow::DeviceFactory::AddDevices(
       session_opts, "/job:localhost/replica:0/task:0", &devices);
   if (!status.ok()) {
-    return tfrt::MakeStringError(tfrt::StrCat(status.error_message()));
+    return tfrt::MakeStringError(status.message());
   }
 
   if (device_mgr != nullptr) {

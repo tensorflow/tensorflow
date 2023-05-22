@@ -34,6 +34,18 @@ StatusOr<std::unique_ptr<FallbackState>> FallbackState::Create(
                                          fdef_lib);
 }
 
+StatusOr<std::unique_ptr<FallbackState>> FallbackState::CreateWithCpuDevice(
+    const SessionOptions &session_options,
+    const tensorflow::FunctionDefLibrary &fdef_lib) {
+  // Create devices.
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddCpuDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+
+  return std::make_unique<FallbackState>(session_options, std::move(devices),
+                                         fdef_lib);
+}
+
 FallbackState::FallbackState(const SessionOptions &session_options,
                              std::vector<std::unique_ptr<Device>> devices,
                              const tensorflow::FunctionDefLibrary &fdef_lib)
