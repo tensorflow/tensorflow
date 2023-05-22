@@ -761,4 +761,12 @@ func.func @Select_NotSameStaticShapeRewritesToSelectV2(%arg0: tensor<*xi1>, %arg
   // CHECK: "tf.SelectV2"
 }
 
+func.func @RedundantShapeOp(%shape: tensor<?xi64>, %fill: tensor<f32>) -> (tensor<?xi64>) {
+  %0 = "tf.Fill"(%shape, %fill) : (tensor<?xi64>, tensor<f32>) -> (tensor<*xf32>)
+  %1 = "tf.Shape"(%0) : (tensor<*xf32>) -> (tensor<?xi64>)
+  func.return %1 : tensor<?xi64>
+
+  // CHECK-LABEL: RedundantShapeOp
+  // CHECK-NOT: "tf.Shape"
+}
 }
