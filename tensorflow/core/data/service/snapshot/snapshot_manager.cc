@@ -500,6 +500,8 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
 Status SnapshotManager::ResetSource(Source& source, int64_t source_index) {
   TF_RETURN_IF_ERROR(source.split_provider->Reset());
   ++source.repetition_index;
+  LOG(INFO) << "Starting the " << source.repetition_index << "th repetition "
+            << " for snapshot " << path_ << ", source " << source_index;
   for (int64_t i = 0; i < streams_.size(); ++i) {
     TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(
         path_, /*stream_index=*/i, source_index, source.repetition_index)));
