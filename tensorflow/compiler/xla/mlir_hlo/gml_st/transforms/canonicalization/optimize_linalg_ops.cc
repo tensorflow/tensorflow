@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/Dialect/Tensor/Transforms/Transforms.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -150,10 +151,11 @@ struct OptimizeLinalgOpsPass
     patterns.add(foldConstantOperandsIntoMap);
     patterns.add(replaceBroadcastWithFill);
     patterns.add(replaceConstantMapWithFill);
+    tensor::populateFoldTensorEmptyPatterns(patterns);
+    tensor::populateReassociativeReshapeFoldingPatterns(patterns);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns)))) {
+    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
       return signalPassFailure();
-    }
   }
 };
 
