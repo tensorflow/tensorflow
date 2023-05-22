@@ -589,7 +589,6 @@ cuda_py_strict_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
-        "//tensorflow/python:while_v2",  # b/118513001
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/client:session",
