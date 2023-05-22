@@ -185,8 +185,6 @@ void AddConcurrentRegionsPass::runOnOperation() {
       InsertConcurrentRegions(func_op, custom_calls);
     }
   }
-
-  module.print(llvm::errs());
 }
 
 }  // namespace

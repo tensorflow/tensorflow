@@ -817,6 +817,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:statusor",
+        "//tensorflow/core/profiler/utils:hlo_module_utils",
         "//tensorflow/core/profiler/utils:hlo_proto_to_module",
     ],
 )

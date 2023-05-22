@@ -202,6 +202,9 @@ This release contains contributions from many people at Google, as well as:
         `dataset = dataset.shuffle(dataset.cardinality())`. This will load the
         full dataset into memory so that it can be shuffled, so make sure to
         only use this with datasets of filenames or other small datasets.
+    *   Added a new `tf.data.experimental.pad_to_cardinality` transformation
+        which pads a dataset with zero elements up to a specified cardinality.
+        This is useful for avoiding partial batches while not dropping any data.
 
 *   `tf.math`
 

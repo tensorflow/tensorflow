@@ -401,7 +401,9 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     spmd_simplify.AddPass<WhileLoopConstantSinking>();
     spmd_simplify.AddPass<WhileLoopSimplifier>();
 
-    spmd_simplify.AddPass<ReshapeMover>();
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+    spmd_simplify.AddPass<ReshapeMover>(reshape_mover_options);
     spmd_simplify.AddPass<HloConstantFolding>();
     spmd_simplify.AddPass<ConditionalSimplifier>();
     spmd_simplify.AddPass<HloDCE>();
@@ -551,15 +553,14 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
       pipeline.AddPass<WhileLoopConstantSinking>();
       pipeline.AddPass<WhileLoopSimplifier>();
       pipeline.AddPass<SliceSinker>();
-      pipeline.AddPass<ReshapeMover>();
+
+      ReshapeMoverOptions reshape_mover_options;
+      reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+      pipeline.AddPass<ReshapeMover>(reshape_mover_options);
       pipeline.AddPass<HloConstantFolding>();
       pipeline.AddPass<ConditionalSimplifier>();
       pipeline.AddPass<RealImagExpander>();
       pipeline.AddPass<TransposeFolding>(CanFoldTransposeOperandIntoDot);
-      // Dimension merger is most efficient after the dot decomposer. It also
-      // has to be after the transpose folding because otherwise it can insert
-      // reshapes which will prevent transpose folding.
-      pipeline.AddPass<DotDimensionMerger>();
       pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
       pipeline.AddPass<HloDCE>();
     }();
@@ -828,6 +829,8 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
 
   {
     HloPassPipeline pipeline("hlo normalization");
+
+    pipeline.AddPass<DotDimensionMerger>();
 
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.

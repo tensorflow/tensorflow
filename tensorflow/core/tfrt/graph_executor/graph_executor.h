@@ -267,6 +267,14 @@ class GraphExecutor {
 
   const Options& options() const { return options_; }
 
+  // Compiles graph for `graph_name` and runs any initializers.
+  tensorflow::Status CompileGraph(
+      const std::string& graph_name,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names);
+
  private:
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(

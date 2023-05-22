@@ -33,6 +33,7 @@ tf_cuda_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = [
         "no_cuda_asan",  # TODO(b/193450885)
+        "no_oss",  # TODO(b/283120771)
         "no_windows",  # TODO(b/207281588)
     ],
     deps = [

@@ -69,13 +69,13 @@ class InvalidIfrtCompiler final
 
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
-      std::optional<CompileOptions> options) override {
+      std::unique_ptr<ifrt::DeserializeOptions> options) override {
     return Unimplemented("DeserializeLoadedExecutable not implemented.");
   }
 
   static char ID;  // NOLINT
 };
-char InvalidIfrtCompiler::ID = 0;
+char InvalidIfrtCompiler::ID = 0;  // NOLINT
 
 class CompileOnlyIfRtClient final
     : public llvm::RTTIExtends<CompileOnlyIfRtClient, ifrt::Client> {
@@ -171,7 +171,7 @@ class CompileOnlyIfRtClient final
   std::vector<PjRtDevice*> devices_;
 };
 
-char CompileOnlyIfRtClient::ID = 0;
+char CompileOnlyIfRtClient::ID = 0;  // NOLINT
 
 class CompileOnlyPyClient : public PyClient {
  public:

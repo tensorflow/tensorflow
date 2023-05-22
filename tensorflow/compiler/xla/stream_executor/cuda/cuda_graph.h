@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_GRAPH_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -38,6 +39,17 @@ class CudaGraphSupport {
   struct DestroyGraphExec {
     void operator()(cudaGraphExec_t);
   };
+
+  static size_t NotifyGraphExecCreated();
+
+  static size_t allocated_cuda_graph_execs();
+  static size_t alive_cuda_graph_execs();
+
+ private:
+  // Global counters for the total number of allocated and alive CUDA graph
+  // execs to track the resource usage at run time.
+  static std::atomic<size_t> allocated_cuda_graph_execs_;
+  static std::atomic<size_t> alive_cuda_graph_execs_;
 };
 
 //===----------------------------------------------------------------------===//

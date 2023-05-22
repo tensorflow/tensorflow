@@ -41,10 +41,12 @@ StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
   switch (dtype.kind()) {
     case DType::kInvalid:
     case DType::kPred:
+    case DType::kS4:
     case DType::kS8:
     case DType::kS16:
     case DType::kS32:
     case DType::kS64:
+    case DType::kU4:
     case DType::kU8:
     case DType::kU16:
     case DType::kU32:
@@ -71,10 +73,12 @@ StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case xla::PrimitiveType::PRED:
+    case xla::PrimitiveType::S4:
     case xla::PrimitiveType::S8:
     case xla::PrimitiveType::S16:
     case xla::PrimitiveType::S32:
     case xla::PrimitiveType::S64:
+    case xla::PrimitiveType::U4:
     case xla::PrimitiveType::U8:
     case xla::PrimitiveType::U16:
     case xla::PrimitiveType::U32:

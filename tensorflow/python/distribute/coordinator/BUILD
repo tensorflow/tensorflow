@@ -165,7 +165,6 @@ py_strict_library(
 tf_py_strict_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
-    flaky = True,
     python_version = "PY3",
     shard_count = 40,  # = number of tests, so one shard = one test
     tags = [
@@ -184,7 +183,6 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "fault_tolerance_coordination_service_test",
     srcs = ["fault_tolerance_coordination_service_test.py"],
-    flaky = True,
     python_version = "PY3",
     shard_count = 41,
     tags = [
@@ -269,7 +267,6 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "get_task_states_test",
     srcs = ["get_task_states_test.py"],
-    flaky = True,
     python_version = "PY3",
     shard_count = 3,
     tags = [

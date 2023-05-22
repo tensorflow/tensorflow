@@ -15,10 +15,21 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/ifrt/ir/compile_options.h"
 
+#include <memory>
+
 namespace xla {
 namespace ifrt {
 
 char IfrtIRCompileOptions::ID = 0;
 
+StatusOr<std::unique_ptr<IfrtIRCompileOptions>> GetIfrtIRCompileOptions(
+    std::unique_ptr<CompileOptions> options) {
+  if (!llvm::isa<IfrtIRCompileOptions>(options.get())) {
+    return absl::InvalidArgumentError("options must be IfrtIRCompileOptions");
+  }
+  return std::unique_ptr<IfrtIRCompileOptions>(
+      static_cast<IfrtIRCompileOptions*>(options.release()));
 }
+
+}  // namespace ifrt
 }  // namespace xla

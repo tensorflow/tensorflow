@@ -84,7 +84,7 @@ py_strict_library(
     deps = [
         ":atomic_function",
         ":attributes",
-        ":function_spec",
+        ":function_type_utils",
         ":saved_model_exported_concrete",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
@@ -128,7 +128,7 @@ py_strict_library(
         ":attributes",
         ":concrete_function",
         ":function_context",
-        ":function_spec",
+        ":function_type_utils",
         ":tf_method_target",
         ":transform",
         "//tensorflow/core/function/capture:capture_container",
@@ -169,7 +169,7 @@ py_strict_library(
         ":autograph_util",
         ":compiler_ir",
         ":eager_function_run",
-        ":function_spec",
+        ":function_type_utils",
         ":tf_method_target",
         ":tracing_compiler",
         "//tensorflow/core:protos_all_py",
@@ -542,13 +542,14 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":function_type_utils",
         "//tensorflow/python/trackable:base",
     ],
 )
 
 py_strict_library(
-    name = "function_spec",
-    srcs = ["function_spec.py"],
+    name = "function_type_utils",
+    srcs = ["function_type_utils.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
@@ -573,7 +574,7 @@ tf_py_strict_test(
     srcs = ["function_spec_test.py"],
     python_version = "PY3",
     deps = [
-        ":function_spec",
+        ":function_type_utils",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:client_testlib",

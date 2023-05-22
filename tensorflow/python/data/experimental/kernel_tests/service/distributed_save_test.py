@@ -134,7 +134,7 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
+    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
 
   @combinations.generate(test_base.default_test_combinations())
   def testChooseFromRepeatedDatasets(self):
@@ -152,7 +152,54 @@ class DistributedSaveTest(
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
-    self.assertDatasetProduces(dataset, ["a", "b", "c"] * 5)
+    self.assertDatasetProduces(dataset, [b"a", b"b", b"c"] * 5)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(num_workers=[1, 3]),
+      )
+  )
+  def testWriteMultipleDatasets(self, num_workers):
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+    dataset1 = dataset_ops.Dataset.range(100)
+    datasets = [
+        dataset_ops.Dataset.from_tensors("a").repeat(5),
+        dataset_ops.Dataset.from_tensors("b").repeat(5),
+        dataset_ops.Dataset.from_tensors("c").repeat(5),
+    ]
+    choice_dataset = dataset_ops.Dataset.range(3).repeat()
+    dataset2 = dataset_ops.Dataset.choose_from_datasets(
+        datasets, choice_dataset
+    )
+
+    snapshot_path1 = os.path.join(self._test_dir, "snapshot1")
+    snapshot_path2 = os.path.join(self._test_dir, "snapshot2")
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset1, snapshot_path1, cluster.dispatcher_address()
+        )
+    )
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset2, snapshot_path2, cluster.dispatcher_address()
+        )
+    )
+    _wait_for_snapshot(snapshot_path1)
+    _wait_for_snapshot(snapshot_path2)
+
+    ignore_order = num_workers > 1
+    dataset1 = dataset_ops.Dataset.load(snapshot_path1)
+    self.assertDatasetProduces(
+        dataset1,
+        list(range(100)),
+        assert_items_equal=ignore_order,
+    )
+    self.assertDatasetProduces(
+        dataset2,
+        [b"a", b"b", b"c"] * 5,
+        assert_items_equal=ignore_order,
+    )
 
   @combinations.generate(test_base.default_test_combinations())
   def testLoadWithCustomReaderFunc(self):

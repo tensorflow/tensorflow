@@ -733,7 +733,7 @@ py_strict_library(
         "//tensorflow/python:type_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager/polymorphic_function:function_spec",
+        "//tensorflow/python/eager/polymorphic_function:function_type_utils",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_decorator",

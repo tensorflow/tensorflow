@@ -2509,15 +2509,16 @@ This is typically used by gradient computations for a concat operation.
 
   let arguments = (ins
     Arg<TF_Int32Tensor, [{The dimension along which to concatenate.}]>:$concat_dim,
-    Arg<Variadic<TF_Int32Tensor>, [{The `N` int32 vectors representing shape of tensors being concatenated.}]>:$shape
+    Arg<Variadic<TF_I32OrI64Tensor>, [{The `N` int32 or int64 vectors representing shape of tensors being concatenated.}]>:$shape
   );
 
   let results = (outs
-    Res<Variadic<TF_Int32Tensor>, [{The `N` int32 vectors representing the starting offset
-of input tensors within the concatenated output.}]>:$offset
+    Res<Variadic<TF_I32OrI64Tensor>, [{The `N` vectors representing the starting offset
+of input tensors within the concatenated output with type matching `shape`.}]>:$offset
   );
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
 
   let hasVerifier = 1;
 

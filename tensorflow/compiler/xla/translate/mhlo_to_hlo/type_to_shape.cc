@@ -200,13 +200,13 @@ Shape TypeToShape(mlir::Type type) {
       // added to xla
       if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
-      llvm::SmallVector<DimLevelType, 3> dim_level_types;
+      llvm::SmallVector<DimLevelType, 3> lvl_types;
       llvm::SmallVector<bool, 3> level_unique;
       llvm::SmallVector<bool, 3> level_ordered;
-      for (auto dlt : sparse.getDimLevelType()) {
+      for (auto dlt : sparse.getLvlTypes()) {
         auto new_dlt = ConvertDimLevelType(dlt);
         if (!new_dlt) return {};
-        dim_level_types.push_back(std::get<0>(*new_dlt));
+        lvl_types.push_back(std::get<0>(*new_dlt));
         level_unique.push_back(std::get<1>(*new_dlt));
         level_ordered.push_back(std::get<2>(*new_dlt));
       }
@@ -221,7 +221,7 @@ Shape TypeToShape(mlir::Type type) {
       auto final_ordering = mlir::applyPermutationMap(
           dimOrder, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, dim_level_types, level_unique,
+          primitive_type, shape, final_ordering, lvl_types, level_unique,
           level_ordered);
       return sparse_shape;
     }
