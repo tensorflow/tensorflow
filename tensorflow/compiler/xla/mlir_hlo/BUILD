@@ -725,7 +725,6 @@ cc_library(
         "mhlo/transforms/legalize_gather_to_torch_index_select/legalize_gather_to_torch_index_select.cc",
         "mhlo/transforms/legalize_mhlo_to_thlo/legalize_mhlo_to_thlo.cc",
         "mhlo/transforms/legalize_shape_computations/legalize_shape_computations.cc",
-        "mhlo/transforms/legalize_sort/legalize_sort.cc",
         "mhlo/transforms/legalize_to_linalg/legalize_to_linalg.cc",
         "mhlo/transforms/legalize_to_standard/generated_legalize_to_standard.inc",
         "mhlo/transforms/legalize_to_standard/legalize_to_standard.cc",
