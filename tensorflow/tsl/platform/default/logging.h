@@ -46,6 +46,13 @@ limitations under the License.
 // end up using our definitions instead.
 #undef LOG
 #undef VLOG
+#undef VLOG_IS_ON
+#undef DVLOG
+#undef LOG_EVERY_N
+#undef LOG_FIRST_N
+#undef CHECK_OP_LOG
+#undef CHECK_OP
+#undef CHECK_NOTNULL
 
 #undef CHECK
 #undef CHECK_EQ
