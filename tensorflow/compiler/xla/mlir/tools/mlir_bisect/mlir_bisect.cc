@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/tools/mlir_bisect/test_passes.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/execution_trace_utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/IR/deallocation_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/IR/gml_st_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/test_passes.h"
@@ -100,10 +101,7 @@ OwningOpRef<ModuleOp> ParseMlirInput(llvm::StringRef inputFilename,
 
   auto source_mgr = std::make_shared<llvm::SourceMgr>();
   source_mgr->AddNewSourceBuffer(std::move(file), SMLoc());
-  return {
-      llvm::cast<ModuleOp>(parseSourceFileForTool(source_mgr, context,
-                                                  /*insertImplicitModule=*/true)
-                               .release())};
+  return parseSourceFile<ModuleOp>(source_mgr, context);
 }
 
 LogicalResult RunPipeline(ModuleOp module, const Options& options) {
@@ -124,7 +122,7 @@ LogicalResult RunPipeline(ModuleOp module, const Options& options) {
   return success();
 }
 
-LogicalResult Run(ModuleOp module, interpreter::ExecutionTrace* trace,
+LogicalResult Run(mlir::Operation* module, interpreter::ExecutionTrace* trace,
                   const Options& options) {
   SymbolTable symbol_table{module};
   interpreter::ExecutionTraceListener tracer(trace);
@@ -144,7 +142,7 @@ LogicalResult Run(ModuleOp module, interpreter::ExecutionTrace* trace,
     return success();
   }
 
-  OwningOpRef<ModuleOp> clone(module.clone());
+  OwningOpRef<ModuleOp> clone(llvm::cast<ModuleOp>(module).clone());
   if (!succeeded(RunPipeline(*clone, options))) {
     return failure();
   }
@@ -206,9 +204,10 @@ OwningOpRef<ModuleOp> ReduceModule(OwningOpRef<ModuleOp> module,
 
   auto apply_step = [&]() -> std::optional<OwningOpRef<ModuleOp>> {
     for (auto it = strategies.begin(); it != strategies.end(); ++it) {
-      for (auto& candidate :
+      for (auto& candidate_fn :
            detail::GetCandidates(it->second, state, *module)) {
-        if (!mlir::verify(*candidate).succeeded()) {
+        auto candidate = candidate_fn();
+        if (!candidate || !mlir::verify(*candidate).succeeded()) {
           continue;
         }
         if (options.canonicalize && !Canonicalize(*candidate).succeeded()) {
@@ -228,12 +227,13 @@ OwningOpRef<ModuleOp> ReduceModule(OwningOpRef<ModuleOp> module,
         // Update the trace.
         state.SetTrace(trace);
 
-        // Move failed strategies to the end.
+        // Move strategies to the end.
         decltype(strategies) new_strategies;
-        std::copy(it, strategies.end(), std::back_inserter(new_strategies));
-        std::copy(strategies.begin(), it, std::back_inserter(new_strategies));
+        std::copy(it + 1, strategies.end(), std::back_inserter(new_strategies));
+        std::copy(strategies.begin(), it + 1,
+                  std::back_inserter(new_strategies));
         strategies = new_strategies;
-        return {std::move(candidate)};
+        return {candidate.release()};
       }
     }
     return std::nullopt;
@@ -256,8 +256,17 @@ void ReplaceArgsWithConstants(ModuleOp module,
         bbarg.getType());
     CHECK_EQ(attr.size(), 1) << "unsupported argument";
 
-    bbarg.replaceAllUsesWith(arith::ConstantOp::materialize(
-        b, attr.front(), bbarg.getType(), main.getLoc()));
+    auto constant = b.create<arith::ConstantOp>(
+        main.getLoc(), bbarg.getType(), llvm::cast<TypedAttr>(attr.front()));
+    bbarg.replaceAllUsesWith(constant);
+  }
+
+  // The remaining ops are output args, so we replace them with allocs.
+  for (auto arg :
+       main.getBody().getArguments().drop_front(snapshot.arguments().size())) {
+    CHECK(llvm::isa<MemRefType>(arg.getType())) << "unsupported argument";
+    arg.replaceAllUsesWith(b.create<memref::AllocOp>(
+        module.getLoc(), llvm::cast<MemRefType>(arg.getType())));
   }
   while (main.getBody().getNumArguments() > 0) {
     main.getBody().eraseArgument(0);
@@ -290,6 +299,7 @@ int main(int argc, char* argv[]) {
   mlir::gml_st::registerGmlStPasses();
   mlir::gml_st::registerGmlStTestPasses();
   mlir::mhlo::registerAllMhloDialects(registry);
+  mlir::deallocation::registerDeallocationPasses();
 
   registry.insert<mlir::lmhlo::LmhloDialect, mlir::gml_st::GmlStDialect,
                   mlir::deallocation::DeallocationDialect,
@@ -326,8 +336,12 @@ int main(int argc, char* argv[]) {
     for (auto& candidate : mlir::bisect::detail::GetCandidates(
              mlir::bisect::detail::GetStrategies()[options.debug_strategy],
              state, *module)) {
-      llvm::outs() << *candidate << "\n\n";
-      if (!mlir::verify(*candidate).succeeded()) {
+      auto new_module = candidate();
+      if (!new_module) {
+        continue;
+      }
+      llvm::outs() << *new_module << "\n\n";
+      if (!mlir::verify(*new_module).succeeded()) {
         some_failed = true;
         llvm::errs() << "verification failed\n";
       }
