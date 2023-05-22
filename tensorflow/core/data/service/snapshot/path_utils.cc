@@ -111,6 +111,20 @@ tsl::StatusOr<int64_t> ParseSourceDirectoryName(
   return source_index;
 }
 
+tsl::StatusOr<int64_t> ParseRepetitionDirectoryName(
+    absl::string_view repetition_directory_name) {
+  std::vector<std::string> tokens =
+      absl::StrSplit(repetition_directory_name, '_');
+  int64_t repetition_index = 0;
+  if (tokens.size() != 2 || tokens[0] != "repetition" ||
+      !absl::SimpleAtoi(tokens[1], &repetition_index) || repetition_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid repetition directory name: ", repetition_directory_name,
+        ". Expected repetition_<repetition_index>.");
+  }
+  return repetition_index;
+}
+
 tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
     absl::string_view split_filename) {
   std::vector<std::string> tokens =

@@ -85,6 +85,19 @@ TEST(PathUtilsTest, ParseSourceDirectoryName) {
                        HasSubstr("Expected source_<source_index>")));
 }
 
+TEST(PathUtilsTest, ParseRepetitionDirectoryName) {
+  EXPECT_THAT(ParseRepetitionDirectoryName("repetition_1"), IsOkAndHolds(1));
+  EXPECT_THAT(ParseRepetitionDirectoryName(""),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected repetition_<repetition_index>")));
+  EXPECT_THAT(ParseRepetitionDirectoryName("repetition_-1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected repetition_<repetition_index>")));
+  EXPECT_THAT(ParseRepetitionDirectoryName("chunk_1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected repetition_<repetition_index>")));
+}
+
 TEST(PathUtilsTest, InvalidStreamDirectoryName) {
   EXPECT_THAT(ParseStreamDirectoryName(""),
               StatusIs(error::INVALID_ARGUMENT,

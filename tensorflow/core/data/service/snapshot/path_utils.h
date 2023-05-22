@@ -66,6 +66,12 @@ tsl::StatusOr<int64_t> ParseStreamDirectoryName(
 tsl::StatusOr<int64_t> ParseSourceDirectoryName(
     absl::string_view source_directory_name);
 
+// Returns the index of the repetition. The expected format of
+// `repetition_directory_name` is:
+// repetition_<stream_index>
+tsl::StatusOr<int64_t> ParseRepetitionDirectoryName(
+    absl::string_view repetition_directory_name);
+
 // Returns a pair of {local_split_index, global_split_index} of the split. The
 // expected format of `split_filename` is:
 // split_<local_split_index>_<global_split_index>
