@@ -223,6 +223,11 @@ bool AdrenoInfo::IsAdreno7xx() const {
          adreno_gpu == AdrenoGpu::kAdreno740;
 }
 
+bool AdrenoInfo::IsBetterThan(AdrenoGpu gpu) const {
+  // Smaller value is better (recent) version.
+  return (adreno_gpu <= gpu);
+}
+
 bool AdrenoInfo::IsAdreno6xxOrHigher() const {
   return (!compiler_bugs_in_a6xx && IsAdreno6xx()) || IsAdreno7xx();
 }

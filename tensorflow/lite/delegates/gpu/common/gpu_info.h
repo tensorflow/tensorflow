@@ -128,6 +128,7 @@ struct AdrenoInfo {
   bool IsAdreno6xx() const;
   bool IsAdreno7xx() const;
   bool IsAdreno6xxOrHigher() const;
+  bool IsBetterThan(AdrenoGpu gpu) const;
 
   // This function returns some not very documented physical parameter of
   // Adreno6xx GPU.

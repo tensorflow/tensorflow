@@ -226,9 +226,13 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
 
     flush_periodically = true;
     flush_period = 24;
-  }
-  if (gpu_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     need_flush = true;
+    flush_periodically = true;
+    flush_period = 16;
+  } else if (gpu_info.IsAdreno() &&
+             !gpu_info.adreno_info.IsBetterThan(AdrenoGpu::kAdreno630)) {
+    // Adreno620 or lower devices has smaller GPU buffer.
     flush_periodically = true;
     flush_period = 16;
   }
