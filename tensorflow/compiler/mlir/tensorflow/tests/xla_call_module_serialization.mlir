@@ -34,10 +34,11 @@ module {
     // CHECK-SAME:   Sout = [#tf_type.shape<?>]
     // CHECK-SAME:   dim_args_spec = []
     // CHECK-NOT:    _entry_function
+    // CHECK-NOT:    _stablehlo_module_attrs
     // CHECK-SAME:   function_list = [@__tf_host_callback]
     // CHECK-SAME:   module = "ML\EFR[[STABLEHLO_BYTECODE:.*]]
 
-    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, function_list = [@__tf_host_callback], module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, _stablehlo_module_attrs = { mhlo.num_partitions = 1 }, function_list = [@__tf_host_callback], module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
     // CHECK: return %[[RESULT]]
     func.return %0 : tensor<10xi32>
   }

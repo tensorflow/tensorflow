@@ -71,6 +71,10 @@ FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(ModuleOp module,
       op->getAttrOfType<DictionaryAttr>(kStablehloModuleAttrsAttrName);
   if (original_stablehlo_module_attrs) {
     (*stablehlo_module)->setAttrs(original_stablehlo_module_attrs);
+    // Now, remove the attribute because later passes may not know how to handle
+    // it, we may encounter errors such as:
+    // "Unhandled attribute kind for attribute '_stablehlo_module_attrs'".
+    op->removeAttr(kStablehloModuleAttrsAttrName);
   } else {
     (*stablehlo_module)->setAttrs(llvm::ArrayRef<NamedAttribute>());
   }
