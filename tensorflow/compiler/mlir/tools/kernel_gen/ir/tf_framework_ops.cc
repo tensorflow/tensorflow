@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 
+#include <optional>
+
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -86,14 +88,15 @@ LogicalResult TFAllocOp::verify() {
   return success();
 }
 
-Optional<Operation *> TFAllocOp::buildDealloc(OpBuilder &builder, Value alloc) {
+std::optional<Operation *> TFAllocOp::buildDealloc(OpBuilder &builder,
+                                                   Value alloc) {
   auto funcop = alloc.getParentRegion()->getParentOfType<func::FuncOp>();
   return builder
       .create<TFDeallocOp>(alloc.getLoc(), funcop.getArgument(0), alloc)
       .getOperation();
 }
 
-Optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
+std::optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
   // TODO(herhut): We should have our own clone op if one of these survives.
   return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
       .getResult();
@@ -103,57 +106,57 @@ Optional<Value> TFAllocOp::buildClone(OpBuilder &builder, Value alloc) {
 // JITExecuteOp
 //===----------------------------------------------------------------------===//
 
-Optional<Operation *> JITExecuteOp::buildDealloc(OpBuilder &builder,
-                                                 Value alloc) {
+std::optional<Operation *> JITExecuteOp::buildDealloc(OpBuilder &builder,
+                                                      Value alloc) {
   auto funcop = alloc.getParentRegion()->getParentOfType<func::FuncOp>();
   return builder
       .create<TFDeallocOp>(alloc.getLoc(), funcop.getArgument(0), alloc)
       .getOperation();
 }
 
-Optional<Value> JITExecuteOp::buildClone(OpBuilder &builder, Value alloc) {
+std::optional<Value> JITExecuteOp::buildClone(OpBuilder &builder, Value alloc) {
   // TODO(herhut): We should have our own clone op if one of these survives.
   return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
       .getResult();
 }
 
-::tensorflow::error::Code ConvertAttrToEnumValue(ErrorCode error_code) {
+absl::StatusCode ConvertAttrToEnumValue(ErrorCode error_code) {
   using ::tensorflow::error::Code;
   switch (error_code) {
     case ErrorCode::OK:
-      return Code::OK;
+      return absl::StatusCode::kOk;
     case ErrorCode::CANCELLED:
-      return Code::CANCELLED;
+      return absl::StatusCode::kCancelled;
     case ErrorCode::UNKNOWN:
-      return Code::UNKNOWN;
+      return absl::StatusCode::kUnknown;
     case ErrorCode::INVALID_ARGUMENT:
-      return Code::INVALID_ARGUMENT;
+      return absl::StatusCode::kInvalidArgument;
     case ErrorCode::DEADLINE_EXCEEDED:
-      return Code::DEADLINE_EXCEEDED;
+      return absl::StatusCode::kDeadlineExceeded;
     case ErrorCode::NOT_FOUND:
-      return Code::NOT_FOUND;
+      return absl::StatusCode::kNotFound;
     case ErrorCode::ALREADY_EXISTS:
-      return Code::ALREADY_EXISTS;
+      return absl::StatusCode::kAlreadyExists;
     case ErrorCode::PERMISSION_DENIED:
-      return Code::PERMISSION_DENIED;
+      return absl::StatusCode::kPermissionDenied;
     case ErrorCode::UNAUTHENTICATED:
-      return Code::UNAUTHENTICATED;
+      return absl::StatusCode::kUnauthenticated;
     case ErrorCode::RESOURCE_EXHAUSTED:
-      return Code::RESOURCE_EXHAUSTED;
+      return absl::StatusCode::kResourceExhausted;
     case ErrorCode::FAILED_PRECONDITION:
-      return Code::FAILED_PRECONDITION;
+      return absl::StatusCode::kFailedPrecondition;
     case ErrorCode::ABORTED:
-      return Code::ABORTED;
+      return absl::StatusCode::kAborted;
     case ErrorCode::OUT_OF_RANGE:
-      return Code::OUT_OF_RANGE;
+      return absl::StatusCode::kOutOfRange;
     case ErrorCode::UNIMPLEMENTED:
-      return Code::UNIMPLEMENTED;
+      return absl::StatusCode::kUnimplemented;
     case ErrorCode::INTERNAL:
-      return Code::INTERNAL;
+      return absl::StatusCode::kInternal;
     case ErrorCode::UNAVAILABLE:
-      return Code::UNAVAILABLE;
+      return absl::StatusCode::kUnavailable;
     case ErrorCode::DATA_LOSS:
-      return Code::DATA_LOSS;
+      return absl::StatusCode::kDataLoss;
   }
 }
 

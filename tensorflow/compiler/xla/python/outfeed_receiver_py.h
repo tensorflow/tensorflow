@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_OUTFEED_RECEIVER_PY_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_OUTFEED_RECEIVER_PY_H_
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace xla {
 

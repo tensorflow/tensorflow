@@ -348,138 +348,128 @@ PYBIND11_MODULE(_mlirHlo, m) {
       m, "ComparisonDirectionAttr", mlirMhloAttributeIsAComparisonDirectionAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &direction, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloComparisonDirectionAttrGet(
-                ctx, mlirStringRefCreate(direction.c_str(), direction.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("comparison_direction"),
-          py::arg("context") = py::none(),
-          "Creates a ComparisonDirection attribute with the given direction.")
-      .def_property_readonly("comparison_direction", [](MlirAttribute self) {
-        return toPyString(mlirMhloComparisonDirectionAttrGetDirection(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a ComparisonDirection attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloComparisonDirectionAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "ComparisonTypeAttr", mlirMhloAttributeIsAComparisonTypeAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &type, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloComparisonTypeAttrGet(
-                ctx, mlirStringRefCreate(type.c_str(), type.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("comparison_type"),
-          py::arg("context") = py::none(),
-          "Creates a ComparisonType attribute with the given type.")
-      .def_property_readonly("comparison_type", [](MlirAttribute self) {
-        return toPyString(mlirMhloComparisonTypeAttrGetType(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a ComparisonType attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloComparisonTypeAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "PrecisionAttr", mlirMhloAttributeIsAPrecisionAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &type, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloPrecisionAttrGet(
-                ctx, mlirStringRefCreate(type.c_str(), type.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("precision_type"),
-          py::arg("context") = py::none(),
-          "Creates a Precision attribute with the given type.")
-      .def_property_readonly("precision_type", [](MlirAttribute self) {
-        return toPyString(mlirMhloPrecisionAttrGetPrecision(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a Precision attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloPrecisionAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "FftTypeAttr", mlirMhloAttributeIsAFftTypeAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &type, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloFftTypeAttrGet(
-                ctx, mlirStringRefCreate(type.c_str(), type.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("fft_type"), py::arg("context") = py::none(),
-          "Creates a FftType attribute with the given type.")
-      .def_property_readonly("fft_type", [](MlirAttribute self) {
-        return toPyString(mlirMhloFftTypeAttrGetFftType(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a FftType attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloFftTypeAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "DequantizeModeAttr", mlirMhloAttributeIsADequantizeModeAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &type, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloDequantizeModeAttrGet(
-                ctx, mlirStringRefCreate(type.c_str(), type.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("dequantize_mode"),
-          py::arg("context") = py::none(),
-          "Creates a DequantizeMode attribute with the given mode.")
-      .def_property_readonly("dequantize_mode", [](MlirAttribute self) {
-        return toPyString(mlirMhloDequantizeModeAttrGetDequantizeMode(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a DequantizeMode attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloDequantizeModeAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "TransposeAttr", mlirMhloAttributeIsATransposeAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &type, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloTransposeAttrGet(
-                ctx, mlirStringRefCreate(type.c_str(), type.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("transpose_type"),
-          py::arg("context") = py::none(),
-          "Creates a Transpose attribute with the given type.")
-      .def_property_readonly("transpose_type", [](MlirAttribute self) {
-        return toPyString(mlirMhloTransposeAttrGetTranspose(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a Transpose attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloTransposeAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "FusionKindAttr", mlirMhloAttributeIsAFusionKindAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &kind, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloFusionKindAttrGet(
-                ctx, mlirStringRefCreate(kind.c_str(), kind.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("fusion_kind"),
-          py::arg("context") = py::none(),
-          "Creates a FusionKind attribute with the given kind.")
-      .def_property_readonly("fusion_kind", [](MlirAttribute self) {
-        return toPyString(mlirMhloFusionKindAttrGetFusionKind(self));
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a FusionKind attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        return toPyString(mlirMhloFusionKindAttrGetValue(self));
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "RngDistributionAttr", mlirMhloAttributeIsARngDistributionAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &distribution, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloRngDistributionAttrGet(
-                ctx, mlirStringRefCreate(distribution.c_str(),
-                                         distribution.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("rng_distribution"),
-          py::arg("context") = py::none(),
-          "Creates a RngDistribution attribute with the given rng "
-          "distribution.")
-      .def_property_readonly("rng_distribution", [](MlirAttribute self) {
-        auto distribution = mlirMhloRngDistributionAttrGetRngDistribution(self);
-        return py::str(distribution.data, distribution.length);
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a RngDistribution attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        auto value = mlirMhloRngDistributionAttrGetValue(self);
+        return py::str(value.data, value.length);
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(
       m, "RngAlgorithmAttr", mlirMhloAttributeIsARngAlgorithmAttr)
       .def_classmethod(
           "get",
-          [](py::object cls, const std::string &algorithm, MlirContext ctx) {
+          [](py::object cls, const std::string &value, MlirContext ctx) {
             return cls(mlirMhloRngAlgorithmAttrGet(
-                ctx, mlirStringRefCreate(algorithm.c_str(), algorithm.size())));
+                ctx, mlirStringRefCreate(value.c_str(), value.size())));
           },
-          py::arg("cls"), py::arg("rng_algorithm"),
-          py::arg("context") = py::none(),
-          "Creates a RngAlgorithm attribute with the given rng algorithm.")
-      .def_property_readonly("rng_algorithm", [](MlirAttribute self) {
-        auto algorithm = mlirMhloRngAlgorithmAttrGetRngAlgorithm(self);
-        return py::str(algorithm.data, algorithm.length);
+          py::arg("cls"), py::arg("value"), py::arg("context") = py::none(),
+          "Creates a RngAlgorithm attribute with the given value.")
+      .def_property_readonly("value", [](MlirAttribute self) {
+        auto value = mlirMhloRngAlgorithmAttrGetValue(self);
+        return py::str(value.data, value.length);
       });
 
   mlir::python::adaptors::mlir_attribute_subclass(

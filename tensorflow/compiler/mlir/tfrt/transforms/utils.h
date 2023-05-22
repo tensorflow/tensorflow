@@ -15,6 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_UTILS_H_
 
+#include <optional>
+#include <string>
+
+#include "absl/strings/string_view.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 
 namespace tensorflow {
@@ -25,6 +31,15 @@ bool IsResourceArgument(mlir::Value value);
 // Checks if an operand is the value of a variable.
 bool IsResultVariable(const mlir::Value &original_operand,
                       const mlir::Value &operand);
+
+// Canonicalize the symbol attr to the original TF function name.
+std::optional<std::string> CanonicalizeTensorflowFunctionName(
+    const mlir::SymbolTable &symbol_table, absl::string_view mlir_func_name,
+    bool use_mlir_func_name = false);
+
+// Returns true if the function is a session initializer in tf_saved_model
+// dialect.
+bool IsSessionInitializer(mlir::func::FuncOp op);
 
 }  // namespace tensorflow
 

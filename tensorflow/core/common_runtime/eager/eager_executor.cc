@@ -45,8 +45,8 @@ EagerExecutor::EagerExecutor(bool async, bool enable_streaming_enqueue,
       enable_streaming_enqueue_(enable_streaming_enqueue),
       in_flight_nodes_limit_(in_flight_nodes_limit) {
   if (async && in_flight_nodes_limit_ > 0) {
-    LOG(INFO) << "EagerExecutor InFlightNodes limit is set to "
-              << in_flight_nodes_limit_;
+    VLOG(4) << "EagerExecutor InFlightNodes limit is set to "
+            << in_flight_nodes_limit_;
   }
 }
 
@@ -107,7 +107,7 @@ const char* EagerExecutor::StateStringLocked() {
 
 Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("Executor does not support async execution");
+    return errors::Internal("SyncExecute does not support async execution.");
   }
   if (node->AsAsync() != nullptr) {
     return errors::Internal("Executor does not support executing async nodes");

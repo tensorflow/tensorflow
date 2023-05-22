@@ -45,7 +45,7 @@ template <typename RangeT>
 static SmallVector<llvm::detail::ValueOfRange<RangeT>> FilterByIndex(
     RangeT &&range, const llvm::BitVector &indices) {
   SmallVector<llvm::detail::ValueOfRange<RangeT>> result;
-  for (auto &it : llvm::enumerate(range))
+  for (const auto &it : llvm::enumerate(range))
     if (!indices.test(it.index())) result.push_back(it.value());
   return result;
 }
@@ -110,7 +110,7 @@ struct EliminatePassthroughIterArgs {
     // value and remove the argument. Insert the implicitly captured value into
     // the result list to replace the removed results from the original op.
     SmallVector<Value> results = llvm::to_vector(ValueRange(new_op.getOuts()));
-    for (auto &it : llvm::enumerate(indices)) {
+    for (const auto &it : llvm::enumerate(indices)) {
       unsigned idx = it.value() - it.index();
       Value data = op.getInit()[it.value()];
       results.insert(results.begin() + it.value(), data);

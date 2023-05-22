@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "absl/base/integral_types.h"
 #include "tensorflow/tsl/lib/monitoring/counter.h"
 
 namespace xla {
@@ -41,7 +40,7 @@ void RecordAutoShardingInvocations() {
   xla_auto_sharding_invocations->GetCell()->IncrementBy(1);
 }
 
-void RecordAutoShardingCompilationTime(const uint64 time_usecs) {
+void RecordAutoShardingCompilationTime(const uint64_t time_usecs) {
   auto_sharding_compilation_time_usecs->GetCell()->IncrementBy(time_usecs);
 }
 

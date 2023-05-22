@@ -142,6 +142,35 @@ REGISTER_OP("CollectiveReduceV2")
     .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("CollectiveReduceScatterV2")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Input("group_size: int32")
+    .Input("group_key: int32")
+    .Input("instance_key: int32")
+    .Input("ordering_token: Nordering_token * resource")
+    .Attr("merge_op: {'Min', 'Max', 'Mul', 'Add'}")
+    .Attr("final_op: {'Id', 'Div'}")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .Attr("Nordering_token: int >= 0 = 0")
+    .Attr("max_subdivs_per_device: int = -1")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      // Scalar input is not supported.
+      shape_inference::ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &unused));
+      // This output should have the same shape as its input except the first
+      // dimension is unknown, since the group size is unknown.
+      shape_inference::ShapeHandle out;
+      TF_RETURN_IF_ERROR(
+          c->ReplaceDim(c->input(0), /*dim_index=*/0, c->UnknownDim(), &out));
+      c->set_output(0, out);
+      return OkStatus();
+    });
+
 REGISTER_OP("CollectiveGatherV2")
     .Input("input: T")
     .Output("data: T")
@@ -221,6 +250,21 @@ REGISTER_OP("CollectiveReduceV3")
     .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
     .Attr("reduction: {'Min', 'Max', 'Mul', 'Add'}")
     .Attr("timeout_seconds: float = 0")
+    .SetIsStateful()
+    .SetIsDistributedCommunication()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+REGISTER_OP("CollectiveAllToAllV2")
+    .Input("input: T")
+    .Output("data: T")
+    .Attr("T: {bfloat16, float, float16, float64, int32, int64}")
+    .Input("group_size: int32")
+    .Input("group_key: int32")
+    .Input("instance_key: int32")
+    .Input("ordering_token: Nordering_token * resource")
+    .Attr("communication_hint: string = 'auto'")
+    .Attr("timeout_seconds: float = 0")
+    .Attr("Nordering_token: int >= 0 = 0")
     .SetIsStateful()
     .SetIsDistributedCommunication()
     .SetShapeFn(shape_inference::UnchangedShape);

@@ -52,9 +52,10 @@ TfLiteStatus SimplePlanner::ResetAllocations() {
 }
 
 TfLiteStatus SimplePlanner::ResetAllocationsAfter(int node) {
+  TfLiteTensor* tensors = graph_info_->tensors();
   for (int i = 0; i < static_cast<int>(allocs_.size()); ++i) {
     if (allocs_[i].node > node && allocs_[i].size > 0) {
-      TfLiteTensor& tensor = *graph_info_->tensor(i);
+      TfLiteTensor& tensor = tensors[i];
       if (tensor.allocation_type == kTfLiteArenaRw) {
         allocs_[i].free();
         tensor.data.raw = nullptr;
@@ -126,7 +127,8 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   }
 
   // Count references to node input tensors.
-  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  const size_t num_execution_nodes = graph_info_->num_execution_nodes();
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
@@ -138,7 +140,7 @@ TfLiteStatus SimplePlanner::PlanAllocations() {
   }
 
   // Go through the graph in execution order.
-  for (size_t i = 0; i < graph_info_->num_execution_nodes(); ++i) {
+  for (size_t i = 0; i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
 
     // First queue output tensors for allocation.
@@ -172,9 +174,9 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
   dealloc_node_.resize(graph_info_->num_tensors(), kNodeNotAssigned);
   allocs_.resize(graph_info_->num_tensors());
   // Set allocation and deallocation for temporary tensors.
-  for (size_t i = first_node; i <= static_cast<size_t>(last_node) &&
-                              i < graph_info_->num_execution_nodes();
-       ++i) {
+  const size_t num_execution_nodes = graph_info_->num_execution_nodes();
+  for (size_t i = first_node;
+       i <= static_cast<size_t>(last_node) && i < num_execution_nodes; ++i) {
     const TfLiteNode& node = graph_info_->node(i);
     TfLiteIntArray* node_temporaries = node.temporaries;
     for (int j = 0; j < node_temporaries->size; ++j) {
@@ -185,10 +187,12 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
   }
 
   // Conduct the planned allocations.
-  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+  const int num_tensors = static_cast<int>(graph_info_->num_tensors());
+  TfLiteTensor* tensors = graph_info_->tensors();
+  for (int i = 0; i < num_tensors; ++i) {
     bool allocated = false;
     if (alloc_node_[i] >= first_node && alloc_node_[i] <= last_node) {
-      TfLiteTensor& tensor = *graph_info_->tensor(i);
+      TfLiteTensor& tensor = tensors[i];
       if (tensor.allocation_type == kTfLiteArenaRw) {
         if (allocs_[i].size != 0) {
           allocs_[i].free();
@@ -210,8 +214,10 @@ TfLiteStatus SimplePlanner::ExecuteAllocations(int first_node, int last_node) {
 
 TfLiteStatus SimplePlanner::ReleaseNonPersistentMemory() {
   // Set data pointers for all non-persistent tensors to nullptr.
-  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
-    TfLiteTensor& tensor = *graph_info_->tensor(i);
+  const int num_tensors = static_cast<int>(graph_info_->num_tensors());
+  TfLiteTensor* tensors = graph_info_->tensors();
+  for (int i = 0; i < num_tensors; ++i) {
+    TfLiteTensor& tensor = tensors[i];
     if (tensor.allocation_type == kTfLiteArenaRw) {
       allocs_[i].free();
       tensor.data.raw = nullptr;
@@ -222,8 +228,10 @@ TfLiteStatus SimplePlanner::ReleaseNonPersistentMemory() {
 
 TfLiteStatus SimplePlanner::AcquireNonPersistentMemory() {
   // Resolve allocations for all tensors not on the persistent arena.
-  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
-    TfLiteTensor& tensor = *graph_info_->tensor(i);
+  const int num_tensors = static_cast<int>(graph_info_->num_tensors());
+  TfLiteTensor* tensors = graph_info_->tensors();
+  for (int i = 0; i < num_tensors; ++i) {
+    TfLiteTensor& tensor = tensors[i];
     if (tensor.allocation_type == kTfLiteArenaRw) {
       TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
     }

@@ -19,6 +19,7 @@ import six
 from tensorflow.python.feature_column import feature_column_v2 as fc_lib
 from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -53,8 +54,8 @@ _FEATURE_COLUMNS = [
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
 @tf_export(
     '__internal__.feature_column.serialize_feature_column',
-    v1=[],
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+    v1=[])
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
 

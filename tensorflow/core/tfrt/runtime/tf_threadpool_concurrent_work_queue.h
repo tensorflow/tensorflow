@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 
+#include <optional>
 #include <string>
 
 #include "tensorflow/core/platform/cpu_info.h"
@@ -57,7 +58,7 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
 
   void AddTask(tfrt::TaskFunction work) override;
 
-  llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
+  std::optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override;
 
   void Quiesce() override;

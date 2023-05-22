@@ -88,8 +88,8 @@ class GraphDefExporter {
 
   // Export a TFG graph function to a FunctionDef. If the function has a
   // gradient, add it to the graph afterwards to preserve thread-safety.
-  StatusOr<Optional<GradientDef>> ExportFunction(GraphFuncOp func,
-                                                 FunctionDef *def);
+  StatusOr<std::optional<GradientDef>> ExportFunction(GraphFuncOp func,
+                                                      FunctionDef *def);
 
  private:
   // Export just the input and outputs of a function signature. When
@@ -170,7 +170,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
   }
 
   const auto convert_func = [this](GraphFuncOp func, FunctionDef *def,
-                                   Optional<GradientDef> &gradient) {
+                                   std::optional<GradientDef> &gradient) {
     // Generic functions are not on the hot path and skip the conversion to
     // Graph so just call the existing exporter.
     if (func.getGeneric()) {
@@ -193,7 +193,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
       GraphFuncOp func;
       FunctionDef *def;
       Status status;
-      Optional<GradientDef> gradient;
+      std::optional<GradientDef> gradient;
     };
     std::vector<Argument> args;
     for (auto func : module.getOps<GraphFuncOp>())
@@ -213,7 +213,7 @@ Status GraphDefExporter::ExportToGraphDef(ModuleOp module, GraphDef *graph) {
     }
   } else {
     for (auto func : module.getOps<GraphFuncOp>()) {
-      Optional<GradientDef> gradient;
+      std::optional<GradientDef> gradient;
       TF_RETURN_IF_ERROR(convert_func(
           func, graph->mutable_library()->add_function(), gradient));
       if (gradient)
@@ -242,15 +242,15 @@ static Status ConvertAttributes(
   return ::tensorflow::OkStatus();
 }
 
-StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
+StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
     GraphFuncOp func, FunctionDef *def) {
   std::string func_name = func.getSymName().str();
 
   // TODO(jeffniu): Exploit the sorted order of the function attributes.
 
   // Get a gradient, if there is one.
-  Optional<GradientDef> gradient;
-  if (Optional<StringRef> gradient_name = func.getGradient()) {
+  std::optional<GradientDef> gradient;
+  if (std::optional<StringRef> gradient_name = func.getGradient()) {
     gradient.emplace();
     gradient->set_gradient_func(gradient_name->str());
     gradient->set_function_name(func_name);
@@ -259,7 +259,7 @@ StatusOr<Optional<GradientDef>> GraphDefExporter::ExportFunction(
   // Convert the first-class attributes.
   OpDef *signature = def->mutable_signature();
   signature->set_name(func_name);
-  if (Optional<StringRef> description = func.getDescription())
+  if (std::optional<StringRef> description = func.getDescription())
     signature->set_description(description->str());
   signature->set_is_stateful(func.getIsStateful());
 
@@ -624,7 +624,7 @@ Status ConvertToFunctionDef(GraphFuncOp func,
                             FunctionLibraryDefinition &library) {
   GraphDefExporter exporter(func.getDialect(), *OpRegistry::Global(), &library);
   FunctionDef def;
-  TF_ASSIGN_OR_RETURN(Optional<GradientDef> gradient,
+  TF_ASSIGN_OR_RETURN(std::optional<GradientDef> gradient,
                       exporter.ExportFunction(func, &def));
   const std::string &name = def.signature().name();
   if (library.Contains(name)) {

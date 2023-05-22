@@ -13,16 +13,10 @@ cc_test(
     name = "reconcile_fns_test",
     srcs = ["reconcile_fns_test.cc"],
     deps = [
-        ":attribute_keys",
         ":attribute_map_internal",
+        "//tensorflow/lite/core/async/interop/c:types",
         "@com_google_googletest//:gtest_main",
     ],
-)
-
-cc_library(
-    name = "attribute_keys",
-    hdrs = ["attribute_keys.h"],
-    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -45,8 +39,8 @@ cc_test(
     name = "attribute_map_internal_test",
     srcs = ["attribute_map_internal_test.cc"],
     deps = [
-        ":attribute_keys",
         ":attribute_map_internal",
+        "//tensorflow/lite/core/async/interop/c:types",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -63,7 +57,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":attribute_keys",
         ":variant",
         "//tensorflow/lite/core/async/interop/c:types",
     ],

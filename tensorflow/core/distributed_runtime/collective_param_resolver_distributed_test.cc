@@ -150,7 +150,6 @@ class DeviceResDistTest : public ::testing::Test {
             worker_name);
     auto worker_env = std::make_unique<WorkerEnv>();
     worker_env->env = Env::Default();
-    worker_env->local_devices = device_mgrs_[worker_name]->ListDevices();
     worker_env->device_mgr = device_mgrs_[worker_name].get();
     worker_env->collective_executor_mgr =
         std::make_unique<TestCollectiveExecutorMgr>(

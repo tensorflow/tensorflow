@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <iterator>
 #include <numeric>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/Twine.h"
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -103,7 +105,7 @@ static Type GetDataTypeFromOp(OpBuilder &builder, Operation *op) {
 static FailureOr<TFOp> CreateConstantTensorOp(
     OpBuilder &builder, Location loc, StringRef name_prefix, Type type,
     ValueRange control_operands, TypedAttr tensor_value,
-    ArrayRef<NamedAttribute> other_attrs = llvm::None) {
+    ArrayRef<NamedAttribute> other_attrs = std::nullopt) {
   if (type.isa<VariantType>()) return failure();
   // TODO(chiahungduan): Reuse ConstOp Like
   // OperationFolder::tryGetOrCreateConstant.
@@ -202,7 +204,7 @@ static void AddControlOperand(Operation *op, Value control,
 
 static FailureOr<TFOp> ReplaceOpWithConstantTensor(
     OpBuilder &builder, TFOp op, ElementsAttr value,
-    ArrayRef<StringRef> exclude_attrs = llvm::None) {
+    ArrayRef<StringRef> exclude_attrs = std::nullopt) {
   // New const op has the control dependency with op's non-control operands.
   SmallVector<Value> operands_controls;
   llvm::append_range(operands_controls,
@@ -319,7 +321,7 @@ static FailureOr<TFOp> ReplaceOpWithBroadcastTo(OpBuilder &builder, TFOp op,
   // Create a vector of control operands. We should not fail beyond this point
   // since GetControlDependency may create a control anchor (a new op).
   SmallVector<Value> control_operands;
-  for (auto &it : llvm::enumerate(op.getNonControlOperands())) {
+  for (const auto &it : llvm::enumerate(op.getNonControlOperands())) {
     int idx = it.index();
     Value v = it.value();
     if (idx == idx_to_replace) continue;
@@ -628,7 +630,7 @@ static bool IsValidConstShapeForMulConvPushDown(StringAttr data_format,
     }
 
     // TODO(chiahungduan): Symbolic shape equivalence is acceptable.
-    if (filter_shape.getShape() != llvm::makeArrayRef(broadcast_shape))
+    if (filter_shape.getShape() != llvm::ArrayRef(broadcast_shape))
       return false;
 
     // Only the last dimension could be larger than one, since broadcasting over
@@ -747,7 +749,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
         OperandControlRetRange(op->getOperands()));
 
     SmallVector<TFOp> const_ops(result.size());
-    for (auto &it : llvm::enumerate(result)) {
+    for (const auto &it : llvm::enumerate(result)) {
       TypedAttr attr = it.value();
       // Null values represent dead outputs. They can result from evaluating a
       // switch op.
@@ -775,7 +777,7 @@ class EvaluateConstant : public FolderPatternBase<EvaluateConstant> {
       const_op.setName(TFOp(op).nameAttr());
       rewriter.replaceOp(op, const_op->getResults());
     } else {
-      for (auto &it : llvm::enumerate(const_ops)) {
+      for (const auto &it : llvm::enumerate(const_ops)) {
         if (!it.value()) continue;
         for (OpOperand &use :
              llvm::make_early_inc_range(op->getResult(it.index()).getUses())) {
@@ -1089,8 +1091,7 @@ class MaterializeBroadcastGradientArgsOp
       int reduction_indices = reduce_dims[j].size();
       ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
           type_attr.getValue(), {reduction_indices},
-          llvm::makeArrayRef<int64_t>(reduce_dims[j].data(),
-                                      reduction_indices));
+          llvm::ArrayRef<int64_t>(reduce_dims[j].data(), reduction_indices));
       FailureOr<TFOp> const_op = CreateConstantTensorOp(
           rewriter, op->getLoc(), TFOp(op).name(), op->getResultTypes()[j],
           TFOp(op).controlRet(), const_attr);
@@ -1181,7 +1182,7 @@ class MaterializeReductionIndices
 
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         indices_shape.getElementType(), {input_shape.getRank()},
-        llvm::makeArrayRef(elements));
+        llvm::ArrayRef(elements));
 
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         rewriter, indices->getLoc(), Twine(TFOp(op).name(), "/indices").str(),
@@ -1316,7 +1317,7 @@ class MergeNodeFoldingBase : public PropagationPatternBase<ConcreteType> {
   MergeNodeFoldingBase(StringRef op_name, OpPropertyHelper &helper)
       : PropagationPatternBase<ConcreteType>(op_name, helper),
         zero_dim_i32_tensor_type_(RankedTensorType::get(
-            llvm::None,
+            std::nullopt,
             IntegerType::get(helper.getDialect()->getContext(), 32))) {}
 
   LogicalResult matchAndRewrite(Operation *op,
@@ -1892,7 +1893,8 @@ class MoveConstantsPastEnterOpBase
 
     FailureOr<TFOp> cloned_const_op = CreateConstantTensorOp(
         rewriter, op->getLoc(), TFOp(op).name(), *(input->result_type_begin()),
-        TFOp(op).controlRet(), input->getAttr("value"), input->getAttrs());
+        TFOp(op).controlRet(), cast<TypedAttr>(input->getAttr("value")),
+        input->getAttrs());
     if (failed(cloned_const_op)) return failure();
 
     (*cloned_const_op).setName(Twine(TFOp(op).name(), "/_enter"));
@@ -1967,7 +1969,8 @@ class SimplifySwitchOp : public PropagationPatternBase<SimplifySwitchOp> {
         return;
 
       FailureOr<TFOp> failure_or_const_op = CreateConstantTensorOp(
-          rewriter, op->getLoc(), TFOp(op).name(), result.getType(), llvm::None,
+          rewriter, op->getLoc(), TFOp(op).name(), result.getType(),
+          std::nullopt,
           DenseElementsAttr::get(zero_dim_i1_tensor_type_, const_value));
       if (failed(failure_or_const_op)) return;
       TFOp const_op = *failure_or_const_op;
@@ -2018,7 +2021,8 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     Operation *reduction_indices = op->getOperand(1).getDefiningOp();
     if (!reduction_indices) return failure();
 
-    ShapedType indices_type = *(reduction_indices->result_type_begin());
+    ShapedType indices_type =
+        cast<ShapedType>(*(reduction_indices->result_type_begin()));
     if (indices_type.hasStaticShape() && indices_type.getNumElements() == 0) {
       Operation *identity_op = ReplaceReductionWithIdentity(rewriter, op);
       if (!identity_op) return failure();
@@ -2096,7 +2100,7 @@ class SimplifyReductionOp : public FolderPatternBase<SimplifyReductionOp> {
     std::iota(elements.begin(), elements.end(), 1);
     ElementsAttr const_attr = CreateElementsAttrOfTypeValues(
         builder.getIntegerType(32), {new_num_dimensions},
-        llvm::makeArrayRef(elements));
+        llvm::ArrayRef(elements));
     FailureOr<TFOp> const_op = CreateConstantTensorOp(
         builder, op->getLoc(), TFOp(op).name(),
         *(reduction_indices->result_type_begin()),
@@ -3152,7 +3156,7 @@ class PartialConcatConstFolding
 
     if (!inputs_to_delete.empty()) {
       OperationState state(op->getLoc(), op->getName());
-      for (auto &it : llvm::enumerate(non_control_operands)) {
+      for (const auto &it : llvm::enumerate(non_control_operands)) {
         if (inputs_to_delete.contains(it.index())) continue;
         state.addOperands(it.value());
       }
@@ -3685,7 +3689,11 @@ void ConstantFolding::runOnOperation() {
     for (Operation &op : func.SingleBlock::getBody()->without_terminator()) {
       ops.push_back(&op);
     }
-    if (!applyOpPatternsAndFold(ops, final_patterns_, /*strict=*/true)) break;
+    bool changed = false;
+    GreedyRewriteConfig config;
+    config.strictMode = GreedyRewriteStrictness::ExistingAndNewOps;
+    (void)applyOpPatternsAndFold(ops, final_patterns_, config, &changed);
+    if (!changed) break;
   } while (iteration++ < max_iterations);
 
   // TODO(chiahungduan): This is used to avoid evaluating a node multiple times.

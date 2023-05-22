@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 
-// NOLINTBEGIN(whitespace/line_length)
-/// For documentation, see
-/// third_party/tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h.
-// NOLINTEND(whitespace/line_length)
-#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"  // IWYU pragma: export
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
+
+#include "tensorflow/lite/acceleration/configuration/delegate_registry.h"  // IWYU pragma: export
+
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/delegate_registry.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_

@@ -101,7 +101,8 @@ class PoolingTest(test.TestCase):
     for data_format, use_gpu in GetTestConfigs():
       self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
                           data_format, dtypes.float32, expected, use_gpu)
-      if use_gpu and test_util.is_gpu_available(cuda_only=True):
+      # Don't test bfloat16 on GPU if there is no GPU available.
+      if (not use_gpu) or test_util.is_gpu_available(cuda_only=True):
         self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
                             data_format, dtypes.bfloat16, expected, use_gpu)
 
@@ -138,19 +139,21 @@ class PoolingTest(test.TestCase):
   def testAvgPool3dGrad(self):
     with self.assertRaises(
         (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
-      with self.cached_session():
-        orig_input_shape = constant_op.constant(
-            1879048192, shape=[5], dtype=dtypes.int32)
-        grad = constant_op.constant(
-            1, shape=[1, 3, 2, 4, 2], dtype=dtypes.float32)
-        t = gen_nn_ops.AvgPool3DGrad(
-            orig_input_shape=orig_input_shape,
-            grad=grad,
-            ksize=[1, 1, 1, 1, 1],
-            strides=[1, 1, 1, 1, 1],
-            padding="SAME",
-            data_format="NDHWC")
-        self.evaluate(t)
+      for dtype in [dtypes.float32, dtypes.bfloat16]:
+        with self.cached_session():
+          orig_input_shape = constant_op.constant(
+              1879048192, shape=[5], dtype=dtypes.int32
+          )
+          grad = constant_op.constant(1, shape=[1, 3, 2, 4, 2], dtype=dtype)
+          t = gen_nn_ops.AvgPool3DGrad(
+              orig_input_shape=orig_input_shape,
+              grad=grad,
+              ksize=[1, 1, 1, 1, 1],
+              strides=[1, 1, 1, 1, 1],
+              padding="SAME",
+              data_format="NDHWC",
+          )
+          self.evaluate(t)
 
   def testAvgPool3dGradEmptyInput(self):
     for data_format, use_gpu in GetTestConfigs():

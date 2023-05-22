@@ -54,6 +54,7 @@ cc_library(
         "log.h",
     ],
     deps = [
+        "//tensorflow/core/platform:tstring",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",

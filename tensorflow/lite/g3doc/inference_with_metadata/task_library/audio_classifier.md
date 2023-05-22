@@ -40,7 +40,7 @@ API.
 ## Run inference in Java
 
 See the
-[Audio Classification reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/sound_classification/android)
+[Audio Classification reference app](https://github.com/tensorflow/examples/tree/master/lite/examples/audio_classification/android)
 for an example using `AudioClassifier` in an Android app.
 
 ### Step 1: Import Gradle dependency and other settings

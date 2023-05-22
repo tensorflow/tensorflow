@@ -17,7 +17,6 @@
 import warnings
 
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat as tf_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import random_seed
 from tensorflow.python.framework import dtypes
@@ -45,9 +44,8 @@ class _RandomDataset(dataset_ops.DatasetSource):
     self._seed, self._seed2 = random_seed.get_seed(seed)
     self._rerandomize = rerandomize_each_iteration
     self._name = name
-    if (rerandomize_each_iteration is not None or
-        tf_compat.forward_compatible(2022, 12, 17)):
-      if not tf2.enabled() and rerandomize_each_iteration:
+    if rerandomize_each_iteration:
+      if not tf2.enabled():
         warnings.warn("In TF 1, the `rerandomize_each_iteration=True` option "
                       "is only supported for repeat-based epochs.")
       variant_tensor = ged_ops.random_dataset_v2(

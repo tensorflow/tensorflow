@@ -132,6 +132,7 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
              typename TTypes<T>::Matrix Tout);
 
 #define REGISTER_GATHER_ND_CPU(type)    \
+  REGISTER_GATHER_ND_FULL(type, int16); \
   REGISTER_GATHER_ND_FULL(type, int32); \
   REGISTER_GATHER_ND_FULL(type, int64)
 

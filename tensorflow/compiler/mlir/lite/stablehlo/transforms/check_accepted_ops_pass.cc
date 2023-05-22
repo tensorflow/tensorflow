@@ -19,7 +19,11 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/mhlo_util.h"
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/stablehlo/transforms/stablehlo_util.h"
 
 namespace mlir {
 namespace odml {
@@ -33,7 +37,7 @@ class CheckAcceptedOpsPass
 
   explicit CheckAcceptedOpsPass(
       const std::vector<std::string> &optional_accepted_dialects)
-      : accepted_dialects_(TFL::mhlo::GetAcceptedDialects()),
+      : accepted_dialects_(GetAcceptedDialects()),
         optional_accepted_dialects_(optional_accepted_dialects) {}
 
   // Check if TF dialect ops exist over the module.
@@ -49,10 +53,10 @@ void CheckAcceptedOpsPass::runOnOperation() {
   getOperation()->walk([&](Operation *op) {
     auto dialect_name = op->getDialect()->getNamespace();
     auto op_name = op->getName().stripDialect();
-    if (TFL::mhlo::IsAcceptedOp(dialect_name, op_name, accepted_dialects_)) {
+    if (IsAcceptedOp(dialect_name, op_name, accepted_dialects_)) {
       // If given op is in the `accepted_dialects_`, it's ok.
-    } else if (TFL::mhlo::IsAcceptedOp(dialect_name, op_name,
-                                       optional_accepted_dialects_)) {
+    } else if (IsAcceptedOp(dialect_name, op_name,
+                            optional_accepted_dialects_)) {
       // If the given op is in the `optional_accepted_dialects_`, let's warn it.
       op->emitWarning() << op->getName().getStringRef() << " op is temporarily "
                         << "accepted, but it should be removed in the end.";

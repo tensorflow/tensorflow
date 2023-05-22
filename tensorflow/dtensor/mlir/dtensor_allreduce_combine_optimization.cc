@@ -333,11 +333,11 @@ mlir::LogicalResult CombineAllReduceOps(
         group_assignment_attr,
         GroupAssignment::ReplicaToDeviceMap::DefaultReplicaToDeviceMap(
             num_slices, slice_size));
-    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.inc)
+    // LINT.ThenChange(//tensorflow/dtensor/mlir/utils/collective_lowering_google.cc)
     if (!group_assignment.ok()) {
       return all_reduce.emitOpError(
           llvm::formatv("Failed to create a GroupAssignment due to {0}",
-                        group_assignment.status().error_message()));
+                        group_assignment.status().message()));
     }
     // Unit tests have only one slice. Always combine all all-reduces in them.
     if (group_assignment->num_slices() == 1 ||

@@ -1,5 +1,5 @@
-// RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
-// RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text --via-builder=true %s | FileCheck %s
+// RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics %s | FileCheck %s
+// RUN: xla-translate --print-sugar=false -split-input-file -mlir-hlo-to-hlo-text -verify-diagnostics --via-builder=true %s | FileCheck %s
 
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<2xi1>) -> tensor<2xi1> {
@@ -199,7 +199,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
     "mhlo.return"(%max) : (tensor<f32>) -> ()
   })
   {
-    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    replica_groups = dense<[[0, 2, 4, -1], [1, 3, 5, 6]]> : tensor<2x4xi64>,
     channel_handle = #mhlo.channel_handle<
       handle = 5,
       type = 2
@@ -213,7 +213,7 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  %[[ARG0:.*]] = f32[10] parameter(0)
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME:  channel_id=5
-// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,7}}
+// CHECK-SAME{LITERAL}:  replica_groups={{0,2,4},{1,3,5,6}}
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
 
 // -----
@@ -354,24 +354,26 @@ func.func @main(%input: tensor<2x2x2x2xf32>, %scale: tensor<2xf32>, %offset: ten
 // -----
 
 // CHECK:  HloModule
-func.func @main(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> (tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
-  // CHECK:  [[VAL_1:%.*]] = s32[4] parameter(0)
-  // CHECK:  [[VAL_2:%.*]] = s32[4] parameter(1)
-  // CHECK:  [[ATAN2:%.*]] = s32[4] atan2(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %0 = mhlo.atan2 %arg0, %arg1 : tensor<4xi32>
+func.func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>, %arg2: tensor<4xi32>, %arg3: tensor<4xi32>) -> (tensor<4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) {
+  // CHECK:  [[VAL_1:%.*]] = f32[4] parameter(0)
+  // CHECK:  [[VAL_2:%.*]] = f32[4] parameter(1)
+  // CHECK:  [[ATAN2:%.*]] = f32[4] atan2(f32[4] [[VAL_1]], f32[4] [[VAL_2]])
+  // CHECK:  [[VAL_3:%.*]] = s32[4] parameter(2)
+  // CHECK:  [[VAL_4:%.*]] = s32[4] parameter(3)
+  %0 = mhlo.atan2 %arg0, %arg1 : tensor<4xf32>
 
-  // CHECK:  [[SHL:%.*]] = s32[4] shift-left(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %1 = mhlo.shift_left %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHL:%.*]] = s32[4] shift-left(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %1 = mhlo.shift_left %arg2, %arg3 : tensor<4xi32>
 
-  // CHECK:  [[SHRA:%.*]] = s32[4] shift-right-arithmetic(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %2 = mhlo.shift_right_arithmetic %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHRA:%.*]] = s32[4] shift-right-arithmetic(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %2 = mhlo.shift_right_arithmetic %arg2, %arg3 : tensor<4xi32>
 
-  // CHECK:  [[SHRL:%.*]] = s32[4] shift-right-logical(s32[4] [[VAL_1]], s32[4] [[VAL_2]])
-  %3 = mhlo.shift_right_logical %arg0, %arg1 : tensor<4xi32>
+  // CHECK:  [[SHRL:%.*]] = s32[4] shift-right-logical(s32[4] [[VAL_3]], s32[4] [[VAL_4]])
+  %3 = mhlo.shift_right_logical %arg2, %arg3 : tensor<4xi32>
 
   // CHECK:  ROOT
-  // CHECK-SAME:  [[VAL_7:%.*]] = (s32[4], s32[4], s32[4], s32[4]) tuple(s32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
-  func.return %0, %1, %2, %3 : tensor<4xi32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
+  // CHECK-SAME:  [[VAL_9:%.*]] = (f32[4], s32[4], s32[4], s32[4]) tuple(f32[4] [[ATAN2]], s32[4] [[SHL]], s32[4] [[SHRA]], s32[4] [[SHRL]])
+  func.return %0, %1, %2, %3 : tensor<4xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>
 }
 
 // -----
@@ -598,6 +600,15 @@ func.func @main() {
   // CHECK: c128[] constant((1, 0))
   %cst_10 = arith.constant dense<(1.000000e+00,0.000000e+00)> : tensor<complex<f64>>
 
+  // CHECK: f8e5m2[4] constant({1, 2, 3, 4})
+  %cst_11 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E5M2>
+
+  // CHECK: f8e4m3fn[4] constant({1, 2, 3, 4})
+  %cst_12 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3FN>
+
+  // CHECK: f8e4m3b11fnuz[4] constant({1, 2, 3, 4})
+  %cst_13 = arith.constant dense<[1.000000e+00, 2.000000e+00, 3.000000e+00, 4.000000e+00]> : tensor<4xf8E4M3B11FNUZ>
+
   func.return
 }
 
@@ -762,7 +773,7 @@ func.func @main(%arg0: tensor<2xi32>) -> tensor<2xi32> {
 
 // CHECK:  HloModule
 func.func @copy_0(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> attributes {execution_thread = "main"} {
-  %0 = "mhlo.copy"(%arg0) { is_cross_program_prefetch } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  %0 = "mhlo.copy"(%arg0) {cross_program_prefetch_index = 0 : i32} : (tensor<128x32xf32>) -> tensor<128x32xf32>
   func.return %0 : tensor<128x32xf32>
 }
 
@@ -775,7 +786,7 @@ func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
 // CHECK: ENTRY
 // CHECK: %[[INPUT:.*]] = f32[128,32] parameter(0)
 // CHECK: %[[OUTPUT:.*]] = (f32[128,32], f32[128,32], u32[]) copy-start(f32[128,32] %[[INPUT]])
-// CHECK-SAME:  is_cross_program_prefetch
+// CHECK-SAME:  cross_program_prefetch_index=0
 // CHECK: ROOT {{.*}} f32[128,32] copy-done((f32[128,32], f32[128,32], u32[]) %[[OUTPUT]]
 
 
@@ -796,6 +807,682 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK:  ROOT %[[RESULT:.*]] = f32[10] all-reduce(f32[10] %[[ARG0]])
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  to_apply=%[[SUM_COMPUTATION]]
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "SetBound", mhlo.literal = dense<1> : tensor<i32>} : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  func.return %0 : tensor<2x3xf32>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  f32[2,3] custom-call(f32[2,3] [[VAL_1]])
+// CHECK-SAME:  custom_call_target="SetBound"
+// CHECK-SAME:  literal=s32[] 1
+// -----
+
+// CHECK:  HloModule
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      top_k = 4 : i64,
+      is_fallback = true
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[ARG0:%.*]] = bf16[16,256] parameter(0)
+// CHECK-DAG:   [[ARG1:%.*]] = s32[] parameter(1)
+// CHECK-DAG:   [[ARG2:%.*]] = s32[16,256] parameter(2)
+// CHECK-DAG:   [[ARG3:%.*]] = bf16[] parameter(3)
+// CHECK-DAG:   [[VAL0:%.*]] = (bf16[16,256], s32[16,256]) sort(bf16[16,256] [[ARG0]], s32[16,256] [[ARG2]])
+// CHECK-DAG:   [[VAL1:%.*]] = s32[16,256] get-tuple-element((bf16[16,256], s32[16,256]) [[VAL0]])
+// CHECK-DAG:   [[VAL2:%.*]] = s32[16,4] slice(s32[16,256] [[VAL1]])
+
+// -----
+
+// CHECK:  HloModule
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// CHECK: %top_k_gt_comparator.[[COMPARATOR:[0-9]+]]
+// CHECK:   s32[] parameter(2)
+// CHECK:   s32[] parameter(3)
+// CHECK:   [[ARG0:%.*]] = bf16[] parameter(0)
+// CHECK:   [[ARG1:%.*]] = bf16[] parameter(1)
+// CHECK:   ROOT [[VAL:%.*]] = pred[] compare(bf16[] [[ARG0]], bf16[] [[ARG1]]), direction=GT
+
+// CHECK: ENTRY
+// CHECK-DAG:   [[ARG0:%.*]] = bf16[16,256] parameter(0)
+// CHECK-DAG:   [[ARG1:%.*]] = s32[] parameter(1)
+// CHECK-DAG:   [[ARG2:%.*]] = s32[16,256] parameter(2)
+// CHECK-DAG:   [[ARG3:%.*]] = bf16[] parameter(3)
+// CHECK-DAG:   (bf16[16,128], s32[16,128]) custom-call(bf16[16,256] [[ARG0]], s32[16,256] [[ARG2]], bf16[] [[ARG3]], s32[] [[ARG1]]),
+// CHECK-SAME: custom_call_target="PartialReduce", called_computations={%top_k_gt_comparator.[[COMPARATOR]]}
+// CHECK-SAME: backend_config="{\"log2_reduction\": 1, \"reduction_dim\": 1, \"to_apply_type\": \"comparator\", \"top_k\": 4, \"recall_target\": 0.949218}"
+
+
+// -----
+
+// expected-error@-3 {{ApproxTopK aggregates to k=4, but got 5}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x5xbf16>, tensor<16x5xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x5xbf16>, tensor<16x5xi32>)
+  return %4#0, %4#1 : tensor<16x5xbf16>, tensor<16x5xi32>
+}
+
+// -----
+
+// expected-error@-3 {{input shape mismatch at position 1}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<17x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+     api_version = 4 : i32,
+     called_computations = [@top_k_gt_comparator],
+     backend_config = {
+       aggregate_to_topk = true,
+       recall_target = 9.492180e-01 : f32,
+       reduction_dim = 1 : i64,
+       reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+       top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<17x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{input and init_value element type mismatch at position 1}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i64>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i64>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+
+// -----
+
+// expected-error@-3 {{called_computation type does not match the expected type. Got '(tensor<bf16>, tensor<bf16>, tensor<i32>, tensor<i32>) -> tensor<i32>' expected '(tensor<bf16>, tensor<bf16>, tensor<i32>, tensor<i32>) -> tensor<i1>'}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i32> {
+  %0 = mhlo.constant dense<0> : tensor<i32>
+  return %0 : tensor<i32>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{result shape mismatch at position 1, index 0}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<17x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<17x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<17x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{result element type mismatch at position 1}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi64>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi64>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi64>
+}
+
+// -----
+
+// expected-error@-3 {{num_results does not match num_inputs}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.constant dense<0> : tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>) {
+  %4 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>)
+  return %4: tensor<16x4xbf16>
+}
+
+// -----
+
+// expected-error@-3 {{ApproxTopK takes an even number of operands.}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{invalid_attribute is not a supported attribute for ApproxTopK}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      },
+      invalid_attribute = 123 : i64
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{invalid_attribute is not a supported backend_config attribute for ApproxTopK}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64,
+      invalid_attribute = 123 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+
+// -----
+
+// expected-error@-3 {{ApproxTopK takes exactly 1 called_computation.}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator,
+    @top_k_gt_comparator], backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{Missing backend_config attribute}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator]
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{Missing top_k attribute in backend_config}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      is_fallback = false,
+      reduction_input_size_override = -1 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{Missing reduction_dim attribute in backend_config}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      is_fallback = false,
+      top_k = 4 : i64,
+      reduction_input_size_override = -1 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{Missing reduction_input_size_override attribute in backend_config}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{Missing aggregate_to_topk attribute in backend_config}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64,
+      reduction_input_size_override = -1 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{top_k attribute in backend_config must be of i64 type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i32
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{reduction_dim attribute in backend_config must be of i64 type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i32,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{reduction_input_size_override attribute in backend_config must be of i64 type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i32,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{Missing recall_target attribute in backend_config}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      reduction_dim = 1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64,
+      reduction_input_size_override = -1 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+
+// -----
+
+// expected-error@-3 {{recall_target attribute in backend_config must be of f32 type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 0.01 : bf16,
+      reduction_dim = 1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64,
+      reduction_input_size_override = -1 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{aggregate_to_topk attribute in backend_config must be of bool type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = 3 : i32,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{is_fallback attribute in backend_config must be of bool type}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 9.492180e-01 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = 3 : i64,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{recall_target out of range}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 1.1 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
+
+// -----
+
+// expected-error@-3 {{reduction_dim out of range}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x256xbf16>, tensor<16x256xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 0.5 : f32,
+      reduction_dim = 400 : i64,
+      reduction_input_size_override = -1 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x256xbf16>, tensor<16x256xi32>)
+  return %4#0, %4#1 : tensor<16x256xbf16>, tensor<16x256xi32>
+}
+
+// -----
+
+// expected-error@-3 {{reduction_input_size_override out of range}}
+func.func @top_k_gt_comparator(%arg0: tensor<bf16>, %arg1: tensor<bf16>, %arg2: tensor<i32>, %arg3: tensor<i32>) -> tensor<i1> {
+  %0 = mhlo.compare  GT, %arg0, %arg1 : (tensor<bf16>, tensor<bf16>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: tensor<16x256xi32>, %arg3: tensor<bf16>) -> (tensor<16x4xbf16>, tensor<16x4xi32>) {
+  %4:2 = mhlo.custom_call @ApproxTopK(%arg0, %arg2, %arg3, %arg1) {
+    api_version = 4 : i32,
+    called_computations = [@top_k_gt_comparator],
+    backend_config = {
+      aggregate_to_topk = true,
+      recall_target = 0.5 : f32,
+      reduction_dim = 1 : i64,
+      reduction_input_size_override = 3 : i64,
+      is_fallback = false,
+      top_k = 4 : i64
+      }
+    } : (tensor<16x256xbf16>, tensor<16x256xi32>, tensor<bf16>, tensor<i32>) -> (tensor<16x4xbf16>, tensor<16x4xi32>)
+  return %4#0, %4#1 : tensor<16x4xbf16>, tensor<16x4xi32>
+}
 
 // -----
 
@@ -833,6 +1520,50 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  schedule=SCHEDULE_EARLIEST
 // CHECK-SAME:  backend_config="bar"
 
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tuple<tensor<2x3xf32>> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> tuple<tensor<2x3xf32>>
+  func.return %0 : tuple<tensor<2x3xf32>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  (f32[2,3]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> tuple<tensor<2x3xf32>, tensor<4x5xf16>> {
+  %0 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> tuple<tensor<2x3xf32>, tensor<4x5xf16>>
+  func.return %0 : tuple<tensor<2x3xf32>, tensor<4x5xf16>>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  ROOT
+// CHECK-SAME:  (f32[2,3], f16[4,5]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+
+// -----
+
+// CHECK:  HloModule
+func.func @main(%arg0: tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<4x5xf16>) {
+  %0:2 = "mhlo.custom_call"(%arg0) {call_target_name = "foo"} : (tensor<2x3xf32>) -> (tensor<2x3xf32>, tensor<4x5xf16>)
+  func.return %0#0, %0#1 : tensor<2x3xf32>, tensor<4x5xf16>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[ARG0:%.*]] = f32[2,3] parameter(0)
+// CHECK:  [[OUTS:%.*]] = (f32[2,3], f16[4,5]) custom-call(f32[2,3] [[ARG0]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-DAG:  [[OUT0:%.*]] = f32[2,3] get-tuple-element((f32[2,3], f16[4,5]) [[OUTS]]), index=0
+// CHECK-DAG:  [[OUT1:%.*]] = f16[4,5] get-tuple-element((f32[2,3], f16[4,5]) [[OUTS]]), index=1
+// CHECK:  ROOT
+// CHECK-SAME: (f32[2,3], f16[4,5]) tuple(f32[2,3] [[OUT0]], f16[4,5] [[OUT1]])
 
 // -----
 
@@ -849,6 +1580,36 @@ func.func @main(%arg0: tensor<3xi8>, %arg1: tensor<3xi8>) -> tensor<i64> {
 // CHECK: %[[ARG1]] = s8[3] parameter(1)
 // CHECK: ROOT
 // CHECK-SAME: s64[] dot(s8[3] %[[ARG0]], s8[3] %[[ARG1]]),
+
+// -----
+
+// Test dot i4xi4 -> i8
+
+func.func @main(%arg0: tensor<3xi4>, %arg1: tensor<3xi4>) -> tensor<i8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xi4>, tensor<3xi4>) -> tensor<i8>
+  func.return %0 : tensor<i8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: s4[3], [[ARG_2:.*]]: s4[3]) -> s8[]
+// CHECK:  %[[ARG_1:.*]] = s4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = s4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = s8[] dot(s4[3] %[[ARG_1:.*]], s4[3] %[[ARG_2:.*]])
+
+// -----
+
+// Test dot ui4xui4 -> ui8
+
+func.func @main(%arg0: tensor<3xui4>, %arg1: tensor<3xui4>) -> tensor<ui8> {
+  %0 = "mhlo.dot"(%arg0, %arg1) {precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3xui4>, tensor<3xui4>) -> tensor<ui8>
+  func.return %0 : tensor<ui8>
+}
+
+// CHECK:  ENTRY
+// CHECK:  [[CALLEE_1:%.*]] ([[ARG_1:.*]]: u4[3], [[ARG_2:.*]]: u4[3]) -> u8[]
+// CHECK:  %[[ARG_1:.*]] = u4[3] parameter(0)
+// CHECK:  %[[ARG_2:.*]] = u4[3] parameter(1)
+// CHECK:  ROOT %[[DOT:.*]] = u8[] dot(u4[3] %[[ARG_1:.*]], u4[3] %[[ARG_2:.*]])
 
 // -----
 
@@ -2091,6 +2852,16 @@ func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 // -----
 
 // CHECK: HloModule
+func.func @main(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[ARG0:.*]] = f32[2] parameter(0)
+  %0 = "mhlo.tan"(%arg0) {} : (tensor<2xf32>) -> tensor<2xf32>
+  // CHECK: tan(f32[2] %[[ARG0]])
+  func.return %0 : tensor<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
 // CHECK{LITERAL}: output_to_operand_aliasing={{0}: (0, {1})}
 func.func @main(%arg0: tuple<tensor<1x1xf32>, tensor<2x3xf32>>, %arg1: tensor<5x5xf32>) {
   %0 = "mhlo.custom_call"(%arg0, %arg1) {
@@ -2147,8 +2918,13 @@ func.func @main(%arg: tensor<3x4xf32>) -> tensor<3x4xf32> attributes {execution_
 // CHECK:  HloModule
 func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 // CHECK: %[[ARG0:.*]] = s32[2,2] parameter(0)
-// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), replica_groups={{.}}{1,2},{0}}, dimensions={1}
-  %0 = "mhlo.all_to_all"(%arg0) {concat_dimension = 1 : i64, replica_groups = dense<[[1, 2], [0, -1]]> : tensor<2x2xi64>, split_count = 2 : i64, split_dimension = 1 : i64} : (tensor<2x2xi32>) -> tensor<2x2xi32>
+// CHECK: ROOT %[[RESULT:.*]] = s32[2,2] all-to-all(s32[2,2] %[[ARG0]]), channel_id=1, replica_groups={{.}}{1,2},{0,3}}, dimensions={1}
+  %0 = "mhlo.all_to_all"(%arg0) {
+    concat_dimension = 1 : i64,
+    replica_groups = dense<[[1, 2], [0, 3]]> : tensor<2x2xi64>,
+    split_count = 2 : i64, split_dimension = 1 : i64,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 1>
+  } : (tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
 
@@ -2157,9 +2933,15 @@ func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
 func.func private @main(%arg0: tensor<128x4xf32>, %arg1: tensor<128x4xf32>) -> tuple<tensor<128x4xf32>, tensor<128x4xf32>> {
 // CHECK: %[[ARG0:.*]] = f32[128,4] parameter(0)
 // CHECK: %[[ARG1:.*]] = f32[128,4] parameter(1)
-// CHECK: (f32[128,4], f32[128,4]) all-to-all(f32[128,4] %[[ARG0]], f32[128,4] %[[ARG1]]), replica_groups={{.}}{0,1}}
-  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>} : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
-  %1 = mhlo.tuple %0#0, %0#1 {result_layout = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>], xla_shape = "(f32[128,4]{0,1}, f32[128,4]{1,0})"} : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
+// CHECK: (f32[128,4], f32[128,4]) all-to-all(f32[128,4] %[[ARG0]], f32[128,4] %[[ARG1]]), channel_id=1, replica_groups={{.}}{0,1}}
+  %0:2 = "mhlo.all_to_all"(%arg0, %arg1) {
+    replica_groups = dense<[[0, 1]]> : tensor<1x2xi64>,
+    channel_handle = #mhlo.channel_handle<handle = 1, type = 1>
+  } : (tensor<128x4xf32>, tensor<128x4xf32>) -> (tensor<128x4xf32>, tensor<128x4xf32>)
+  %1 = mhlo.tuple %0#0, %0#1 {
+    result_layout = [dense<[0, 1]> : tensor<2xindex>, dense<[1, 0]> : tensor<2xindex>],
+    xla_shape = "(f32[128,4]{0,1}, f32[128,4]{1,0})"
+  } : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
   return %1 : tuple<tensor<128x4xf32>, tensor<128x4xf32>>
 }
 
@@ -2187,3 +2969,13 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  api_version=API_VERSION_TYPED_FFI
 // CHECK-SAME:  backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"
+
+// -----
+
+// CHECK: ENTRY
+// CHECK:  [[VAL_1:%.*]] = f32[] parameter(0), parameter_replication={true}
+// CHECK:  [[VAL_2:%.*]] = (f32[2,4], (f32[2,4])) parameter(1), parameter_replication={false,true}
+
+func.func @main(%arg0: tensor<f32> {mhlo.parameter_replication = [true]}, %arg1: tuple<tensor<2x4xf32>, tuple<tensor<2x4xf32>>> {mhlo.parameter_replication = [false, true]}) -> tensor<f32> {
+  return %arg0 : tensor<f32>
+}

@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -1918,7 +1919,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
     def fun(x):
-      shape_a = DynamicRaggedShape([], array_ops.stack([5, x, 3]))
+      shape_a = DynamicRaggedShape([], array_ops_stack.stack([5, x, 3]))
       shape_b = DynamicRaggedShape.from_lengths([1, 3], dtype=dtypes.int64)
       result = dynamic_ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
       self.assertAllEqual([5, None, 3], result.static_lengths())
@@ -1930,7 +1931,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
     def fun(x):
-      shape_a = DynamicRaggedShape([], array_ops.stack([5, x, 3]))
+      shape_a = DynamicRaggedShape([], array_ops_stack.stack([5, x, 3]))
       shape_b = DynamicRaggedShape.from_lengths([2, 3], dtype=dtypes.int64)
       result = dynamic_ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
       self.assertAllEqual([5, 2, 3], result.static_lengths())

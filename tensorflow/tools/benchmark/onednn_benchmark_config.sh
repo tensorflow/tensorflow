@@ -19,14 +19,12 @@
 # Path to store downloaded TensorFlow models.
 export TF_GRAPHS=~/tf-graphs
 export BUILDER=bazel
-export BENCH="${BUILDER}-bin/tensorflow/tools/benchmark/benchmark_model"
 
 configure_build() {
   cd ../../..
   yes "" | ./configure
 }
 
-# Input $1: 0 if oneDNN is off, 1 otherwise.
-build_benchmark_tool() {
-   ${BUILDER} build --dynamic_mode=off //tensorflow/tools/benchmark:benchmark_model
+benchmark_command() {
+  echo "--config=opt --dynamic_mode=off //tensorflow/tools/benchmark:benchmark_model -- "
 }

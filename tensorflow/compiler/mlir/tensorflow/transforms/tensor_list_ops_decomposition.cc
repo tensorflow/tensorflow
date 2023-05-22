@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <vector>
 
@@ -79,7 +80,7 @@ struct SizeInfo {
 void ModifyFunctionSignature(
     func::FuncOp func, Type size_type,
     llvm::SmallDenseMap<Value, SizeInfo>* buffer_to_size,
-    llvm::function_ref<llvm::Optional<Type>(int64_t)> arg_to_buffer_type,
+    llvm::function_ref<std::optional<Type>(int64_t)> arg_to_buffer_type,
     llvm::function_ref<bool(int64_t)> arg_buffer_size_is_fixed) {
   auto new_input_types = llvm::to_vector<8>(func.getFunctionType().getInputs());
   int64_t original_arg_count = new_input_types.size();
@@ -161,9 +162,9 @@ LogicalResult HandleWhileOp(
   // Rewrite body.
   auto body = while_op.body_function();
   llvm::SmallDenseMap<Value, SizeInfo> body_map;
-  auto find_arg_tensor_list_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_tensor_list_type = [&](int64_t index) -> std::optional<Type> {
     auto it = buffer_to_size->find(while_op.getOperand(index));
-    if (it == buffer_to_size->end()) return llvm::None;
+    if (it == buffer_to_size->end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto arg_buffer_size_is_fixed = [&](int64_t index) {
@@ -222,9 +223,9 @@ LogicalResult HandleCaseOrIfOp(
   SmallVector<llvm::SmallDenseMap<Value, SizeInfo>, 2> branch_maps;
   branch_maps.resize(branches.size());
 
-  auto find_arg_buffer_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_buffer_type = [&](int64_t index) -> std::optional<Type> {
     auto it = buffer_to_size->find(op.getOperand(index + 1));
-    if (it == buffer_to_size->end()) return llvm::None;
+    if (it == buffer_to_size->end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto arg_buffer_size_is_fixed = [&](int64_t index) {
@@ -477,9 +478,9 @@ LogicalResult HandlePartitionedCallOp(
     lowered_callee = callee.clone();
     lowered_callee.setPrivate();
   }
-  auto find_arg_buffer_type = [&](int64_t index) -> llvm::Optional<Type> {
+  auto find_arg_buffer_type = [&](int64_t index) -> std::optional<Type> {
     auto it = buffer_to_size->find(call.getOperand(index));
-    if (it == buffer_to_size->end()) return llvm::None;
+    if (it == buffer_to_size->end()) return std::nullopt;
     return it->getFirst().getType();
   };
   auto arg_buffer_size_is_fixed = [&](int64_t index) {
@@ -873,7 +874,7 @@ LogicalResult DecomposeTensorListOpsInternal(
     } else if (auto addn = llvm::dyn_cast<TF::AddNOp>(&op)) {
       auto it = buffer_to_size->find(addn.getOperand(0));
       if (it != buffer_to_size->end()) {
-        addn.getSum().setType(addn.getOperand(0).getType());
+        addn.getSum().setType(addn.getOperand(0).getType().cast<TensorType>());
         auto size = it->getSecond();
         (*buffer_to_size)[addn.getSum()] = size;
       }

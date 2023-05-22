@@ -30,6 +30,10 @@ void IncrementThroughput(int64_t bytes);
 // file name manipulation/optimization.
 std::string TranslateFileName(const std::string& fname);
 
+// Returns the data transfer protocol to use if one is not specified by the
+// user.
+std::string DefaultDataTransferProtocol();
+
 }  // namespace data
 }  // namespace tensorflow
 

@@ -20,9 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
 namespace xla {
@@ -306,6 +306,119 @@ TEST_F(MultiOutputFusionTest,
     })"))
                     .value();
   ASSERT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, LoopVariadicReductionFusions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation.94 {
+      tmp_0 = f32[] parameter(0)
+      tmp_1 = f32[] parameter(1)
+      tmp_2 = pred[] compare(tmp_0, tmp_1), direction=GE
+      tmp_3 = f32[] select(tmp_2, tmp_0, tmp_1)
+      tmp_4 = pred[] compare(tmp_0, tmp_1), direction=EQ
+      tmp_5 = s32[] parameter(2)
+      tmp_6 = s32[] parameter(3)
+      tmp_7 = s32[] minimum(tmp_5, tmp_6)
+      tmp_8 = s32[] select(tmp_2, tmp_5, tmp_6)
+      tmp_9 = s32[] select(tmp_4, tmp_7, tmp_8)
+      ROOT tmp_10 = (f32[], s32[]) tuple(tmp_3, tmp_9)
+    }
+
+    minmax_func.1536 {
+      tmp_0 = f32[] parameter(0)
+      tmp_1 = f32[] parameter(2)
+      tmp_2 = s32[] parameter(1)
+      tmp_3 = s32[] parameter(3)
+      ROOT tmp_4 = (f32[], s32[]) fusion(tmp_0, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=fused_computation.94
+    }
+
+    fused_computation {
+      tmp_0 = f32[554112,10]{1,0} parameter(0)
+      tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+      tmp_2 = f32[] constant(-inf)
+      tmp_3 = s32[] constant(0)
+      ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax_func.1536
+    }
+
+    fused_computation2 {
+      tmp_0 = f32[554112,10]{1,0} parameter(0)
+      tmp_1 = s32[554112,10]{1,0} iota(), iota_dimension=1
+      tmp_2 = f32[] constant(inf)
+      tmp_3 = s32[] constant(1)
+      ROOT tmp_4 = (f32[554112]{0}, s32[554112]{0}) reduce(tmp_0, tmp_1, tmp_2, tmp_3), dimensions={1}, to_apply=minmax_func.1536
+    }
+
+    ENTRY e {
+      tmp_0 = f32[554112,10]{1,0} parameter(0)
+      tmp_1 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_0), kind=kLoop, calls=fused_computation
+      tmp_2 = s32[554112]{0} get-tuple-element(tmp_1), index=1
+      tmp_4 = (f32[554112]{0}, s32[554112]{0}) fusion(tmp_0), kind=kLoop, calls=fused_computation2
+      tmp_5 = s32[554112]{0} get-tuple-element(tmp_4), index=1
+      ROOT tmp_6 = s32[554112]{0} add(tmp_2, tmp_5)
+    })"))
+                    .value();
+  EXPECT_FALSE(mof_.Run(module.get()).value());
+}
+
+TEST_F(MultiOutputFusionTest, InputVariadicReductionFusions) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation.1117 {
+      param_0.2433 = f32[] parameter(0)
+      param_1.2571 = f32[] parameter(1)
+      compare.1770 = pred[] compare(param_0.2433, param_1.2571), direction=LE
+      select.682 = f32[] select(compare.1770, param_0.2433, param_1.2571)
+      compare.1303.clone.1 = pred[] compare(param_0.2433, param_1.2571), direction=EQ
+      param_2.6460 = s32[] parameter(2)
+      param_3.6755 = s32[] parameter(3)
+      minimum.633.clone.1 = s32[] minimum(param_2.6460, param_3.6755)
+      select.398.clone.1 = s32[] select(compare.1770, param_2.6460, param_3.6755)
+      select.397.clone.1 = s32[] select(compare.1303.clone.1, minimum.633.clone.1, select.398.clone.1)
+      ROOT tuple.151 = (f32[], s32[]) tuple(select.682, select.397.clone.1)
+    }
+
+    minmax_func.223 {
+      lhs_value.224 = f32[] parameter(0)
+      rhs_value.226 = f32[] parameter(2)
+      lhs_index.225 = s32[] parameter(1)
+      rhs_index.227 = s32[] parameter(3)
+      ROOT fusion.1117 = (f32[], s32[]) fusion(lhs_value.224, rhs_value.226, lhs_index.225, rhs_index.227), kind=kLoop, calls=fused_computation.1117
+    }
+
+    fused_computation.73 {
+      bitcast.86661 = f32[3,1024,300]{2,1,0} parameter(0)
+      iota.734 = s32[3,1,1024,300]{3,2,1,0} iota(), iota_dimension=3
+      bitcast.97555 = s32[3,1024,300]{2,1,0} bitcast(iota.734)
+      constant_3917 = f32[] constant(inf)
+      constant_3918 = s32[] constant(0)
+      ROOT reduce.1069 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) reduce(bitcast.86661, bitcast.97555, constant_3917, constant_3918), dimensions={2}, to_apply=minmax_func.223
+    }
+
+    fused_computation.84 {
+      bitcast.86676 = f32[3,1024,300]{2,1,0} parameter(0)
+      iota.732 = s32[3,1,1024,300]{3,2,1,0} iota(), iota_dimension=3
+      bitcast.97553 = s32[3,1024,300]{2,1,0} bitcast(iota.732)
+      constant_3915 = f32[] constant(inf)
+      constant_3916 = s32[] constant(0)
+      ROOT reduce.1070 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) reduce(bitcast.86676, bitcast.97553, constant_3915, constant_3916), dimensions={2}, to_apply=minmax_func.223
+    }
+
+    ENTRY e {
+      p0 = f32[3,1024,300]{2,1,0} parameter(0)
+      fusion.84 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) fusion(p0), kind=kInput, calls=fused_computation.84
+      gte.391 = s32[3,1024]{1,0} get-tuple-element(fusion.84), index=1
+      fusion.73 = (f32[3,1024]{1,0}, s32[3,1024]{1,0}) fusion(p0), kind=kInput, calls=fused_computation.73
+      gte.393 = s32[3,1024]{1,0} get-tuple-element(fusion.73), index=1
+      ROOT r = s32[3,1024]{1,0} add(gte.391, gte.393)
+    })"))
+                    .value();
+  EXPECT_TRUE(mof_.Run(module.get()).value());
+  EXPECT_EQ(module->entry_computation()->parameter_instruction(0)->user_count(),
+            1);
+  const HloInstruction* fusion =
+      module->entry_computation()->parameter_instruction(0)->users()[0];
+  EXPECT_THAT(fusion, op::Fusion());
+  EXPECT_THAT(fusion->fused_expression_root(),
+              op::Tuple(op::Reduce(), op::Reduce()));
 }
 
 TEST_F(MultiOutputFusionTest, MultiOutputFusionTwoLoops) {
@@ -1441,44 +1554,6 @@ ENTRY e {
   EXPECT_FALSE(mof_.Run(module.get()).value());
 }
 
-TEST_F(MultiOutputFusionTest, SkipSoftmaxCustomCallComputation) {
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule softmax
-
-%max_computation (arg_0: f32[], arg_1: f32[]) -> f32[] {
-  %arg_0 = f32[] parameter(0)
-  %arg_1 = f32[] parameter(1)
-  ROOT %maximum.2 = f32[] maximum(f32[] %arg_0, f32[] %arg_1)
-}
-
-%add_computation (arg_0.1: f32[], arg_1.1: f32[]) -> f32[] {
-  %arg_0.1 = f32[] parameter(0)
-  %arg_1.1 = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %arg_0.1, f32[] %arg_1.1)
-}
-
-%softmax_computation (parameter_0: f32[10,2]) -> f32[10,2] {
-  %parameter_0 = f32[10,2]{1,0} parameter(0)
-  %constant = f32[] constant(-inf)
-  %reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %parameter_0, f32[] %constant), dimensions={1}, to_apply=%max_computation
-  %broadcast.3 = f32[10,2]{1,0} broadcast(f32[10]{0} %reduce.1), dimensions={0}
-  %subtract.3 = f32[10,2]{1,0} subtract(f32[10,2]{1,0} %parameter_0, f32[10,2]{1,0} %broadcast.3)
-  %exponential.3 = f32[10,2]{1,0} exponential(f32[10,2]{1,0} %subtract.3)
-  %constant.1 = f32[] constant(0)
-  %second_reduce.1 = f32[10]{0} reduce(f32[10,2]{1,0} %exponential.3, f32[] %constant.1), dimensions={1}, to_apply=%add_computation
-  %broadcast.4 = f32[10,2]{1,0} broadcast(f32[10]{0} %second_reduce.1), dimensions={0}
-  ROOT %divide.2 = f32[10,2]{1,0} divide(f32[10,2]{1,0} %exponential.3, f32[10,2]{1,0} %broadcast.4)
-}
-
-ENTRY %main (param_0: f32[10,2]) -> f32[10,2] {
-  %param_0 = f32[10,2]{1,0} parameter(0)
-  ROOT %custom-call = f32[10,2]{1,0} custom-call(f32[10,2]{1,0} %param_0), custom_call_target="__softmax_fusion", called_computations={%softmax_computation}
-}
-)")
-                    .value();
-  EXPECT_FALSE(mof_.Run(module.get()).value());
-}
-
 class TransposeMultiOutputFusionTest : public MultiOutputFusionTest {
 };
 
@@ -1561,7 +1636,15 @@ ENTRY main {
 }
   )";
 
-  CheckGpuMultiOutputFusion(hlo, std::nullopt);
+  CheckGpuMultiOutputFusion(hlo, R"(
+  // CHECK: %fused_computation ({{[^ ]+}} f32[16,32]) -> (f32[16,32], f32[32,16]) {
+  // CHECK-NEXT: [[param_0:%[^ ]+]] = f32[16,32]{1,0} parameter(0)
+  // CHECK-NEXT: [[s_1:%[^ ]+]] = f32[16,32]{1,0} sqrt([[param_0]])
+  // CHECK-NEXT: [[copy:%[^ ]+]] = f32[16,32]{0,1} copy([[s_1]])
+  // CHECK-NEXT: [[transpose:[^ ]+]] = f32[32,16]{1,0} transpose([[param_0]]), dimensions={1,0}
+  // CHECK-NEXT: ROOT {{[^ ]+}} = (f32[16,32]{0,1}, f32[32,16]{1,0}) tuple([[copy]], [[transpose]])
+  // CHECK: %fusion = (f32[16,32]{0,1}, f32[32,16]{1,0}) fusion(%{{.*}}), kind=kInput, calls=%fused_computation
+)");
 }
 
 TEST_F(TransposeMultiOutputFusionTest, MultipleCopiesDifferentTypes) {

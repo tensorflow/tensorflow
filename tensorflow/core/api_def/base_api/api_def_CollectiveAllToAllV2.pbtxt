@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "CollectiveAllToAllV2"
+  summary: "Mutually exchanges multiple tensors of identical type and shape."
+  visibility: HIDDEN
+}

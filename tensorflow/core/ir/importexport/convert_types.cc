@@ -82,6 +82,12 @@ Status ConvertDataType(DataType dtype, Builder& builder, Type* type) {
     case tensorflow::DT_COMPLEX128:
       *type = ComplexType::get(builder.getF64Type());
       return ::tensorflow::OkStatus();
+    case tensorflow::DT_FLOAT8_E4M3FN:
+      *type = builder.getFloat8E4M3FNType();
+      return ::tensorflow::OkStatus();
+    case tensorflow::DT_FLOAT8_E5M2:
+      *type = builder.getFloat8E5M2Type();
+      return ::tensorflow::OkStatus();
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   case tensorflow::DT_##enumerant:              \
     *type = builder.getType<tftype##Type>();    \
@@ -106,6 +112,12 @@ Status ConvertScalarTypeToDataType(Type type, DataType* dtype) {
     return ::tensorflow::OkStatus();
   } else if (type.isBF16()) {
     *dtype = tensorflow::DT_BFLOAT16;
+    return ::tensorflow::OkStatus();
+  } else if (type.isFloat8E4M3FN()) {
+    *dtype = ::tensorflow::DT_FLOAT8_E4M3FN;
+    return ::tensorflow::OkStatus();
+  } else if (type.isFloat8E5M2()) {
+    *dtype = ::tensorflow::DT_FLOAT8_E5M2;
     return ::tensorflow::OkStatus();
   } else if (auto itype = type.dyn_cast<IntegerType>()) {
     switch (itype.getWidth()) {

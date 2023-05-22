@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import Foundation
 import TensorFlowLiteC
 
 /// A TensorFlow Lite model used by the `Interpreter` to perform inference.
@@ -22,6 +23,12 @@ final class Model {
   /// The underlying `TfLiteModel` C pointer.
   let cModel: CModel?
 
+  /// The underlying data if data init is used
+  /// From c_api.h: The caller retains ownership of the `model_data` and should ensure that
+  // the lifetime of the `model_data` must be at least as long as the lifetime
+  // of the `TfLiteModel`.
+  let data: Data?
+
   /// Creates a new instance with the given `filePath`.
   ///
   /// - Precondition: Initialization can fail if the given `filePath` is invalid.
@@ -30,6 +37,17 @@ final class Model {
   init?(filePath: String) {
     guard !filePath.isEmpty, let cModel = TfLiteModelCreateFromFile(filePath) else { return nil }
     self.cModel = cModel
+    self.data = nil
+  }
+
+  /// Creates a new instance with the given `modelData`.
+  ///
+  /// - Precondition: Initialization can fail if the given `modelData` is invalid.
+  /// - Parameters:
+  ///   - modelData: Binary data representing a TensorFlow Lite model.
+  init?(modelData: Data) {
+    self.data = modelData
+    self.cModel = modelData.withUnsafeBytes { TfLiteModelCreate($0, modelData.count) }
   }
 
   deinit {

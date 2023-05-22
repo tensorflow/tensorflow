@@ -15,29 +15,27 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
 
+#include <memory>
+
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"
-#include "mlir/Conversion/VectorToSCF/VectorToSCF.h"
-#include "mlir/Dialect/Arith/Transforms/Passes.h"
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/Linalg/Passes.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Shape/Transforms/Passes.h"
-#include "mlir/Dialect/Tensor/Transforms/Passes.h"
 #include "mlir/Transforms/Passes.h"
+#include "llvm/TargetParser/Host.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir_hlo/_virtual_includes/gml_st_passes/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/transforms.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 
 // -------------------------------------------------------------------------- //
 // Custom passes that are missing upstream.
@@ -68,37 +66,9 @@ struct AddTensorflowProducerVersion
   }
 };
 
-// Adds Linalg passes to perform fusion, tiling, peeling and vectorization.
-void AddLinalgTransformations(OpPassManager& pm,
-                              const TfJitRtPipelineOptions& options) {
-  pm.addNestedPass<FuncOp>(CreateFusionPass());
-
-  if (!options.vectorize) return;
-
-  pm.addNestedPass<FuncOp>(CreateDetensorizeLinalgPass());
-
-  pm.addNestedPass<FuncOp>(CreateTileReductionPass(
-      options.vector_size, options.reduction_1d_tile_size,
-      options.reduction_2d_tile_sizes));
-
-  if (options.vectorize && options.codegen_transpose)
-    pm.addNestedPass<FuncOp>(CreateTileTransposePass());
-  pm.addNestedPass<FuncOp>(CreateTileCWisePass(options.vector_size));
-  if (options.peel) {
-    pm.addNestedPass<FuncOp>(CreatePeelTiledLoopsPass());
-  }
-  pm.addNestedPass<FuncOp>(mlir::createCSEPass());
-  pm.addPass(mlir::createCanonicalizerPass());
-  if (options.fuse_fill) {
-    pm.addNestedPass<FuncOp>(CreateFuseFillIntoTiledReductionPass());
-  }
-  pm.addNestedPass<FuncOp>(CreateTileFillPass(options.vector_size));
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createCollapseMaterializeOpsPass());
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeGmlStLoopsPass());
-  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorContractPass());
-}
-
 void AddBufferizationPasses(OpPassManager& pm) {
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
+  pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
   // Rewrite tensor.empty ops to bufferization.alloc_tensor ops.
   pm.addNestedPass<FuncOp>(
       mlir::bufferization::createEmptyTensorToAllocTensorPass());
@@ -128,8 +98,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
-  pm.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
     // Convert 'i1' tensors into 'i8' tensors.
@@ -137,45 +106,37 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   }
 
   // Remove redundant shape operations left after legalizing to HLO.
+  pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
 
-  // Resolve all shape constraints (e.g. broadcast constraints that can be
-  // proved statically and changed to const witness) early to allow more
-  // efficient broadcast operations moving.
-  pm.addNestedPass<FuncOp>(
-      CreateSymbolicShapeOptimizationPass(/*constraints_only=*/true));
-
-  // Analyze shapes and try to simplify the IR as early as possible.
-  pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
+  // Analyze shapes and try to simplify the IR early.
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
   // Move up broadcasting operations to allow for more fusion opportunities.
-  // Add the broadcast propagation pass first, because it can help to avoid
-  // exponential complexity from the EarlyBroadcastInDimOp pattern which is used
-  // in the merge assuming ops pass further down.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createMergeAssumingOpsPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createBroadcastPropagationPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  // After all shape constraints removed and broadcasts moved to the top, try
-  // to resolve broadcasts that can be converted to linalg generic operations.
-  pm.addNestedPass<FuncOp>(CreateSymbolicShapeOptimizationPass());
-
-  // Group reduction and parallel dimensions of reduction operations and realize
-  // them through equivalent 1D or 2D reductions, if possible.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createGroupReductionDimensionsPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeScatterPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createHloCanonicalizeDotPass());
 
   // Also, try to simplify reshape operations.
-  pm.addNestedPass<FuncOp>(mlir::createSymbolicShapeOptimizationPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createSymbolicShapeOptimizationPass());
 
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
-  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeSortPass());
+  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeLibraryOpsPass());
+
+  if (options.vectorize) {
+    pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeMHLOToTHLOPass());
+  }
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeHloToLinalgPass(
-      /*enablePrimitiveOps=*/options.enable_xla_cpu_transformations));
+      /*enablePrimitiveOps=*/options.vectorize));
   pm.addPass(mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<FuncOp>(
       mlir::mhlo::createLegalizeHloShapeOpsToStandardPass());
@@ -187,7 +148,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
 
   // Lower shape dialect to standard to enable linalg canonicalizations (e.g.
   // use linalg inputs instead of outputs for memref.dim operations).
-  pm.addNestedPass<FuncOp>(mlir::createShapeSimplification());
+  pm.addNestedPass<FuncOp>(mlir::mhlo::createShapeSimplification());
   pm.addNestedPass<FuncOp>(mlir::createShapeToShapeLowering());
   pm.addPass(mlir::createConvertShapeToStandardPass());
   pm.addNestedPass<FuncOp>(mlir::createConvertShapeConstraintsPass());
@@ -204,18 +165,15 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createConvertComplexToStandardPass());
 
   // Add passes to perform fusion, tiling, peeling and vectorization.
-  if (options.enable_xla_cpu_transformations) {
-    mlir::gml_st::GmlStCPUPipelineOptions gml_st_opts;
-    gml_st_opts.vectorize = options.vectorize;
-    gml_st_opts.vectorSize = options.vector_size;
-    gml_st_opts.reduction1DTileSize = options.reduction_1d_tile_size;
-    gml_st_opts.reduction2DTileSizes = options.reduction_2d_tile_sizes;
+  if (options.vectorize) {
+    auto gml_st_opts =
+        mlir::gml_st::getDefaultCPUPipelineOptions(llvm::sys::getHostCPUName());
     gml_st_opts.matmulTileSizes = options.matmul_tile_sizes;
     gml_st_opts.lowerToMmt4d = options.lower_to_mmt4d;
-
-    mlir::gml_st::addTileableOpsTransformationsForCPU(pm, gml_st_opts);
+    gml_st_opts.reductionEnableHeuristic = true;
+    mlir::gml_st::addCPUTilingPipeline(pm, gml_st_opts);
   } else {
-    AddLinalgTransformations(pm, options);
+    pm.addNestedPass<FuncOp>(CreateFusionPass());
   }
 
   // Inline everything, bufferization doesn't model ownership across calls.
@@ -230,6 +188,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
+  if (options.vectorize) {
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
+    pm.addNestedPass<FuncOp>(mlir::gml_st::createNaiveCopyRemovalPass());
+  }
+
   // Deallocate all temporary buffers.
   pm.addNestedPass<FuncOp>(mlir::bufferization::createBufferDeallocationPass());
 
@@ -239,21 +202,11 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Remove trivial copy operations.
   pm.addNestedPass<FuncOp>(CreateLinalgTrivialCopyRemovalPass());
 
-  if (options.vectorize)
-    pm.addNestedPass<FuncOp>(mlir::gml_st::createGmlStToScfPass());
-
   pm.addPass(mlir::createBufferizationToMemRefPass());
   pm.addPass(mlir::createCSEPass());
   pm.addPass(mlir::createCanonicalizerPass());
 
-  if (options.vectorize && options.codegen_transpose)
-    pm.addNestedPass<FuncOp>(CreateLowerVectorTransposePass());
-
-  mlir::VectorTransferToSCFOptions vec_to_scf_options;
-  vec_to_scf_options.unroll = true;
-  pm.addNestedPass<FuncOp>(
-      mlir::createConvertVectorToSCFPass(vec_to_scf_options));
-  pm.addNestedPass<FuncOp>(createRewriteVectorMultiReductionPass());
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createLowerVectorsPass());
 
   pm.addNestedPass<FuncOp>(CreateMathApproximationPass({"all"}));
 }

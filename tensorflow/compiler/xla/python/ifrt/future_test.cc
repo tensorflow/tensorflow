@@ -20,10 +20,14 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/types/span.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace ifrt {
 namespace {
+
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 TEST(FutureTest, JoinZeroFuture) {
   Future<Status> future = JoinFutures({});
@@ -51,8 +55,9 @@ TEST(FutureTest, JoinOneFailingFuture) {
   Future<Status> future = JoinFutures(absl::MakeSpan(futures));
 
   ASSERT_FALSE(future.IsReady());
-  promise.Set(InvalidArgument(""));
-  EXPECT_EQ(future.Await().code(), tensorflow::error::INVALID_ARGUMENT);
+  promise.Set(InvalidArgument("Some error"));
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("Some error")));
 }
 
 TEST(FutureTest, JoinAllOkFutures) {
@@ -90,9 +95,10 @@ TEST(FutureTest, JoinAllFailingFutures) {
 
   ASSERT_FALSE(future.IsReady());
   for (Promise<Status>& promise : promises) {
-    promise.Set(InvalidArgument(""));
+    promise.Set(InvalidArgument("Some error"));
   }
-  EXPECT_EQ(future.Await().code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("Some error")));
 }
 
 class JoinAllOkFuturesExceptForOneTest : public testing::TestWithParam<int> {};
@@ -114,12 +120,13 @@ TEST_P(JoinAllOkFuturesExceptForOneTest, JoinAllOkFuturesExceptForOne) {
   ASSERT_FALSE(future.IsReady());
   for (int i = 0; i < kNumFutures; ++i) {
     if (i == failing_future_idx) {
-      promises[i].Set(InvalidArgument(""));
+      promises[i].Set(InvalidArgument("Some error"));
     } else {
       promises[i].Set(OkStatus());
     }
   }
-  EXPECT_EQ(future.Await().code(), tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_THAT(future.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("Some error")));
 }
 
 INSTANTIATE_TEST_SUITE_P(FutureTest, JoinAllOkFuturesExceptForOneTest,

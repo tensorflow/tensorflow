@@ -22,18 +22,24 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class IndexShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def _build_dataset(self, seed=None, reshuffle_each_iteration=None):
+  def _build_dataset(self,
+                     seed=None,
+                     reshuffle_each_iteration=None,
+                     num_elements=10):
     file_infos = []
     for _ in range(5):
-      file_infos.append({"path": "unused", "num_elements": 10})
+      file_infos.append({"path": "unused", "num_elements": num_elements})
 
-    def reader_factory(_):
-      return dataset_ops.Dataset.range(10)
+    def reader_factory(files):
+      return dataset_ops.Dataset.range(
+          num_elements * array_ops.shape(files, out_type=dtypes.int64)[0])
 
     return shuffle_ops.index_shuffle(
         file_infos,
@@ -41,11 +47,47 @@ class IndexShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
         seed=seed,
         reshuffle_each_iteration=reshuffle_each_iteration)
 
+  def testProcessFileInfos(self):
+    file_infos = []
+    file_infos.append({
+        "path": "take_50",
+        "num_elements": 100,
+        "skip": 25,
+        "take": 50
+    })
+    file_infos.append({
+        "path": "skip_all",
+        "num_elements": 100,
+        "skip": -1,
+    })
+    file_infos.append({
+        "path": "take_all",
+        "num_elements": 100,
+        "take": -1
+    })
+    file_infos.append({
+        "path": "take_10",
+        "num_elements": 100,
+        "skip": 90,
+        "take": 20
+    })
+    result = shuffle_ops._process_file_infos(file_infos)
+    self.assertEqual(result["files"],
+                     ["take_50", "skip_all", "take_all", "take_10"])
+    self.assertEqual(result["num_elements"], 160)
+    inputs = [0, 49, 50, 51, 149, 150, 151, 159]
+    expected = [25, 74, 200, 201, 299, 390, 391, 399]
+    for i, expected in enumerate(expected):
+      self.assertEqual(
+          self.evaluate(
+              shuffle_ops._adjust_index([inputs[i]], result["thresholds"],
+                                        result["offsets"])), expected)
+
   @combinations.generate(test_base.default_test_combinations())
   def testUnseeded(self):
-    # Check that the shuffled dataset has the same elements as the
+    # Assert that the shuffled dataset has the same elements as the
     # "ground truth".
-    unshuffled_elements = np.repeat(np.arange(10), 5)
+    unshuffled_elements = np.arange(50)
     shuffled_elements_1 = self.getDatasetOutput(
         self._build_dataset(), requires_initialization=True)
     shuffled_elements_2 = self.getDatasetOutput(
@@ -64,6 +106,10 @@ class IndexShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     shuffled_elements_2 = self.getDatasetOutput(
         self._build_dataset(seed=42), requires_initialization=True)
     self.assertEqual(shuffled_elements_1, shuffled_elements_2)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testLargeDataSet(self):
+    self._build_dataset(seed=42, num_elements=128*1024*1024)
 
   @combinations.generate(test_base.default_test_combinations())
   def testDifferentSeed(self):
@@ -139,8 +185,10 @@ class IndexShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
           "num_elements": num_elements_per_file,
       })
 
-    def reader_factory(_):
-      return dataset_ops.Dataset.range(num_elements_per_file)
+    def reader_factory(files):
+      return dataset_ops.Dataset.range(
+          num_elements_per_file *
+          array_ops.shape(files, out_type=dtypes.int64)[0])
 
     dataset = shuffle_ops.index_shuffle(
         file_infos,

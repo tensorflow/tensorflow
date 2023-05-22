@@ -65,7 +65,7 @@ cc_library(
     deps = [
         ":DialectIncGen",
         ":ir/dtensor_attributes",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/dtensor/cc:tensor_layout",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",

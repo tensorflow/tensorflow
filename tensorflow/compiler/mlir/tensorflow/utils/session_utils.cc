@@ -71,7 +71,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> GetResourcesFromSession(
 
   auto status = session->Run({}, variable_names, {}, &resource_tensors);
   if (!status.ok())
-    return absl::Status(absl::StatusCode::kInternal, status.error_message());
+    return absl::Status(absl::StatusCode::kInternal, status.message());
   return resource_tensors;
 }
 }  // namespace tf_saved_model

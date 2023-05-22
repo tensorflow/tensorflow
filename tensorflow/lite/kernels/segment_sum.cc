@@ -77,7 +77,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  data->type == kTfLiteInt32 || data->type == kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, segment_ids->type, kTfLiteInt32);
 
-  if (!IsConstantTensor(data) || !IsConstantTensor(segment_ids)) {
+  if (!IsConstantOrPersistentTensor(data) ||
+      !IsConstantOrPersistentTensor(segment_ids)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
   }

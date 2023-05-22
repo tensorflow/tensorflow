@@ -20,36 +20,43 @@ limitations under the License.
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 
 namespace {
 
+// Convert op to stablehlo.custom_call
+//   "tf.ResizeBilinear"(%341, %138) {
+//      align_corners = false, device = "", half_pixel_centers = true}
+//   ==>
+//   stablehlo.custom_call @tf.ResizeBilinear(%arg0, %arg1) {
+//      align_corners = false, device = "", half_pixel_centers = true}
 LogicalResult SmuggleOp(Operation* op, PatternRewriter& rewriter) {
   auto call_target =
       rewriter.getNamedAttr("call_target_name", op->getName().getIdentifier());
-  auto custom_call = rewriter.create<mlir::mhlo::CustomCallOp>(
-      op->getLoc(), op->getResultTypes(), op->getOperands(),
-      ArrayRef<NamedAttribute>{call_target});
+  SmallVector<NamedAttribute> attrs{op->getAttrs()};
+  attrs.push_back(call_target);
+  auto custom_call = rewriter.create<mlir::stablehlo::CustomCallOp>(
+      op->getLoc(), op->getResultTypes(), op->getOperands(), attrs);
   rewriter.replaceOp(op, custom_call.getResults());
   return success();
 }
 
 }  // namespace
 
-class SmuggleTFResizeBilinearOpPattern
-    : public OpRewritePattern<TF::ResizeBilinearOp> {
+template <typename OpTy>
+class SmuggleOpPattern : public OpRewritePattern<OpTy> {
  public:
-  using OpRewritePattern<TF::ResizeBilinearOp>::OpRewritePattern;
+  using OpRewritePattern<OpTy>::OpRewritePattern;
 
-  LogicalResult matchAndRewrite(TF::ResizeBilinearOp op,
+  LogicalResult matchAndRewrite(OpTy op,
                                 PatternRewriter& rewriter) const override {
     return SmuggleOp(op, rewriter);
   }
@@ -61,16 +68,17 @@ class SmuggleDisallowedOpsPass
  public:
   StringRef getArgument() const final { return "smuggle-disallowed-ops-pass"; }
   StringRef getDescription() const final {
-    return "Smuggle disallowed ops via mhlo.custom_calls";
+    return "Smuggle disallowed ops via stablehlo.custom_calls";
   }
 
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add<SmuggleTFResizeBilinearOpPattern>(&getContext());
+    patterns.add<SmuggleOpPattern<TF::ResizeBilinearOp>>(&getContext());
+    patterns.add<SmuggleOpPattern<TF::ResizeNearestNeighborOp>>(&getContext());
 
     ConversionTarget target(getContext());
-    target.addIllegalOp<TF::ResizeBilinearOp>();
-    target.addLegalDialect<mlir::mhlo::MhloDialect>();
+    target.addIllegalDialect<TF::TensorFlowDialect>();
+    target.addLegalDialect<mlir::stablehlo::StablehloDialect>();
     if (failed(applyPartialConversion(getOperation(), target,
                                       std::move(patterns)))) {
       signalPassFailure();
@@ -84,6 +92,5 @@ std::unique_ptr<Pass> CreateSmuggleDisallowedOpsPass() {
 
 static PassRegistration<SmuggleDisallowedOpsPass> pass;
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

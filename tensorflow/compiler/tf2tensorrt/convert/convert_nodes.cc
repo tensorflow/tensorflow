@@ -1010,11 +1010,11 @@ Status TrtNodeValidator::IsTensorRTCandidate(const Node* node) {
                                              &tensor_or_weights);
     if (!status.ok()) {
       VLOG(2) << "Failed to convert input `" << src_def.name() << "` to a "
-              << "TRT_TensorOrWeights: " << status.error_message();
+              << "TRT_TensorOrWeights: " << status.message();
 
       return errors::Internal(
           "Failed to convert at least one input to a TRT_TensorOrWeights: ",
-          status.error_message());
+          status.message());
     }
     inputs.push_back(tensor_or_weights);
   }
@@ -1131,11 +1131,10 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
             << output.DebugString();
     Status status = AddTensorOrWeights(output_name, output);
     if (!status.ok()) {
-      return errors::Create(
-          status.code(),
-          StrCat("Failed to add output for node: ", node_def.name(), ": ",
-                 status.error_message()),
-          errors::GetPayloads(status));
+      return errors::Create(static_cast<absl::StatusCode>(status.code()),
+                            StrCat("Failed to add output for node: ",
+                                   node_def.name(), ": ", status.message()),
+                            errors::GetPayloads(status));
     }
   }
   return OkStatus();
@@ -1151,7 +1150,7 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
     status = MaybeUpdateBatchSize(batch_size);
     if (!status.ok()) {
       return errors::CreateWithUpdatedMessage(
-          status, batch_size_error(name, status.error_message()));
+          status, batch_size_error(name, status.message()));
     }
   }
   ITensorProxyPtr tensor = network()->addInput(name.c_str(), dtype, dims);
@@ -1162,8 +1161,8 @@ Status Converter::AddInputTensor(const string& name, nvinfer1::DataType dtype,
   status = AddTensorOrWeights(name, TRT_TensorOrWeights(tensor));
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, StrCat("Failed to add input tensor ", name, ": ",
-                       status.error_message()));
+        status,
+        StrCat("Failed to add input tensor ", name, ": ", status.message()));
   }
   return OkStatus();
 }
@@ -1173,8 +1172,8 @@ Status Converter::AddInputResource(const string& name,
   Status status = AddTensorOrWeights(name, TRT_TensorOrWeights(resource));
   if (!status.ok()) {
     return errors::CreateWithUpdatedMessage(
-        status, StrCat("Failed to add input resource ", name, ": ",
-                       status.error_message()));
+        status,
+        StrCat("Failed to add input resource ", name, ": ", status.message()));
   }
   return OkStatus();
 }
@@ -1376,7 +1375,7 @@ Status Converter::BuildCudaEngine(
     auto cache = registry->LookUp("default_cache", builder_config.get());
     if (!cache.ok()) {
       LOG(WARNING) << "failed to create a timing cache: "
-                   << cache.status().error_message();
+                   << cache.status().message();
     } else {
       timing_cache = std::move(*cache);
       builder_config->setTimingCache(*timing_cache, /*ignoreMismatch*/ false);
@@ -2537,7 +2536,7 @@ Status Converter::SqueezeTensor(ITensorProxyPtr input,
   // Reshape tensor.
   TF_RETURN_IF_ERROR(PrepareTensorForShape(
       params->converter, TRT_TensorOrWeights(input), DimsAdapter(*input_dims),
-      /*validation_only=*/false, output, params->node_def));
+      /*validation_only=*/false, output, params->node_def, op_instance));
   return OkStatus();
 }
 
@@ -3651,6 +3650,24 @@ Status ConvertIdentity(const OpConverterParams* params) {
     params->outputs->push_back(params->inputs.at(i));
   }
   return OkStatus();
+}
+
+// This converter is a debug-only feature designed to allow graph segmentation
+// experiments. Its use is being controled by
+// `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`.
+// See `op_converter_registry.cc` for further details.
+//
+// This converter is designed as followed:
+//   - always succeed at graph segmentation time.
+//   - always fail at TRT Engine build time.
+Status ConvertFake(const OpConverterParams* params) {
+  if (params->validation_only) return OkStatus();
+
+  return errors::Unimplemented(
+      "This converter is not valid after graph "
+      "segmentation. Building an engine using this "
+      "converter will trigger a native segment "
+      "fallback.");
 }
 
 Status ConvertSquare(const OpConverterParams* params) {
@@ -5722,7 +5739,9 @@ Status ConvertAddN(const OpConverterParams* params) {
       tensor_inputs.push_back(input.tensor());
     } else {
       auto dims = input.weights().Shape();
-      TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      if (params->use_implicit_batch) {
+        TF_RETURN_IF_ERROR(dims.RemoveBatchDimension());
+      }
       tensor_inputs.push_back(params->converter->CreateConstantLayer(
           input.weights(), dims.AsTrtDims()));
     }
@@ -5799,6 +5818,15 @@ REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertIdentity,
                                    "StopGradient", "_CopyFromHostToGpu"});
 REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertBatchMatMul,
                                   {"BatchMatMul", "BatchMatMulV2"});
+// Debug converter only accessible via `TF_TRT_OP_FAKELIST=OpName1,OpName2,...`
+REGISTER_DEFAULT_TRT_OP_CONVERTER(ConvertFake, "FakeOp");
+
+static Status SetDeviceInfoInNodes(GraphDef* graph_def, const string& device) {
+  for (auto& node : *(graph_def->mutable_node())) {
+    *node.mutable_device() = device;
+  }
+  return OkStatus();
+}
 
 Status ConvertGraphDefToEngine(
     const GraphDef& gdef, OpKernelContext* ctx, TrtPrecisionMode precision_mode,
@@ -5809,7 +5837,8 @@ Status ConvertGraphDefToEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     const bool use_implicit_batch, bool* convert_successfully,
     TrtShapeOptimizationProfile* profiles, absl::string_view engine_name,
-    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster) {
+    bool use_explicit_precision, tensorflow::grappler::Cluster* cluster,
+    const string& device) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -5833,6 +5862,11 @@ Status ConvertGraphDefToEngine(
     if (apply_layout_optim) {
       tensorflow::grappler::GrapplerItem grappler_item;
       grappler_item.graph = gdef;
+
+      // Add device information to each node in the graphdef for successful
+      // execution of the layout optimizer
+      TF_RETURN_IF_ERROR(SetDeviceInfoInNodes(&grappler_item.graph, device));
+
       // TensorRT API requires the input for convolution to be in NCHW.
       tensorflow::grappler::GenericLayoutOptimizer layout_optimizer("NCHW");
       TF_RETURN_IF_ERROR(
@@ -5887,6 +5921,15 @@ Status ConvertGraphDefToEngine(
       DataType tf_dtype = node_def.attr().at(type_key).type();
       if (tf_dtype == DT_RESOURCE) {
         VLOG(2) << "Adding engine input resource " << node_name;
+        if (ctx == nullptr) {
+          return errors::InvalidArgument(
+              "Variable resource type conversion requires a valid ctx");
+        }
+
+        if (ctx->input(slot_number).NumElements() == 0) {
+          return errors::InvalidArgument("Resource input ", node_name,
+                                         " is empty.");
+        }
         TF_RETURN_IF_ERROR(converter->AddInputResource(
             node_name, ctx->input(slot_number).flat<ResourceHandle>()(0)));
       } else {
@@ -5901,7 +5944,7 @@ Status ConvertGraphDefToEngine(
         if (!status.ok()) {
           const string error_message =
               StrCat("Validation failed for ", node_name, " and input slot ",
-                     slot_number, ": ", status.error_message());
+                     slot_number, ": ", status.message());
           LOG_WARNING_WITH_PREFIX << error_message;
           return errors::CreateWithUpdatedMessage(status, error_message);
         }
@@ -6194,7 +6237,7 @@ std::string unexpected_type_error_msg(nvinfer1::DataType type_being_checked,
          DebugString(type_being_checked) + ".";
 }
 
-string batch_size_error(const string& name, const string& comment) {
+string batch_size_error(absl::string_view name, absl::string_view comment) {
   return StrCat("Batch size doesn't match for tensor '", name, "' : ", comment);
 }
 

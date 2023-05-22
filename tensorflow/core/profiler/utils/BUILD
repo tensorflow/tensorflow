@@ -69,9 +69,7 @@ cc_library(
 cc_library(
     name = "format_utils",
     hdrs = ["format_utils.h"],
-    deps = [
-        "//tensorflow/core:lib",
-    ],
+    deps = ["//tensorflow/tsl/profiler/utils:format_utils"],
 )
 
 cc_library(
@@ -178,6 +176,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -505,4 +504,10 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "hlo_module_utils",
+    hdrs = ["hlo_module_utils.h"],
+    deps = ["//tensorflow/compiler/xla/hlo/ir:hlo"],
 )

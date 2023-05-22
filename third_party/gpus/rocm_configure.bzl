@@ -178,13 +178,13 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
     # Add HIP headers (needs to match $HIP_PATH)
+    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
     if int(rocm_config.rocm_version_number) >= 50200:
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocprim")
         inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocsolver")
-    else:
-        inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
+        inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/rocblas")
 
     # Add HIP-Clang headers (realpath relative to compiler binary)
     rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
@@ -196,6 +196,8 @@ def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/13.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/14.0.0/include")
     inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/15.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/16.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/17.0.0/include")
 
     # Support hcc based off clang 10.0.0 (for ROCm 3.3)
     inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")

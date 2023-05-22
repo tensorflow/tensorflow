@@ -30,39 +30,25 @@ namespace xla {
 // Command-line options to this tool.  See main() in run_hlo_module_main.cc for
 // descriptions of these fields.
 struct RunHloModuleOptions {
-  RunHloModuleOptions()
-      : platform(""),
-        reference_platform("default"),
-        print_literals(false),
-        flatten_control_flow(false),
-        run_test_hlo_passes(true),
-        run_reference_hlo_passes(true),
-        // Using small float range by default, as otherwise all reductions
-        // miscompare vs. the interpreter with inf/nan.
-        use_large_float_range(false),
-        treat_gte_as_data_formatting(false),
-        abs_error_bound(1e-3),
-        rel_error_bound(1e-3),
-        input_format("hlo"),
-        input_module(""),
-        iterations(1),
-        output_literals_file(""),
-        input_literals_file("") {}
   std::string platform;
-  std::string reference_platform;
-  bool print_literals;
-  bool flatten_control_flow;
-  bool run_test_hlo_passes;
-  bool run_reference_hlo_passes;
-  bool use_large_float_range;
-  bool treat_gte_as_data_formatting;
-  float abs_error_bound;
-  float rel_error_bound;
+  std::string reference_platform{"default"};
+  bool print_literals{false};
+  bool flatten_control_flow{false};
+  bool run_test_hlo_passes{true};
+  bool run_reference_hlo_passes{true};
+  // Using small float range by default, as otherwise all reductions
+  // miscompare vs. the interpreter with inf/nan.
+  bool use_large_float_range{false};
+  bool treat_gte_as_data_formatting{false};
+  float abs_error_bound{1e-3};
+  float rel_error_bound{1e-3};
   std::string input_format;
   std::string input_module;
-  int iterations;
+  int iterations{1};
   std::string output_literals_file;
   std::string input_literals_file;
+  bool random_init_input_literals{true};
+  bool force_fake_data{false};
 };
 
 // Runs test_module on the platform with the name

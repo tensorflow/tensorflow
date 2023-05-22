@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
@@ -81,7 +82,10 @@ TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
   b.AddInstruction(
       HloInstruction::CreateConcatenate(concat_shape, slice_params, 1));
   module->AddEntryComputation(b.Build());
-  EXPECT_TRUE(GpuInstructionFusion(false).Run(module.get()).value());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/false,
+                                   TestGpuDeviceInfo::RTXA6000DeviceInfo())
+                  .Run(module.get())
+                  .value());
   EXPECT_TRUE(module->entry_computation()->root_instruction()->opcode() ==
               HloOpcode::kFusion);
   for (HloInstruction* instr : module->entry_computation()->instructions()) {
@@ -93,8 +97,11 @@ class TransposeFusionTest : public GpuFusionTest {
  public:
   void CheckGpuFusion(absl::string_view hlo,
                       std::optional<absl::string_view> expected) {
-    RunAndFilecheckHloRewrite(hlo, GpuInstructionFusion{/*may_duplicate=*/true},
-                              expected);
+    RunAndFilecheckHloRewrite(
+        hlo,
+        GpuInstructionFusion{/*may_duplicate=*/true,
+                             TestGpuDeviceInfo::RTXA6000DeviceInfo()},
+        expected);
   }
 };
 

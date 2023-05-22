@@ -54,8 +54,9 @@ const NcclUniqueIdCallback& GpuExecutableRunOptions::nccl_unique_id_callback()
 }
 
 NcclExecuteParams::NcclExecuteParams(
-    const ServiceExecutableRunOptions& run_options, se::Stream* stream)
-    : stream(stream),
+    const ServiceExecutableRunOptions& run_options,
+    se::StreamExecutor* stream_executor)
+    : stream_executor(stream_executor),
       run_id(run_options.run_options().run_id()),
       device_assn(run_options.run_options().device_assignment()) {
   const GpuExecutableRunOptions* gpu_options =
@@ -70,7 +71,7 @@ NcclExecuteParams::NcclExecuteParams(
 }
 
 StatusOr<GlobalDeviceId> NcclExecuteParams::GetGlobalDeviceId() const {
-  int64_t local_device_ordinal = stream->parent()->device_ordinal();
+  int64_t local_device_ordinal = stream_executor->device_ordinal();
   if (gpu_global_device_ids) {
     auto it = gpu_global_device_ids->find(local_device_ordinal);
     TF_RET_CHECK(it != gpu_global_device_ids->end()) << local_device_ordinal;

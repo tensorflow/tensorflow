@@ -20,12 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/logging.h"
-#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -97,12 +91,13 @@ StatusOr<bool> TupleSimplifier::Run(
         // if only a subset of tuple's elements are used, this transform
         // optimizes them one at a time, and after the last use is optimized,
         // the Tuple will also be deleted.
-        HloInstruction* replacement = nullptr;
-        if (ShapeUtil::Compatible(ancestor.first->shape(),
-                                  instruction->shape())) {
-          replacement = ancestor.first;
-        } else if (ancestor.first->opcode() == HloOpcode::kTuple) {
-          replacement = ancestor.first->mutable_operand(ancestor.second[0]);
+        HloInstruction* replacement = ancestor.first;
+        for (int i = 0; i < ancestor.second.size(); ++i) {
+          if (replacement->opcode() != HloOpcode::kTuple) {
+            replacement = nullptr;
+            break;
+          }
+          replacement = replacement->mutable_operand(ancestor.second[i]);
         }
 
         if (replacement) {

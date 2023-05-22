@@ -17,22 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -95,13 +91,47 @@ SchedulerConfig GetDefaultSchedConfig() {
   return sched_cfg;
 }
 
+class TestLatencyEstimator : public LatencyEstimator {
+ public:
+  TimeCost GetLatencyBetween(const HloGraphNode& from,
+                             const HloGraphNode& target) const override {
+    static constexpr TimeCost kLowLatency = 1.0;
+    if (from.GetInstr().opcode() == HloOpcode::kCollectivePermuteStart &&
+        target.GetInstr().opcode() == HloOpcode::kCollectivePermuteDone) {
+      return kLowLatency *
+             ShapeUtil::ElementsIn(from.GetInstr().operand(0)->shape());
+    }
+    return kLowLatency;
+  }
+  TimeCost NodeCost(const HloInstruction* instr) const override {
+    if (instr->IsLoopFusion()) {
+      return instr->shape().IsTuple()
+                 ? kMediumCost
+                 : kLowCost * ShapeUtil::ElementsIn(instr->shape());
+    }
+    if (instr->IsOutputFusion() || instr->opcode() == HloOpcode::kConvolution) {
+      return instr->shape().IsTuple()
+                 ? kHighCost
+                 : kMediumCost * ShapeUtil::ElementsIn(instr->shape());
+    }
+    return kLowCost;
+  }
+  int CyclesPerMicrosecond() const override { return 1; }
+
+ public:
+  static constexpr TimeCost kLowCost = 1.0;
+  static constexpr TimeCost kMediumCost = 1000.0;
+  static constexpr TimeCost kHighCost = 5000.0;
+};
+
 StatusOr<bool> RunScheduler(
-    HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig()) {
+    HloModule* module, SchedulerConfig sched_config = GetDefaultSchedConfig(),
+    std::unique_ptr<LatencyEstimator> latency_estimator =
+        std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
-      /*convert_all_reduce=*/[](const HloInstruction*) { return true; },
-      /*convert_all_gather=*/[](const HloInstruction*) { return true; },
-      /*convert_collective_permute=*/
-      [](const HloInstruction*) { return true; }};
+      /*convert_all_reduce=*/HloPredicateTrue,
+      /*convert_all_gather=*/HloPredicateTrue,
+      /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -115,8 +145,6 @@ StatusOr<bool> RunScheduler(
     }
     return ShapeUtil::ByteSizeOfElements(shape);
   };
-  std::unique_ptr<LatencyEstimator> latency_estimator =
-      std::make_unique<ApproximateLatencyEstimator>();
   auto async_tracker = std::make_unique<AsyncTracker>(sched_config);
   auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
       shape_size_bytes, async_tracker.get(), latency_estimator.get(),
@@ -1358,7 +1386,7 @@ ENTRY entry {
 
 TEST_F(LatencyHidingSchedulerTest,
        BalanceChainedCollectivePermutesLoopedEinsum) {
-  absl::string_view hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %fused_computation.1793 (param_0.4944: s32[16], param_1.5648: u32[], param_2.3959: u32[], param_3.3338: u32[], param_4.2302: u32[]) -> (s32[1], s32[1], s32[1], s32[1]) {
@@ -1459,6 +1487,8 @@ HloModule module, is_scheduled=true
   %slice.1245 = bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} slice(bf16[2,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} %param_1.265), slice={[1:2], [0:4], [0:288], [0:8], [0:1024], [0:1], [0:1]}
   ROOT %add.3080 = bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} add(bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} %param_0.240, bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)} %slice.1245)
 }
+)";
+  hlo_string += R"(
 
 ENTRY entry {
   %param.163 = (bf16[1,20,256,16,4,288,1]{2,5,1,4,3,6,0:T(8,128)(2,1)}, bf16[8,1024,1,20,256,1,1]{4,1,3,0,6,5,2:T(8,128)(2,1)}, bf16[1,4,288,8,1024,1,1]{4,2,3,1,6,5,0:T(8,128)(2,1)}, bf16[1,4,288,8,1024,1,1]{4,2,0,3,1,6,5:T(8,128)(2,1)}, u32[]{:T(128)}) parameter(0)
@@ -1610,7 +1640,7 @@ ENTRY entry {
 
 TEST_F(LatencyHidingSchedulerTest,
        BalanceChainedCollectivePermutesLoopedEinsum2) {
-  absl::string_view hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %fused_computation.1851 (param_0.5170: s32[32], param_1.5848: u32[], param_2.4103: u32[], param_3.3513: u32[], param_4.2356: u32[]) -> (s32[1], s32[1], s32[1], s32[1]) {
@@ -1711,7 +1741,8 @@ HloModule module, is_scheduled=true
   %slice.1125 = bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} slice(bf16[2,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} %param_1.298), slice={[1:2], [0:576], [0:16], [0:1024], [0:1], [0:1]}
   ROOT %add.3122 = bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} add(bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} %param_0.250, bf16[1,576,16,1024,1,1]{3,1,0,2,5,4:T(8,128)(2,1)} %slice.1125)
 }
-
+)";
+  hlo_string += R"(
 ENTRY entry {
   %constant.4782 = u32[]{:T(128)} constant(16)
   %constant.4661 = u32[]{:T(128)} constant(2)
@@ -1803,7 +1834,7 @@ ENTRY entry {
 
 TEST_F(LatencyHidingSchedulerTest,
        BalanceChainedCollectivePermutesLoopedEinsum3) {
-  absl::string_view hlo_string = R"(
+  std::string hlo_string = R"(
 HloModule module, is_scheduled=true
 
 %fused_computation.1799 (param_0.4926: s32[16], param_1.5709: u32[], param_2.3976: u32[], param_3.3386: u32[], param_4.2299: u32[]) -> (s32[1], s32[1], s32[1], s32[1]) {
@@ -1898,7 +1929,8 @@ HloModule module, is_scheduled=true
   %bitcast.596 = bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} bitcast(bf16[8,2048,1,36,256,1,1]{4,1,6,5,3,2,0:T(8,128)(2,1)} %convolution.171)
   ROOT %add.3143 = bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} add(bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} %add.3146, bf16[8,2048,1,36,256,1]{4,1,3,0,5,2:T(8,128)(2,1)} %bitcast.596)
 }
-
+)";
+  hlo_string += R"(
 ENTRY entry {
   %constant.4735 = u32[]{:T(128)} constant(2)
   %constant.4598 = u32[]{:T(128)} constant(15)
@@ -2438,6 +2470,204 @@ ENTRY %module {
                                         new_instruction_sequence, "c1"),
             GetOpcodeIndexUsingMetaData(HloOpcode::kAsyncStart,
                                         new_instruction_sequence, "ata1"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ReleaseOneThatStallsLessFirst) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[16,64,256]{2,1,0} parameter(1)
+  p2 = f32[1024,2048,2048]{2,1,0} parameter(2)
+  p3 = f32[2048,2048,2048]{2,1,0} parameter(3)
+  cp1s = (f32[1024,2048,2048]{2,1,0}, f32[1024,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp2s = (f32[2048,2048,2048]{2,1,0}, f32[2048,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p3), source_target_pairs={{1,0},{0,3},{3,2}}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, p1),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb,
+    metadata={op_type="AllToAll" op_name="c0"}
+  cp1d = f32[1024,2048,2048]{2,1,0} collective-permute-done(cp1s)
+  cp2d = f32[2048,2048,2048]{2,1,0} collective-permute-done(cp2s)
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[1024,2048,2048]{2,1,0}, f32[2048,2048,2048]{2,1,0}) tuple(c0, cp1d, cp2d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.collective_permute_overlap_limit = 2;
+  sched_config.all_gather_overlap_limit = 2;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Make sure that between two instructions that are not ready we first emit
+  // the one that causes less stall. This allows to potentially expose more
+  // opportunities for the other to overlap.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "cp1s"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, ReleaseStartWhenLatencyDue) {
+  absl::string_view hlo_string = R"(
+HloModule module, is_scheduled=true
+
+ENTRY entry {
+  p0 = f32[16,64,256]{2,1,0} parameter(0)
+  p1 = f32[128,2048,2048]{2,1,0} parameter(1)
+  p2 = f32[512,2048,2048]{2,1,0} parameter(2)
+  cp1s = (f32[512,2048,2048]{2,1,0}, f32[512,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p2), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp1d = f32[512,2048,2048]{2,1,0} collective-permute-done(cp1s)
+  cp2s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(p1), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp2d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp2s)
+  cp3s = (f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}, u32[], u32[]) collective-permute-start(cp2d), source_target_pairs={{1,0},{0,3},{3,2}}
+  cp3d = f32[128,2048,2048]{2,1,0} collective-permute-done(cp3s)
+  slice = f32[16,64,256]{2,1,0} slice(f32[512,2048,2048]{2,1,0} cp1d), slice={[0:16], [0:64], [0:256]}
+  c0 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  c1 = f32[16,256,256]{2,1,0} convolution(p0, slice),
+    window={size=16 stride=15 lhs_dilate=16}, dim_labels=0fb_0io->0fb  
+  ROOT tuple.2 = (f32[16,256,256]{2,1,0}, f32[16,256,256]{2,1,0}, f32[128,2048,2048]{2,1,0}, f32[128,2048,2048]{2,1,0}) tuple(c0, c1, cp2d, cp3d)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module, ParseHloText(hlo_string));
+  HloSchedule& module_schedule = hlo_module->schedule();
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.aggressive_scheduling_policies = true;
+  sched_config.enable_release_start_policy = true;
+  EXPECT_TRUE(RunScheduler(hlo_module.get(), sched_config,
+                           std::make_unique<TestLatencyEstimator>())
+                  .ok());
+  EXPECT_TRUE(hlo_module->has_entry_computation());
+
+  std::vector<HloInstruction*> new_instruction_sequence =
+      module_schedule.sequence(hlo_module->entry_computation()).instructions();
+  if (VLOG_IS_ON(1)) {
+    for (auto* new_i : new_instruction_sequence) {
+      VLOG(1) << new_i->ToString();
+    }
+  }
+
+  // Make sure that c0 and c1 are latency-hiding cp2 and cp3 respectively,
+  // instead of being scheduled only within the latency of one of cp2 or cp3.
+  // Note that the cost of c0 and c1 is larger than the latencies of cp2 and cp3
+  // so the best strategy is indeed to distribute them among both cp2 and cp3.
+  // When aggressive_scheduling_policies = true, this is achieved thanks to the
+  // "kScheduleStart" policy, in absence of which the "kAsyncDepth" prevails
+  // in scheduling both c0 and c1 within the latency of cp3.
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2s"),
+            GetIndex(new_instruction_sequence, "c0"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c0"),
+            GetIndex(new_instruction_sequence, "cp2d"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp2d"),
+            GetIndex(new_instruction_sequence, "cp3s"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "cp3s"),
+            GetIndex(new_instruction_sequence, "c1"));
+  EXPECT_LT(GetIndex(new_instruction_sequence, "c1"),
+            GetIndex(new_instruction_sequence, "cp3d"));
+}
+
+TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
+  // Extend AsyncTracker for a fake target with one target-defined resource
+  class AsyncTrackerForMyTarget : public AsyncTracker {
+    enum class MyTargetResourceType {
+      kTargetResource0 = 0,
+      kNumTargetResources = 1,
+    };
+
+   public:
+    explicit AsyncTrackerForMyTarget(const SchedulerConfig& config,
+                                     int64_t target_resource0_limit = 3)
+        : AsyncTracker(config),
+          target_resource0_limit_(target_resource0_limit) {}
+
+    absl::string_view GetResourceName(int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceName(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return "kTargetResource0";
+        default:
+          return "";
+      }
+    }
+
+    ResourceHazardType GetResourceHazardType(
+        int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceHazardType(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return ResourceHazardType::kShareable;
+        default:
+          return ResourceHazardType::kUnshareable;
+      }
+    }
+
+    int64_t GetNumTargetDefinedResources() const override {
+      return static_cast<int64_t>(MyTargetResourceType::kNumTargetResources);
+    }
+
+    int64_t GetNumAvailableResources(int64_t resource_type) const override {
+      const int64_t first_target_resource =
+          AsyncTracker::GetFirstTargetDefinedResource();
+      CHECK_GE(resource_type, first_target_resource);
+      CHECK_LT(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case (static_cast<int64_t>(MyTargetResourceType::kTargetResource0)):
+          return static_cast<int64_t>(target_resource0_limit_);
+        default:
+          return 1;
+      }
+    }
+
+   private:
+    const int64_t target_resource0_limit_;
+  };
+  // Create an AsyncTrackerForMyTarget object with an overlap limit of 5 for
+  // target-defined resource "kTargetResource0"
+  const int64_t target_resource0_overlap_limit = 5;
+  AsyncTrackerForMyTarget async_tracker_for_my_target(
+      SchedulerConfig(), target_resource0_overlap_limit);
+  // Check the number of target-defined resources
+  CHECK_EQ(async_tracker_for_my_target.GetNumTargetDefinedResources(), 1);
+  // Get the index of the target-defined resource
+  const int64_t target_resource0_index =
+      static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  // Check the name of the target-defined resource
+  CHECK_EQ(async_tracker_for_my_target.GetResourceName(target_resource0_index),
+           "kTargetResource0");
+  // Check the hazard type of the target-defined resource
+  CHECK_EQ(
+      static_cast<int64_t>(async_tracker_for_my_target.GetResourceHazardType(
+          target_resource0_index)),
+      static_cast<int64_t>(ResourceHazardType::kShareable));
+  // Check the number of available resources (overlap limit) for the
+  // target-defined resource
+  CHECK_EQ(async_tracker_for_my_target.GetNumAvailableResources(
+               target_resource0_index),
+           target_resource0_overlap_limit);
 }
 
 }  // namespace xla

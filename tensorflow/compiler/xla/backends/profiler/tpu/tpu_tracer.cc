@@ -65,7 +65,7 @@ TpuTracer::TpuTracer() {
   stream_executor::tpu::OpsApiFn()->TpuProfiler_CreateFn(&tpu_profiler_,
                                                          status.c_status);
   if (!status.ok()) {
-    LOG(ERROR) << status.status().error_message();
+    LOG(ERROR) << status.status().message();
   }
 }
 

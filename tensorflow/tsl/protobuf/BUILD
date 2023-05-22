@@ -1,6 +1,7 @@
 load(
     "//tensorflow/tsl:tsl.bzl",
     "if_google",
+    "set_external_visibility",
 )
 load(
     "//tensorflow/tsl/platform:build_config.bzl",
@@ -9,11 +10,11 @@ load(
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl:internal",
         "//tensorflow_models:__subpackages__",
-    ],
+    ]),
     features = if_google(["-parse_headers"]),
     licenses = ["notice"],
 )
@@ -41,6 +42,13 @@ tf_proto_library(
     name = "error_codes_proto_impl",
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
+)
+
+tf_proto_library(
+    name = "status_proto",
+    srcs = ["status.proto"],
+    make_default_target_header_only = True,
+    protodeps = [":error_codes_proto_impl"],
 )
 
 tf_proto_library(
@@ -92,10 +100,10 @@ tf_proto_library(
     name = "test_log_proto",
     srcs = ["test_log.proto"],
     make_default_target_header_only = True,
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/core:__subpackages__",
         "//tensorflow/tsl/util:__pkg__",
-    ],
+    ]),
 )
 
 tf_proto_library(
@@ -113,6 +121,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         ":histogram_proto",
         ":rpc_options_proto",
+        ":status_proto",
         ":test_log_proto",
     ],
     visibility = ["//visibility:public"],

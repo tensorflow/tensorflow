@@ -38,6 +38,21 @@ class RelayoutSPMDExpander : public SPMDExpanderBase {
       const llvm::DenseMap<int, Layout>& output_layouts) override;
 };
 
+// Converts layout of gradient tensor to the layout of the original Relayout's
+// input tensor, using the same expansion logic as RelayoutOp.
+class RelayoutLikeSPMDExpander : public SPMDExpanderBase {
+ public:
+  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
+
+  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
+      mlir::Operation* op,
+      const llvm::DenseMap<int, Layout>& input_layouts) override;
+
+  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
+      mlir::Operation* op,
+      const llvm::DenseMap<int, Layout>& output_layouts) override;
+};
+
 // Lowers DTensorSend op to backend specific TF send/ xla send operation.
 // Following is the semantics for DTensorSend/Recv.
 // a) Both replicated/sharded DTensors can be sent/received.

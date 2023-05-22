@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -110,7 +111,7 @@ StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
 // Convert a (N, 2) dense attribute to a list of tuples. This is the way padding
 // and source-target pairs are defined in HLO.
 StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
-    llvm::Optional<mlir::DenseIntElementsAttr> optional_attr) {
+    std::optional<mlir::DenseIntElementsAttr> optional_attr) {
   if (!optional_attr.has_value())
     return std::vector<std::pair<int64_t, int64_t>>{};
   mlir::DenseIntElementsAttr attr = *optional_attr;
@@ -130,7 +131,7 @@ StatusOr<std::vector<std::pair<int64_t, int64_t>>> ConvertNx2Attribute(
 }
 
 StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
-  llvm::Optional<mlir::mhlo::FftType> type =
+  std::optional<mlir::mhlo::FftType> type =
       mlir::mhlo::symbolizeEnum<mlir::mhlo::FftType>(type_string);
   if (!type) return InvalidArgument("Unknown FFT type %s", type_string.str());
 
@@ -150,7 +151,7 @@ StatusOr<FftType> ConvertFftType(llvm::StringRef type_string) {
 
 StatusOr<TriangularSolveOptions::Transpose> ConvertTranspose(
     llvm::StringRef transpose_string) {
-  llvm::Optional<mlir::mhlo::Transpose> transpose =
+  std::optional<mlir::mhlo::Transpose> transpose =
       mlir::mhlo::symbolizeTranspose(transpose_string);
   if (!transpose)
     return InvalidArgument("Unknown transpose type %s", transpose_string.str());
@@ -204,7 +205,7 @@ StatusOr<xla::CustomCallApiVersion> ConvertCustomCallApiVersion(
 }
 
 StatusOr<std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>>>
-ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
+ConvertOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
   std::vector<std::pair<ShapeIndex, std::pair<int64_t, ShapeIndex>>> aliasInfo;
   for (auto attr : aliasArrayAttr.getValue()) {
     auto alias = attr.cast<mlir::mhlo::OutputOperandAliasAttr>();
@@ -215,6 +216,14 @@ ConvertCustomCallOutputOperandAliasing(mlir::ArrayAttr aliasArrayAttr) {
         std::make_pair(alias.getOperandIndex(), operandShapeIndex)));
   }
   return aliasInfo;
+}
+
+std::optional<xla::OpSharding> ConvertSharding(llvm::StringRef sharding) {
+  xla::OpSharding sharding_proto;
+  if (sharding_proto.ParseFromString(sharding.str())) return sharding_proto;
+  StatusOr<xla::HloSharding> sharding_cpp = xla::ParseSharding(sharding.str());
+  if (sharding_cpp.ok()) return sharding_cpp->ToProto();
+  return std::nullopt;
 }
 
 }  // namespace xla

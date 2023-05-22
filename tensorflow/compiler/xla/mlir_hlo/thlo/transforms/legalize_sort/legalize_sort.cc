@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "thlo/IR/thlo_ops.h"
@@ -50,7 +52,7 @@ Value emitComparison(ImplicitLocOpBuilder& b, SmallVector<Value>& lhs,
   assert(block.getTerminator()->getOperands().size() == 1 &&
          "Comparator must return a single value");
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (auto [idx, arg] : llvm::enumerate(comparator.getArguments())) {
     Value value = idx % 2 == 0 ? lhs[idx / 2] : rhs[idx / 2];
     mapping.map(arg, value);
@@ -281,7 +283,7 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       b.create<scf::YieldOp>(ValueRange{});
     };
     b.create<scf::ForOp>(/*lowerBound=*/zero, /*upperBound=*/size,
-                         /*step=*/insertionSortSize, /*iterArgs=*/llvm::None,
+                         /*step=*/insertionSortSize, /*iterArgs=*/std::nullopt,
                          forBody);
   }
 
@@ -293,16 +295,12 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
 
   // The while arguments are:
   // 1. the current size
-  // 2. the original index of the buffers we're currently reading from
-  // 3. the buffers we're currently reading from
-  // 4. the buffers we're currently writing to.
+  // 2. a boolean stating whether we are reading from outputs0 or outputs1
   //
-  // 1 gets doubled each iteration, 2 gets negated, 3 and 4 are swapped.
+  // 1 gets doubled each iteration, 2 gets negated.
   // int currentSize = kInsertionSortSize;
   SmallVector<Value> whileInitArgs{insertionSortSize, initParity};
   // First we read from `outputs0` (initialized by the insertion sort above).
-  llvm::copy(outputs0, std::back_inserter(whileInitArgs));
-  llvm::copy(outputs1, std::back_inserter(whileInitArgs));
 
   SmallVector<Type> whileArgTypes;
   for (auto val : whileInitArgs) whileArgTypes.push_back(val.getType());
@@ -321,40 +319,57 @@ Value emitBottomUpMergeSort(ImplicitLocOpBuilder& b, Value lo, Value hi,
       [&](OpBuilder& afterBuilder, Location afterLoc, ValueRange args) {
         ImplicitLocOpBuilder impLocAfterBuilder =
             ImplicitLocOpBuilder(afterLoc, afterBuilder);
-        ArithBuilder localArithBuilder(impLocAfterBuilder, afterLoc);
-        size_t numArgs = inputMemrefs.size();
 
         //                                 {
         Value currentSize = args[0], parity = args[1];
-        auto readBufs = args.drop_front(2).take_front(numArgs);
-        auto writeBufs = args.take_back(numArgs);
-
         Value twoCurrentSize = arith.add(currentSize, currentSize);
 
-        // for (int start = 0; start < size; start += 2*currentSize) {
-        {
+        // emitMergeLoop(readBufs, writeBufs) {
+        //   for (int start = 0; start < size; start += 2*currentSize) {
+        auto emitMergeLoop = [&](OpBuilder& builder, Location loc,
+                                 ValueRange readBufs, ValueRange writeBufs) {
+          ImplicitLocOpBuilder localImpLocBuilder(loc, builder);
+          ArithBuilder localArithBuilder(localImpLocBuilder, loc);
+
           auto forOp =
-              impLocAfterBuilder.create<scf::ForOp>(zero, size, twoCurrentSize);
-          OpBuilder::InsertionGuard guard(impLocAfterBuilder);
-          impLocAfterBuilder.setInsertionPointToStart(forOp.getBody());
+              localImpLocBuilder.create<scf::ForOp>(zero, size, twoCurrentSize);
+          OpBuilder::InsertionGuard guard(localImpLocBuilder);
+          localImpLocBuilder.setInsertionPointToStart(forOp.getBody());
           Value start = forOp.getInductionVar();
 
-          Value mid = impLocAfterBuilder.create<MinSIOp>(
+          Value mid = localImpLocBuilder.create<MinSIOp>(
               size, localArithBuilder.add(start, currentSize));
-          Value end = impLocAfterBuilder.create<MinSIOp>(
+          Value end = localImpLocBuilder.create<MinSIOp>(
               size, localArithBuilder.add(start, twoCurrentSize));
-          emitMerge(impLocAfterBuilder, start, mid, end, readBufs, writeBufs,
+          emitMerge(localImpLocBuilder, start, mid, end, readBufs, writeBufs,
                     comparator);
-        }
+          return;
+        };
+        //   }
         // }
+
+        // if (parity)
+        //   emitMergeLoop(outputs1, outputs0)
+        // else
+        //   emitMergeLoop(outputs0, outputs1)
+        impLocAfterBuilder.create<scf::IfOp>(
+            /*cond=*/parity,
+            /*thenBuilder=*/
+            [&](OpBuilder& builder, Location loc) {
+              emitMergeLoop(builder, loc, outputs1, outputs0);
+              builder.create<scf::YieldOp>(loc, ValueRange{});
+            },
+            /*elseBuilder=*/
+            [&](OpBuilder& builder, Location loc) {
+              emitMergeLoop(builder, loc, outputs0, outputs1);
+              builder.create<scf::YieldOp>(loc, ValueRange{});
+            });
 
         // parity = !parity;
         Value one = impLocAfterBuilder.create<arith::ConstantIntOp>(1, 1);
         Value notParity = arith.sub(one, parity);
         // currentSize *= 2;
         SmallVector<Value> nextWhileArgs{twoCurrentSize, notParity};
-        llvm::copy(writeBufs, std::back_inserter(nextWhileArgs));
-        llvm::copy(readBufs, std::back_inserter(nextWhileArgs));
         impLocAfterBuilder.create<scf::YieldOp>(nextWhileArgs);
       });
   // }
@@ -370,11 +385,11 @@ struct Slicer {
         strides(inductionVariables.size() + 1, b.getI64IntegerAttr(1)) {
     sizes[sortDim] = sortDimSize;
     for (size_t i = 0; i < inductionVariables.size() + 1; ++i) {
-      if (i == sortDim) {
+      if ((int64_t)i == sortDim) {
         offsets.push_back(b.getI64IntegerAttr(0));
       } else {
         offsets.push_back(
-            inductionVariables[i - static_cast<int>(i > sortDim)]);
+            inductionVariables[i - static_cast<int>((int64_t)i > sortDim)]);
       }
     }
   }
@@ -422,7 +437,7 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     if (!op.hasBufferSemantics())
       return op->emitError() << "expected buffer semantics";
 
-    // Note: the output memrefs aren't necessarily the ones that we return,
+    // Note: the output memrefs aren't necessarily the ones that we return
     ValueRange outputMemrefs = op.getInits();
     SmallVector<Value> scratchMemrefs;
     scratchMemrefs.reserve(outputMemrefs.size());
@@ -506,6 +521,10 @@ struct SortOpPattern : public OpRewritePattern<SortOp> {
     rewriter.replaceOpWithNewOp<scf::IfOp>(op, /*cond=*/parity,
                                            /*thenBuilder=*/thenBlock,
                                            /*elseBuilder=*/nullptr);
+
+    for (Value scratchMemref : scratchMemrefs) {
+      b.create<memref::DeallocOp>(scratchMemref);
+    }
 
     return success();
   }

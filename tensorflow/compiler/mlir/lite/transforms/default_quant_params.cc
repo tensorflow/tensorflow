@@ -116,8 +116,7 @@ void DefaultQuantParamsPass::runOnOperation() {
   }
 
   func.walk([&](Operation *op) {
-    if (quant::IsOpNotQuantizable(op) ||
-        op->getParentOfType<TFL::CustomTfOp>()) {
+    if (!quant::IsOpQuantizable(op) || op->getParentOfType<TFL::CustomTfOp>()) {
       return;
     }
 

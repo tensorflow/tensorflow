@@ -1,5 +1,9 @@
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "VERSION")
+load(
+    "//third_party/mkl_dnn:build_defs.bzl",
+    "if_onednn_v3",
+)
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -73,7 +77,6 @@ pybind_extension(
         "@llvm-project//:__subpackages__",
         "@llvm_terminfo//:__subpackages__",
         "@llvm_zlib//:__subpackages__",
-        "@lmdb//:__subpackages__",
         "@local_config_cuda//:__subpackages__",
         "@local_config_git//:__subpackages__",
         "@local_config_nccl//:__subpackages__",
@@ -97,7 +100,7 @@ pybind_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-    ],
+    ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     deps = [
         ":tac_wrapper_lib",
         "//tensorflow/python:pybind11_lib",

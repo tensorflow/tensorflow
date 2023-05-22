@@ -31,6 +31,7 @@ from tensorflow.python.ops.ragged import ragged_check_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_dispatch
+from tensorflow.python.ops.ragged import ragged_embedding_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops

@@ -22,6 +22,7 @@ cc_library(
         "noop_profiler.h",
         "profiler.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":profile_buffer",
@@ -96,6 +97,7 @@ cc_library(
 cc_library(
     name = "profile_buffer",
     hdrs = ["profile_buffer.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
@@ -117,6 +119,7 @@ cc_library(
     name = "time",
     srcs = ["time.cc"],
     hdrs = ["time.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
 )
 
@@ -133,6 +136,7 @@ cc_library(
     name = "memory_info",
     srcs = ["memory_info.cc"],
     hdrs = ["memory_info.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
 )
 
@@ -182,6 +186,7 @@ cc_library(
     name = "profile_summary_formatter",
     srcs = ["profile_summary_formatter.cc"],
     hdrs = ["profile_summary_formatter.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         "//tensorflow/core/util:stats_calculator_portable",
@@ -202,6 +207,7 @@ cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
     hdrs = ["profile_summarizer.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = common_copts,
     deps = [
         ":memory_info",
@@ -209,7 +215,7 @@ cc_library(
         ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/core:headers",
+        "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -229,6 +235,31 @@ cc_test(
     deps = [
         ":root_profiler",
         "//tensorflow/lite/core/api",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "subgraph_tensor_profiler",
+    srcs = ["subgraph_tensor_profiler.cc"],
+    hdrs = ["subgraph_tensor_profiler.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite:framework_stable",
+        "//tensorflow/lite/core:subgraph",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/tsl/platform:path",
+    ],
+)
+
+cc_test(
+    name = "subgraph_tensor_profiler_test",
+    srcs = ["subgraph_tensor_profiler_test.cc"],
+    deps = [
+        ":subgraph_tensor_profiler",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "@com_google_googletest//:gtest_main",
     ],
 )

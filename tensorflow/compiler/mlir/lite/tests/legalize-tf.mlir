@@ -595,6 +595,16 @@ func.func @floor_div(tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  return
 }
 
+func.func @floor_div_i16(tensor<8x16xi16>, tensor<8x16xi16>) -> tensor<8x16xi16> {
+^bb0(%arg0: tensor<8x16xi16>, %arg1: tensor<8x16xi16>):
+  %0 = "tf.FloorDiv"(%arg0, %arg1) : (tensor<8x16xi16>, tensor<8x16xi16>) -> tensor<8x16xi16>
+  func.return %0 : tensor<8x16xi16>
+
+// CHECK-LABEL: floor_div_i16
+// CHECK:  tfl.floor_div %arg0, %arg1 : tensor<8x16xi16>
+// CHECK:  return
+}
+
 func.func @not_equal(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
   func.return %0 : tensor<8x16xi1>
@@ -737,6 +747,14 @@ func.func @addV2(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL: addV2
 // CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
+}
+
+func.func @addV2I16(%arg0: tensor<1xi16>, %arg1: tensor<1xi16>) -> tensor<1xi16> {
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<1xi16>, tensor<1xi16>) -> tensor<1xi16>
+  func.return %0 : tensor<1xi16>
+
+// CHECK-LABEL: addV2I16
+// CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi16>
 }
 
 func.func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
@@ -1568,6 +1586,13 @@ func.func @floor_mod(%arg0: tensor<5xf32>, %arg1: tensor<5xf32>) -> tensor<5xf32
   // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xf32>, tensor<5xf32>) -> tensor<5xf32>
 }
 
+func.func @floor_mod_i16(%arg0: tensor<5xi16>, %arg1: tensor<5xi16>) -> tensor<5xi16> {
+  %0 = "tf.FloorMod"(%arg0, %arg1) : (tensor<5xi16>, tensor<5xi16>) -> tensor<5xi16>
+  func.return %0 : tensor<5xi16>
+  // CHECK-LABEL: floor_mod_i16
+  // CHECK: "tfl.floor_mod"(%arg0, %arg1) : (tensor<5xi16>, tensor<5xi16>) -> tensor<5xi16>
+}
+
 func.func @exp(%arg0: tensor<5xf32>) -> tensor<5xf32> {
   %0 = "tf.Exp"(%arg0) : (tensor<5xf32>) -> tensor<5xf32>
   func.return %0 : tensor<5xf32>
@@ -1626,8 +1651,8 @@ func.func @conv2d_backprop_input(%arg0: tensor<4xi32>, %arg1: tensor<3x3x1x32xf3
   // CHECK: %[[CST:.*]] = arith.constant dense<[2, 0, 1, 3]> : tensor<4xi32>
   // CHECK: %[[ARG0:.*]] = "tfl.transpose"(%arg1, %[[CST]]) : (tensor<3x3x1x32xf32>, tensor<4xi32>) -> tensor<1x3x3x32xf32>
   // CHECK: %[[CST_0:.*]] = "tfl.no_value"() {value} : () -> none
-  // CHECK: %[[ARG1:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
-  // CHECK: %[[ARG3:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
+  // CHECK: %[[ARG1:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
+  // CHECK: %[[ARG3:.*]] = "tfl.transpose_conv"(%arg0, %[[ARG0]], %arg2, %[[CST_0]]) {fused_activation_function = "NONE", padding = "VALID", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<4xi32>, tensor<1x3x3x32xf32>, tensor<15x14x14x32xf32>, none) -> tensor<15x28x28x1xf32>
   // CHECK: %[[RESULT:.*]] = tfl.add %[[ARG1]], %[[ARG3]] {fused_activation_function = "NONE"} : tensor<15x28x28x1xf32>
   // CHECK: return %[[RESULT]] : tensor<15x28x28x1xf32>
 }
@@ -1840,24 +1865,27 @@ func.func @maximum_with_6d_broadcasting(%arg0: tensor<1x1x1x1x8x16xf32>, %arg1: 
 
 // -----
 
-func.func @add_with_int32_5d_inputs(%arg0: tensor<1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32> {
+func.func @test5DAddWithImplicitBroadcast(%arg0: tensor<1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32> {
   %0 = "tf.Add"(%arg0, %arg1): (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
   func.return %0 : tensor<1x1x1x3x4xi32>
-// CHECK-LABEL: add_with_int32_5d_inputs
-// CHECK: [[CST:%.*]] = arith.constant dense<[1, 1, 1, 3, 4]> : tensor<5xi64>
-// CHECK: [[BCT:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-// CHECK: [[BCT_0:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-// CHECK:  tfl.add [[BCT]], [[BCT_0]]
+// CHECK-LABEL: test5DAddWithImplicitBroadcast
+// CHECK: %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x1x1x3x1xi32>, tensor<1x1x1x1x4xi32>) -> tensor<1x1x1x3x4xi32>
 }
 
-// CHECK-LABEL: testAddWithBroadcastToOps
-func.func @testAddWithBroadcastToOps(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
-  // CHECK: [[CST:%.*]] = arith.constant dense<[1, 2, 3, 4, 5, 6]> : tensor<6xi64>
-  // CHECK: [[BCAST:%.*]] = "tfl.broadcast_to"(%arg0, [[CST]])
-  // CHECK: [[BCAST_1:%.*]] = "tfl.broadcast_to"(%arg1, [[CST]])
-  // CHECK: tfl.add [[BCAST]], [[BCAST_1]] {fused_activation_function = "NONE"} : tensor<1x2x3x4x5x6xi32>
+func.func @test6DAddWithImplicitBroadcast(%arg0: tensor<1x2x1x4x5x6xi32>, %arg1: tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32> {
+// CHECK-LABEL: test6DAddWithImplicitBroadcast
+// CHECK:  %0 = tfl.add(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   %0 = "tf.Add"(%arg0, %arg1) : (tensor<1x2x1x4x5x6xi32>, tensor<1x2x3x4x5x1xi32>) -> tensor<1x2x3x4x5x6xi32>
   func.return %0 : tensor<1x2x3x4x5x6xi32>
+}
+
+func.func @add_with_int32_7d_inputs(%arg0: tensor<1x1x1x1x1x3x1xi32>, %arg1 : tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32> {
+  %0 = "tf.Add"(%arg0, %arg1): (tensor<1x1x1x1x1x3x1xi32>, tensor<1x1x1x1x1x1x4xi32>) -> tensor<1x1x1x1x1x3x4xi32>
+  func.return %0 : tensor<1x1x1x1x1x3x4xi32>
+// CHECK-LABEL: add_with_int32_7d_inputs
+// CHECK: %0 = "tfl.broadcast_to"(%arg0, %cst) : (tensor<1x1x1x1x1x3x1xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %1 = "tfl.broadcast_to"(%arg1, %cst) : (tensor<1x1x1x1x1x1x4xi32>, tensor<7xi64>) -> tensor<1x1x1x1x1x3x4xi32>
+// CHECK: %2 = tfl.add %0, %1 {fused_activation_function = "NONE"} : tensor<1x1x1x1x1x3x4xi32>
 }
 
 // CHECK-LABEL: testSubWithBroadcastToOps
@@ -2313,6 +2341,24 @@ func.func @mul_i64(%arg0: tensor<14xi64>, %arg1: tensor<14xi64>) -> tensor<14xi6
 // CHECK:  return
 }
 
+func.func @mul_i16(%arg0: tensor<14xi16>, %arg1: tensor<14xi16>) -> tensor<14xi16> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xi16>, tensor<14xi16>) -> tensor<14xi16>
+  func.return %0: tensor<14xi16>
+
+// CHECK-LABEL: mul_i16
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xi16>
+// CHECK:  return
+}
+
+func.func @mul_ui32(%arg0: tensor<14xui32>, %arg1: tensor<14xui32>) -> tensor<14xui32> {
+  %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xui32>, tensor<14xui32>) -> tensor<14xui32>
+  func.return %0: tensor<14xui32>
+
+// CHECK-LABEL: mul_ui32
+// CHECK:  tfl.mul %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<14xui32>
+// CHECK:  return
+}
+
 func.func @mul_complex32(%arg0: tensor<14xcomplex<f32>>, %arg1: tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>> {
   %0 = "tf.Mul"(%arg0, %arg1) : (tensor<14xcomplex<f32>>, tensor<14xcomplex<f32>>) -> tensor<14xcomplex<f32>>
   func.return %0: tensor<14xcomplex<f32>>
@@ -2490,6 +2536,69 @@ func.func @sign(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // CHECK:  return %[[RES0]] : tensor<8xf32>
 }
 
+func.func @bitcast(%arg0: tensor<8xi32>) -> tensor<8xui32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+// CHECK-LABEL: bitcast
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8xui32>
+// CHECK:  return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @bitcastI32ToI16(%arg0: tensor<8xi32>) -> tensor<8x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8x2xi16>
+  func.return %0 : tensor<8x2xi16>
+
+// CHECK-LABEL: bitcastI32ToI16
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xi32>) -> tensor<8x2xi16>
+// CHECK:  return %[[RES0]] : tensor<8x2xi16>
+}
+
+func.func @bitcastI16ToUI32(%arg0: tensor<8x2xi16>) -> tensor<8xui32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+// CHECK-LABEL: bitcastI16ToUI32
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xui32>
+// CHECK:  return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @bitcastFloatToI16(%arg0: tensor<8xf32>) -> tensor<8x2xi16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8xf32>) -> tensor<8x2xi16>
+  func.return %0 : tensor<8x2xi16>
+
+// CHECK-LABEL: bitcastFloatToI16
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8xf32>) -> tensor<8x2xi16>
+// CHECK:  return %[[RES0]] : tensor<8x2xi16>
+}
+
+func.func @bitcastI16ToFloat(%arg0: tensor<8x2xi16>) -> tensor<8xf32> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xf32>
+  func.return %0 : tensor<8xf32>
+
+// CHECK-LABEL: bitcastI16ToFloat
+// CHECK: %[[RES0:.*]] = "tfl.bitcast"(%arg0) : (tensor<8x2xi16>) -> tensor<8xf32>
+// CHECK:  return %[[RES0]] : tensor<8xf32>
+}
+
+func.func @testBitwiseXor(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.BitwiseXor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testBitwiseXor
+  // CHECK: %[[RES0:.*]] = "tfl.bitwise_xor"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
+func.func @testRightShift(%arg0: tensor<8xui32>, %arg1: tensor<8xui32>) -> tensor<8xui32> {
+  %0 = "tf.RightShift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  func.return %0 : tensor<8xui32>
+
+  // CHECK-LABEL: testRightShift
+  // CHECK: %[[RES0:.*]] = "tfl.right_shift"(%arg0, %arg1) : (tensor<8xui32>, tensor<8xui32>) -> tensor<8xui32>
+  // CHECK: return %[[RES0]] : tensor<8xui32>
+}
+
 // =============================================================================
 // Training OPs
 // =============================================================================
@@ -2504,3 +2613,17 @@ func.func @sigmoidGrad(%arg0: tensor<?x32xf32>, %arg1: tensor<?x32xf32>) -> tens
 // CHECK-NEXT: [[MUL1:%.+]] =  tfl.mul %arg1, [[MUL0]] {fused_activation_function = "NONE"} : tensor<?x32xf32>
 // CHECK: return [[MUL1]]
 }
+
+func.func @batchmatmul2fullyconnected(%arg0: tensor<4x128x2xf32>) -> (tensor<4x128x1xf32>) {
+  %0 = "tf.Const"() {value = dense<[[1.0], [2.0]]> : tensor<2x1xf32>} : () -> tensor<2x1xf32>
+  %1 = "tf.BatchMatMulV2"(%arg0, %0) : (tensor<4x128x2xf32>, tensor<2x1xf32>) -> tensor<4x128x1xf32>
+  func.return %1 : tensor<4x128x1xf32>
+
+  // CHECK-LABEL: batchmatmul2fullyconnected
+  // CHECK-DAG:  %cst_0 = arith.constant dense<[1, 0]> : tensor<2xi32> 
+  // CHECK:  %0 = "tfl.transpose"(%cst, %cst_0) : (tensor<2x1xf32>, tensor<2xi32>) -> tensor<1x2xf32> 
+  // CHECK-DAG:  %1 = "tfl.no_value"() {value} : () -> none
+  // CHECK:  %2 = "tfl.fully_connected"(%arg0, %0, %1) {fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x128x2xf32>, tensor<1x2xf32>, none) -> tensor<4x128x1xf32>
+  // CHECK:  return %2 : tensor<4x128x1xf32>
+}
+

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 
 #include <numeric>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -130,7 +131,7 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   std::vector<llvm::Metadata*> loop_metadata = GetLoopMetadata(b);
   if (!loop_metadata.empty()) {
     llvm::LLVMContext* ctx = &start_index_->getContext();
-    auto temp_node = llvm::MDNode::getTemporary(*ctx, llvm::None);
+    auto temp_node = llvm::MDNode::getTemporary(*ctx, std::nullopt);
     loop_metadata.insert(loop_metadata.begin(), temp_node.get());
     auto loop_id = llvm::MDNode::get(*ctx, loop_metadata);
     loop_id->replaceOperandWith(0, loop_id);

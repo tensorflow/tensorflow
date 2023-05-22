@@ -6,6 +6,7 @@
 // CHECK: tf_device.cluster
 // CHECK-NEXT: tf.StatefulPartitionedCall
 // CHECK-NEXT: tf_device.return
+// CHECK: allow_soft_placement = true
 // CHECK: tf.Const
 // CHECK: tf.Add
 func.func @xla_must_compile_true(%arg0: tensor<i32>) -> tensor<i32> attributes {tf.entry_function = {}} {
@@ -61,6 +62,7 @@ func.func @outer_stateful_pcall_func(%arg0: tensor<i32>) -> (tensor<i32>) {
   // CHECK: tf_device.cluster
   // CHECK-NEXT: tf.StatefulPartitionedCall
   // CHECK-NEXT: tf_device.return
+  // CHECK: allow_soft_placement = true
   %0 = "tf.StatefulPartitionedCall"(%arg0) {_xla_compile_device_type = "CPU", config = "", config_proto = "", device = "/device:CPU:0", executor_type = "", f = @inner_stateful_pcall_func} : (tensor<i32>) -> (tensor<i32>)
   func.return %0 : tensor<i32>
 }

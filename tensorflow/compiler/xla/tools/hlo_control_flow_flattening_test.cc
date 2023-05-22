@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tools/hlo_control_flow_flattening.h"
 
 #include "absl/strings/str_replace.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/despecializer.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -249,7 +249,7 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
   HloModule Infeed
   ENTRY Infeed {
     after-all = token[] after-all()
-    ROOT infeed = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
+    ROOT infeed.23 = ((bf16[3]{0}, s32[12,5]{0,1}), token[]) infeed(after-all)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -261,8 +261,11 @@ TEST_F(HloControlFlowFlatteningTest, Infeed) {
                            /*allow_mixed_precision=*/true)
                    .Run(module.get())
                    .status());
+  auto custom_call =
+      module->entry_computation()->GetInstructionWithName("infeed.23");
+  EXPECT_THAT(custom_call, op::CustomCall());
   auto tuple = module->entry_computation()->root_instruction();
-  EXPECT_THAT(tuple, op::Tuple(op::CustomCall(), op::AfterAll()));
+  EXPECT_THAT(tuple, op::Tuple(custom_call, op::AfterAll()));
 }
 
 TEST_F(HloControlFlowFlatteningTest, InfeedPreserveLayout) {
@@ -294,7 +297,7 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
   ENTRY Outfeed {
     param = (bf16[3]{0}, s32[12,5]{0,1}) parameter(0)
     after-all = token[] after-all()
-    ROOT outfeed = token[] outfeed(param, after-all)
+    ROOT outfeed.23 = token[] outfeed(param, after-all)
   }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -307,6 +310,7 @@ TEST_F(HloControlFlowFlatteningTest, Outfeed) {
                    .Run(module.get())
                    .status());
   auto custom_call = module->entry_computation()->root_instruction();
+  EXPECT_EQ(custom_call->name(), "outfeed.23");
   EXPECT_THAT(custom_call, op::CustomCall(op::Parameter(0), op::AfterAll()));
 }
 

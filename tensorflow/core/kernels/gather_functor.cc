@@ -16,6 +16,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/gather_functor.h"
+
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
@@ -39,7 +40,6 @@ namespace functor {
 
 TF_CALL_int64(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS

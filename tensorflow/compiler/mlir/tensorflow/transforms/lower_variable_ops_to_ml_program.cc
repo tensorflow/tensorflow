@@ -81,7 +81,9 @@ Operation* GetHandleSource(Operation* op, DataFlowSolver& solver) {
 
 Attribute GetInitialValue(Operation* source) {
   if (auto global = dyn_cast<tf_saved_model::GlobalTensorOp>(source)) {
-    return global.getValue();
+    if (global.getValue()) {
+      return *global.getValue();
+    }
   }
   return nullptr;
 }

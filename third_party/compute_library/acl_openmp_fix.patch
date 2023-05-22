@@ -1,0 +1,46 @@
+ *******************************************************************************
+ Copyright 2022 Arm Limited and affiliates.
+ SPDX-License-Identifier: Apache-2.0
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ *******************************************************************************
+
+diff --git a/src/runtime/OMP/OMPScheduler.cpp b/src/runtime/OMP/OMPScheduler.cpp
+index aad24b4f0..78d1523af 100644
+--- a/src/runtime/OMP/OMPScheduler.cpp
++++ b/src/runtime/OMP/OMPScheduler.cpp
+@@ -90,18 +116,21 @@ void OMPScheduler::schedule_op(ICPPKernel *kernel, const Hints &hints, const Win
+ void OMPScheduler::run_workloads(std::vector<arm_compute::IScheduler::Workload> &workloads)
+ {
+     const unsigned int amount_of_work = static_cast<unsigned int>(workloads.size());
+-    if(amount_of_work < 1 || _num_threads == 1)
++    const unsigned int                  num_threads_to_use = std::min(_num_threads, amount_of_work );
++
++    if(amount_of_work < 1 || num_threads_to_use == 1)
+     {
+         return;
+     }
+ 
+     ThreadInfo info;
+     info.cpu_info    = &cpu_info();
+-    info.num_threads = _num_threads;
+-    #pragma omp parallel for firstprivate(info) num_threads(_num_threads) default(shared) proc_bind(close) schedule(static, 1)
++    info.num_threads = num_threads_to_use;
++    #pragma omp parallel for firstprivate(info) num_threads(num_threads_to_use) default(shared) proc_bind(close) schedule(static, 1)
+     for(unsigned int wid = 0; wid < amount_of_work; ++wid)
+     {
+         const int tid  = omp_get_thread_num();
++
+         info.thread_id = tid;
+         workloads[wid](info);
+     }

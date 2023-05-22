@@ -168,6 +168,9 @@ class AdaptiveSharedBatchScheduler
                          int max_batch_size,
                          std::vector<std::unique_ptr<TaskType>>* output_tasks)>
         split_input_task_func;
+
+    // If true, the padding will not be appended.
+    bool disable_padding = false;
   };
 
   using BatchProcessor = std::function<void(std::unique_ptr<Batch<TaskType>>)>;

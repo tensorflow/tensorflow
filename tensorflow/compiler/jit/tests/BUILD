@@ -54,10 +54,10 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "xla_compilation_cache_test_helper",
+    name = "device_compiler_test_helper",
     testonly = True,
-    srcs = ["xla_compilation_cache_test_helper.cc"],
-    hdrs = ["xla_compilation_cache_test_helper.h"],
+    srcs = ["device_compiler_test_helper.cc"],
+    hdrs = ["device_compiler_test_helper.h"],
     visibility = [
         "//tensorflow/compiler/jit:__pkg__",
     ],
@@ -79,14 +79,15 @@ cc_library(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
 
 tf_cc_test(
-    name = "xla_compilation_cache_serialize_test",
+    name = "device_compiler_serialize_test",
     srcs = [
-        "xla_compilation_cache_serialize_test.cc",
+        "device_compiler_serialize_test.cc",
     ],
     env = {
         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
@@ -98,7 +99,7 @@ tf_cc_test(
         "xla",
     ],
     deps = [
-        ":xla_compilation_cache_test_helper",
+        ":device_compiler_test_helper",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",
@@ -106,9 +107,9 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "xla_compilation_cache_serialize_options_test",
+    name = "device_compiler_serialize_options_test",
     srcs = [
-        "xla_compilation_cache_serialize_options_test.cc",
+        "device_compiler_serialize_options_test.cc",
     ],
     env = {
         "XLA_FLAGS": "--xla_gpu_enable_xla_runtime_executable",
@@ -120,7 +121,7 @@ tf_cc_test(
         "xla",
     ],
     deps = [
-        ":xla_compilation_cache_test_helper",
+        ":device_compiler_test_helper",
         "//tensorflow/compiler/jit:compilation_passes",
         "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:test",

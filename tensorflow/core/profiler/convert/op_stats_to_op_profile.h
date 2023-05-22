@@ -47,7 +47,8 @@ namespace profiler {
 void ConvertOpStatsToOpProfile(
     const tensorflow::profiler::OpStats& op_stats,
     tensorflow::profiler::HardwareType hardware_type,
-    tensorflow::profiler::op_profile::Profile& profile);
+    tensorflow::profiler::op_profile::Profile& profile,
+    int op_profile_limit = 100);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -75,20 +75,20 @@ class ROCMFftPlan : public fft::Plan {
   }
 
   // Initialize function for batched plan
-  port::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
-                          uint64_t *elem_count, uint64 *input_embed,
-                          uint64_t input_stride, uint64 input_distance,
-                          uint64_t *output_embed, uint64 output_stride,
-                          uint64_t output_distance, fft::Type type,
-                          int batch_count, ScratchAllocator *scratch_allocator);
+  tsl::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
+                         uint64_t *elem_count, uint64 *input_embed,
+                         uint64_t input_stride, uint64 input_distance,
+                         uint64_t *output_embed, uint64 output_stride,
+                         uint64_t output_distance, fft::Type type,
+                         int batch_count, ScratchAllocator *scratch_allocator);
 
   // Initialize function for 1d,2d, and 3d plan
-  port::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
-                          uint64_t *elem_count, fft::Type type,
-                          ScratchAllocator *scratch_allocator);
+  tsl::Status Initialize(GpuExecutor *parent, Stream *stream, int rank,
+                         uint64_t *elem_count, fft::Type type,
+                         ScratchAllocator *scratch_allocator);
 
-  port::Status UpdateScratchAllocator(Stream *stream,
-                                      ScratchAllocator *scratch_allocator);
+  tsl::Status UpdateScratchAllocator(Stream *stream,
+                                     ScratchAllocator *scratch_allocator);
 
   ScratchAllocator *GetScratchAllocator() const { return scratch_allocator_; }
 

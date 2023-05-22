@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/debug_data_dumper.h"
 
 namespace tensorflow {
 
@@ -54,6 +55,14 @@ auto* mlir_graph_optimization_pass_fallback_count = monitoring::Counter<1>::New(
     /* metric description */
     "Track success/failure of MLIR graph optimization pass runs when fallback "
     "used",
+    /* metric field */ "status");
+
+auto* mlir_function_pass_graph_conversion_count = monitoring::Counter<1>::New(
+    /* metric name */
+    "/tensorflow/core/mlir_function_pass_graph_conversion_count",
+    /* metric description */
+    "Track success/failure of Graph to MLIR conversions in function "
+    "optimization pass",
     /* metric field */ "status");
 
 // The status metric field is used to record success/failure of mlir
@@ -75,8 +84,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   auto* env = tensorflow::Env::Default();
   auto status = env->RecursivelyCreateDir(prefix);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot create directory '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot create directory '" << prefix
+                 << "': " << status.message();
     return;
   }
 
@@ -89,8 +98,7 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
   std::unique_ptr<WritableFile> file_writer;
   status = env->NewWritableFile(prefix, &file_writer);
   if (!status.ok()) {
-    LOG(WARNING) << "cannot open file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "cannot open file '" << prefix << "': " << status.message();
     return;
   }
 
@@ -103,8 +111,8 @@ static void DumpModule(mlir::ModuleOp module, std::string file_prefix) {
 
   status = file_writer->Append(txt_module);
   if (!status.ok()) {
-    LOG(WARNING) << "error writing to file '" + prefix +
-                        "': " + status.error_message();
+    LOG(WARNING) << "error writing to file '" << prefix
+                 << "': " << status.message();
     return;
   }
   (void)file_writer->Close();
@@ -128,7 +136,8 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
 }
 
 Status MlirFunctionOptimizationPass::Run(
-    const DeviceSet& device_set, const ConfigProto& config_proto,
+    const std::string& function_name, const DeviceSet& device_set,
+    const ConfigProto& config_proto, absl::string_view xla_compile_device_type,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
@@ -168,26 +177,12 @@ Status MlirFunctionOptimizationPass::Run(
     }
   }
 
-  static const char* kTfMlirCategory = "TfMlir";
-  tensorflow::metrics::ScopedCounter<2> timings(
-      tensorflow::metrics::GetGraphOptimizationCounter(),
-      {kTfMlirCategory, "graph_analysis"});
-
-  timings.ReportAndStop();
-
   if (overall_state == MlirOptimizationPassState::Disabled) {
     if (VLOG_IS_ON(1)) {
       LOG_FIRST_N(INFO, 1)
           << "None of the MLIR Optimization Passes are enabled "
           << "(registered " << registry_->passes().size() << ")";
     }
-    // Capture stats on graph properties analyzed before running the MLIR
-    // bridge. We set `uses_uninitialized_resource_args` to false here because
-    // function optimization is not affected by uninitialized resource args.
-    // TODO(b/241853328): Remove LogGraphFeatures when fixed
-    LogGraphFeatures(**graph, flib_def, config_proto,
-                     /*uses_uninitialized_resource_args=*/false,
-                     /*is_v1_compat=*/false);
     return OkStatus();
   }
 
@@ -213,10 +208,18 @@ Status MlirFunctionOptimizationPass::Run(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   import_config.enable_shape_inference = false;
+  import_config.xla_compile_device_type = xla_compile_device_type;
 
-  timings.Reset({kTfMlirCategory, "convert_graph_to_mlir"});
+  static const char* kTfMlirCategory = "TfMlir";
+  tensorflow::metrics::ScopedCounter<2> timings(
+      tensorflow::metrics::GetGraphOptimizationCounter(),
+      {kTfMlirCategory, "convert_graph_to_mlir"});
+
   auto module_ref_status = ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                               import_config, &context);
+  mlir_function_pass_graph_conversion_count
+      ->GetCell(absl::StatusCodeToString(module_ref_status.status().code()))
+      ->IncrementBy(1);
   timings.ReportAndStop();
 
   if (!module_ref_status.ok()) {
@@ -233,45 +236,60 @@ Status MlirFunctionOptimizationPass::Run(
       std::move(module_ref_status.value());
   AddDevicesToOp(*module_ref, &device_set);
 
-  // Capture stats on graph properties analyzed before running the MLIR
-  // bridge. We set `uses_uninitialized_resource_args` to false here because
-  // function optimization is not affected by uninitialized resource args.
-  // TODO (b/241853328) Remove LogGraphFeatures when fixed
-  LogGraphFeatures(**graph, flib_def, config_proto,
-                   /*uses_uninitialized_resource_args=*/false,
-                   /*is_v1_compat=*/false);
-
   int per_pass_state_index = 0;
+  bool is_module_updated = false;
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
 
-    if (VLOG_IS_ON(1)) {
-      DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(
+          DEBUG_DATA_DUMPER()->GetDumpFilename(
+              function_name, kDebugGroupMain,
+              llvm::formatv("mlir_{0}_before", name)),
+          *module_ref, llvm::StringRef(), nullptr);
     }
 
     Status pass_status = OkStatus();
     auto pass_state = per_pass_state[per_pass_state_index++];
     if (pass_state == MlirOptimizationPassState::Enabled) {
       VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
       timings.Reset({kTfMlirCategory, name.str()});
-      pass_status = pass_registration.pass->Run(config_proto, *module_ref,
-                                                **graph, *flib_def);
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, *module_ref, **graph, *flib_def);
       timings.ReportAndStop();
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
+        is_module_updated = true;
+      }
     } else if (pass_state == MlirOptimizationPassState::FallbackEnabled) {
       VLOG(2) << "Run MLIR graph optimization pass with fallback: "
               << StringRefToView(name);
+      VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+              << (*graph)->num_edges();
       // Make sure when the pass is FallbackEnabled, it only modifies the MLIR
       // module in case of no failures.
       auto module_ref_clone = module_ref->clone();
       timings.Reset({kTfMlirCategory, name.str() + "_fallback"});
-      pass_status = pass_registration.pass->Run(config_proto, module_ref_clone,
-                                                **graph, *flib_def);
+      pass_status = pass_registration.pass->Run(
+          function_name, config_proto, module_ref_clone, **graph, *flib_def);
       timings.ReportAndStop();
 
-      if (pass_status.ok())
+      if (pass_status.ok()) {
+        VLOG(2) << "Finished MLIR graph optimization pass with fallback: "
+                << StringRefToView(name);
+        VLOG(2) << "Graph #nodes " << (*graph)->num_nodes() << " #edges "
+                << (*graph)->num_edges();
         module_ref = module_ref_clone;
-      else
+        is_module_updated = true;
+      } else {
         module_ref_clone->destroy();
+      }
     } else {
       VLOG(2) << "MLIR graph optimization pass: " << StringRefToView(name)
               << " is disabled and will not be run.";
@@ -296,11 +314,20 @@ Status MlirFunctionOptimizationPass::Run(
       }
     }
 
-    if (VLOG_IS_ON(1)) {
-      DumpModule(*module_ref, llvm::formatv("mlir_{0}_after_", name));
+    if (DEBUG_DATA_DUMPER()->ShouldDump(function_name, kDebugGroupMain) ||
+        VLOG_IS_ON(1)) {
+      ::tensorflow::DumpMlirOpToFile(DEBUG_DATA_DUMPER()->GetDumpFilename(
+                                         function_name, kDebugGroupMain,
+                                         llvm::formatv("mlir_{0}_after", name)),
+                                     *module_ref, llvm::StringRef(), nullptr);
     }
   }
 
+  if (!is_module_updated) {
+    VLOG(2) << "MLIR module is not updated. Using the original graph. "
+            << "Do not convert mlir module back to graph";
+    return OkStatus();
+  }
   GraphExportConfig export_config;
   absl::flat_hash_set<Node*> control_ret_nodes;
 
@@ -343,15 +370,6 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   auto pass_state =
       pass->GetPassState(options.device_set, options.session_options->config,
                          **options.graph, *options.flib_def);
-
-  // If we ever have more than one MlirV1CompatOptimization pass we need to
-  // ensure the logging only happens once per graph to avoid redundant logging
-  // (see how it is used in the MLIRFunctionOptimizationPass as an example)
-  // TODO(b/241853328): Remove LogGraphFeatures when fixed
-  LogGraphFeatures(**options.graph, options.flib_def,
-                   options.session_options->config,
-                   /*uses_uninitialized_resource_args=*/false,
-                   /*is_v1_compat=*/true);
 
   if (pass_state == MlirOptimizationPassState::Disabled) {
     LOG_FIRST_N(INFO, 1) << "MLIR V1 optimization pass is not enabled";

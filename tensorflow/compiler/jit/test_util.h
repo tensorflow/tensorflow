@@ -19,11 +19,15 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_TEST_UTIL_H_
 
 #include <map>
-#include <unordered_map>
+#include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -62,7 +66,20 @@ struct GraphOptimizationPassWrapper {
   SessionOptions session_options;
 };
 
-}  // namespace tensorflow
+// Helps set up devices for unit tests.
+class DeviceSetup {
+ public:
+  void AddDevicesAndSetUp(const std::vector<std::string>& device_names);
+  Device* GetDevice(const string& device_name);
+  FunctionLibraryRuntime* flr() { return flr_; }
 
+ private:
+  FunctionLibraryRuntime* flr_;
+  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<FunctionLibraryDefinition> lib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+};
+
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_TEST_UTIL_H_

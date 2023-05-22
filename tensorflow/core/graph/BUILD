@@ -30,6 +30,14 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "zen_graph_util",
+    hdrs = ["zen_graph_util.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 tf_cc_test(
     name = "collective_order_test",
     size = "small",
@@ -57,6 +65,7 @@ filegroup(
         "algorithm.h",
         "default_device.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -70,6 +79,7 @@ filegroup(
     srcs = [
         "edgeset.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "node_builder.h",
@@ -83,6 +93,7 @@ filegroup(
     srcs = [
         "edgeset.cc",
         "graph.cc",
+        "graph_debug_info_builder.cc",
         "graph_def_builder.cc",
         "graph_node_util.cc",
         "node_builder.cc",
@@ -107,6 +118,7 @@ filegroup(
         "default_device.h",
         "edgeset.h",
         "graph.h",
+        "graph_debug_info_builder.h",
         "graph_def_builder.h",
         "graph_node_util.h",
         "graph_partition.h",
@@ -177,6 +189,8 @@ filegroup(
         "edgeset.h",
         "graph.cc",
         "graph.h",
+        "graph_debug_info_builder.cc",
+        "graph_debug_info_builder.h",
         "graph_def_builder.cc",
         "graph_def_builder.h",
         "graph_node_util.cc",
@@ -213,6 +227,7 @@ exports_files(
         "control_flow_test.cc",
         "costmodel_test.cc",
         "edgeset_test.cc",
+        "graph_debug_info_builder_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",
         "graph_test.cc",
@@ -233,6 +248,7 @@ tf_cc_tests(
         "control_flow_test.cc",
         "costmodel_test.cc",
         "edgeset_test.cc",
+        "graph_debug_info_builder_test.cc",
         "graph_def_builder_test.cc",
         "graph_partition_test.cc",
         "graph_test.cc",
@@ -269,10 +285,12 @@ tf_cc_tests(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:status_matchers",
         "//tensorflow/core/util:protos_test_cc",
         "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
     ],
 )

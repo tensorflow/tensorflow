@@ -144,6 +144,19 @@ bool AddAccessedResourceIds(
   return false;
 }
 
+/* Resources may be merged with an execute op when they are on its device or a
+ * `COMPOSITE`. Note that a `COMPOSITE` represents a set of devices, they
+ * are typically associated with packed variables. Presently, we assume this
+ * set spans all the devices. So, a variable on a `COMPOSITE` will have a local
+ * instance on the execute op's device.
+ */
+bool IsResourceMergeable(Attribute& resource_attr, Attribute& device_attr) {
+  return resource_attr &&
+         ((resource_attr == device_attr) ||
+          (resource_attr.cast<mlir::StringAttr>().getValue().find(
+               "COMPOSITE") != llvm::StringRef::npos));
+}
+
 // Finds the variable access info for a TPUExecute op.
 //  - `check_device` specifies  whether it checks the device assignment of the
 //  variables to match the TPUExecute op. This is optional in some context,
@@ -187,7 +200,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
       if (auto* resource_op = resource.getDefiningOp()) {
         auto resource_attr = resource_op->getAttr(kDeviceAttr);
         // Check device matching for the node defining the resource.
-        if (!resource_attr || resource_attr != device_attr) continue;
+        if (!IsResourceMergeable(resource_attr, device_attr)) continue;
       } else {
         auto resource_arg = resource.dyn_cast<BlockArgument>();
         assert(resource_arg);
@@ -195,7 +208,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
         // Check device matching for the argument defining the resource.
         auto resource_attr = func.getArgAttrOfType<mlir::StringAttr>(
             resource_arg.getArgNumber(), kFuncDeviceAttr);
-        if (!resource_attr || resource_attr != device_attr) continue;
+        if (!IsResourceMergeable(resource_attr, device_attr)) continue;
       }
     }
 

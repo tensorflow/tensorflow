@@ -24,15 +24,15 @@ namespace {
 TEST(StatusHelper, TestStatusHelper) {
   TSL_Status* s = TSL_NewStatus();
   Status cc_status(errors::InvalidArgument("some error"));
-  cc_status.SetPayload("key1", "value1");
-  cc_status.SetPayload("key2", "value2");
+  cc_status.SetPayload("key1", absl::Cord("value1"));
+  cc_status.SetPayload("key2", absl::Cord("value2"));
   Set_TSL_Status_from_Status(s, cc_status);
   ASSERT_EQ(TSL_INVALID_ARGUMENT, TSL_GetCode(s));
   ASSERT_EQ(std::string("some error"), TSL_Message(s));
 
   Status another_cc_status(StatusFromTSL_Status(s));
   ASSERT_FALSE(another_cc_status.ok());
-  ASSERT_EQ(std::string("some error"), another_cc_status.error_message());
+  ASSERT_EQ(std::string("some error"), another_cc_status.message());
   ASSERT_EQ(error::INVALID_ARGUMENT, another_cc_status.code());
   // Ensure the payloads are not lost during conversions
   ASSERT_EQ(cc_status.GetPayload("key1"), another_cc_status.GetPayload("key1"));

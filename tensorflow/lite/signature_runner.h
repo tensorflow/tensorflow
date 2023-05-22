@@ -25,7 +25,9 @@ limitations under the License.
 #include "tensorflow/lite/internal/signature_def.h"
 
 namespace tflite {
+namespace impl {
 class Interpreter;               // Class for friend declarations.
+}
 class SignatureRunnerJNIHelper;  // Class for friend declarations.
 class TensorHandle;              // Class for friend declarations.
 class SignatureRunnerHelper;     // Class for friend declarations.
@@ -150,7 +152,7 @@ class SignatureRunner {
   // SignatureRunner objects don't outlive their corresponding Subgraph objects.
   SignatureRunner(const internal::SignatureDef* signature_def,
                   Subgraph* subgraph);
-  friend class Interpreter;
+  friend class ::tflite::impl::Interpreter;
   friend class SignatureRunnerJNIHelper;
   friend class TensorHandle;
   friend class SignatureRunnerHelper;

@@ -1,6 +1,7 @@
 path: "tensorflow.Graph"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.Graph\'>"
+  is_instance: "<class \'tensorflow.python.client._pywrap_tf_session.PyGraph\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "building_function"
@@ -19,12 +20,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "operations"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "seed"
     mtype: "<type \'property\'>"
   }
   member {
     name: "version"
     mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "Dismantle"
   }
   member_method {
     name: "__init__"
@@ -79,6 +87,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_all_collection_keys"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -100,7 +112,6 @@ tf_class {
   }
   member_method {
     name: "get_operations"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_tensor_by_name"
@@ -121,6 +132,16 @@ tf_class {
   member_method {
     name: "name_scope"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "new_operations"
+  }
+  member_method {
+    name: "num_operations"
+  }
+  member_method {
+    name: "op_def_for_type"
+    argspec: "args=[\'self\', \'type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "prevent_feeding"

@@ -15,15 +15,17 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 
 #include <cstdint>
+#include <cstring>
+#include <memory>
 #include <optional>
 #include <string>
 
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
@@ -35,11 +37,14 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/runtime_fallback/runtime/op_logger.h"
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
+#include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
+#include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
@@ -64,12 +69,10 @@ const char kOpKernelRunnerCacheResourceName[] =
 namespace {
 
 using ::tensorflow::tfrt_stub::OpKernelRunner;
-using ::tensorflow::tfrt_stub::OpKernelRunnerTable;
 using ::tensorflow::tfrt_stub::OpKernelRunState;
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
-using ::tfrt::OpAttrsRef;
 using ::tfrt::RCReference;
 using ::tfrt::string_view;
 
@@ -95,87 +98,14 @@ void KernelFallbackEmitError(
   auto error = EmitErrorAsync(
       exec_ctx,
       absl::Status(
-          ToAbslStatus(status).code(),
+          status.code(),
           tfrt::StrCat(model_info, "error running kernel fallback kernel ",
-                       op_name, ": ", status.error_message())));
+                       op_name, ": ", status.message())));
   std::fill(results.begin(), results.end(), error);
   if (op_chain) *op_chain = std::move(error);
 }
 
-std::function<void(std::function<void()>)>* GetDefaultRunner() {
-  static auto* const default_runner =
-      new std::function<void(std::function<void()>)>(
-          [](const std::function<void()>& f) { f(); });
-  return default_runner;
-}
-
 }  // namespace
-
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder,
-    const tensorflow::DeviceMgr* device_manager,
-    const tensorflow::ProcessFunctionLibraryRuntime* pflr,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata,
-    std::function<void(std::function<void()>)>* runner) {
-  DCHECK(builder);
-  DCHECK(device_manager);
-  DCHECK(pflr);
-
-  auto* runner_table =
-      builder->resource_context()->GetOrCreateResource<OpKernelRunnerTable>(
-          kOpKernelRunnerTableResourceName);
-
-  auto* resource_array =
-      builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
-          kFallbackResourceArray);
-
-  builder->context_data().emplace<KernelFallbackCompatRequestState>(
-      runner ? runner : GetDefaultRunner(), device_manager, builder->id(),
-      runner_table, resource_array, user_intra_op_threadpool, model_metadata,
-      pflr);
-
-  return OkStatus();
-}
-
-Status SetUpKernelFallbackCompatRequestContext(
-    tfrt::RequestContextBuilder* builder, OpKernelRunnerTable* runner_table,
-    tensorflow::EagerContext* eager_context,
-    tensorflow::thread::ThreadPoolInterface* user_intra_op_threadpool,
-    const absl::optional<SessionMetadata>& model_metadata) {
-  auto* resource_array =
-      builder->resource_context()->GetOrCreateResource<FallbackResourceArray>(
-          kFallbackResourceArray);
-
-  if (runner_table == nullptr)
-    runner_table =
-        builder->resource_context()->GetOrCreateResource<OpKernelRunnerTable>(
-            kOpKernelRunnerTableResourceName);
-
-  auto step_id = builder->id();
-
-  Rendezvous::Factory creator = eager_context->RendezvousFactory();
-  Rendezvous* rendezvous;
-  TF_RETURN_IF_ERROR(
-      creator(step_id, eager_context->local_device_mgr(), &rendezvous));
-
-  // TODO(hhb): Clean up rendezvous from factory after run.
-
-  auto& fallback_request_state =
-      builder->context_data().emplace<KernelFallbackCompatRequestState>(
-          GetDefaultRunner(), eager_context->local_device_mgr(), step_id,
-          tfrt::OwnedOrUnownedPtr<ScopedStepContainer>{
-              eager_context->StepContainer()},
-          eager_context->GetCollectiveExecutorHandle(),
-          tensorflow::core::RefCountPtr<tensorflow::Rendezvous>(rendezvous),
-          runner_table, resource_array, user_intra_op_threadpool,
-          model_metadata, eager_context->pflr());
-
-  fallback_request_state.set_log_device_placement(
-      eager_context->LogDevicePlacement());
-
-  return OkStatus();
-}
 
 static llvm::Expected<gtl::InlinedVector<tensorflow::Tensor, 4>>
 ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments,
@@ -276,10 +206,10 @@ static void KernelFallbackExecuteCompatAsyncInternal(
     if (!context.status().ok()) {
       auto diag = tfrt::EmitError(
           exec_ctx,
-          absl::Status(ToAbslStatus(context.status()).code(),
+          absl::Status(context.status().code(),
                        tfrt::StrCat("error running kernel fallback kernel ",
                                     context.op_kernel().name(), ": ",
-                                    context.status().error_message())));
+                                    context.status().message())));
       for (auto& result : async_state->result_refs)
         result.SetError(diag.status);
       async_state->chain.SetError(diag.status);
@@ -545,10 +475,6 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
 
   SetUpParams(kernel_runner, fallback_request_state, device, run_state);
 
-  bool is_cost_measurement_enabled =
-      exec_ctx.request_ctx()->IsCostMeasurementEnabled();
-  auto run_start_time =
-      is_cost_measurement_enabled ? Env::Default()->NowMicros() : 0;
   if (is_async) {
     KernelFallbackExecuteCompatAsyncInternal<
         tensorflow::tfrt_stub::FallbackTensor>(
@@ -558,17 +484,6 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOpInternal(
         tensorflow::tfrt_stub::FallbackTensor>(
         exec_ctx, &fallback_request_state, &run_state, kernel_runner, op_chain,
         results);
-  }
-  if (is_cost_measurement_enabled) {
-    op_chain->AndThen([run_start_time, exec_ctx, frame] {
-      // Adds 1 to make sure it's a positive integer.
-      auto execution_time = Env::Default()->NowMicros() - run_start_time + 1;
-      // Adds op_key as a suffix to distinguish the same operation with
-      // different shape.
-      exec_ctx.host()
-          ->GetOrCreateSharedContext<tensorflow::tfrt_stub::CostRecorder>()
-          .RecordCost(frame.op_key().GetValue(), execution_time);
-    });
   }
 }
 
@@ -590,6 +505,17 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
     return;
   }
 
+  // Start recording the op execution time, given a non-null cost recorder.
+  auto* cost_recorder = fallback_request_state->cost_recorder();
+  uint64_t run_start_time = 0;
+  tfrt::AsyncValueRef<tfrt::Chain> cost_chain;
+  if (cost_recorder != nullptr) {
+    run_start_time = cost_recorder->RecordInCpuCycles()
+                         ? tfrt::GetCpuClockCycle()
+                         : Env::Default()->NowNanos();
+    if (op_chain == nullptr) op_chain = &cost_chain;
+  }
+
   auto* runner_table = fallback_request_state->runner_table();
   DCHECK(runner_table);
 
@@ -604,6 +530,21 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   KernelFallbackExecuteOpInternal(args, results, op_chain, frame, exec_ctx,
                                   *fallback_request_state, *kernel_runner,
                                   kernel_runner->IsAsync(), device);
+
+  // Finish recording the op execution time, given a non-null
+  // cost recorder.
+  //
+  // TODO(b/259602527): Measure async op costs more accurately with whole
+  // execution time. (It's not urgent because async ops are rare.)
+  if (cost_recorder != nullptr) {
+    op_chain->AndThen(
+        [cost_recorder, run_start_time, op_key = frame.op_key().GetValue()] {
+          const uint64_t run_finish_time = cost_recorder->RecordInCpuCycles()
+                                               ? tfrt::GetCpuClockCycle()
+                                               : Env::Default()->NowNanos();
+          cost_recorder->RecordCost(op_key, run_finish_time - run_start_time);
+        });
+  }
 }
 
 // The BEF kernel for creating tensorflow::OpKernel to be used in kernel
@@ -637,8 +578,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackCreateOp(
       attr_builder, fallback_request_state->device_manager(),
       fallback_request_state->process_function_library_runtime());
   if (!statusor_runner.ok())
-    return tfrt::EmitErrorAsync(exec_ctx,
-                                ToAbslStatus(statusor_runner.status()));
+    return tfrt::EmitErrorAsync(exec_ctx, statusor_runner.status());
 
   if (!runner_table->Insert(op_key.GetValue(),
                             std::move(statusor_runner).value())) {
@@ -726,18 +666,9 @@ void FallbackAsyncExecuteOp(tfrt::AsyncKernelFrame* frame) {
       ->GetOrCreateSharedContext<OpLogger>()
       .LogOp(attr_frame.op_name().GetValue());
 #endif
-  // Create op_chain only when cost measurement is enabled. It is used for
-  // measuring async op's actual latency.
-  if (frame->GetExecutionContext().request_ctx()->IsCostMeasurementEnabled()) {
-    auto op_chain = tfrt::MakeUnconstructedAsyncValueRef<tfrt::Chain>();
-    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
-                            &op_chain, attr_frame,
-                            frame->GetExecutionContext());
-  } else {
-    KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
-                            /*op_chain=*/nullptr, attr_frame,
-                            frame->GetExecutionContext());
-  }
+  KernelFallbackExecuteOp(frame->GetArguments(), frame->GetResults(),
+                          /*op_chain=*/nullptr, attr_frame,
+                          frame->GetExecutionContext());
 }
 
 // The implementation of tfrt_fallback_async.executeop.seq kernel. It executes a
@@ -761,78 +692,6 @@ void FallbackAsyncExecuteOpSeq(tfrt::AsyncKernelFrame* frame) {
                           frame->GetExecutionContext());
   out_op_chain = std::move(op_chain);
 }
-
-class DeviceWithCustomAllocator : public tensorflow::Device {
- public:
-  DeviceWithCustomAllocator(tensorflow::Device* device,
-                            tensorflow::Allocator* allocator)
-      : Device(device->env(), device->attributes()),
-        device_(device),
-        allocator_(allocator) {
-    DCHECK(device_);
-    DCHECK(allocator_);
-  }
-
-  Allocator* GetAllocator(AllocatorAttributes attr) override {
-    return allocator_;
-  }
-
-  const DeviceBase* UnderlyingDevice() const override {
-    return device_->UnderlyingDevice();
-  }
-  DeviceBase* UnderlyingDevice() override {
-    return device_->UnderlyingDevice();
-  }
-
-  const CpuWorkerThreads* tensorflow_cpu_worker_threads() const override {
-    return device_->tensorflow_cpu_worker_threads();
-  }
-
-  Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64_t step_id) override {
-    return device_->GetScopedAllocator(attr, step_id);
-  }
-
-  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
-    return device_->GetScopedAllocatorMgr();
-  }
-
-  const Eigen::ThreadPoolDevice* eigen_cpu_device() override {
-    return device_->eigen_cpu_device();
-  }
-
-  thread::ThreadPool* tensorflow_device_thread_pool() override {
-    return device_->tensorflow_device_thread_pool();
-  }
-
-  bool has_eigen_cpu_device() const override {
-    return device_->has_eigen_cpu_device();
-  }
-
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
-    return device_->MakeTensorFromProto(tensor_proto, alloc_attrs, tensor);
-  }
-
-  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
-                              const DeviceContext* device_context,
-                              StatusCallback done) override {
-    device_->CopyTensorInSameDevice(input_tensor, output_tensor, device_context,
-                                    std::move(done));
-  }
-
-  Status Sync() override { return device_->Sync(); }
-
-  // Returns the resource manager associated w/ this device.
-  ResourceMgr* resource_manager() override {
-    return device_->resource_manager();
-  }
-
- private:
-  tensorflow::Device* device_ = nullptr;
-  tensorflow::Allocator* allocator_ = nullptr;
-};
 
 void KernelFallbackExecuteOpCustomAllocatorInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
@@ -864,20 +723,37 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
   auto* allocator = args.front()->get<tensorflow::Allocator*>();
   args = args.drop_front();
 
-  DeviceWithCustomAllocator device_with_custom_allocator(
-      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner),
-      allocator);
+  auto* device =
+      GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner);
 
-  // Different from FallbackAsyncExecuteOp, async execution is not allowed due
-  // to the lifetime of the wrapper device cannot be extended.
-  //
-  // TODO(b/200575143): Consider allowing async execution and extending the
-  // lifetime of the wrapping device.
-  KernelFallbackExecuteOpInternal(args, results,
-                                  /*op_chain=*/op_chain, attr_frame, exec_ctx,
-                                  *fallback_request_state, *kernel_runner,
-                                  /*is_async=*/false,
-                                  &device_with_custom_allocator);
+  if (!kernel_runner->IsAsync()) {
+    tfrt_stub::DeviceWithCustomAllocator device_with_custom_allocator(
+        device, allocator);
+
+    KernelFallbackExecuteOpInternal(args, results,
+                                    /*op_chain=*/op_chain, attr_frame, exec_ctx,
+                                    *fallback_request_state, *kernel_runner,
+                                    /*is_async=*/false,
+                                    &device_with_custom_allocator);
+  } else {
+    auto device_with_custom_allocator =
+        std::make_unique<tfrt_stub::DeviceWithCustomAllocator>(device,
+                                                               allocator);
+
+    tfrt::AsyncValueRef<tfrt::Chain> op_ch;
+    if (op_chain == nullptr) {
+      op_chain = &op_ch;
+    }
+
+    KernelFallbackExecuteOpInternal(args, results,
+                                    /*op_chain=*/op_chain, attr_frame, exec_ctx,
+                                    *fallback_request_state, *kernel_runner,
+                                    /*is_async=*/true,
+                                    device_with_custom_allocator.get());
+
+    DCHECK(op_chain);
+    op_chain->AndThen([d = std::move(device_with_custom_allocator)]() {});
+  }
 }
 
 void FallbackAsyncExecuteOpWithAllocator(tfrt::AsyncKernelFrame* frame) {
@@ -935,6 +811,33 @@ void FallbackCopyTensorIfSmall(
   }
 }
 
+llvm::Expected<tensorflow::tfrt_stub::FallbackTensor> ConstStringTensor(
+    tfrt::ArrayAttr shape, tfrt::AggregateAttr value,
+    const tfrt::ExecutionContext& context) {
+  llvm::SmallVector<int64_t> dims;
+  auto tfrt_tensor_shape = tfrt::TensorShape(shape.GetValue<int64_t>());
+  tfrt_tensor_shape.GetDimensions(&dims);
+  tensorflow::Tensor tensor(tensorflow::DT_STRING,
+                            tensorflow::TensorShape(dims));
+  auto len = tensor.NumElements();
+  auto from = value;
+  auto to = tensor.flat<tensorflow::tstring>();
+  if (from.GetNumElements() == 1) {
+    // All elements are the same, and only one element is saved in BEF.
+    for (size_t i = 0; i < len; ++i) {
+      to(i) = ToAbslStringView(
+          from.GetAttributeOfType<tfrt::StringAttr>(0).GetValue());
+    }
+  } else {
+    assert(len == from.GetNumElements());
+    for (size_t i = 0; i < len; ++i) {
+      to(i) = ToAbslStringView(
+          from.GetAttributeOfType<tfrt::StringAttr>(i).GetValue());
+    }
+  }
+  return tensorflow::tfrt_stub::FallbackTensor(tensor);
+}
+
 llvm::Expected<tensorflow::tfrt_stub::FallbackTensor> ConstTensorProto(
     tfrt::StringAttr serialized_tensor_proto) {
   tensorflow::TensorProto tensor_proto;
@@ -949,6 +852,55 @@ llvm::Expected<tensorflow::tfrt_stub::FallbackTensor> ConstTensorProto(
   }
 
   return tensorflow::tfrt_stub::FallbackTensor(std::move(tensor));
+}
+
+// Returns true if the tensorflow::DataType is trivially copyable.
+bool IsTriviallyCopyableTensorflowDataType(tensorflow::DataType dtype) {
+  static const auto* const non_trivially_copyable_dtypes =
+      new absl::flat_hash_set<tensorflow::DataType>{
+          tensorflow::DataType::DT_STRING, tensorflow::DataType::DT_RESOURCE,
+          tensorflow::DataType::DT_VARIANT};
+  return !non_trivially_copyable_dtypes->contains(dtype);
+}
+
+llvm::Expected<tensorflow::tfrt_stub::FallbackTensor> ConstDenseTensor(
+    tfrt::DenseAttr value, const tfrt::ExecutionContext& context) {
+  auto dtype = GetTfDataType(tfrt::DType(value.dtype()));
+  // The data type must be trivially copyable so that we can use memcpy.
+  DCHECK(IsTriviallyCopyableTensorflowDataType(dtype));
+  tensorflow::Tensor tensor(dtype, tensorflow::TensorShape(value.shape()));
+  std::memcpy(tensor.data(), value.GetElements(), tensor.TotalBytes());
+  return tensorflow::tfrt_stub::FallbackTensor(tensor);
+}
+
+llvm::Expected<bool> Predicate(
+    const tensorflow::tfrt_stub::FallbackTensor& input,
+    const tfrt::ExecutionContext& exec_ctx) {
+  const auto& tensor = input.tensor();
+  if (TensorShapeUtils::IsScalar(tensor.shape())) {
+    switch (tensor.dtype()) {
+#define CASE(T)                  \
+  case DataTypeToEnum<T>::value: \
+    return tensor.scalar<T>()() != 0;
+
+      CASE(float);
+      CASE(double);
+      CASE(uint8);
+      CASE(int8);
+      CASE(int16);
+      CASE(int32);
+      CASE(int64_t);
+      CASE(bool);
+#undef CASE
+      case DT_STRING:
+        return !tensor.scalar<tstring>()().empty();
+      default:
+        return tfrt::MakeStringError(DataTypeString(tensor.dtype()),
+                                     " cannot be converted to a boolean");
+    }
+  }
+
+  return tensor.NumElements() > 0;
 }
 
 void BatchFunction(
@@ -981,7 +933,7 @@ void BatchFunction(
         op_attr_array, /*op_func_attr_array*/ {}, attr_value_map));
     // Pass in a BEF function pointer with a I64 attribute.
     int64_t ptr_value = absl::bit_cast<int64_t>(&f.get());
-    (*attr_value_map)["tfrt_bef_func"].set_i(ptr_value);
+    (*attr_value_map)["opaque_function_handle"].set_i(ptr_value);
     return OkStatus();
   };
   auto kernel_runner_or_status = runner_cache->GetOrCreate(
@@ -1082,6 +1034,11 @@ void RegisterKernelFallbackCompatKernels(tfrt::KernelRegistry* registry) {
                       TFRT_KERNEL(FallbackGetResource));
   registry->AddKernel("tfrt_fallback_async.batch_function",
                       TFRT_KERNEL(BatchFunction));
+  registry->AddKernel("tfrt_fallback_async.const_dense_tensor",
+                      TFRT_KERNEL(ConstDenseTensor));
+  registry->AddKernel("tfrt_fallback_async.const_string_tensor",
+                      TFRT_KERNEL(ConstStringTensor));
+  registry->AddKernel("tfrt_fallback_async.predicate", TFRT_KERNEL(Predicate));
 
   // TODO(chky): Move test kernels to test-only library.
   registry->AddKernel("tfrt_fallback_async.get_test_allocator",

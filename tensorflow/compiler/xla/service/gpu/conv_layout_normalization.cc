@@ -16,22 +16,24 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
 
 #include <optional>
+#include <tuple>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
-StatusOr<std::optional<HloInstruction*>>
-NormalizeLayoutForCustomCallConvolution(HloCustomCallInstruction* hlo) {
-  if (!IsCustomCallToDnnConvolution(*hlo)) {
-    return {std::nullopt};
-  }
-
+StatusOr<HloInstruction*> UpdateLayoutForCudnnConvolution(
+    HloCustomCallInstruction* hlo) {
   HloInstruction* lhs = hlo->mutable_operand(0);
   HloInstruction* rhs = hlo->mutable_operand(1);
   const ConvolutionDimensionNumbers& dim_numbers =
@@ -161,8 +163,19 @@ NormalizeLayoutForCustomCallConvolution(HloCustomCallInstruction* hlo) {
   } else {
     bc_to_orig = MakeBitcastHlo(normalized_conv, hlo->shape());
   }
+  return bc_to_orig;
+}
 
-  return std::make_optional(bc_to_orig);
+}  // namespace
+
+StatusOr<std::optional<HloInstruction*>> NormalizeLayoutForGpuCustomCalls(
+    HloCustomCallInstruction* hlo) {
+  if (IsCustomCallToDnnConvolution(*hlo)) {
+    TF_ASSIGN_OR_RETURN(HloInstruction * bc_to_orig,
+                        UpdateLayoutForCudnnConvolution(hlo));
+    return std::make_optional(bc_to_orig);
+  }
+  return {std::nullopt};
 }
 
 }  // end namespace gpu

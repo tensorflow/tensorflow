@@ -29,7 +29,8 @@ namespace profiler {
 
 // Convert XSpace to tool data and saves under <logdir>/plugins/profile/.
 Status ExportToTensorBoard(const tensorflow::profiler::XSpace& xspace,
-                           const std::string& logdir);
+                           const std::string& logdir,
+                           bool also_export_trace_json = false);
 
 // Collects one sample of monitoring profile and shows user-friendly metrics.
 // If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.
@@ -40,9 +41,9 @@ Status Monitor(const std::string& service_addr, int duration_ms,
 // Starts tracing on a single or multiple hosts. Each host will save the result
 // in the given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts. Assumes that options have been validated.
-Status Trace(const std::string& logdir, int num_tracing_attempts,
-             tensorflow::RemoteProfilerSessionManagerOptions& opts,
-             bool is_cloud_tpu_session);
+Status CaptureRemoteTrace(const std::string& logdir, int num_tracing_attempts,
+                          tensorflow::RemoteProfilerSessionManagerOptions& opts,
+                          bool is_cloud_tpu_session);
 
 }  // namespace profiler
 }  // namespace tsl

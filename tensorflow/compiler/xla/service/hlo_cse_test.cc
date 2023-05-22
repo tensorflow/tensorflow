@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
@@ -528,6 +528,22 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   EXPECT_EQ(count_before, count_after);
   root = computation->root_instruction();
   EXPECT_THAT(root, op::Add(rng1, rng2));
+}
+
+TEST_F(HloCseTest, DoNotCombineOpsWithDifferentShardings) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY %entry {
+  constant.68 = s32[1]{0} constant({0})
+  custom-call.82 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", sharding={replicated}
+  custom-call.1343 = s32[1]{0} custom-call(constant.68), custom_call_target="Sharding", sharding={manual}
+  custom-call.1344 = s32[8]{0} custom-call(custom-call.1343), custom_call_target="SPMDShardToFullShape", sharding={devices=[8]0,1,2,3,4,5,6,7}
+  ROOT tuple = (s32[1]{0}, s32[8]{0}) tuple(custom-call.82, custom-call.1344)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_string));
+  HloCSE cse(/*is_layout_sensitive=*/false);
+  EXPECT_FALSE(cse.Run(m.get()).value());
 }
 
 TEST_F(HloCseTest, DoNotCombineCallsToImpureFunctions) {

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <memory>
 #include <stdexcept>
 #include <utility>
@@ -22,14 +23,15 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/IR/Constants.h"
+#include "mlir/Conversion/LLVMCommon/LoweringOptions.h"  // from @llvm-project
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/TypeRange.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -39,7 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 
 namespace mlir {
-namespace mhlo {
+namespace xla_framework {
 namespace {
 
 // Create a memref descriptor given a pointer and memref type information.
@@ -60,12 +62,7 @@ struct XLABufferToMemOpConversion
     this->getMemRefDescriptorSizes(loc, mem_ref_type, ValueRange(), rewriter,
                                    sizes, strides, size_bytes);
 
-    auto ptr_type = LLVM::LLVMPointerType::get(
-        typeConverter->convertType(mem_ref_type.getElementType()),
-        mem_ref_type.getMemorySpaceAsInt());
-    Value ptr =
-        rewriter.create<LLVM::BitcastOp>(loc, ptr_type, adaptor.getBuffer());
-
+    Value ptr = adaptor.getBuffer();
     Value result = this->createMemRefDescriptor(loc, mem_ref_type, ptr, ptr,
                                                 sizes, strides, rewriter);
     rewriter.replaceOp(op, {result});
@@ -80,12 +77,9 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
 
   Value LoadValue(ConversionPatternRewriter &rewriter, Location loc,
                   Value pointer, Value index) const {
+    auto ptr = LLVM::LLVMPointerType::get(rewriter.getContext());
     return rewriter.create<LLVM::LoadOp>(
-        loc, rewriter.create<LLVM::GEPOp>(
-                 loc,
-                 LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-                     IntegerType::get(rewriter.getContext(), 8))),
-                 pointer, index));
+        loc, ptr, rewriter.create<LLVM::GEPOp>(loc, ptr, ptr, pointer, index));
   }
 
   mlir::func::FuncOp convertFuncOpToLLVMFuncOp(
@@ -98,20 +92,8 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
     // This only works for the global function version that tf.compile uses.
     // Local functions will only be called by MLIR compiled code, so we can
     // ignore them.
-    SmallVector<Type, 6> arg_types;
-    arg_types.reserve(6);
-    arg_types.push_back(
-        LLVM::LLVMPointerType::get(IntegerType::get(rewriter.getContext(), 8)));
-    arg_types.push_back(
-        LLVM::LLVMPointerType::get(IntegerType::get(rewriter.getContext(), 8)));
-    arg_types.push_back(LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 8))));
-    arg_types.push_back(LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 8))));
-    arg_types.push_back(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 64)));
-    arg_types.push_back(LLVM::LLVMPointerType::get(
-        IntegerType::get(rewriter.getContext(), 64)));
+    auto ptr = LLVM::LLVMPointerType::get(rewriter.getContext());
+    std::array<Type, 6> arg_types = {ptr, ptr, ptr, ptr, ptr, ptr};
     auto llvm_type =
         mlir::FunctionType::get(rewriter.getContext(), arg_types, {});
 
@@ -130,7 +112,7 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
            "xla_entry function lowered with result values when memrefs should "
            "be caller supplied");
 
-    BlockAndValueMapping mapping;
+    IRMapping mapping;
     auto num_refs = funcOp.getFunctionType().getNumInputs();
     auto result_index = 0;
     for (unsigned i = 0; i < num_refs; ++i) {
@@ -168,18 +150,14 @@ struct BarePtrFuncOpConversion : public ConvertOpToLLVMPattern<func::FuncOp> {
               LoadValue(rewriter, loc, new_entry->getArgument(3), inner_index);
           mapping.map(funcOp.front().getArgument(i), ptr);
 
-          auto ptr_type = LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(
-              IntegerType::get(rewriter.getContext(), 8)));
-          first_load =
-              rewriter.create<LLVM::BitcastOp>(loc, ptr_type, first_load);
-
+          auto ptr_type = LLVM::LLVMPointerType::get(rewriter.getContext());
           Value second_index = rewriter.create<LLVM::ConstantOp>(
               loc, typeConverter->convertType(rewriter.getIntegerType(32)),
               rewriter.getI32IntegerAttr(current_index));
           rewriter.create<LLVM::StoreOp>(
               loc, ptr,
-              rewriter.create<LLVM::GEPOp>(loc, ptr_type, first_load,
-                                           llvm::makeArrayRef(second_index)));
+              rewriter.create<LLVM::GEPOp>(loc, ptr_type, ptr_type, first_load,
+                                           llvm::ArrayRef(second_index)));
 
         } else {
           // Non tuple outputs can be simply mapped to the first load op.
@@ -237,7 +215,7 @@ class LegalizeXLAFrameworkToLLVMPass
     MLIRContext *ctx = m.getContext();
     LLVMTypeConverter type_converter(ctx);
     type_converter.addConversion([&](::mlir::xla_framework::BufferType) {
-      return LLVM::LLVMPointerType::get(IntegerType::get(ctx, 8));
+      return LLVM::LLVMPointerType::get(ctx);
     });
 
     // Populate patterns.
@@ -270,5 +248,5 @@ CreateLegalizeXLAFrameworkToLLVMPass() {
   return std::make_unique<LegalizeXLAFrameworkToLLVMPass>();
 }
 
-}  // namespace mhlo
+}  // namespace xla_framework
 }  // namespace mlir

@@ -699,7 +699,8 @@ class XlaConcatNDShared : public OpKernel {
             "'paddings' must not exceed expected output shape dimension ",
             max_dim_size, " at index ", i, ", but got ", paddings_[i], ".");
       }
-      output_shape.AddDim(max_dim_size - paddings_[i]);
+      TF_RETURN_IF_ERROR(
+          output_shape.AddDimWithStatus(max_dim_size - paddings_[i]));
     }
 
     return OkStatus();

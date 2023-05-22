@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <optional>
+#include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
@@ -25,6 +27,17 @@ limitations under the License.
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
+namespace {
+
+void SetOptionOverride(OptionOverrideProto& option, const std::string& value) {
+  option.set_string_field(value);
+}
+
+void SetOptionOverride(OptionOverrideProto& option, bool value) {
+  option.set_bool_field(value);
+}
+
+}  // namespace
 
 StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   CompileOptionsProto output;
@@ -40,6 +53,12 @@ StatusOr<CompileOptionsProto> CompileOptions::ToProto() const {
   output.set_profile_version(profile_version);
   if (multi_slice_config != nullptr) {
     output.set_serialized_multi_slice_config(multi_slice_config->Serialize());
+  }
+  for (auto& env_option_override : env_option_overrides) {
+    auto& tmp =
+        (*output.mutable_env_option_overrides())[env_option_override.first];
+    std::visit([&](const auto& arg) { SetOptionOverride(tmp, arg); },
+               env_option_override.second);
   }
   return output;
 }
@@ -67,6 +86,24 @@ StatusOr<CompileOptions> CompileOptions::FromProto(
   output.executable_build_options = executable_build_options;
   output.compile_portable_executable = proto.compile_portable_executable();
   output.profile_version = proto.profile_version();
+  for (auto& env_option_override : proto.env_option_overrides()) {
+    switch (env_option_override.second.value_case()) {
+      case OptionOverrideProto::kStringField:
+        output.env_option_overrides.push_back(
+            {env_option_override.first,
+             std::variant<std::string, bool>(
+                 env_option_override.second.string_field())});
+        break;
+      case OptionOverrideProto::kBoolField:
+        output.env_option_overrides.push_back(
+            {env_option_override.first,
+             std::variant<std::string, bool>(
+                 env_option_override.second.bool_field())});
+        break;
+      case OptionOverrideProto::VALUE_NOT_SET:
+        return InternalError("OptionOverrideProto value not set.");
+    }
+  }
   return output;
 }
 
@@ -106,6 +143,44 @@ std::optional<std::vector<OpSharding>> PjRtExecutable::GetParameterShardings()
     GetOpSharding(out, s.ToProto());
   }
   return out;
+}
+
+Status CompileOptions::ApplyOption(const std::string& key,
+                                   const OptionOverride& value) {
+  if (auto* xla_field = xla::DebugOptions::descriptor()->FindFieldByName(key)) {
+    xla::DebugOptions& debug_options =
+        *executable_build_options.mutable_debug_options();
+    const tsl::protobuf::Reflection* reflection = debug_options.GetReflection();
+    if (!reflection) {
+      return InvalidArgument(
+          "No reflection object associated with xla::DebugOptions.");
+    }
+    if (xla_field->type() == tsl::protobuf::FieldDescriptor::TYPE_BOOL &&
+        std::holds_alternative<bool>(value)) {
+      reflection->SetBool(&debug_options, xla_field, std::get<bool>(value));
+      return OkStatus();
+    } else if (xla_field->type() ==
+                   tsl::protobuf::FieldDescriptor::TYPE_STRING &&
+               std::holds_alternative<std::string>(value)) {
+      reflection->SetString(&debug_options, xla_field,
+                            std::get<std::string>(value));
+      return OkStatus();
+    } else {
+      return InvalidArgument(
+          "While setting option %s, '%s' is not a valid %s value.", key,
+          std::visit([](auto&& arg) { return absl::StrCat(arg); }, value),
+          xla_field->type_name());
+    }
+  } else {
+    return InvalidArgument("No such compile option: '%s'", key);
+  }
+}
+
+Status CompileOptions::ApplyAllOptionOverrides() {
+  for (auto& option : env_option_overrides) {
+    TF_RETURN_IF_ERROR(ApplyOption(option.first, option.second));
+  }
+  return OkStatus();
 }
 
 }  // namespace xla

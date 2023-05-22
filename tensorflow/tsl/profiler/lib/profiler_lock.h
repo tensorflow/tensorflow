@@ -15,10 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_LOCK_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_LOCK_H_
 
+#include <utility>
+
 #include "tensorflow/tsl/platform/statusor.h"
 
 namespace tsl {
 namespace profiler {
+
+constexpr absl::string_view kProfilerLockContention =
+    "Another profiling session active.";
 
 // Handle for the profiler lock. At most one instance of this class, the
 // "active" instance, owns the profiler lock.

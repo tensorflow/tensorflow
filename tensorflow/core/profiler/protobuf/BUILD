@@ -172,13 +172,6 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "trace_events_proto",
-    srcs = ["trace_events.proto"],
-    cc_api_version = 2,
-    visibility = [":friends"],
-)
-
-tf_proto_library(
     name = "hardware_types_proto",
     srcs = ["hardware_types.proto"],
     cc_api_version = 2,
@@ -222,13 +215,6 @@ tf_proto_library(
 # )
 #
 # py_proto_library(
-#     name = "trace_events_py_pb2",
-#     api_version = 2,
-#     visibility = ["//visibility:public"],
-#     deps = [":trace_events_proto"],
-# )
-#
-# py_proto_library(
 #     name = "memory_viewer_preprocess_py_pb2",
 #     api_version = 2,
 #     visibility = [":memory_viewer_friends"],
@@ -241,4 +227,28 @@ tf_proto_library(
 #     visibility = ["//visibility:public"],
 #     deps = [":op_profile_proto"],
 # )
+#
 # copybara:uncomment_end
+tf_proto_library(
+    name = "task_proto",
+    srcs = ["task.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "trace_events_proto",
+    srcs = ["trace_events.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        ":task_proto",
+    ],
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "trace_events_raw_proto",
+    srcs = ["trace_events_raw.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)

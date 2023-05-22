@@ -99,8 +99,7 @@ TEST_F(GrpcDebugTest, ConnectionTimeoutWorks) {
   const string expected_error_msg = strings::StrCat(
       "Failed to connect to gRPC channel at ", kInvalidGrpcUrl.substr(7),
       " within a timeout of ", kShortTimeoutMicros / 1e6, " s");
-  ASSERT_NE(string::npos,
-            publish_status.error_message().find(expected_error_msg));
+  ASSERT_NE(string::npos, publish_status.message().find(expected_error_msg));
 }
 
 TEST_F(GrpcDebugTest, ConnectionToDelayedStartingServerWorks) {
@@ -154,9 +153,9 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex0ViaGrpcTest) {
   const Status status = DebugIO::PublishDebugTensor(
       kDebugNodeKey, tensor, Env::Default()->NowMicros(), {server_data_.url});
   ASSERT_FALSE(status.ok());
-  ASSERT_NE(status.error_message().find("string value at index 0 from debug "
-                                        "node foo_tensor:0:DebugIdentity does "
-                                        "not fit gRPC message size limit"),
+  ASSERT_NE(status.message().find("string value at index 0 from debug "
+                                  "node foo_tensor:0:DebugIdentity does "
+                                  "not fit gRPC message size limit"),
             string::npos);
   TF_ASSERT_OK(DebugIO::CloseDebugURL(server_data_.url));
 }
@@ -170,9 +169,9 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex1ViaGrpcTest) {
   const Status status = DebugIO::PublishDebugTensor(
       kDebugNodeKey, tensor, Env::Default()->NowMicros(), {server_data_.url});
   ASSERT_FALSE(status.ok());
-  ASSERT_NE(status.error_message().find("string value at index 1 from debug "
-                                        "node foo_tensor:0:DebugIdentity does "
-                                        "not fit gRPC message size limit"),
+  ASSERT_NE(status.message().find("string value at index 1 from debug "
+                                  "node foo_tensor:0:DebugIdentity does "
+                                  "not fit gRPC message size limit"),
             string::npos);
   TF_ASSERT_OK(DebugIO::CloseDebugURL(server_data_.url));
 }

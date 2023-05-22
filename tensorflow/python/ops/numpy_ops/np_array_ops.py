@@ -26,8 +26,9 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import manip_ops
 from tensorflow.python.ops import math_ops
@@ -281,7 +282,7 @@ def diag(v, k=0):  # pylint: disable=missing-docstring
 
   # TODO(nareshmodi): Consider a np_utils.Assert version that will fail during
   # tracing time if the shape is known.
-  control_flow_ops.Assert(
+  control_flow_assert.Assert(
       np_utils.logical_or(math_ops.equal(v_rank, 1), math_ops.equal(v_rank, 2)),
       [v_rank])
 
@@ -783,6 +784,20 @@ def squeeze(a, axis=None):
   return array_ops.squeeze(a, axis)
 
 
+@np_utils.np_doc('flatten', link=np_utils.NoLink())
+def flatten(a, order='C'):
+  a = asarray(a)
+  if order == 'C' or order == 'A' or order == 'K':
+    # Row major.
+    return array_ops.reshape(a, [-1])
+  elif order == 'F':
+    # Column major
+    return array_ops.reshape(array_ops.transpose(a), [-1])
+  else:
+    raise ValueError('order can only be C, A, K (all row major) or F '
+                     '(column major).')
+
+
 @np_utils.np_doc('transpose')
 def transpose(a, axes=None):
   a = asarray(a)
@@ -858,7 +873,8 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
 
     def _remove_indices(a, b):
       """Remove indices (`b`) from `a`."""
-      items = array_ops.unstack(sort_ops.sort(array_ops.stack(b)), num=len(b))
+      items = array_ops_stack.unstack(
+          sort_ops.sort(array_ops_stack.stack(b)), num=len(b))
 
       i = 0
       result = []
@@ -1011,16 +1027,24 @@ def split(ary, indices_or_sections, axis=0):
   return array_ops.split(ary, indices_or_sections, axis=axis)
 
 
-def _split_on_axis(np_fun_name, axis):
+def _split_on_axis(np_fun_name, axis):  # pylint: disable=missing-function-docstring
 
   @np_utils.np_doc(np_fun_name)
   def f(ary, indices_or_sections):
+    # for 1-D array, hsplit becomes vsplit
+    new_axis = np_utils.cond(
+        math_ops.equal(axis, 1),
+        lambda: np_utils.cond(  # pylint: disable=g-long-lambda
+            math_ops.equal(array_ops.rank(ary), 1), lambda: 0, lambda: axis
+        ),
+        lambda: axis,
+    )
     if isinstance(indices_or_sections, int):
-      ary_shape = ary.shape[axis]
+      ary_shape = ary.shape[new_axis]
       if ary_shape is not None and ary_shape % indices_or_sections:
         raise ValueError(
             'array split does not result in an equal division')
-    return split(ary, indices_or_sections, axis=axis)
+    return split(ary, indices_or_sections, axis=new_axis)
 
   return f
 
@@ -1047,7 +1071,7 @@ def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
   unwrapped_arrays = [
       a if isinstance(a, np_arrays.ndarray) else a for a in arrays
   ]
-  return asarray(array_ops.stack(unwrapped_arrays, axis))
+  return asarray(array_ops_stack.stack(unwrapped_arrays, axis))
 
 
 @np_utils.np_doc('hstack')
@@ -1154,7 +1178,7 @@ def nonzero(a):
   if a.shape.rank is None:
     raise ValueError("The rank of `a` is unknown, so we can't decide how many "
                      'arrays to return.')
-  return array_ops.unstack(
+  return array_ops_stack.unstack(
             array_ops.where_v2(math_ops.cast(a, dtypes.bool)),
             a.shape.rank,
             axis=1)
@@ -1310,7 +1334,7 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if N < 0:
       raise ValueError('N must be nonnegative')
   else:
-    control_flow_ops.Assert(N >= 0, [N])
+    control_flow_assert.Assert(N >= 0, [N])
 
   rank = array_ops.rank(x)
   rank_temp = np_utils.get_static_value(rank)
@@ -1319,7 +1343,7 @@ def vander(x, N=None, increasing=False):  # pylint: disable=missing-docstring,in
     if rank != 1:
       raise ValueError('x must be a one-dimensional array')
   else:
-    control_flow_ops.Assert(math_ops.equal(rank, 1), [rank])
+    control_flow_assert.Assert(math_ops.equal(rank, 1), [rank])
 
   if increasing:
     start = 0
@@ -1349,7 +1373,7 @@ def ix_(*args):  # pylint: disable=missing-docstring
         raise ValueError('Arguments must be 1-d, got arg {} of rank {}'.format(
             i, a_rank))
     else:
-      control_flow_ops.Assert(math_ops.equal(a_rank, 1), [a_rank])
+      control_flow_assert.Assert(math_ops.equal(a_rank, 1), [a_rank])
 
     new_shape = [1] * n
     new_shape[i] = -1
@@ -1597,9 +1621,10 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
       'strided_slice', [tensor] + begin + end + strides,
       skip_on_eager=False) as name:
     if begin:
-      packed_begin, packed_end, packed_strides = (array_ops.stack(begin),
-                                                  array_ops.stack(end),
-                                                  array_ops.stack(strides))
+      packed_begin, packed_end, packed_strides = (
+          array_ops_stack.stack(begin),
+          array_ops_stack.stack(end),
+          array_ops_stack.stack(strides))
       if (packed_begin.dtype == dtypes.int64 or
           packed_end.dtype == dtypes.int64 or
           packed_strides.dtype == dtypes.int64):
@@ -1688,7 +1713,7 @@ def _slice_helper(tensor, slice_spec, update_method=None, updates=None):
     indices = [advanced_indices_map[x] for x in dims]
     indices = _promote_dtype(*indices)
     indices = np_utils.tf_broadcast(*indices)
-    stacked_indices = array_ops.stack(indices, axis=-1)
+    stacked_indices = array_ops_stack.stack(indices, axis=-1)
     # Skip the contiguous-dims optimization for update because there is no
     # tf.*scatter* op that supports the `axis` argument.
     if not dims_contiguous or updates is not None:

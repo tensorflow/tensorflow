@@ -20,37 +20,23 @@ import warnings
 
 import numpy as np
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.types import internal
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-# Use LazyLoader to avoid circular dependencies.
-#
-# Note: these can all be changed to regular imports once all code has been
-# updated to refer the symbols defined in this module directly, rather than
-# using the backwards-compatible aliases in ops.py.  (E.g.,
-# "indexed_slices.IndexedSlices" rather than "ops.IndexedSlices".)
-math_ops = LazyLoader(
-    "math_ops", globals(),
-    "tensorflow.python.ops.math_ops")
-ops = LazyLoader(
-    "ops", globals(), "tensorflow.python.framework.ops")
-tensor_spec = LazyLoader(
-    "tensor_spec", globals(),
-    "tensorflow.python.framework.tensor_spec")
-tensor_util = LazyLoader(
-    "tensor_util", globals(),
-    "tensorflow.python.framework.tensor_util")
 
 
 class IndexedSlicesCompositeTensorGradient(
@@ -66,7 +52,10 @@ class IndexedSlicesCompositeTensorGradient(
 
 # TODO(mdan): Should IndexedSlices be a "tensor"?
 @tf_export("IndexedSlices")
-class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
+class IndexedSlices(
+    internal.IndexedSlices,
+    internal.NativeObject,
+    composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -278,6 +267,13 @@ class IndexedSlicesSpec(type_spec.TypeSpec):
       return IndexedSlices(*tensor_list)
 
 
+nested_structure_coder.register_codec(
+    nested_structure_coder.BuiltInTypeSpecCodec(
+        IndexedSlicesSpec, struct_pb2.TypeSpecProto.INDEXED_SLICES_SPEC
+    )
+)
+
+
 @tf_export(v1=["convert_to_tensor_or_indexed_slices"])
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
@@ -451,7 +447,7 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "Converting sparse IndexedSlices to a dense Tensor with %d "
             "elements. This may consume a large amount of memory." %
             num_elements)
-  return math_ops.unsorted_segment_sum(
+  return gen_math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 
 

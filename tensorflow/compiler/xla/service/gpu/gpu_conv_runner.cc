@@ -22,36 +22,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
 namespace gpu {
-
-se::dnn::BatchDescriptor GetBiasDescriptor(const GpuConvConfig& config) {
-  se::dnn::BatchDescriptor result(config.output_descriptor.ndims());
-  result.set_count(1)
-      .set_height(1)
-      .set_width(1)
-      .set_feature_map_count(config.output_descriptor.feature_map_count())
-      .set_layout([&] {
-        // Normalize NCHW_VECT_C to NCHW for layout of `bias`, even though it's
-        // actually the same (because `bias` only has one dimension):  cudnn
-        // does not accept NCHW_VECT_C for `bias`.
-        se::dnn::DataLayout layout = config.output_descriptor.layout();
-        switch (layout) {
-          case se::dnn::DataLayout::kBatchDepthYX4:
-          case se::dnn::DataLayout::kBatchDepthYX32:
-            return se::dnn::DataLayout::kBatchDepthYX;
-          default:
-            return layout;
-        }
-      }());
-  if (result.ndims() == 3) {
-    result.set_spatial_dim(se::dnn::DimIndex::Z, 1);
-  }
-  return result;
-}
-
 namespace {
 
 using se::DeviceMemory;
@@ -67,7 +42,7 @@ using se::dnn::FilterLayout;
 using se::dnn::ProfileResult;
 
 template <typename ElementType, typename OutputType>
-Status RunGpuConvUnfused(GpuConvParams params, se::Stream* stream,
+Status RunGpuConvUnfused(const GpuConvParams& params, se::Stream* stream,
                          RunConvOptions options,
                          DeviceMemory<ElementType> input_buf,
                          DeviceMemory<ElementType> filter_buf,
@@ -119,8 +94,6 @@ Status RunGpuConvForwardActivation(const GpuConvParams& params,
                                    DeviceMemory<ElementType> filter_buf,
                                    DeviceMemory<OutputType> output_buf,
                                    DeviceMemoryBase scratch_memory) {
-  BatchDescriptor bias_desc = GetBiasDescriptor(*params.config);
-
   se::DeviceMemory<OutputType> side_input(params.fusion->side_input_buf);
   // If there is no side input, use output as the side input.
   if (side_input.is_null()) {
@@ -163,7 +136,7 @@ Status RunGpuConvForwardActivation(const GpuConvParams& params,
                                       /* leakyrelu_alpha = */ 0.0,
                                       params.config->input_descriptor,
                                       params.config->filter_descriptor,
-                                      bias_desc,
+                                      params.config->bias_descriptor,
                                       params.config->output_descriptor,
                                       params.config->conv_desc,
                                       params.config->fusion->mode};
@@ -276,6 +249,7 @@ int64_t GetVectCSize(FilterLayout layout) {
     case FilterLayout::kOutputInputYX4:
       return 4;
     case FilterLayout::kOutputInputYX32:
+    case FilterLayout::kOutputInputYX32_CudnnReordered:
       return 32;
     default:
       return 1;
@@ -345,6 +319,10 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
           << ShapeUtil::HumanStringWithLayout(config.output_shape);
   VLOG(3) << "Window: { " << window.ShortDebugString() << " }";
   VLOG(3) << "Dim nums: { " << dnums.ShortDebugString() << " }";
+  if (backend_config.reordered_int8_nchw_vect()) {
+    VLOG(3) << "Filter and bias (if present) must be reordered with "
+            << "cudnnReorderFilterAndBias";
+  }
 
   const int num_dimensions = window.dimensions_size();
   CHECK_LE(num_dimensions, 3) << inst_as_string;
@@ -388,6 +366,10 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
   TF_ASSIGN_OR_RETURN(std::tie(input_dl, filter_dl, output_dl),
                       XlaConvShapesToStreamExecutorLayouts(
                           dnums, input_shape, filter_shape, output_shape));
+  if (backend_config.reordered_int8_nchw_vect()) {
+    CHECK_EQ(filter_dl, FilterLayout::kOutputInputYX32);
+    filter_dl = FilterLayout::kOutputInputYX32_CudnnReordered;
+  }
 
   BatchDescriptor& input_descriptor = config.input_descriptor;
   input_descriptor = BatchDescriptor(effective_num_dimensions);
@@ -453,6 +435,30 @@ StatusOr<GpuConvConfig> GetGpuConvConfig(
     filter_descriptor.set_spatial_dim(static_cast<DimIndex>(dim), 1);
     config.conv_desc.set_zero_padding(static_cast<DimIndex>(dim), 0)
         .set_filter_stride(static_cast<DimIndex>(dim), 1);
+  }
+
+  // Initialize bias descriptor for fused convolutions.
+  BatchDescriptor& bias_descriptor = config.bias_descriptor;
+  bias_descriptor = BatchDescriptor(config.output_descriptor.ndims());
+  bias_descriptor.set_count(1)
+      .set_height(1)
+      .set_width(1)
+      .set_feature_map_count(config.output_descriptor.feature_map_count())
+      .set_layout([&] {
+        // Normalize NCHW_VECT_C to NCHW for layout of `bias`, even though it's
+        // actually the same (because `bias` only has one dimension):  cudnn
+        // does not accept NCHW_VECT_C for `bias`.
+        se::dnn::DataLayout layout = config.output_descriptor.layout();
+        switch (layout) {
+          case se::dnn::DataLayout::kBatchDepthYX4:
+          case se::dnn::DataLayout::kBatchDepthYX32:
+            return se::dnn::DataLayout::kBatchDepthYX;
+          default:
+            return layout;
+        }
+      }());
+  if (bias_descriptor.ndims() == 3) {
+    bias_descriptor.set_spatial_dim(se::dnn::DimIndex::Z, 1);
   }
 
   return config;

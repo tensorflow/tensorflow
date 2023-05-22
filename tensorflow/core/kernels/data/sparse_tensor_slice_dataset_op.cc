@@ -54,7 +54,7 @@ class Dataset : public DatasetBase {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     return sparse_tensor_.shape()[0];
   }
 

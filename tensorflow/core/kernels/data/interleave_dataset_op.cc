@@ -172,6 +172,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           }
           // We have reached the end of the current element, so move
           // on to the next element in the cycle.
+          // TODO(b/267256258): clean up prefixes in checkpoints here.
           current_elements_[cycle_index_].reset();
           args_list_[cycle_index_].clear();
           --num_open_;

@@ -61,7 +61,7 @@ class JitCompileTest(test.TestCase):
 
       # Check that the must-compile attribute gets correctly propagated to the
       # created derivatives.
-      self.assertTrue(forward.definition.attr["_XlaMustCompile"])
+      self.assertTrue(forward.cached_definition.attr["_XlaMustCompile"])
       self.assertTrue(backward.function_def.attr["_XlaMustCompile"])
 
   def testBasicInt32(self):

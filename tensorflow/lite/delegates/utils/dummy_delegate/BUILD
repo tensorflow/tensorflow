@@ -18,7 +18,6 @@ cc_library(
         "dummy_delegate.h",
     ],
     deps = [
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/utils:simple_delegate",
     ],
@@ -34,7 +33,6 @@ cc_binary(
     linkstatic = 1,
     deps = [
         ":dummy_delegate",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/external:external_delegate_interface",
         "//tensorflow/lite/tools:command_line_flags",
@@ -101,9 +99,9 @@ sh_test(
     name = "external_delegate_test",
     srcs = ["external_delegate_test.sh"],
     data = [
-        "//tensorflow/lite/delegates/coreml/internal_test/testdata:mobilenet_v2_1.0_224_quantized_weights_fp16.tflite",
         "//tensorflow/lite/delegates/utils/dummy_delegate:dummy_external_delegate.so",
         "//tensorflow/lite/tools/benchmark:benchmark_model",
+        "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",
     ],
     visibility = ["//visibility:private"],
 )

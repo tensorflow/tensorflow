@@ -198,7 +198,7 @@ class HloFunctionImporter {
 
   // Takes a list of HloInstructions and generates the list of types used for
   // input, bypassing tuples to subsets.
-  Status GetMlirTypes(const std::vector<xla::HloInstruction*>& instructions,
+  Status GetMlirTypes(absl::Span<const HloInstruction* const> instructions,
                       llvm::SmallVectorImpl<mlir::Type>* types);
 
   // Returns the Mlir Value for the corresponding HloInstruction.

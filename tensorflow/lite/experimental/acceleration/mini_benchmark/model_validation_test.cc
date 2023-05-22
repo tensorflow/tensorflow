@@ -24,8 +24,8 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/tools/model_loader.h"
@@ -113,7 +113,9 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     close(fd);
 
     Validator::Results results;
-    EXPECT_EQ(validator->RunValidation(&results), kMinibenchmarkSuccess);
+    Validator::Status validation_run = validator->RunValidation(&results);
+    EXPECT_EQ(validation_run.status, kMinibenchmarkSuccess);
+    EXPECT_EQ(validation_run.stage, BenchmarkStage_UNKNOWN);
     EXPECT_TRUE(results.ok);
     EXPECT_EQ(results.delegate_error, 0);
     if (accelerator_name != "CPU") {

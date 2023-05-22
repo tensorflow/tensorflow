@@ -44,6 +44,11 @@ std::string OpMetadataToString(const OpMetadata& metadata) {
     result.push_back(absl::StrCat(
         "profile_type={", absl::StrJoin(metadata.profile_type(), ","), "}"));
   }
+  if (!metadata.deduplicated_name().empty()) {
+    result.push_back(absl::StrCat("deduplicated_name=\"",
+                                  absl::CEscape(metadata.deduplicated_name()),
+                                  "\""));
+  }
   return absl::StrJoin(result, " ");
 }
 

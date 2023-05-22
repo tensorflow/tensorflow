@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -20,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
@@ -40,6 +45,10 @@ constexpr char kFuncAttr[] = "func";
 
 struct ClusterOutliningPass
     : public impl::ClusterOutliningPassBase<ClusterOutliningPass> {
+  explicit ClusterOutliningPass(bool globally_unique_func_names) {
+    globally_unique_func_names_ = globally_unique_func_names;
+  }
+
   void runOnOperation() override;
 };
 
@@ -48,6 +57,10 @@ struct ClusterOutliningPass
 
 struct LaunchOutliningPass
     : public impl::LaunchOutliningPassBase<LaunchOutliningPass> {
+  explicit LaunchOutliningPass(bool globally_unique_func_names) {
+    globally_unique_func_names_ = globally_unique_func_names;
+  }
+
   void runOnOperation() override;
 };
 
@@ -62,17 +75,29 @@ void ReplaceClusterReturnWithReturn(tf_device::ReturnOp cluster_return_op,
 // and inserts built function into given module.
 template <typename ClusterOrLaunchOp>
 func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
-                           SymbolTable* symbol_table, OpBuilder* builder) {
+                           SymbolTable* symbol_table, OpBuilder* builder,
+                           bool globally_unique_func_names) {
   llvm::SmallVector<Type, 4> operand_types;
   operand_types.reserve(live_ins.size());
   for (Value v : live_ins) operand_types.emplace_back(v.getType());
 
   auto func_type = builder->getFunctionType(operand_types, op.getResultTypes());
 
-  // TODO(lyandy): Define better name for outlined function. Potentially some
-  // name can be added during cluster formation.
+  std::string func_name;
+  if (globally_unique_func_names) {
+    // While processing XLA launch ops, signatures are created for each function
+    // to decide if a function has been compiled. Function signatures are
+    // decided by function name and input types. By giving each function a
+    // unique name, we make sure the same signature is not incorrectly given to
+    // functions of different graphs with same name and input type.
+    func_name =
+        absl::StrCat("_func_", size_t(OperationEquivalence::computeHash(op)));
+  } else {
+    func_name = "_func";
+  }
+
   func::FuncOp outlined_func =
-      func::FuncOp::create(op.getLoc(), "_func", func_type);
+      func::FuncOp::create(op.getLoc(), func_name, func_type);
 
   // This function is not externally visible and marking it private would allow
   // symbol-dce pass to remove it when it is not referenced anymore.
@@ -108,13 +133,14 @@ func::FuncOp BuildFunction(llvm::ArrayRef<Value> live_ins, ClusterOrLaunchOp op,
 // `tf_device.cluster_func` to invoke that function. `tf_device.cluster` is
 // removed afterwards.`
 void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
-                    OpBuilder* builder) {
+                    OpBuilder* builder, bool globally_unique_func_names) {
   llvm::SetVector<Value> live_ins;
   getUsedValuesDefinedAbove(cluster_op.getBody(), cluster_op.getBody(),
                             live_ins);
 
   func::FuncOp outlined_func =
-      BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder);
+      BuildFunction(live_ins.getArrayRef(), cluster_op, symbol_table, builder,
+                    globally_unique_func_names);
   cluster_op->setAttr(
       builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
@@ -135,12 +161,13 @@ void OutlineCluster(tf_device::ClusterOp cluster_op, SymbolTable* symbol_table,
 // `tf_device.launch_func` to invoke that function. `tf_device.launch` is
 // removed afterwards.`
 void OutlineLaunch(tf_device::LaunchOp launch_op, SymbolTable* symbol_table,
-                   OpBuilder* builder) {
+                   OpBuilder* builder, bool globally_unique_func_names) {
   llvm::SetVector<Value> live_ins;
   getUsedValuesDefinedAbove(launch_op.getBody(), launch_op.getBody(), live_ins);
 
   func::FuncOp outlined_func =
-      BuildFunction(live_ins.getArrayRef(), launch_op, symbol_table, builder);
+      BuildFunction(live_ins.getArrayRef(), launch_op, symbol_table, builder,
+                    globally_unique_func_names);
   launch_op->setAttr(
       builder->getStringAttr(kFuncAttr),
       mlir::SymbolRefAttr::get(builder->getContext(), outlined_func.getName()));
@@ -159,7 +186,8 @@ void ClusterOutliningPass::runOnOperation() {
   SymbolTable symbol_table(module);
   OpBuilder builder(module.getContext());
   module.walk([&](tf_device::ClusterOp cluster) {
-    OutlineCluster(cluster, &symbol_table, &builder);
+    OutlineCluster(cluster, &symbol_table, &builder,
+                   globally_unique_func_names_.getValue());
   });
 }
 
@@ -168,18 +196,21 @@ void LaunchOutliningPass::runOnOperation() {
   SymbolTable symbol_table(module);
   OpBuilder builder(module.getContext());
   module.walk([&](tf_device::LaunchOp launch) {
-    OutlineLaunch(launch, &symbol_table, &builder);
+    OutlineLaunch(launch, &symbol_table, &builder,
+                  globally_unique_func_names_.getValue());
   });
 }
 
 }  // namespace
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass() {
-  return std::make_unique<ClusterOutliningPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateClusterOutliningPass(
+    bool globally_unique_func_names) {
+  return std::make_unique<ClusterOutliningPass>(globally_unique_func_names);
 }
 
-std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass() {
-  return std::make_unique<LaunchOutliningPass>();
+std::unique_ptr<OperationPass<ModuleOp>> CreateLaunchOutliningPass(
+    bool globally_unique_func_names) {
+  return std::make_unique<LaunchOutliningPass>(globally_unique_func_names);
 }
 
 }  // namespace TFDevice

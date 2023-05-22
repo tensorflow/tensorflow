@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/raw_ostream.h"
@@ -33,22 +34,16 @@ namespace mlir {
 namespace TFL {
 namespace tac {
 namespace {
-struct RegisteredTargetHardware {
-  // TODO(b/177376459): Remove this constructor.
-  RegisteredTargetHardware(const std::string& name,
-                           const std::string& description, mlir::TypeID type_id,
-                           std::unique_ptr<TargetHardware> target_hardware)
-      : unique_name(GetCanonicalHardwareName(name)),
-        description(description),
-        type_id(type_id),
-        target_hardware(std::move(target_hardware)) {}
 
+struct RegisteredTargetHardware {
   RegisteredTargetHardware(
       const std::string& name, const std::string& description,
       mlir::TypeID type_id,
       std::function<std::unique_ptr<TargetHardware>()> target_hardware_factory)
       : unique_name(GetCanonicalHardwareName(name)),
         description(description),
+        type_id(type_id),
+        target_hardware(target_hardware_factory()),
         target_hardware_factory(target_hardware_factory) {}
 
   std::string unique_name;
@@ -184,22 +179,6 @@ std::function<std::unique_ptr<TargetHardware>()> GetTargetHardwareFactory(
 }
 
 namespace internal {
-
-void RegisterTargetHardware(
-    const std::string& unique_name, const std::string& description,
-    mlir::TypeID type_id,
-    std::function<std::unique_ptr<TargetHardware>()> target_hardware_factory) {
-  auto* registered_hardwares = GetRegisteredHardwares();
-  for (const auto& hardware : *registered_hardwares) {
-    if (hardware.unique_name == unique_name) {
-      llvm::errs() << "Ignoring duplicate hardware. Hardware " << unique_name
-                   << " already registered\n";
-      return;
-    }
-  }
-  registered_hardwares->push_back(RegisteredTargetHardware(
-      unique_name, description, type_id, target_hardware_factory()));
-}
 
 void RegisterTargetHardwareFactory(
     const std::string& unique_name, const std::string& description,

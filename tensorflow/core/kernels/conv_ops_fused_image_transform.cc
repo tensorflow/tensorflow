@@ -739,7 +739,8 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
                                     before, ", ", after, " not less than ",
                                     resized_shape.dim_size(d)));
       }
-      padded_shape.AddDim(before + resized_shape.dim_size(d) + after);
+      OP_REQUIRES_OK(context, padded_shape.AddDimWithStatus(
+                                  before + resized_shape.dim_size(d) + after));
     }
 
     OP_REQUIRES(

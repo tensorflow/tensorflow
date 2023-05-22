@@ -16,6 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_UTILS_H_
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -59,6 +64,13 @@ int DefaultThreadPoolSize();
 // layout.
 bool HasMajorToMinorLayout(PrimitiveType type, absl::Span<int64_t const> dims,
                            absl::Span<int64_t const> byte_strides);
+
+// Constructs a new dense array shape with the given byte strides. Supports only
+// trivial (compact) byte_strides that represents a transposition of a dense
+// buffer.
+StatusOr<Shape> MakeShapeWithTrivialByteStrides(
+    PrimitiveType element_type, absl::Span<const int64_t> dimensions,
+    absl::Span<const int64_t> byte_strides);
 
 }  // namespace xla
 

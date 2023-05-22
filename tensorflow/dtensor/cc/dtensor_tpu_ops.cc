@@ -28,7 +28,6 @@ namespace dtensor {
 
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-using shape_inference::UnchangedShape;
 
 // Initializes global TPU's for mutli-client execution.
 //

@@ -438,7 +438,7 @@ std::string ShardingMetadata::ToString() const {
 ShardingMetadata::ToShardingMetadata(const DomainMetadata* metadata) {
   if (metadata->Kind() != ShardingMetadata::KindName()) {
     return Status(
-        tsl::error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         "ShardingMetadata normalizer called with incorrect domain metadata");
   }
   return static_cast<const ShardingMetadata*>(metadata);

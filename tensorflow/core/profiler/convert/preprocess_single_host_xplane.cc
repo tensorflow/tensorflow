@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 
+#include <vector>
+
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/tsl/profiler/utils/preprocess_xplane.h"
 #include "tensorflow/tsl/profiler/utils/xplane_utils.h"
 
 namespace tensorflow {
@@ -25,8 +29,29 @@ void PreprocessSingleHostXSpace(XSpace* space, bool step_grouping,
                                 bool derived_timeline) {
   if (step_grouping && !tsl::profiler::IsXSpaceGrouped(*space)) {
     // Grouping (i.e. marking step number) events in the XSpace.
+    std::vector<XPlane*> device_traces;
+    bool isTpu = false;
+    for (XPlane& plane : *space->mutable_planes()) {
+      if (tsl::profiler::IsDevicePlane(plane)) {
+        device_traces.push_back(&plane);
+      }
+      // Preprocess XPlane to convert stats to Traceme2 semantics
+      tsl::profiler::PreprocessXPlane(&plane);
+
+      if (!isTpu && absl::StartsWith(plane.name(), kTpuPlanePrefix)) {
+        isTpu = true;
+      }
+    }
+
     EventForest event_forest;
-    GroupTfEvents(space, &event_forest);
+    if (isTpu) {
+      // group TPU events
+      GroupTpuEventsOSS(space, device_traces, &event_forest);
+    } else {
+      // group GPU events
+      GroupTfEvents(space, &event_forest);
+    }
+
     if (derived_timeline) {
       // Generated miscellaneous derived time lines for device planes.
       GenerateDerivedTimeLines(event_forest.GetGroupMetadataMap(), space);

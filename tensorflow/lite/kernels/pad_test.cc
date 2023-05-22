@@ -187,7 +187,7 @@ class PadOpDynamicModel : public PadOpModel<float> {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(PadOpTest, TooManyDimensions) {
   EXPECT_DEATH(
       PadOpConstModel({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
@@ -342,7 +342,7 @@ std::vector<Matcher<float>> DequantizedArrayNear(
 
 class QuantizedPadOpTest : public ::testing::Test {};
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 template <typename integer_type, TensorType tensor_dtype>
 void ZeroNotInQuantizationRange() {
   // The test_util and actual quantization code currently ensure that the range
@@ -475,7 +475,7 @@ TEST_F(QuantizedPadOpTest, Int16AdvancedDynamicTest) {
   AdvancedDynamicTest<int16_t, TensorType_INT16>();
 }
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(PadV2OpTest, TooManyDimensions) {
   typedef PadV2OpConstModel<float> f;
   EXPECT_DEATH(f({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
@@ -693,7 +693,7 @@ class QuantizedPadV2OpTest : public ::testing::Test {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 template <TensorType tensor_dtype>
 void ZeroNotInQuantizationRangeV2() {
   // The test_util and actual quantization code currently ensure that the range

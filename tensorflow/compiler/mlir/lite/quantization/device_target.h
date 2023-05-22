@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_DEVICE_TARGET_H_
 
 #include <functional>
+#include <optional>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
@@ -73,12 +74,12 @@ class KernelSpecs {
   using Signature = llvm::SmallVector<quant::AnyQuantizedType, 4>;
 
   // Returns the kernel specification for the kernel signature.
-  Optional<KernelSpec> Find(const Signature& signature) const {
+  std::optional<KernelSpec> Find(const Signature& signature) const {
     auto spec_it = all_signatures_.find(signature);
     if (spec_it != all_signatures_.end()) {
       return spec_it->second;
     } else {
-      return llvm::None;
+      return std::nullopt;
     }
   }
 
@@ -134,7 +135,7 @@ class DeviceTarget {
   explicit DeviceTarget(MLIRContext* ctx);
 
   // Retrieves the kernel spec for the quant region op.
-  Optional<KernelSpec> GetKernelSpec(
+  std::optional<KernelSpec> GetKernelSpec(
       llvm::StringRef kernel, const KernelSpecs::Signature& signature) const;
 
   // Retrieves the scale decomposition function for the quant region op.

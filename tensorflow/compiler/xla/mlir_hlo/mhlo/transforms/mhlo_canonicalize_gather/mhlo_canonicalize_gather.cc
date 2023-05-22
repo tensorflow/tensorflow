@@ -168,13 +168,16 @@ struct CanonicalizeGatherPattern : public OpRewritePattern<GatherOp> {
         result, b.getI64TensorAttr(operandPermutationInverse));
 
     // Collapse the requested dimensions.
-    result = collapseSliceDims(b, result, dims.getCollapsedSliceDims());
+    result = cast<TypedValue<TensorType>>(
+        collapseSliceDims(b, result, dims.getCollapsedSliceDims()));
 
     // Expand the start index dimensions.
-    result = expandBatchDimension(b, result, gatherOp);
+    result =
+        cast<TypedValue<TensorType>>(expandBatchDimension(b, result, gatherOp));
 
     // Move the offset dims to the final locations.
-    result = moveOffsetDimensions(b, result, gatherOp);
+    result =
+        cast<TypedValue<TensorType>>(moveOffsetDimensions(b, result, gatherOp));
 
     rewriter.replaceOp(gatherOp.getOperation(), {result});
     return success();

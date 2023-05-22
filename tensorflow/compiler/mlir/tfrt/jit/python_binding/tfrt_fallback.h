@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "pybind11/numpy.h"
+#include "pybind11/numpy.h"  // from @pybind11
 
 namespace tensorflow {
 

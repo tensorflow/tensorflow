@@ -33,8 +33,15 @@ class CheckPreemptionOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto status_or_task =
-        ctx->coordination_service_agent()->TryGetKeyValue(preemption_key_);
+    tsl::CoordinationServiceAgent* agent = ctx->coordination_service_agent();
+    // TODO(b/266752863): Remove this workaround once coordination service is
+    // always enabled (even for single-host deployment).
+    if (agent == nullptr) {
+      LOG_EVERY_N_SEC(WARNING, 30) << "CheckPreemption is no-op because "
+                                      "coordination service is not enabled.";
+      return;
+    }
+    auto status_or_task = agent->TryGetKeyValue(preemption_key_);
 
     // No-op if preemption key is not found.
     if (errors::IsNotFound(status_or_task.status())) {

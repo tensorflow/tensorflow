@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CONV_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_CONV_H_
 
+#include <memory>
 #include <utility>
 
 #include "absl/container/node_hash_map.h"
-#include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
@@ -41,26 +41,24 @@ void PopulateConvAttrEncoding(runtime::CustomCallAttrEncodingSet& encoding);
 // Cache conv runners between invocations of convolution custom calls.
 //===----------------------------------------------------------------------===//
 
-class ConvRunnerCache {
+struct ConvRunner {
+  explicit ConvRunner(GpuConvConfig config)
+      : config(std::move(config)), runner(this->config) {}
+  GpuConvConfig config;
+  MaybeFusedConvRunner runner;
+};
+
+class StreamExecutorConvRunners : public runtime::StateVector<ConvRunner> {};
+
+// Xla executable keeps a mapping from stream executors to convolution runners.
+class ConvRunners {
  public:
-  using Key = std::pair<::stream_executor::Stream*, int64_t>;
-
-  struct Entry {
-    MaybeFusedConvRunner* runner;
-    GpuConvConfig* config;
-  };
-
-  // Returns cached conv runner and the gpu config it was constructed from for
-  // the given id, or creates a new one using user-provided config construction
-  // function.
-  absl::StatusOr<Entry> GetOrCreate(
-      Key key, absl::FunctionRef<absl::StatusOr<GpuConvConfig>()> config);
+  StreamExecutorConvRunners* operator()(se::StreamExecutor* executor);
 
  private:
   mutable absl::Mutex mutex_;
-
-  absl::node_hash_map<Key, std::pair<MaybeFusedConvRunner, GpuConvConfig>>
-      runners_ ABSL_GUARDED_BY(mutex_);
+  absl::node_hash_map<se::StreamExecutor*, StreamExecutorConvRunners> runners_
+      ABSL_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

@@ -20,30 +20,38 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
@@ -75,7 +83,7 @@ constexpr absl::string_view QuantTraitValues[] = {"fully_quantizable",
 
 constexpr double kNearZeroTolerance = 1.0e-6;
 
-using QuantParams = mlir::quant::QuantizedType;
+using QuantParams = QuantizedType;
 using QuantSpec = QuantizationSpecs;
 using SignedInteger = std::pair<unsigned, unsigned>;  // bitwidth and sign
 using QuantParamsForResults = llvm::SmallVector<QuantParams, 4>;
@@ -90,7 +98,6 @@ using RequiredSameOperandsAndResultsScaleFunc = std::function<bool(bool, int)>;
 // bool RequiredSameQuantizedAxes()
 using RequiredSameQuantizedAxesFunc = std::function<bool()>;
 
-using StringSet = absl::flat_hash_set<std::string>;
 using CustomMap = quant::CustomOpMap;
 
 // Quantization spec of an op, driving the quantization algorithm.
@@ -119,6 +126,11 @@ struct OpQuantSpec {
   absl::flat_hash_set<int> quantizable_operands;
 };
 
+// A function signature for getting the particular OpQuantSpec for the provided
+// op.
+using OpQuantSpecGetter =
+    std::function<std::unique_ptr<OpQuantSpec>(Operation*)>;
+
 // Quantization scale spec of an op. The information defined in the MLIR
 // interfaces FixedOutputRangeInterface and SameOperandsAndResultsScale should
 // be checked first if present.
@@ -137,6 +149,11 @@ struct OpQuantScaleSpec {
     return true;
   };
 };
+
+// A function signature for getting the particular OpQuantScaleSpec for the
+// provided op.
+using OpQuantScaleSpecGetter =
+    std::function<std::unique_ptr<OpQuantScaleSpec>(Operation*)>;
 
 // Used in TFL Numeric Verify
 struct NumericVerifySpec {
@@ -163,14 +180,6 @@ struct QuantPassSpec {
   QuantSpec quant_spec;
 };
 
-// A function signature for getting the particular OpQuantSpec for the provided
-// op.
-typedef std::unique_ptr<OpQuantSpec> (*OpQuantSpecGetter)(Operation* op);
-// A function signature for getting the particular OpQuantScaleSpec for the
-// provided op.
-typedef std::unique_ptr<OpQuantScaleSpec> (*OpQuantScaleSpecGetter)(
-    Operation* op);
-
 // Re-calculates scales again in float instead of simply downcasting existing
 // scales.
 quant::QuantizedType DownCastScale(quant::QuantizedType type,
@@ -181,7 +190,7 @@ quant::QuantizedType DownCastScale(quant::QuantizedType type,
 quant::QuantizedType DownCastScale(quant::QuantizedType type, double min,
                                    double max, Location loc);
 
-bool IsOpNotQuantizable(Operation* op);
+bool IsOpQuantizable(Operation* op);
 
 // Specialized version of location to string for flatbuffer exported locations.
 inline std::string GetTensorNameFromLoc(Location loc) {
@@ -208,6 +217,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
     SmallVector<double, 4> mins, maxs;
 
     if (op.getAxisStats().has_value()) {
+      // Per axis quantization (or per channel quantization)
       int stats_num = op.getAxisStats()->getNumElements();
       if (stats_num == 0 || stats_num % 2 != 0) return failure();
       auto stats = op.getAxisStats()->dyn_cast<DenseFPElementsAttr>();
@@ -221,6 +231,13 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
         // So here we adjust the range to include 0.0.
         rmin = std::min(rmin, 0.0);
         rmax = std::max(rmax, 0.0);
+        if (num_bits == 16) {
+          // TODO(b/266536261): Since the kernel implementation assumes that
+          // 16x8 integer quantization is symmetric, this MLIR quantizer
+          // supports only symmetric quantization.
+          rmax = std::max(std::abs(rmin), std::abs(rmax));
+          rmin = -rmax;
+        }
         TensorRangeSanityCheck(op, rmin, rmax);
         mins.push_back(rmin);
         maxs.push_back(rmax);
@@ -233,6 +250,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       }
     } else if (auto stats =
                    op.getLayerStats().dyn_cast<DenseFPElementsAttr>()) {
+      // Per tensor quantization
       auto statValues = stats.getValues<APFloat>();
       double rmin = FloatAttr::getValueAsDouble(statValues[0]);
       double rmax = FloatAttr::getValueAsDouble(statValues[1]);
@@ -241,6 +259,13 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quantfork::StatisticsOp> {
       // So here we adjust the range to include 0.0.
       rmin = std::min(rmin, 0.0);
       rmax = std::max(rmax, 0.0);
+      if (num_bits == 16) {
+        // TODO(b/266536261): Since the kernel implementation assumes that
+        // 16x8 integer quantization is symmetric, this MLIR quantizer supports
+        // only symmetric quantization.
+        rmax = std::max(std::abs(rmin), std::abs(rmax));
+        rmin = -rmax;
+      }
       TensorRangeSanityCheck(op, rmin, rmax);
       quant_type =
           quantfork::fakeQuantAttrsToType(op.getLoc(), num_bits, rmin, rmax,
@@ -399,8 +424,10 @@ class QuantizationPattern : public RewritePattern {
     bool enable_verify = quant_params_.numeric_verify_spec.verify_numeric;
     bool enable_whole_model_verify =
         quant_params_.numeric_verify_spec.whole_model_verify;
-    StringSet ops_blocklist = quant_params_.quant_spec.ops_blocklist;
-    StringSet nodes_blocklist = quant_params_.quant_spec.nodes_blocklist;
+    absl::flat_hash_set<std::string> ops_blocklist =
+        quant_params_.quant_spec.ops_blocklist;
+    absl::flat_hash_set<std::string> nodes_blocklist =
+        quant_params_.quant_spec.nodes_blocklist;
     CustomMap custom_map = quant_params_.quant_spec.custom_map;
 
     // Rewrite the floating-point ops to the quantized version, by fusing
@@ -419,7 +446,7 @@ class QuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (IsOpNotQuantizable(quantizing_op) &&
+      if (!IsOpQuantizable(quantizing_op) &&
           !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
               quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
@@ -559,7 +586,7 @@ class QuantizationPattern : public RewritePattern {
              llvm::enumerate(quantizing_op->getRegions())) {
           Region& target_region =
               quantized_op->getRegion(indexed_regions.index());
-          BlockAndValueMapping mapping;
+          IRMapping mapping;
           indexed_regions.value().cloneInto(&target_region, mapping);
         }
       }
@@ -626,14 +653,14 @@ class QuantizationPattern : public RewritePattern {
       // compared against in parallel.
       // N.B. the return op will use this floating-point result.
       Value result;
-      if (IsOpNotQuantizable(float_op)) {
+      if (!IsOpQuantizable(float_op)) {
         // For not quantizable ops, search for dequantize attached to the
         // quantized op of the output.
         if (Operation* quantize_op = dyn_cast_or_null<QuantizeOpT>(
                 *quantized_op->getResult(i).getUsers().begin())) {
           result = quantize_op->getResult(0);
         } else {
-          quantize_op->emitError()
+          quantized_op->emitError()
               << "Output[" << i
               << "] is expected to have only one user [QUANTIZE]";
           return;
@@ -876,14 +903,14 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // the activation ops and weight constants. This is only used for post-training
 // quantization.
 void ApplyQuantizationParamsPropagation(mlir::func::FuncOp func, bool is_signed,
-                                        bool disable_per_channel,
+                                        int bit_width, bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter,
                                         bool infer_tensor_ranges,
                                         bool legacy_float_scale = false);
 
 void ApplyQuantizationParamsPropagation(
-    mlir::func::FuncOp func, bool is_signed, bool disable_per_channel,
-    OpQuantSpecGetter op_quant_spec_getter,
+    mlir::func::FuncOp func, bool is_signed, int bit_width,
+    bool disable_per_channel, OpQuantSpecGetter op_quant_spec_getter,
     OpQuantScaleSpecGetter op_quant_scale_spec_getter, bool infer_tensor_ranges,
     bool legacy_float_scale = false);
 
@@ -905,8 +932,12 @@ bool RemoveRedundantStatsOps(mlir::func::FuncOp func,
 quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
                                                 Type tensor_type, double scale,
                                                 int64_t zero_point,
-                                                int64_t storage_min = -128,
-                                                int64_t storage_max = 127);
+                                                int64_t storage_min,
+                                                int64_t storage_max);
+
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point);
 
 // Extrace min and max values from the DenseFPElementsAttr, and stores them into
 // `mins` and `maxs`. When mins and maxs are extracted per-channel, `dim_size`

@@ -94,7 +94,7 @@ def repack_diagonals_in_tests(tests, align=None):
 
 # Test cases shared by MatrixDiagV2, MatrixDiagPartV2, and MatrixSetDiagV2.
 def square_cases(align=None):
-  # pyformat: disable
+# pyformat: disable
   mat = np.array([[[1, 2, 3, 4, 5],
                    [6, 7, 8, 9, 1],
                    [3, 4, 5, 6, 7],
@@ -166,13 +166,12 @@ def square_cases(align=None):
                             [0, 0, 0, 8, 9],
                             [0, 0, 0, 0, 5],
                             [0, 0, 0, 0, 0],
-                            [0, 0, 0, 0, 0]]]))
-  # pyformat: enable
+                            [0, 0, 0, 0, 0]]]))  # pyformat: enable
   return (mat, repack_diagonals_in_tests(tests, align))
 
 
 def tall_cases(align=None):
-  # pyformat: disable
+# pyformat: disable
   mat = np.array([[[1, 2, 3],
                    [4, 5, 6],
                    [7, 8, 9],
@@ -253,13 +252,12 @@ def tall_cases(align=None):
                             [0, 0, 3],
                             [0, 0, 0],
                             [0, 0, 0],
-                            [0, 0, 0]]]))
-  # pyformat: enable
+                            [0, 0, 0]]]))  # pyformat: enable
   return (mat, repack_diagonals_in_tests(tests, align))
 
 
 def fat_cases(align=None):
-  # pyformat: disable
+# pyformat: disable
   mat = np.array([[[1, 2, 3, 4],
                    [5, 6, 7, 8],
                    [9, 1, 2, 3]],
@@ -312,8 +310,7 @@ def fat_cases(align=None):
                             [0, 0, 2, 3]],
                            [[4, 5, 6, 7],
                             [0, 9, 1, 2],
-                            [0, 0, 5, 6]]]))
-  # pyformat: enable
+                            [0, 0, 5, 6]]]))  # pyformat: enable
   return (mat, repack_diagonals_in_tests(tests, align))
 
 
@@ -430,6 +427,7 @@ class MatrixDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testVectorBatch(self):
+    self._testVectorBatch(dtypes_lib.bfloat16.as_numpy_dtype)
     self._testVectorBatch(np.float32)
     self._testVectorBatch(np.float64)
     self._testVectorBatch(np.int32)
@@ -657,6 +655,7 @@ class MatrixSetDiagTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSquareBatch(self):
+    self._testSquareBatch(dtypes_lib.bfloat16.as_numpy_dtype)
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
     self._testSquareBatch(np.int32)
@@ -842,6 +841,7 @@ class MatrixDiagPartTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSquareBatch(self):
+    self._testSquareBatch(dtypes_lib.bfloat16.as_numpy_dtype)
     self._testSquareBatch(np.float32)
     self._testSquareBatch(np.float64)
     self._testSquareBatch(np.int32)

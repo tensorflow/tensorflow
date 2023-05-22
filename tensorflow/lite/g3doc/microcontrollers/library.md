@@ -30,7 +30,7 @@ interpreter are located in the root of the project, accompanied by tests:
     uses a lot of memory. In production applications, you should use
     `micro_mutable_op_resolver.h` to pull in only the operations your model
     needs.
--   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_error_reporter.h)
+-   [`micro_error_reporter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/tflite_bridge/micro_error_reporter.h)
     outputs debug information.
 -   [`micro_interpreter.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_interpreter.h)
     contains code to handle and run models.
@@ -75,8 +75,8 @@ that contain all of the necessary source files, using a `Makefile`. The current
 supported environments are Keil, Make, and Mbed.
 
 To generate these projects with Make, clone the
-[TensorFlow repository](http://github.com/tensorflow/tensorflow) and run the
-following command:
+[TensorFlow/tflite-micro repository](https://github.com/tensorflow/tflite-micro)
+and run the following command:
 
 ```bash
 make -f tensorflow/lite/micro/tools/make/Makefile generate_projects

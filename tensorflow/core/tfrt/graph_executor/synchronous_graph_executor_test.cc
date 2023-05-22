@@ -14,9 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/graph_executor/synchronous_graph_executor.h"
 
+#include <memory>
 #include <utility>
 #include <vector>
 
+#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
+#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
+#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
@@ -40,30 +45,31 @@ TEST(TfrtSynchronousSessionTest, Sanity) {
   tensorflow::GraphDef graph_def;
   ASSERT_OK(GetSimpleGraphDef(graph_def));
 
-  ASSERT_OK_AND_ASSIGN(auto session,
-                       SynchronousGraphExecutor::Create(graph_def));
+  auto kernel_registry = std::make_unique<mlrt::KernelRegistry>();
+  tensorflow::tf_mlrt::RegisterTfMlrtKernels(*kernel_registry);
+  tfrt::cpu::RegisterMlrtMathKernels(kernel_registry.get());
+  tfrt::cpu::RegisterMlrtFallbackCompatKernels(kernel_registry.get());
 
-  std::vector<tfrt::Value> input;
-  std::vector<tfrt::Value*> input_ptrs;
+  ASSERT_OK_AND_ASSIGN(
+      auto session,
+      SynchronousGraphExecutor::Create(graph_def, std::move(kernel_registry)));
+
+  std::vector<mlrt::Value> inputs;
   tfrt::DenseHostTensor dht =
       tfrt::CreateTensorFromValues<int32_t>({1, 3}, {1, 1, 1});
-  input.emplace_back(std::move(dht));
-  input_ptrs.push_back(&input[0]);
-  std::vector<tfrt::Value> results;
+  inputs.emplace_back(std::move(dht));
+  std::vector<mlrt::Value> results;
   results.resize(1);
-  std::vector<tfrt::Value*> result_ptrs;
-  result_ptrs.resize(1);
-  result_ptrs[0] = &results[0];
 
-  ASSERT_OK(session->Run("test_graph", absl::Span<tfrt::Value*>(input_ptrs),
+  ASSERT_OK(session->Run("test_graph", absl::Span<mlrt::Value>(inputs),
                          /*input_names=*/{"input"}, /*input_dtypes=*/{DT_INT32},
                          /*output_tensor_names=*/{"rank"},
                          /*target_tensor_names=*/{},
-                         absl::Span<tfrt::Value*>(result_ptrs)));
+                         absl::Span<mlrt::Value>(results)));
   tfrt::DenseHostTensor expected =
       tfrt::CreateTensorFromValues<int32_t>({}, {2});
 
-  EXPECT_EQ(expected, results[0].get<tfrt::DenseHostTensor>());
+  EXPECT_EQ(expected, results[0].Get<tfrt::DenseHostTensor>());
 }
 
 }  // namespace

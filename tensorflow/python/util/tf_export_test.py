@@ -141,38 +141,6 @@ class ValidateExportTest(test.TestCase):
     self.assertEqual(['TestClassA1'], tf_export.get_v1_names(TestClassA))
     self.assertEqual(['TestClassB1'], tf_export.get_v1_names(TestClassB))
 
-  def testExportClassInEstimator(self):
-    export_decorator_a = tf_export.tf_export('TestClassA1')
-    export_decorator_a(TestClassA)
-    self.assertEqual(('TestClassA1',), TestClassA._tf_api_names)
-
-    export_decorator_b = tf_export.estimator_export('estimator.TestClassB1')
-    export_decorator_b(TestClassB)
-    self.assertTrue('_tf_api_names' not in TestClassB.__dict__)
-    self.assertEqual(('TestClassA1',), TestClassA._tf_api_names)
-    self.assertEqual(['TestClassA1'], tf_export.get_v1_names(TestClassA))
-    self.assertEqual(['estimator.TestClassB1'],
-                     tf_export.get_v1_names(TestClassB))
-
-  @test.mock.patch.object(logging, 'warning', autospec=True)
-  def testExportDeprecated(self, mock_warning):
-    export_decorator = tf_export.estimator_export(
-        'estimator.TestClassA', is_deprecated=True)
-    export_decorator(TestClassA)
-
-    export_decorator2 = tf_export.tf_export('TestClassB1')
-    export_decorator2(TestClassB)
-
-    # Deprecation should trigger a runtime warning
-    TestClassA()
-    self.assertEqual(1, mock_warning.call_count)
-    # Deprecation should only warn once, upon first call
-    TestClassA()
-    self.assertEqual(1, mock_warning.call_count)
-    # No warning should be triggered when inherting from a deprecated class
-    TestClassB()
-    self.assertEqual(1, mock_warning.call_count)
-
   def testExportSingleConstant(self):
     module1 = self._CreateMockModule('module1')
 
@@ -215,19 +183,9 @@ class ValidateExportTest(test.TestCase):
     with self.assertRaises(tf_export.InvalidSymbolNameError):
       tf_export.tf_export('estimator.invalid')
 
-    # All symbols exported by Estimator must be under tf.estimator package.
-    with self.assertRaises(tf_export.InvalidSymbolNameError):
-      tf_export.estimator_export('invalid')
-    with self.assertRaises(tf_export.InvalidSymbolNameError):
-      tf_export.estimator_export('Estimator.invalid')
-    with self.assertRaises(tf_export.InvalidSymbolNameError):
-      tf_export.estimator_export('invalid.estimator')
-
   def testRaisesExceptionIfInvalidV1SymbolName(self):
     with self.assertRaises(tf_export.InvalidSymbolNameError):
       tf_export.tf_export('valid', v1=['estimator.invalid'])
-    with self.assertRaises(tf_export.InvalidSymbolNameError):
-      tf_export.estimator_export('estimator.valid', v1=['invalid'])
 
   def testOverridesFunction(self):
     _test_function2._tf_api_names = ['abc']

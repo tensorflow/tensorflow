@@ -67,6 +67,19 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
             gen_bitwise_ops.population_count(input_tensor))
         self.assertAllEqual(truth, popcnt_result)
 
+  def testPopulationCountOpEmptyInput(self):
+    with self.cached_session():
+      popcnt_result = self.evaluate(
+          gen_bitwise_ops.population_count(
+              constant_op.constant(
+                  [],
+                  shape=[0],
+                  dtype=dtypes.int64,
+              ),
+          )
+      )
+      self.assertAllEqual(popcnt_result, [])
+
   @test_util.run_deprecated_v1
   def testInvertOp(self):
     dtype_list = [dtypes.int8, dtypes.int16, dtypes.int32, dtypes.int64,
@@ -135,7 +148,6 @@ class BitwiseOpTest(test_util.TensorFlowTestCase):
         # AddressSanitizer.
         sess.run([bitwise_ops.left_shift(lhs, rhs),
                   bitwise_ops.right_shift(lhs, rhs)])
-
 
   @test_util.run_deprecated_v1
   def testShapeInference(self):

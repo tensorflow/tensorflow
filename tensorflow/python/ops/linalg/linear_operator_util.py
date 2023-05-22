@@ -18,6 +18,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -111,8 +112,9 @@ def convert_nonref_to_tensor(value, dtype=None, dtype_hint=None, name=None):
           f"Argument `value` must be of dtype `{dtype_name(dtype_base)}` "
           f"Received: `{dtype_name(value_dtype_base)}`.")
     return value
-  return ops.convert_to_tensor_v2_with_dispatch(
-      value, dtype=dtype, dtype_hint=dtype_hint, name=name)
+  return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      value, dtype=dtype, dtype_hint=dtype_hint, name=name
+  )
 
 
 def base_dtype(dtype):
@@ -186,10 +188,12 @@ def assert_no_entries_with_modulus_zero(
     An `Op` that asserts `x` has no entries with modulus zero.
   """
   with ops.name_scope(name, values=[x]):
-    x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+    x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
     dtype = x.dtype.base_dtype
     should_be_nonzero = math_ops.abs(x)
-    zero = ops.convert_to_tensor_v2_with_dispatch(0, dtype=dtype.real_dtype)
+    zero = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        0, dtype=dtype.real_dtype
+    )
     return check_ops.assert_less(zero, should_be_nonzero, message=message)
 
 
@@ -205,13 +209,15 @@ def assert_zero_imag_part(x, message=None, name="assert_zero_imag_part"):
     An `Op` that asserts `x` has no entries with modulus zero.
   """
   with ops.name_scope(name, values=[x]):
-    x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+    x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
     dtype = x.dtype.base_dtype
 
     if dtype.is_floating:
       return control_flow_ops.no_op()
 
-    zero = ops.convert_to_tensor_v2_with_dispatch(0, dtype=dtype.real_dtype)
+    zero = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        0, dtype=dtype.real_dtype
+    )
     return check_ops.assert_equal(zero, math_ops.imag(x), message=message)
 
 
@@ -258,7 +264,9 @@ def shape_tensor(shape, name=None):
     dtype = dtypes.int32
   else:
     dtype = None
-  return ops.convert_to_tensor_v2_with_dispatch(shape, dtype=dtype, name=name)
+  return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+      shape, dtype=dtype, name=name
+  )
 
 
 ################################################################################
@@ -320,7 +328,9 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     batch_matrices = list(batch_matrices)
 
     for i, mat in enumerate(batch_matrices):
-      batch_matrices[i] = ops.convert_to_tensor_v2_with_dispatch(mat)
+      batch_matrices[i] = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          mat
+      )
       assert_is_batch_matrix(batch_matrices[i])
 
     if len(batch_matrices) < 2:
@@ -363,9 +373,12 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
 def matrix_solve_with_broadcast(matrix, rhs, adjoint=False, name=None):
   """Solve systems of linear equations."""
   with ops.name_scope(name, "MatrixSolveWithBroadcast", [matrix, rhs]):
-    matrix = ops.convert_to_tensor_v2_with_dispatch(matrix, name="matrix")
-    rhs = ops.convert_to_tensor_v2_with_dispatch(
-        rhs, name="rhs", dtype=matrix.dtype)
+    matrix = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        matrix, name="matrix"
+    )
+    rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        rhs, name="rhs", dtype=matrix.dtype
+    )
 
     # If either matrix/rhs has extra dims, we can reshape to get rid of them.
     matrix, rhs, reshape_inv, still_need_to_transpose = _reshape_for_efficiency(
@@ -550,8 +563,12 @@ def arg_is_blockwise(block_dimensions, arg, arg_split_dim):
     if not any(nest.is_nested(x) for x in arg):
       return True
     else:
-      arg_dims = [ops.convert_to_tensor_v2_with_dispatch(
-          x).shape[arg_split_dim] for x in arg]
+      arg_dims = [
+          tensor_conversion.convert_to_tensor_v2_with_dispatch(x).shape[
+              arg_split_dim
+          ]
+          for x in arg
+      ]
       self_dims = [dim.value for dim in block_dimensions]
 
       # If none of the operator dimensions are known, interpret the input as

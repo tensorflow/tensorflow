@@ -52,7 +52,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
@@ -79,7 +78,6 @@ java_test(
         "no_cuda_on_cpu_tap",  # CUDA + flex is not officially supported.
         "no_gpu",  # GPU + flex is not officially supported.
         "no_oss",  # Currently requires --config=monolithic, b/118895218.
-        "notsan",  # TODO(b/185859069) Re-enable after fixing race condition.
     ],
     test_class = "org.tensorflow.lite.InterpreterFlexWithCustomOpsTest",
     visibility = ["//visibility:private"],
@@ -95,7 +93,7 @@ java_test(
 ios_static_framework(
     name = "TestTensorFlowLiteSelectTfOps_framework",
     testonly = 1,
-    avoid_deps = ["//tensorflow/lite/c:common"],
+    avoid_deps = ["//tensorflow/lite/core/c:common"],
     bundle_name = "TestTensorFlowLiteSelectTfOps",
     minimum_os_version = "11.0",
     deps = [

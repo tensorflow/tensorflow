@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <array>
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -55,7 +56,7 @@ std::string FusedReduction1D(bool dynamic, int64_t size) {
 
 auto EigenFusedReduction1D() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice> device) {
+            std::optional<Eigen::ThreadPoolDevice> device) {
     std::array<int64_t, 1> dims_to_reduce{0};
     Tensor output(DT_FLOAT, {});
 

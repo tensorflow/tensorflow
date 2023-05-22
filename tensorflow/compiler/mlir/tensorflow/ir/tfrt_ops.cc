@@ -38,7 +38,7 @@ _TfrtGetResourceOp::GetResourceHandleValueAndIdList(
   llvm::SmallVector<ResourceHandleValueAndId, 4> resource_vec;
   llvm::StringRef device = GetDeviceOrEmpty(getOperation());
 
-  for (auto iter : llvm::enumerate(getResults())) {
+  for (const auto &iter : llvm::enumerate(getResults())) {
     auto index = iter.index();
     if (getElementTypeOrSelf(iter.value().getType()).isa<TF::ResourceType>()) {
       resource_vec.push_back(GetResourceHandleValueAndIdBase(

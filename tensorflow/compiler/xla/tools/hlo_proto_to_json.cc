@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/tsl/util/command_line_flags.h"
 
 using std::string;
-using tsl::Env;
 
 namespace xla {
 namespace tools {
@@ -52,7 +51,7 @@ StatusOr<std::string> ToJson(const tsl::protobuf::Message& message) {
                                                          json_options);
   if (!status.ok()) {
     return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().data());
+                         std::string{status.message()});
   }
   return json_output;
 }

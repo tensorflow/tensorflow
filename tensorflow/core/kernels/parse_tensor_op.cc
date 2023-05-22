@@ -20,8 +20,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
 
 namespace tensorflow {
 
@@ -57,6 +59,9 @@ class ParseTensorOp : public OpKernel {
                                 DataTypeString(output.dtype()), ") and dtype (",
                                 DataTypeString(out_type_), ")"));
 
+    if (!port::kLittleEndian && IsByteSwappable(output.dtype()))
+      OP_REQUIRES_OK(ctx, ByteSwapTensor(&output));
+
     ctx->set_output(0, output);
   }
 
@@ -77,7 +82,12 @@ class SerializeTensorOp : public OpKernel {
     if (tensor.dtype() == DT_STRING) {
       tensor.AsProtoField(&proto);
     } else {
-      tensor.AsProtoTensorContent(&proto);
+      if (!port::kLittleEndian && IsByteSwappable(tensor.dtype())) {
+        Tensor ts_ = tensor::DeepCopy(tensor);
+        OP_REQUIRES_OK(context, ByteSwapTensor(&ts_));
+        ts_.AsProtoTensorContent(&proto);
+      } else
+        tensor.AsProtoTensorContent(&proto);
     }
     Tensor* proto_string = nullptr;
     OP_REQUIRES_OK(context,

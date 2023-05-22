@@ -39,6 +39,9 @@ class MockSupertypes2With3(trace.TraceType):
     else:
       return None
 
+  def placeholder_value(self, placeholder_context=None):
+    raise NotImplementedError
+
   def __eq__(self, other) -> bool:
     return isinstance(other, type(self)) and self._object == other._object
 

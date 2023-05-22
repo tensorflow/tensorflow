@@ -17,6 +17,7 @@
 import warnings
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import debug_mode
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -38,8 +39,8 @@ def _interleave(  # pylint: disable=unused-private-name
   if cycle_length is None:
     cycle_length = dataset_ops.AUTOTUNE
 
-  if num_parallel_calls is None or dataset_ops.DEBUG_MODE:
-    if deterministic is not None and not dataset_ops.DEBUG_MODE:
+  if num_parallel_calls is None or debug_mode.DEBUG_MODE:
+    if deterministic is not None and not debug_mode.DEBUG_MODE:
       warnings.warn("The `deterministic` argument has no effect unless the "
                     "`num_parallel_calls` argument is specified.")
     return _InterleaveDataset(

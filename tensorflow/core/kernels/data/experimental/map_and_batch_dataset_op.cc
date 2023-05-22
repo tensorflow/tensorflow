@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/map_and_batch_dataset_op.h"
 
 #include <atomic>
+#include <functional>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/function.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/stats_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -123,11 +125,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     if (!preserve_cardinality_) {
       return kUnknownCardinality;
     }
-    int64_t n = input_->Cardinality();
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -232,8 +234,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           &iter_ctx, this, prefix(), &input_impl_));
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -242,7 +248,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       std::shared_ptr<BatchResult> result;
       {
         mutex_lock l(*mu_);
-        EnsureRunnerThreadStarted(ctx);
+        EnsureThreadsStarted(ctx);
         while (!cancelled_ && (batch_results_.empty() ||
                                batch_results_.front()->num_calls > 0)) {
           ++waiting_;
@@ -268,7 +274,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       if (result->output_allocated) {
         RecordBufferDequeue(ctx, result->output);
       }
-      ctx->MergeCheckpoint(result->checkpoint);
+      ctx->MergeCheckpoint(&result->checkpoint);
       TF_RETURN_IF_ERROR(
           ProcessBatch(dataset()->batch_size_, result->num_elements,
                        dataset()->drop_remainder_, result->status, ctx,
@@ -315,6 +321,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
       mutex_lock l(*mu_);
+      DCHECK(!runner_thread_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       TF_RETURN_IF_ERROR(
           reader->ReadScalar(full_name(kCallCounter), &call_counter_));
@@ -324,6 +331,9 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       DCHECK(batch_results_.empty());
       for (int i = 0; i < batch_results_size; ++i) {
         TF_RETURN_IF_ERROR(ReadBatchResult(ctx, reader, i));
+      }
+      if (ctx->warm_start()) {
+        EnsureThreadsStarted(ctx);
       }
       return OkStatus();
     }
@@ -357,13 +367,14 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     // BatchResult encapsulates the output batch, as well as ancillary
     // metadata required to execute the fused map-and-batch operation.
     struct BatchResult {
-      explicit BatchResult(int64_t batch_size)
+      explicit BatchResult(int64_t batch_size, IteratorContext* ctx)
           : end_of_input(false),
             num_elements(0),
             output_allocated(false),
             status(OkStatus()),
             status_offset(-1),
             num_calls(batch_size),
+            checkpoint(MemoryCheckpoint{ctx->id_registry()}),
             uid(tensorflow::EnvTime::NowNanos()) {}
 
       // UpdateStatus updates the batch's aggregate Status.
@@ -446,7 +457,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           // former may be interpreted by a caller as the end of sequence.
           status = errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              status.error_message());
+              status.message());
         }
         result->UpdateStatus(status, offset);
         if (status.ok()) {
@@ -508,13 +519,13 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    void EnsureRunnerThreadStarted(IteratorContext* ctx)
+    void EnsureThreadsStarted(IteratorContext* ctx)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!runner_thread_) {
-        auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-        runner_thread_ = ctx->StartThread(
-            kTFDataMapAndBatch,
-            std::bind(&Iterator::RunnerThread, this, ctx_copy));
+        auto new_ctx = std::make_shared<IteratorContext>(*ctx);
+        runner_thread_ =
+            ctx->StartThread(kTFDataMapAndBatch,
+                             std::bind(&Iterator::RunnerThread, this, new_ctx));
       }
     }
 
@@ -587,8 +598,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
 
           while (!busy()) {
             if (call_counter_ % dataset()->batch_size_ == 0) {
-              batch_results_.push_back(
-                  std::make_shared<BatchResult>(dataset()->batch_size_));
+              batch_results_.push_back(std::make_shared<BatchResult>(
+                  dataset()->batch_size_, ctx.get()));
             }
             int64_t offset = call_counter_++ % dataset()->batch_size_;
             new_calls.emplace_back(batch_results_.back(), offset);
@@ -614,7 +625,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     Status ReadBatchResult(IteratorContext* ctx, IteratorStateReader* reader,
                            size_t index) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       batch_results_.push_back(
-          std::make_shared<BatchResult>(dataset()->batch_size_));
+          std::make_shared<BatchResult>(dataset()->batch_size_, ctx));
       std::shared_ptr<BatchResult> result = batch_results_.back();
       string batch_prefix = strings::StrCat(kBatchResults, "_", index);
       mutex_lock l(result->mu);

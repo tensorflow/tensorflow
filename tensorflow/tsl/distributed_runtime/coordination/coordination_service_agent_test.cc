@@ -62,30 +62,44 @@ KeyValueEntry CreateKv(const std::string& key, const std::string& value) {
 class TestCoordinationClient : public CoordinationClient {
  public:
   TestCoordinationClient() = default;
-  // MOCK_METHOD does not work on Windows build, using deprecated MOCK_METHOD3
-  // instead.
-  MOCK_METHOD4(GetKeyValueAsync,
-               void(CallOptions* call_opts, const GetKeyValueRequest*,
-                    GetKeyValueResponse*, StatusCallback));
-  MOCK_METHOD3(TryGetKeyValueAsync,
-               void(const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
-                    StatusCallback));
-  MOCK_METHOD3(GetKeyValueDirAsync,
-               void(const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
-                    StatusCallback));
-  MOCK_METHOD4(RegisterTaskAsync, void(CallOptions*, const RegisterTaskRequest*,
-                                       RegisterTaskResponse*, StatusCallback));
-  MOCK_METHOD4(ShutdownTaskAsync, void(CallOptions*, const ShutdownTaskRequest*,
-                                       ShutdownTaskResponse*, StatusCallback));
-  MOCK_METHOD3(ResetTaskAsync, void(const ResetTaskRequest*, ResetTaskResponse*,
-                                    StatusCallback));
-  MOCK_METHOD3(ReportErrorToServiceAsync,
-               void(const ReportErrorToServiceRequest*,
-                    ReportErrorToServiceResponse*, StatusCallback));
-  MOCK_METHOD3(BarrierAsync,
-               void(const BarrierRequest*, BarrierResponse*, StatusCallback));
-  MOCK_METHOD3(GetTaskStateAsync, void(const GetTaskStateRequest*,
-                                       GetTaskStateResponse*, StatusCallback));
+  MOCK_METHOD(void, GetKeyValueAsync,
+              (CallOptions * call_opts, const GetKeyValueRequest*,
+               GetKeyValueResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, TryGetKeyValueAsync,
+              (const TryGetKeyValueRequest*, TryGetKeyValueResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, GetKeyValueDirAsync,
+              (const GetKeyValueDirRequest*, GetKeyValueDirResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, RegisterTaskAsync,
+              (CallOptions*, const RegisterTaskRequest*, RegisterTaskResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, ShutdownTaskAsync,
+              (CallOptions*, const ShutdownTaskRequest*, ShutdownTaskResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, ResetTaskAsync,
+              (const ResetTaskRequest*, ResetTaskResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, ReportErrorToServiceAsync,
+              (const ReportErrorToServiceRequest*,
+               ReportErrorToServiceResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, BarrierAsync,
+              (const BarrierRequest*, BarrierResponse*, StatusCallback),
+              (override));
+  MOCK_METHOD(void, GetTaskStateAsync,
+              (const GetTaskStateRequest*, GetTaskStateResponse*,
+               StatusCallback),
+              (override));
+  MOCK_METHOD(void, HeartbeatAsync,
+              (CallOptions*, const HeartbeatRequest*, HeartbeatResponse*,
+               StatusCallback),
+              (override));
 
 #define UNIMPLEMENTED(method)                                         \
   void method##Async(const method##Request* request,                  \
@@ -99,11 +113,6 @@ class TestCoordinationClient : public CoordinationClient {
   UNIMPLEMENTED(DeleteKeyValue);
   UNIMPLEMENTED(CancelBarrier);
 #undef UNIMPLEMENTED
-  void HeartbeatAsync(CallOptions* call_opts, const HeartbeatRequest* request,
-                      HeartbeatResponse* response,
-                      StatusCallback done) override {
-    done(errors::Unimplemented("HeartbeatAsync"));
-  }
   void ReportErrorToTaskAsync(CallOptions* call_opts,
                               const ReportErrorToTaskRequest* request,
                               ReportErrorToTaskResponse* response,
@@ -116,6 +125,8 @@ class CoordinationServiceAgentTest : public ::testing::Test {
  public:
   void SetUp() override {
     ON_CALL(*client_, RegisterTaskAsync(_, _, _, _))
+        .WillByDefault(InvokeArgument<3>(OkStatus()));
+    ON_CALL(*client_, HeartbeatAsync(_, _, _, _))
         .WillByDefault(InvokeArgument<3>(OkStatus()));
     ON_CALL(*client_, ShutdownTaskAsync(_, _, _, _))
         .WillByDefault(InvokeArgument<3>(OkStatus()));

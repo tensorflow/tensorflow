@@ -115,7 +115,7 @@ class SpaceToBatchNDOpDynamicModel : public SpaceToBatchNDOpModel {
   }
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(SpaceToBatchNDOpTest, InvalidShapeTest) {
   EXPECT_DEATH(
       SpaceToBatchNDOpConstModel({TensorType_FLOAT32, {1, 3, 3, 1}}, {2, 2},
@@ -222,17 +222,17 @@ TEST(SpaceToBatchNDOpTest, ComplexPaddingDynamicTest) {
                              }));
 }
 
-class QuantizedSpaceToBatchNDOpTest : public ::testing::Test {
- protected:
-  std::vector<Matcher<float>> DequantizedArrayNear(
-      const std::vector<float>& values, const float min, const float max) {
-    const float quantization_tolerance = (max - min) / 255.0;
-    return ArrayFloatNear(values, quantization_tolerance);
-  }
-};
+template <typename integer_dtype = int8_t>
+std::vector<Matcher<float>> DequantizedArrayNear(
+    const std::vector<float>& values, const float min, const float max) {
+  const float quantization_tolerance =
+      (max - min) / (std::numeric_limits<integer_dtype>::max() -
+                     std::numeric_limits<integer_dtype>::min());
+  return ArrayFloatNear(values, quantization_tolerance);
+}
 
-#ifdef GTEST_HAS_DEATH_TEST
-TEST_F(QuantizedSpaceToBatchNDOpTest, ZeroNotInQuantizationRange) {
+#if GTEST_HAS_DEATH_TEST
+TEST(QuantizedSpaceToBatchNDOpTest, ZeroNotInQuantizationRange) {
   // The test_util and actual quantization code currently ensure that the range
   // must include zero, but if that ever changes, this test will catch it.
   EXPECT_DEATH(SpaceToBatchNDOpConstModel m(
@@ -242,69 +242,74 @@ TEST_F(QuantizedSpaceToBatchNDOpTest, ZeroNotInQuantizationRange) {
 }
 #endif
 
-TEST_F(QuantizedSpaceToBatchNDOpTest, SimplePaddingConstTestUint8) {
-  SpaceToBatchNDOpConstModel m({TensorType_UINT8, {1, 5, 2, 1}, -1.0, 1.0},
-                               {3, 2}, {1, 0, 2, 0},
-                               {TensorType_UINT8, {}, -1.0, 1.0});
-  m.SetQuantizedInput<uint8_t>(
+template <typename integer_dtype>
+void SimplePaddingConstTestQuant() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  SpaceToBatchNDOpConstModel m(
+      {GetTensorType<integer_dtype>(), {1, 5, 2, 1}, 1.0f * kMin, 1.0f * kMax},
+      {3, 2}, {1, 0, 2, 0},
+      {GetTensorType<integer_dtype>(), {}, 1.0f * kMin, 1.0f * kMax});
+  m.SetQuantizedInput<integer_dtype>(
       {-0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9, 0.1});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 2, 2, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(DequantizedArrayNear(
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(DequantizedArrayNear<integer_dtype>(
                   {0, 0,   0, -0.5, 0, 0,    0, 0.6,  0, -0.1, 0, -0.7,
                    0, 0.2, 0, 0.8,  0, -0.3, 0, -0.9, 0, 0.4,  0, 0.1},
                   -1.0, 1.0)));
 }
 
-TEST_F(QuantizedSpaceToBatchNDOpTest, SimplePaddingConstTestInt8) {
-  SpaceToBatchNDOpConstModel m({TensorType_INT8, {1, 5, 2, 1}, -1.0, 1.0},
-                               {3, 2}, {1, 0, 2, 0},
-                               {TensorType_INT8, {}, -1.0, 1.0});
-  m.SetQuantizedInput<int8_t>(
-      {-0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9, 0.1});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 2, 2, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(DequantizedArrayNear(
-                  {0, 0,   0, -0.5, 0, 0,    0, 0.6,  0, -0.1, 0, -0.7,
-                   0, 0.2, 0, 0.8,  0, -0.3, 0, -0.9, 0, 0.4,  0, 0.1},
-                  -1.0, 1.0)));
+TEST(QuantizedSpaceToBatchNDOpTest, SimplePaddingConstTestUint8) {
+  SimplePaddingConstTestQuant<uint8_t>();
 }
 
-TEST_F(QuantizedSpaceToBatchNDOpTest, SimplePaddingDynamicTestUint8) {
-  SpaceToBatchNDOpDynamicModel m({TensorType_UINT8, {1, 5, 2, 1}, -1.0, 1.0},
-                                 {TensorType_UINT8, {}, -1.0, 1.0});
-  m.SetQuantizedInput<uint8_t>(
-      {-0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9, 0.1});
-  m.SetBlockShape({3, 2});
-  m.SetPaddings({1, 0, 2, 0});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 2, 2, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(DequantizedArrayNear(
-                  {0, 0,   0, -0.5, 0, 0,    0, 0.6,  0, -0.1, 0, -0.7,
-                   0, 0.2, 0, 0.8,  0, -0.3, 0, -0.9, 0, 0.4,  0, 0.1},
-                  -1.0, 1.0)));
+TEST(QuantizedSpaceToBatchNDOpTest, SimplePaddingConstTestInt8) {
+  SimplePaddingConstTestQuant<int8_t>();
 }
 
-TEST_F(QuantizedSpaceToBatchNDOpTest, SimplePaddingDynamicTestInt8) {
-  SpaceToBatchNDOpDynamicModel m({TensorType_INT8, {1, 5, 2, 1}, -1.0, 1.0},
-                                 {TensorType_INT8, {}, -1.0, 1.0});
-  m.SetQuantizedInput<int8_t>(
+TEST(QuantizedSpaceToBatchNDOpTest, SimplePaddingConstTestInt16) {
+  SimplePaddingConstTestQuant<int16_t>();
+}
+
+template <typename integer_dtype>
+void SimplePaddingDynamicTestQuant() {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+  SpaceToBatchNDOpDynamicModel m(
+      {GetTensorType<integer_dtype>(), {1, 5, 2, 1}, 1.0f * kMin, 1.0f * kMax},
+      {GetTensorType<integer_dtype>(), {}, 1.0f * kMin, 1.0f * kMax});
+  m.SetQuantizedInput<integer_dtype>(
       {-0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8, -0.9, 0.1});
   m.SetBlockShape({3, 2});
   m.SetPaddings({1, 0, 2, 0});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({6, 2, 2, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(DequantizedArrayNear(
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(DequantizedArrayNear<integer_dtype>(
                   {0, 0,   0, -0.5, 0, 0,    0, 0.6,  0, -0.1, 0, -0.7,
                    0, 0.2, 0, 0.8,  0, -0.3, 0, -0.9, 0, 0.4,  0, 0.1},
                   -1.0, 1.0)));
 }
 
-TEST_F(QuantizedSpaceToBatchNDOpTest, ComplexPaddingConstTest) {
+TEST(QuantizedSpaceToBatchNDOpTest, SimplePaddingDynamicTestUint8) {
+  SimplePaddingDynamicTestQuant<uint8_t>();
+}
+
+TEST(QuantizedSpaceToBatchNDOpTest, SimplePaddingDynamicTestInt8) {
+  SimplePaddingDynamicTestQuant<int8_t>();
+}
+
+TEST(QuantizedSpaceToBatchNDOpTest, SimplePaddingDynamicTestInt16) {
+  SimplePaddingDynamicTestQuant<int16_t>();
+}
+
+TEST(QuantizedSpaceToBatchNDOpTest, ComplexPaddingConstTest) {
   SpaceToBatchNDOpConstModel m({TensorType_UINT8, {1, 4, 2, 1}, -1.0, 1.0},
                                {3, 2}, {1, 1, 2, 4},
                                {TensorType_UINT8, {}, -1.0, 1.0});
@@ -321,7 +326,7 @@ TEST_F(QuantizedSpaceToBatchNDOpTest, ComplexPaddingConstTest) {
                   -1.0, 1.0)));
 }
 
-TEST_F(QuantizedSpaceToBatchNDOpTest, ComplexPaddingDynamicTest) {
+TEST(QuantizedSpaceToBatchNDOpTest, ComplexPaddingDynamicTest) {
   SpaceToBatchNDOpDynamicModel m({TensorType_UINT8, {1, 4, 2, 1}, -1.0, 1.0},
                                  {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput<uint8_t>({-0.1, 0.2, -0.3, 0.4, -0.5, 0.6, -0.7, 0.8});

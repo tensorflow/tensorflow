@@ -19,39 +19,58 @@ Before sending your pull requests, make sure you do the following:
 
 ### Typical Pull Request Workflow -
 
-**1. New PR** - As a contributor, you submit a New PR on GitHub. - We inspect
-every incoming PR and add certain labels to the PR such as `size:`, `comp:` etc.
-At this stage we check if the PR is valid and meets certain quality
-requirements. - For example - We check if the CLA is signed, PR has sufficient
-description, if applicable unit tests are added, if it is a reasonable
-contribution meaning it is not a single liner cosmetic PR.
+**1. New PR**
 
-**2. Valid?** - If the PR passes all the quality checks then we go ahead and
-assign a reviewer. - If the PR didn't meet the validation criteria, we request
-for additional changes to be made to PR to pass quality checks and send it back
-or on a rare occassion we may reject it.
+- As a contributor, you submit a New PR on GitHub.
+- We inspect every incoming PR and add certain labels to the PR such as `size:`,
+  `comp:` etc.  At this stage we check if the PR is valid and meets certain
+  quality requirements. For example, we check if the CLA is signed, PR has
+  sufficient description, if applicable unit tests are added, if it is a
+  reasonable contribution (meaning it is not a single liner cosmetic PR).
 
-**3. Review** - For Valid PR, reviewer (person familiar with the
-code/functionality) checks if the PR looks good or needs additional changes. -
-If all looks good, reviewer would approve the PR. - If a change is needed, the
-contributor is requested to make suggested change. - You make the change and
-submit for the review again. - This cycle repeats itself till the PR gets
-approved. - Note: As a friendly reminder we may reach out to you if the PR is
-awaiting your response for more than 2 weeks.
+**2. Valid?**
 
-**4. Approved** - Once the PR is approved, it gets `kokoro:force-run` label
-applied and it initiates CI/CD tests. - We can't move forward if these tests
-fail. - In such situations, we may request you to make further changes to your
-PR for the tests to pass. - Once the tests pass, we now bring all the code in
-the internal code base, using a job called "copybara".
+- If the PR passes all the quality checks then we go ahead and assign a
+  reviewer.
+- If the PR didn't meet the validation criteria, we request for additional
+  changes to be made to PR to pass quality checks and send it back or on a rare
+  occassion we may reject it.
 
-**5. Copy to G3** - Once the PR is in Google codebase, we make sure it
-integrates well with its dependencies and the rest of the system. - Rarely, but
-If the tests fail at this stage, we cannot merge the code. - If needed, we may
-come to you to make some changes. - At times, it may not be you, it may be us
-who may have hit a snag. - Please be patient while we work to fix this. - Once
-the internal tests pass, we go ahead and merge the code internally as well as
-externally on GitHub.
+**3. Review**
+
+- For Valid PR, reviewer (person familiar with the code/functionality) checks if
+  the PR looks good or needs additional changes.
+- If all looks good, reviewer would approve the PR.
+- If a change is needed, the contributor is requested to make suggested change.
+- You make the change and submit for the review again.
+- This cycle repeats itself till the PR gets approved.
+- Note: As a friendly reminder we may reach out to you if the PR is awaiting
+  your response for more than 2 weeks.
+
+**4. Approved**
+
+- Once the PR is approved, it gets `kokoro:force-run` label applied and it
+  initiates CI/CD tests.
+- We can't move forward if these tests fail.
+- In such situations, we may request you to make further changes to your PR for
+  the tests to pass.
+- Once the tests pass, we now bring all the code in the internal code base,
+  using a job called "copybara".
+
+**5. Copy to Google Internal codebase and run internal CI**
+
+- Once the PR is in Google codebase, we make sure it integrates well with its
+  dependencies and the rest of the system.
+- Rarely, but If the tests fail at this stage, we cannot merge the code.
+- If needed, we may come to you to make some changes. At times, it may not be
+  you, it may be us who may have hit a snag. Please be patient while we work to
+  fix this.
+- Once the internal tests pass, we go ahead and merge the code internally as
+  well as externally on GitHub.
+
+In a graphical form, the entire lifetime of a PR looks like
+
+![image](https://user-images.githubusercontent.com/323199/229561784-0a2f5509-b731-493f-ad88-bad487688c8d.png)
 
 ### Contributor License Agreements
 
@@ -243,7 +262,7 @@ There are two ways to run TensorFlow unit tests.
     For a single component e.g. softmax op:
 
     ```bash
-    bazel test ${flags} tensorflow/python/kernel_tests:softmax_op_test
+    bazel test ${flags} tensorflow/python/kernel_tests/nn_ops:softmax_op_test
     ```
 
     For a single/parameterized test e.g. `test_capture_variables` in

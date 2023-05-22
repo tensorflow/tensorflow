@@ -91,7 +91,6 @@ class BatchFunctionKernel : public AsyncOpKernel {
   std::vector<int32> allowed_batch_sizes_;
   NameAttrList func_;
   absl::optional<FunctionLibraryRuntime::Handle> fhandle_ TF_GUARDED_BY(mu_);
-  FunctionLibraryRuntime* flib_;
   bool enable_large_batch_splitting_;
   bool has_attribute_enable_large_batch_splitting_;
   bool enable_adaptive_batch_threads_ = false;
@@ -106,6 +105,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
     int32 initial_in_flight_batches_limit = kInitialInflightBatches;
     int32 max_in_flight_batches_limit = kMaxInflightBatches;
     int32 batches_to_average_over = kBatchesToAverageOver;
+    int64 full_batch_scheduling_boost_micros = -1;
   };
   absl::optional<AdaptiveBatchSchedulerOptions>
       adaptive_batch_scheduler_options_ = absl::nullopt;

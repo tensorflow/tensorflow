@@ -45,6 +45,8 @@ from tensorflow.lite.testing.op_tests.atan2 import make_atan2_tests
 from tensorflow.lite.testing.op_tests.batch_to_space_nd import make_batch_to_space_nd_tests
 from tensorflow.lite.testing.op_tests.batchmatmul import make_batchmatmul_tests
 from tensorflow.lite.testing.op_tests.binary_op import make_add_tests, make_div_tests, make_sub_tests, make_mul_tests, make_pow_tests, make_floor_div_tests, make_floor_mod_tests, make_squared_difference_tests
+from tensorflow.lite.testing.op_tests.bitcast import make_bitcast_tests
+from tensorflow.lite.testing.op_tests.bitwise_xor import make_bitwise_xor_tests
 from tensorflow.lite.testing.op_tests.broadcast_args import make_broadcast_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_gradient_args import make_broadcast_gradient_args_tests
 from tensorflow.lite.testing.op_tests.broadcast_to import make_broadcast_to_tests
@@ -82,6 +84,7 @@ from tensorflow.lite.testing.op_tests.eye import make_eye_tests
 from tensorflow.lite.testing.op_tests.fill import make_fill_tests, make_fill_16_tests
 from tensorflow.lite.testing.op_tests.floor import make_floor_tests
 from tensorflow.lite.testing.op_tests.fully_connected import make_fully_connected_tests
+from tensorflow.lite.testing.op_tests.fully_connected_4bit_hybrid import make_fully_connected_4bit_hybrid_tests
 from tensorflow.lite.testing.op_tests.fused_batch_norm import make_fused_batch_norm_tests
 from tensorflow.lite.testing.op_tests.gather import make_gather_tests
 from tensorflow.lite.testing.op_tests.gather_nd import make_gather_nd_tests
@@ -148,6 +151,7 @@ from tensorflow.lite.testing.op_tests.reverse_sequence import make_reverse_seque
 from tensorflow.lite.testing.op_tests.reverse_v2 import make_reverse_v2_tests
 from tensorflow.lite.testing.op_tests.rfft import make_rfft_tests
 from tensorflow.lite.testing.op_tests.rfft2d import make_rfft2d_tests
+from tensorflow.lite.testing.op_tests.right_shift import make_right_shift_tests
 from tensorflow.lite.testing.op_tests.roll import make_roll_tests
 from tensorflow.lite.testing.op_tests.roll import make_roll_with_constant_tests
 from tensorflow.lite.testing.op_tests.round import make_round_tests
@@ -278,6 +282,8 @@ class Options:
     self.enable_dynamic_update_slice = False
     # Whether to disable unrolling batch matmul.
     self.disable_batchmatmul_unfold = False
+    # Experimental low bit options
+    self.experimental_low_bit_qat = False
 
 
 def _prepare_dir(options):

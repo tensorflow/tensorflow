@@ -20,7 +20,7 @@ limitations under the License.
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 
 namespace tflite {

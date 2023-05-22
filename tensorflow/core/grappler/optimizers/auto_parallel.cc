@@ -81,11 +81,12 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   graph_ = item.graph;
   LOG(INFO) << "Original graph size: " << graph_.node_size();
   if (item.fetch.empty()) {
-    return Status(error::INVALID_ARGUMENT, "No fetch nodes provided.");
+    return Status(absl::StatusCode::kInvalidArgument,
+                  "No fetch nodes provided.");
   }
 
   if (item.MainVariables().empty()) {
-    return Status(error::INVALID_ARGUMENT, "No variables provided.");
+    return Status(absl::StatusCode::kInvalidArgument, "No variables provided.");
   }
 
   for (const auto& init : item.init_ops) {

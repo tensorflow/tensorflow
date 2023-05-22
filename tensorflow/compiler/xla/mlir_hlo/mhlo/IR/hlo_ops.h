@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the MHLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
-#define MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
+#ifndef MLIR_HLO_MHLO_IR_HLO_OPS_H
+#define MLIR_HLO_MHLO_IR_HLO_OPS_H
 
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"
@@ -92,8 +92,6 @@ void printConvolutionDimensions(AsmPrinter &p, Operation *,
 ParseResult parseConvolutionDimensions(AsmParser &parser,
                                        ConvDimensionNumbersAttr &dnums);
 
-FailureOr<SmallVector<int64_t>> parseIntArray(AsmParser &parser);
-void printIntArray(AsmPrinter &printer, ArrayRef<int64_t> ints);
 }  // end namespace mhlo
 }  // end namespace mlir
 
@@ -111,4 +109,4 @@ SortOp createSortOp(PatternRewriter *rewriter, const Location &loc,
 }  // end namespace mhlo
 }  // end namespace mlir
 
-#endif  // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_H
+#endif  // MLIR_HLO_MHLO_IR_HLO_OPS_H

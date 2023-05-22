@@ -138,9 +138,13 @@ Status NewThreadPoolFromThreadPoolOptions(
   return OkStatus();
 }
 
-thread::ThreadPool* GlobalThreadPool(const SessionOptions& options) {
+// Function to create a global thread pool for sessions. The thread number is
+// set as `num_threads` if `num_threads` > 0, otherwise it will be parsed from
+// SessionOptions.
+thread::ThreadPool* GlobalThreadPool(const SessionOptions& options,
+                                     int32_t num_threads) {
   static thread::ThreadPool* const thread_pool =
-      NewThreadPoolFromSessionOptions(options);
+      NewThreadPoolFromSessionOptions(options, num_threads);
   return thread_pool;
 }
 
@@ -338,7 +342,6 @@ DirectSession::DirectSession(const SessionOptions& options,
     thread_pools_.emplace_back(NewThreadPoolFromSessionOptions(options_),
                                true /* owned */);
   } else {
-    thread_pools_.emplace_back(GlobalThreadPool(options), false /* owned */);
     // Run locally if environment value of TF_NUM_INTEROP_THREADS is negative
     // and config.inter_op_parallelism_threads is unspecified or negative.
     static const int env_num_threads = NumInterOpThreadsFromEnvironment();
@@ -347,13 +350,20 @@ DirectSession::DirectSession(const SessionOptions& options,
          env_num_threads < 0)) {
       run_in_caller_thread_ = true;
     }
+
+    // `run_in_caller_thread_` means the session is expected to run with single
+    // thread, but it will be dispatched to global thread pool if there're
+    // multiple executors. To keep consistent behavior, set thread number to 1.
+    thread_pools_.emplace_back(
+        GlobalThreadPool(options, run_in_caller_thread_ ? 1 : 0),
+        false /* owned */);
   }
   // The default value of sync_on_finish will be flipped soon and this
   // environment variable will be removed as well.
   const Status status =
       ReadBoolFromEnvVar("TF_SYNC_ON_FINISH", true, &sync_on_finish_);
   if (!status.ok()) {
-    LOG(ERROR) << status.error_message();
+    LOG(ERROR) << status.message();
   }
   session_handle_ =
       strings::StrCat("direct", strings::FpToString(random::New64()));
@@ -896,7 +906,7 @@ Status DirectSession::Run(const RunOptions& run_options,
   }
   const Status s = call_frame.SetArgs(feed_args);
   if (errors::IsInternal(s)) {
-    return errors::InvalidArgument(s.error_message());
+    return errors::InvalidArgument(s.message());
   } else if (!s.ok()) {
     return s;
   }
@@ -917,7 +927,7 @@ Status DirectSession::Run(const RunOptions& run_options,
     const Status s = call_frame.ConsumeRetvals(
         &sorted_outputs, /* allow_dead_tensors = */ false);
     if (errors::IsInternal(s)) {
-      return errors::InvalidArgument(s.error_message());
+      return errors::InvalidArgument(s.message());
     } else if (!s.ok()) {
       return s;
     }
@@ -1363,11 +1373,12 @@ Status DirectSession::CreateExecutors(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       /*parent=*/nullptr, session_metadata,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return OkStatus();
-          }}));
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }}));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1847,7 +1858,7 @@ void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
     const bool notified =
         WaitForNotificationWithTimeout(notification, timeout_in_us);
     if (!notified) {
-      return Status(error::DEADLINE_EXCEEDED,
+      return Status(absl::StatusCode::kDeadlineExceeded,
                     "Timed out waiting for notification");
     }
   } else {

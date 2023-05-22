@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
@@ -47,8 +49,8 @@ using TypePredicate = ::llvm::function_ref<bool(Type)>;
 
 // Returns vector shape if the element type is matching the predicate (scalars
 // that do match the predicate have shape equal to `{1}`).
-static llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
-                                                           TypePredicate pred) {
+static std::optional<SmallVector<int64_t, 2>> vectorShape(Type type,
+                                                          TypePredicate pred) {
   // If the type matches the predicate then its shape is `{1}`.
   if (pred(type)) return SmallVector<int64_t, 2>{1};
 
@@ -58,7 +60,7 @@ static llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
     return llvm::to_vector<2>(vectorType.getShape());
   }
 
-  return llvm::None;
+  return std::nullopt;
 }
 
 // Returns vector shape of the type. If the type is a scalar returns `1`.

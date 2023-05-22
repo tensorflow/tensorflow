@@ -15,6 +15,11 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 
 #include <deque>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
@@ -122,14 +127,6 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     params.op_version = op_version_;
     return name_utils::DatasetDebugString(ParallelMapDatasetOp::kDatasetType,
                                           params);
-  }
-
-  int64_t CardinalityInternal() const override {
-    if (preserve_cardinality_) {
-      return input_->Cardinality();
-    } else {
-      return kUnknownCardinality;
-    }
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -271,8 +268,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
           &iter_ctx, this, prefix(), &input_impl_));
       ctx->MergeCheckpoint(iter_ctx.checkpoint());
-      return dataset()->captured_func_->Instantiate(
-          ctx, &instantiated_captured_func_);
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->Instantiate(
+          ctx, &instantiated_captured_func_));
+      if (ctx->warm_start() && !ctx->is_restoring()) {
+        EnsureThreadsStarted(ctx);
+      }
+      return OkStatus();
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -335,20 +336,19 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
         std::string element_prefix =
-            absl::StrCat(kInvocationResults, "[", i, "]");
+            absl::StrCat(prefix(), "_", kInvocationResults, "[", i, "]");
         TF_RETURN_IF_ERROR(
             WriteStatusLocked(writer, element_prefix, result.status));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(element_prefix, "_", kSize)),
-            result.return_values.size()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(element_prefix, kSize,
+                                               result.return_values.size()));
         for (size_t j = 0; j < result.return_values.size(); j++) {
-          TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(absl::StrCat(element_prefix, "[", j, "]")),
-              result.return_values[j]));
+          TF_RETURN_IF_ERROR(writer->WriteTensor(element_prefix,
+                                                 absl::StrCat("[", j, "]"),
+                                                 result.return_values[j]));
         }
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(element_prefix, "_", kEndOfInput)),
-            static_cast<int64_t>(result.end_of_input)));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(element_prefix, kEndOfInput,
+                                static_cast<int64_t>(result.end_of_input)));
       }
       return OkStatus();
     }
@@ -363,17 +363,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           &invocation_results_size));
       DCHECK(invocation_results_.empty());
       for (size_t i = 0; i < invocation_results_size; i++) {
-        invocation_results_.push_back(std::make_shared<InvocationResult>());
+        invocation_results_.push_back(std::make_shared<InvocationResult>(ctx));
         auto& result = *invocation_results_.back();
         std::string element_prefix =
-            absl::StrCat(kInvocationResults, "[", i, "]");
+            absl::StrCat(prefix(), "_", kInvocationResults, "[", i, "]");
         TF_RETURN_IF_ERROR(
             ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
           int64_t size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(absl::StrCat(element_prefix, "_", kSize)), &size));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
             return errors::InvalidArgument(
@@ -384,14 +383,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         result.return_values.reserve(num_return_values);
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
-          TF_RETURN_IF_ERROR(reader->ReadTensor(
-              ctx->flr(), full_name(absl::StrCat(element_prefix, "[", j, "]")),
-              &result.return_values.back()));
+          TF_RETURN_IF_ERROR(reader->ReadTensor(ctx->flr(), element_prefix,
+                                                absl::StrCat("[", j, "]"),
+                                                &result.return_values.back()));
         }
         int64_t end_of_input;
-        TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(absl::StrCat(element_prefix, "_", kEndOfInput)),
-            &end_of_input));
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(element_prefix, kEndOfInput, &end_of_input));
         result.end_of_input = static_cast<bool>(end_of_input);
         RecordBufferEnqueue(ctx, result.return_values);
         result.notification.Notify();
@@ -425,14 +423,16 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     struct InvocationResult {
-      InvocationResult() : uid(tensorflow::EnvTime::NowNanos()) {}
+      explicit InvocationResult(IteratorContext* ctx)
+          : uid(tensorflow::EnvTime::NowNanos()),
+            checkpoint(MemoryCheckpoint{ctx->id_registry()}) {}
 
       Notification notification;
       Status status;
       std::vector<Tensor> return_values;
       bool end_of_input = false;
-      MemoryCheckpoint checkpoint;
       const int64_t uid;
+      MemoryCheckpoint checkpoint;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -481,7 +481,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       std::vector<Tensor> input_element;
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
                                             &result->end_of_input);
-      result->checkpoint = ctx->checkpoint();
+      result->checkpoint.Merge(ctx->checkpoint());
       if (result->end_of_input || !result->status.ok()) {
         CallCompleted(ctx, result);
         return;
@@ -531,7 +531,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                          const std::shared_ptr<InvocationResult>& result,
                          std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) TF_LOCKS_EXCLUDED(*mu_) {
-      ctx->MergeCheckpoint(result->checkpoint);
+      ctx->MergeCheckpoint(&result->checkpoint);
       if (!result->end_of_input && result->status.ok()) {
         *out_tensors = std::move(result->return_values);
         RecordBufferDequeue(ctx, *out_tensors);
@@ -545,7 +545,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           // former may be interpreted by a caller as the end of sequence.
           return errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              result->status.error_message());
+              result->status.message());
         } else {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -583,7 +583,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             return;
           }
           while (!busy()) {
-            invocation_results_.push_back(std::make_shared<InvocationResult>());
+            invocation_results_.push_back(
+                std::make_shared<InvocationResult>(ctx.get()));
             new_calls.push_back(invocation_results_.back());
             num_calls_++;
           }
@@ -628,7 +629,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       return true;
     }
 
-    void StatsThread(const std::shared_ptr<IteratorContext>& ctx) {
+    void StatsThread(const std::shared_ptr<IteratorContext>& ctx)
+        TF_LOCKS_EXCLUDED(*mu_) {
       for (int64_t step = 0;; ++step) {
         int num_calls;
         int num_parallel_calls;
@@ -660,12 +662,12 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                              const std::string& prefix, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
-          writer->WriteScalar(full_name(absl::StrCat(prefix, "_", kErrorCode)),
+          writer->WriteScalar(prefix, absl::StrCat("_", kErrorCode),
                               static_cast<int64_t>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
-            status.error_message()));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(prefix,
+                                               absl::StrCat("_", kErrorMessage),
+                                               std::string(status.message())));
       }
       return OkStatus();
     }
@@ -674,15 +676,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                             const std::string& prefix, Status* status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64_t code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(absl::StrCat(prefix, "_", kErrorCode)), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(prefix, absl::StrCat("_", kErrorCode), &code_int));
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(absl::StrCat(prefix, "_", kErrorMessage)),
-            &error_message));
+            prefix, absl::StrCat("_", kErrorMessage), &error_message));
         *status = Status(code, error_message);
       } else {
         *status = OkStatus();

@@ -1,7 +1,7 @@
 namespace {
 
-tsl::Status SetExecutorStructFn(void* library_handle) { // TENSORFLOW_STATUS_OK
-  auto* executor_fn = tensorflow::tpu::ExecutorApiFn();
+tsl::Status SetExecutorStructFn(void* library_handle) {  // TENSORFLOW_STATUS_OK
+  auto* executor_fn = stream_executor::tpu::ExecutorApiFn();
 
   TFTPU_SET_FN(executor_fn, TpuPlatform_New);
   TFTPU_SET_FN(executor_fn, TpuPlatform_Free);

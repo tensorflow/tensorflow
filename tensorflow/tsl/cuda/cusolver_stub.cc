@@ -51,9 +51,7 @@ cusolverStatus_t GetSymbolNotFoundError() {
 }
 }  // namespace
 
-#if CUDA_VERSION < 10000
-#include "tensorflow/tsl/cuda/cusolver_dense_9_0.inc"
-#elif CUDA_VERSION < 10010
+#if CUDA_VERSION < 10010
 #include "tensorflow/tsl/cuda/cusolver_dense_10_0.inc"
 #elif CUDA_VERSION < 10020
 #include "tensorflow/tsl/cuda/cusolver_dense_10_1.inc"

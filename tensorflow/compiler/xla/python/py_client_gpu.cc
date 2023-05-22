@@ -17,23 +17,26 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/tsl/platform/errors.h"
 #if TENSORFLOW_USE_ROCM
 #include "rocm/include/hip/hip_runtime.h"
 #else
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 
 #if TENSORFLOW_USE_ROCM
+#define gpuSuccess hipSuccess
 #define gpuStreamHandle hipStream_t
 #define gpuMemcpyAsync hipMemcpyAsync
 #define gpuStreamSynchronize hipStreamSynchronize
 #define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost
 #define gpuMemcpyHostToDevice hipMemcpyHostToDevice
 #else
+#define gpuSuccess cudaSuccess
 #define gpuStreamHandle CUstream
 #define gpuMemcpyAsync cudaMemcpyAsync
 #define gpuStreamSynchronize cudaStreamSynchronize
@@ -69,10 +72,12 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     void* buf = new char[arg.size_in_bytes];
     host_input_buffers[i] = buf;
     // TODO(b/238441608): Use pinned memory here to speed up the transfer.
-    gpuMemcpyAsync(buf, buffers[i], arg.size_in_bytes, gpuMemcpyDeviceToHost,
-                   stream);
+    auto gpu_res = gpuMemcpyAsync(buf, buffers[i], arg.size_in_bytes,
+                                  gpuMemcpyDeviceToHost, stream);
+    CHECK_EQ(gpu_res, gpuSuccess) << "Failed to gpuMemcpyAsync";
   }
-  gpuStreamSynchronize(stream);
+  CHECK_EQ(gpuStreamSynchronize(stream), gpuSuccess)
+      << "Failed to gpuStreamSynchronize";
   py::gil_scoped_acquire gil;
   py::tuple host_input_arrays(arity);
   for (size_t i = 0; i < arity; ++i) {
@@ -108,8 +113,10 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
     absl::Span<int64_t const> strides(
         reinterpret_cast<const int64_t*>(array.strides()), array.ndim());
     if (strides == result.expected_strides) {
-      gpuMemcpyAsync(buffers[arity + i], array.data(), result.size_in_bytes,
-                     gpuMemcpyHostToDevice, stream);
+      auto gpu_res =
+          gpuMemcpyAsync(buffers[arity + i], array.data(), result.size_in_bytes,
+                         gpuMemcpyHostToDevice, stream);
+      CHECK_EQ(gpu_res, gpuSuccess) << "Failed to gpuMemcpyAsync";
     } else {
       void* temp = new char[result.size_in_bytes];
       temp_buffers.push_back(temp);
@@ -122,12 +129,15 @@ void XlaPythonGpuCallback(gpuStreamHandle stream, void** buffers,
         throw xla::XlaRuntimeError(plan.status().ToString());
       }
       plan.value()->Execute(array.data(), temp);
-      gpuMemcpyAsync(buffers[arity + i], temp, result.size_in_bytes,
-                     gpuMemcpyHostToDevice, stream);
+      auto gpu_res =
+          gpuMemcpyAsync(buffers[arity + i], temp, result.size_in_bytes,
+                         gpuMemcpyHostToDevice, stream);
+      CHECK_EQ(gpu_res, gpuSuccess) << "Failed to gpuMemcpyAsync";
     }
   }
   py::gil_scoped_release release;
-  gpuStreamSynchronize(stream);
+  CHECK_EQ(gpuStreamSynchronize(stream), gpuSuccess)
+      << "Failed to gpuStreamSynchronize";
   for (int i = 0; i < temp_buffers.size(); ++i) {
     delete[] static_cast<char*>(temp_buffers[i]);
   }

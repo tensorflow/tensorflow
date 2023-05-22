@@ -31,6 +31,10 @@ tf_class {
     name: "worker_addresses"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "worker_timeout_ms"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
   }

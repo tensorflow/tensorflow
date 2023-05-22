@@ -21,7 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/compiler/jit/tests/xla_compilation_cache_test_helper.h"
+#include "tensorflow/compiler/jit/tests/device_compiler_test_helper.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 

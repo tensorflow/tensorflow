@@ -30,15 +30,6 @@ from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
-# The following constant determines the (maximum) number of file groups to use
-# for index-based shuffling. A dataset reader will be constructed for each file
-# group and the number of file groups is kept constant to avoid the size of the
-# dataset graph to be linear in the number of files (which could slow down graph
-# construction). This constant also determines the parallelism of the graph
-# execution and the current value has been empirically chosen to offer a good
-# tradeoff between performance of graph construction and graph execution.
-_NUM_INDEX_SHUFFLE_FILE_GROUPS = 10
-
 
 class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that fuses `shuffle` and `repeat`."""
@@ -121,13 +112,100 @@ def shuffle_and_repeat(buffer_size, count=None, seed=None):
   return _apply_fn
 
 
-# TODO(jsimsa): Expose this method in the public API. When you do, define
-# `FileInfo` class to encapsulate the information provided through the
-# `file_infos` argument.
+def _process_file_infos(file_infos):
+  """Computes aggregate information about files to read.
+
+  The method collects information about the files to read, the total number of
+  elements, and arrays that can be used to account for elements to be skipped,
+  which can be specified via the "skip" and "take" keys.
+
+  To account for elements to skip, the range of each file can be divided into
+  three regions:
+  - S (elements to skip)
+  - T (elements to read)
+  - R (remainder of elements that will also be skipped)
+
+  The `thresholds` and `offsets` arrays are initialized as follows:
+  `thresholds = [0, T_1, T_1 + T_2, ...]` and
+  `offsets = [S_1, S_1 + R_1 + S_2, S_1 + R_1 + S_2 + R_2 + S_3, ...]`
+
+  This makes it possible to map an index from a contiguous range
+  `(0...num_elements_to_read)` to an index in the range of all elements,
+  skipping over elements as per the "skip" and "take" keys values. In
+  particular, for a given input index `X`, we find the greatest `thresholds`
+  value that is smaller or equal to `X`. Let `t(X)` denotes such index in the
+  `thresholds` array. The output index is computed as `X + offsets[t(X)]`.
+
+  Args:
+    file_infos: See `file_infos` argument of `index_shuffle` for details.
+
+  Returns:
+    A dictionary containing the following keys:
+      - `files`, the vector of pathnames of files to read
+      - `num_elements`, an integer identifying the total number of elements
+      - `offsets`, the vector of offsets to use for index adjustment (in case
+        any elements should be skipped)
+      - `thresholds`, the vector of thresholds to use for index adjustment (in
+        case any elements should be skipped)
+  """
+  files = []
+  num_elements = 0
+  offsets = np.int64([])
+  offset_sum = 0
+  thresholds = np.int64([])
+  threshold_sum = 0
+  adjustment_needed = False
+  for file_info in file_infos:
+    files.append(file_info["path"])
+    skip = 0
+    if "skip" in file_info:
+      if file_info["skip"] < -1:
+        raise ValueError("`skip` should be greater than `-1` but got {}".format(
+            file_info["skip"]))
+      if file_info["skip"] == -1:
+        skip = file_info["num_elements"]
+      else:
+        skip = min(file_info["skip"], file_info["num_elements"])
+    take = file_info["num_elements"] - skip
+    if "take" in file_info:
+      if file_info["take"] < -1:
+        raise ValueError("`take` should be greater than `-1` but got {}".format(
+            file_info["take"]))
+      # `file_info["take"] == -1` is a no-op
+      if file_info["take"] != -1:
+        take = min(file_info["take"], take)
+    remainder = file_info["num_elements"] - skip - take
+    if take != file_info["num_elements"]:
+      adjustment_needed = True
+    num_elements += take
+    offsets = np.append(offsets, offset_sum + skip)
+    offset_sum += skip + remainder
+    thresholds = np.append(thresholds, threshold_sum)
+    threshold_sum += take
+  result = {"files": files, "num_elements": num_elements}
+  if adjustment_needed:
+    result["offsets"] = offsets
+    result["thresholds"] = thresholds
+  return result
+
+
+def _adjust_index(index, thresholds, offsets):
+  """Adjusts index to account for elements to be skipped."""
+  t_index = array_ops.shape(
+      array_ops.boolean_mask(
+          thresholds,
+          math_ops.less_equal(thresholds, index)))[0] - 1
+  return index + array_ops.gather(offsets, t_index)
+
+
+# TODO(jsimsa): Expose this method in the public API. When we do, consider
+# defining `FileInfo` as a public API to encapsulate the information provided
+# through the `file_infos` argument.
 def index_shuffle(file_infos,
                   reader_factory,
                   seed=None,
-                  reshuffle_each_iteration=False):
+                  reshuffle_each_iteration=False,
+                  num_parallel_calls=dataset_ops.AUTOTUNE):
   """Creates a (globally) shuffled dataset from the given set of files.
 
   Unlike `tf.data.Dataset.shuffle()`, which uses an in-memory buffer to shuffle
@@ -156,80 +234,39 @@ def index_shuffle(file_infos,
     reshuffle_each_iteration: (Optional.) A `tf.bool` scalar `tf.Tensor`, that
       determines whether to change the shuffle order each iteration. Defaults to
       `False`.
+    num_parallel_calls: (Optional.) A `tf.int64` scalar `tf.Tensor`, that
+      determines the maximum number of random access operations to perform
+      in parallel. By default, the tf.data runtime uses autotuning to determine
+      the value dynamically.
 
   Returns:
-    A `tf.data.Dataset` object, representing globbally shuffled dataset of
+    A `tf.data.Dataset` object, representing a globally shuffled dataset of
     the input data.
   """
 
-  def idx(i):
-    return i % _NUM_INDEX_SHUFFLE_FILE_GROUPS
+  result = _process_file_infos(file_infos)
 
-  # Create a sequence of (file_index, record_index) pairs.
-  #
-  # TODO(jsimsa): Implement this using tf.data and TF ops.
-  indices = []
-  counters = [0] * _NUM_INDEX_SHUFFLE_FILE_GROUPS
-  file_groups = [[] for _ in range(_NUM_INDEX_SHUFFLE_FILE_GROUPS)]
-  for i, file_info in enumerate(file_infos):
-    num_elements = file_info["num_elements"]
-    skip = 0
-    if "skip" in file_info:
-      skip = file_info["skip"]
-      if skip == -1:
-        num_elements = 0
-      else:
-        num_elements = max(0, num_elements - skip)
-    if "take" in file_info and file_info["take"] >= 0:
-      num_elements = min(num_elements, file_info["take"])
-    indices.extend([
-        (idx(i), j + skip + counters[idx(i)]) for j in range(num_elements)
-    ])
-    counters[idx(i)] += file_info["num_elements"]
-    file_groups[idx(i)].append(file_info["path"])
+  def sequential_index_shuffle(seeds):
+    dataset = dataset_ops.Dataset.range(result["num_elements"])
 
-  if not indices:
-    return dataset_ops.Dataset.from_tensor_slices([])
+    def read_element(dataset, index):
+      # 1) Shuffle the index.
+      shuffled_index = stateless_random_ops.index_shuffle(
+          index, seeds, result["num_elements"] - 1)
+      # 2) If needed, adjust the index to the non-contiguous range.
+      if "thresholds" in result and "offsets" in result:
+        shuffled_index = _adjust_index(shuffled_index, result["thresholds"],
+                                       result["offsets"])
+      # 3) Perform the read.
+      return random_access.at(dataset, shuffled_index)
 
-  def make_shuffled_dataset(seeds):
-    # First component of the shuffled sequence of `(file_index, record_index)`
-    # pairs identifies the order in which elements should be read from
-    # different files.
-    shuffled_indices = stateless_random_ops.stateless_shuffle(
-        np.int64(indices), seeds)
-    file_indices = shuffled_indices[:, 0]
-    choice_dataset = dataset_ops.Dataset.from_tensor_slices(file_indices)
-    datasets = []
-    # Second component of the shuffled sequence of `(file_,id, record_index)`
-    # pairs identifies the records to read (relative to a file).
-    record_indices = shuffled_indices[:, 1]
-    for i, file_group in enumerate(file_groups):
-      if not file_group:
-        break
-
-      # Create a dataset that contains the order in which records should be
-      # read from this file, using `file_indices` to select subsequence of
-      # `record_indices` for the i-th file.
-      dataset = dataset_ops.Dataset.from_tensor_slices(
-          array_ops.boolean_mask(record_indices,
-                                 math_ops.equal(file_indices, np.int64(i))))
-
-      def read_element(dataset, index):
-        return random_access.at(dataset, index)
-
-      # Evaluate `reader_factory()` eagerly to avoid the dataset being created
-      # on every lookup.
-      map_func = functools.partial(read_element, reader_factory(file_group))
-
-      # NOTE: The number of product of file groups and parallel reads should
-      # not be much greater than the size of the threadpool (which defaults to
-      # the number of available CPUs).
-      dataset = dataset.map(map_func, num_parallel_calls=4)
-      datasets.append(dataset.prefetch(1))
-    return dataset_ops.Dataset.choose_from_datasets(
-        datasets, choice_dataset, stop_on_empty_dataset=False)
+    # We evaluate `reader_factory()` eagerly to prevent the dataset from being
+    # created on every lookup.
+    map_func = functools.partial(read_element, reader_factory(result["files"]))
+    return dataset.map(map_func, num_parallel_calls=num_parallel_calls)
 
   rng_ds = dataset_ops.Dataset.random(
       seed=seed,
-      rerandomize_each_iteration=reshuffle_each_iteration).take(2).batch(2)
-  return rng_ds.flat_map(make_shuffled_dataset)
+      rerandomize_each_iteration=reshuffle_each_iteration)
+  rng_ds = rng_ds.take(2).batch(2, drop_remainder=True)
+  return rng_ds.flat_map(sequential_index_shuffle)

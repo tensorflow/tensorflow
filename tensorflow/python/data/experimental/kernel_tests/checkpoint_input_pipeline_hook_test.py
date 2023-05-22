@@ -19,17 +19,16 @@ from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.data.experimental.ops import iterator_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow_estimator.python.estimator import estimator
-from tensorflow_estimator.python.estimator import model_fn
 
 
 # TODO(b/123904664)
@@ -42,12 +41,12 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     del config
     global_step = training_util.get_or_create_global_step()
     update_global_step_op = global_step.assign_add(1)
-    latest_feature = variables.VariableV1(
+    latest_feature = variable_v1.VariableV1(
         0, name='latest_feature', dtype=dtypes.int64)
     store_latest_feature_op = latest_feature.assign(features)
     ops.add_to_collection('my_vars', global_step)
     ops.add_to_collection('my_vars', latest_feature)
-    return model_fn.EstimatorSpec(
+    return estimator_lib.EstimatorSpec(
         mode='train',
         train_op=control_flow_ops.group(
             [update_global_step_op, store_latest_feature_op]),
@@ -73,7 +72,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     def _input_fn():
       return dataset_ops.Dataset.range(10)
 
-    est = estimator.Estimator(model_fn=self._model_fn)
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
 
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
@@ -88,7 +87,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
       iterator = ds.make_one_shot_iterator()
       return iterator.get_next()
 
-    est = estimator.Estimator(model_fn=self._model_fn)
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
 
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
@@ -101,7 +100,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     def _input_fn():
       return dataset_ops.Dataset.range(10)
 
-    est = estimator.Estimator(model_fn=self._model_fn)
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
 
     est.train(_input_fn, steps=2, hooks=[self._build_iterator_saver_hook(est)])
     self.assertSequenceEqual(self._read_vars(est.model_dir), (2, 1))
@@ -117,7 +116,7 @@ class CheckpointInputPipelineHookTest(test.TestCase, parameterized.TestCase):
     def _input_fn():
       return constant_op.constant(1, dtype=dtypes.int64)
 
-    est = estimator.Estimator(model_fn=self._model_fn)
+    est = estimator_lib.Estimator(model_fn=self._model_fn)
 
     with self.assertRaises(ValueError):
       est.train(

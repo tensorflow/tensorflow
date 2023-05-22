@@ -20,9 +20,110 @@ limitations under the License.
 #include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 
 namespace xla {
 namespace gpu {
+
+namespace {
+
+// Estimated values in the absence of easy ways to query them.
+static constexpr absl::Duration kKernelLaunchOverhead = absl::Microseconds(1);
+static constexpr float kL2CacheSpeedup = 2.5;
+static constexpr float kL1CacheSpeedup = 8;
+// A very conservative estimate. L1 size varies because it can be dynamically
+// configured as shared memory; there is no easy way to query its actual size;
+// also we do not count what occupies cache, but rather claim that what is
+// much smaller than the cache size will likely stay in it.
+// For reference, it can be up to 256 kB per SM on RTX A6000.
+static constexpr float kL1CacheSizePerSM = 2 * 1024;
+
+// Returns whether a fusion uses the parameter at the given index elementwise
+// from its root.
+bool FusionUsesParameterElementwiseFromRoot(
+    const HloInstruction* fusion, int parameter_index,
+    const GpuHloCostAnalysis* cost_analysis) {
+  return cost_analysis->CommonElementwiseUtilization(
+             fusion->fused_parameter(parameter_index),
+             fusion->fused_expression_root()) == 1.f;
+}
+
+// Estimate read time of n_bytes_total bytes from global memory on a
+// given GPU. Account for L1 / L2 cache speedup if the input's nominal size
+// n_bytes_net is small.
+absl::Duration ReadTime(const GpuDeviceInfo& gpu_device_info,
+                        int64_t n_bytes_net, int64_t n_bytes_total) {
+  float bw = gpu_device_info.memory_bandwidth;
+  if (n_bytes_net < gpu_device_info.l2_cache_size) {
+    bw *= kL2CacheSpeedup;
+    if (n_bytes_net < kL1CacheSizePerSM * gpu_device_info.core_count) {
+      bw *= kL1CacheSpeedup;
+    }
+  }
+  return absl::Seconds(n_bytes_total / bw);
+}
+
+// Tells input access time of the producer alone if fused_consumer
+// is not specified. Otherwise estimates the access time to producer's
+// inputs as if it is fused into the consumer.
+absl::Duration ProducerInputAccessTime(
+    const GpuHloCostAnalysis* cost_analysis,
+    const GpuDeviceInfo& gpu_device_info, const HloInstruction* producer,
+    const HloInstruction* fused_consumer = nullptr) {
+  absl::Duration ret = absl::ZeroDuration();
+  float producer_output_utilization = 1.f;
+  ConstHloInstructionSet consumer_operands;
+  if (fused_consumer) {
+    producer_output_utilization = cost_analysis->operand_utilization(
+        *fused_consumer, fused_consumer->operand_index(producer));
+    for (const HloInstruction* op : fused_consumer->operands()) {
+      consumer_operands.insert(op);
+    }
+  }
+  for (int i = 0; i < producer->operand_count(); ++i) {
+    int64_t p_size_accessed =
+        cost_analysis->operand_bytes_accessed(*producer, i);
+    float operand_utilization =
+        cost_analysis->operand_utilization(*producer, i);
+    int64_t p_size_net =
+        (operand_utilization == 0)
+            ? 0
+            : static_cast<float>(p_size_accessed) / operand_utilization;
+    // Look for common operands of producer and consumer that are accessed
+    // more efficiently on merge:
+    // 1) Producer has to use the common operand elementwise from its root if
+    //    it is a fusion or just be an elementwise instruction.
+    // 2) Consumer has to have common elementwise roots for the producer
+    //    and the common operand if it is a fusion or just be an elementwise
+    //    instruction.
+    float common_utilization = 0;
+    if (consumer_operands.count(producer->operand(i)) &&
+        (producer->IsElementwise() ||
+         (producer->opcode() == HloOpcode::kFusion &&
+          FusionUsesParameterElementwiseFromRoot(producer, i,
+                                                 cost_analysis)))) {
+      if (fused_consumer->opcode() == HloOpcode::kFusion) {
+        int64_t consumer_idx_of_common_operand =
+            fused_consumer->operand_index(producer->operand(i));
+        int64_t consumer_idx_of_producer =
+            fused_consumer->operand_index(producer);
+        common_utilization = cost_analysis->CommonElementwiseUtilization(
+            fused_consumer->fused_parameter(consumer_idx_of_common_operand),
+            fused_consumer->fused_parameter(consumer_idx_of_producer));
+      } else {
+        if (fused_consumer->IsElementwise()) {
+          common_utilization = 1.f;
+        }
+      }
+    }
+    CHECK_LE(common_utilization, producer_output_utilization);
+    ret += ReadTime(
+        gpu_device_info, std::min(p_size_net, p_size_accessed),
+        p_size_accessed * (producer_output_utilization - common_utilization));
+  }
+  return ret;
+}
+}  // namespace
 
 /*static*/ struct GpuPerformanceModel::RunTimes
 GpuPerformanceModel::EstimateRunTimes(
@@ -30,44 +131,11 @@ GpuPerformanceModel::EstimateRunTimes(
     const GpuDeviceInfo& gpu_device_info,
     const std::vector<HloInstruction*> fused_users, bool multi_output) {
   VLOG(8) << "Producer: " << producer->name();
-  VLOG(10) << producer->fused_instructions_computation()->ToString();
+  if (producer->opcode() == HloOpcode::kFusion) {
+    VLOG(10) << producer->fused_instructions_computation()->ToString();
+  }
 
   float memory_bandwidth_bytes_per_second = gpu_device_info.memory_bandwidth;
-  int64_t l2_cache_size = gpu_device_info.l2_cache_size;
-  int64_t l1_cache_size = kL1CacheSizePerSM * gpu_device_info.core_count;
-
-  // Account for L1 / L2 cache speedup if input is small and read multiple
-  // times.
-  auto read_time = [&](int64_t n_bytes_net, int64_t n_bytes_with_repeats) {
-    float bw = memory_bandwidth_bytes_per_second;
-    if (n_bytes_net < l2_cache_size) {
-      bw *= kL2CacheSpeedup;
-      if (n_bytes_net < l1_cache_size) {
-        bw *= kL1CacheSpeedup;
-      }
-    }
-    return absl::Seconds(n_bytes_with_repeats / bw);
-  };
-
-  auto producer_input_access_time = [&](float output_utilization) {
-    // Assume that accessed input sizes scale linearly with the utilization
-    // of the output. TODO(sergachev): Run this through the HLO cost
-    // analysis for a more accurate estimate.
-    absl::Duration ret = absl::ZeroDuration();
-    for (int i = 0; i < producer->operand_count(); ++i) {
-      int64_t p_size_accessed =
-          cost_analysis->operand_bytes_accessed(*producer, i);
-      float operand_utilization =
-          cost_analysis->operand_utilization(*producer, i);
-      int64_t p_size_net = 0;
-      if (operand_utilization != 0) {
-        p_size_net = static_cast<float>(p_size_accessed) / operand_utilization;
-      }
-      ret += read_time(std::min(p_size_net, p_size_accessed),
-                       p_size_accessed * output_utilization);
-    }
-    return ret;
-  };
 
   float producer_bytes_out = cost_analysis->output_bytes_accessed(*producer);
   float producer_bytes_in =
@@ -91,13 +159,15 @@ GpuPerformanceModel::EstimateRunTimes(
   absl::Duration compute_time_unfused =
       compute_time(cost_analysis->flop_count(*producer), producer_elements_out);
   VLOG(8) << "Compute time unfused: " << compute_time_unfused;
-  VLOG(8) << "Input access time unfused: " << producer_input_access_time(1.0);
+  VLOG(8) << "Input access time unfused: "
+          << ProducerInputAccessTime(cost_analysis, gpu_device_info, producer);
   absl::Duration output_write_time_unfused =
       absl::Seconds(producer_bytes_out / memory_bandwidth_bytes_per_second);
   VLOG(8) << "Output write time unfused: " << output_write_time_unfused;
-  absl::Duration exec_time_unfused =
-      std::max(compute_time_unfused,
-               producer_input_access_time(1.0) + output_write_time_unfused);
+  absl::Duration exec_time_unfused = std::max(
+      compute_time_unfused,
+      ProducerInputAccessTime(cost_analysis, gpu_device_info, producer) +
+          output_write_time_unfused);
 
   int64_t fused_consumer_count = fused_users.size();
   VLOG(8) << "Consumer count: " << fused_consumer_count;
@@ -112,13 +182,14 @@ GpuPerformanceModel::EstimateRunTimes(
     absl::Duration compute_time_by_this_consumer = compute_time(
         cost_analysis->flop_count(*producer) * utilization_by_this_consumer,
         producer_elements_out * utilization_by_this_consumer);
-    exec_time_fused +=
-        std::max(compute_time_by_this_consumer,
-                 producer_input_access_time(utilization_by_this_consumer));
+    exec_time_fused += std::max(
+        compute_time_by_this_consumer,
+        ProducerInputAccessTime(cost_analysis, gpu_device_info, producer, u));
     producer_output_read_time_unfused +=
-        read_time(std::min(producer_bytes_out,
-                           producer_bytes_out * utilization_by_this_consumer),
-                  producer_bytes_out * utilization_by_this_consumer);
+        ReadTime(gpu_device_info,
+                 std::min(producer_bytes_out,
+                          producer_bytes_out * utilization_by_this_consumer),
+                 producer_bytes_out * utilization_by_this_consumer);
   }
   VLOG(8) << "Utilization of producer output: " << total_producer_utilization;
 

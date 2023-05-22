@@ -24,13 +24,19 @@ namespace ifrt {
 char Array::ID = 0;
 
 std::vector<Array*> MakeArrayPointerList(
-    absl::Span<const std::unique_ptr<Array>> arrays) {
+    absl::Span<const tsl::RCReference<Array>> arrays) {
   std::vector<Array*> result;
   result.reserve(arrays.size());
   for (const auto& array : arrays) {
     result.push_back(array.get());
   }
   return result;
+}
+
+StatusOr<tsl::RCReference<Array>> Array::FullyReplicatedShard(
+    ArrayCopySemantics semantics) {
+  TF_ASSIGN_OR_RETURN(auto items, DisassembleIntoSingleDeviceArrays(semantics));
+  return items.front();
 }
 
 }  // namespace ifrt

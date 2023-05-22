@@ -26,6 +26,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import data_flow_ops
@@ -768,7 +769,7 @@ class RaggedDispatchTest(test_util.TensorFlowTestCase, parameterized.TestCase):
               [[[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [[1, 0, 0, 0]]],
               ragged_rank=1)),
       dict(
-          op=array_ops.stack,
+          op=array_ops_stack.stack,
           args=([
               ragged_factory_ops.constant_value([[1, 2, 3], [4]],
                                                 dtype=np.int32),

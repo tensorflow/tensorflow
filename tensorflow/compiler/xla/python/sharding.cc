@@ -24,17 +24,46 @@ namespace jax {
 
 namespace py = pybind11;
 
+int Sharding::SafeNumDevices(pybind11::handle sharding) {
+  // Pure python shardings are not initialized, so we should not
+  // even be casting if they are not initialized.
+  bool is_safe_to_cast = [&]() {
+    if (!xla::is_pybind_reinterpret_cast_ok<jax::Sharding>(sharding)) {
+      return false;
+    }
+    auto* instance =
+        reinterpret_cast<pybind11::detail::instance*>(sharding.ptr());
+    for (auto vh : pybind11::detail::values_and_holders(instance)) {
+      if (!vh.holder_constructed()) {
+        return false;
+      }
+    }
+
+    return true;
+  }();
+
+  if (is_safe_to_cast) {
+    auto* cpp_sharding = sharding.cast<jax::Sharding*>();
+    if (cpp_sharding->num_devices_.has_value()) {
+      return (*cpp_sharding->num_devices_);
+    }
+  }
+
+  pybind11::set device_set = sharding.attr("device_set");
+  return device_set.size();
+}
+
 size_t ShardingHash(const pybind11::object& sharding) {
   auto type = sharding.get_type();
 
   if (type.is(NamedSharding::type())) {
-    const auto* mesh_sharding = xla::fast_cast<jax::NamedSharding>(sharding);
-    return absl::Hash<void*>()(mesh_sharding->mesh().ptr());
+    const auto* named_sharding = xla::fast_cast<jax::NamedSharding>(sharding);
+    return absl::Hash<void*>()(named_sharding->mesh().ptr());
   }
 
-  if (type.is(OpShardingSharding::type())) {
-    auto* op_sharding = xla::fast_cast<OpShardingSharding>(sharding);
-    return op_sharding->Hash();
+  if (type.is(GSPMDSharding::type())) {
+    auto* gspmd_sharding = xla::fast_cast<GSPMDSharding>(sharding);
+    return gspmd_sharding->Hash();
   }
 
   if (type.is(SingleDeviceSharding::type())) {
@@ -55,18 +84,18 @@ bool ShardingEqual(const pybind11::object& a, const pybind11::object& b) {
   if (!a_type.is(b_type)) return false;
 
   if (a_type.is(NamedSharding::type())) {
-    auto* a_mesh_sharding = xla::fast_cast<const NamedSharding>(a);
-    auto* b_mesh_sharding = xla::fast_cast<const NamedSharding>(b);
+    auto* a_named_sharding = xla::fast_cast<const NamedSharding>(a);
+    auto* b_named_sharding = xla::fast_cast<const NamedSharding>(b);
 
-    return a_mesh_sharding->mesh().ptr() == b_mesh_sharding->mesh().ptr() &&
-           a_mesh_sharding->spec().equal(b_mesh_sharding->spec());
+    return a_named_sharding->mesh().ptr() == b_named_sharding->mesh().ptr() &&
+           a_named_sharding->spec().equal(b_named_sharding->spec());
   }
 
-  if (a_type.is(OpShardingSharding::type())) {
-    auto* a_op_sharding_sharding = xla::fast_cast<const OpShardingSharding>(a);
-    auto* b_op_sharding_sharding = xla::fast_cast<const OpShardingSharding>(b);
+  if (a_type.is(GSPMDSharding::type())) {
+    auto* a_gspmd_sharding = xla::fast_cast<const GSPMDSharding>(a);
+    auto* b_gspmd_sharding = xla::fast_cast<const GSPMDSharding>(b);
 
-    return a_op_sharding_sharding == b_op_sharding_sharding;
+    return a_gspmd_sharding == b_gspmd_sharding;
   }
 
   if (a_type.is(SingleDeviceSharding::type())) {
@@ -129,14 +158,14 @@ void RegisterSharding(py::module& m) {
       .def_property_readonly("devices", &PmapSharding::devices)
       .def_property_readonly("sharding_spec", &PmapSharding::sharding_spec);
 
-  py::class_<OpShardingSharding, XLACompatibleSharding>(m, "OpShardingSharding",
-                                                        py::dynamic_attr())
+  py::class_<GSPMDSharding, XLACompatibleSharding>(m, "GSPMDSharding",
+                                                   py::dynamic_attr())
       .def(py::init<py::list, xla::OpSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
       .def(py::init<py::tuple, xla::OpSharding>(), py::arg("devices"),
            py::arg("op_sharding"))
-      .def_property_readonly("_devices", &OpShardingSharding::devices)
-      .def_property_readonly("_op_sharding", &OpShardingSharding::op_sharding);
+      .def_property_readonly("_devices", &GSPMDSharding::devices)
+      .def_property_readonly("_op_sharding", &GSPMDSharding::op_sharding);
 }
 
 }  // namespace jax

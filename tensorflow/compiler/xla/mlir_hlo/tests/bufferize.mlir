@@ -25,7 +25,7 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // ALLOC-DAG: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
-  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
+  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca() {{.*}} : memref<3xf32>
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
@@ -42,7 +42,7 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
 func.func @tensor.generate(%arg : tensor<*xf32>) -> index {
   // CHECK-DAG: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
   // ALLOC-DAG: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
-  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
+  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) {{.*}} : memref<?xindex>
   // CHECK: linalg.map
   // CHECK: outs(%[[MEM]] : memref<?xindex>)
   // CHECK:   %[[INDEX:.*]] = linalg.index 0

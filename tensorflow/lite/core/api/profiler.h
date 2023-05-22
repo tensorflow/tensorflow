@@ -172,6 +172,16 @@ class ScopedDelegateOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
+class ScopedDelegateProfiledOperatorProfile : public ScopedProfile {
+ public:
+  ScopedDelegateProfiledOperatorProfile(Profiler* profiler, const char* tag,
+                                        int node_index)
+      : ScopedProfile(
+            profiler, tag,
+            Profiler::EventType::DELEGATE_PROFILED_OPERATOR_INVOKE_EVENT,
+            static_cast<uint32_t>(node_index)) {}
+};
+
 // Similar to ScopedProfile but has extra event metadata for EndEvent.
 class ScopedRuntimeInstrumentationProfile {
  public:
@@ -219,6 +229,11 @@ class ScopedRuntimeInstrumentationProfile {
 
 #define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, tag, node_index) \
   tflite::ScopedDelegateOperatorProfile TFLITE_VARNAME_UNIQ(               \
+      _profile_, __COUNTER__)((profiler), (tag), (node_index))
+
+#define TFLITE_SCOPED_DELEGATE_PROFILED_OPERATOR_PROFILE(profiler, tag, \
+                                                         node_index)    \
+  tflite::ScopedDelegateProfiledOperatorProfile TFLITE_VARNAME_UNIQ(    \
       _profile_, __COUNTER__)((profiler), (tag), (node_index))
 
 #define TFLITE_ADD_RUNTIME_INSTRUMENTATION_EVENT(                          \

@@ -28,6 +28,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
@@ -98,9 +99,8 @@ def concatenate_context_input(context_input, sequence_input):
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.sequence_categorical_column_with_identity',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.sequence_categorical_column_with_identity')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def sequence_categorical_column_with_identity(key,
                                               num_buckets,
                                               default_value=None):
@@ -149,9 +149,8 @@ def sequence_categorical_column_with_identity(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.sequence_categorical_column_with_hash_bucket',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.sequence_categorical_column_with_hash_bucket')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def sequence_categorical_column_with_hash_bucket(key,
                                                  hash_bucket_size,
                                                  dtype=dtypes.string):
@@ -197,9 +196,8 @@ def sequence_categorical_column_with_hash_bucket(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.sequence_categorical_column_with_vocabulary_file',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.sequence_categorical_column_with_vocabulary_file')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def sequence_categorical_column_with_vocabulary_file(key,
                                                      vocabulary_file,
                                                      vocabulary_size=None,
@@ -268,9 +266,8 @@ def sequence_categorical_column_with_vocabulary_file(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.sequence_categorical_column_with_vocabulary_list',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.sequence_categorical_column_with_vocabulary_list')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def sequence_categorical_column_with_vocabulary_list(key,
                                                      vocabulary_list,
                                                      dtype=None,
@@ -336,9 +333,8 @@ def sequence_categorical_column_with_vocabulary_list(key,
 
 
 @doc_controls.header(_FEATURE_COLUMN_DEPRECATION_WARNING)
-@tf_export(
-    'feature_column.sequence_numeric_column',
-    deprecation_inst=_FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
+@tf_export('feature_column.sequence_numeric_column')
+@deprecation.deprecated(None, _FEATURE_COLUMN_DEPRECATION_RUNTIME_WARNING)
 def sequence_numeric_column(key,
                             shape=(1,),
                             default_value=0.,

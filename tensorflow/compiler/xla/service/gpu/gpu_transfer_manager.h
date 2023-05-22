@@ -40,7 +40,8 @@ class GpuTransferManager : public GenericTransferManager {
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     MutableBorrowingLiteral literal) override;
-  Status ReadDynamicShapes(se::Stream* stream, ShapedBuffer* device_buffer,
+  Status ReadDynamicShapes(se::Stream* stream,
+                           const ShapedBuffer* device_buffer,
                            Shape* device_shape) override;
 
  private:

@@ -22,10 +22,13 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
+
+using ::xla::runtime::CpuEvent;
 
 // Returns an AsyncValueRef<CpuEvent> that will be ready after all the async
 // values in `events` are ready. If errors occurs, one of the errors will be

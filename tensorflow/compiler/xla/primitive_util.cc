@@ -39,9 +39,11 @@ int SignificandWidth(PrimitiveType type) {
     case F16:
       return std::numeric_limits<half>::digits;
     case F8E5M2:
-      return 3;
+      return std::numeric_limits<tsl::float8_e5m2>::digits;
     case F8E4M3FN:
-      return 4;
+      return std::numeric_limits<tsl::float8_e4m3fn>::digits;
+    case F8E4M3B11FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3b11>::digits;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
@@ -60,6 +62,31 @@ int ExponentWidth(PrimitiveType type) {
   return total_bit_width - (trailing_significand_field_width + kSignBitWidth);
 }
 
+int UnderflowExponent(PrimitiveType type) {
+  // |std::numeric_limits<float>::min_exponent| is defined as: "minimum negative
+  // integer such that radix raised to the power one less than that integer is a
+  // normalized floating-point number." as such it does not actually yield the
+  // minimum exponent but the exponent of the first integer which overflows.
+  switch (type) {
+    case F32:
+      return std::numeric_limits<float>::min_exponent;
+    case F64:
+      return std::numeric_limits<double>::min_exponent;
+    case BF16:
+      return std::numeric_limits<bfloat16>::min_exponent;
+    case F16:
+      return std::numeric_limits<half>::min_exponent;
+    case F8E5M2:
+      return std::numeric_limits<tsl::float8_e5m2>::min_exponent;
+    case F8E4M3FN:
+      return std::numeric_limits<tsl::float8_e4m3fn>::min_exponent;
+    case F8E4M3B11FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3b11>::min_exponent;
+    default:
+      LOG(FATAL) << "Not a floating data type " << type;
+  }
+}
+
 int OverflowExponent(PrimitiveType type) {
   // |std::numeric_limits<float>::max_exponent| is defined as: "Maximum positive
   // integer such that radix raised to the power one less than that integer is a
@@ -76,50 +103,20 @@ int OverflowExponent(PrimitiveType type) {
     case F16:
       return std::numeric_limits<half>::max_exponent;
     case F8E5M2:
-      return 16;
+      return std::numeric_limits<tsl::float8_e5m2>::max_exponent;
     case F8E4M3FN:
-      return 9;
+      return std::numeric_limits<tsl::float8_e4m3fn>::max_exponent;
+    case F8E4M3B11FNUZ:
+      return std::numeric_limits<tsl::float8_e4m3b11>::max_exponent;
     default:
       LOG(FATAL) << "Not a floating data type " << type;
   }
 }
 
-bool IsFloatingPointType(PrimitiveType type) {
-  return type == F16 || type == F32 || type == F64 || type == BF16 ||
-         type == F8E5M2 || type == F8E4M3FN;
-}
-
-bool IsComplexType(PrimitiveType type) { return type == C64 || type == C128; }
-
-bool IsSignedIntegralType(PrimitiveType type) {
-  return type == S8 || type == S16 || type == S32 || type == S64;
-}
-
-bool IsUnsignedIntegralType(PrimitiveType type) {
-  return type == U8 || type == U16 || type == U32 || type == U64;
-}
-
-bool IsIntegralType(PrimitiveType type) {
-  return IsUnsignedIntegralType(type) || IsSignedIntegralType(type);
-}
-
-xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
-  switch (src_bitwidth) {
-    case 8:
-      return xla::U8;
-    case 16:
-      return xla::U16;
-    case 32:
-      return xla::U32;
-    case 64:
-      return xla::U64;
-    default:
-      return xla::PRIMITIVE_TYPE_INVALID;
-  }
-}
-
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 4:
+      return xla::S4;
     case 8:
       return xla::S8;
     case 16:
@@ -130,18 +127,6 @@ xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
       return xla::S64;
     default:
       return xla::PRIMITIVE_TYPE_INVALID;
-  }
-}
-
-PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
-  switch (complex_type) {
-    case C64:
-      return F32;
-    case C128:
-      return F64;
-    default:
-      LOG(FATAL) << "Primitive type is not complex: "
-                 << PrimitiveType_Name(complex_type);
   }
 }
 

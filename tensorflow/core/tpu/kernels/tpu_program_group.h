@@ -86,7 +86,7 @@ class TpuAotCompilationOptions : public xla::AotCompilationOptions {
 
 class TpuProgramGroup : public TpuProgramGroupInterface {
  public:
-  using Status = ::stream_executor::port::Status;
+  using Status = ::tsl::Status;
 
   // Compiles Mlir or TF function computation by lowering into HLO IR and
   // returns TPU programs ready for execution.

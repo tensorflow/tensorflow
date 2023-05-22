@@ -204,22 +204,23 @@ inline bool IsConstantOrPersistentTensor(const TfLiteTensor* tensor) {
 inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteDynamic;
 }
-
+#ifndef TF_LITE_STATIC_MEMORY
 // Sets tensor to dynamic.
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
+    TfLiteTensorDataFree(tensor);
     tensor->allocation_type = kTfLiteDynamic;
-    tensor->data.raw = nullptr;
   }
 }
 
 // Sets tensor to persistent and read-only.
 inline void SetTensorToPersistentRo(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLitePersistentRo) {
+    TfLiteTensorDataFree(tensor);
     tensor->allocation_type = kTfLitePersistentRo;
-    tensor->data.raw = nullptr;
   }
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Determines whether it is a hybrid op - one that has float inputs and
 // quantized weights.
@@ -297,7 +298,7 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      TfLiteIntArray** output_shape);
 
-const std::string GetShapeDebugString(const TfLiteIntArray* shape);
+std::string GetShapeDebugString(const TfLiteIntArray* shape);
 
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 

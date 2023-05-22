@@ -38,7 +38,8 @@ Status TransferLiteralFromOutfeedOnCpu(int device_ordinal,
                                        MutableBorrowingLiteral literal);
 
 // Helper function to retrieve dynamic shape on CPU.
-Status ReadDynamicShapesOnCpu(ShapedBuffer* device_buffer, Shape* device_shape,
+Status ReadDynamicShapesOnCpu(const ShapedBuffer* device_buffer,
+                              Shape* device_shape,
                               HloCostAnalysis::ShapeSizeFunction shape_size_fn);
 }  // namespace xla
 

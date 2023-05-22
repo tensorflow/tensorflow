@@ -31,6 +31,8 @@ using Device = ::xla::PjRtDevice;
 // Ordered list of devices.
 class DeviceList {
  public:
+  using value_type = Device*;
+
   // Number of devices to inline in `Devices`.
   static constexpr int kInlineDeviceSize = 1;
 

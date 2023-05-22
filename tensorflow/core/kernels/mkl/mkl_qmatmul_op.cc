@@ -89,7 +89,7 @@ limitations under the License.
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -232,6 +232,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       this->ExtendMklDnnMatMulFwdParams(context, matmul_fwd_dims);
 
       // Get a MatMul fwd from primitive pool.
+      MklDnnThreadPool eigen_tp(context);
       matmul_fwd =
           MklDnnMatMulFwdPrimitiveFactory<float, Tinput, Tweight, Tbias,
                                           Toutput>::Get(matmul_fwd_dims, 0);
@@ -291,7 +292,7 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       }
 
       std::shared_ptr<stream> cpu_stream;
-      MklDnnThreadPool eigen_tp(context);
+
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_fwd->GetEngine()));
 
       UserScratchPad<unsigned char> scratch_pad;
@@ -317,8 +318,20 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       // This is the case the inner-product and requantization are fused.
       // "min_freezed_output" and "max_freezed_output" are the requested range
       // for the output.
-      min_output_value = context->input(7).flat<float>()(0);
-      max_output_value = context->input(8).flat<float>()(0);
+      const Tensor& min_freezed_tensor = context->input(7);
+      const Tensor& max_freezed_tensor = context->input(8);
+      OP_REQUIRES(context,
+                  TensorShapeUtils::IsScalar(min_freezed_tensor.shape()),
+                  errors::InvalidArgument(
+                      "`min_freezed_output` must be rank 0 but is rank ",
+                      min_freezed_tensor.dims()));
+      OP_REQUIRES(context,
+                  TensorShapeUtils::IsScalar(max_freezed_tensor.shape()),
+                  errors::InvalidArgument(
+                      "`max_freezed_output` must be rank 0 but is rank ",
+                      max_freezed_tensor.dims()));
+      min_output_value = min_freezed_tensor.scalar<float>()();
+      max_output_value = max_freezed_tensor.scalar<float>()();
     } else {
       ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
     }
@@ -344,10 +357,10 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
   void ComputeOutputRangeForInt32(OpKernelContext* context,
                                   float* min_output_value,
                                   float* max_output_value) {
-    const float min_input = context->input(3).flat<float>()(0);
-    const float max_input = context->input(4).flat<float>()(0);
-    const float min_weight = context->input(5).flat<float>()(0);
-    const float max_weight = context->input(6).flat<float>()(0);
+    const float min_input = context->input(3).scalar<float>()();
+    const float max_input = context->input(4).scalar<float>()();
+    const float min_weight = context->input(5).scalar<float>()();
+    const float max_weight = context->input(6).scalar<float>()();
     MklQuantizationRangeForMultiplication<quint8, qint8, qint32>(
         min_input, max_input, min_weight, max_weight, min_output_value,
         max_output_value);
@@ -361,6 +374,25 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
     params.dtypes.append(typeid(Tbias).name());
     params.dtypes.append(typeid(Toutput).name());
 
+    // min-max values for input and weight should be scalar.
+    const Tensor& min_input_tensor = context->input(3);
+    const Tensor& max_input_tensor = context->input(4);
+    const Tensor& min_weight_tensor = context->input(5);
+    const Tensor& max_weight_tensor = context->input(6);
+
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+                errors::InvalidArgument("`min_a` must be rank 0 but is rank ",
+                                        min_input_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+                errors::InvalidArgument("`max_a` must be rank 0 but is rank ",
+                                        max_input_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_weight_tensor.shape()),
+                errors::InvalidArgument("`min_b` must be rank 0 but is rank ",
+                                        min_weight_tensor.dims()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_weight_tensor.shape()),
+                errors::InvalidArgument("`max_b` must be rank 0 but is rank ",
+                                        max_weight_tensor.dims()));
+
     // When the output type is quint8, the output data is requantized into
     // quint8. A post_op "output_scale" is added to do the conversion.
     if (std::is_same<Toutput, quint8>::value ||
@@ -371,8 +403,21 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
       ComputeOutputRangeForInt32(context, &min_output_value, &max_output_value);
       float scale_int32 =
           std::max(std::abs(min_output_value), std::abs(max_output_value));
-      const float min_freezed_output = context->input(7).flat<float>()(0);
-      const float max_freezed_output = context->input(8).flat<float>()(0);
+      const Tensor& min_freezed_tensor = context->input(7);
+      const Tensor& max_freezed_tensor = context->input(8);
+      // min-max values of freezed output range should be scalar.
+      OP_REQUIRES(context,
+                  TensorShapeUtils::IsScalar(min_freezed_tensor.shape()),
+                  errors::InvalidArgument(
+                      "`min_freezed_output` must be rank 0 but is rank ",
+                      min_freezed_tensor.dims()));
+      OP_REQUIRES(context,
+                  TensorShapeUtils::IsScalar(max_freezed_tensor.shape()),
+                  errors::InvalidArgument(
+                      "`max_freezed_output` must be rank 0 but is rank ",
+                      max_freezed_tensor.dims()));
+      const float min_freezed_output = min_freezed_tensor.scalar<float>()();
+      const float max_freezed_output = max_freezed_tensor.scalar<float>()();
       float scale_eightbit =
           std::max(std::abs(min_freezed_output), std::abs(max_freezed_output));
       float scale = 1.0;
@@ -597,4 +642,4 @@ REGISTER_MKL_KERNEL_ALL_BIAS_TYPES("_MklQuantizedMatMulWithBiasAndDequantize",
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

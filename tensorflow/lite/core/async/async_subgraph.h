@@ -16,14 +16,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_CORE_ASYNC_ASYNC_SUBGRAPH_H_
 
 #include <atomic>
+#include <map>
 #include <vector>
 
+#include "tensorflow/lite/core/async/async_kernel_internal.h"
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
-#include "tensorflow/lite/core/async/interop/c/types.h"
 
 namespace tflite {
 namespace async {
@@ -82,10 +83,11 @@ class AsyncSubgraph {
   TfLiteStatus UnregisterBuffer(TfLiteBufferHandle handle);
 
   // Returns a list of names of supported buffer types.
-  std::vector<const char*> SupportedBufferTypes(TfLiteIoType io_type) const;
+  const std::vector<const char*>& SupportedBufferTypes(
+      TfLiteIoType io_type) const;
 
   // Returns a list of names of supported synchronization types.
-  std::vector<const char*> SupportedSynchronizations(
+  const std::vector<const char*>& SupportedSynchronizations(
       TfLiteIoType io_type) const;
 
   // Reconciles registrations with all backends depending on tensor at
@@ -128,6 +130,7 @@ class AsyncSubgraph {
   // Blocks and wait for execution tied to `task` to finish.
   // `task` should not be nullptr.
   // Returns kTfLiteError if any backends failed to finish the execution.
+  // If the task is currently idle, it will return its latest status code.
   TfLiteStatus Wait(TfLiteExecutionTask* task);
 
   // Finishes the task and release all intermediate resources tied to
@@ -159,7 +162,11 @@ class AsyncSubgraph {
   Subgraph* subgraph_ = nullptr;
 
   // Next buffer handle to assign in Register* calls.
-  std::atomic<TfLiteBufferHandle> next_buffer_handle_ = 0;
+  std::atomic<TfLiteBufferHandle> next_buffer_handle_ = {0};
+
+  // Supported buffer and sync types.
+  std::map<TfLiteIoType, std::vector<const char*>> supported_buffer_types_;
+  std::map<TfLiteIoType, std::vector<const char*>> supported_synchronizations_;
 
   // Currently AsyncSubgraph only support fully delegated by 1 backend case.
   // Not owned.

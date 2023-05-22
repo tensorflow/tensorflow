@@ -132,7 +132,41 @@ foreach Mapping = [[MHLO_AbsOp, TF_AbsOp],
                    [MHLO_SignOp, TF_SignOp],
                    [MHLO_SqrtOp, TF_SqrtOp],
                    [MHLO_TanhOp, TF_TanhOp]] in
- def : Pat<(Mapping[0] TF_IntOrFpTensor:$input), (Mapping[1] $input)>;
+  def : Pat<(Mapping[0] TF_IntOrFpTensor:$input), (Mapping[1] $input)>;
+
+class GetRankedScalarAttr<string prefix, int width, string signed, string value> :
+  NativeCodeCall<"DenseElementsAttr::get<" # prefix # "int" # width # "_t>("
+    "RankedTensorType::get({}, $_builder.getIntegerType("
+      # width # signed # "))," # value # ")">;
+
+def : Pat<(MHLO_NotOp TF_Int8Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"", 8, "", "-1">)))>;
+def : Pat<(MHLO_NotOp TF_Int16Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"", 16, "", "-1">)))>;
+def : Pat<(MHLO_NotOp TF_Int32Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"", 32, "", "-1">)))>;
+def : Pat<(MHLO_NotOp TF_Int64Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"", 64, "", "-1">)))>;
+
+def : Pat<(MHLO_NotOp TF_Uint8Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"u", 8, ", false", "0xFFU">)))>;
+def : Pat<(MHLO_NotOp TF_Uint16Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"u", 16, ", false",
+                                               "0xFFFFU">)))>;
+def : Pat<(MHLO_NotOp TF_Uint32Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"u", 32, ", false",
+                                               "0xFFFFFFFFUL">)))>;
+def : Pat<(MHLO_NotOp TF_Uint64Tensor:$input),
+            (TF_BitwiseXorOp $input,
+              (TF_ConstOp (GetRankedScalarAttr<"u", 64, ", false",
+                                               "0xFFFFFFFFFFFFFFFFULL">)))>;
 
 def : Pat<(MHLO_NotOp TF_BoolTensor:$input), (TF_LogicalNotOp $input)>;
 def : Pat<(MHLO_AbsOp TF_ComplexTensor:$arg), (TF_ComplexAbsOp $arg)>;
@@ -353,8 +387,7 @@ def : Pat<(MHLO_SelectOp
            (SameValue $rem, $rem2),
            (SameValue $rem, $rem3),
            (SameTypeOrDefaultCompare $compare_type, $cst),
-           (SameTypeOrDefaultCompare $compare_type1, $cst1),
-           (SameTypeOrDefaultCompare $compare_type2, $compare_type)]>;
+           (SameTypeOrDefaultCompare $compare_type1, $cst1)]>;
 
 // Converts a dag of HLOs representing floor_mod with a constant to
 // tf.FloorMod. The pattern matched executes the following computation:

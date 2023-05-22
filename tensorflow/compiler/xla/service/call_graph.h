@@ -125,7 +125,7 @@ class CallGraphNode {
   // (usually the entry computation node) to this node.
   int depth() const { return depth_; }
 
-  std::string ToString() const;
+  absl::string_view ToString() const;
 
   CallGraphNode(const CallGraphNode&) = delete;
   CallGraphNode& operator=(const CallGraphNode&) = delete;

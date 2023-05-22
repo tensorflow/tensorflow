@@ -44,7 +44,6 @@ struct CustomOpInfo {
   bool no_side_effect = true;
 };
 
-using StringSet = absl::flat_hash_set<std::string>;
 using BuiltinOperatorSet = absl::flat_hash_set<tflite::BuiltinOperator>;
 // Map from custom op code to custom op quantization information.
 using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
@@ -57,16 +56,15 @@ using CustomOpMap = std::unordered_map<std::string, CustomOpInfo>;
 // third_party/tensorflow/lite/tools/optimize/quantize_weights.h.
 // TODO(b/202468183): Selective quantization + quant debugger support for
 // dynamic range quantization for verify_numeric and whole_model_verify flags.
-TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,
-                             const tflite::Model* input_model,
-                             tflite::ErrorReporter* error_reporter,
-                             const tflite::TensorType& inference_type,
-                             const StringSet& denylisted_ops,
-                             const CustomOpMap& custom_op_map,
-                             int64_t minimum_elements_for_weights = 1024,
-                             bool disable_per_channel = false,
-                             bool weight_only_quantization = false,
-                             bool legacy_float_scale = false);
+TfLiteStatus QuantizeWeights(
+    flatbuffers::FlatBufferBuilder* builder, const tflite::Model* input_model,
+    tflite::ErrorReporter* error_reporter,
+    const tflite::TensorType& inference_type,
+    const absl::flat_hash_set<std::string>& denylisted_ops,
+    const CustomOpMap& custom_op_map,
+    int64_t minimum_elements_for_weights = 1024,
+    bool disable_per_channel = false, bool weight_only_quantization = false,
+    bool legacy_float_scale = false);
 
 // Overloading methods to support old quantizer versions API
 TfLiteStatus QuantizeWeights(flatbuffers::FlatBufferBuilder* builder,

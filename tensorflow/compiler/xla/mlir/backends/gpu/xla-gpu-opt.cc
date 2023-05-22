@@ -23,9 +23,10 @@ limitations under the License.
 
 int main(int argc, char **argv) {
   mlir::DialectRegistry registry;
-  registry.insert<mlir::memref::MemRefDialect, mlir::func::FuncDialect,
-                  mlir::gpu::GPUDialect, mlir::lmhlo::LmhloDialect,
-                  mlir::lmhlo_gpu::LmhloGpuDialect>();
+  registry
+      .insert<mlir::memref::MemRefDialect, mlir::func::FuncDialect,
+              mlir::gpu::GPUDialect, mlir::mhlo::MhloDialect,
+              mlir::lmhlo::LmhloDialect, mlir::lmhlo_gpu::LmhloGpuDialect>();
 
   xla::gpu::registerGpuTransformsPasses();
 

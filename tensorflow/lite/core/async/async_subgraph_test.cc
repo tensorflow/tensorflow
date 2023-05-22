@@ -15,20 +15,21 @@ limitations under the License.
 #include "tensorflow/lite/core/async/async_subgraph.h"
 
 #include <memory>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/async/backend_async_kernel_interface.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/interop/attribute_map_internal.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/async/task_internal.h"
 #include "tensorflow/lite/core/async/testing/mock_async_kernel.h"
 #include "tensorflow/lite/core/async/testing/test_backend.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
 
 using ::testing::_;
 
@@ -49,8 +50,7 @@ class AsyncSubgraphTestPeer {
 class AsyncSubgraphTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    kernel_ =
-        std::make_unique<::testing::StrictMock<testing::MockAsyncKernel>>();
+    kernel_ = std::make_unique<testing::MockAsyncKernel>();
     backend_ = std::make_unique<testing::TestBackend>(kernel_->kernel());
 
     interpreter_ = std::make_unique<Interpreter>();
@@ -88,7 +88,7 @@ class AsyncSubgraphTest : public ::testing::Test {
   void TearDown() override { subgraph_.reset(); }
 
  protected:
-  std::unique_ptr<::testing::StrictMock<testing::MockAsyncKernel>> kernel_;
+  std::unique_ptr<testing::MockAsyncKernel> kernel_;
   std::unique_ptr<testing::TestBackend> backend_;
   std::unique_ptr<Interpreter> interpreter_;
   std::unique_ptr<AsyncSubgraph> subgraph_;
@@ -112,8 +112,6 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   EXPECT_CALL(*kernel_, RegisterBuffer(_, _, _, _, _));
   EXPECT_CALL(*kernel_, RegisterBufferSlice(_, _, _, _));
   EXPECT_CALL(*kernel_, UnregisterBuffer(_, _));
-  EXPECT_CALL(*kernel_, SupportedBufferTypes(_));
-  EXPECT_CALL(*kernel_, SupportedSynchronizations(_));
   EXPECT_CALL(*kernel_, ReconcileRestrictions(_, _, _, _, _, _));
   EXPECT_CALL(*kernel_, SetAttributes(_, _, _, _));
   EXPECT_CALL(*kernel_, Prepare(_, _));
@@ -122,17 +120,15 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   EXPECT_CALL(*kernel_, Finish(_, _));
 
   auto* buffer = TfLiteBackendBufferCreate();
-  auto* attrs = new TfLiteAttributeMap(kTfLiteBufferAttrMap);
+  auto* attrs = new TfLiteAttributeMap(kTfLiteAttrMapTypeBuffer);
   TfLiteBufferHandle handle = 1;
   TfLiteBufferHandle another_handle = 1;
   auto* task = new TfLiteExecutionTask;
   EXPECT_FALSE(task->task->Scheduled());
 
-  subgraph_->RegisterBuffer(kTfLiteIoInput, buffer, attrs, &handle);
+  subgraph_->RegisterBuffer(kTfLiteIoTypeInput, buffer, attrs, &handle);
   subgraph_->RegisterBufferSlice(handle, attrs, &another_handle);
   subgraph_->UnregisterBuffer(handle);
-  subgraph_->SupportedBufferTypes(kTfLiteIoInput);
-  subgraph_->SupportedSynchronizations(kTfLiteIoInput);
   subgraph_->ReconcileRestrictions(0, attrs, attrs, attrs);
   subgraph_->SetAttributes(0, attrs);
   subgraph_->Prepare();
@@ -141,7 +137,14 @@ TEST_F(AsyncSubgraphTest, BasicTest) {
   // Scheduling another execution w/o waiting on the task should return error.
   EXPECT_EQ(kTfLiteError, subgraph_->InvokeAsync(task));
   EXPECT_TRUE(task->task->Scheduled());
+  EXPECT_EQ(kTfLiteOk, task->task->Status());
   EXPECT_EQ(kTfLiteOk, subgraph_->Wait(task));
+
+  // If waiting the task failed, all successive `Wait` should also fail.
+  task->task->SetStatus(kTfLiteError);
+  EXPECT_EQ(kTfLiteError, subgraph_->Wait(task));
+  EXPECT_EQ(kTfLiteError, subgraph_->Wait(task));
+
   EXPECT_FALSE(task->task->Scheduled());
   // Deletes `task`
   subgraph_->Finish(task);

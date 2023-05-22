@@ -687,8 +687,6 @@ TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_INTEGRAL_TYPES_NO_INT32(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ND_ALL_GPU);
-TF_CALL_bfloat16(REGISTER_SCATTER_ND_MIN_MAX_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 
 #undef REGISTER_SCATTER_ND_ALL_GPU
@@ -1054,7 +1052,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
                    bool allocate) {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (std::is_same<Device, GPUDevice>::value &&
-      tensorflow::OpDeterminismRequired()) {
+      tensorflow::OpDeterminismRequired() && !DisableScatterOpDeterminism()) {
     return DoScatterNdOnCpu<T, Index, Op>(c, indices, updates, shape, out,
                                           allocate);
   }

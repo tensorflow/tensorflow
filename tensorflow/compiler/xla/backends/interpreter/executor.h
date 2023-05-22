@@ -19,9 +19,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 #define TENSORFLOW_COMPILER_XLA_BACKENDS_INTERPRETER_EXECUTOR_H_
 
-#include <functional>
 #include <memory>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
@@ -52,18 +52,18 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   explicit XlaInterpreterExecutor(const PluginConfig &plugin_config);
   ~XlaInterpreterExecutor() override;
 
-  port::Status Init(int device_ordinal, DeviceOptions device_options) override {
+  tsl::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return ::tsl::OkStatus();
   }
 
-  port::Status GetKernel(const MultiKernelLoaderSpec &spec,
-                         KernelBase *kernel) override {
-    return port::UnimplementedError("Not Implemented");
+  tsl::Status GetKernel(const MultiKernelLoaderSpec &spec,
+                        KernelBase *kernel) override {
+    return tsl::errors::Unimplemented("Not Implemented");
   }
-  port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims, const KernelBase &kernel,
-                      const KernelArgsArrayBase &args) override {
-    return port::UnimplementedError("Not Implemented");
+  tsl::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                     const BlockDim &block_dims, const KernelBase &kernel,
+                     const KernelArgsArrayBase &args) override {
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
@@ -88,59 +88,56 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64_t size) override {
-    return port::InternalError("Interpreter can not memzero");
+  tsl::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                      uint64_t size) override {
+    return tsl::errors::Internal("Interpreter can not memzero");
   }
-  port::Status Memset(Stream *stream, DeviceMemoryBase *location,
-                      uint8_t pattern, uint64_t size) override {
-    return port::InternalError("Interpreter can not memset");
+  tsl::Status Memset(Stream *stream, DeviceMemoryBase *location,
+                     uint8_t pattern, uint64_t size) override {
+    return tsl::errors::Internal("Interpreter can not memset");
   }
-  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32_t pattern, uint64_t size) override {
-    return port::InternalError("Interpreter can not memset");
+  tsl::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                       uint32_t pattern, uint64_t size) override {
+    return tsl::errors::Internal("Interpreter can not memset");
   }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  port::Status SynchronousMemZero(DeviceMemoryBase *location,
-                                  uint64_t size) override {
-    return port::InternalError("Interpreter can not memzero");
-  }
-
-  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+  tsl::Status SynchronousMemZero(DeviceMemoryBase *location,
                                  uint64_t size) override {
-    return port::InternalError("Interpreter can not memset");
+    return tsl::errors::Internal("Interpreter can not memzero");
   }
 
-  port::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst,
-                                 const void *host_src, uint64_t size) override;
-  port::Status SynchronousMemcpy(void *host_dst,
-                                 const DeviceMemoryBase &dev_src,
-                                 uint64_t size) override;
-  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
-                                               const DeviceMemoryBase &pop_src,
-                                               uint64_t size) override {
-    return port::Status{port::error::UNIMPLEMENTED, ""};
+  tsl::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                uint64_t size) override {
+    return tsl::errors::Internal("Interpreter can not memset");
+  }
+
+  tsl::Status SynchronousMemcpy(DeviceMemoryBase *dev_dst, const void *host_src,
+                                uint64_t size) override;
+  tsl::Status SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &dev_src,
+                                uint64_t size) override;
+  tsl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase *pop_dst,
+                                              const DeviceMemoryBase &pop_src,
+                                              uint64_t size) override {
+    return tsl::Status{absl::StatusCode::kUnimplemented, ""};
   }
 
   bool HostCallback(Stream *stream,
-                    std::function<port::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
-  port::Status AllocateEvent(Event *event) override {
+  tsl::Status AllocateEvent(Event *event) override { return ::tsl::OkStatus(); }
+
+  tsl::Status DeallocateEvent(Event *event) override {
     return ::tsl::OkStatus();
   }
 
-  port::Status DeallocateEvent(Event *event) override {
-    return ::tsl::OkStatus();
+  tsl::Status RecordEvent(Stream *stream, Event *event) override {
+    return tsl::Status{absl::StatusCode::kUnimplemented, "RecordEvent"};
   }
 
-  port::Status RecordEvent(Stream *stream, Event *event) override {
-    return port::Status{port::error::UNIMPLEMENTED, "RecordEvent"};
-  }
-
-  port::Status WaitForEvent(Stream *stream, Event *event) override {
-    return port::Status{port::error::UNIMPLEMENTED, "WaitForEvent"};
+  tsl::Status WaitForEvent(Stream *stream, Event *event) override {
+    return tsl::Status{absl::StatusCode::kUnimplemented, "WaitForEvent"};
   }
 
   Event::Status PollForEventStatus(Event *event) override {
@@ -156,7 +153,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   bool StartTimer(Stream *stream, Timer *timer) override;
   bool StopTimer(Stream *stream, Timer *timer) override;
 
-  port::Status BlockHostUntilDone(Stream *stream) override;
+  tsl::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 
@@ -164,15 +161,15 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(0);
   }
 
-  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
+  tsl::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
     return ::tsl::OkStatus();
   }
 
@@ -203,8 +200,7 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
  private:
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
-  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
-      const xla::Shape &shape);
+  tsl::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape &shape);
 
   const PluginConfig plugin_config_;
 };

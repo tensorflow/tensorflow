@@ -164,7 +164,7 @@ Status GoogleAuthProvider::GetToken(string* t) {
   Status token_from_gce_status;
   if (skip_gce_check) {
     token_from_gce_status =
-        Status(error::CANCELLED,
+        Status(absl::StatusCode::kCancelled,
                strings::StrCat("GCE check skipped due to presence of $",
                                kNoGceCheck, " environment variable."));
   } else {

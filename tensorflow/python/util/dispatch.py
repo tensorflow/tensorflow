@@ -441,12 +441,7 @@ def _add_name_scope_wrapper(func, api_signature):
 
   func_signature = tf_inspect.signature(func)
   func_argspec = tf_inspect.getargspec(func)
-  kw = None
-  if hasattr(func_argspec, "keywords"):
-    kw = func_argspec.keywords
-  elif hasattr(func_argspec, "varkw"):
-    kw = func_argspec.varkw
-  if "name" in func_signature.parameters or kw is not None:
+  if "name" in func_signature.parameters or func_argspec.keywords is not None:
     return func  # No wrapping needed (already has name parameter).
 
   name_index = list(api_signature.parameters).index("name")
@@ -556,12 +551,7 @@ def add_type_based_api_dispatcher(target):
 
   _, unwrapped = tf_decorator.unwrap(target)
   target_argspec = tf_inspect.getargspec(unwrapped)
-  kw = None
-  if hasattr(target_argspec, "keywords"):
-    kw = target_argspec.keywords
-  elif hasattr(target_argspec, "varkw"):
-    kw = target_argspec.varkw
-  if target_argspec.varargs or kw:
+  if target_argspec.varargs or target_argspec.keywords:
     # @TODO(b/194903203) Add v2 dispatch support for APIs that take varargs
     # and keywords.  Examples of APIs that take varargs and kwargs: meshgrid,
     # einsum, map_values, map_flat_values.
@@ -591,13 +581,8 @@ def _check_signature(api_signature, func):
   """
   # Special case: if func_signature is (*args, **kwargs), then assume it's ok.
   func_argspec = tf_inspect.getargspec(func)
-  kw = None
-  if hasattr(func_argspec, "keywords"):
-    kw = func_argspec.keywords
-  elif hasattr(func_argspec, "varkw"):
-    kw = func_argspec.varkw
-  if (func_argspec.varargs is not None and kw is not None and
-      not func_argspec.args):
+  if (func_argspec.varargs is not None and func_argspec.keywords is not None
+      and not func_argspec.args):
     return
 
   func_signature = tf_inspect.signature(func)

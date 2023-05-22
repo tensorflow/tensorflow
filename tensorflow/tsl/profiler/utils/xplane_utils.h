@@ -208,6 +208,15 @@ class XEventContextTracker {
 // xplane.
 void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace);
 
+// Return whether this is a custom plan.
+bool IsCustomPlane(const XPlane& plane);
+
+// Return whether this is a host plan.
+bool IsHostPlane(const XPlane& plane);
+
+// Return whether this is a device plan.
+bool IsDevicePlane(const XPlane& plane);
+
 }  // namespace profiler
 }  // namespace tsl
 

@@ -48,6 +48,13 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
       }
     } else if (function_name.contains("matmul")) {
       spec->coeff_op_quant_dim[1] = -1;
+      if (function_name.contains("with_bias") ||
+          function_name.contains("and_bias")) {
+        spec->biases_params[2] = {{0, 1},
+                                  quant::GetUniformQuantizedTypeForBias};
+      }
+    } else if (function_name.contains("einsum")) {
+      spec->coeff_op_quant_dim[1] = -1;
       if (function_name.contains("with_bias")) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};
@@ -64,6 +71,9 @@ std::unique_ptr<OpQuantSpec> GetTFOpQuantSpec(Operation* op) {
         spec->biases_params[2] = {{0, 1},
                                   quant::GetUniformQuantizedTypeForBias};
       }
+    } else if (function_name.contains("gather")) {
+      // Note that gather has axis attribute that specifies channel axis.
+      spec->coeff_op_quant_dim[0] = -1;
     }
     for (auto quantizable_operand : spec->coeff_op_quant_dim) {
       spec->quantizable_operands.insert(quantizable_operand.first);

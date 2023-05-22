@@ -1,7 +1,7 @@
 path: "tensorflow.initializers.orthogonal"
 tf_class {
-  is_instance: "<class \'keras.initializers.initializers_v2.Orthogonal\'>"
-  is_instance: "<class \'keras.initializers.initializers_v2.Initializer\'>"
+  is_instance: "<class \'keras.initializers.initializers.Orthogonal\'>"
+  is_instance: "<class \'keras.initializers.initializers.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

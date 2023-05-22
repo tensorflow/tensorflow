@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/status.h"
 
@@ -44,7 +45,9 @@ class ExtractionVisitor : public ConstDfsHloVisitorWithDefault {
       const HloModule& old_module,
       absl::flat_hash_set<const HloInstruction*>* boundary)
       : old_module_(old_module),
-        module_(std::make_unique<HloModule>("extracted", config_)),
+        module_(std::make_unique<HloModule>(
+            "extracted", config_,
+            std::make_unique<CompilationEnvironments>(old_module.comp_envs()))),
         clone_context_(module_.get()),
         builder_("entry_computation"),
         boundary_(boundary) {}

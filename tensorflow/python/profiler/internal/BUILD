@@ -18,6 +18,22 @@ py_library(
     ],
 )
 
+py_test(
+    name = "flops_registry_test",
+    srcs = ["flops_registry_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [
+        ":flops_registry",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
+    ],
+)
+
 py_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
@@ -148,12 +164,12 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
-        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/lib:profiler_session_for_pybind",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
-        "//tensorflow/core/profiler/rpc/client:capture_profile",
         "//tensorflow/core/profiler/rpc/client:save_profile",
+        "//tensorflow/tsl/profiler/convert:xplane_to_trace_events",
+        "//tensorflow/tsl/profiler/rpc/client:capture_profile",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

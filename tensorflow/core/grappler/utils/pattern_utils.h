@@ -226,6 +226,18 @@ class SubGraphMatcher {
   }
 };
 
+template <>
+bool SubGraphMatcher<MatchingDirection::kFollowInputs>::DoesOpTypePatternMatch(
+    const OpTypePattern& pattern, MutableNodeView* node_view,
+    NodeViewMatch* match);
+
+template <>
+bool SubGraphMatcher<MatchingDirection::kFollowInputs>::GetMatchedNodes(
+    const OpTypePattern& pattern,
+    const std::unordered_set<string>& nodes_to_preserve,
+    MutableNodeView* node_view, std::map<string, int>* matched_nodes_map,
+    std::set<int>* remove_node_indices);
+
 }  // namespace utils
 }  // namespace grappler
 }  // namespace tensorflow

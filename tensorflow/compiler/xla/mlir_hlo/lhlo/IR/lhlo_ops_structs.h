@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines structures used in LMHLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H
-#define MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H
+#ifndef MLIR_HLO_LHLO_IR_LHLO_OPS_STRUCTS_H
+#define MLIR_HLO_LHLO_IR_LHLO_OPS_STRUCTS_H
 
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -27,4 +27,4 @@ limitations under the License.
 #define GET_ATTRDEF_CLASSES
 #include "lhlo/IR/lhlo_ops_structs.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_LHLO_IR_LHLO_OPS_STRUCTS_H
+#endif  // MLIR_HLO_LHLO_IR_LHLO_OPS_STRUCTS_H

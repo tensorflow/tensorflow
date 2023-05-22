@@ -32,9 +32,11 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/identity_n_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/in_top_k_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/io_op_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/iterator_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/matmul_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/meta_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/nullary_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/optional_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/qr_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/random_op_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/range_spmd_expander.h"
@@ -69,6 +71,7 @@ REGISTER_SPMD(Cast, TF::CastOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Identity, TF::IdentityOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Neg, TF::NegOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(ZerosLike, TF::ZerosLikeOp, ElementwiseSPMDExpander);
+REGISTER_SPMD(OnesLike, TF::OnesLikeOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Exp, TF::ExpOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Sqrt, TF::SqrtOp, ElementwiseSPMDExpander);
 REGISTER_SPMD(Rsqrt, TF::RsqrtOp, ElementwiseSPMDExpander);
@@ -217,10 +220,17 @@ REGISTER_SPMD(L2Loss, TF::L2LossOp, ReduceSPMDExpander);
 REGISTER_SPMD(Conv2D, TF::Conv2DOp, ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropFilter, TF::Conv2DBackpropFilterOp,
               ConvSPMDExpander);
+REGISTER_SPMD(Conv2DBackpropFilterV2, TF::Conv2DBackpropFilterV2Op,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv2DBackpropInput, TF::Conv2DBackpropInputOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv2DBackpropInputV2, TF::Conv2DBackpropInputV2Op,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv3D, TF::Conv3DOp, ConvSPMDExpander);
+REGISTER_SPMD(Conv3DBackpropFilter, TF::Conv3DBackpropFilterOp,
+              ConvSPMDExpander);
 REGISTER_SPMD(Conv3DBackpropFilterV2, TF::Conv3DBackpropFilterV2Op,
               ConvSPMDExpander);
+REGISTER_SPMD(Conv3DBackpropInput, TF::Conv3DBackpropInputOp, ConvSPMDExpander);
 REGISTER_SPMD(Conv3DBackpropInputV2, TF::Conv3DBackpropInputV2Op,
               ConvSPMDExpander);
 REGISTER_SPMD(MaxPool, TF::MaxPoolOp, ConvSPMDExpander);
@@ -383,7 +393,14 @@ REGISTER_SPMD(DTensorShardedPrefix, TF::DTensorShardedPrefixOp,
               DTensorShardPrefixSPMDExpander);
 
 // DTensor Virtual ops
+REGISTER_SPMD(
+    CopyToMesh, TF::CopyToMeshOp, UnsupportedOpSPMDExpander,
+    "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
+REGISTER_SPMD(
+    CopyToMeshGrad, TF::CopyToMeshGradOp, UnsupportedOpSPMDExpander,
+    "CopyToMesh should have been lowered to DTensorSend and DTensorRecv.");
 REGISTER_SPMD(Relayout, TF::RelayoutOp, RelayoutSPMDExpander);
+REGISTER_SPMD(RelayoutLike, TF::RelayoutLikeOp, RelayoutLikeSPMDExpander);
 REGISTER_SPMD(DTensorSend, TF::DTensorSend, DTensorSendSPMDExpander);
 REGISTER_SPMD(DTensorRecv, TF::DTensorRecv, DTensorRecvSPMDExpander);
 
@@ -512,9 +529,22 @@ REGISTER_SPMD(TensorListSetItem, TF::TensorListSetItemOp,
 
 // IO ops
 REGISTER_SPMD(WriteSummary, TF::WriteSummaryOp, IOOpSPMDExpander);
+REGISTER_SPMD(FlushSummaryWriter, TF::FlushSummaryWriterOp, IOOpSPMDExpander);
 REGISTER_SPMD(DisableCopyOnRead, TF::DisableCopyOnReadOp,
               DisableCopyOnReadSPMDExpander);
 REGISTER_SPMD(ShardedFilename, TF::ShardedFilenameOp, ReplicatedOpSPMDExpander);
+
+// tf.data Optional ops
+REGISTER_SPMD(OptionalHasValue, TF::OptionalHasValueOp,
+              OptionalHasValueSPMDExpander);
+REGISTER_SPMD(OptionalGetValue, TF::OptionalGetValueOp,
+              OptionalGetValueSPMDExpander);
+
+// tf.data Iterator ops
+REGISTER_SPMD(IteratorGetNext, TF::IteratorGetNextOp,
+              IteratorGetNextSPMDExpander);
+REGISTER_SPMD(IteratorGetNextAsOptional, TF::IteratorGetNextAsOptionalOp,
+              IteratorGetNextAsOptionalSPMDExpander);
 
 // Unsupported ops.
 REGISTER_SPMD(RandomNormal, TF::RandomUniformOp, UnsupportedOpSPMDExpander,
@@ -530,5 +560,9 @@ REGISTER_SPMD(RandomNormalInt, TF::RandomUniformIntOp,
 // Unique
 REGISTER_SPMD(Unique, TF::UniqueOp, ReplicatedOpSPMDExpander,
               /*relayout_when_sharded=*/true);
+// Image Ops
+
+REGISTER_SPMD(EncodePng, TF::EncodePngOp, ReduceSPMDExpander);
+
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/dtensor/cc/constants.h"
@@ -265,12 +264,52 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
     return errors::InvalidArgument(
         llvm::formatv("Malformed default return layout received. {0} Received "
                       "layout : {1}",
-                      result_layout_or_status.status().error_message(),
-                      layout_string)
+                      result_layout_or_status.status().message(), layout_string)
             .str());
 
   layout.emplace(result_layout_or_status.value());
   return layout;
+}
+
+StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
+    mlir::OpOperand& input_value) {
+  const int operand_index = input_value.getOperandNumber();
+  auto defining_op = input_value.get().getDefiningOp();
+
+  if (defining_op) {
+    if (mlir::isa<mlir::TF::DTensorLayout,
+                  mlir::TF::IteratorGetNextAsOptionalOp>(defining_op)) {
+      return ExtractElementLayoutsFromOperand(defining_op->getOpOperand(0));
+    }
+  }
+
+  // If we reach this point, we're working with a function argument.
+  mlir::Operation* op = input_value.getOwner();
+  auto enclosing_function = op->getParentOfType<mlir::func::FuncOp>();
+  if (!enclosing_function)
+    return errors::InvalidArgument(
+        llvm::formatv("Could not find iterator at {0}-th input to op: {1}",
+                      operand_index, op->getName())
+            .str());
+
+  auto block_arg = input_value.get().dyn_cast<mlir::BlockArgument>();
+  auto array_attr = enclosing_function.getArgAttrOfType<mlir::ArrayAttr>(
+      block_arg.getArgNumber(), kIteratorElementLayouts);
+  if (!array_attr)
+    return errors::InvalidArgument(
+        llvm::formatv(
+            "Could not find `{0}` attribute of {1}-th input to op: {2}",
+            kIteratorElementLayouts, operand_index, op->getName())
+            .str());
+
+  llvm::SmallVector<Layout, 4> layouts(array_attr.size());
+  for (int i = 0; i < array_attr.size(); ++i) {
+    layouts[i] = Layout::FromString(
+                     array_attr[i].cast<mlir::StringAttr>().getValue().str())
+                     .value();
+  }
+
+  return layouts;
 }
 
 }  // namespace dtensor

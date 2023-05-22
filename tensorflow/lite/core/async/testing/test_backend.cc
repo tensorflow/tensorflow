@@ -19,10 +19,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/utils.h"
-#include "tensorflow/lite/core/async/async_kernel_internal.h"
 #include "tensorflow/lite/util.h"
 
 namespace tflite {
@@ -69,6 +69,10 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context,
   reg.builtin_code = kTfLiteBuiltinDelegate;
   reg.custom_name = "TestBackend";
   reg.version = 1;
+  reg.async_kernel = [](TfLiteContext*,
+                        TfLiteNode* node) -> TfLiteAsyncKernel* {
+    return reinterpret_cast<TfLiteAsyncKernel*>(node->user_data);
+  };
 
   return context->ReplaceNodeSubsetsWithDelegateKernels(
       context, reg, BuildTfLiteIntArray(supported_nodes).get(),

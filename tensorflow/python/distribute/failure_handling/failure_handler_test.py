@@ -28,14 +28,17 @@ from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.distribute import one_device_strategy as one_device_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.failure_handling import failure_handling
 from tensorflow.python.distribute.failure_handling import failure_handling_util
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.module import module
@@ -45,6 +48,13 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
+
+try:
+  import dill  # pylint:disable=g-import-not-at-top
+
+  _REGISTER_DECORATOR = dill.register
+except ImportError:
+  _REGISTER_DECORATOR = lambda fn, *_: fn
 
 mock = test.mock
 
@@ -61,7 +71,7 @@ def _is_oss():
 
 
 def _make_checkpoint_manager(checkpoint, checkpoint_dir, cluster_resolver):
-  if not cluster_resolver.cluster_spec().as_dict() or (
+  if not cluster_resolver or not cluster_resolver.cluster_spec().as_dict() or (
       multi_worker_util.is_chief(
           cluster_spec=cluster_resolver.cluster_spec(),
           task_type=cluster_resolver.task_type,
@@ -116,6 +126,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
   def worker_fn(self,
                 checkpoint_dir,
                 cluster_spec,
+                strategy_option,
                 input_arg='checkpoint',
                 training_started_event=None,
                 raise_app_error_on_worker=None,
@@ -124,7 +135,15 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
                 termination_config=failure_handling.TerminationConfig(),
                 api_wrapping_train=True):
 
-    strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+    if strategy_option == 'MS':
+      strategy = mirrored_strategy.MirroredStrategy()
+    elif strategy_option == 'OneDevice':
+      if config.list_physical_devices('GPU'):
+        strategy = one_device_lib.OneDeviceStrategy(device='/gpu:0')
+      else:
+        strategy = one_device_lib.OneDeviceStrategy(device='/cpu:0')
+    else:
+      strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
 
     class Model(module.Module):
 
@@ -163,7 +182,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         @def_function.function
         def train_step():
           if cluster_spec and (
-              distribution_strategy_context.get_distribution_strategy(
+              distribute_lib.get_distribution_strategy(
               ).cluster_resolver.task_id == raise_app_error_on_worker):
             raise errors_impl.ResourceExhaustedError(
                 node_def=None, op=None, message='Running out of resources')
@@ -209,7 +228,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
           if api_wrapping_train:
             preemption_handler.run(distributed_train_step, epoch, step)
           else:
-            preemption_handler._save_checkpoint_if_preempted()
+            preemption_handler.save_checkpoint_if_preempted()
             distributed_train_step(epoch, step)
         # Add some randomness to when preemption actually happens. We should
         # trigger it for sure if the training is coming to an end and it hasn't
@@ -232,9 +251,14 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           input_arg=['checkpoint', 'manager'],
-          mwms_mode=['local', 'multi_worker'],
+          strategy_option=[
+              'MS',
+              'OneDevice',
+              'MWMS_local',
+              'MWMS_multi_worker',
+          ],
           api_wrapping_train=[True, False]))
-  def test_preemption_checkpointing(self, input_arg, mwms_mode,
+  def test_preemption_checkpointing(self, input_arg, strategy_option,
                                     api_wrapping_train):
     has_chief = False
 
@@ -244,8 +268,14 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       rpc_layer = 'grpc+loas'
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
+    def exit_fn_checking_metric():
+      self.assertGreater(tracking_util._preemption_checkpoint_saved_time_usecs.get_cell().value(), 0)  # pylint: disable=line-too-long
+      sys.exit(42)
 
-    if mwms_mode == 'multi_worker':
+    termination_config = failure_handling.TerminationConfig(
+        exit_fn=exit_fn_checking_metric)
+
+    if strategy_option == 'MWMS_multi_worker':
       cluster_spec = multi_worker_test_base.create_cluster_spec(
           has_chief=has_chief,
           num_workers=CLUSTER_SIZE)
@@ -256,9 +286,9 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       mpr = multi_process_runner.MultiProcessRunner(
           self.worker_fn,
           cluster_spec,
-          args=(checkpoint_dir, cluster_spec, input_arg,
-                [training_started_event
-                ], None, training_restarted, training_finished),
+          args=(checkpoint_dir, cluster_spec, input_arg, strategy_option,
+                [training_started_event], None, training_restarted,
+                training_finished, termination_config),
           kwargs={'api_wrapping_train': api_wrapping_train},
           rpc_layer=rpc_layer,
           return_output=True,
@@ -304,7 +334,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
       caught_exit = False
       try:
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, strategy_option, input_arg,
                        [training_started_event], None, training_restarted,
                        training_finished)
 
@@ -320,7 +350,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
         logging.info('restarting workers')
         training_restarted.set()
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, strategy_option, input_arg,
                        [training_started_event], None, training_restarted,
                        training_finished)
 
@@ -337,6 +367,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         self.worker_fn(
             checkpoint_dir,
             cluster_spec,
+            'MWMS_multi_worker',
             raise_app_error_on_worker=error_worker)
       self.assertIn('Running out of resources', str(error.exception))
 
@@ -350,16 +381,25 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
         cluster_spec,
         rpc_layer=rpc_layer,
         return_output=True,
-        dependence_on_chief=False)
+        dependence_on_chief=False,
+    )
 
     logging.info('Cluster starting.')
     mpr.start()
     mpr.join(timeout=250)
 
   @combinations.generate(
-      combinations.combine(input_arg=['checkpoint', 'manager'],
-                           mwms_mode=['local', 'multi_worker'],))
-  def test_grace_period_continue_training(self, input_arg, mwms_mode):
+      combinations.combine(
+          input_arg=['checkpoint', 'manager'],
+          strategy_option=[
+              'MS',
+              'OneDevice',
+              'MWMS_local',
+              'MWMS_multi_worker',
+          ],
+      )
+  )
+  def test_grace_period_continue_training(self, input_arg, strategy_option):
     if _is_oss():
       rpc_layer = 'grpc'
     else:
@@ -367,7 +407,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
     checkpoint_dir = os.path.join(self.get_temp_dir(), 'fh_ckpt')
 
-    if mwms_mode == 'multi_worker':
+    if strategy_option == 'MWMS_multi_worker':
       grace_period = 5
       termination_config = failure_handling.TerminationConfig(
           grace_period=grace_period)
@@ -382,7 +422,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
       mpr = multi_process_runner.MultiProcessRunner(
           self.worker_fn,
           cluster_spec,
-          args=(checkpoint_dir, cluster_spec, input_arg,
+          args=(checkpoint_dir, cluster_spec, strategy_option, input_arg,
                 [training_started_event], None, training_restarted,
                 training_finished, termination_config),
           rpc_layer=rpc_layer,
@@ -434,7 +474,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
       caught_exit = False
       try:
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, strategy_option, input_arg,
                        [training_started_event], None, training_restarted,
                        training_finished, termination_config)
 
@@ -450,7 +490,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
 
         logging.info('restarting workers')
         training_restarted.set()
-        self.worker_fn(checkpoint_dir, cluster_spec, input_arg,
+        self.worker_fn(checkpoint_dir, cluster_spec, strategy_option, input_arg,
                        [training_started_event], None, training_restarted,
                        training_finished, termination_config)
 
@@ -476,7 +516,7 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     mpr = multi_process_runner.MultiProcessRunner(
         self.worker_fn,
         cluster_spec,
-        args=(checkpoint_dir, cluster_spec, 'checkpoint',
+        args=(checkpoint_dir, cluster_spec, 'MWMS_multi_worker', 'checkpoint',
               [training_started_event], None, None, None, termination_config),
         rpc_layer=rpc_layer,
         return_output=True,
@@ -503,6 +543,15 @@ class PreemptionCheckpointTest(test.TestCase, parameterized.TestCase):
     # By default, as tested by other test cases, checkpoint will be saved.
     # This passed in save_fn skips it.
     self.assertEmpty(match_group)
+
+
+@_REGISTER_DECORATOR(PreemptionCheckpointTest)
+def _save_test_case(pickler, obj):
+  def reconstruct(*args, **kwargs):
+    del args, kwargs
+    return PreemptionCheckpointTest()
+
+  return pickler.save_reduce(reconstruct, (), obj=obj)
 
 
 if __name__ == '__main__':

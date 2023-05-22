@@ -159,6 +159,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
           // We have reached the end of the current element, so maybe move on
           // to the next element.
+          ctx->PurgeCheckpoint(current_element_iterator_->prefix());
           current_element_iterator_.reset();
         }
 

@@ -134,9 +134,18 @@ xla::LiteralProto CreateR0(T v) {
   return array.ToProto();
 }
 
+tensorflow::SessionOptions GetSessionOptions() {
+  tensorflow::SessionOptions options;
+  // Disable optimizations for static graph to allow calls to Session::Extend.
+  options.config.mutable_experimental()->set_disable_optimize_for_static_graph(
+      true);
+  return options;
+}
+
 class XrtClientSession : public ClientSession {
  public:
-  explicit XrtClientSession(const Scope& scope) : ClientSession(scope) {
+  explicit XrtClientSession(const Scope& scope)
+      : ClientSession(scope, GetSessionOptions()) {
     auto clear_all = ops::XRTReleaseAllAllocations(scope);
     std::vector<Tensor> outputs;
     TF_CHECK_OK(Run(ClientSession::FeedType(), {}, {clear_all}, &outputs));

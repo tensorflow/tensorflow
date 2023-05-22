@@ -106,7 +106,12 @@ def _new__setattr__(self, key, value):
 def _new__getattribute__(self, key):
   if key not in ('_tf_should_use_helper', '_tf_should_use_wrapped_value'):
     object.__getattribute__(self, '_tf_should_use_helper').sate()
-  if key in ('_tf_should_use_helper', 'mark_used', '__setatt__'):
+  if key in (
+      '_tf_should_use_wrapped_value',
+      '_tf_should_use_helper',
+      'mark_used',
+      '__setattr__',
+  ):
     return object.__getattribute__(self, key)
   return getattr(
       object.__getattribute__(self, '_tf_should_use_wrapped_value'), key)
@@ -122,8 +127,49 @@ def _new_mark_used(self, *args, **kwargs):
   except AttributeError:
     pass
 
+OVERLOADABLE_OPERATORS = {
+    '__add__',
+    '__radd__',
+    '__sub__',
+    '__rsub__',
+    '__mul__',
+    '__rmul__',
+    '__div__',
+    '__rdiv__',
+    '__truediv__',
+    '__rtruediv__',
+    '__floordiv__',
+    '__rfloordiv__',
+    '__mod__',
+    '__rmod__',
+    '__lt__',
+    '__le__',
+    '__gt__',
+    '__ge__',
+    '__ne__',
+    '__eq__',
+    '__and__',
+    '__rand__',
+    '__or__',
+    '__ror__',
+    '__xor__',
+    '__rxor__',
+    '__getitem__',
+    '__pow__',
+    '__rpow__',
+    '__invert__',
+    '__neg__',
+    '__abs__',
+    '__matmul__',
+    '__rmatmul__',
+}
+
 
 _WRAPPERS = {}
+
+
+class ShouldUseWrapper(object):
+  pass
 
 
 def _get_wrapper(x, tf_should_use_helper):
@@ -144,23 +190,22 @@ def _get_wrapper(x, tf_should_use_helper):
   if memoized:
     return memoized(x, tf_should_use_helper)
 
-  tx = copy.deepcopy(type_x)
+  # Make a copy of `object`
+  tx = copy.deepcopy(ShouldUseWrapper)
   # Prefer using __orig_bases__, which preserve generic type arguments.
   bases = getattr(tx, '__orig_bases__', tx.__bases__)
 
-  # Use types.new_class when available, which is preferred over plain type in
-  # some distributions.
-  if sys.version_info >= (3, 5):
-    def set_body(ns):
-      ns.update(tx.__dict__)
-      return ns
+  def set_body(ns):
+    ns.update(tx.__dict__)
+    return ns
 
-    copy_tx = types.new_class(tx.__name__, bases, exec_body=set_body)
-  else:
-    copy_tx = type(tx.__name__, bases, dict(tx.__dict__))
-
+  copy_tx = types.new_class(tx.__name__, bases, exec_body=set_body)
   copy_tx.__init__ = _new__init__
   copy_tx.__getattribute__ = _new__getattribute__
+  for op in OVERLOADABLE_OPERATORS:
+    if hasattr(type_x, op):
+      setattr(copy_tx, op, getattr(type_x, op))
+
   copy_tx.mark_used = _new_mark_used
   copy_tx.__setattr__ = _new__setattr__
   _WRAPPERS[type_x] = copy_tx

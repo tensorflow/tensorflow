@@ -18,6 +18,7 @@ limitations under the License.
 // Launches an RPC service in a subprocess and connects to it over a socket
 // using an RPCStub.
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_format.h"
@@ -45,9 +46,9 @@ namespace {
 class GRPCClientTestBase : public ::testing::Test {
  protected:
   GRPCClientTestBase() {
-    std::string test_srcdir = tsl::testing::TensorFlowSrcRoot();
-    std::string service_main_path = tsl::io::JoinPath(
-        test_srcdir, "compiler/xla/rpc/grpc_service_main_cpu");
+    std::string test_srcdir = tsl::testing::XlaSrcRoot();
+    std::string service_main_path =
+        tsl::io::JoinPath(test_srcdir, "rpc/grpc_service_main_cpu");
     int port = tsl::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(
         service_main_path,

@@ -79,6 +79,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -98,19 +99,28 @@ tf_cc_test(
 
 cc_library(
     name = "worker_session",
-    srcs = [
-        "cluster_function_library_runtime.cc",
-        "worker_session.cc",
-    ],
-    hdrs = [
-        "cluster_function_library_runtime.h",
-        "worker_session.h",
-    ],
+    srcs = ["worker_session.cc"],
+    hdrs = ["worker_session.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":graph_mgr",
         ":worker_cache",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "cluster_function_library_runtime",
+    srcs = ["cluster_function_library_runtime.cc"],
+    hdrs = ["cluster_function_library_runtime.h"],
+    # copybara:uncomment copts = ["-Wthread-safety-analysis"],
+    deps = [
+        ":worker_cache",
         ":worker_interface",
+        ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -129,6 +139,7 @@ tf_cc_test(
         "no_windows",
     ],
     deps = [
+        ":cluster_function_library_runtime",
         ":worker_session",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
@@ -149,6 +160,7 @@ cc_library(
     hdrs = ["session_mgr.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
+        ":cluster_function_library_runtime",
         ":error_payloads",
         ":graph_mgr",
         ":remote_device",
@@ -158,7 +170,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core/activity_watcher",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "//tensorflow/tsl/distributed_runtime/coordination:coordination_service",
@@ -183,6 +194,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -380,6 +392,7 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/protobuf:master_proto_cc",
         "//tensorflow/core/protobuf:worker_proto_cc",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -405,6 +418,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/protobuf:master_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -461,10 +475,12 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/eager:rendezvous_cache",
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -476,6 +492,7 @@ cc_library(
         ":worker_cache",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
+        "//tensorflow/tsl/protobuf:rpc_options_proto_cc",
     ],
 )
 
@@ -605,6 +622,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:scoped_memory_debug_annotation",
         "//tensorflow/core/protobuf:worker_proto_cc",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -768,8 +786,8 @@ tf_cuda_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     tags = tf_cuda_tests_tags() + [
         "manual",
-        "notap",  # Memory leak due to b/62910646
         "noguitar",  # Memory leak due to b/62910646
+        "notap",  # Memory leak due to b/62910646
     ],
     deps = [
         ":master",
@@ -887,7 +905,7 @@ filegroup(
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
-        "//tensorflow/core/function:__pkg__",
+        "//tensorflow/core/function/runtime_client:__pkg__",
         "//tensorflow/python:__subpackages__",
     ],
 )

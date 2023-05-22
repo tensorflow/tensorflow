@@ -21,14 +21,14 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace host {
@@ -50,16 +50,16 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   // The stack size used for host streams can be set via
   // device_options.non_portable_tags["host_stack_size"].
-  port::Status Init(int device_ordinal, DeviceOptions device_options) override;
+  tsl::Status Init(int device_ordinal, DeviceOptions device_options) override;
 
-  port::Status GetKernel(const MultiKernelLoaderSpec& spec,
-                         KernelBase* kernel) override {
-    return port::UnimplementedError("Not Implemented");
+  tsl::Status GetKernel(const MultiKernelLoaderSpec& spec,
+                        KernelBase* kernel) override {
+    return tsl::errors::Unimplemented("Not Implemented");
   }
-  port::Status Launch(Stream* stream, const ThreadDim& thread_dims,
-                      const BlockDim& block_dims, const KernelBase& kernel,
-                      const KernelArgsArrayBase& args) override {
-    return port::UnimplementedError("Not Implemented");
+  tsl::Status Launch(Stream* stream, const ThreadDim& thread_dims,
+                     const BlockDim& block_dims, const KernelBase& kernel,
+                     const KernelArgsArrayBase& args) override {
+    return tsl::errors::Unimplemented("Not Implemented");
   }
 
   DeviceMemoryBase Allocate(uint64_t size, int64_t memory_space) override;
@@ -82,37 +82,36 @@ class HostExecutor : public internal::StreamExecutorInterface {
                             const DeviceMemoryBase& gpu_src,
                             uint64_t size) override;
 
-  port::Status MemZero(Stream* stream, DeviceMemoryBase* location,
-                       uint64_t size) override;
-  port::Status Memset(Stream* stream, DeviceMemoryBase* location,
-                      uint8_t pattern, uint64_t size) override;
-  port::Status Memset32(Stream* stream, DeviceMemoryBase* location,
-                        uint32_t pattern, uint64_t size) override;
+  tsl::Status MemZero(Stream* stream, DeviceMemoryBase* location,
+                      uint64_t size) override;
+  tsl::Status Memset(Stream* stream, DeviceMemoryBase* location,
+                     uint8_t pattern, uint64_t size) override;
+  tsl::Status Memset32(Stream* stream, DeviceMemoryBase* location,
+                       uint32_t pattern, uint64_t size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  port::Status SynchronousMemZero(DeviceMemoryBase* location,
-                                  uint64_t size) override;
-
-  port::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+  tsl::Status SynchronousMemZero(DeviceMemoryBase* location,
                                  uint64_t size) override;
 
-  port::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                 const void* host_src, uint64_t size) override;
-  port::Status SynchronousMemcpy(void* host_dst,
-                                 const DeviceMemoryBase& gpu_src,
-                                 uint64_t size) override;
-  port::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
-                                               const DeviceMemoryBase& gpu_src,
-                                               uint64_t size) override;
+  tsl::Status SynchronousMemSet(DeviceMemoryBase* location, int value,
+                                uint64_t size) override;
+
+  tsl::Status SynchronousMemcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
+                                uint64_t size) override;
+  tsl::Status SynchronousMemcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+                                uint64_t size) override;
+  tsl::Status SynchronousMemcpyDeviceToDevice(DeviceMemoryBase* gpu_dst,
+                                              const DeviceMemoryBase& gpu_src,
+                                              uint64_t size) override;
 
   bool HostCallback(Stream* stream,
-                    std::function<port::Status()> callback) override;
+                    absl::AnyInvocable<tsl::Status() &&> callback) override;
 
-  port::Status AllocateEvent(Event* event) override;
-  port::Status DeallocateEvent(Event* event) override;
-  port::Status RecordEvent(Stream* stream, Event* event) override;
-  port::Status WaitForEvent(Stream* stream, Event* event) override;
+  tsl::Status AllocateEvent(Event* event) override;
+  tsl::Status DeallocateEvent(Event* event) override;
+  tsl::Status RecordEvent(Stream* stream, Event* event) override;
+  tsl::Status WaitForEvent(Stream* stream, Event* event) override;
   Event::Status PollForEventStatus(Event* event) override;
 
   bool AllocateStream(Stream* stream) override;
@@ -128,21 +127,21 @@ class HostExecutor : public internal::StreamExecutorInterface {
 
   bool StopTimer(Stream* stream, Timer* timer) override;
 
-  port::Status BlockHostUntilDone(Stream* stream) override;
+  tsl::Status BlockHostUntilDone(Stream* stream) override;
 
   int PlatformDeviceCount() override { return 1; }
 
   bool DeviceMemoryUsage(int64_t* free, int64_t* total) const override;
 
-  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+  tsl::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
       const override {
     return CreateDeviceDescription(0);
   }
 
-  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  static tsl::StatusOr<std::unique_ptr<DeviceDescription>>
   CreateDeviceDescription(int device_ordinal);
 
-  port::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
+  tsl::Status EnablePeerAccessTo(StreamExecutorInterface* other) override {
     return ::tsl::OkStatus();
   }
 

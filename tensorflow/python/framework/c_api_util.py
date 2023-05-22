@@ -89,14 +89,6 @@ class ScopedTFStatus(object):
       c_api.TF_DeleteStatus(self.status)
 
 
-class ScopedTFGraph(UniquePtr):
-  """Wrapper around TF_Graph that handles deletion."""
-
-  def __init__(self, name):
-    super(ScopedTFGraph, self).__init__(
-        name, obj=c_api.TF_NewGraph(), deleter=c_api.TF_DeleteGraph)
-
-
 class ScopedTFImportGraphDefOptions(object):
   """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
 
@@ -243,42 +235,3 @@ def tf_output(c_op, index):
   ret.oper = c_op
   ret.index = index
   return ret
-
-
-def tf_operations(graph):
-  """Generator that yields every TF_Operation in `graph`.
-
-  Args:
-    graph: Graph
-
-  Yields:
-    wrapped TF_Operation
-  """
-  # pylint: disable=protected-access
-  pos = 0
-  with graph._c_graph.get() as c_graph:
-    c_op, pos = c_api.TF_GraphNextOperation(c_graph, pos)
-    while c_op is not None:
-      yield c_op
-      c_op, pos = c_api.TF_GraphNextOperation(c_graph, pos)
-  # pylint: enable=protected-access
-
-
-def new_tf_operations(graph):
-  """Generator that yields newly-added TF_Operations in `graph`.
-
-  Specifically, yields TF_Operations that don't have associated Operations in
-  `graph`. This is useful for processing nodes added by the C API.
-
-  Args:
-    graph: Graph
-
-  Yields:
-    wrapped TF_Operation
-  """
-  # TODO(b/69679162): do this more efficiently
-  for c_op in tf_operations(graph):
-    try:
-      graph._get_operation_by_tf_operation(c_op)  # pylint: disable=protected-access
-    except KeyError:
-      yield c_op

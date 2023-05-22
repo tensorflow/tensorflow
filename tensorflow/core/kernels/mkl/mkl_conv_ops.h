@@ -48,7 +48,11 @@ using dnnl::stream;
 
 namespace tensorflow {
 
+#ifndef ENABLE_ONEDNN_V3
+// Op descriptor is no longer supported in oneDNN v3.x. Instead, primitive
+// descriptor will directly accept primitive parameters during creation.
 using ConvFwdDesc = dnnl::convolution_forward::desc;
+#endif  // !ENABLE_ONEDNN_V3
 using ConvFwdPd = dnnl::convolution_forward::primitive_desc;
 
 class MklDnnConvUtil {
@@ -223,6 +227,11 @@ class MklDnnConvUtil {
                       input_depth, " vs ", filter_in_depth));
       *is_grouped_convolution = filter_in_depth != input_depth;
       int group_count = input_depth / filter_in_depth;
+      OP_REQUIRES(context_, group_count > 0,
+                  errors::InvalidArgument(
+                      "grouped convolution must have at least one group: ",
+                      group_count, " groups"));
+
       // oneDNN always needs filter in OIHW format for regular convolutions
       // and GOIHW for grouped/depthwise convolutions,
       // OIHW = (out_depth, in_depth, rows, cols)

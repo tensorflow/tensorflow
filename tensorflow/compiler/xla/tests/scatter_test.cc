@@ -816,6 +816,10 @@ ENTRY main {
 
 // TODO(b/230137437): Enable this on GPU once mhlo allows variadic scatter.
 XLA_TEST_F(ScatterTest, DISABLED_ON_GPU(Multioutput)) {
+  if (IsMlirLoweringEnabled()) {
+    GTEST_SKIP() << "Variadic scatter not supported by MLIR";
+  }
+
   constexpr char hlo_text[] = R"(
 HloModule MultioutputScatter
 

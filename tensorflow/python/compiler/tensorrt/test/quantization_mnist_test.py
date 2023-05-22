@@ -26,8 +26,8 @@ from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
 from tensorflow.python.estimator.run_config import RunConfig
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -164,7 +164,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         self._BuildGraph(x)
       self._LoadWeights(model_dir, sess)
       # Freeze
-      graph_def = graph_util.convert_variables_to_constants(
+      graph_def = convert_to_constants.convert_variables_to_constants(
           sess, sess.graph_def, output_node_names=[OUTPUT_NODE_NAME])
     # Convert with TF-TRT
     if use_trt:

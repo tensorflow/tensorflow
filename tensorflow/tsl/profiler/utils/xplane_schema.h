@@ -43,6 +43,8 @@ TF_CONST_INIT extern const absl::string_view kTpuPlanePrefix;
 TF_CONST_INIT extern const char kTpuPlaneRegex[];
 // Name prefix of XPlane that contains custom device events.
 TF_CONST_INIT extern const absl::string_view kCustomPlanePrefix;
+// Name prefix of XPlane that contains TPU non-core events such as HBM, ICI etc.
+TF_CONST_INIT extern const absl::string_view kTpuNonCorePlaneNamePrefix;
 // Name prefix of XPlane that contains TPU runtime events.
 TF_CONST_INIT extern const absl::string_view kTpuRuntimePlaneName;
 // Name of XPlane that contains CUPTI driver API generated events.
@@ -55,6 +57,10 @@ TF_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 TF_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
 // Name of XPlane that contains events from python tracer.
 TF_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
+// Name of XPlane that contains kTrace thread-switch events
+TF_CONST_INIT extern const absl::string_view kHostCpusPlaneName;
+// Name of XPlane that contains kTrace system calls.
+TF_CONST_INIT extern const absl::string_view kSyscallsPlaneName;
 
 // Names of XLines that contain ML-level events.
 TF_CONST_INIT extern const absl::string_view kStepLineName;
@@ -65,6 +71,7 @@ TF_CONST_INIT extern const absl::string_view kXlaOpLineName;
 TF_CONST_INIT extern const absl::string_view kXlaAsyncOpLineName;
 TF_CONST_INIT extern const absl::string_view kKernelLaunchLineName;
 TF_CONST_INIT extern const absl::string_view kSourceLineName;
+TF_CONST_INIT extern const absl::string_view kCounterEventsLineName;
 
 // GPU device vendors.
 TF_CONST_INIT extern const absl::string_view kDeviceVendorNvidia;
@@ -257,8 +264,9 @@ enum StatType {
   kDevCapComputeCapMajor,
   kDevCapComputeCapMinor,
   kDevCapPeakTeraflopsPerSecond,
-  kDevCapPeakBwGigabytesPerSecond,
   kDevCapPeakHbmBwGigabytesPerSecond,
+  kDevCapPeakSramRdBwGigabytesPerSecond,
+  kDevCapPeakSramWrBwGigabytesPerSecond,
   kDevVendor,
   // Batching related.
   kBatchSizeAfterPadding,
@@ -278,7 +286,21 @@ enum StatType {
   kSymbolId,
   kTfOpName,
   kDmaStallDurationPs,
-  kLastStatType = kDmaStallDurationPs
+  kKey,
+  kPayloadSizeBytes,
+  kDuration,
+  kBufferSize,
+  kTransfers,
+  // Dcn message Stats
+  kDcnLabel,
+  kDcnSourceSliceId,
+  kDcnSourcePerSliceDeviceId,
+  kDcnDestinationSliceId,
+  kDcnDestinationPerSliceDeviceId,
+  kDcnChunk,
+  kDcnLoopIndex,
+  kModelInfo,
+  kLastStatType = kModelInfo,
 };
 
 inline std::string TpuPlaneName(int32_t device_ordinal) {
@@ -309,6 +331,8 @@ bool IsStatType(StatType stat_type, absl::string_view stat_name);
 inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
   return GetStatTypeStr(stat_type) == stat_name;
 }
+
+bool IsTensorCorePlaneName(absl::string_view plane_name);
 
 absl::optional<int64_t> FindStatType(absl::string_view stat_name);
 
@@ -387,6 +411,22 @@ class XFlow {
 
   static_assert(sizeof(encoded_) == sizeof(uint64_t), "Must be 64 bits.");
 };
+
+// String constants for XProf TraceMes for DCN Messages.
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnReceive;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSend;
+TF_CONST_INIT extern const absl::string_view kMegaScaleDcnSendFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleTopologyDiscovery;
+TF_CONST_INIT extern const absl::string_view kMegaScaleBarrier;
+TF_CONST_INIT extern const absl::string_view kMegaScaleHostCommand;
+TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleD2HTransferFinished;
+TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferStart;
+TF_CONST_INIT extern const absl::string_view kMegaScaleH2DTransferFinished;
+TF_CONST_INIT extern const char kXProfMetadataKey[];
+TF_CONST_INIT extern const char kXProfMetadataFlow[];
+TF_CONST_INIT extern const char kXProfMetadataTransfers[];
+TF_CONST_INIT extern const char kXProfMetadataBufferSize[];
 
 }  // namespace profiler
 }  // namespace tsl

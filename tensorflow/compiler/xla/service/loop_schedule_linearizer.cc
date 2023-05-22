@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/loop_schedule_linearizer.h"
 
-#include "tensorflow/compiler/xla/service/dump.h"
+#include <memory>
+
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 
 namespace xla {
@@ -143,25 +144,28 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
 StatusOr<bool> LoopScheduleLinearizer::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
-                      HloAliasAnalysis::Run(module, can_share_buffer_));
+  // Constructing HloAliasAnalysis is expensive, so don't do it until we find at
+  // least one kWhile op in the module.
+  std::unique_ptr<HloAliasAnalysis> alias_analysis;
 
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        StatusOr<bool> updated_loop =
-            AddControlEdgesForLoopWrites(instruction, *alias_analysis);
-        TF_RETURN_IF_ERROR(updated_loop.status());
-        changed |= *updated_loop;
+      if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
       }
+
+      if (alias_analysis == nullptr) {
+        TF_ASSIGN_OR_RETURN(alias_analysis,
+                            HloAliasAnalysis::Run(module, can_share_buffer_));
+      }
+      TF_ASSIGN_OR_RETURN(bool updated_loop, AddControlEdgesForLoopWrites(
+                                                 instruction, *alias_analysis));
+      changed |= updated_loop;
     }
   }
-  DumpHloModuleDuringPassIfEnabled(
-      name(), "after inserting control edges inside while loop bodies",
-      *module);
 
   return changed;
 }

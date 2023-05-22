@@ -2,8 +2,8 @@
 
 [TOC]
 
-TensorFlow Debugger (TFDBG) is a specialized debugger for TensorFlow's computation
-runtime. TFDBG in TensorFlow 2.x provides access to:
+TensorFlow Debugger (TFDBG) is a specialized debugger for TensorFlow's
+computation runtime. TFDBG in TensorFlow 2.x provides access to:
 
 - Tensor values during [eager](https://www.tensorflow.org/guide/eager) and
   [graph](https://www.tensorflow.org/api_docs/python/tf/Graph) execution.
@@ -31,7 +31,7 @@ V2](https://www.tensorflow.org/tensorboard/debugger_v2).
 
 ## Known issues and limitations
 
-1.  Using `tf.debugging.experimental.enable_dumpp_debug_info()` leads to
+1.  Using `tf.debugging.experimental.enable_dump_debug_info()` leads to
     performance penalty on your TensorFlow program. The amount of slowdown
     varied depending on whether you are using TensorFlow on CPU, GPUs, or TPUs.
     The performance penalty is the highest on TPUs, followed by GPUs, and lowest

@@ -28,9 +28,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import fingerprinting_utils
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
-from tensorflow.python.saved_model import utils_impl as saved_model_utils
+from tensorflow.python.saved_model.pywrap_saved_model import constants
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
@@ -362,8 +363,8 @@ class _SavedModelBuilder(object):
     _add_op_to_signature_def_map(signature_def_map, train_op,
                                  constants.TRAIN_OP_SIGNATURE_KEY)
 
-    saved_model_utils.get_or_create_variables_dir(self._export_dir)
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    path_helpers.get_or_create_variables_dir(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 
@@ -416,6 +417,9 @@ class _SavedModelBuilder(object):
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 
+    saved_model_serialized = self._saved_model.SerializeToString(
+        deterministic=True)
+
     if as_text:
       path = file_io.join(
           compat.as_bytes(self._export_dir),
@@ -426,9 +430,12 @@ class _SavedModelBuilder(object):
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
-          path, self._saved_model.SerializeToString(deterministic=True))
+          path, saved_model_serialized)
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
+
+    # Placeholder for internal TF1 model fingerprint write
+
     return path
 
 
@@ -590,8 +597,8 @@ class SavedModelBuilder(_SavedModelBuilder):
     # Add assets and ops
     self._add_collections(assets_collection, main_op, None)
 
-    saved_model_utils.get_or_create_variables_dir(self._export_dir)
-    variables_path = saved_model_utils.get_variables_path(self._export_dir)
+    path_helpers.get_or_create_variables_dir(self._export_dir)
+    variables_path = path_helpers.get_variables_path(self._export_dir)
 
     saver = self._maybe_create_saver(saver)
 
@@ -776,7 +783,7 @@ def copy_assets_to_destination_dir(asset_filename_map, destination_dir,
   if saved_files is None:
     saved_files = set()
 
-  assets_destination_dir = saved_model_utils.get_or_create_assets_dir(
+  assets_destination_dir = path_helpers.get_or_create_assets_dir(
       destination_dir)
 
   # Copy each asset from source path to destination path.

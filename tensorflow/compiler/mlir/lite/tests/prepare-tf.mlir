@@ -193,6 +193,18 @@ func.func @identity(%arg0: tensor<10xi32>, %arg1: tensor<20xi32>, %arg2: tensor<
 // CHECK: return %arg0, %arg1, %arg2, %0
 }
 
+func.func @sharding(%arg0: tensor<10x10xi32>) -> (tensor<10x10xi32>) {
+  %0 = "tf.MatMul"(%arg0, %arg0) {device = "", transpose_a = false, transpose_b = false} : (tensor<10x10xi32>, tensor<10x10xi32>) -> tensor<10x10xi32>
+  %1 = "tf.MatMul"(%arg0, %arg0) {device = "", transpose_a = false, transpose_b = false} : (tensor<10x10xi32>, tensor<10x10xi32>) -> tensor<10x10xi32>
+  %2 = "tf.XlaSharding"(%0) {_XlaSharding = "\08\03\1A\02\01\01\22\01\00", device = "", sharding = "\08\03\1A\02\01\01\22\01\00", unspecified_dims = []} : (tensor<10x10xi32>) -> tensor<10x10xi32>
+  %3 = "tf.XlaSharding"(%1) {_XlaSharding = "\08\03\1A\02\01\01\22\01\00", device = "", sharding = "\08\03\1A\02\01\01\22\01\00", unspecified_dims = []} : (tensor<10x10xi32>) -> tensor<10x10xi32>
+  %4 = "tf.AddV2"(%2, %3) {device = ""} : (tensor<10x10xi32>, tensor<10x10xi32>) -> tensor<10x10xi32>
+  func.return %4 : tensor<10x10xi32>
+
+// CHECK-LABEL: sharding
+// CHECK-NOT: %2 = "tf.XlaSharding"(%0) {_XlaSharding = "\08\03\1A\02\01\01\22\01\00", device = "", sharding = "\08\03\1A\02\01\01\22\01\00", unspecified_dims = []} : (tensor<10x10xi32>) -> tensor<10x10xi32>
+// CHECK-NOT: %3 = "tf.XlaSharding"(%1) {_XlaSharding = "\08\03\1A\02\01\01\22\01\00", device = "", sharding = "\08\03\1A\02\01\01\22\01\00", unspecified_dims = []} : (tensor<10x10xi32>) -> tensor<10x10xi32>
+}
 
 func.func @matmulNoTransposeAOrB(%arg0: tensor<1x1280xf32>, %arg1: tensor<1280x1000xf32>) -> tensor<1x1000xf32> {
   %166 = "tf.MatMul"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", _output_shapes = ["tfshape$dim { size = 1} dim { size = 1000}"], device = "", name = "matmul", transpose_a = false, transpose_b = false} : (tensor<1x1280xf32>, tensor<1280x1000xf32>) -> tensor<1x1000xf32>
@@ -723,6 +735,30 @@ func.func @UnsupportedGroupConv_DynamicDimAtInputDimThree(%arg0: tensor<?x1x26x?
   // CHECK-LABEL: UnsupportedGroupConv_DynamicDimAtInputDimThree
   // CHECK-NOT: "tfl.conv_2d"
   // CHECK: "tf.Conv2D"
+}
+
+func.func @Select_SameStaticShapeUnchanged(%arg0: tensor<2xi1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>) -> (tensor<2xf32>) {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+  // CHECK-LABEL: Select_SameStaticShapeUnchanged
+  // CHECK-NOT: "tf.SelectV2"
+  // CHECK: "tf.Select"
+}
+
+func.func @Select_SameStaticShapeUnchangedWithBroadcastedCond(%arg0: tensor<2xi1>, %arg1: tensor<2x2xf32>, %arg2: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+  // CHECK-LABEL: SameStaticShapeUnchangedWithBroadcastedCond
+  // CHECK-NOT: "tf.SelectV2"
+  // CHECK: "tf.Select"
+}
+
+func.func @Select_NotSameStaticShapeRewritesToSelectV2(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> (tensor<*xf32>) {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+  // CHECK-LABEL: Select_NotSameStaticShapeRewritesToSelectV2
+  // CHECK-NOT: "tf.Select"
+  // CHECK: "tf.SelectV2"
 }
 
 }

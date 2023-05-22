@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/resource_op_lifting_cleanup.h"
 
+#include <optional>
+
 #include "llvm/ADT/BitVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -95,7 +97,8 @@ void EliminateUnusedResults(
   OpBuilder builder(op);
   Operation *new_op = Operation::create(
       op->getLoc(), op->getName(), new_result_types, op->getOperands(),
-      op->getAttrs(), op->getSuccessors(), op->getNumRegions());
+      op->getAttrs(), op->getPropertiesStorage(), op->getSuccessors(),
+      op->getNumRegions());
   builder.insert(new_op);
 
   // Move region bodies to the new operation.
@@ -261,7 +264,7 @@ LogicalResult ForwardCommonArgToOutput(Operation *op,
 
     has_resource_result = true;
     int result_idx = result.getResultNumber();
-    Optional<int> common_arg_index;
+    std::optional<int> common_arg_index;
     for (func::FuncOp func : branches) {
       auto ret = func.front().getTerminator();
       auto block_arg = ret->getOperand(result_idx).dyn_cast<BlockArgument>();

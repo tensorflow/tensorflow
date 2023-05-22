@@ -10,8 +10,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef MLIR_HLO_C_DIALECTS_H
-#define MLIR_HLO_C_DIALECTS_H
+#ifndef MLIR_HLO_BINDINGS_C_DIALECTS_H
+#define MLIR_HLO_BINDINGS_C_DIALECTS_H
 
 #include "mlir-c/RegisterEverything.h"
 
@@ -26,4 +26,4 @@ MLIR_DECLARE_CAPI_DIALECT_REGISTRATION(Mhlo, mhlo);
 }
 #endif
 
-#endif  // MLIR_HLO_C_DIALECTS_H
+#endif  // MLIR_HLO_BINDINGS_C_DIALECTS_H

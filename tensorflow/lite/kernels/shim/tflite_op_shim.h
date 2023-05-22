@@ -54,7 +54,8 @@ class TfLiteInvokeContext : public InvokeContext<TfLiteInvokeContext> {
   TfLiteInvokeContext(TfLiteContext* context_, TfLiteNode* node_);
   // Read an input tensor
   ConstTensorViewOr GetInput(const int idx) const;
-  // Get a mutable output tensor
+  // Get a mutable output tensor. For output string tensors, this should only
+  // be called once.
   TensorViewOr GetOutput(const int idx, const Shape& shape) const;
   // Number of input tensors
   int NumInputs() const;
@@ -125,11 +126,11 @@ class TfLiteOpKernel {
 
   // Adds this op kernel to the passed in op resolver
   static void Add(MutableOpResolver* resolver) {
-    resolver->AddCustom(ImplType::kOpName, GetTfLiteRegistration());
+    resolver->AddCustom(ImplType::OpName(), GetTfLiteRegistration());
   }
 
   // The operation name
-  static const char* OpName() { return ImplType::kOpName; }
+  static const char* OpName() { return ImplType::OpName(); }
 
  protected:
   // The data that is stored in node::user_data.

@@ -19,23 +19,20 @@ import contextlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python import pywrap_tfe
-from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework.func_graph import FuncGraph
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_state
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import default_gradient
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
@@ -160,7 +157,8 @@ def _DefaultGradYs(grad_ys,
   if len(grad_ys) != len(ys):
     raise ValueError(f"Length mismatch. Passed {len(grad_ys)} grad_ys for "
                      f"{len(ys)} ys")
-  grad_ys = ops.convert_n_to_tensor_or_indexed_slices(grad_ys, name="grad_y")
+  grad_ys = indexed_slices.convert_n_to_tensor_or_indexed_slices(
+      grad_ys, name="grad_y")
   new_grad_ys = []
   for i, (y, grad_y) in enumerate(zip(ys, grad_ys)):
     with _maybe_colocate_with(y.op, gradient_uid, colocate_gradients_with_ops):
@@ -304,7 +302,7 @@ def _SymGrad(op, out_grads):
     f.name = op.type
   for k in op.node_def.attr:
     f.attr[k].CopyFrom(op.node_def.attr[k])
-  in_grads = functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
+  in_grads = gen_functional_ops.symbolic_gradient(input=f_in, Tout=f_types, f=f)
   return in_grads
 
 
@@ -312,10 +310,10 @@ def _MaybeCompile(scope, op, func, grad_fn):
   """Compile the calculation in grad_fn if op was marked as compiled."""
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
-    xla_compile = func.definition.attr["_XlaCompile"].b
-    xla_separate_compiled_gradients = func.definition.attr[
+    xla_compile = func.cached_definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.cached_definition.attr[
         "_XlaSeparateCompiledGradients"].b
-    xla_scope = func.definition.attr["_XlaScope"].s.decode()
+    xla_scope = func.cached_definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
@@ -369,16 +367,14 @@ def _RaiseNoGradWrtInitialLoopValError(op, from_ops, xs_set):
 
 
 def _IsFunction(graph):
-  return (isinstance(graph, FuncGraph) or
-          isinstance(graph, framework_function._FuncGraph))  # pylint: disable=protected-access
+  # isinstance check for FuncGraphs that avoids the explicit dependency
+  # on func_graph.py and function.py
+  return isinstance(graph, ops.Graph) and graph._building_function  # pylint: disable=protected-access
 
 
 def _Captures(func_graph):
-  if isinstance(func_graph, FuncGraph):
-    return func_graph.captures
-  else:
-    assert isinstance(func_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-    return func_graph.captures
+  assert _IsFunction(func_graph)
+  return func_graph.captures
 
 
 def _MaybeCaptured(t):
@@ -516,11 +512,7 @@ def _GradientsHelper(ys,
   curr_graph = src_graph
   while _IsFunction(curr_graph):
     func_graphs.append(curr_graph)
-    if isinstance(curr_graph, FuncGraph):
-      curr_graph = curr_graph.outer_graph
-    else:
-      assert isinstance(curr_graph, framework_function._FuncGraph)  # pylint: disable=protected-access
-      curr_graph = curr_graph._outer_graph  # pylint: disable=protected-access
+    curr_graph = curr_graph.outer_graph
 
   stop_gradients = [] if stop_gradients is None else _AsList(stop_gradients)
   if grad_ys is None:
@@ -532,8 +524,8 @@ def _GradientsHelper(ys,
     # Get a uid for this call to gradients that can be used to help
     # cluster ops for compilation.
     gradient_uid = ops.get_default_graph().unique_name("uid")
-    ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
-    xs = ops.internal_convert_n_to_tensor_or_indexed_slices(
+    ys = indexed_slices.convert_n_to_tensor_or_indexed_slices(ys, name="y")
+    xs = indexed_slices.internal_convert_n_to_tensor_or_indexed_slices(
         xs, name="x", as_ref=True)
     xs_set = object_identity.ObjectIdentitySet(xs)
     grad_ys = _DefaultGradYs(grad_ys, ys, colocate_gradients_with_ops,
@@ -1029,7 +1021,7 @@ def _AggregatedGrads(grads,
         logging.vlog(2, "  _AggregatedGrads %d x %s using %s", len(out_grad),
                      tensor_shape, used)
       else:
-        out_grads[i] = backprop.aggregate_indexed_slices_gradients(out_grad)  # pylint: disable=protected-access
+        out_grads[i] = backprop_util.AggregateIndexedSlicesGradients(out_grad)  # pylint: disable=protected-access
     else:  # not out_grad
       # out_grads[i] is [], thus its aggregation is simply None.
       out_grads[i] = None

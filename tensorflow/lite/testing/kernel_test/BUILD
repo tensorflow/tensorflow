@@ -73,7 +73,7 @@ cc_library(
         "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/testing:join",
         "//tensorflow/lite/testing:split",
     ],

@@ -17,6 +17,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/gather_nd_op.h"
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -56,11 +57,10 @@ class GatherNdOp : public OpKernel {
                               .TypeConstraint<index_type>("Tindices"), \
                           GatherNdOp<dev##Device, type, index_type>)
 
-#define REGISTER_GATHER_ND_ALL_INDICES(dev, type) \
-  REGISTER_GATHER_ND_FULL(dev, type, int32);      \
-  REGISTER_GATHER_ND_FULL(dev, type, int64_t)
-
-#define REGISTER_GATHER_ND_CPU(type) REGISTER_GATHER_ND_ALL_INDICES(CPU, type)
+#define REGISTER_GATHER_ND_CPU(type)         \
+  REGISTER_GATHER_ND_FULL(CPU, type, int16); \
+  REGISTER_GATHER_ND_FULL(CPU, type, int32); \
+  REGISTER_GATHER_ND_FULL(CPU, type, int64_t)
 
 // TODO(ebrevdo): This is a pure data-movement kernel. It shouldn't be
 // instantiated for all different types. Instead, all the types should
@@ -105,7 +105,6 @@ namespace functor {
 TF_CALL_int32(DECLARE_GPU_SPECS);
 TF_CALL_int64(DECLARE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPECS);
-TF_CALL_bfloat16(DECLARE_GPU_SPECS);
 TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 
 #undef DECLARE_GPU_SPECS
@@ -113,19 +112,20 @@ TF_CALL_COMPLEX_TYPES(DECLARE_GPU_SPECS);
 }  // namespace functor
 
 // Registration of the GPU implementations.
-#define REGISTER_GATHER_ND_GPU(type) REGISTER_GATHER_ND_ALL_INDICES(GPU, type)
+// Registration of the GPU implementations.
+#define REGISTER_GATHER_ND_GPU(type)         \
+  REGISTER_GATHER_ND_FULL(GPU, type, int32); \
+  REGISTER_GATHER_ND_FULL(GPU, type, int64_t)
 
 TF_CALL_int32(REGISTER_GATHER_ND_GPU);
 TF_CALL_int64(REGISTER_GATHER_ND_GPU);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
-TF_CALL_bfloat16(REGISTER_GATHER_ND_GPU);
 TF_CALL_COMPLEX_TYPES(REGISTER_GATHER_ND_GPU);
 
 #undef REGISTER_GATHER_ND_GPU
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#undef REGISTER_GATHER_ND_ALL_INDICES
 #undef REGISTER_GATHER_ND_FULL
 
 }  // namespace tensorflow

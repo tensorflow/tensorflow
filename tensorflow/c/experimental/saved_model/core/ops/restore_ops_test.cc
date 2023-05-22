@@ -96,7 +96,7 @@ TEST_F(RestoreOpsTest, BadCheckpointPrefixShouldFail) {
   Status status = internal::SingleRestore(
       context(), CheckpointPrefix("unknown_bad_checkpoint_prefix"),
       "x/.ATTRIBUTES/VARIABLE_VALUE", DT_FLOAT, &x_handle);
-  EXPECT_FALSE(status.ok()) << status.error_message();
+  EXPECT_FALSE(status.ok()) << status.message();
 }
 
 TEST_F(RestoreOpsTest, BadCheckpointKeyShouldFail) {
@@ -104,7 +104,7 @@ TEST_F(RestoreOpsTest, BadCheckpointKeyShouldFail) {
   Status status = internal::SingleRestore(
       context(), CheckpointPrefix("VarsAndArithmeticObjectGraph"),
       "bad_checkpoint_key", DT_FLOAT, &x_handle);
-  EXPECT_FALSE(status.ok()) << status.error_message();
+  EXPECT_FALSE(status.ok()) << status.message();
 }
 
 }  // namespace

@@ -33,8 +33,11 @@ namespace xla {
 // infeed.
 class GenericTransferManager : public TransferManager {
  public:
+  struct LiteralFromDeviceMetadata : public TransferManager::TransferMetadata {
+    bool callback_is_host_callback_safe = false;
+  };
+
   GenericTransferManager(se::Platform::Id platform_id, size_t pointer_size);
-  ~GenericTransferManager() override {}
 
   se::Platform::Id PlatformId() const override;
 

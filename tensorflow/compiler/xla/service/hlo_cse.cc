@@ -243,7 +243,8 @@ StatusOr<bool> HloCSE::Run(
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
     return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
-        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_);
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
+        /*sharding_sensitive=*/true);
   };
 
   for (auto* computation : module->computations(execution_threads)) {

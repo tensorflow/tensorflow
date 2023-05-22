@@ -62,14 +62,14 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   if (RedzoneCheckDisabled()) {
     return;
   }
-  se::port::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
+  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
       rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
     absl::call_once(failure_logged, [&]() {
       LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
                    << "reads and writes with an error message: '"
-                   << rz_status.status().error_message()
+                   << rz_status.status().message()
                    << "'; skipping this check. This only means that we won't "
                    << "check cudnn for out-of-bounds reads and writes. This "
                    << "message will only be printed once.";
@@ -111,7 +111,7 @@ namespace {
 tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   tensorflow::CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());

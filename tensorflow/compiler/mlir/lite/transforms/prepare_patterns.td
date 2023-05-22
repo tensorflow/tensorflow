@@ -15,6 +15,7 @@ limitations under the License.
 
 include "tensorflow/compiler/mlir/tensorflow/transforms/optimize.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
+include "tensorflow/compiler/mlir/lite/utils/utils.td"
 
 def FalseBoolAttr : AttrConstraint<CPred<"!$_self.getValue()">>;
 
@@ -76,6 +77,7 @@ def ConvertPlaceholderWithDefault : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
+def RemoveXlaSharding : Pat<(TF_XlaShardingOp $a, $b, $c), (replaceWithValue $a)>;
 def RemoveIdentityN : Pat<(TF_IdentityNOp $arg), (replaceWithValue $arg)>;
 
 //===----------------------------------------------------------------------===//
@@ -180,6 +182,22 @@ def LowerTensorScatterAdd: Pat<
   (TF_TensorScatterAddOp $input, $indices, $updates),
   (TF_TensorScatterUpdateOp $input, $indices,
      (TF_AddOp $updates, (CreateGatherNdOp $updates, $input, $indices)))>;
+
+//===----------------------------------------------------------------------===//
+// Select op patterns.
+//===----------------------------------------------------------------------===//
+
+def NotOperandOneAndTwoHaveSameStaticShape : Constraint<Neg<CPred<"OpHasSameStaticShapes($0.getDefiningOp(), ArrayRef({1, 2}))">>, "">;
+
+// If a TF_Select op does not have same static shape for it's value operands, its arguments may
+// need to be broadcasted at runtime. Only V2 supports this so we rewrite
+// before legalization.
+// TODO(b/270755115) This is a temporary workaround, investigate if this
+// pattern is needed in all situations.
+def ConvertNonStaticSelectToSelectV2 : Pat<
+  (TF_SelectOp:$src $cond, $x, $y),
+  (TF_SelectV2Op $cond, $x, $y),
+  [(NotOperandOneAndTwoHaveSameStaticShape  $src)]>;
 
 //===----------------------------------------------------------------------===//
 // AddV2 op patterns.

@@ -1,5 +1,6 @@
 """Definitions for targets that use the TFLite shims."""
 
+load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_copts_warnings",
@@ -7,6 +8,7 @@ load(
     "tflite_jni_binary",
 )
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
 def _concat(lists):
     """Concatenate a list of lists, without requiring the inner lists to be iterable.
@@ -18,7 +20,28 @@ def _concat(lists):
         result = result + selected_list
     return result
 
-def alias_with_tflite(name, actual, **kwargs):
+def _is_not_package_relative_label(label):
+    """Tests whether a label is not relative to the current package."""
+    return label.startswith("//") or label.startswith("@")
+
+def add_suffix(label, suffix):
+    """Appends a suffix to the given label.
+
+    Args:
+      label: (str) target in relative or absolute form.
+      suffix: (str) string to add after the label.
+
+    Returns:
+      Suffixed label in relative or absolute form.
+    """
+    if label.find(":") == -1 and _is_not_package_relative_label(label):
+        # Handles labels like @repo//foo/bar, which is equivalent to
+        # @repo//foo/bar:bar.
+        _, _, target = label.rpartition("/")
+        return "%s:%s%s" % (label, target, suffix)
+    return label + suffix
+
+def alias_with_tflite(name, actual, generate_opaque_delegate_target = False, **kwargs):
     """Defines an alias for a target that uses the TFLite shims.
 
     This rule 'alias_with_tflite' should be used instead of the native
@@ -28,9 +51,13 @@ def alias_with_tflite(name, actual, **kwargs):
     Args:
       name: determines the name used for the alias target.
       actual: the target that the alias target is aliased to.
+      generate_opaque_delegate_target: (bool) If set, generates an additional
+        alias for the _opaque_delegate variant.
       **kwargs: additional alias parameters.
     """
     native.alias(name = name, actual = actual, **kwargs)
+    if generate_opaque_delegate_target:
+        native.alias(name = name + "_opaque_delegate", actual = actual + "_opaque_delegate", **kwargs)
 
 def android_library_with_tflite(
         name,
@@ -47,7 +74,7 @@ def android_library_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for android_library.
@@ -73,6 +100,7 @@ def cc_library_with_tflite(
         deps = [],
         tflite_deps = [],
         tflite_deps_selects = [],
+        generate_opaque_delegate_target = False,
         **kwargs):
     """Defines a cc_library that uses the TFLite shims.
 
@@ -94,6 +122,12 @@ def cc_library_with_tflite(
         'cc_library_with_tflite'.
       tflite_deps_selects: A list of dictionaries that will be converted to dependencies
         with select on rules.
+      generate_opaque_delegate_target: (bool) If set, generates an additional
+        cc_library target, which has "_opaque_delegate" appended to the name.
+        The target depends on
+        //tensorflow/lite/core/shims:tflite_use_opaque_delegate
+        which enables the truly opaque delegate type. This macro ensures that
+        dependencies listed in 'tflite_deps' use _opaque_delegate variant.
       **kwargs: Additional cc_library parameters.
     """
     native.cc_library(
@@ -102,6 +136,72 @@ def cc_library_with_tflite(
         deps = deps + tflite_deps + _concat([select(map) for map in tflite_deps_selects]),
         **kwargs
     )
+
+    if generate_opaque_delegate_target:
+        tflite_deps_renamed = [add_suffix(tflite_dep, "_opaque_delegate") for tflite_dep in tflite_deps]
+        tflite_deps_selects_renamed = [{key: [add_suffix(dep, "_opaque_delegate") for dep in value] for (key, value) in map.items()} for map in tflite_deps_selects]
+        native.cc_library(
+            name = name + "_opaque_delegate",
+            srcs = srcs + tflite_jni_binaries,
+            deps = deps + tflite_deps_renamed + _concat([select(map) for map in tflite_deps_selects_renamed]) + [
+                clean_dep("//tensorflow/lite/core/shims:tflite_use_opaque_delegate"),
+            ],
+            **kwargs
+        )
+
+def _label(target):
+    """Return a Label <https://bazel.build/rules/lib/Label#Label> given a string.
+
+    Args:
+      target: (string) a relative or absolute build target.
+    """
+    if target[0:2] == "//":
+        return Label(target)
+    if target[0] == ":":
+        return Label("//" + native.package_name() + target)
+    return Label("//" + native.package_name() + ":" + target)
+
+def cc_library_with_tflite_with_c_headers_test(name, hdrs, **kwargs):
+    """Defines a C++ library with C-compatible header files.
+
+    This generates a cc_library rule, but also generates
+    build tests that verify that each of the 'hdrs'
+    can be successfully built in a C (not C++!) compilation unit
+    that directly includes only that header file.
+
+    Args:
+      name: (string) as per cc_library.
+      hdrs: (list of string) as per cc_library.
+      **kwargs: Additional kwargs to pass to cc_library.
+    """
+    cc_library_with_tflite(name = name, hdrs = hdrs, **kwargs)
+
+    build_tests = []
+    for hdr in hdrs:
+        label = _label(hdr)
+        basename = "%s__test_self_contained_c__%s" % (name, label.name)
+        native.genrule(
+            name = "%s_gen" % basename,
+            outs = ["%s.c" % basename],
+            cmd = "echo '#include \"%s/%s\"' > $@" % (label.package, label.name),
+            visibility = ["//visibility:private"],
+            testonly = True,
+        )
+        cc_library_with_tflite(
+            name = "%s_lib" % basename,
+            srcs = ["%s.c" % basename],
+            tflite_deps = [":" + name],
+            copts = kwargs.get("copts", []),
+            visibility = ["//visibility:private"],
+            testonly = True,
+            tags = ["allow_undefined_symbols"],
+        )
+        build_test(
+            name = "%s_build_test" % basename,
+            visibility = ["//visibility:private"],
+            targets = ["%s_lib" % basename],
+        )
+        build_tests.append("%s_build_test" % basename)
 
 def cc_library_with_stable_tflite_abi(
         deps = [],
@@ -141,7 +241,7 @@ def cc_test_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for cc_test.
@@ -165,7 +265,7 @@ def java_library_with_tflite(
         exports = [],
         tflite_exports = [],
         **kwargs):
-    """Defines an java_library that uses the TFLite shims.
+    """Defines a java_library that uses the TFLite shims.
 
     This is a hook to allow applying different build flags (etc.)
     for targets that use the TFLite shims.
@@ -174,7 +274,7 @@ def java_library_with_tflite(
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
     on one of the "shim" library targets from
-    //third_party/tensorflow/lite/core/shims:*.
+    //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
@@ -203,7 +303,7 @@ def java_test_with_tflite(
         tflite_deps = [],
         tflite_jni_binaries = [],
         **kwargs):
-    """Defines an java_library that uses the TFLite shims.
+    """Defines a java_library that uses the TFLite shims.
 
     This is a hook to allow applying different build flags (etc.)
     for targets that use the TFLite shims.
@@ -212,7 +312,7 @@ def java_test_with_tflite(
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
     on one of the "shim" library targets from
-    //third_party/tensorflow/lite/core/shims:*.
+    //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
@@ -244,7 +344,7 @@ def jni_binary_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for tflite_jni_binary.
@@ -284,13 +384,13 @@ def custom_c_library_with_tflite(
 
     if experimental:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
-            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
-            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_experimental.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_opaque.h"),
         ]
     else:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
         ]
 
     cc_library_with_tflite(

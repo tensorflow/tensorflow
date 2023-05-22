@@ -247,7 +247,7 @@ LogicalResult PromoteResourcesToArguments(
         resource_info.write = true;
         resource_info.live_value = write_op.getValue();
       } else {
-        return read_op.emitOpError(kInvalidResourceMsg);
+        return write_op.emitOpError(kInvalidResourceMsg);
       }
 
       write_op.erase();

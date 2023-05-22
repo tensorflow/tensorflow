@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor_shape.h"
 
+#include <cstdint>
+#include <limits>
+
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 class TensorShapeTestHelper {
@@ -62,6 +68,19 @@ TEST(TensorShapeTest, RemoveDim) {
   ASSERT_EQ(1, s.dims());
 }
 
+TEST(TensorShapeTest, RemoveDimWithStatus) {
+  TensorShape s({10, 5});
+  TF_EXPECT_OK(s.RemoveDimWithStatus(0));
+  EXPECT_EQ(s.num_elements(), 5);
+  EXPECT_EQ(s.dims(), 1);
+
+  EXPECT_THAT(
+      s.RemoveDimWithStatus(-1),
+      testing::StatusIs(error::Code::INTERNAL,
+                        ::testing::ContainsRegex(
+                            "Expected dimension index to be non-negative")));
+}
+
 TEST(TensorShapeTest, RemoveAndAddDim) {
   TensorShape s({10, 5, 20});
   s.RemoveDim(1);
@@ -81,6 +100,20 @@ TEST(TensorShapeTest, RemoveLastDims) {
   s.RemoveLastDims(2);
   ASSERT_EQ(1, s.dims());
   EXPECT_EQ(2, s.dim_size(0));
+}
+
+TEST(TensorShapeTest, RemoveLastDimsWithStatus) {
+  TensorShape s({2, 3, 5, 7});
+  TF_EXPECT_OK(s.RemoveLastDimsWithStatus(1));
+
+  EXPECT_EQ(s.dims(), 3);
+  EXPECT_EQ(s.num_elements(), 30);
+
+  EXPECT_THAT(
+      s.RemoveLastDimsWithStatus(4),
+      testing::StatusIs(error::Code::INTERNAL,
+                        ::testing::ContainsRegex(
+                            "Expected dimension index to be at most 3")));
 }
 
 TEST(TensorShapeTest, RemoveDimRange) {
@@ -116,6 +149,137 @@ TEST(TensorShapeTest, RemoveDimRange) {
   s3.RemoveDimRange(-3, -2);
   ASSERT_EQ(3, s3.dims());
   ASSERT_EQ(42, s3.num_elements());
+}
+
+TEST(TensorShapeTest, RemoveDimRangeWithStatusWithEmptyInterval) {
+  TensorShape s0({2, 3, 5, 7});
+
+  // Empty interval => noop.
+  for (int i = -4; i <= 4; ++i) {
+    TF_EXPECT_OK(s0.RemoveDimRangeWithStatus(i, i));
+    EXPECT_EQ(s0.dims(), 4);
+    EXPECT_EQ(s0.num_elements(), 210);
+  }
+}
+
+TEST(TensorShapeTest, RemoveDimRangeWithStatusWithPositiveBeginEnd) {
+  TensorShape s0({2, 3, 5, 7});
+
+  // Begin >= End: Empty interval.
+  TF_EXPECT_OK(s0.RemoveDimRangeWithStatus(3, 1));
+  EXPECT_EQ(s0.dims(), 4);
+  EXPECT_EQ(s0.num_elements(), 210);
+
+  TF_EXPECT_OK(s0.RemoveDimRangeWithStatus(0, 3));
+  EXPECT_EQ(s0.dims(), 1);
+  EXPECT_EQ(s0.dim_size(0), 7);
+
+  TensorShape s1({2, 3, 5, 7});
+  TF_EXPECT_OK(s1.RemoveDimRangeWithStatus(2, 3));
+  EXPECT_EQ(s1.dims(), 3);
+  EXPECT_EQ(s1.num_elements(), 42);
+}
+
+TEST(TensorShapeTest, RemoveDimRangeWithStatusWithNegativeBeginEnd) {
+  TensorShape s2({2, 3, 5, 7});
+
+  // Begin >= End: Empty interval.
+  TF_EXPECT_OK(s2.RemoveDimRangeWithStatus(-2, -3));
+  EXPECT_EQ(s2.dims(), 4);
+  EXPECT_EQ(s2.num_elements(), 210);
+
+  TF_EXPECT_OK(s2.RemoveDimRangeWithStatus(0, -2));
+  EXPECT_EQ(s2.dims(), 1);
+  EXPECT_EQ(s2.dim_size(0), 7);
+
+  TensorShape s3({2, 3, 5, 7});
+  TF_EXPECT_OK(s3.RemoveDimRangeWithStatus(-3, -2));
+  EXPECT_EQ(s3.dims(), 3);
+  EXPECT_EQ(s3.num_elements(), 42);
+}
+
+TEST(TensorShapeTest, RemoveDimRangeWithStatusWithInvalidBeginEnd) {
+  TensorShape s3({2, 5, 7});
+
+  EXPECT_THAT(s3.RemoveDimRangeWithStatus(-5, 0),
+              testing::StatusIs(error::Code::INTERNAL,
+                                ::testing::ContainsRegex(
+                                    "Start index must be non-negative")));
+
+  EXPECT_THAT(s3.RemoveDimRangeWithStatus(5, 0),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex("Start index must be less than 3")));
+
+  EXPECT_THAT(s3.RemoveDimRangeWithStatus(0, -5),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex("End index must be non-negative")));
+
+  EXPECT_THAT(s3.RemoveDimRangeWithStatus(0, 5),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex("End index must be less than 3")));
+}
+
+TEST(TensorShapeTest, InsertDimWithStatus) {
+  TensorShape s({10, 20});
+  TF_EXPECT_OK(s.InsertDimWithStatus(1, 5));
+  EXPECT_EQ(s.dims(), 3);
+  EXPECT_EQ(s.dim_size(1), 5);
+
+  TF_EXPECT_OK(s.InsertDimWithStatus(1, 30));
+  EXPECT_EQ(s.dims(), 4);
+  EXPECT_EQ(s.dim_size(1), 30);
+  EXPECT_EQ(s.dim_size(2), 5);
+}
+
+TEST(TensorShapeTest, InsertDimWithStatusWithInvalidData) {
+  TensorShape s({10, 5, 20});
+
+  EXPECT_THAT(s.InsertDimWithStatus(1, -5),
+              testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex("Expected a non-negative size")));
+
+  EXPECT_THAT(
+      s.InsertDimWithStatus(-1, 5),
+      testing::StatusIs(error::Code::INTERNAL,
+                        ::testing::ContainsRegex(
+                            "The insertion index must be non-negative")));
+
+  EXPECT_THAT(s.InsertDimWithStatus(4, 5),
+              testing::StatusIs(error::Code::INTERNAL,
+                                ::testing::ContainsRegex(
+                                    "The insertion index must be at most 3")));
+}
+
+TEST(TensorShapeTest, InsertDimWithStatusWithTooManyDims) {
+  TensorShape s({10, 20});
+  int max_dims_to_add = TensorShape::MaxDimensions() - s.dims();
+  for (int i = 0; i < max_dims_to_add; ++i) {
+    TF_EXPECT_OK(s.InsertDimWithStatus(1, 1));
+  }
+  EXPECT_THAT(s.InsertDimWithStatus(1, 1),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex(
+                      "Shape has.*dimensions which is the maximum allowed")));
+}
+
+TEST(TensorShapeTest, TensorShapeAssignment) {
+  TensorShape s({std::numeric_limits<int64_t>::max()});
+  TensorShape s2({1, std::numeric_limits<int64_t>::max()});
+  TensorShape s3({10});
+
+  s = s2;
+  EXPECT_EQ(s.dims(), 2);
+  EXPECT_EQ(s.dim_size(0), 1);
+  EXPECT_EQ(s.dim_size(1), std::numeric_limits<int64_t>::max());
+
+  s = s3;
+  EXPECT_EQ(s.dims(), 1);
+  EXPECT_EQ(s.dim_size(0), 10);
 }
 
 TEST(TensorShapeTest, InvalidShapeProto) {
@@ -159,6 +323,61 @@ TEST(TensorShapeTest, SetDimForEmptyTensor) {
   EXPECT_EQ(0, s.num_elements());
   s.set_dim(1, 7);
   EXPECT_EQ(1400, s.num_elements());
+}
+
+TEST(TensorShapeTest, SetDimWithLargeSizeFormat) {
+  // Create a TensorShape of Rep32 format to test its update logic.
+  TensorShape s({std::numeric_limits<uint32_t>::max() - 2});
+  s.set_dim(0, 5);
+  EXPECT_EQ(s.dim_size(0), 5);
+
+  // Create a TensorShape of Rep64 format to test its update logic.
+  TensorShape s2({std::numeric_limits<int64_t>::max()});
+  s2.set_dim(0, 10);
+  EXPECT_EQ(s2.dim_size(0), 10);
+
+  // Trigger the internal format upgrade from Rep32 to Rep64.
+  s.set_dim(0, std::numeric_limits<int64_t>::max());
+  EXPECT_EQ(s.dim_size(0), std::numeric_limits<int64_t>::max());
+}
+
+TEST(TensorShapeTest, SetDimWithStatus) {
+  TensorShape s({10, 5, 20});
+  TF_EXPECT_OK(s.SetDimWithStatus(1, 2));
+  EXPECT_EQ(s.dims(), 3);
+  EXPECT_EQ(s.dim_size(1), 2);
+
+  EXPECT_THAT(s.SetDimWithStatus(-1, 2),
+              testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex("Index must be non-negative")));
+
+  EXPECT_THAT(
+      s.SetDimWithStatus(4, 2),
+      testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                        ::testing::ContainsRegex("Index must be less than 3")));
+
+  EXPECT_THAT(s.SetDimWithStatus(0, -2),
+              testing::StatusIs(
+                  error::Code::INVALID_ARGUMENT,
+                  ::testing::ContainsRegex("Expected a non-negative size")));
+}
+
+TEST(TensorShapeTest, SetDimWithStatusWithLargeSizeFormat) {
+  // Create a TensorShape of Rep32 format to test its update logic.
+  TensorShape s({std::numeric_limits<uint32_t>::max() - 2});
+  TF_EXPECT_OK(s.SetDimWithStatus(0, 2));
+  s.set_dim(0, 5);
+  EXPECT_EQ(s.dim_size(0), 5);
+
+  // Create a TensorShape of Rep64 format to test its update logic.
+  TensorShape s2({std::numeric_limits<int64_t>::max()});
+  TF_EXPECT_OK(s2.SetDimWithStatus(0, 10));
+  EXPECT_EQ(s2.dim_size(0), 10);
+
+  // Trigger the internal format upgrade from Rep32 to Rep64.
+  TF_EXPECT_OK(s.SetDimWithStatus(0, std::numeric_limits<int64_t>::max()));
+  EXPECT_EQ(s.dim_size(0), std::numeric_limits<int64_t>::max());
 }
 
 TEST(TensorShapeTest, AppendShape64BitIndices) {
@@ -214,7 +433,27 @@ TEST(TensorShapeTest, AddDimWithStatus) {
   ASSERT_EQ(4, s.dims());
 
   status = s.AddDimWithStatus(-1);
-  EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
+  EXPECT_EQ(absl::StatusCode::kInvalidArgument, status.code());
+
+  TensorShape s2({std::numeric_limits<int64_t>::max()});
+  EXPECT_THAT(s2.AddDimWithStatus(2),
+              testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                                ::testing::ContainsRegex(
+                                    "Encountered overflow when multiplying")));
+}
+
+TEST(TensorShapeTest, AppendShapeWithStatus) {
+  TensorShape s({10, 5, 20});
+  TensorShape s2({400});
+  TF_EXPECT_OK(s.AppendShapeWithStatus(s2));
+  EXPECT_EQ(s.num_elements(), 400000);
+  EXPECT_EQ(s.dims(), 4);
+
+  TensorShape s3({std::numeric_limits<int64_t>::max()});
+  EXPECT_THAT(s2.AppendShapeWithStatus(s3),
+              testing::StatusIs(error::Code::INVALID_ARGUMENT,
+                                ::testing::ContainsRegex(
+                                    "Encountered overflow when multiplying")));
 }
 
 TEST(TensorShapeTest, Factory) {
@@ -225,7 +464,59 @@ TEST(TensorShapeTest, Factory) {
   ASSERT_EQ(3, s.dims());
 
   status = TensorShape::BuildTensorShapeBase({-10, 5, 20}, &s);
-  EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
+  EXPECT_EQ(absl::StatusCode::kInvalidArgument, status.code());
+}
+
+TEST(TensorShapeTest, AsEigenDSizess) {
+  TensorShape s({10, 5, 20});
+  Eigen::DSizes<Eigen::DenseIndex, 3> dsizes_expected{10, 5, 20};
+  EXPECT_EQ(s.AsEigenDSizes<3>(), dsizes_expected);
+
+  EXPECT_DEATH(s.AsEigenDSizes<2>(),
+               "tensor of 2 dimensions from a tensor of 3 dimensions");
+
+  Eigen::DSizes<Eigen::DenseIndex, 3> dsizes_out;
+  TF_EXPECT_OK(s.AsEigenDSizesWithStatus<3>(&dsizes_out));
+  EXPECT_EQ(dsizes_out, dsizes_expected);
+
+  Eigen::DSizes<Eigen::DenseIndex, 2> dsizes_out2;
+  EXPECT_THAT(s.AsEigenDSizesWithStatus<2>(&dsizes_out2),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex(
+                      "tensor of 2 dimensions from a tensor of 3 dimensions")));
+}
+
+TEST(TensorShapeTest, AsEigenDSizesWithPadding) {
+  TensorShape s({10, 5, 20});
+  Eigen::DSizes<Eigen::DenseIndex, 5> dsizes_expected{10, 5, 20, 1, 1};
+  EXPECT_EQ(s.AsEigenDSizesWithPadding<5>(), dsizes_expected);
+
+  EXPECT_DEATH(s.AsEigenDSizesWithPadding<2>(),
+               "at most 2 dimensions from a tensor of 3 dimensions");
+
+  Eigen::DSizes<Eigen::DenseIndex, 5> dsizes_out;
+  TF_EXPECT_OK(s.AsEigenDSizesWithPaddingWithStatus<5>(&dsizes_out));
+  EXPECT_EQ(dsizes_out, dsizes_expected);
+
+  Eigen::DSizes<Eigen::DenseIndex, 2> dsizes_out2;
+  EXPECT_THAT(s.AsEigenDSizesWithPaddingWithStatus<2>(&dsizes_out2),
+              testing::StatusIs(
+                  error::Code::INTERNAL,
+                  ::testing::ContainsRegex(
+                      "at most 2 dimensions from a tensor of 3 dimensions")));
+}
+
+TEST(TensorShapeTest, AsProto) {
+  TensorShape s({10, 5});
+  TensorShapeProto sp;
+  s.AsProto(&sp);
+  EXPECT_EQ(sp.dim_size(), 2);
+  EXPECT_EQ(sp.dim(0).size(), 10);
+  EXPECT_EQ(sp.dim(1).size(), 5);
+
+  TensorShapeProto sp2 = s.AsProto();
+  EXPECT_EQ(sp.DebugString(), sp2.DebugString());
 }
 
 // -----------------------------------------------------------------------
@@ -620,10 +911,10 @@ TEST(TensorShapeTest, Overflow) {
     for (auto dim : overflow) {
       proto.add_dim()->set_size(dim);
     }
-    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+    EXPECT_EQ(absl::StatusCode::kInvalidArgument,
               TensorShape::IsValidShape(proto).code());
     TensorShape shape;
-    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+    EXPECT_EQ(absl::StatusCode::kInvalidArgument,
               TensorShapeUtils::MakeShape(overflow, &shape).code());
   }
 }
@@ -682,6 +973,36 @@ TEST(TensorShapeUtilsTest, EndsWith) {
       TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3, 4})));
   EXPECT_FALSE(
       TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({2, 3})));
+}
+
+TEST(TensorShapeUtilsTest, ShapeListString) {
+  EXPECT_EQ(
+      TensorShapeUtils::ShapeListString({TensorShape({}), TensorShape({})}),
+      "[[], []]");
+  EXPECT_EQ(TensorShapeUtils::ShapeListString(
+                {TensorShape({2, 3}), TensorShape({4, 5, 6})}),
+            "[[2,3], [4,5,6]]");
+}
+
+TEST(TensorShapeUtilsTest, NumElements) {
+  int64_t num_elements = 0;
+  TF_EXPECT_OK(TensorShapeUtils::NumElements({}, &num_elements));
+  EXPECT_EQ(num_elements, 1);
+
+  TF_EXPECT_OK(TensorShapeUtils::NumElements({1}, &num_elements));
+  EXPECT_EQ(num_elements, 1);
+
+  TF_EXPECT_OK(TensorShapeUtils::NumElements({2, 3, 4}, &num_elements));
+  EXPECT_EQ(num_elements, 24);
+
+  int64_t int64_max_val = std::numeric_limits<int64_t>::max();
+  EXPECT_THAT(
+      TensorShapeUtils::NumElements({int64_max_val, int64_max_val},
+                                    &num_elements),
+      testing::StatusIs(
+          error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex(
+              "Can't compute total size of shape.*product would overflow")));
 }
 
 // A few different test cases for tensor sizes for benchmarks

@@ -3,7 +3,7 @@ load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "tsl_pybind_extension")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/compiler/xla:internal"],
     licenses = ["notice"],
 )
 
@@ -61,6 +61,7 @@ tsl_pybind_extension(
         ":tpu_client",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/python:python_ref_manager",
+        "//tensorflow/compiler/xla/python:status_casters",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/python:util",
         "//tensorflow/compiler/xla/service:computation_placer",

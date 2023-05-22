@@ -16,34 +16,42 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TPU_EMBEDDING_OPS_REGISTRY_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TPU_EMBEDDING_OPS_REGISTRY_H_
 
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/DenseSet.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
 
 // A global ops registry that is used to hold TPU embedding ops.
+//
 // Example:
 //    TPUEmbeddingOpsRegistry::Global().Add<TF::FooOp>();
-//    for (auto op_name : TPUEmbeddingOpsRegistry::Global().GetOpsNames()) {
+//    for (auto op_type_id : TPUEmbeddingOpsRegistry::Global().GetOpsTypeIds())
+//    {
 //      ...
 //    }
 class TPUEmbeddingOpsRegistry {
  public:
   // Add the op to the registry.
+  //
+  // Adding an op here will allow use old bridge legalization from the MLIR
+  // bridge with the use of fallback mechanism. Therefore, addition of any op
+  // here must have a python test with MLIR bridge enabled to verify that the
+  // fallback works correctly.
   template <typename OpType>
   void Add() {
-    ops_names_.push_back(OpType::getOperationName());
+    ops_type_ids_.insert(TypeID::get<OpType>());
   }
 
-  // Get all the names of the ops in the registry.
-  const llvm::SmallVector<llvm::StringLiteral>& GetOpsNames();
+  // Returns the type id of the ops in the TPUEmbeddingOpRegistry.
+  const llvm::SmallDenseSet<mlir::TypeID>& GetOpsTypeIds();
 
   // Returns the global registry.
   static TPUEmbeddingOpsRegistry& Global();
 
  private:
-  llvm::SmallVector<llvm::StringLiteral> ops_names_{};
+  llvm::SmallDenseSet<mlir::TypeID> ops_type_ids_{};
 };
 }  // namespace TF
 }  // namespace mlir

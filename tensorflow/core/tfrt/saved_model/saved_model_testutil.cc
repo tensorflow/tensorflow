@@ -44,6 +44,9 @@ ABSL_FLAG(
     bool, enable_grappler, false,
     "If true, run grappler passes before importing the SavedModel into MLIR.");
 
+ABSL_FLAG(bool, enable_mlrt, false,
+          "If true, the runtime will use MLRT interpreter for host execution.");
+
 namespace tensorflow {
 namespace tfrt_stub {
 
@@ -57,6 +60,8 @@ std::unique_ptr<tensorflow::tfrt_stub::Runtime> DefaultTfrtRuntime(
 SavedModel::Options DefaultSavedModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime) {
   SavedModel::Options options(runtime);
+  options.graph_execution_options.enable_mlrt =
+      absl::GetFlag(FLAGS_enable_mlrt);
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.enable_optimizer = absl::GetFlag(FLAGS_enable_optimizer);
   compile_options.enable_grappler = absl::GetFlag(FLAGS_enable_grappler);
@@ -168,6 +173,9 @@ SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
+  options.graph_execution_options.enable_mlrt =
+      absl::GetFlag(FLAGS_enable_mlrt);
+
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -175,6 +183,7 @@ SavedModel::Options DefaultTpuModelOptions(
   compile_options.enable_grappler = true;
   compile_options.device_target = device_target;
   compile_options.hoist_invariant_ops = true;
+  compile_options.sink_in_invariant_ops = true;
   compile_options.cost_threshold =
       1024;  // Servo currently uses 1024 as threshold for TPU models
 
@@ -229,7 +238,9 @@ void ProcessPredictRequestsAndMaybeProfile(
     const tensorflow::serving::PredictRequest& request = requests.at(i);
     const auto& input_map = request.inputs();
     std::vector<tensorflow::Tensor> inputs;
-    const std::string& signature = request.model_spec().signature_name();
+    const std::string& signature = request.model_spec().signature_name().empty()
+                                       ? "serving_default"
+                                       : request.model_spec().signature_name();
     auto func_metadata = saved_model->GetFunctionMetadata(signature);
     if (func_metadata.has_value()) {
       LOG(INFO) << "Running requests for model signature " << signature;

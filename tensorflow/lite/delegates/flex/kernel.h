@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/utils/simple_delegate.h"
 
 namespace tflite {

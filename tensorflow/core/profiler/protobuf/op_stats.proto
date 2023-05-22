@@ -17,6 +17,11 @@ message PerfEnv {
   double peak_bw_giga_bytes_per_second = 4;
   // Peak off-chip memory bandwidth of a TPU core or a GPU in GiBs/s.
   double peak_hbm_bw_giga_bytes_per_second = 2;
+  // Peak memory bandwidths of a TPU core or a GPU in GiBs/s.
+  // Index into array using MemBwType enum.
+  // TODO: remove the 2 above fields and bump up the proto version to maintain
+  // backwards compatibility.
+  repeated double peak_bws_giga_bytes_per_second = 5;
   // The ridge point of roofline model in FLOP/Byte. (i.e., minimum operational
   // intensity required to achieve maximum performance).
   double ridge_point = 3;

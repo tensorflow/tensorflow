@@ -16,6 +16,18 @@ func.func @concatenate(%arg1: tensor<?x?xf32>,
 
 // -----
 
+func.func @concatenate_result_number(%dst: tensor<?x?xf32>) -> tensor<?x?xf32> {
+  %a:2 = "test.op"() : () -> (tensor<?x?xf32>, tensor<?x?xf32>)
+  %cat = thlo.concatenate
+      ins(%a#0: tensor<?x?xf32>, %a#1: tensor<?x?xf32>)
+      outs(%dst: tensor<?x?xf32>)
+      dimension = 0
+  func.return %cat : tensor<?x?xf32>
+}
+// CHECK-LABEL: func @concatenate_result_number
+
+// -----
+
 func.func @concatenate_memref(%arg1: memref<?x?xf32>,
                               %arg2: memref<?x?xf32>,
                               %dst: memref<?x?xf32>) {

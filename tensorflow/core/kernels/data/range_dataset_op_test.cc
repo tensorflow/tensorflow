@@ -156,7 +156,7 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(RangeDatasetOpTest, RangeDatasetParams,
 TEST_F(RangeDatasetOpTest, ZeroStep) {
   auto range_dataset_params = ZeroStepRangeDatasetParams();
   EXPECT_EQ(Initialize(range_dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(RangeDatasetOpTest, SplitProviderPositiveStep) {

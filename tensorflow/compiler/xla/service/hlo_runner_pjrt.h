@@ -32,7 +32,9 @@ namespace xla {
 // hlo proto file), or parsed from a hlo textual IR string.
 class HloRunnerPjRt : public HloRunnerInterface {
  public:
-  explicit HloRunnerPjRt(std::unique_ptr<PjRtClient> pjrt_client);
+  explicit HloRunnerPjRt(
+      std::unique_ptr<PjRtClient> pjrt_client,
+      DeviceShapeRepresentationFn device_shape_representation_fn);
 
   ~HloRunnerPjRt() override;
 
@@ -95,6 +97,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
 
  private:
   std::unique_ptr<PjRtClient> pjrt_client_;
+  DeviceShapeRepresentationFn device_shape_representation_fn_;
 
   std::vector<PjRtBuffer*> BufferVecToPointerVec(
       const std::vector<std::unique_ptr<PjRtBuffer>>& buffer);

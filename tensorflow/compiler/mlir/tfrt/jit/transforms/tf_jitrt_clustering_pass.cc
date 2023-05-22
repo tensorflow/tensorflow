@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "llvm/ADT/STLExtras.h"
@@ -56,7 +57,7 @@ struct ClusteringPass : public impl::ClusteringBase<ClusteringPass> {
 
     // Parse clustering tier and operations filter from the oplist.
     llvm::DenseSet<llvm::StringRef> opset;
-    llvm::Optional<JitRtClusteringTier> tier;
+    std::optional<JitRtClusteringTier> tier;
 
     for (const auto& op : oplist) {
       if (op == "tier0") {

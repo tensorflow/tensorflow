@@ -23,7 +23,7 @@ jobs:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: ubuntu-latest
     steps:
-    - uses: zofrex/mirror-branch@v1
+    - uses: zofrex/mirror-branch@a8809f0b42f9dfe9b2c5c2162a46327c23d15266 # v1.0.3
       name: Set nightly branch to master HEAD
       with:
         target-branch: 'nightly'

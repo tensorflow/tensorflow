@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/c_runner_utils.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/float_16bits.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
@@ -68,6 +69,8 @@ struct ExecutionContext {
   const DiagnosticEngine* diagnostic_engine = nullptr;
 };
 
+void DestroyExecutionContext::operator()(ExecutionContext* ctx) { delete ctx; }
+
 //===----------------------------------------------------------------------===//
 // Conversion from custom calls and type id registries to symbols binding.
 //===----------------------------------------------------------------------===//
@@ -91,17 +94,16 @@ ExecutionEngine::SymbolsBinding ToSymbolsBinding(
     using DirectCustomCall = DirectCustomCallRegistry::DirectCustomCall;
     custom_call_registry.ForEach([&](std::string_view name,
                                      DirectCustomCall custom_call) {
-      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-          llvm::pointerToJITTargetAddress(custom_call), llvm::JITSymbolFlags());
+      symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(custom_call),
+                                  llvm::JITSymbolFlags()};
     });
 
     // Register type id symbols.
     type_registry.ForEach([&](std::string_view name, TypeID type_id) {
       auto type_id_ptr =
           reinterpret_cast<std::uintptr_t>(type_id.getAsOpaquePointer());
-      symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-          static_cast<llvm::JITTargetAddress>(type_id_ptr),
-          llvm::JITSymbolFlags());
+      symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr(type_id_ptr),
+                                  llvm::JITSymbolFlags()};
     });
 
     return symbol_map;
@@ -129,6 +131,8 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
        AsyncRuntimeMemoryAllocationSymbolMap,
        // Register Runtime API intrinsics (returning results and errors).
        RuntimeApiSymbolMap,
+       // Register LLVM f16 and bf16 API intrinsics (defined in Float16bits).
+       Float16bitsSymbolMap,
        // Register any additional user-defined symbol bindings
        std::move(custom_binding)});
 }
@@ -284,10 +288,9 @@ Status Executable::InitializeCallFrame(unsigned ordinal, ArgumentsRef arguments,
 // Execute the compiled XLA runtime executable.
 //===----------------------------------------------------------------------===//
 
-Status Executable::Execute(unsigned ordinal, ArgumentsRef arguments,
-                           const ResultConverter& results,
-                           const ExecuteOpts& opts,
-                           bool verify_arguments) const {
+absl::StatusOr<ExecutionReference> Executable::Execute(
+    unsigned ordinal, ArgumentsRef arguments, const ResultConverter& results,
+    const ExecuteOpts& opts, bool verify_arguments) const {
   // CallFrame can be allocated on the stack because compiled function will
   // unpack all the arguments it needs, and async regions will not access
   // the data after the initial function will return the result.
@@ -325,17 +328,17 @@ Status Executable::Execute(unsigned ordinal, ArgumentsRef arguments,
       !st.ok())
     return (results.ReturnError(st), st);
 
-  Execute(ordinal, call_frame, opts);
+  auto exec_ref = Execute(ordinal, call_frame, opts);
 
   // Convert compiled function return values into results.
   if (auto st = ReturnResults(ordinal, results, &call_frame); !st.ok())
     return st;
 
-  return absl::OkStatus();
+  return {std::move(exec_ref)};
 }
 
-void Executable::Execute(unsigned ordinal, CallFrame& call_frame,
-                         const ExecuteOpts& opts) const {
+ExecutionReference Executable::Execute(unsigned ordinal, CallFrame& call_frame,
+                                       const ExecuteOpts& opts) const {
   assert(ordinal < functions_.size() && "function ordinal out of bounds");
   const Function& fn = functions_[ordinal];
 
@@ -343,25 +346,32 @@ void Executable::Execute(unsigned ordinal, CallFrame& call_frame,
   // executable.
   AsyncRuntime::Set(AsyncRuntime(opts.async_task_runner));
 
-  // Runtime execution context can be used only by the compiled function and
-  // can be safely allocated on the stack.
-  //
-  // TODO(ezhulenev): It's not quite true, with custom calls inside async
-  // functions the lifetime of the execution context must be extended until all
-  // pending async tasks are completed. Figure out where to transfer the
-  // execution context ownership for async functions.
+  ExecutionReference exec_ref;
+  ExecutionContext* execution_ctx_ptr = nullptr;
+  // For sync executable, runtime execution context can be used only by the
+  // compiled function and can be safely allocated on the stack.
   ExecutionContext execution_ctx = {
       &fn.results_memory_layout, &call_frame, opts.custom_call_data,
       opts.custom_call_registry, opts.diagnostic_engine};
+  if (IsAsync()) {
+    // With custom calls inside async functions the lifetime of the execution
+    // context must be extended until all pending async tasks are completed.
+    exec_ref = ExecutionReference(new ExecutionContext{
+        &fn.results_memory_layout, &call_frame, opts.custom_call_data,
+        opts.custom_call_registry, opts.diagnostic_engine});
+    execution_ctx_ptr = exec_ref.get();
+  } else {
+    // Override the execution context argument.
+    execution_ctx_ptr = &execution_ctx;
+  }
 
-  // Override the execution context argument.
-  ExecutionContext* execution_context_ptr = &execution_ctx;
   assert(call_frame.args.size() == fn.arguments_memory_layout.num_args_ptrs);
   assert(call_frame.args[0] == nullptr && "expected to see a placeholder");
-  call_frame.args[0] = &execution_context_ptr;
+  call_frame.args[0] = &execution_ctx_ptr;
 
   // Call the compiled function.
   (*fn.fptr)(call_frame.args.data());
+  return exec_ref;
 }
 
 Status Executable::ReturnResults(unsigned ordinal,
@@ -427,7 +437,7 @@ Status Executable::ReturnResults(unsigned ordinal,
   // Prepare exported functions for the executable.
   std::vector<Executable::Function> functions;
 
-  for (auto& indexed : llvm::enumerate(load_functions)) {
+  for (const auto& indexed : llvm::enumerate(load_functions)) {
     LoadFunction& fn = indexed.value();
 
     // Get the memory layout for passing function arguments.
@@ -441,7 +451,8 @@ Status Executable::ReturnResults(unsigned ordinal,
     functions.push_back(Executable::Function(
         std::move(fn.name), (*engine)->exported(indexed.index()),
         std::move(fn.signature), std::move(fn.runtime_signature),
-        std::move(*args_memory_layout), std::move(*results_memory_layout)));
+        std::move(*args_memory_layout), std::move(*results_memory_layout),
+        true));
   }
 
   return Executable(name, std::move(memory_mapper), std::move(*engine),
@@ -508,10 +519,9 @@ FunctionRef::FunctionRef(const Executable* executable, unsigned ordinal)
   assert(executable && "executable must be not null");
 }
 
-absl::Status FunctionRef::operator()(ArgumentsRef arguments,
-                                     const ResultConverter& results,
-                                     const Executable::ExecuteOpts& opts,
-                                     bool verify_arguments) const {
+absl::StatusOr<ExecutionReference> FunctionRef::operator()(
+    ArgumentsRef arguments, const ResultConverter& results,
+    const Executable::ExecuteOpts& opts, bool verify_arguments) const {
   return executable_->Execute(ordinal_, arguments, results, opts,
                               verify_arguments);
 }
@@ -524,8 +534,8 @@ llvm::orc::SymbolMap RuntimeApiSymbolMap(llvm::orc::MangleAndInterner mangle) {
   llvm::orc::SymbolMap symbol_map;
 
   auto bind = [&](std::string_view name, auto symbol_ptr) {
-    symbol_map[mangle(name)] = llvm::JITEvaluatedSymbol(
-        llvm::pointerToJITTargetAddress(symbol_ptr), llvm::JITSymbolFlags());
+    symbol_map[mangle(name)] = {llvm::orc::ExecutorAddr::fromPtr(symbol_ptr),
+                                llvm::JITSymbolFlags()};
   };
 
   bind("runtimeGetResultStorage", &GetResultStorage);

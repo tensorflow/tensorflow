@@ -1,6 +1,6 @@
 path: "tensorflow.metrics.MeanAbsolutePercentageError"
 tf_class {
-  is_instance: "<class \'keras.metrics.metrics.MeanAbsolutePercentageError\'>"
+  is_instance: "<class \'keras.metrics.regression_metrics.MeanAbsolutePercentageError\'>"
   is_instance: "<class \'keras.metrics.base_metric.MeanMetricWrapper\'>"
   is_instance: "<class \'keras.metrics.base_metric.Mean\'>"
   is_instance: "<class \'keras.metrics.base_metric.Reduce\'>"
@@ -228,6 +228,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "merge_state"
     argspec: "args=[\'self\', \'metrics\'], varargs=None, keywords=None, defaults=None"
   }
@@ -242,6 +246,10 @@ tf_class {
   member_method {
     name: "result"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"

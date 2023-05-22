@@ -95,7 +95,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
           .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Entry parameter 1 is or contains a token shape"));
 }
 
@@ -115,7 +115,7 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
           .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Entry parameter 0 is or contains a token shape"));
 }
 
@@ -286,6 +286,11 @@ ENTRY %AddDependency (p: f32[3]) -> f32[3] {
 }
 
 XLA_TEST_F(TokenHloTest, TupleShapedAddDependency) {
+  if (IsMlirLoweringEnabled()) {
+    // This test generates invalid MHLO. The add-dependency op doesn't take
+    // tuples.
+    GTEST_SKIP() << "Invalid MHLO";
+  }
   std::string module_string = R"(
 HloModule TupleShapedAddDependency, is_scheduled=true
 ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {

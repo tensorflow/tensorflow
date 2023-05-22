@@ -38,13 +38,14 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import while_loop
 from tensorflow.python.training import server_lib
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util import compat
@@ -570,7 +571,7 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
           a = i + variable_b
         return a + 1.0, 1
 
-      return control_flow_ops.while_loop_v2(lambda _, d: d < 1, body, [i, 0])[0]
+      return while_loop.while_loop_v2(lambda _, d: d < 1, body, [i, 0])[0]
 
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
@@ -633,7 +634,7 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
         # parent device scope should be picked.
         x = test_ops.device_placement_op()
         y = string_ops.string_upper(x)
-        packed_var_0 = array_ops.stack([x, y], 0)
+        packed_var_0 = array_ops_stack.stack([x, y], 0)
         return packed_var_0
 
     with ops.device('/job:my_worker/task:1'):

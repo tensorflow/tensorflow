@@ -32,6 +32,10 @@ namespace xla {
 namespace gpu {
 
 namespace nvptx {
+
+std::string CantFindCudaMessage(absl::string_view msg,
+                                absl::string_view xla_gpu_cuda_data_dir);
+
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
 // be changed.
@@ -42,7 +46,6 @@ namespace nvptx {
 StatusOr<std::string> CompileToPtx(
     llvm::Module* module, GpuVersion gpu_version,
     const HloModuleConfig& hlo_module_config,
-    const std::string& libdevice_dir_path,
     std::function<void(llvm::TargetMachine*)> configure_target = nullptr);
 }  // namespace nvptx
 

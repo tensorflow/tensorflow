@@ -204,7 +204,7 @@ func.func @inference_standard_lstm_time_major(%arg0: tensor<?x8x8xf32>, %arg1: t
 // CHECK-DAG:       [[VAL_17:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           [[VAL_18:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_16]], [[VAL_17]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
 // CHECK:           [[VAL_19:%.*]] = "tfl.no_value"() {value} : () -> none
-// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
+// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
 // CHECK-DAG:       [[VAL_21:%.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_22:%.*]] = arith.constant dense<0> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_23:%.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -214,6 +214,61 @@ func.func @inference_standard_lstm_time_major(%arg0: tensor<?x8x8xf32>, %arg1: t
 // CHECK-DAG:       [[VAL_27:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
 // CHECK:           return [[VAL_24]], [[VAL_20]], [[VAL_25]], [[VAL_26]], [[VAL_27]] : tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
 // CHECK:         }
+}
+
+// -----
+
+module {
+func.func @inference_standard_indy_lstm_time_major(%arg0: tensor<8x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x4xf32>, %arg5: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<8x8x8xf32>, tensor<8x40xf32>) -> tensor<8x8x40xf32>
+  %1 = "tf.Add"(%0, %arg5) : (tensor<8x8x40xf32>, tensor<40xf32>) -> tensor<8x8x40xf32>
+  %2 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %3 = "tf.Transpose"(%arg4, %2) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+  %4 = "tf.MatrixDiag"(%3) : (tensor<4x10xf32>) -> tensor<4x10x10xf32>
+  %5 = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+  %6 = "tf.ConcatV2"(%4, %5) : (tensor<4x10x10xf32>, tensor<i64>) -> tensor<40x10xf32>
+  %7 = "tf.BatchMatMulV2"(%1, %6) {adj_x = false, adj_y = false} : (tensor<8x8x40xf32>, tensor<40x10xf32>) -> tensor<8x8x10xf32>
+  %8 = "tf.Add"(%7, %arg1) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %9 = "tf.Add"(%7, %arg2) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %10 = "tf.Add"(%arg1, %arg2) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+  %11 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  func.return %10, %9, %10, %10, %11 : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+}
+
+// CHECK:       func @inference_standard_indy_lstm_time_major([[VAL_0:%.*]]: tensor<8x8x8xf32>, [[VAL_1:%.*]]: tensor<8x10xf32>, [[VAL_2:%.*]]: tensor<8x10xf32>, [[VAL_3:%.*]]: tensor<8x40xf32>, [[VAL_4:%.*]]: tensor<10x4xf32>, [[VAL_5:%.*]]: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = true} {
+// CHECK:           [[VAL_6:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_7:%.*]] = "tf.Transpose"([[VAL_3]], [[VAL_6]]) : (tensor<8x40xf32>, tensor<2xi32>) -> tensor<40x8xf32>
+// CHECK:           [[VAL_8:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_9:%.*]] = "tf.Transpose"([[VAL_4]], [[VAL_8]]) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+// CHECK-DAG:       [[VAL_10:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_11:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_12:%.*]]:4 = "tf.SplitV"([[VAL_7]], [[VAL_10]], [[VAL_11]]) : (tensor<40x8xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>)
+// CHECK-DAG:       [[VAL_13:%.*]] = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_14:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_15:%.*]]:4 = "tf.SplitV"([[VAL_9]], [[VAL_13]], [[VAL_14]]) : (tensor<4x10xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>)
+// CHECK-DAG:       [[VAL_20:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_21:%.*]] = "tf.Reshape"([[VAL_15]]#0, [[VAL_20]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_22:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_23:%.*]] = "tf.Reshape"([[VAL_15]]#1, [[VAL_22]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_24:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_25:%.*]] = "tf.Reshape"([[VAL_15]]#2, [[VAL_24]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_26:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_27:%.*]] = "tf.Reshape"([[VAL_15]]#3, [[VAL_26]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_28:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_29:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_30:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_28]], [[VAL_29]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
+// CHECK:           [[VAL_31:%.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK:           [[VAL_32:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_21]], [[VAL_23]], [[VAL_25]], [[VAL_27]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_30]]#0, [[VAL_30]]#1, [[VAL_30]]#2, [[VAL_30]]#3, [[VAL_31]], [[VAL_31]], [[VAL_1]], [[VAL_2]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_31]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = true, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
+// CHECK-DAG:       [[VAL_33:%.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_34:%.*]] = arith.constant dense<0> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_35:%.*]] = arith.constant dense<1> : tensor<3xi32>
+// CHECK:           [[VAL_36:%.*]] = "tf.StridedSlice"([[VAL_32]], [[VAL_33]], [[VAL_34]], [[VAL_35]]) {begin_mask = 6 : i64, ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<8x8x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_37:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_38:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_39:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
+// CHECK:           return [[VAL_36]], [[VAL_32]], [[VAL_37]], [[VAL_38]], [[VAL_39]] : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+// CHECK:         }
+
 }
 
 // -----
@@ -245,7 +300,7 @@ func.func @inference_standard_lstm_non_time_major(%arg0: tensor<8x8x8xf32>, %arg
 // CHECK-DAG:       [[VAL_17:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           [[VAL_18:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_16]], [[VAL_17]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
 // CHECK:           [[VAL_19:%.*]] = "tfl.no_value"() {value} : () -> none
-// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
+// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
 // CHECK-DAG:       [[VAL_21:%.*]] = arith.constant dense<[0, -1, 0]> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_22:%.*]] = arith.constant dense<0> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_23:%.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -254,6 +309,61 @@ func.func @inference_standard_lstm_non_time_major(%arg0: tensor<8x8x8xf32>, %arg
 // CHECK-DAG:       [[VAL_26:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
 // CHECK-DAG:       [[VAL_27:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
 // CHECK:           return [[VAL_24]], [[VAL_20]], [[VAL_25]], [[VAL_26]], [[VAL_27]] : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+// CHECK:         }
+
+}
+
+// -----
+
+module {
+func.func @inference_standard_indy_lstm_non_time_major(%arg0: tensor<8x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x4xf32>, %arg5: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = false} {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<8x8x8xf32>, tensor<8x40xf32>) -> tensor<8x8x40xf32>
+  %1 = "tf.Add"(%0, %arg5) : (tensor<8x8x40xf32>, tensor<40xf32>) -> tensor<8x8x40xf32>
+  %2 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %3 = "tf.Transpose"(%arg4, %2) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+  %4 = "tf.MatrixDiag"(%3) : (tensor<4x10xf32>) -> tensor<4x10x10xf32>
+  %5 = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+  %6 = "tf.ConcatV2"(%4, %5) : (tensor<4x10x10xf32>, tensor<i64>) -> tensor<40x10xf32>
+  %7 = "tf.BatchMatMulV2"(%1, %6) {adj_x = false, adj_y = false} : (tensor<8x8x40xf32>, tensor<40x10xf32>) -> tensor<8x8x10xf32>
+  %8 = "tf.Add"(%7, %arg1) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %9 = "tf.Add"(%7, %arg2) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %10 = "tf.Add"(%arg1, %arg2) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+  %11 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  func.return %10, %9, %10, %10, %11 : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+}
+
+// CHECK:       func @inference_standard_indy_lstm_non_time_major([[VAL_0:%.*]]: tensor<8x8x8xf32>, [[VAL_1:%.*]]: tensor<8x10xf32>, [[VAL_2:%.*]]: tensor<8x10xf32>, [[VAL_3:%.*]]: tensor<8x40xf32>, [[VAL_4:%.*]]: tensor<10x4xf32>, [[VAL_5:%.*]]: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = false, tf.time_major = false} {
+// CHECK:           [[VAL_6:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_7:%.*]] = "tf.Transpose"([[VAL_3]], [[VAL_6]]) : (tensor<8x40xf32>, tensor<2xi32>) -> tensor<40x8xf32>
+// CHECK:           [[VAL_8:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_9:%.*]] = "tf.Transpose"([[VAL_4]], [[VAL_8]]) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+// CHECK-DAG:       [[VAL_10:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_11:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_12:%.*]]:4 = "tf.SplitV"([[VAL_7]], [[VAL_10]], [[VAL_11]]) : (tensor<40x8xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>)
+// CHECK-DAG:       [[VAL_13:%.*]] = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_14:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_15:%.*]]:4 = "tf.SplitV"([[VAL_9]], [[VAL_13]], [[VAL_14]]) : (tensor<4x10xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>)
+// CHECK-DAG:       [[VAL_20:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_21:%.*]] = "tf.Reshape"([[VAL_15]]#0, [[VAL_20]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_22:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_23:%.*]] = "tf.Reshape"([[VAL_15]]#1, [[VAL_22]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_24:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_25:%.*]] = "tf.Reshape"([[VAL_15]]#2, [[VAL_24]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_26:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_27:%.*]] = "tf.Reshape"([[VAL_15]]#3, [[VAL_26]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_28:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_29:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_30:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_28]], [[VAL_29]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
+// CHECK:           [[VAL_31:%.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK:           [[VAL_32:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_21]], [[VAL_23]], [[VAL_25]], [[VAL_27]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_30]]#0, [[VAL_30]]#1, [[VAL_30]]#2, [[VAL_30]]#3, [[VAL_31]], [[VAL_31]], [[VAL_1]], [[VAL_2]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_31]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = true, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
+// CHECK-DAG:       [[VAL_33:%.*]] = arith.constant dense<[0, -1, 0]> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_34:%.*]] = arith.constant dense<0> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_35:%.*]] = arith.constant dense<1> : tensor<3xi32>
+// CHECK:           [[VAL_36:%.*]] = "tf.StridedSlice"([[VAL_32]], [[VAL_33]], [[VAL_34]], [[VAL_35]]) {begin_mask = 5 : i64, ellipsis_mask = 0 : i64, end_mask = 5 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 2 : i64} : (tensor<8x8x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_37:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_38:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_39:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
+// CHECK:           return [[VAL_36]], [[VAL_32]], [[VAL_37]], [[VAL_38]], [[VAL_39]] : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
 // CHECK:         }
 
 }
@@ -289,7 +399,7 @@ func.func @inference_standard_lstm_time_major_go_backwards(%arg0: tensor<?x8x8xf
 // CHECK-DAG:       [[VAL_19:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           [[VAL_20:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_18]], [[VAL_19]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
 // CHECK:           [[VAL_21:%.*]] = "tfl.no_value"() {value} : () -> none
-// CHECK:           [[VAL_22:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_7]], [[VAL_14]]#0, [[VAL_14]]#1, [[VAL_14]]#2, [[VAL_14]]#3, [[VAL_17]]#0, [[VAL_17]]#1, [[VAL_17]]#2, [[VAL_17]]#3, [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_20]]#0, [[VAL_20]]#1, [[VAL_20]]#2, [[VAL_20]]#3, [[VAL_21]], [[VAL_21]], [[VAL_1]], [[VAL_2]], [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_21]]) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
+// CHECK:           [[VAL_22:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_7]], [[VAL_14]]#0, [[VAL_14]]#1, [[VAL_14]]#2, [[VAL_14]]#3, [[VAL_17]]#0, [[VAL_17]]#1, [[VAL_17]]#2, [[VAL_17]]#3, [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_20]]#0, [[VAL_20]]#1, [[VAL_20]]#2, [[VAL_20]]#3, [[VAL_21]], [[VAL_21]], [[VAL_1]], [[VAL_2]], [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_21]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
 // CHECK-DAG:       [[VAL_23:%.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_24:%.*]] = arith.constant dense<0> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_25:%.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -298,6 +408,63 @@ func.func @inference_standard_lstm_time_major_go_backwards(%arg0: tensor<?x8x8xf
 // CHECK-DAG:       [[VAL_28:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
 // CHECK-DAG:       [[VAL_29:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
 // CHECK:           return [[VAL_26]], [[VAL_22]], [[VAL_27]], [[VAL_28]], [[VAL_29]] : tensor<8x10xf32>, tensor<?x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+// CHECK:         }
+
+}
+
+// -----
+
+module {
+func.func @inference_standard_indy_lstm_time_major_go_backwards(%arg0: tensor<8x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x4xf32>, %arg5: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = true, tf.time_major = true} {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<8x8x8xf32>, tensor<8x40xf32>) -> tensor<8x8x40xf32>
+  %1 = "tf.Add"(%0, %arg5) : (tensor<8x8x40xf32>, tensor<40xf32>) -> tensor<8x8x40xf32>
+  %2 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %3 = "tf.Transpose"(%arg4, %2) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+  %4 = "tf.MatrixDiag"(%3) : (tensor<4x10xf32>) -> tensor<4x10x10xf32>
+  %5 = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+  %6 = "tf.ConcatV2"(%4, %5) : (tensor<4x10x10xf32>, tensor<i64>) -> tensor<40x10xf32>
+  %7 = "tf.BatchMatMulV2"(%1, %6) {adj_x = false, adj_y = false} : (tensor<8x8x40xf32>, tensor<40x10xf32>) -> tensor<8x8x10xf32>
+  %8 = "tf.Add"(%7, %arg1) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %9 = "tf.Add"(%7, %arg2) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %10 = "tf.Add"(%arg1, %arg2) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+  %11 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  func.return %10, %9, %10, %10, %11 : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+}
+
+// CHECK:       func @inference_standard_indy_lstm_time_major_go_backwards([[VAL_0:%.*]]: tensor<8x8x8xf32>, [[VAL_1:%.*]]: tensor<8x10xf32>, [[VAL_2:%.*]]: tensor<8x10xf32>, [[VAL_3:%.*]]: tensor<8x40xf32>, [[VAL_4:%.*]]: tensor<10x4xf32>, [[VAL_5:%.*]]: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = true, tf.time_major = true} {
+// CHECK:           [[VAL_40:%.*]] = arith.constant dense<0> : tensor<1xi32>
+// CHECK:           [[VAL_41:%.*]] = "tf.ReverseV2"([[VAL_0]], [[VAL_40]]) : (tensor<8x8x8xf32>, tensor<1xi32>) -> tensor<8x8x8xf32>
+// CHECK:           [[VAL_6:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_7:%.*]] = "tf.Transpose"([[VAL_3]], [[VAL_6]]) : (tensor<8x40xf32>, tensor<2xi32>) -> tensor<40x8xf32>
+// CHECK:           [[VAL_8:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_9:%.*]] = "tf.Transpose"([[VAL_4]], [[VAL_8]]) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+// CHECK-DAG:       [[VAL_10:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_11:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_12:%.*]]:4 = "tf.SplitV"([[VAL_7]], [[VAL_10]], [[VAL_11]]) : (tensor<40x8xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>)
+// CHECK-DAG:       [[VAL_13:%.*]] = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_14:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_15:%.*]]:4 = "tf.SplitV"([[VAL_9]], [[VAL_13]], [[VAL_14]]) : (tensor<4x10xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>)
+// CHECK-DAG:       [[VAL_20:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_21:%.*]] = "tf.Reshape"([[VAL_15]]#0, [[VAL_20]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_22:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_23:%.*]] = "tf.Reshape"([[VAL_15]]#1, [[VAL_22]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_24:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_25:%.*]] = "tf.Reshape"([[VAL_15]]#2, [[VAL_24]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_26:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_27:%.*]] = "tf.Reshape"([[VAL_15]]#3, [[VAL_26]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_28:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_29:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_30:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_28]], [[VAL_29]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
+// CHECK:           [[VAL_31:%.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK:           [[VAL_32:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_41]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_21]], [[VAL_23]], [[VAL_25]], [[VAL_27]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_30]]#0, [[VAL_30]]#1, [[VAL_30]]#2, [[VAL_30]]#3, [[VAL_31]], [[VAL_31]], [[VAL_1]], [[VAL_2]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_31]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = true, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
+// CHECK-DAG:       [[VAL_33:%.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_34:%.*]] = arith.constant dense<0> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_35:%.*]] = arith.constant dense<1> : tensor<3xi32>
+// CHECK:           [[VAL_36:%.*]] = "tf.StridedSlice"([[VAL_32]], [[VAL_33]], [[VAL_34]], [[VAL_35]]) {begin_mask = 6 : i64, ellipsis_mask = 0 : i64, end_mask = 6 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 1 : i64} : (tensor<8x8x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_37:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_38:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_39:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
+// CHECK:           return [[VAL_36]], [[VAL_32]], [[VAL_37]], [[VAL_38]], [[VAL_39]] : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
 // CHECK:         }
 
 }
@@ -333,7 +500,7 @@ func.func @inference_standard_lstm_non_time_major_go_backwards(%arg0: tensor<8x8
 // CHECK-DAG:       [[VAL_19:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           [[VAL_20:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_18]], [[VAL_19]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
 // CHECK:           [[VAL_21:%.*]] = "tfl.no_value"() {value} : () -> none
-// CHECK:           [[VAL_22:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_7]], [[VAL_14]]#0, [[VAL_14]]#1, [[VAL_14]]#2, [[VAL_14]]#3, [[VAL_17]]#0, [[VAL_17]]#1, [[VAL_17]]#2, [[VAL_17]]#3, [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_20]]#0, [[VAL_20]]#1, [[VAL_20]]#2, [[VAL_20]]#3, [[VAL_21]], [[VAL_21]], [[VAL_1]], [[VAL_2]], [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_21]]) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
+// CHECK:           [[VAL_22:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_7]], [[VAL_14]]#0, [[VAL_14]]#1, [[VAL_14]]#2, [[VAL_14]]#3, [[VAL_17]]#0, [[VAL_17]]#1, [[VAL_17]]#2, [[VAL_17]]#3, [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_20]]#0, [[VAL_20]]#1, [[VAL_20]]#2, [[VAL_20]]#3, [[VAL_21]], [[VAL_21]], [[VAL_1]], [[VAL_2]], [[VAL_21]], [[VAL_21]], [[VAL_21]], [[VAL_21]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
 // CHECK-DAG:       [[VAL_23:%.*]] = arith.constant dense<[0, -1, 0]> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_24:%.*]] = arith.constant dense<0> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_25:%.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -342,6 +509,63 @@ func.func @inference_standard_lstm_non_time_major_go_backwards(%arg0: tensor<8x8
 // CHECK-DAG:       [[VAL_28:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
 // CHECK-DAG:       [[VAL_29:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
 // CHECK:           return [[VAL_26]], [[VAL_22]], [[VAL_27]], [[VAL_28]], [[VAL_29]] : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+// CHECK:         }
+
+}
+
+// -----
+
+module {
+func.func @inference_standard_indy_lstm_non_time_major_go_backwards(%arg0: tensor<8x8x8xf32>, %arg1: tensor<8x10xf32>, %arg2: tensor<8x10xf32>, %arg3: tensor<8x40xf32>, %arg4: tensor<10x4xf32>, %arg5: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = true, tf.time_major = false} {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg3) {adj_x = false, adj_y = false} : (tensor<8x8x8xf32>, tensor<8x40xf32>) -> tensor<8x8x40xf32>
+  %1 = "tf.Add"(%0, %arg5) : (tensor<8x8x40xf32>, tensor<40xf32>) -> tensor<8x8x40xf32>
+  %2 = "tf.Const"() { value = dense<[1, 0]> : tensor<2xi32> } : () -> tensor<2xi32>
+  %3 = "tf.Transpose"(%arg4, %2) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+  %4 = "tf.MatrixDiag"(%3) : (tensor<4x10xf32>) -> tensor<4x10x10xf32>
+  %5 = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+  %6 = "tf.ConcatV2"(%4, %5) : (tensor<4x10x10xf32>, tensor<i64>) -> tensor<40x10xf32>
+  %7 = "tf.BatchMatMulV2"(%1, %6) {adj_x = false, adj_y = false} : (tensor<8x8x40xf32>, tensor<40x10xf32>) -> tensor<8x8x10xf32>
+  %8 = "tf.Add"(%7, %arg1) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %9 = "tf.Add"(%7, %arg2) : (tensor<8x8x10xf32>, tensor<8x10xf32>) -> tensor<8x8x10xf32>
+  %10 = "tf.Add"(%arg1, %arg2) : (tensor<8x10xf32>, tensor<8x10xf32>) -> tensor<8x10xf32>
+  %11 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "/device:CPU:0", dtype = f32, value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  func.return %10, %9, %10, %10, %11 : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
+}
+
+// CHECK:       func @inference_standard_indy_lstm_non_time_major_go_backwards([[VAL_0:%.*]]: tensor<8x8x8xf32>, [[VAL_1:%.*]]: tensor<8x10xf32>, [[VAL_2:%.*]]: tensor<8x10xf32>, [[VAL_3:%.*]]: tensor<8x40xf32>, [[VAL_4:%.*]]: tensor<10x4xf32>, [[VAL_5:%.*]]: tensor<40xf32>) -> (tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>) attributes {tf._input_shapes = ["tfshape$dim { size: -1 } dim { size: 8 } dim { size: 8 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$dim { size: 8 } dim { size: 10 }", "tfshape$unknown_rank: true", "tfshape$unknown_rank: false", "tfshape$unknown_rank: false"], tf.api_implements = "indy_lstm_b4e9f0e7-ac55-42bc-8ef2-8496419a608c", tf.api_preferred_device = "CPU", tf.go_backwards = true, tf.time_major = false} {
+// CHECK:           [[VAL_40:%.*]] = arith.constant dense<1> : tensor<1xi32>
+// CHECK:           [[VAL_41:%.*]] = "tf.ReverseV2"([[VAL_0]], [[VAL_40]]) : (tensor<8x8x8xf32>, tensor<1xi32>) -> tensor<8x8x8xf32>
+// CHECK:           [[VAL_6:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_7:%.*]] = "tf.Transpose"([[VAL_3]], [[VAL_6]]) : (tensor<8x40xf32>, tensor<2xi32>) -> tensor<40x8xf32>
+// CHECK:           [[VAL_8:%.*]] = arith.constant dense<[1, 0]> : tensor<2xi32>
+// CHECK:           [[VAL_9:%.*]] = "tf.Transpose"([[VAL_4]], [[VAL_8]]) : (tensor<10x4xf32>, tensor<2xi32>) -> tensor<4x10xf32>
+// CHECK-DAG:       [[VAL_10:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_11:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_12:%.*]]:4 = "tf.SplitV"([[VAL_7]], [[VAL_10]], [[VAL_11]]) : (tensor<40x8xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>)
+// CHECK-DAG:       [[VAL_13:%.*]] = "tf.Const"() {value = dense<1> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_14:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_15:%.*]]:4 = "tf.SplitV"([[VAL_9]], [[VAL_13]], [[VAL_14]]) : (tensor<4x10xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>, tensor<1x10xf32>)
+// CHECK-DAG:       [[VAL_20:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_21:%.*]] = "tf.Reshape"([[VAL_15]]#0, [[VAL_20]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_22:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_23:%.*]] = "tf.Reshape"([[VAL_15]]#1, [[VAL_22]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_24:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_25:%.*]] = "tf.Reshape"([[VAL_15]]#2, [[VAL_24]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_26:%.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi32>} : () -> tensor<1xi32>
+// CHECK:           [[VAL_27:%.*]] = "tf.Reshape"([[VAL_15]]#3, [[VAL_26]]) : (tensor<1x10xf32>, tensor<1xi32>) -> tensor<10xf32>
+// CHECK-DAG:       [[VAL_28:%.*]] = "tf.Const"() {value = dense<10> : tensor<4xi32>} : () -> tensor<4xi32>
+// CHECK-DAG:       [[VAL_29:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+// CHECK:           [[VAL_30:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_28]], [[VAL_29]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
+// CHECK:           [[VAL_31:%.*]] = "tfl.no_value"() {value} : () -> none
+// CHECK:           [[VAL_32:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_41]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_21]], [[VAL_23]], [[VAL_25]], [[VAL_27]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_30]]#0, [[VAL_30]]#1, [[VAL_30]]#2, [[VAL_30]]#3, [[VAL_31]], [[VAL_31]], [[VAL_1]], [[VAL_2]], [[VAL_31]], [[VAL_31]], [[VAL_31]], [[VAL_31]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = true, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false} : (tensor<8x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<8x8x10xf32>
+// CHECK-DAG:       [[VAL_33:%.*]] = arith.constant dense<[0, -1, 0]> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_34:%.*]] = arith.constant dense<0> : tensor<3xi32>
+// CHECK-DAG:       [[VAL_35:%.*]] = arith.constant dense<1> : tensor<3xi32>
+// CHECK:           [[VAL_36:%.*]] = "tf.StridedSlice"([[VAL_32]], [[VAL_33]], [[VAL_34]], [[VAL_35]]) {begin_mask = 5 : i64, ellipsis_mask = 0 : i64, end_mask = 5 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 2 : i64} : (tensor<8x8x10xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_37:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_38:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<8x10xf32>
+// CHECK-DAG:       [[VAL_39:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<1xf32>} : () -> tensor<f32>
+// CHECK:           return [[VAL_36]], [[VAL_32]], [[VAL_37]], [[VAL_38]], [[VAL_39]] : tensor<8x10xf32>, tensor<8x8x10xf32>, tensor<8x10xf32>, tensor<8x10xf32>, tensor<f32>
 // CHECK:         }
 
 }
@@ -382,7 +606,7 @@ func.func @inference_standard_lstm_time_major_can_fuse(%arg0: tensor<?x8x8xf32>,
 // CHECK-DAG:       [[VAL_17:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           [[VAL_18:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_16]], [[VAL_17]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
 // CHECK:           [[VAL_19:%.*]] = "tfl.no_value"() {value} : () -> none
-// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
+// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
 // CHECK-DAG:       [[VAL_21:%.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_22:%.*]] = arith.constant dense<0> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_23:%.*]] = arith.constant dense<1> : tensor<3xi32>
@@ -432,7 +656,7 @@ func.func @inference_standard_lstm_time_major_can_fuse_last_output(%arg0: tensor
 // CHECK-DAG:       [[VAL_17:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
 // CHECK:           [[VAL_18:%.*]]:4 = "tf.SplitV"([[VAL_5]], [[VAL_16]], [[VAL_17]]) : (tensor<40xf32>, tensor<4xi32>, tensor<i32>) -> (tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>)
 // CHECK:           [[VAL_19:%.*]] = "tfl.no_value"() {value} : () -> none
-// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
+// CHECK:           [[VAL_20:%.*]] = "tfl.unidirectional_sequence_lstm"([[VAL_0]], [[VAL_12]]#0, [[VAL_12]]#1, [[VAL_12]]#2, [[VAL_12]]#3, [[VAL_15]]#0, [[VAL_15]]#1, [[VAL_15]]#2, [[VAL_15]]#3, [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_18]]#0, [[VAL_18]]#1, [[VAL_18]]#2, [[VAL_18]]#3, [[VAL_19]], [[VAL_19]], [[VAL_1]], [[VAL_2]], [[VAL_19]], [[VAL_19]], [[VAL_19]], [[VAL_19]]) {cell_clip = 1.000000e+01 : f32, diagonal_recurrent_tensors = false, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = true} : (tensor<?x8x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x8xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, tensor<10x10xf32>, none, none, none, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, tensor<10xf32>, none, none, tensor<8x10xf32>, tensor<8x10xf32>, none, none, none, none) -> tensor<?x8x10xf32>
 // CHECK-DAG:       [[VAL_21:%.*]] = arith.constant dense<[-1, 0, 0]> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_22:%.*]] = arith.constant dense<0> : tensor<3xi32>
 // CHECK-DAG:       [[VAL_23:%.*]] = arith.constant dense<1> : tensor<3xi32>

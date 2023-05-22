@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/profiler/internal/traceme_wrapper.h"
 
-#include "pybind11/attr.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/attr.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace py = ::pybind11;
 

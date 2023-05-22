@@ -241,7 +241,7 @@ class Sampler {
             &metric_def_, [&](MetricCollectorGetter getter) {
               auto metric_collector = getter.Get(&metric_def_);
 
-              mutex_lock l(mu_);
+              tf_shared_lock l(mu_);
               for (const auto& cell : cells_) {
                 metric_collector.CollectValue(cell.first, cell.second.value());
               }
@@ -249,7 +249,7 @@ class Sampler {
     if (registration_handle_) {
       status_ = OkStatus();
     } else {
-      status_ = Status(tensorflow::error::Code::ALREADY_EXISTS,
+      status_ = Status(absl::StatusCode::kAlreadyExists,
                        "Another metric with the same name already exists.");
     }
   }
@@ -309,11 +309,14 @@ SamplerCell* Sampler<NumLabels>::GetCell(const Labels&... labels)
                 "provided in GetCell(...).");
 
   const LabelArray& label_array = {{labels...}};
-  mutex_lock l(mu_);
-  const auto found_it = cells_.find(label_array);
-  if (found_it != cells_.end()) {
-    return &(found_it->second);
+  {
+    tf_shared_lock l(mu_);
+    const auto found_it = cells_.find(label_array);
+    if (found_it != cells_.end()) {
+      return &(found_it->second);
+    }
   }
+  mutex_lock l(mu_);
   return &(cells_
                .emplace(std::piecewise_construct,
                         std::forward_as_tuple(label_array),

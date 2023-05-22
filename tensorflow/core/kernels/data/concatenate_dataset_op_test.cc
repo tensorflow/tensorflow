@@ -108,7 +108,7 @@ TEST_F(ConcatenateDatasetOpTest, DifferentDtypes) {
   auto dataset_params = DifferentDtypeConcatenateDatasetParams();
 
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(ConcatenateDatasetOpTest, DatasetNodeName) {

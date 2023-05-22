@@ -88,8 +88,7 @@ Attribute ConstFoldBroadcastInDim(ShapedType result_type,
   // dimensions to match result shape.
   llvm::SmallVector<int64_t, 16> operand_new_shape(result_type.getRank(), 1);
   for (int i = 0; i < dimensions.size(); ++i) {
-    auto dim_index = dimensions[i];
-    operand_new_shape[dim_index] = result_type.getDimSize(dim_index);
+    operand_new_shape[dimensions[i]] = operand.getType().getDimSize(i);
   }
 
   llvm::SmallVector<ElementValueT, 16> new_values;

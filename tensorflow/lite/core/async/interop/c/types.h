@@ -22,37 +22,22 @@ extern "C" {
 #endif  // __cplusplus
 
 // --------------------------------------------------------------------------
-/// Opaque types for buffer / synchronization object interoperability.
+/// Types for hardware buffer object / synchronization object interoperability.
 /// WARNING: This is an experimental type and subject to change.
 
-/// Type of the attribute map.
-/// An attribute map can either describe the propoerties of backend buffers
-/// or sychronizations.
-/// The value of the TfLiteAttrMapType determines the interpretation of
-/// attribute keys. See comments below.
-typedef enum TfLiteAttrMapType {
-  kTfLiteAttrMapUnknown = 0,
-
-  // The attributes describes a backend buffer.
-  // Keys are of TfLiteBufferAttributeKey type.
-  kTfLiteBufferAttrMap = 1,
-
-  // The attributes describes a sync object.
-  // Keys are of TfLiteSyncAttributeKey type.
-  kTfLiteSyncAttrMap = 2,
-} TfLiteAttrMapType;
-
 /// TfLiteBackendBuffer is a an opaque type that abstracts platform specific
-/// implementations of buffer objects. It's used for carrying the actual buffer
-/// across applications, TFLite runtime and backends.
+/// implementations of hardware buffer objects (e.g. AHardwareBuffer).
+/// It's used for carrying the platform-specific hardware buffer object across
+/// applications, TFLite runtime and backends.
 typedef struct TfLiteBackendBuffer TfLiteBackendBuffer;
 
-/// Creates an empty TfLiteBackendBuffer.
+/// Creates an empty TfLiteBackendBuffer that does not contain any hardware
+/// buffers object.
 /// Returned object is owned by the caller.
 TfLiteBackendBuffer* TfLiteBackendBufferCreate();
 
 /// Destroys a TfLiteBackendBuffer.
-/// Calling this function will not release the actual buffer stored underneath.
+/// Calling this function will not release the buffer object stored underneath.
 void TfLiteBackendBufferDelete(TfLiteBackendBuffer* buf);
 
 /// Stores a type puned buffer object to TfLiteBackendBuffer.
@@ -67,7 +52,7 @@ void* TfLiteBackendBufferGetPtr(const TfLiteBackendBuffer* buf);
 
 /// TfLiteSynchronization is an opaque type that abstracts platform specific
 /// implementations of synchronization objects. It's used for carrying the
-/// actual sync object across applications, TFLite runtime and backends.
+/// synchronization object across applications, TFLite runtime and backends.
 typedef struct TfLiteSynchronization TfLiteSynchronization;
 
 /// Creates an empty TfLiteSynchronization.
@@ -75,10 +60,10 @@ typedef struct TfLiteSynchronization TfLiteSynchronization;
 TfLiteSynchronization* TfLiteSynchronizationCreate();
 
 /// Destroys a TfLiteSynchronization.
-/// Calling this function will not release the actual sync object stored.
+/// Calling this function will not release the synchronization object stored.
 void TfLiteSynchronizationDelete(TfLiteSynchronization* sync);
 
-/// Stores a type-punned pointer for actual synchronization object.
+/// Stores a type-punned pointer to a platform-specific synchronization object.
 /// `sync` will not own or control the lifecycle of `ptr`.
 /// Callers needs to ensure lifetime of *ptr exceeds `sync`.
 void TfLiteSynchronizationSetPtr(TfLiteSynchronization* sync, void* ptr);
@@ -87,6 +72,50 @@ void TfLiteSynchronizationSetPtr(TfLiteSynchronization* sync, void* ptr);
 /// Callers can use TfLiteAttributeMap sync type name to interpret returned
 /// pointer.
 void* TfLiteSynchronizationGetPtr(const TfLiteSynchronization* sync);
+
+/// Type of the attribute map.
+/// An attribute map can either describe the properties of backend buffers
+/// or synchronizations.
+/// The value of the TfLiteAttrMapType determines the interpretation of
+/// attribute keys. See comments below.
+typedef enum TfLiteAttrMapType {
+  /// Unknown type.
+  kTfLiteAttrMapTypeUnknown = 0,
+
+  /// The attributes describes a platform-specific hardware buffer object (e.g.
+  /// AHardwareBuffer for Android).
+  /// Keys are of TfLiteBufferAttrKey type.
+  kTfLiteAttrMapTypeBuffer = 1,
+
+  /// The attributes describes a sync object (e.g. a file descriptor as sync
+  /// fence).
+  /// Keys are of TfLiteSynchronizationAttrKey type.
+  kTfLiteAttrMapTypeSync = 2,
+} TfLiteAttrMapType;
+
+/// General hardware buffer attribute keys that are recognizable by TFLite.
+typedef enum TfLiteBufferAttrKey {
+  kTfLiteBufferAttrKeyUnknown = 0,
+  /// Backing buffer resource. const char*
+  /// e.g. "AHardwareBuffer".
+  kTfLiteBufferAttrKeyResourceTypeName = 1,
+  /// Buffer alignment, size_t
+  kTfLiteBufferAttrKeyAlignment = 2,
+  /// Buffer padding, size_t
+  kTfLiteBufferAttrKeyPadding = 3,
+  /// Buffer offset, size_t
+  kTfLiteBufferAttrKeyOffset = 4,
+  /// Buffer size (padded size if applicable), size_t
+  kTfLiteBufferAttrKeySize = 5,
+} TfLiteBufferAttrKey;
+
+/// General synchronization attribute keys that are recognizable by TFLite.
+typedef enum TfLiteSynchronizationAttrKey {
+  kTfLiteSynchronizationAttrKeyUnknown = 0,
+  /// Synchronization type name. const char*
+  /// e.g. "sync_fence_fd"
+  kTfLiteSynchronizationAttrKeyObjectTypeName = 1,
+} TfLiteSynchronizationAttrKey;
 
 #ifdef __cplusplus
 }  // extern "C"

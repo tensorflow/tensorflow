@@ -25,6 +25,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
@@ -59,9 +60,9 @@ def build_graph(device, dtype, data_format, input_shape, filter_shape, strides,
     An array of tensors to run()
   """
   with ops.device("/%s:0" % device):
-    inp = variables.VariableV1(
+    inp = variable_v1.VariableV1(
         random_ops.truncated_normal(input_shape, dtype=dtype))
-    filt = variables.VariableV1(
+    filt = variable_v1.VariableV1(
         random_ops.truncated_normal(filter_shape, dtype=dtype))
 
     outputs = []

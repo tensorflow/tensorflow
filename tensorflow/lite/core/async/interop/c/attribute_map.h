@@ -18,6 +18,8 @@ limitations under the License.
 #include <stddef.h>
 #include <stdint.h>
 
+#include "tensorflow/lite/core/async/interop/c/types.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -38,10 +40,10 @@ extern "C" {
 typedef struct TfLiteAttributeMap TfLiteAttributeMap;
 
 /// Creates an attribute map.
-/// `type` argument determines what's the attribute map is describing
+/// `type` argument determines what the attribute map is describing
 /// (e.g. buffer, or sync object).
 /// Returned object is owned by the caller.
-TfLiteAttributeMap* TfLiteAttributeMapCreate(int32_t type);
+TfLiteAttributeMap* TfLiteAttributeMapCreate(TfLiteAttrMapType type);
 
 /// Destroys the attribute map.
 /// Do nothing if `attrs` is nullptr.
@@ -64,13 +66,61 @@ void TfLiteAttributeMapCopy(const TfLiteAttributeMap* src,
 // --------------------------------------------------------------------------
 /// Accessor methods.
 ///
-/// For getters, returns false if the key is not set. TfLite does not check
-/// the type of values, callers needs to make sure the requested type matches
-/// the value set in the map.
+/// For getters, returns false if the key is not set, or the requested type
+/// does not match.
 /// For setters, if the value type is a pointer (e.g. c string literals),
 /// caller needs to ensure the lifetime of value exceeds the attribute map.
 /// If the key is set in previous calls, old value will be overriden by
 /// successive setter calls.
+
+/// Gets the int buffer attribute value for the given `key`.
+/// Returns false if the key is not set, `attrs` is not a buffer attribute map,
+/// or the value is not of type `size_t`.
+bool TfLiteAttributeMapGetSizeTBufferAttr(const TfLiteAttributeMap* attrs,
+                                          TfLiteBufferAttrKey key, size_t* val);
+
+/// Sets the `key` buffer attribute as `val`.
+/// Returns false if `attrs` is not a buffer attribute map.
+bool TfLiteAttributeMapSetSizeTBufferAttr(TfLiteAttributeMap* attrs,
+                                          TfLiteBufferAttrKey key, size_t val);
+
+/// Gets the C string buffer attribute value for the given `key`.
+/// Returns false if the key is not set, `attrs` is not a buffer attribute map,
+/// or the value is not of type `size_t`.
+/// Returned C string's lifespan is determined by the setter of that value.
+/// Neither `attrs` nor the caller maintains the lifespan of the string.
+bool TfLiteAttributeMapGetStringBufferAttr(const TfLiteAttributeMap* attrs,
+                                           TfLiteBufferAttrKey key,
+                                           const char** val);
+
+/// Sets the `key` buffer attribute as `val`.
+/// Returns false if `attrs` is not a buffer attribute map.
+/// `attrs` does not own the `val` C string.
+bool TfLiteAttributeMapSetStringBufferAttr(TfLiteAttributeMap* attrs,
+                                           TfLiteBufferAttrKey key,
+                                           const char* val);
+
+/// Gets the C string synchronization attribute value for the given `key`.
+/// Returns false if the key is not set, `attrs` is not a sync attribute map,
+/// or the value is not of type `size_t`.
+/// Returned C string's lifespan is determined by the setter of that value.
+/// Neither `attrs` nor the caller maintains the lifespan of the string.
+bool TfLiteAttributeMapGetStringSyncAttr(const TfLiteAttributeMap* attrs,
+                                         TfLiteSynchronizationAttrKey key,
+                                         const char** val);
+
+/// Sets the `key` buffer attribute as `val`.
+/// Returns false if `attrs` is not a sync attribute map.
+/// `attrs` does not own the `val` C string.
+bool TfLiteAttributeMapSetStringSyncAttr(TfLiteAttributeMap* attrs,
+                                         TfLiteSynchronizationAttrKey key,
+                                         const char* val);
+
+/// \privatesection
+/// Attribute map accessor methods that does not check the map type.
+/// It's recommended to use methods above for setting / getting attribute values
+/// as those will also check whether the attribute key matches the attribute
+/// map type.
 #define DECLARE_ATTR_MAP_ACCESSOR(type, type_name)                             \
   bool TfLiteAttributeMapGet##type_name##Attr(const TfLiteAttributeMap* attrs, \
                                               uint32_t key, type* val);        \

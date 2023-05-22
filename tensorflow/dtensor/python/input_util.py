@@ -59,6 +59,7 @@ passed to `DTensorDataset` to enable distribution.
 """
 
 import dataclasses
+import operator
 
 from typing import Any, List, Optional, Sequence, Tuple
 
@@ -68,13 +69,16 @@ from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.types import data as data_types
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -94,7 +98,7 @@ class TFDataServiceConfig:
 
 
 # TODO(b/223275517): Add support for get_next_as_optional().
-class _DTensorIterator(iterator_ops.IteratorBase):
+class _DTensorIterator(iterator_ops.OwnedIterator):
   """An iterator for a tf.data.Dataset distributed using DTensor.
 
   DTensorIterator encapsulates multiple underlying dataset iterators. It handles
@@ -104,108 +108,96 @@ class _DTensorIterator(iterator_ops.IteratorBase):
   tensors onto devices.
   """
 
-  def __init__(self, datasets: Sequence[Tuple[int, dataset_ops.DatasetV2]],
-               element_spec: tensor_spec.TensorSpec, layouts: Any,
-               num_local_devices_per_replica: int):
+  def __init__(
+      self,
+      dtensor_components: Tuple[ops.Tensor],
+      global_element_spec: tensor_spec.TensorSpec,
+      layouts: Any):
     """Initializes a distributed iterator for DTensor datasets.
 
-    The DTensorIterator uses 'replica IDs' to identify shards of a dataset. Here
-    the term 'replica' is used in the data-parallel context where each replica
-    receives a partition of the global batch. Depending on the model parallelism
-    in the layouts supplied, each device within that replica may receive the
-    same partition of the global batch (no model parallelism), or specific
-    slices of that partition.
+    This iterator encapsulates tf.data iterators for the underlying devices, and
+    treats it as a packed DTensor of iterator resource tensors.
 
     Args:
-      datasets: a dictionary mapping each unique local replica ID to the dataset
-        object whose elements will be placed on the devices corresponding to
-        that replica.
-      element_spec: the underlying dataset's element spec.
-      layouts: a structure of DTensor layouts to be applied to the dataset
-        values. This can be a single layout or (possibly nested) tuples or
-        dictionaries of layouts, and the structure must match the structure of
-        the dataset.
-      num_local_devices_per_replica: the number of local devices for each
-        replica.
+      dtensor_components: a tuple containing the underlying iterator resources
+        packed into a DTensor. This is expected to be a tuple with a single
+        element.
+      global_element_spec: the underlying dataset's element spec from a global
+        view.
+      layouts: a structure of DTensor layouts to be applied to the elements
+        returned by the underlying iterators. This can be a single layout or
+        (possibly nested) tuples or dictionaries of layouts, and the structure
+        must match the structure of the iterator elements.
     """
-    self._iterators = [
-        (replica_id, iter(dataset)) for replica_id, dataset in datasets
-    ]
-    self._element_spec = element_spec
+    # dtensor_components is expected to be a single-element tuple.
+    [self._iterator_resource_dtensor] = dtensor_components
+    self._global_element_spec = global_element_spec
     self._layouts = layouts
-    self._num_local_devices_per_replica = num_local_devices_per_replica
-    self._flattened_layouts = nest.flatten(self._layouts)
+    self._layouts_str = nest.map_structure(
+        lambda layout: layout.to_string(), layouts)
+
+    super().__init__(
+        components=dtensor_components, element_spec=global_element_spec)
 
   def __next__(self):
     try:
-      return self.get_next()
+      # IteratorGetNext will return a DTensor on the host, so move it to the
+      # device mesh. If the dataset layouts are on the host mesh itself, this
+      # is handled by DTensor as a no-op.
+      host_elem = self._next_internal()
+      device_elem = nest.map_structure(
+          api.copy_to_mesh, host_elem, self._layouts)
+      context.async_wait()
+      return device_elem
     except errors.OutOfRangeError as e:
-      raise StopIteration from e
-
-  def __iter__(self):
-    return self
-
-  @property
-  def element_spec(self):
-    """The type specification of an element of this iterator.
-
-    A possibly nested structure of `tf.TypeSpec` objects matching the structure
-    of an element of this iterator.
-    """
-    return self._element_spec
-
-  def get_next(self):
-    """Returns the next element.
-
-    Returns:
-      A possibly nested structure of values matching
-      `tf.data.Iterator.element_spec`.
-
-    Raises:
-      `tf.errors.OutOfRangeError`: if the end of the underlying iterators has
-        been reached.
-      RuntimeError: if any of the underlying iterators do not return the
-        expected number of items.
-    """
-    # Create the data structure to store the individual elements of the current
-    # batch. We store a list per element in the flattened dataset batch, and
-    # each list should contain as many tensors as there local devices.
-    curr_batch_elems = [[] for _ in range(len(self._flattened_layouts))]
-
-    for _, iterator in self._iterators:
-      for _ in range(self._num_local_devices_per_replica):
-        element = iterator.get_next()
-
-        # Separate the dataset elements based on the structure of the dataset.
-        flattened_element = nest.flatten(element)
-        for idx, batch in enumerate(flattened_element):
-          curr_batch_elems[idx].append(batch)
-
-    flattened_output = []
-    for batch_elems, layout in zip(curr_batch_elems, self._flattened_layouts):
-      expected_num_elems = layout.mesh.num_local_devices()
-      actual_num_elems = len(batch_elems)
-      if actual_num_elems != expected_num_elems:
-        raise RuntimeError('Expected to pack %d elements in batch but got %d' %
-                           (expected_num_elems, actual_num_elems))
-      flattened_output.append(api.pack(batch_elems, layout))
-    return nest.pack_sequence_as(self._layouts, flattened_output)
-
-  def get_next_as_optional(self):
-    """Returns the next element wrapped in `tf.experimental.Optional`.
-
-    If the iterator has reached the end of the sequence, the returned
-    `tf.experimental.Optional` will have no value.
-
-    Returns:
-      A `tf.experimental.Optional` object representing the next element.
-    """
-    raise NotImplementedError(
-        'get_next_as_optional not yet supported: b/223275517')
+      # Match TF2 eager executor behavior by raising StopIteration when iterator
+      # is out of range.
+      if context.executing_eagerly():
+        raise StopIteration from e
+      else:
+        raise e
 
   @property
   def _type_spec(self):
-    return iterator_ops.IteratorSpec(self._element_spec)
+    return _DTensorIteratorSpec(self._global_element_spec, self._layouts_str)
+
+
+class _DTensorIteratorSpec(iterator_ops.IteratorSpec):
+  """Type specification for `_DTensorIterator`."""
+
+  __slots__ = ['_global_element_spec', '_layouts_str']
+
+  def __init__(
+      self, global_element_spec: tensor_spec.TensorSpec, layouts_str: Any):
+    super().__init__(global_element_spec)
+    self._global_element_spec = global_element_spec
+    self._layouts_str = layouts_str
+
+  @property
+  def value_type(self):
+    return _DTensorIterator
+
+  def _serialize(self):
+    return (self._global_element_spec, self._layouts_str)
+
+  @property
+  def _component_specs(self):
+    return (tensor_spec.TensorSpec([], dtypes.resource),)
+
+  def _to_components(self, value):
+    return (value._iterator_resource_dtensor,)  # pylint: disable=protected-access
+
+  def _from_components(self, components):
+    layouts = nest.map_structure(
+        layout_lib.Layout.from_string, self._layouts_str)
+    return _DTensorIterator(
+        dtensor_components=components,
+        global_element_spec=self._global_element_spec,
+        layouts=layouts)
+
+  @classmethod
+  def from_value(cls, value):
+    return cls(value._global_element_spec, value._layouts_str)  # pylint: disable=protected-access
 
 
 def _validate_input(flattened_layouts: Sequence[layout_lib.Layout],
@@ -326,6 +318,66 @@ def _index_matrix(layout: layout_lib.Layout,
   return constant_op.constant(matrix, dtype=dtypes.int32)
 
 
+def _pack_iterator_resource_dtensor(
+    datasets: List[Tuple[int, data_types.DatasetV2]],
+    layouts: Any,
+    mesh: layout_lib.Mesh,
+    num_local_devices_per_replica: int):
+  """Creates a DTensor iterator resource for the per-replica datasets.
+
+  Given a list of replica ID to tf.data.Dataset mappings, this function creates
+  iterators for each device and then packs the underlying iterator resource
+  tensors into a single DTensor. This resource tensor is used by the
+  IteratorGetNext op to retrieve the next element in the dataset.
+
+  Args:
+    datasets: a list of tuples of each unique local replica ID to the dataset
+      object whose elements will be placed on the devices corresponding to that
+      replica.
+    layouts: a structure of DTensor layouts to be applied to the elements
+      returned by the underlying iterators. This can be a single layout or
+      (possibly nested) tuples or dictionaries of layouts, and the structure
+      must match the structure of the iterator elements.
+    mesh: the DTensor mesh to place the iterator batches on.
+    num_local_devices_per_replica: the number of devices in each data-parallel
+      replica.
+
+  Returns:
+    A DTensor of the underlying iterator resource tensors.
+  """
+  host_mesh_devices = mesh.host_mesh().local_devices()
+  device_idx = 0
+
+  iterators = []
+  for _, dataset in datasets:
+    for idx in range(num_local_devices_per_replica):
+      with ops.device_v2(host_mesh_devices[device_idx]):
+        device_dataset = dataset.shard(
+            num_shards=num_local_devices_per_replica, index=idx)
+        iterators.append(iter(device_dataset))
+      device_idx += 1
+
+  if device_idx != len(host_mesh_devices):
+    raise ValueError(
+        'The `datasets` argument does not have the correct number of'
+        f' underlying datasets, found {device_idx} but expected'
+        f' {len(host_mesh_devices)}.')
+
+  host_layouts = nest.map_structure(
+      lambda l: layout_lib.Layout(l.sharding_specs, mesh.host_mesh()), layouts)
+
+  # Pack the iterator resource tensors into a replicated 0-dimensional DTensor
+  # and set the element layouts.
+  iterator_resources = [it._iterator_resource for it in iterators]  # pylint: disable=protected-access
+  d_iterator_resource = api.pack(
+      iterator_resources,
+      layout_lib.Layout.replicated(mesh=mesh.host_mesh(), rank=0))
+  api._dtensor_device().set_iterator_element_layouts(  # pylint: disable=protected-access
+      d_iterator_resource, nest.flatten(host_layouts))
+
+  return d_iterator_resource
+
+
 @tf_export('experimental.dtensor.DTensorDataset', v1=[])
 class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A dataset of DTensors.
@@ -336,7 +388,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """
 
   def __init__(self,
-               dataset: dataset_ops.DatasetV2,
+               dataset: data_types.DatasetV2,
                *,
                mesh: layout_lib.Mesh,
                layouts: Any,
@@ -400,17 +452,21 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     """
     super().__init__(dataset, dataset_ops.to_variant(dataset))
 
+    # TODO(b/271162918): fix multi-client use case.
+    if tf_data_service_config is not None:
+      raise NotImplementedError(
+          'Multi-client DTensorDataset is currently not supported.'
+          ' Check b/271162918.')
+
     self._mesh = mesh
     self._layouts = layouts
     self._batch_dim = batch_dim
     self._prefetch = prefetch
     self._tf_data_service_config = tf_data_service_config
 
-    self._element_spec = dataset.element_spec
-
-    nest.assert_same_structure(self._element_spec, self._layouts)
-    flattened_layouts = nest.flatten(self._layouts)
-    flattened_elem_spec = nest.flatten(self._element_spec)
+    nest.assert_same_structure(dataset.element_spec, layouts)
+    flattened_layouts = nest.flatten(layouts)
+    flattened_elem_spec = nest.flatten(dataset.element_spec)
 
     if batch_dim:
       num_global_replicas = mesh.dim_size(batch_dim)
@@ -448,6 +504,18 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
             (per_replica_batch_size, expected_batch_size))
       self._batched_dataset = dataset
 
+    # Construct a global element spec of the dataset.
+    flattened_global_elem_spec = []
+    batch_tensor_shape = tensor_shape.as_shape([global_batch_size])
+    for elem_spec in nest.flatten(self._batched_dataset.element_spec):
+      new_elem_spec = tensor_spec.TensorSpec(
+          shape=operator.concat(batch_tensor_shape, elem_spec.shape[1:]),
+          dtype=elem_spec.dtype,
+          name=elem_spec.name)
+      flattened_global_elem_spec.append(new_elem_spec)
+    self._global_element_spec = nest.pack_sequence_as(
+        dataset.element_spec, flattened_global_elem_spec)
+
     num_global_devices_per_replica = config.num_global_devices(
         mesh.device_type()) // num_global_replicas
     self._num_local_replicas = len(self._local_replica_ids)
@@ -455,8 +523,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     ) // self._num_local_replicas
     # The number of clients each replica is split over.
     self._num_clients_per_replica = (
-        num_global_devices_per_replica //
-        self._num_local_devices_per_replica)
+        num_global_devices_per_replica // self._num_local_devices_per_replica)
     # In the case where a replica is split across multiple clients, an offset
     # needs to be added to the index used by the partitioning logic such that
     # the local devices on that client can be correctly matched to slices of the
@@ -470,12 +537,12 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
         _shard_counts(layout, batch_dim) for layout in flattened_layouts
     ]
     self._index_matrices = [
-        _index_matrix(layout, elem_spec) for layout, elem_spec in zip(
-            flattened_layouts, flattened_elem_spec)
+        _index_matrix(layout, elem_spec)
+        for layout, elem_spec in zip(flattened_layouts, flattened_elem_spec)
     ]
 
   def __iter__(self):
-    datasets: List[Tuple[int, dataset_ops.DatasetV2]] = []
+    datasets: List[Tuple[int, data_types.DatasetV2]] = []
 
     # Start with the batched the dataset.
     local_dataset = self._batched_dataset
@@ -527,8 +594,17 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
       datasets.append((replica_id, dataset))
 
-    return _DTensorIterator(datasets, self._element_spec, self._layouts,
-                            self._num_local_devices_per_replica)
+    # Convert the datasets into iterators placed on the host.
+    d_iterator_resource = _pack_iterator_resource_dtensor(
+        datasets=datasets,
+        layouts=self._layouts,
+        mesh=self._mesh,
+        num_local_devices_per_replica=self._num_local_devices_per_replica)
+
+    return _DTensorIterator(
+        dtensor_components=(d_iterator_resource,),
+        global_element_spec=self._global_element_spec,
+        layouts=self._layouts)
 
   def _repeat_batch(self, dataset, repeats):
     def repeat(*x):
@@ -565,3 +641,7 @@ class DTensorDataset(dataset_ops.UnaryUnchangedStructureDataset):
     enumerated_dataset = dataset.enumerate()
     partitioned_dataset = enumerated_dataset.map(slice_batch)
     return partitioned_dataset
+
+  @property
+  def element_spec(self):
+    return self._global_element_spec

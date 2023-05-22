@@ -144,12 +144,17 @@ typedef absl::flat_hash_map<StringPiece, const AttrValue*> AttrMap;
 inline Status SubstituteFromAttrs(AttrMap& attrs, FullTypeDef& t);
 
 Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
-  DCHECK_EQ(t.args_size(), 0);
+  if (t.args_size() != 0) {
+    return Status(
+        absl::StatusCode::kInvalidArgument,
+        absl::StrCat("Unexpected Var type, expected args_size 0, found ",
+                     t.args_size()));
+  }
 
   StringPiece var_name = t.s();
   if (!attrs.contains(var_name)) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat("could not find an attribute for key '", var_name, "'"));
   }
   const AttrValue* attr = attrs.at(var_name);
@@ -160,13 +165,13 @@ Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
   } else if (attr_type == AttrValue::kList) {
     const auto& attr_list = attr->list();
     if (attr_list.type_size() != 1) {
-      return Status(error::UNIMPLEMENTED,
+      return Status(absl::StatusCode::kUnimplemented,
                     absl::StrCat("lists or other than one type element\n",
                                  attr_list.DebugString(), "\nkey=", var_name));
     }
     map_dtype_to_tensor(attr_list.type(0), t);
   } else {
-    return Status(error::UNIMPLEMENTED,
+    return Status(absl::StatusCode::kUnimplemented,
                   absl::StrCat("unsupported attribute type ",
                                attr->DebugString(), " for name ", var_name));
   }
@@ -176,7 +181,7 @@ Status SubstituteVar(AttrMap& attrs, FullTypeDef& t) {
 
 Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
   if (t.args_size() != 3) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("illegal FOR_EACH type, expected 3 args, got ",
                                t.args_size()));
   }
@@ -188,7 +193,7 @@ Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
   StringPiece var_name = t_var.s();
   if (!attrs.contains(var_name)) {
     return Status(
-        error::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat("could not find an attribute for key '", var_name, "'"));
   }
   const AttrValue* attr = attrs.at(var_name);
@@ -208,7 +213,7 @@ Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
     const auto& attr_list = attr->list();
     int tsize = attr_list.type_size();
     if (tsize == 0) {
-      return Status(error::UNIMPLEMENTED,
+      return Status(absl::StatusCode::kUnimplemented,
                     absl::StrCat("unsupported list attribute type\n",
                                  attr_list.DebugString(), "\nkey=", var_name));
     }
@@ -228,7 +233,7 @@ Status SubstituteForEach(AttrMap& attrs, FullTypeDef& t) {
     attrs[var_name] = attr;
 
   } else {
-    return Status(error::UNIMPLEMENTED,
+    return Status(absl::StatusCode::kUnimplemented,
                   absl::StrCat("unsupported attribute type\n",
                                attr->DebugString(), "\nfor name ", var_name));
   }

@@ -35,7 +35,6 @@ cc_test(
     deps = [
         ":attribute_map",
         ":types",
-        "//tensorflow/lite/core/async/interop:attribute_keys",
         "@com_google_googletest//:gtest_main",
     ],
 )

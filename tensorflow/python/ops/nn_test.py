@@ -20,6 +20,7 @@ import math
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -35,6 +36,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -316,21 +318,28 @@ DROPOUT_FNS = [
     ("stateful_v2", nn_ops.dropout_v2),
     ("stateless", functools.partial(nn_ops.stateless_dropout, seed=(1, 2))),
     ("stateless_philox", functools.partial(
-        nn_ops.stateless_dropout, seed=(1, 2), rng_alg="philox"))]
+        nn_ops.stateless_dropout, seed=(1, 2), rng_alg="philox")),
+    ("generator", functools.partial(  # pylint: disable=g-long-lambda
+        nn_ops.general_dropout, uniform_sampler=lambda shape, dtype: (  # pylint: disable=g-long-lambda
+            stateful_random_ops.Generator.from_seed(1).uniform(
+                shape=shape, dtype=dtype)))),
+    ]
 
 
 class DropoutTest(test_lib.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
-      ("_%s_%s_%s" % (case_name, use_noise_shape, keep_prob), dropout_fn,  # pylint: disable=g-complex-comprehension
-       use_noise_shape, keep_prob)
+      ("_%s_%s_%s" % (case_name, use_noise_shape, keep_prob), case_name,  # pylint: disable=g-complex-comprehension
+       dropout_fn, use_noise_shape, keep_prob)
       for keep_prob in [0.1, 0.5, 0.8]
       for use_noise_shape in ["no", "concrete", "partial"]
       for case_name, dropout_fn in DROPOUT_FNS)
-  def testDropout(self, dropout_fn, use_noise_shape, keep_prob):
+  def testDropout(self, case_name, dropout_fn, use_noise_shape, keep_prob):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
     # that it is producing approximately the right number of ones over a large
     # number of samples, based on the keep probability.
+    if "generator" in case_name and not context.executing_eagerly():
+      self.skipTest("tf.random.Generator can only be used in TF2.")
     if use_noise_shape == "no":
       x_dim = 70
       y_dim = 30
@@ -362,11 +371,13 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
     self.assertLess(rel_error, 0.15)
 
   @parameterized.named_parameters(
-      ("_%s_%s" % (case_name, keep_prob), dropout_fn, keep_prob)  # pylint: disable=g-complex-comprehension
+      ("_%s_%s" % (case_name, keep_prob), case_name, dropout_fn, keep_prob)  # pylint: disable=g-complex-comprehension
       for keep_prob in [0.1, 0.5, 0.8]
       for case_name, dropout_fn in DROPOUT_FNS)
-  def testShapedDropoutCorrelation(self, dropout_fn, keep_prob):
+  def testShapedDropoutCorrelation(self, case_name, dropout_fn, keep_prob):
     # Runs a shaped dropout and tests that the correlations are correct.
+    if "generator" in case_name and not context.executing_eagerly():
+      self.skipTest("tf.random.Generator can only be used in TF2.")
     x_dim = 40
     y_dim = 30
     num_iter = 10
@@ -386,7 +397,6 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
       for use_keep_prob in [False, True]
       for keep_prob in [0.1, 0.5, 0.8]
       for case_name, dropout_fn in DROPOUT_FNS)
-  @test_util.run_deprecated_v1
   def testDropoutPlaceholderRateAndKeepProb(self, case_name, dropout_fn,
                                             keep_prob, use_keep_prob):
     # Runs dropout with 0-1 tensor 10 times, sum the number of ones and validate
@@ -394,26 +404,26 @@ class DropoutTest(test_lib.TestCase, parameterized.TestCase):
     # number of samples, based on the keep probability.
     if use_keep_prob and case_name != "stateful_v1":
       self.skipTest("Only V1 `dropout` has the `keep_prob` argument.")
+    if "generator" in case_name and not context.executing_eagerly():
+      self.skipTest("tf.random.Generator can only be used in TF2.")
     x_dim = 70
     y_dim = 30
     num_iter = 10
-    with self.cached_session():
-      t = constant_op.constant(
-          1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-      keep_prob_placeholder = array_ops.placeholder(dtypes.float32)
+    t = constant_op.constant(
+        1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+    final_count = 0
+    for _ in range(0, num_iter):
       if use_keep_prob:
-        dropout = dropout_fn(t, keep_prob=keep_prob_placeholder)
+        dropout = dropout_fn(t, keep_prob=keep_prob)
       else:
-        dropout = dropout_fn(t, rate=1 - keep_prob_placeholder)
-      final_count = 0
+        dropout = dropout_fn(t, rate=1 - keep_prob)
       self.assertEqual([x_dim, y_dim], dropout.get_shape())
-      for _ in range(0, num_iter):
-        value = dropout.eval(feed_dict={keep_prob_placeholder: keep_prob})
-        final_count += np.count_nonzero(value)
-        # Verifies that there are only two values: 0 and 1/keep_prob.
-        sorted_value = np.unique(np.sort(value))
-        self.assertEqual(0, sorted_value[0])
-        self.assertAllClose(1 / keep_prob, sorted_value[1])
+      value = self.evaluate(dropout)
+      final_count += np.count_nonzero(value)
+      # Verifies that there are only two values: 0 and 1/keep_prob.
+      sorted_value = np.unique(np.sort(value))
+      self.assertEqual(0, sorted_value[0])
+      self.assertAllClose(1 / keep_prob, sorted_value[1])
     # Check that we are in the 15% error range
     expected_count = x_dim * y_dim * keep_prob * num_iter
     rel_error = math.fabs(final_count - expected_count) / expected_count
@@ -1843,7 +1853,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
                                              ragged_rank=1)
 
-    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    embedded_ragged = nn.embedding_lookup(weights, ragged_ids)
     expected_output = ragged_factory_ops.constant(
         [[[1, 1, 1], [2, 2, 2], [3, 3, 3]], [[0, 0, 0]], [[1, 1, 1], [2, 2, 2]]
         ],
@@ -1859,7 +1869,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
                                                                        ]],
         ragged_rank=2)
 
-    embedded_ragged = nn.embedding_lookup_ragged(weights, ragged_ids)
+    embedded_ragged = nn.embedding_lookup(weights, ragged_ids)
     expected_output = ragged_factory_ops.constant(
         [[[[[3, 3], [4, 4]], [[0, 0], [6, 6]]], []],
          [[[[2, 2], [1, 1]], [[1, 1], [0, 0]]],
@@ -1871,16 +1881,14 @@ class RaggedEmbeddingTest(test_lib.TestCase):
   def testMissingWeights(self):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
 
-    with self.assertRaisesRegex(ValueError,
-                                "The embedding weights must be specified.*"):
-      nn.embedding_lookup_ragged(None, ragged_ids)
+    with self.assertRaisesRegex(ValueError, "params must be specified.*"):
+      nn.embedding_lookup(None, ragged_ids)
 
   def testEmptyWeights(self):
     ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]])
 
-    with self.assertRaisesRegex(ValueError,
-                                "The embedding weights should not be empty.*"):
-      nn.embedding_lookup_ragged([], ragged_ids)
+    with self.assertRaisesRegex(ValueError, "params should not be empty.*"):
+      nn.embedding_lookup([], ragged_ids)
 
   def testInvalidIndicesType(self):
     weights = constant_op.constant([[0, 0, 0], [1, 1, 1], [2, 2, 2]])
@@ -1888,7 +1896,7 @@ class RaggedEmbeddingTest(test_lib.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The values contained by the inputs have type*"):
-      nn.embedding_lookup_ragged(weights, ragged_ids)
+      nn.embedding_lookup(weights, ragged_ids)
 
   def testMaxNormForEmbeddings(self):
     weights = constant_op.constant(

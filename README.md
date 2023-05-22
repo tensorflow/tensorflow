@@ -2,14 +2,17 @@
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
-[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg?style=plastic)](https://badge.fury.io/py/tensorflow)
+[![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
+[![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
+[![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 **`Documentation`** |
 ------------------- |
@@ -97,12 +100,25 @@ uphold this code.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, please see
-[TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss)
-for general questions and discussion, and please direct specific questions to
+[TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
+discussion, and please direct specific questions to
 [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 
 The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
+
+## Patching guidelines
+
+Follow these steps to patch a specific version of TensorFlow, for example, to
+apply fixes to bugs or security vulnerabilities:
+
+*   Clone the TensorFlow repo and switch to the corresponding branch for your
+    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
+*   Apply (that is, cherry pick) the desired changes and resolve any code
+    conflicts.
+*   Run TensorFlow tests and ensure they pass.
+*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
+    package from source.
 
 ## Continuous build status
 

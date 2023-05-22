@@ -17,8 +17,9 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/collectives.h"
@@ -40,9 +41,10 @@ StatusOr<mlir::Value> ComputeGlobalReduce(
     mlir::OpBuilder& builder, const mlir::Value& input,
     const Layout& input_layout, const absl::flat_hash_set<int>& reduced_dims,
     absl::string_view reduce_op, bool keep_dims) {
-  const Layout reduction_layout =
+  TF_ASSIGN_OR_RETURN(
+      const Layout reduction_layout,
       input_layout.GetLayoutWithReducedDims(reduced_dims,
-                                            /*keep_dims=*/true);
+                                            /*keep_dims=*/true));
   std::vector<int32> reduce_dim_array(reduced_dims.begin(), reduced_dims.end());
   const mlir::Value reduction_indices =
       IntConst(builder, input.getLoc(), reduce_dim_array);

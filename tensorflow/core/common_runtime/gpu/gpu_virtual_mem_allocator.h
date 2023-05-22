@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/framework/device_id.h"
@@ -43,13 +42,12 @@ namespace tensorflow {
 // This class is not thread-safe.
 class GpuVirtualMemAllocator : public tsl::SubAllocator {
  public:
-  static stream_executor::port::StatusOr<
-      std::unique_ptr<GpuVirtualMemAllocator>>
-  Create(const std::vector<Visitor>& alloc_visitors,
-         const std::vector<Visitor>& free_visitors,
-         stream_executor::gpu::GpuContext& gpu_context,
-         tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
-         const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids);
+  static tsl::StatusOr<std::unique_ptr<GpuVirtualMemAllocator>> Create(
+      const std::vector<Visitor>& alloc_visitors,
+      const std::vector<Visitor>& free_visitors,
+      stream_executor::gpu::GpuContext& gpu_context,
+      tsl::PlatformDeviceId gpu_id, size_t virtual_address_space_size,
+      const std::vector<tsl::PlatformDeviceId>& peer_gpu_ids);
   ~GpuVirtualMemAllocator() override;
 
   // Allocates memory at least as large as requested by num_bytes. Will be

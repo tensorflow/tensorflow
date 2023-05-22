@@ -13,17 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/tpu/ops/tpu_embedding_ops.h"
+
 #include <array>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/protobuf/tpu/tpu_embedding_configuration.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
@@ -448,31 +453,107 @@ REGISTER_OP("XlaRecvTPUEmbeddingDeduplicationData")
     .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
-REGISTER_OP("SplitXLATupleToTensors")
+// XlaRecvTPUEmbeddingDeduplicationData returns `output` of an XLA tuple, which
+// consists of integer and floating point values. For cases that users needs
+// static shape output, this XLA tuple can not be returned. Therefore we create
+// a pair of conversion operations, to convert deduplication data (XLA tuple)
+// to tensors and vice versa.
+// `SplitDedupData` is to split deduplication data XLA tuple into integer and
+// floating point tensors. Here we assume deduplication data XLA tuple only
+// has two type of elements. We infer output shapes of these two tensors with
+// `tuple_mask`, which is a serialized proto of 2-D int tensor. The first column
+// of `tuple_mask` is consisted by 0 and 1, where 0 means integer type, 1 means
+// floating point type. The second column is length of span, summation of these
+// spans should be equal to number of elements in deduplication data XLA tuple.
+// For example, `tuple_mask` of tuple (1, 2, 0.1, 3) is [[0, 2], [1, 1], [0, 1]]
+
+REGISTER_OP("SplitDedupData")
     .Input("input: variant")
-    .Output("indices: indices_type")
-    .Output("values: values_type")
-    .Attr("indices_type: {int32, int64} = DT_INT32")
-    .Attr("values_type: {half, bfloat16, float, int32, uint32, int64}")
-    .Attr("output_shape: shape")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      PartialTensorShape shapes_attr;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_shape", &shapes_attr));
-      shape_inference::ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes_attr, &s));
-      VLOG(3) << "ConvertTupleToTensor.shape_inference out: "
-              << c->DebugString(s);
-      c->set_output(0, s);
-      c->set_output(1, s);
+    .Output("integer_tensor: integer_type")
+    .Output("float_tensor: float_type")
+    .Attr("integer_type: {int32, int64, uint32, uint64}")
+    .Attr("float_type: {half, bfloat16, float}")
+    .Attr("tuple_mask: string")
+    .Attr("config: string = ''")
+    .SetShapeFn([](shape_inference::InferenceContext* c) -> Status {
+      std::string tuple_mask_str;
+      TF_RETURN_IF_ERROR(c->GetAttr("tuple_mask", &tuple_mask_str));
+
+      tensorflow::TensorProto tuple_mask_tensor;
+      if (!tuple_mask_tensor.ParseFromString(tuple_mask_str)) {
+        return errors::InvalidArgument(
+            "Malformed `tuple_mask` attr in SplitDedupData Op.");
+      }
+      const tensorflow::TensorShapeProto& tuple_tensor_shape =
+          tuple_mask_tensor.tensor_shape();
+      const int num_tuple_elements = tuple_tensor_shape.dim(0).size();
+      if (num_tuple_elements == 0) {
+        c->set_output(0, c->MakeShape({c->MakeDim(0)}));
+        c->set_output(1, c->MakeShape({c->MakeDim(0)}));
+        return OkStatus();
+      }
+
+      const int tuple_mask_rank = tuple_tensor_shape.dim_size();
+      if (tuple_mask_rank != 2) {
+        return errors::InvalidArgument(
+            "`tuple_mask` TensorProto must be a rank-2 tensor, but get ",
+            tuple_mask_rank);
+      }
+      TF_RET_CHECK(tuple_mask_tensor.int_val_size() == 2 * num_tuple_elements);
+
+      int integer_offset = 0;  // Offset of integer elements in tuple.
+      int float_offset = 0;    // Offset of floating elements in tuple.
+      for (int i = 0; i < num_tuple_elements; i++) {
+        const int element_type = tuple_mask_tensor.int_val(2 * i);
+        const int span_size = tuple_mask_tensor.int_val(2 * i + 1);
+
+        if (element_type == DedupTupleElementType::kInteger) {
+          integer_offset += span_size;
+        } else if (element_type == DedupTupleElementType::kFloat) {
+          float_offset += span_size;
+        } else {
+          return errors::InvalidArgument(
+              "Unexpected type of element in deduplication tuple, enum = ",
+              element_type, ", which is not integer or floating.");
+        }
+      }
+
+      string config_string;
+      TF_RETURN_IF_ERROR(c->GetAttr("config", &config_string));
+      if (!config_string.empty()) {
+        tpu::TPUEmbeddingConfiguration config;
+        if (!config.ParseFromString(config_string)) {
+          return errors::InvalidArgument(
+              "Malformed config attribute in the SplitDedupData node.");
+        }
+      }
+
+      const shape_inference::DimensionHandle integer_tensor_dim =
+          c->MakeDim(integer_offset);
+      const shape_inference::DimensionHandle float_tensor_dim =
+          c->MakeDim(float_offset);
+      c->set_output(0, c->MakeShape({integer_tensor_dim}));
+      c->set_output(1, c->MakeShape({float_tensor_dim}));
       return OkStatus();
     });
 
-REGISTER_OP("InterleaveTensorsToXLATuple")
-    .Input("indices: indices_type")
-    .Input("values: values_type")
+// `MergeDedupData` is to merge outputs of `SplitDedupData` back to an XLA tuple
+// as deduplication data, with respect to `tuple_mask`.
+
+REGISTER_OP("MergeDedupData")
+    .Input("integer_tensor: integer_type")
+    .Input("float_tensor: float_type")
     .Output("output: variant")
-    .Attr("indices_type: {int32, int64} = DT_INT32")
-    .Attr("values_type: {half, bfloat16, float, int32, uint32, int64}")
+    .Attr("tuple_mask: string")
+    .Attr("integer_type: {int32, int64, uint32, uint64}")
+    .Attr("float_type: {half, bfloat16, float}")
+    .Attr("config: string = ''")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+
+REGISTER_OP("ComputeDedupDataTupleMask")
+    .Output("output_shape: int32")
+    .Attr("config: string")
+    .SetIsStateful()
     .SetShapeFn(tensorflow::shape_inference::ScalarShape);
 
 }  // namespace tensorflow

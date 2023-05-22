@@ -25,9 +25,9 @@ limitations under the License.
 #else
 #include "rocm/include/hipsparse.h"
 #endif
-#include "tensorflow/compiler/xla/stream_executor/lib/env.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace stream_executor {
 namespace wrap {
@@ -52,14 +52,14 @@ namespace wrap {
     static void* GetDsoHandle() {                                              \
       auto s =                                                                 \
           stream_executor::internal::CachedDsoLoader::GetHipsparseDsoHandle(); \
-      return s.value();                                                   \
+      return s.value();                                                        \
     }                                                                          \
     static FuncPtrT LoadOrDie() {                                              \
       void* f;                                                                 \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(),       \
-                                                         kName, &f);           \
+      auto s = tsl::Env::Default()                                             \
+          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);                  \
       CHECK(s.ok()) << "could not find " << kName                              \
-                    << " in miopen DSO; dlerror: " << s.error_message();       \
+                    << " in miopen DSO; dlerror: " << s.message();             \
       return reinterpret_cast<FuncPtrT>(f);                                    \
     }                                                                          \
     static FuncPtrT DynLoad() {                                                \

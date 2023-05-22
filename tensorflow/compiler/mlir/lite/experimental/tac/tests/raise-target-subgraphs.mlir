@@ -1,4 +1,6 @@
 // RUN: tac-opt-all-backends -tfl-raise-target-subgraphs %s -split-input-file | FileCheck %s
+// RUN: tac-opt-all-backends -tfl-raise-target-subgraphs="skip-raise-cpu-ops=true" %s -split-input-file | FileCheck %s --check-prefixes=CHECK-SKIP-CPU
+// RUN: tac-opt-all-backends -tfl-raise-target-subgraphs="ignore-inference-type=true" %s -split-input-file | FileCheck %s --check-prefixes=CHECK-IGNORE-INFERENCE-TYPE
 
 module {
 func.func @simpleWhile(%arg0: tensor<i32>) -> tensor<i32> {
@@ -207,9 +209,9 @@ func.func @norm2(%arg0: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
 // CHECK:           %[[VAL_3:.*]]:2 = call @func_0_GPU_FLOAT(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x128x128xf32>, tensor<128xf32>, tensor<2xi32>) -> (tensor<1x128x128xf32>, tensor<128x128xf32>)
 // CHECK-DAG:       %[[VAL_4:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128x128xf32>} : () -> tensor<128x128xf32>
 // CHECK-DAG:       %[[VAL_5:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<128xf32>} : () -> tensor<128xf32>
-// CHECK:           %[[VAL_6:.*]] = call @func_1_CPU_FLOAT(%[[VAL_3]]#1, %[[VAL_4]], %[[VAL_5]]) {tac.device = "CPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} : (tensor<128x128xf32>, tensor<128x128xf32>, tensor<128xf32>) -> tensor<128x128xf32>
+// CHECK:           %[[VAL_6:.*]] = call @func_2_CPU_FLOAT(%[[VAL_3]]#1, %[[VAL_4]], %[[VAL_5]]) {tac.device = "CPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} : (tensor<128x128xf32>, tensor<128x128xf32>, tensor<128xf32>) -> tensor<128x128xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.pseudo_const"() {value = dense<[1, 128, 128]> : tensor<3xi32>} : () -> tensor<3xi32>
-// CHECK:           %[[VAL_8:.*]] = call @func_2_GPU_FLOAT(%[[VAL_6]], %[[VAL_7]], %[[VAL_3]]#0) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} : (tensor<128x128xf32>, tensor<3xi32>, tensor<1x128x128xf32>) -> tensor<1x128x128xf32>
+// CHECK:           %[[VAL_8:.*]] = call @func_1_GPU_FLOAT(%[[VAL_6]], %[[VAL_7]], %[[VAL_3]]#0) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} : (tensor<128x128xf32>, tensor<3xi32>, tensor<1x128x128xf32>) -> tensor<1x128x128xf32>
 // CHECK:           return %[[VAL_8]] : tensor<1x128x128xf32>
 // CHECK:         }
 
@@ -220,15 +222,15 @@ func.func @norm2(%arg0: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> {
 // CHECK:           return %[[VAL_3]], %[[VAL_5]] : tensor<1x128x128xf32>, tensor<128x128xf32>
 // CHECK:         }
 
-// CHECK:   func.func private @func_1_CPU_FLOAT(%[[VAL_0:.*]]: tensor<128x128xf32>, %[[VAL_1:.*]]: tensor<128x128xf32>, %[[VAL_2:.*]]: tensor<128xf32>) -> tensor<128x128xf32> attributes {tac.device = "CPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} {
-// CHECK:           %[[VAL_3:.*]] = "tfl.fully_connected"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {fused_activation_function = "NONE", keep_num_dims = false, tac.device = "CPU", tac.inference_type = "FLOAT", weights_format = "DEFAULT"} : (tensor<128x128xf32>, tensor<128x128xf32>, tensor<128xf32>) -> tensor<128x128xf32>
-// CHECK:           return %[[VAL_3]] : tensor<128x128xf32>
-// CHECK:         }
-
-// CHECK:   func.func private @func_2_GPU_FLOAT(%[[VAL_0:.*]]: tensor<128x128xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
+// CHECK:   func.func private @func_1_GPU_FLOAT(%[[VAL_0:.*]]: tensor<128x128xf32>, %[[VAL_1:.*]]: tensor<3xi32>, %[[VAL_2:.*]]: tensor<1x128x128xf32>) -> tensor<1x128x128xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} {
 // CHECK:           %[[VAL_3:.*]] = "tfl.reshape"(%[[VAL_0]], %[[VAL_1]]) {tac.device = "GPU", tac.inference_type = "FLOAT"} : (tensor<128x128xf32>, tensor<3xi32>) -> tensor<1x128x128xf32>
 // CHECK:           %[[VAL_4:.*]] = tfl.add %[[VAL_2]], %[[VAL_3]] {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<1x128x128xf32>
 // CHECK:           return %[[VAL_4]] : tensor<1x128x128xf32>
+// CHECK:         }
+
+// CHECK:   func.func private @func_2_CPU_FLOAT(%[[VAL_0:.*]]: tensor<128x128xf32>, %[[VAL_1:.*]]: tensor<128x128xf32>, %[[VAL_2:.*]]: tensor<128xf32>) -> tensor<128x128xf32> attributes {tac.device = "CPU", tac.inference_type = "FLOAT", tac.interface_name = "func_2"} {
+// CHECK:           %[[VAL_3:.*]] = "tfl.fully_connected"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) {fused_activation_function = "NONE", keep_num_dims = false, tac.device = "CPU", tac.inference_type = "FLOAT", weights_format = "DEFAULT"} : (tensor<128x128xf32>, tensor<128x128xf32>, tensor<128xf32>) -> tensor<128x128xf32>
+// CHECK:           return %[[VAL_3]] : tensor<128x128xf32>
 // CHECK:         }
 
 // -----
@@ -279,23 +281,23 @@ func.func @quantizationWithFloat(%arg0: tensor<1x1x384x!quant.uniform<i8:f32, 0.
 
 // CHECK:   func @quantizationWithFloat(%[[VAL_0:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, %[[VAL_1:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>> {
 // CHECK:           %[[VAL_2:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>, value = dense<127> : tensor<1x384x1xi8>} : () -> tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>
-// CHECK:           %[[VAL_3:.*]] = call @func_0_CPU_QUANTIZED_INT8(%[[VAL_0]], %[[VAL_2]]) {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_0"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK:           %[[VAL_3:.*]] = call @func_1_CPU_QUANTIZED_INT8(%[[VAL_0]], %[[VAL_2]]) {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_1"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:           %[[VAL_4:.*]] = "tfl.dequantize"(%[[VAL_3]]) : (tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384xf32>
 // CHECK:           %[[VAL_5:.*]] = "tfl.pseudo_const"() {value = dense<1.000000e+00> : tensor<1x1x384xf32>} : () -> tensor<1x384x384xf32>
-// CHECK:           %[[VAL_6:.*]] = call @func_1_GPU_FLOAT(%[[VAL_4]], %[[VAL_5]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} : (tensor<1x384x384xf32>, tensor<1x384x384xf32>) -> tensor<1x384x384xf32>
+// CHECK:           %[[VAL_6:.*]] = call @func_0_GPU_FLOAT(%[[VAL_4]], %[[VAL_5]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x384x384xf32>, tensor<1x384x384xf32>) -> tensor<1x384x384xf32>
 // CHECK:           %[[VAL_7:.*]] = "tfl.quantize"(%[[VAL_6]]) {qtype = tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>} : (tensor<1x384x384xf32>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:           %[[VAL_8:.*]] = call @func_2_CPU_QUANTIZED_INT8(%[[VAL_1]], %[[VAL_7]]) {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_2"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:           return %[[VAL_8]] : tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:         }
 
-// CHECK:   func private @func_0_CPU_QUANTIZED_INT8(%[[VAL_0:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, %[[VAL_1:.*]]: tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>> attributes {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_0"} {
-// CHECK:           %[[VAL_2:.*]] = tfl.mul(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
-// CHECK:           return %[[VAL_2]] : tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
-// CHECK:         }
-
-// CHECK:   func private @func_1_GPU_FLOAT(%[[VAL_0:.*]]: tensor<1x384x384xf32>, %[[VAL_1:.*]]: tensor<1x384x384xf32>) -> tensor<1x384x384xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_1"} {
+// CHECK:   func private @func_0_GPU_FLOAT(%[[VAL_0:.*]]: tensor<1x384x384xf32>, %[[VAL_1:.*]]: tensor<1x384x384xf32>) -> tensor<1x384x384xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
 // CHECK:           %[[VAL_2:.*]] = tfl.add %[[VAL_0]], %[[VAL_1]] {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<1x384x384xf32>
 // CHECK:           return %[[VAL_2]] : tensor<1x384x384xf32>
+// CHECK:         }
+
+// CHECK:   func private @func_1_CPU_QUANTIZED_INT8(%[[VAL_0:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, %[[VAL_1:.*]]: tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>> attributes {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_1"} {
+// CHECK:           %[[VAL_2:.*]] = tfl.mul(%[[VAL_0]], %[[VAL_1]]) {fused_activation_function = "NONE", tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8"} : (tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, tensor<1x384x1x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK:           return %[[VAL_2]] : tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
 // CHECK:         }
 
 // CHECK:   func private @func_2_CPU_QUANTIZED_INT8(%[[VAL_0:.*]]: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>, %[[VAL_1:.*]]: tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> tensor<1x384x384x!quant.uniform<i8:f32, 3.000000e-03:-128>> attributes {tac.device = "CPU", tac.inference_type = "QUANTIZED_INT8", tac.interface_name = "func_2"} {
@@ -433,18 +435,14 @@ func.func @cond_false_72730(%arg0: tensor<?x?x!tf_type.string>, %arg1: tensor<?x
 // CHECK:       %10 = "tfl.reduce_prod"(%9#2, %cst_9) {keep_dims = true, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<2xi32>, tensor<1xi32>) -> tensor<1xi32>
 // CHECK:       %11 = "tfl.expand_dims"(%arg11, %cst_4) {tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
 // CHECK:       %12 = "tfl.expand_dims"(%arg12, %cst_4) {tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?xi32>, tensor<i32>) -> tensor<?x1xi32>
-// CHECK:       %13:7 = func.call @func_5_DARWINN_FLOAT(%arg6, %10, %arg10, %cst_6, %11, %9#1, %cst_3, %cst_2, %12, %7#0, %9#0, %arg7, %cst_1) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_5"} : (tensor<?x?x!tf_type.string>, tensor<1xi32>, tensor<i32>, tensor<i32>, tensor<?x1xi32>, tensor<?x1xi32>, tensor<1xi32>, tensor<!tf_type.string>, tensor<?x1xi32>, tensor<?x1xi32>, tensor<?x!tf_type.string>, tensor<?x?xi32>, tensor<i32>) -> (tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi32>, tensor<?xi1>)
-// CHECK:       %14 = "tfl.custom"(%13#6, %13#2, %13#1) {custom_code = "FlexSelect", custom_option = #tfl<const_bytes : "0x0653656C6563740031120653656C6563741A001A001A002A070A01541202300732180A052E31323131120F7768696C655F626F64795F3733303200023B341414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?xi1>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
+// CHECK:       %13:10 = func.call @func_5_DARWINN_FLOAT(%arg6, %10, %arg10, %cst_6, %11, %9#1, %cst_3, %cst_2, %12, %7#0, %9#0, %arg7, %cst_1, %cst_0, %arg11, %cst, %arg12, %arg9) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_5"} : (tensor<?x?x!tf_type.string>, tensor<1xi32>, tensor<i32>, tensor<i32>, tensor<?x1xi32>, tensor<?x1xi32>, tensor<1xi32>, tensor<!tf_type.string>, tensor<?x1xi32>, tensor<?x1xi32>, tensor<?x!tf_type.string>, tensor<?x?xi32>, tensor<i32>, tensor<5xi32>, tensor<?xi32>, tensor<5xi32>, tensor<?xi32>, tensor<i32>) -> (tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi1>, tensor<?xi1>, tensor<?xi32>, tensor<?xi32>, tensor<i32>)
+// CHECK:       %14 = "tfl.custom"(%13#5, %13#2, %13#1) {custom_code = "FlexSelect", custom_option = #tfl<const_bytes : "0x0653656C6563740031120653656C6563741A001A001A002A070A01541202300732180A052E31323131120F7768696C655F626F64795F3733303200023B341414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?xi1>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
 // CHECK:       %15 = "tfl.custom"(%arg13, %arg10, %14) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300732170A042E326333120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<i32>, tensor<?x!tf_type.string>) -> tensor<!tf_type.variant<tensor<?x!tf_type.string>>>
-// CHECK:       %16 = func.call @func_6_DARWINN_FLOAT(%13#5, %cst_6) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_6"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
-// CHECK:       %17 = "tfl.custom"(%16, %13#4, %13#3) {custom_code = "FlexSelect", custom_option = #tfl<const_bytes : "0x0653656C6563740031120653656C6563741A001A001A002A070A01541202300732180A052E31323166120F7768696C655F626F64795F3733303200023B341414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?xi1>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
-// CHECK:       %18 = "tfl.custom"(%arg14, %arg10, %17) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300732170A042E326335120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<i32>, tensor<?x!tf_type.string>) -> tensor<!tf_type.variant<tensor<?x!tf_type.string>>>
-// CHECK:       %19 = func.call @func_7_DARWINN_FLOAT(%cst_0, %13#5, %arg11) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_7"} : (tensor<5xi32>, tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-// CHECK:       %20 = "tfl.custom"(%arg15, %arg10, %19) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300332170A042E326337120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?xi32>>>, tensor<i32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<?xi32>>>
-// CHECK:       %21 = func.call @func_8_DARWINN_FLOAT(%cst, %13#5, %arg12) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_8"} : (tensor<5xi32>, tensor<?xi32>, tensor<?xi32>) -> tensor<?xi32>
-// CHECK:       %22 = "tfl.custom"(%arg16, %arg10, %21) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300332170A042E343139120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?xi32>>>, tensor<i32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<?xi32>>>
-// CHECK:       %23 = func.call @func_9_DARWINN_FLOAT(%arg9, %cst_6) {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_9"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
-// CHECK:       "tfl.yield"(%23, %13#0, %19, %21, %15, %18, %20, %22) : (tensor<i32>, tensor<i32>, tensor<?xi32>, tensor<?xi32>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?xi32>>>, tensor<!tf_type.variant<tensor<?xi32>>>) -> ()
+// CHECK:       %16 = "tfl.custom"(%13#6, %13#4, %13#3) {custom_code = "FlexSelect", custom_option = #tfl<const_bytes : "0x0653656C6563740031120653656C6563741A001A001A002A070A01541202300732180A052E31323166120F7768696C655F626F64795F3733303200023B341414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?xi1>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>) -> tensor<?x!tf_type.string>
+// CHECK:       %17 = "tfl.custom"(%arg14, %arg10, %16) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300732170A042E326335120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<i32>, tensor<?x!tf_type.string>) -> tensor<!tf_type.variant<tensor<?x!tf_type.string>>>
+// CHECK:       %18 = "tfl.custom"(%arg15, %arg10, %13#7) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300332170A042E326337120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?xi32>>>, tensor<i32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<?xi32>>>
+// CHECK:       %19 = "tfl.custom"(%arg16, %arg10, %13#8) {custom_code = "FlexTensorListSetItem", custom_option = #tfl<const_bytes : "0x1154656E736F724C6973745365744974656D0047121154656E736F724C6973745365744974656D1A001A001A002A130A0D656C656D656E745F64747970651202300332170A042E343139120F7768696C655F626F64795F3733303200025C4A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?xi32>>>, tensor<i32>, tensor<?xi32>) -> tensor<!tf_type.variant<tensor<?xi32>>>
+// CHECK:       "tfl.yield"(%13#9, %13#0, %13#7, %13#8, %15, %17, %18, %19) : (tensor<i32>, tensor<i32>, tensor<?xi32>, tensor<?xi32>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?xi32>>>, tensor<!tf_type.variant<tensor<?xi32>>>) -> ()
 // CHECK:     }) {tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<i32>, tensor<i32>, tensor<?xi32>, tensor<?xi32>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?xi32>>>, tensor<!tf_type.variant<tensor<?xi32>>>) -> (tensor<i32>, tensor<i32>, tensor<?xi32>, tensor<?xi32>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<!tf_type.variant<tensor<?xi32>>>, tensor<!tf_type.variant<tensor<?xi32>>>)
 // CHECK:     %3 = "tfl.custom"(%2#4, %arg0) {custom_code = "FlexTensorListStack", custom_option = #tfl<const_bytes : "0x0F54656E736F724C697374537461636B0049120F54656E736F724C697374537461636B1A001A002A130A0D656C656D656E745F6474797065120230072A1B0A0C6E756D5F656C656D656E7473120B18FFFFFFFFFFFFFFFFFF01320000025C4C1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<!tf_type.variant<tensor<?x!tf_type.string>>>, tensor<1xi32>) -> tensor<?x?x!tf_type.string>
 // CHECK:     %4 = "tfl.custom"(%3, %arg8) {custom_code = "FlexTranspose", custom_option = #tfl<const_bytes : "0x095472616E73706F7365002712095472616E73706F73651A001A002A0B0A05547065726D120230032A070A01541202300732000002342A1414042801">, tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<?x?x!tf_type.string>, tensor<2xi32>) -> tensor<?x?x!tf_type.string>
@@ -481,7 +479,7 @@ func.func @cond_false_72730(%arg0: tensor<?x?x!tf_type.string>, %arg1: tensor<?x
 // CHECK:     %8 = "tfl.strided_slice"(%1, %arg3, %arg7, %arg4) {begin_mask = 1 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
 // CHECK:     return %0, %7, %8 : tensor<?x!tf_type.string>, tensor<?x1xi32>, tensor<2xi32>
 // CHECK:   }
-// CHECK:   func.func private @func_5_DARWINN_FLOAT(%arg0: tensor<?x?x!tf_type.string>, %arg1: tensor<1xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<?x1xi32>, %arg5: tensor<?x1xi32>, %arg6: tensor<1xi32>, %arg7: tensor<!tf_type.string>, %arg8: tensor<?x1xi32>, %arg9: tensor<?x1xi32>, %arg10: tensor<?x!tf_type.string>, %arg11: tensor<?x?xi32>, %arg12: tensor<i32>) -> (tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi32>, tensor<?xi1>) attributes {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_5"} {
+// CHECK:   func.func private @func_5_DARWINN_FLOAT(%arg0: tensor<?x?x!tf_type.string>, %arg1: tensor<1xi32>, %arg2: tensor<i32>, %arg3: tensor<i32>, %arg4: tensor<?x1xi32>, %arg5: tensor<?x1xi32>, %arg6: tensor<1xi32>, %arg7: tensor<!tf_type.string>, %arg8: tensor<?x1xi32>, %arg9: tensor<?x1xi32>, %arg10: tensor<?x!tf_type.string>, %arg11: tensor<?x?xi32>, %arg12: tensor<i32>, %arg13: tensor<5xi32>, %arg14: tensor<?xi32>, %arg15: tensor<5xi32>, %arg16: tensor<?xi32>, %arg17: tensor<i32>) -> (tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi1>, tensor<?xi1>, tensor<?xi32>, tensor<?xi32>, tensor<i32>) attributes {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_5"} {
 // CHECK:     %0 = "tfl.reshape"(%arg0, %arg1) {tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<?x?x!tf_type.string>, tensor<1xi32>) -> tensor<?x!tf_type.string>
 // CHECK:     %1 = tfl.add %arg2, %arg3 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<i32>
 // CHECK:     %2 = tfl.add %arg4, %arg5 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<?x1xi32>
@@ -498,23 +496,77 @@ func.func @cond_false_72730(%arg0: tensor<?x?x!tf_type.string>, %arg1: tensor<?x
 // CHECK:     %13 = "tfl.fill"(%12, %arg7) {tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<1xi32>, tensor<!tf_type.string>) -> tensor<?x!tf_type.string>
 // CHECK:     %14 = "tfl.gather"(%arg11, %arg2) {axis = 0 : i32, batch_dims = 0 : i32, tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<?x?xi32>, tensor<i32>) -> tensor<?xi32>
 // CHECK:     %15 = "tfl.equal"(%14, %arg12) {tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
-// CHECK:     return %1, %5, %7, %11, %13, %14, %15 : tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi32>, tensor<?xi1>
+// CHECK:     %16 = "tfl.equal"(%14, %arg3) {tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
+// CHECK:     %17 = "tfl.gather"(%arg13, %14) {axis = 0 : i32, batch_dims = 0 : i32, tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<5xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:     %18 = tfl.add %arg14, %17 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<?xi32>
+// CHECK:     %19 = "tfl.gather"(%arg15, %14) {axis = 0 : i32, batch_dims = 0 : i32, tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<5xi32>, tensor<?xi32>) -> tensor<?xi32>
+// CHECK:     %20 = tfl.add %arg16, %19 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<?xi32>
+// CHECK:     %21 = tfl.add %arg17, %arg3 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<i32>
+// CHECK:     return %1, %5, %7, %11, %13, %15, %16, %18, %20, %21 : tensor<i32>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?x!tf_type.string>, tensor<?xi1>, tensor<?xi1>, tensor<?xi32>, tensor<?xi32>, tensor<i32>
 // CHECK:   }
-// CHECK:   func.func private @func_6_DARWINN_FLOAT(%arg0: tensor<?xi32>, %arg1: tensor<i32>) -> tensor<?xi1> attributes {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_6"} {
-// CHECK:     %0 = "tfl.equal"(%arg0, %arg1) {tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<?xi32>, tensor<i32>) -> tensor<?xi1>
-// CHECK:     return %0 : tensor<?xi1>
-// CHECK:   }
-// CHECK:   func.func private @func_7_DARWINN_FLOAT(%arg0: tensor<5xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>) -> tensor<?xi32> attributes {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_7"} {
-// CHECK:     %0 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32, batch_dims = 0 : i32, tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<5xi32>, tensor<?xi32>) -> tensor<?xi32>
-// CHECK:     %1 = tfl.add %arg2, %0 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<?xi32>
-// CHECK:     return %1 : tensor<?xi32>
-// CHECK:   }
-// CHECK:   func.func private @func_8_DARWINN_FLOAT(%arg0: tensor<5xi32>, %arg1: tensor<?xi32>, %arg2: tensor<?xi32>) -> tensor<?xi32> attributes {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_8"} {
-// CHECK:     %0 = "tfl.gather"(%arg0, %arg1) {axis = 0 : i32, batch_dims = 0 : i32, tac.device = "DARWINN", tac.inference_type = "FLOAT"} : (tensor<5xi32>, tensor<?xi32>) -> tensor<?xi32>
-// CHECK:     %1 = tfl.add %arg2, %0 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<?xi32>
-// CHECK:     return %1 : tensor<?xi32>
-// CHECK:   }
-// CHECK:   func.func private @func_9_DARWINN_FLOAT(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> attributes {tac.device = "DARWINN", tac.inference_type = "FLOAT", tac.interface_name = "func_9"} {
-// CHECK:     %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE", tac.device = "DARWINN", tac.inference_type = "FLOAT"} : tensor<i32>
-// CHECK:     return %0 : tensor<i32>
-// CHECK:   }
+
+// -----
+
+// CHECK-SKIP-CPU-LABEL: testSkipCpuOps
+func.func @testSkipCpuOps(%arg0: tensor<1xf32>) -> (tensor<1xf32>, tensor<1xf32>) {
+  %0 = "tfl.add"(%arg0, %arg0) {tac.device = "GPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tfl.add"(%arg0, %0) {tac.device = "CPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  func.return %0, %1 : tensor<1xf32>, tensor<1xf32>
+}
+
+// CHECK-SKIP-CPU:   %[[RES0:.*]] = call @func_0_GPU_FLOAT(%arg0) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1xf32>) -> tensor<1xf32>
+// CHECK-SKIP-CPU:   %[[RES1:.*]] = tfl.add %arg0, %[[RES0]] {fused_activation_function = "RELU6", tac.device = "CPU", tac.inference_type = "FLOAT"} : tensor<1xf32>
+// CHECK-SKIP-CPU:   return %[[RES0]], %[[RES1]] : tensor<1xf32>, tensor<1xf32>
+// CHECK-SKIP-CPU: }
+// CHECK-SKIP-CPU: func.func private @func_0_GPU_FLOAT(%arg0: tensor<1xf32>) -> tensor<1xf32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
+// CHECK-SKIP-CPU:   %[[RES2:.*]] = tfl.add %arg0, %arg0 {fused_activation_function = "RELU6", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<1xf32>
+// CHECK-SKIP-CPU:   return %[[RES2]] : tensor<1xf32>
+// CHECK-SKIP-CPU: }
+
+// -----
+
+// CHECK-SKIP-CPU-LABEL: testSkipCpuOpsWithinLoop
+func.func @testSkipCpuOpsWithinLoop(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tfl.while"(%arg0) ({
+  ^bb0(%block: tensor<i32>):
+    "tfl.yield"(%block) : (tensor<i32>) -> ()
+  },{
+  ^bb0(%block: tensor<i32>):
+    %0 = "tfl.add"(%arg0, %block) {tac.device = "GPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    "tfl.yield"(%0) : (tensor<i32>) -> ()
+  }) {tac.device = "CPU", fused_activation_function = "RELU6", tac.inference_type = "FLOAT"} : (tensor<i32>) -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-SKIP-CPU: "tfl.while"
+// CHECK-SKIP-CPU:   ^bb0(%[[ARG0:.*]]: tensor<i32>):
+// CHECK-SKIP-CPU:     "tfl.yield"(%[[ARG0]]) : (tensor<i32>) -> ()
+// CHECK-SKIP-CPU: }, {
+// CHECK-SKIP-CPU:   ^bb0(%[[ARG1:.*]]: tensor<i32>):
+// CHECK-SKIP-CPU:     %[[RES0:.*]] = func.call @func_0_GPU_FLOAT(%{{.*}}, %[[ARG1]]) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<i32>, tensor<i32>) -> tensor<i32>
+// CHECK-SKIP-CPU:     "tfl.yield"(%[[RES0]]) : (tensor<i32>) -> ()
+// CHECK-SKIP-CPU: }) {fused_activation_function = "RELU6", tac.device = "CPU", tac.inference_type = "FLOAT"} : (tensor<i32>) -> tensor<i32>
+
+// CHECK-SKIP-CPU: func.func private @func_0_GPU_FLOAT(%[[ARG2:.*]]: tensor<i32>, %[[ARG3:.*]]: tensor<i32>) -> tensor<i32> attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
+// CHECK-SKIP-CPU:   %[[RES1:.*]] = tfl.add %[[ARG2]], %[[ARG3]] {fused_activation_function = "RELU6", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<i32>
+// CHECK-SKIP-CPU:   return %[[RES1]] : tensor<i32>
+// CHECK-SKIP-CPU: }
+
+// -----
+
+// CHECK-IGNORE-INFERENCE-TYPE-LABEL: testIgnoreInferenceType
+func.func @testIgnoreInferenceType(%arg0: tensor<1x384x384xf32>, %arg1: tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>) -> (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>) {
+  // These 2 ops are clustered together when `ignore-inference-type` sets to true.
+  %0 = "tfl.add"(%arg0, %arg0) {tac.device = "GPU", tac.inference_type = "FLOAT", fused_activation_function = "NONE"} : (tensor<1x384x384xf32>, tensor<1x384x384xf32>) -> tensor<1x384x384xf32>
+  %1 = "tfl.mul"(%arg1, %arg1) {tac.device = "GPU", tac.inference_type = "QUANTIZED_INT8", fused_activation_function = "NONE"} : (tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>, tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>) -> tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>
+  func.return %0, %1: tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 0.003:-128>>
+}
+
+// CHECK-IGNORE-INFERENCE-TYPE:   %[[RES0:.*]]:2 = call @[[FUNC_NAME:.*]](%arg0, %arg1) {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} : (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>)
+// CHECK-IGNORE-INFERENCE-TYPE:   return %[[RES0]]#0, %[[RES0]]#1 : tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK-IGNORE-INFERENCE-TYPE: }
+// CHECK-IGNORE-INFERENCE-TYPE: func.func private @[[FUNC_NAME]](%arg0: tensor<1x384x384xf32>, %arg1: tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) -> (tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>) attributes {tac.device = "GPU", tac.inference_type = "FLOAT", tac.interface_name = "func_0"} {
+// CHECK-IGNORE-INFERENCE-TYPE:   %[[RES1:.*]] = tfl.add %arg0, %arg0 {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "FLOAT"} : tensor<1x384x384xf32>
+// CHECK-IGNORE-INFERENCE-TYPE:   %[[RES2:.*]] = tfl.mul %arg1, %arg1 {fused_activation_function = "NONE", tac.device = "GPU", tac.inference_type = "QUANTIZED_INT8"} : tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK-IGNORE-INFERENCE-TYPE:   return %[[RES1]], %[[RES2]] : tensor<1x384x384xf32>, tensor<1x1x384x!quant.uniform<i8:f32, 3.000000e-03:-128>>
+// CHECK-IGNORE-INFERENCE-TYPE: }

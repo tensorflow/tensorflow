@@ -29,6 +29,7 @@ namespace tensorflow {
 class DeviceCompilationProfiler : public ResourceBase {
  public:
   DeviceCompilationProfiler() = default;
+  ~DeviceCompilationProfiler() override;
 
   struct ClusterCompileStats {
     // Number of times the cluster has been (re-)compiled.
@@ -61,9 +62,9 @@ class DeviceCompilationProfiler : public ResourceBase {
   // Determines whether the cluster should be compiled. Creates and inserts an
   // entry into stats (also calls `RegisterExecution`) for `function` if it
   // doesn't already exist.
-  bool ShouldCompileCluster(const NameAttrList& function,
-                            DeviceCompileMode compile_mode,
-                            int64_t current_request_count);
+  virtual bool ShouldCompileCluster(const NameAttrList& function,
+                                    DeviceCompileMode compile_mode,
+                                    int64_t current_request_count);
 
   // Registers a cluster execution. Increments the execution count for the given
   // cluster and also determines whether the cluster has gone megamorphic (and
@@ -73,9 +74,9 @@ class DeviceCompilationProfiler : public ResourceBase {
   // Registers a cluster compilation. Increments the compilation count and
   // accumulates the compile time for the given cluster. Also broadcasts an
   // XlaJitCompilationActivity.
-  Status RegisterCompilation(const NameAttrList& function,
-                             int64_t compile_time_us,
-                             bool used_persistent_cache);
+  virtual Status RegisterCompilation(const NameAttrList& function,
+                                     int64_t compile_time_us,
+                                     bool used_persistent_cache);
 
   void IncrementOngoingAsyncCompilations();
   void DecrementOngoingAsyncCompilations();
@@ -83,19 +84,13 @@ class DeviceCompilationProfiler : public ResourceBase {
   std::string DebugString() const override;
 
  private:
-  mutable mutex cluster_compile_stats_mu_;
+  mutable mutex mu_;
 
   // Maps cluster names to compilation statistics for said cluster.
   absl::flat_hash_map<std::string, ClusterCompileStats> cluster_compile_stats_
-      TF_GUARDED_BY(cluster_compile_stats_mu_);
+      TF_GUARDED_BY(mu_);
 
-  struct AsyncCompilationState {
-    mutable mutex async_compilation_state_mu;
-
-    // Number of ongoing compilations.
-    int64_t num_ongoing_compilations TF_GUARDED_BY(async_compilation_state_mu) =
-        0;
-  } async_compilation_state_;
+  int64_t num_ongoing_compilations_ TF_GUARDED_BY(mu_) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(DeviceCompilationProfiler);
 };

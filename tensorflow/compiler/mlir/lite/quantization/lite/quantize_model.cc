@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Debug.h"
@@ -56,9 +57,11 @@ TfLiteStatus QuantizeModel(
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric,
     bool whole_model_verify, bool legacy_float_scale,
-    const StringSet& denylisted_ops, const StringSet& denylisted_nodes) {
+    const absl::flat_hash_set<std::string>& denylisted_ops,
+    const absl::flat_hash_set<std::string>& denylisted_nodes,
+    const bool enable_variable_quantization) {
   // Translate TFLite names to mlir op names.
-  StringSet denylisted_mlir_op_names;
+  absl::flat_hash_set<std::string> denylisted_mlir_op_names;
   for (const auto& entry : denylisted_ops) {
     denylisted_mlir_op_names.insert(TfLiteToMlir(entry));
   }
@@ -87,7 +90,7 @@ TfLiteStatus QuantizeModel(
   }
 
   // Apply quantization passes.
-  PassManager pm(module->getContext(), OpPassManager::Nesting::Implicit);
+  PassManager pm((*module)->getName(), OpPassManager::Nesting::Implicit);
   quant::QuantizationSpecs quant_specs;
   quant_specs.inference_type = tflite::TflTypeToTfType(inference_type);
   quant_specs.post_training_quantization = true;
@@ -97,6 +100,7 @@ TfLiteStatus QuantizeModel(
   quant_specs.legacy_float_scale = legacy_float_scale;
   quant_specs.ops_blocklist = denylisted_mlir_op_names;
   quant_specs.nodes_blocklist = denylisted_nodes;
+  quant_specs.enable_mlir_variable_quantization = enable_variable_quantization;
 
   llvm::dbgs() << "fully_quantize: " << fully_quantize
                << ", inference_type: " << quant_specs.inference_type
@@ -120,7 +124,7 @@ TfLiteStatus QuantizeModel(
   // If the first or final ops are not quantized, remove QDQ.
   pm.addPass(TFL::CreatePostQuantizeRemoveQDQPass());
   if (failed(pm.run(module.get()))) {
-    const std::string& err = statusHandler.ConsumeStatus().error_message();
+    const std::string err(statusHandler.ConsumeStatus().message());
     error_reporter->Report("Failed to quantize: %s", err.c_str());
     return kTfLiteError;
   }

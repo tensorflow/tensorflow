@@ -192,7 +192,7 @@ BroadcastToSPMDExpander::ComputeLayoutBackward(
   const int broadcasted_dimensions = output_shape_rank - input_shape_rank;
 
   LayoutProto layout_proto;
-  *layout_proto.mutable_mesh_config() = mesh.ToProto();
+  TF_ASSIGN_OR_RETURN(*layout_proto.mutable_mesh_config(), mesh.ToProto());
   for (int i = 0; i < input_shape_rank; ++i) {
     if (input_shape[i] == 1) {
       layout_proto.add_sharding_specs()->set_sharding_spec(

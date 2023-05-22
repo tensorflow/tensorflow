@@ -28,8 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-using ::stream_executor::port::Status;
-using ::stream_executor::port::StatusOr;
+using ::tsl::Status;
+using ::tsl::StatusOr;
 using ::xla::ComputationLayout;
 using ::xla::DebugOptions;
 using ::xla::DeviceAssignment;

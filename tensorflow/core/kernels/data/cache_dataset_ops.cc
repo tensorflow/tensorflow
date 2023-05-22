@@ -173,7 +173,9 @@ class CacheDatasetOp::FileDatasetBase : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
 
-  int64_t CardinalityInternal() const override { return input_->Cardinality(); }
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
+    return input_->Cardinality(options);
+  }
 
   Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
     inputs->push_back(input_);
@@ -756,10 +758,6 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     params.dataset_prefix = kMemoryDatasetPrefix;
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
-
-  int64_t CardinalityInternal() const override {
-    return input_->Cardinality();
-  };
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);

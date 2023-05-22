@@ -43,9 +43,9 @@ cc_library(
     hdrs = ["profiler_session.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_session",
     ] + if_not_android([
         ":profiler_interface",
@@ -65,8 +65,8 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
-        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/lib:profiler_factory",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -133,11 +133,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":traceme_encode",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
-        "//tensorflow/tsl/profiler/lib:traceme_encode",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "//tensorflow/tsl/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:traceme_recorder",
         "//tensorflow/core/profiler/utils:time_utils",
@@ -211,10 +211,10 @@ cc_library(
     hdrs = ["scoped_annotation.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/tsl/profiler/lib:scoped_annotation",
+        "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),
@@ -225,10 +225,10 @@ cc_library(
     hdrs = ["scoped_annotation_stack.h"],
     visibility = ["//tensorflow/compiler/xla:runtime"],
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform",
         "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "@com_google_absl//absl/strings",
     ] + if_not_android([
         "//tensorflow/core/profiler/backends/cpu:annotation_stack",
     ]),

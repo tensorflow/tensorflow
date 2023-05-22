@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/printer.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -49,6 +50,8 @@ class Tile {
     return dimensions() == other.dimensions();
   }
   bool operator!=(const Tile& other) const { return !(*this == other); }
+
+  void Print(Printer* printer) const;
 
   std::string ToString() const;
 
@@ -83,6 +86,8 @@ class Tile {
   absl::InlinedVector<int64_t, 2> dimensions_;
 };
 
+// TODO: Rename the `dim_level_types` field to `lvl_types`, so that it
+// matches `mlir::sparse_tensor::SparseTensorEncodingAttr`.
 class Layout {
  public:
   Layout();
@@ -102,8 +107,9 @@ class Layout {
                   absl::Span<const Tile> tiles,
                   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID,
                   PrimitiveType element_primitive_type = PRIMITIVE_TYPE_INVALID,
-                  int64_t memory_space = 0,
-                  std::unique_ptr<Shape> physical_shape = nullptr);
+                  int64_t element_size_in_bits = 0, int64_t memory_space = 0,
+                  std::unique_ptr<Shape> physical_shape = nullptr,
+                  int64_t dynamic_shape_metadata_prefix_bytes = 0);
 
   Layout& operator=(const Layout& other);
   Layout& operator=(Layout&& other);
@@ -113,6 +119,9 @@ class Layout {
 
   // Returns a LayoutProto representation of the Layout.
   LayoutProto ToProto() const;
+
+  // Prints a human-readable string that represents this layout.
+  void Print(Printer* printer) const;
 
   // Returns a human-readable string that represents this layout.
   std::string ToString() const;
@@ -154,16 +163,23 @@ class Layout {
       return *this;
     }
 
+    Equal& IgnoreElementSize() {
+      ignore_element_size_ = true;
+      return *this;
+    }
+
     Equal& MinorToMajorOnly() {
       return IgnoreTiles()
           .IgnoreIndexPrimitiveType()
           .IgnorePointerPrimitiveType()
           .IgnoreMemorySpace()
-          .IgnorePhysicalShape();
+          .IgnorePhysicalShape()
+          .IgnoreElementSize();
     }
 
    private:
     bool ignore_tiles_ = false;
+    bool ignore_element_size_ = false;
     bool ignore_index_primitive_type_ = false;
     bool ignore_pointer_primitive_type_ = false;
     bool ignore_memory_space_ = false;
@@ -275,6 +291,12 @@ class Layout {
   absl::Span<const Tile> tiles() const { return tiles_; }
   absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
+  int64_t element_size_in_bits() const { return element_size_in_bits_; }
+  Layout& set_element_size_in_bits(int64_t value) {
+    element_size_in_bits_ = value;
+    return *this;
+  }
+
   PrimitiveType index_primitive_type() const { return index_primitive_type_; }
   Layout& set_index_primitive_type(PrimitiveType value) {
     index_primitive_type_ = value;
@@ -306,11 +328,11 @@ class Layout {
   Shape* mutable_physical_shape();
   void clear_physical_shape();
 
-  int64_t dynamic_shape_metadata_prefix_in_bytes() const {
-    return dynamic_shape_metadata_prefix_in_bytes_;
+  int64_t dynamic_shape_metadata_prefix_bytes() const {
+    return dynamic_shape_metadata_prefix_bytes_;
   }
-  void set_dynamic_shape_metadata_prefix_in_bytes(int64_t bytes) {
-    dynamic_shape_metadata_prefix_in_bytes_ = bytes;
+  void set_dynamic_shape_metadata_prefix_bytes(int64_t bytes) {
+    dynamic_shape_metadata_prefix_bytes_ = bytes;
   }
 
   void Swap(Layout* other) {
@@ -323,8 +345,8 @@ class Layout {
   template <typename H>
   friend H AbslHashValue(H h, const Layout& l) {
     return H::combine(std::move(h), l.minor_to_major_, l.tiles_,
-                      l.index_primitive_type_, l.pointer_primitive_type_,
-                      l.memory_space_);
+                      l.element_size_in_bits_, l.index_primitive_type_,
+                      l.pointer_primitive_type_, l.memory_space_);
   }
 
  private:
@@ -357,6 +379,10 @@ class Layout {
   PrimitiveType index_primitive_type_ = PRIMITIVE_TYPE_INVALID;
   PrimitiveType pointer_primitive_type_ = PRIMITIVE_TYPE_INVALID;
 
+  // The number of bits used to store an individual array element.
+  // When the value is 0, default to ShapeUtil::ByteSizeOfPrimitiveType.
+  int64_t element_size_in_bits_ = 0;
+
   // The assigned memory space.
   int64_t memory_space_ = 0;
 
@@ -366,7 +392,7 @@ class Layout {
   // The dynamic shape metadata size in bytes in front of the shape data. The
   // field may be non-zero for a static shape whose associated buffer is for a
   // dynamic shape, e.g. a result of SliceToDynamic.
-  int64_t dynamic_shape_metadata_prefix_in_bytes_ = 0;
+  int64_t dynamic_shape_metadata_prefix_bytes_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

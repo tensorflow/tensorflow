@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/while_gradients.h"
 
+#include <string>
+
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"

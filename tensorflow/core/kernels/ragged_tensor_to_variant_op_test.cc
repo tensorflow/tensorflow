@@ -31,7 +31,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -379,6 +381,85 @@ TEST_F(RaggedTensorToVariantKernelTest, NonRaggedBatchedInput) {
   ExpectRaggedTensorVariantEqual<int, int64_t>(
       CreateVariantFromRagged<int, int64_t>({}, {3, 2}, {7, 8, 9, 10, 11, 12}),
       *encoded_list(1).get<RaggedTensorVariant>());
+}
+
+TEST_F(RaggedTensorToVariantKernelTest,
+       NestedRowSplitsFirstElementNotZeroError) {
+  const std::vector<int64_t> splits = {1, 2};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({0}), {},
+                                             true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires the first element of "
+                                "nested_row_splits[0] to be 0 but is 1"));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsIncreasingError) {
+  const std::vector<int64_t> splits = {0, 2, -1};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({0}), {},
+                                             true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires splits to be monotonically "
+                                "increasing, but nested_row_splits[0][2]=-1 is "
+                                "smaller than nested_row_splits[0][1]=2"));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsSizeMismatchError) {
+  const std::vector<int64_t> splits = {0, 2, 3};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({5}),
+                                             {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(
+      RunOpKernel(),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "Requires nested_row_splits[0][-1]=3 to be equal with "
+                        "the number of values in this dimension, which is 5."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest,
+       NestedRowSplitsInnerDimensionSizeMismatchError) {
+  const std::vector<int64_t> splits1 = {0, 2, 3};
+  const std::vector<int64_t> splits2 = {0, 3, 3, 4};
+  BuildEncodeRaggedTensorGraph<int, int64_t>(
+      {splits1, splits2}, TensorShape({5}), {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(
+      RunOpKernel(),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "Requires nested_row_splits[1][-1]=4 to be equal with "
+                        "the number of values in this dimension, which is 5."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest,
+       NestedRowSplitsSizeOfSplitsMismatchError) {
+  const std::vector<int64_t> splits1 = {0, 2};
+  const std::vector<int64_t> splits2 = {0, 3, 3, 5};
+  BuildEncodeRaggedTensorGraph<int, int64_t>(
+      {splits1, splits2}, TensorShape({5}), {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(
+      RunOpKernel(),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "Requires nested_row_splits[0][-1]=2 to be equal with "
+                        "the number of values in this dimension, which is 3."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsEmptySplitsError) {
+  const std::vector<int64_t> splits = {};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({5}),
+                                             {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires nested_row_splits[0] has at least "
+                                "one splits, but is empty."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsScalarValueError) {
+  const std::vector<int64_t> splits = {0, 2};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({}), 1,
+                                             true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires flat_values to have rank>=1 when "
+                                "nested_row_splits is not empty, but is 0."));
 }
 
 }  // namespace

@@ -47,11 +47,19 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
+
+auto* graph_compiler_failed_compilation_op_count =
+    tensorflow::monitoring::Counter<1>::New(
+        /*metric_name=*/
+        "/tensorflow/core/tf2xla/graph_compilation_failed_op_count",
+        /*metric_description=*/"Records an op that failed to compile",
+        /*metric_label=*/"op_name");
 
 namespace {
 Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
@@ -177,6 +185,9 @@ Status GraphCompiler::Compile() {
       device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
       Status s = op_context.status();
       if (!s.ok()) {
+        graph_compiler_failed_compilation_op_count
+            ->GetCell(params.op_kernel->def().op())
+            ->IncrementBy(1);
         return AttachDef(s, n->def());
       }
     }

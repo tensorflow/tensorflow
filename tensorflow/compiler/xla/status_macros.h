@@ -126,7 +126,7 @@ class MakeErrorStream {
    private:
     const char* file_;
     int line_;
-    tsl::error::Code code_;
+    absl::StatusCode code_;
 
     PriorMessageHandling prior_message_handling_ = kAppendToPriorMessage;
     std::string prior_message_;

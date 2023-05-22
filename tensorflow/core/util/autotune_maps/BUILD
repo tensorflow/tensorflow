@@ -9,6 +9,10 @@ load(
     "tf_proto_library",
 )
 load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+load(
     "//tensorflow:tensorflow.bzl",
     "tf_cuda_library",
     "tf_cuda_only_cc_test",

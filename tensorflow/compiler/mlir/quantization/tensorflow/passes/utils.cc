@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/eval_util.h"
@@ -24,7 +25,7 @@ namespace mlir {
 namespace quant {
 
 bool HasQuantizedTensors(Operation* op) {
-  if (IsOpNotQuantizable(op)) return false;
+  if (!IsOpQuantizable(op)) return false;
   for (Type operand_type : op->getOperandTypes()) {
     auto tensor_type = operand_type.dyn_cast<TensorType>();
     if (tensor_type && tensor_type.getElementType().isa<QuantizedType>()) {
@@ -240,6 +241,16 @@ llvm::SmallVector<Value> ConstantFoldOpIfPossible(Operation* op) {
     return op->getResults();
   }
   return results;
+}
+
+llvm::SmallVector<Value> CloneOpWithReplacedOperands(
+    OpBuilder& builder, Operation* op,
+    const llvm::SmallVector<Value>& new_operands) {
+  IRMapping mapping;
+  for (const auto& arg : llvm::enumerate(new_operands)) {
+    mapping.map(op->getOperand(arg.index()), arg.value());
+  }
+  return builder.clone(*op, mapping)->getResults();
 }
 
 }  // namespace quant

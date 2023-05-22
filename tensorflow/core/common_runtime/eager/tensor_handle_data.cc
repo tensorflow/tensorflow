@@ -15,14 +15,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
-namespace tsl {
-class Status;
-}
 namespace tensorflow {
-using tsl::Status;
 
 Status LocalTensorHandleData::Tensor(const tensorflow::Tensor** t) const {
   TF_RETURN_IF_ERROR(WaitReady("Tensor"));

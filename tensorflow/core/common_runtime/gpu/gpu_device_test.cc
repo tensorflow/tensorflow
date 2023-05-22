@@ -573,6 +573,22 @@ TEST_F(GPUDeviceTest, DeviceDetails) {
   }
 }
 
+TEST_F(GPUDeviceTest, StreamToIdMultipleVirtualDevices) {
+  // Valid range for priority values on AMD GPUs in (-1,1)
+  // Valid range for priority values on NVidia GPUs in (-2, 0)
+  SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}}, {{0, -1}});
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  // Verify FindTfDeviceId() works.
+  for (int i = 0; i < devices.size(); i++) {
+    EXPECT_EQ(tsl::TfDeviceId(i),
+              *BaseGPUDevice::FindTfDeviceId(
+                  devices[i]->tensorflow_accelerator_device_info()->stream));
+  }
+  EXPECT_FALSE(BaseGPUDevice::FindTfDeviceId(nullptr).has_value());
+}
+
 class GPUKernelTrackerTest : public ::testing::Test {
  protected:
   void Init(const GPUKernelTracker::Params& params) {

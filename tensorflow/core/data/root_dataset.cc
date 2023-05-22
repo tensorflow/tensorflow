@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -45,6 +48,7 @@ constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr char kRamBudget[] = "ram_budget_megabytes";
 constexpr char kRamUsage[] = "ram_usage_megabytes";
 constexpr char kMaxBufferBytes[] = "max_buffered_megabytes";
+constexpr char kWarmStart[] = "warm_start";
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
 inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
@@ -63,7 +67,9 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   params->autotune = ShouldUseAutotuning(options);
   if (params->autotune) {
     params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
-    if (GetExperiments().contains("stage_based_autotune")) {
+    auto experiments = GetExperiments();
+    if (experiments.contains("stage_based_autotune") ||
+        experiments.contains("stage_based_autotune_v2")) {
       params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
     }
     if (options.autotune_options().optional_autotune_algorithm_case() ==
@@ -73,13 +79,23 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
     }
     params->autotune_cpu_budget = value_or_default(
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
-    params->autotune_ram_budget =
-        value_or_default(options.autotune_options().ram_budget(), 0,
-                         model::kRamBudgetShare * port::AvailableRam());
+    if (experiments.contains("autotune_buffer_optimization")) {
+      // When running this experiment, increase the ram_budget since it already
+      // takes into account the ram usage in buffer sizing, which is not the
+      // case for prefetch autotuner. Without this, we see degradation in some
+      // jobs for lack of buffers while ram usage is low.
+      params->autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(), 0,
+                           0.90 * port::AvailableRam());
+    } else {
+      params->autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(), 0,
+                           model::kRamBudgetShare * port::AvailableRam());
+    }
   }
 }
 
-void AddTraceMetadata(const RootDataset::Params& params,
+void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
                       TraceMeMetadata* trace_metadata) {
   if (params.autotune) {
     trace_metadata->push_back(std::make_pair(
@@ -111,6 +127,9 @@ void AddTraceMetadata(const RootDataset::Params& params,
     trace_metadata->push_back(
         std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
   }
+  trace_metadata->push_back(std::make_pair(
+      kWarmStart,
+      options.optimization_options().warm_start() ? "true" : "false"));
 }
 }  // namespace
 
@@ -139,8 +158,12 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
       model_ = std::make_shared<model::Model>();
-      if (GetExperiments().contains("autotune_buffer_optimization")) {
-        model_->SetExperiment("autotune_buffer_optimization");
+      auto experiments = GetExperiments();
+      if (experiments.contains("stage_based_autotune_v2")) {
+        model_->AddExperiment("stage_based_autotune_v2");
+      }
+      if (experiments.contains("autotune_buffer_optimization")) {
+        model_->AddExperiment("autotune_buffer_optimization");
       }
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
@@ -270,7 +293,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
                                  dataset()->params_.autotune_ram_budget,
                                  cancellation_manager_.get());
         if (!status.ok()) {
-          LOG(WARNING) << "Optimization loop failed: " << status.ToString();
+          LOG(WARNING) << "Optimization loop failed: " << status;
         }
       });
     }
@@ -299,7 +322,7 @@ RootDataset::RootDataset(const DatasetBase* input, const Params& params)
                                   name_utils::OpName(kDatasetType)})),
       input_(input),
       params_(std::move(params)) {
-  AddTraceMetadata(params_, &traceme_metadata_);
+  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
 RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
@@ -309,10 +332,10 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
       params_(std::move(params)) {
   owned_input_ = std::move(input);
   input_ = owned_input_.get();
-  AddTraceMetadata(params_, &traceme_metadata_);
+  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
-RootDataset::~RootDataset() {}
+RootDataset::~RootDataset() = default;
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
     const string& prefix) const {
@@ -330,10 +353,6 @@ const std::vector<PartialTensorShape>& RootDataset::output_shapes() const {
 
 string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
-}
-
-int64_t RootDataset::CardinalityInternal() const {
-  return input_->Cardinality();
 }
 
 int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
@@ -396,14 +415,14 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   };
   core::RefCountPtr<DatasetBase> rewritten_output;
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, &rewritten_output);
+                            /*record_fingerprint=*/false, &rewritten_output);
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
-    LOG(WARNING) << s.ToString();
+    LOG(WARNING) << s;
   } else if (!s.ok()) {
     return s;
   }

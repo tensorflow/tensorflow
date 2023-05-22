@@ -669,6 +669,10 @@ class Tensor {
   // buffer is one.
   bool RefCountIsOne() const;
 
+  // Experimental. Returns the refcount on buf_ if it points to a regular
+  // TensorBuffer. If buf_ points to a SubBuffer, returns -1.
+  int RefCount() const;
+
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }
 

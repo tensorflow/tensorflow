@@ -43,7 +43,8 @@ class EagerOpRewriteTest : public ::testing::Test {
     eager_ctx_ = new tensorflow::EagerContext(
         SessionOptions(),
         tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-        async, device_mgr.get(), false, rendezvous);
+        async, device_mgr.get(), false, rendezvous, nullptr, nullptr,
+        /*run_eager_op_as_function=*/true);
 
     EagerExecutor executor_(false);
     std::unique_ptr<tensorflow::EagerOperation> op(

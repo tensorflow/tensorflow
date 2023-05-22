@@ -47,10 +47,7 @@ mlir::LogicalResult FoldConstantOp(mlir::OperationFolder& folder,
 
     // Try to fold this op.
     bool inPlaceUpdate;
-    if (succeeded(folder.tryToFold(op,
-                                   /*processGeneratedConstants=*/nullptr,
-                                   /*preReplaceAction=*/nullptr,
-                                   &inPlaceUpdate))) {
+    if (succeeded(folder.tryToFold(op, &inPlaceUpdate))) {
       changed = true;
       if (!inPlaceUpdate) {
         return mlir::success();

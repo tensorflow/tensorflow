@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/common/pjrt_util.h"
 
 #include <memory>
+#include <optional>
+#include <set>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/core/platform/errors.h"
@@ -42,38 +44,17 @@ Status SetPjRtClientInTFGlobalResourceManager(
   return OkStatus();
 }
 
-Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-    const DeviceType& device_type) {
+StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;
-  auto status = rmgr->Lookup(rmgr->default_container(), kPjRtStateResourceName,
-                             &pjrt_state);
-  if (!status.ok() && status.code() != error::NOT_FOUND) {
-    return errors::Internal(
-        "Failed to find PjRtState Resource when deleting PJRT client is "
-        "requested: ",
-        status.error_message());
-  }
-  // This method may be called before PJRT resource is created. It is OK to
-  // receive NOT_FOUND in the resource look up.
-  if (status.code() == error::NOT_FOUND) {
-    LOG(INFO) << "PjRtState Resource is not found in TF GlobalResourceManager.";
-    return OkStatus();
-  }
+  TF_RETURN_IF_ERROR(rmgr->LookupOrCreate<PjRtState>(
+      rmgr->default_container(), kPjRtStateResourceName, &pjrt_state,
+      [&](PjRtState** ret) {
+        *ret = PjRtState::Create();
+        return OkStatus();
+      }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
-  TF_RETURN_IF_ERROR(pjrt_state->DeletePjRtClientIfExists(device_type));
-  return OkStatus();
-}
-
-StatusOr<xla::PjRtClient*> GetPjRtClientFromTFGlobalResourceManager(
-    const DeviceType& device_type) {
-  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
-  PjRtState* pjrt_state;
-  TF_RETURN_IF_ERROR(rmgr->Lookup(rmgr->default_container(),
-                                  kPjRtStateResourceName, &pjrt_state));
-  core::ScopedUnref pjrt_state_ref(pjrt_state);
-  TF_ASSIGN_OR_RETURN(auto pjrt_client, pjrt_state->GetPjRtClient(device_type));
-  return pjrt_client;
+  return pjrt_state->GetPjRtClient(device_type);
 }
 
 }  // namespace tensorflow

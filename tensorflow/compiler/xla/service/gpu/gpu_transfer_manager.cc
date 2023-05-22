@@ -86,7 +86,7 @@ void GpuTransferManager::EnsurePinnedBuffersAllocated(
 }
 
 Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             ShapedBuffer* device_buffer,
+                                             const ShapedBuffer* device_buffer,
                                              Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
@@ -100,8 +100,8 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   // DeviceMemoryBase into the Shape*'s dimensions.
   std::vector<std::pair<se::DeviceMemoryBase, Shape*>> copies;
 
-  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachMutableElementWithStatus(
-      [&](const ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
+      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -122,7 +122,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
 
-        auto buffer_8 = se::DeviceMemory<uint8_t>(*buffer);
+        auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
         auto metadata_buffer =
             stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));

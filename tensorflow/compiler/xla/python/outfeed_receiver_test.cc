@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
 
 #include <memory>
+#include <optional>
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -120,7 +121,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
@@ -129,7 +130,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   XlaOp data = Iota(&builder, shape0, 0);
   XlaOp send = outfeed_receiver
                    ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                         consumer_id0, {data})
+                                         consumer_id0, {data}, 0)
                    .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send, 0, cpu_client.get()).ok());
 
@@ -153,7 +154,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder0("execute_test_outfeed_0");
@@ -162,7 +163,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp data0 = Iota(&builder0, shape0, 0);
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder0, CreateToken(&builder0),
-                                          consumer_id0, {data0})
+                                          consumer_id0, {data0}, 0)
                     .value();
   EXPECT_TRUE(CompileAndExecute(&builder0, send0, 0, cpu_client.get()).ok());
 
@@ -172,7 +173,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   XlaOp data1 = Iota(&builder1, shape1, 0);
   XlaOp send1 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder1, CreateToken(&builder1),
-                                          consumer_id1, {data1})
+                                          consumer_id1, {data1}, 0)
                     .value();
   EXPECT_TRUE(CompileAndExecute(&builder1, send1, 0, cpu_client.get()).ok());
 
@@ -198,7 +199,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
@@ -207,7 +208,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp data0 = Iota(&builder, shape0, 0);
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                          consumer_id0, {data0})
+                                          consumer_id0, {data0}, 0)
                     .value();
 
   constexpr int consumer_id1 = 6;
@@ -215,7 +216,7 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   XlaOp data1 = Iota(&builder, shape1, 0);
   XlaOp send1 =
       outfeed_receiver
-          ->AddOutfeedToBuilder(&builder, send0, consumer_id1, {data1})
+          ->AddOutfeedToBuilder(&builder, send0, consumer_id1, {data1}, 0)
           .value();
   EXPECT_TRUE(CompileAndExecute(&builder, send1, 0, cpu_client.get()).ok());
 
@@ -241,7 +242,7 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
@@ -250,14 +251,14 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   XlaOp data0 = Iota(&builder, shape0, 0);
   XlaOp send0 = outfeed_receiver
                     ->AddOutfeedToBuilder(&builder, CreateToken(&builder),
-                                          consumer_id0, {data0})
+                                          consumer_id0, {data0}, 0)
                     .value();
 
   const Shape shape1 = ShapeUtil::MakeShape(U32, {128});
   XlaOp data1 = Iota(&builder, shape1, 0);
   // A different shape for the same consumer ID.
   StatusOr<XlaOp> send1 = outfeed_receiver->AddOutfeedToBuilder(
-      &builder, send0, consumer_id0, {data1});
+      &builder, send0, consumer_id0, {data1}, 0);
   EXPECT_FALSE(send1.ok());
   EXPECT_THAT(send1.status().ToString(),
               testing::HasSubstr("does not match previous shape element_type"));
@@ -275,14 +276,14 @@ TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
-      std::make_shared<OutfeedReceiver>(callback, clients, 128);
+      std::make_shared<OutfeedReceiver>(callback, clients, 128, std::nullopt);
   outfeed_receiver->Start();
 
   XlaBuilder builder("execute_test_outfeed");
   const Shape shape0 = ShapeUtil::MakeShape(U32, {16});
   XlaOp data0 = Iota(&builder, shape0, 0);
   StatusOr<XlaOp> send0 = outfeed_receiver->AddOutfeedToBuilder(
-      &builder, CreateToken(&builder), 0, {data0});
+      &builder, CreateToken(&builder), 0, {data0}, 0);
 
   EXPECT_FALSE(send0.ok());
   EXPECT_THAT(send0.status().ToString(),

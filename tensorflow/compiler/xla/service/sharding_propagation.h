@@ -21,6 +21,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
@@ -31,15 +33,22 @@ namespace xla {
 
 // Remove Sharding custom-call instruction by folding the sharding attribute
 // to its operand. If the operand already has a different sharding, insert a
-// copy node for reshard.
-// partially_specified will be populated with the converted copies if the custom
+// copy node for reshard. Depending on whether propagating the spmd sharding to
+// output/parameters is allowed, the existing shardings of output and parameters
+// will be saved in saved_root_shardings and saved_parameter_shardings. The user
+// can select which sharding(s) to keep and which shardings to allow spmd to
+// propagate. saved_parameter_shardings is a map from the operand index to that
+// operand's existing sharding.
+// unspecified_dims will be populated with the converted copies if the custom
 // call is partially specified.
 StatusOr<bool> ProcessShardingInstruction(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads,
     bool replace_sharding_with_copy,
     absl::flat_hash_map<const HloInstruction*, std::vector<int64_t>>*
-        unspecified_dims);
+        unspecified_dims,
+    std::vector<HloSharding>* saved_root_shardings,
+    absl::flat_hash_map<int64_t, HloSharding>* saved_parameter_shardings);
 
 int64_t ComputeNonRootUsers(const HloInstruction* instr);
 
@@ -60,13 +69,26 @@ class ShardingPropagation : public HloModulePass {
       absl::flat_hash_map<const HloComputation*, HloInstruction*>;
   explicit ShardingPropagation(
       bool is_spmd = false, bool propagate_metadata = false,
-      bool allow_spmd_sharding_propagation_to_output = false,
+      absl::Span<const bool> allow_spmd_sharding_propagation_to_output =
+          {false},
+      absl::Span<const bool> allow_spmd_sharding_propagation_to_parameters =
+          {false},
       bool cse_prevention_only = false,
       std::unique_ptr<CustomCallShardingHelper> sharding_helper = nullptr)
       : is_spmd_(is_spmd),
         propagate_metadata_(propagate_metadata),
         allow_spmd_sharding_propagation_to_output_(
-            allow_spmd_sharding_propagation_to_output),
+            absl::c_any_of(allow_spmd_sharding_propagation_to_output,
+                           [](bool v) { return v; })),
+        allow_spmd_sharding_propagation_to_parameters_(
+            absl::c_any_of(allow_spmd_sharding_propagation_to_parameters,
+                           [](bool v) { return v; })),
+        allow_spmd_sharding_propagation_to_output_vector_(
+            allow_spmd_sharding_propagation_to_output.begin(),
+            allow_spmd_sharding_propagation_to_output.end()),
+        allow_spmd_sharding_propagation_to_parameters_vector_(
+            allow_spmd_sharding_propagation_to_parameters.begin(),
+            allow_spmd_sharding_propagation_to_parameters.end()),
         cse_prevention_only_(cse_prevention_only) {
     if (sharding_helper) {
       sharding_helper_ = std::move(sharding_helper);
@@ -104,11 +126,20 @@ class ShardingPropagation : public HloModulePass {
                                  const ComputationMap& computation_map,
                                  int64_t aggressiveness,
                                  const CallGraph& call_graph);
+  bool InferShardingFromUsers(
+      HloInstruction* instruction,
+      const ShardingPropagation::ComputationMap& computation_map,
+      int64_t aggressiveness, bool is_spmd,
+      const CustomCallShardingHelper* sharding_helper,
+      const CallGraph& call_graph);
 
   std::unique_ptr<CustomCallShardingHelper> sharding_helper_;
   bool is_spmd_;
   bool propagate_metadata_;
   bool allow_spmd_sharding_propagation_to_output_;
+  bool allow_spmd_sharding_propagation_to_parameters_;
+  std::vector<bool> allow_spmd_sharding_propagation_to_output_vector_;
+  std::vector<bool> allow_spmd_sharding_propagation_to_parameters_vector_;
   // If true, the pass keeps the propagation results only on selected
   // instructions to prevent CSE across unrelated subgraphs. (A common case is
   // scalar broadcasts).

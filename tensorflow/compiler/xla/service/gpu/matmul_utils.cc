@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <optional>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -27,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_blas_lt.h"
 #include "tensorflow/compiler/xla/stream_executor/host_or_device_scalar.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #endif  // GOOGLE_CUDA
 
 namespace xla {
@@ -70,8 +71,6 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
                                        absl::Span<const int64_t> row_dims,
                                        absl::Span<const int64_t> col_dims) {
   TF_RET_CHECK(shape.has_layout());
-  TF_RET_CHECK(!row_dims.empty());
-  TF_RET_CHECK(!col_dims.empty());
 
   std::vector<int64_t> minor_to_major;
   for (size_t i = 0; i < shape.rank();) {
@@ -82,16 +81,16 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
         if (*it != shape.layout().minor_to_major()[i++])
-          return InvalidArgument("dims not physically sequential");
+          return InvalidArgument("dims not physically_sequential");
       }
       return OkStatus();
     };
 
     int64_t dim = shape.layout().minor_to_major()[i];
-    if (dim == row_dims.back()) {
+    if (!row_dims.empty() && dim == row_dims.back()) {
       minor_to_major.push_back(1);
       TF_RETURN_IF_ERROR(check_physically_sequential(row_dims));
-    } else if (dim == col_dims.back()) {
+    } else if (!col_dims.empty() && dim == col_dims.back()) {
       minor_to_major.push_back(2);
       TF_RETURN_IF_ERROR(check_physically_sequential(col_dims));
     } else if (!batch_dims.empty() && (dim == batch_dims.back())) {
@@ -102,6 +101,8 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     }
   }
 
+  if (col_dims.empty()) minor_to_major.push_back(2);
+  if (row_dims.empty()) minor_to_major.push_back(1);
   if (batch_dims.empty()) minor_to_major.push_back(0);
 
   auto dim_size = [&](absl::Span<const int64_t> dims) {
@@ -194,6 +195,21 @@ void MatrixLayout::Transpose() {
   order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
 }
 
+namespace {
+// Returns the relative order of 'dims' as indices from 0 to dims.size() - 1.
+// Let 'indices' be the returned vector, then it holds that
+// dims[indices[i - 1]] < dims[indices[i]] for 0 < i < dims.size()
+std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
+  // Remap the dimensions to values between 0 and dims.size() - 1, keeping their
+  // relative order the same.
+  std::vector<int64_t> indices(dims.size());
+  absl::c_iota(indices, 0);
+  absl::c_sort(indices,
+               [&](int64_t a, int64_t b) { return dims[a] < dims[b]; });
+  return indices;
+}
+}  // namespace
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
@@ -222,11 +238,20 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(transpose.shape(), batch_dims, contracting_dims));
 
+  // TransposeFolding assumes that folding the transpose into the dot operand
+  // doesn't change the dot shape. This means that the non-contracting
+  // dimensions of the dot operand need to keep their relative order.
+  auto transposed_non_contracting_dims = transposed(non_contracting_dims);
+  if (NormalizedRelativeOrder(non_contracting_dims) !=
+      NormalizedRelativeOrder(transposed_non_contracting_dims)) {
+    return false;
+  }
+
   // If we're able to construct a valid `MatrixLayout` for the transposed
   // dimensions, then GeMM can support folding the transpose.
   return MatrixLayout::For(transpose.operand(0)->shape(),
                            transposed(batch_dims), transposed(contracting_dims),
-                           transposed(non_contracting_dims))
+                           transposed_non_contracting_dims)
       .ok();
 }
 
@@ -237,6 +262,19 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& output_shape,
     double alpha_real, double alpha_imag, double beta,
     std::optional<int64_t> algorithm, int64_t compute_precision) {
+  return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
+                         rhs_shape, rhs_batch_dims, rhs_contracting_dims,
+                         output_shape, output_shape, alpha_real, alpha_imag,
+                         beta, algorithm, compute_precision);
+}
+
+/*static*/ StatusOr<GemmConfig> GemmConfig::For(
+    const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
+    absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
+    absl::Span<const int64_t> rhs_batch_dims,
+    absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
+    const Shape& output_shape, double alpha_real, double alpha_imag,
+    double beta, std::optional<int64_t> algorithm, int64_t compute_precision) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -275,17 +313,30 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
 
+  TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
+                      MatrixLayout::For(c_shape, output_batch_dims,
+                                        output_row_dims, output_col_dims));
+
   // TODO(cjfj): We should also check that the batch, contracting and
   // non-contracting dimensions match in size and relative physical location.
-  TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_rows);
-  TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
-  TF_RET_CHECK(output_layout.num_cols == rhs_layout.num_cols);
+  // TODO(philipphack): Check the remaining dimensions in the FP8 case once
+  // cuBLASLt supports the NN configuration.
+  if (lhs_shape.element_type() != F8E4M3FN &&
+      lhs_shape.element_type() != F8E5M2) {
+    TF_RET_CHECK(lhs_layout.num_cols == rhs_layout.num_rows);
+    TF_RET_CHECK(output_layout.num_rows == lhs_layout.num_rows);
+    TF_RET_CHECK(output_layout.num_cols == rhs_layout.num_cols);
+  }
+  TF_RET_CHECK(c_layout.num_rows == output_layout.num_rows);
+  TF_RET_CHECK(c_layout.num_cols == output_layout.num_cols);
   TF_RET_CHECK((lhs_layout.batch_size == output_layout.batch_size) ||
                (lhs_layout.batch_size == 1));
   TF_RET_CHECK((rhs_layout.batch_size == output_layout.batch_size) ||
                (rhs_layout.batch_size == 1));
 
   switch (output_shape.element_type()) {
+    case F8E4M3FN:
+    case F8E5M2:
     case F16:
     case BF16:
     case F32:
@@ -313,8 +364,14 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   }
 
   return GemmConfig{
-      lhs_layout, rhs_layout, output_layout,     {alpha_real, alpha_imag},
-      beta,       algorithm,  compute_precision,
+      lhs_layout,
+      rhs_layout,
+      c_layout,
+      output_layout,
+      {alpha_real, alpha_imag},
+      beta,
+      algorithm,
+      compute_precision,
   };
 }
 
@@ -369,22 +426,32 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
 }
 
 StatusOr<se::blas::ComputationType> GetBlasComputationType(
-    PrimitiveType dtype) {
-  switch (dtype) {
-    case F16:  // fall-through
+    PrimitiveType lhs_dtype, PrimitiveType output_dtype,
+    int64_t compute_precision) {
+  switch (output_dtype) {
+    case F8E5M2:    // fall-through
+    case F8E4M3FN:  // fall-through
+    case F16:       // fall-through
     case BF16:
       // Accumulate in f32 precision.
       return se::blas::ComputationType::kF32;
     case F32:  // fall-through
     case C64:
-      return se::blas::ComputationType::kTF32AsF32;
+#if GOOGLE_CUDA
+      if (tsl::tensor_float_32_execution_enabled() && compute_precision <= 1 &&
+          lhs_dtype != F8E4M3FN && lhs_dtype != F8E5M2) {
+        // CublasLt requires compute type to be F32 for F8 matmul.
+        return se::blas::ComputationType::kTF32AsF32;
+      }
+#endif
+      return se::blas::ComputationType::kF32;
     case F64:  // fall-through
     case C128:
       return se::blas::ComputationType::kF64;
     case S32:
       return se::blas::ComputationType::kI32;
     default:
-      return InternalError("unsupported type");
+      return InternalError("GetBlasComputationType: unsupported type");
   }
 }
 
@@ -430,6 +497,19 @@ bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
   return swap_operands;
 }
 
+bool MakeOutputColumnMajor(MatrixLayout& lhs, MatrixLayout& rhs,
+                           MatrixLayout& output, MatrixLayout& c) {
+  bool swap_operands = output.order != MatrixLayout::Order::kColumnMajor;
+  if (swap_operands) {
+    std::swap(lhs, rhs);
+    rhs.Transpose();
+    lhs.Transpose();
+    c.Transpose();
+    output.Transpose();
+  }
+  return swap_operands;
+}
+
 se::blas::Transpose AsBlasTranspose(MatrixLayout::Order order) {
   // BLAS is column-major by default.
   return (order == MatrixLayout::Order::kColumnMajor)
@@ -457,9 +537,11 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            se::blas::ComputePrecision compute_precision,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
+  PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
   PrimitiveType output_type = primitive_util::NativeToPrimitiveType<Output>();
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_type));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      GetBlasComputationType(lhs_type, output_type, compute_precision));
   se::DeviceMemory<Output> output_data(output.data);
 
   if (batch_size != 1) {
@@ -636,12 +718,20 @@ StatusOr<bool> EpilogueHasAuxiliaryOutput(GemmBackendConfig_Epilogue epilogue) {
 
 StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
   switch (dtype) {
+    case F8E5M2:
+      return se::blas::DataType::kF8E5M2;
+    case F8E4M3FN:
+      return se::blas::DataType::kF8E4M3FN;
+    case S8:
+      return se::blas::DataType::kInt8;
     case F16:
       return se::blas::DataType::kHalf;
     case BF16:
       return se::blas::DataType::kBF16;
     case F32:
       return se::blas::DataType::kFloat;
+    case S32:
+      return se::blas::DataType::kInt32;
     case F64:
       return se::blas::DataType::kDouble;
     case C64:
@@ -649,7 +739,7 @@ StatusOr<se::blas::DataType> AsBlasDataType(PrimitiveType dtype) {
     case C128:
       return se::blas::DataType::kComplexDouble;
     default:
-      return InternalError("unsupported type");
+      return InternalError("AsBlasDataType: unsupported type");
   }
 }
 
@@ -669,6 +759,45 @@ StatusOr<se::cuda::BlasLt::MatrixLayout> AsBlasLtMatrixLayout(
       dtype, layout.num_rows, layout.num_cols, order, layout.batch_size,
       layout.leading_dim_stride, layout.batch_stride);
 }
+
+template <cudaDataType_t CudaT>
+struct CudaToNativeT;
+
+#if CUDA_VERSION >= 11080
+template <>
+struct CudaToNativeT<CUDA_R_8F_E4M3> {
+  using type = tsl::float8_e4m3fn;
+};
+template <>
+struct CudaToNativeT<CUDA_R_8F_E5M2> {
+  using type = tsl::float8_e5m2;
+};
+#endif
+
+template <>
+struct CudaToNativeT<CUDA_R_16BF> {
+  using type = Eigen::bfloat16;
+};
+template <>
+struct CudaToNativeT<CUDA_R_16F> {
+  using type = Eigen::half;
+};
+template <>
+struct CudaToNativeT<CUDA_R_32F> {
+  using type = float;
+};
+template <>
+struct CudaToNativeT<CUDA_R_64F> {
+  using type = double;
+};
+template <>
+struct CudaToNativeT<CUDA_C_32F> {
+  using type = complex64;
+};
+template <>
+struct CudaToNativeT<CUDA_C_64F> {
+  using type = complex128;
+};
 
 }  // namespace
 
@@ -697,43 +826,12 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   return InternalError("unexpected epilogue value");
 }
 
-/*static*/ StatusOr<MatmulPlan> MatmulPlan::For(
-    mlir::lmhlo_gpu::CublasLtMatmulOp op) {
-  mlir::mhlo::DotDimensionNumbersAttr dot_dims = op.getDotDimensionNumbers();
-
-  int64_t compute_precision = 0;  // Default
-  if (op.getPrecisionConfig().has_value()) {
-    auto precision_config = op.getPrecisionConfig();
-    for (auto attr : precision_config.value()) {
-      int64_t value = static_cast<int64_t>(
-          attr.template cast<mlir::mhlo::PrecisionAttr>().getValue());
-      if (value > compute_precision) {
-        compute_precision = value;
-      }
-    }
-  }
-
-  TF_ASSIGN_OR_RETURN(
-      GemmConfig config,
-      GemmConfig::For(GetShape(op.getA()), dot_dims.getLhsBatchingDimensions(),
-                      dot_dims.getLhsContractingDimensions(),
-                      GetShape(op.getB()), dot_dims.getRhsBatchingDimensions(),
-                      dot_dims.getRhsContractingDimensions(),
-                      GetShape(op.getC()), op.getAlphaReal().convertToDouble(),
-                      op.getAlphaImag().convertToDouble(),
-                      op.getBeta().convertToDouble(), op.getAlgorithm(),
-                      compute_precision));
-
-  TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::Epilogue epilogue,
-                      AsBlasLtEpilogue(op.getEpilogue()));
-  return From(config, epilogue);
-}
-
 /*static*/ StatusOr<MatmulPlan> MatmulPlan::From(
     const GemmConfig& config, se::cuda::BlasLt::Epilogue epilogue) {
   MatrixLayout lhs_layout = config.lhs_layout;
   MatrixLayout rhs_layout = config.rhs_layout;
   MatrixLayout output_layout = config.output_layout;
+  MatrixLayout c_layout = config.c_layout;
 
   // cublasLt matmul requires batch sizes to be equal. If only one operand has a
   // batch, the other will be broadcast (as its batch_stride == 0).
@@ -742,25 +840,45 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
   rhs_layout.batch_size = batch_size;
 
   bool must_swap_operands =
-      MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout);
+      MakeOutputColumnMajor(lhs_layout, rhs_layout, c_layout, output_layout);
+
+  // Do not transopse either input. Note the cuBLASLt documentation somewhat
+  // incorrectly claims "A must be transposed and B non-transposed" when A and B
+  // are FP8 (https://docs.nvidia.com/cuda/cublas/#cublasltmatmul). In reality,
+  // this is only true if A and B are column-major. If A is row-major, A must
+  // *not* be transposed, and if B is row-major, B must be transposed. We never
+  // transpose A or B, and expect the caller to ensure A is row-major and B is
+  // column when A and B are FP8.
+  const se::blas::Transpose trans_a = se::blas::Transpose::kNoTranspose;
+  const se::blas::Transpose trans_b = se::blas::Transpose::kNoTranspose;
+  if (primitive_util::IsF8Type(lhs_layout.dtype) &&
+      lhs_layout.order == MatrixLayout::Order::kColumnMajor) {
+    return InternalError("The F8 LHS must be column-major");
+  }
+  if (primitive_util::IsF8Type(rhs_layout.dtype) &&
+      rhs_layout.order == MatrixLayout::Order::kRowMajor) {
+    return InternalError("The F8 RHS must be row-major");
+  }
 
   TF_ASSIGN_OR_RETURN(se::blas::DataType output_dtype,
                       AsBlasDataType(output_layout.dtype));
-  TF_ASSIGN_OR_RETURN(se::blas::ComputationType computation_type,
-                      GetBlasComputationType(output_layout.dtype));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType computation_type,
+      GetBlasComputationType(lhs_layout.dtype, output_layout.dtype,
+                             config.compute_precision));
+
   TF_ASSIGN_OR_RETURN(
       se::cuda::BlasLt::MatmulDesc op_desc,
       se::cuda::BlasLt::MatmulDesc::Create(
           computation_type, GetScaleType(output_dtype, computation_type),
-          /*trans_a=*/se::blas::Transpose::kNoTranspose,
-          /*trans_b=*/se::blas::Transpose::kNoTranspose, epilogue));
+          trans_a, trans_b, epilogue));
 
   TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout a_desc,
                       AsBlasLtMatrixLayout(lhs_layout));
   TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout b_desc,
                       AsBlasLtMatrixLayout(rhs_layout));
   TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout c_desc,
-                      AsBlasLtMatrixLayout(output_layout));
+                      AsBlasLtMatrixLayout(c_layout));
   TF_ASSIGN_OR_RETURN(se::cuda::BlasLt::MatrixLayout d_desc,
                       AsBlasLtMatrixLayout(output_layout));
 
@@ -771,16 +889,17 @@ StatusOr<se::cuda::BlasLt::Epilogue> AsBlasLtEpilogue(
       config.alpha, config.beta, must_swap_operands};
 }
 
-template <typename Input, typename Scale>
-Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
-                            se::DeviceMemoryBase b_buffer,
-                            se::DeviceMemoryBase c_buffer,
-                            se::DeviceMemoryBase d_buffer,
-                            se::DeviceMemoryBase bias_buffer,
-                            se::DeviceMemoryBase aux_buffer,
-                            const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
-                            se::ScratchAllocator& scratch_allocator,
-                            se::blas::ProfileResult* profile_result) const {
+template <typename Scale, typename A, typename B, typename C, typename D>
+Status MatmulPlan::DoMatmul(
+    se::Stream* stream, se::DeviceMemoryBase a_buffer,
+    se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
+    se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
+    se::DeviceMemoryBase aux_buffer, se::DeviceMemoryBase a_scale_buffer,
+    se::DeviceMemoryBase b_scale_buffer, se::DeviceMemoryBase c_scale_buffer,
+    se::DeviceMemoryBase d_scale_buffer, se::DeviceMemoryBase d_amax_buffer,
+    const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
+    se::ScratchAllocator& scratch_allocator,
+    se::blas::ProfileResult* profile_result) const {
   se::cuda::BlasLt* blas_lt = se::cuda::GetBlasLt(stream);
   TF_RET_CHECK(blas_lt != nullptr);
 
@@ -794,20 +913,26 @@ Status MatmulPlan::DoMatmul(se::Stream* stream, se::DeviceMemoryBase a_buffer,
 
   Scale beta = static_cast<Scale>(beta_);
 
-  se::DeviceMemory<Input> output(d_buffer);
+  se::DeviceMemory<D> output(d_buffer);
   return blas_lt->DoMatmul(
       stream, plan_, se::HostOrDeviceScalar<Scale>(alpha),
-      se::DeviceMemory<Input>(a_buffer), se::DeviceMemory<Input>(b_buffer),
-      se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<Input>(c_buffer),
-      output, algorithm, scratch_allocator,
-      se::DeviceMemory<Input>(bias_buffer), aux_buffer, profile_result);
+      se::DeviceMemory<A>(a_buffer), se::DeviceMemory<B>(b_buffer),
+      se::HostOrDeviceScalar<Scale>(beta), se::DeviceMemory<C>(c_buffer),
+      output, algorithm, scratch_allocator, se::DeviceMemory<C>(bias_buffer),
+      aux_buffer, se::DeviceMemory<Scale>(a_scale_buffer),
+      se::DeviceMemory<Scale>(b_scale_buffer),
+      se::DeviceMemory<Scale>(c_scale_buffer),
+      se::DeviceMemory<Scale>(d_scale_buffer),
+      se::DeviceMemory<Scale>(d_amax_buffer), profile_result);
 }
 
 Status MatmulPlan::ExecuteOnStream(
     se::Stream* stream, se::DeviceMemoryBase a_buffer,
     se::DeviceMemoryBase b_buffer, se::DeviceMemoryBase c_buffer,
     se::DeviceMemoryBase d_buffer, se::DeviceMemoryBase bias_buffer,
-    se::DeviceMemoryBase aux_buffer,
+    se::DeviceMemoryBase aux_buffer, se::DeviceMemoryBase a_scale_buffer,
+    se::DeviceMemoryBase b_scale_buffer, se::DeviceMemoryBase c_scale_buffer,
+    se::DeviceMemoryBase d_scale_buffer, se::DeviceMemoryBase d_amax_buffer,
     const se::cuda::BlasLt::MatmulAlgorithm& algorithm,
     se::ScratchAllocator& scratch_allocator,
     se::blas::ProfileResult* profile_result) const {
@@ -815,34 +940,67 @@ Status MatmulPlan::ExecuteOnStream(
     std::swap(a_buffer, b_buffer);
   }
 
-  switch (plan_.d_desc.type()) {
-    case CUDA_R_16F:
-      return DoMatmul<Eigen::half, float>(
-          stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-          aux_buffer, algorithm, scratch_allocator, profile_result);
-    case CUDA_R_16BF:
-      return DoMatmul<Eigen::bfloat16, float>(
-          stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,
-          aux_buffer, algorithm, scratch_allocator, profile_result);
-    case CUDA_R_32F:
-      return DoMatmul<float>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                             bias_buffer, aux_buffer, algorithm,
-                             scratch_allocator, profile_result);
-    case CUDA_R_64F:
-      return DoMatmul<double>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                              bias_buffer, aux_buffer, algorithm,
-                              scratch_allocator, profile_result);
-    case CUDA_C_32F:
-      return DoMatmul<complex64>(stream, a_buffer, b_buffer, c_buffer, d_buffer,
-                                 bias_buffer, aux_buffer, algorithm,
-                                 scratch_allocator, profile_result);
-    case CUDA_C_64F:
-      return DoMatmul<complex128>(stream, a_buffer, b_buffer, c_buffer,
-                                  d_buffer, bias_buffer, aux_buffer, algorithm,
-                                  scratch_allocator, profile_result);
-    default:
-      return InternalError("Unexpected dtype");
+  std::tuple<cudaDataType_t, cudaDataType_t, cudaDataType_t, cudaDataType_t>
+      operand_types{plan_.a_desc.type(), plan_.b_desc.type(),
+                    plan_.c_desc.type(), plan_.d_desc.type()};
+
+#define TYPED_MATMUL(SCALENTYPE, ATYPE, BTYPE, CTYPE, DTYPE)                \
+  if (operand_types == std::make_tuple(ATYPE, BTYPE, CTYPE, DTYPE)) {       \
+    return DoMatmul<SCALENTYPE, CudaToNativeT<ATYPE>::type,                 \
+                    CudaToNativeT<BTYPE>::type, CudaToNativeT<CTYPE>::type, \
+                    CudaToNativeT<DTYPE>::type>(                            \
+        stream, a_buffer, b_buffer, c_buffer, d_buffer, bias_buffer,        \
+        aux_buffer, a_scale_buffer, b_scale_buffer, c_scale_buffer,         \
+        d_scale_buffer, d_amax_buffer, algorithm, scratch_allocator,        \
+        profile_result);                                                    \
   }
+
+#if CUDA_VERSION >= 11080
+  // FP8 compatible type combinations (see cuBLASLt documentation):
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
+
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16BF,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E4M3, CUDA_R_8F_E5M2, CUDA_R_32F, CUDA_R_32F)
+
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16BF,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E4M3)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F,
+               CUDA_R_8F_E5M2)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_8F_E5M2, CUDA_R_8F_E4M3, CUDA_R_32F, CUDA_R_32F)
+#endif
+
+  // Other data types:
+  TYPED_MATMUL(float, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F, CUDA_R_16F)
+  TYPED_MATMUL(float, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF, CUDA_R_16BF)
+  TYPED_MATMUL(float, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F, CUDA_R_32F)
+  TYPED_MATMUL(double, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F, CUDA_R_64F)
+  TYPED_MATMUL(complex64, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F, CUDA_C_32F)
+  TYPED_MATMUL(complex128, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F, CUDA_C_64F)
+
+#undef TYPED_MATMUL
+
+  return InternalError("Unexpected dtype");
 }
 
 StatusOr<std::vector<se::cuda::BlasLt::MatmulAlgorithm>>

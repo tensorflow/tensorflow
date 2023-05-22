@@ -69,7 +69,7 @@ enum MinibenchmarkStatus {
   //
   // Runner status codes.
   //
-  // Next available code: 515
+  // Next available code: 516
   kMinibenchmarkDladdrReturnedZero = 502,
   kMinibenchmarkDliFnameWasNull = 503,
   kMinibenchmarkDliFnameHasApkNameOnly = 504,
@@ -83,6 +83,8 @@ enum MinibenchmarkStatus {
   kMiniBenchmarkCannotLoadSupportLibrary = 511,
   kMiniBenchmarkInvalidSupportLibraryConfiguration = 512,
   kMinibenchmarkPipeFailed = 513,
+  kMinibenchmarkCannotLoadGpuModule = 515,
+
   // Validator status codes.
   //
   // Next available code: 1018
@@ -107,15 +109,18 @@ enum MinibenchmarkStatus {
 
   // Validator runner status codes.
   //
-  // Next available code: 1504
+  // Next available code: 1505
   kMinibenchmarkChildProcessAlreadyRunning = 1501,
   kMinibenchmarkValidationEntrypointSymbolNotFound = 1502,
   kMinibenchmarkNoValidationRequestFound = 1503,
+  kMinibenchmarkCompletionEventMissing = 1504,
 
   // Validator runner recoverable errors
   //
   // Next available code: 1602
   kMinibenchmarkUnableToSetCpuAffinity = 1601,
+
+  kMinibenchmarkAbiMethodNotAvailable = 1701,
 };
 }  // namespace acceleration
 }  // namespace tflite

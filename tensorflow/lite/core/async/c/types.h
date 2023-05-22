@@ -23,8 +23,18 @@ extern "C" {
 typedef struct TfLiteAsyncKernel TfLiteAsyncKernel;
 
 /// Opaque type for TfLiteExecutionTask.
+///
+/// See tensorflow/lite/core/async/c/task.h
 /// NOTE: TfLiteExecutionTask is NOT thread-safe.
 typedef struct TfLiteExecutionTask TfLiteExecutionTask;
+
+/// Enum tag for specifying whether a tensor is the input or output to the
+/// model.
+typedef enum TfLiteIoType {
+  kTfLiteIoTypeUnknown = 0,
+  kTfLiteIoTypeInput = 1,
+  kTfLiteIoTypeOutput = 2,
+} TfLiteIoType;
 
 #ifdef __cplusplus
 }  // extern "C"

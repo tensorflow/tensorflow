@@ -28,7 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -208,7 +208,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
 
 std::string HloModuleGroupUtil::CycleToString(
     HloInstruction* init_instruction) {
-  std::vector<std::string> names;
+  std::vector<absl::string_view> names;
   absl::flat_hash_set<HloInstruction*> seen;
 
   std::function<bool(HloInstruction*)> helper =

@@ -29,13 +29,15 @@ import numpy as np
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python.framework import dtypes
 from tensorflow.python.lib.core import _pywrap_float8
-from tensorflow.python.lib.core import _pywrap_bfloat16
+from tensorflow.python.lib.core import _pywrap_custom_casts
 from tensorflow.python.platform import test
+from tensorflow.tsl.python.lib.core import pywrap_bfloat16
 
-bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
-float8_e4m3b11 = _pywrap_bfloat16.TF_float8_e4m3b11_type()
+bfloat16 = pywrap_bfloat16.bfloat16_type()
+float8_e4m3b11 = pywrap_bfloat16.float8_e4m3b11_type()
 float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
 float8_e5m2 = _pywrap_float8.TF_float8_e5m2_type()
+_pywrap_custom_casts.TF_register_custom_casts()
 
 
 def numpy_assert_allclose(a, b, float_type, **kwargs):
@@ -202,6 +204,13 @@ class CustomFloatTest(parameterized.TestCase):
               np.array(FLOAT_VALUES[float_type], dtype),
               float_type(np.array(FLOAT_VALUES[float_type],
                                   dtype)).astype(dtype))
+
+  def testBetweenCustomTypes(self, float_type):
+    for dtype in [bfloat16, float8_e4m3b11, float8_e4m3fn, float8_e5m2]:
+      x = np.array(FLOAT_VALUES[float_type], dtype=dtype)
+      y = x.astype(float_type)
+      z = x.astype(float).astype(float_type)
+      numpy_assert_allclose(y, z, float_type=float_type)
 
   def testStr(self, float_type):
     for value in FLOAT_VALUES[float_type]:

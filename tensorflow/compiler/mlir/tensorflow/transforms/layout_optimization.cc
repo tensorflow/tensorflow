@@ -422,7 +422,7 @@ void MoveTransposeAfter(Operation* op, SmallVector<Operation*, 8>* work_list,
       transpose.getOperation()->moveBefore(op->getNextNode());
       transpose.setOperand(0, result);
       transpose.setOperand(1, permutation_op);
-      transpose.getResult().setType(original_type[idx]);
+      transpose.getResult().setType(original_type[idx].cast<TensorType>());
     } else {
       transpose = builder.create<TransposeOp>(loc, result, permutation_op);
     }

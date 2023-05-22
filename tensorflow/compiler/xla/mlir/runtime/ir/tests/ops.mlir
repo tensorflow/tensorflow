@@ -69,13 +69,13 @@ func.func @opaque_arg(%ctx: !rt.execution_context,
 // CHECK: ) -> memref<?x?xf32>
 func.func @trace(%ctx: !rt.execution_context,
                  %arg: memref<?x?xf32>) -> memref<?x?xf32> {
-  // CHECK: rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %[[CTX]]
-  rt.trace #rt.hlo_trace<"fusion", "foo", 0>, %ctx {}
+  // CHECK: rt.trace #rt.hlo_trace<"fusion">, %[[CTX]]
+  rt.trace #rt.hlo_trace<"fusion">, %ctx {}
 
-  // CHECK: rt.trace #rt.hlo_trace<"fusion", "bar", 0>
+  // CHECK: rt.trace #rt.hlo_trace<"fusion">
   // CHECK-SAME: %[[CTX]] -> memref<?x?xf32>
   // CHECK-NEXT: yield %[[ARG]] : memref<?x?xf32>
-  %0 = rt.trace #rt.hlo_trace<"fusion", "bar", 0>, %ctx -> memref<?x?xf32> {
+  %0 = rt.trace #rt.hlo_trace<"fusion">, %ctx -> memref<?x?xf32> {
     yield %arg : memref<?x?xf32>
   }
 

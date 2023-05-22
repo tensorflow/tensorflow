@@ -87,7 +87,7 @@ Status OpenTableTensorSliceReader(const string& fname,
         return OkStatus();
       } else {
         s = errors::CreateWithUpdatedMessage(
-            s, strings::StrCat(s.error_message(),
+            s, strings::StrCat(s.message(),
                                ": perhaps your file is in a different "
                                "file format and you need to use a "
                                "different restore operator?"));
@@ -283,6 +283,7 @@ Status TensorSliceReader::GetTensor(
     READER_COPY(DT_INT8);
     READER_COPY(DT_INT64);
     READER_COPY(DT_STRING);
+    READER_COPY(DT_BOOL);
     default:
       return errors::Unimplemented("Data type not supported");
   }

@@ -1325,19 +1325,6 @@ std::string TransposePlan::ToString() const {
       scratch_size_, nodes_str);
 }
 
-struct TransposePlanCacheKey {
-  size_t elem_size_in_bytes;
-  absl::InlinedVector<int64_t, 4> dims;
-  absl::InlinedVector<int64_t, 4> permutation;
-  bool input_layout_is_tiling;
-  absl::InlinedVector<int64_t, 4> input_layout;
-  absl::InlinedVector<int64_t, 4> output_tiling;
-  TransposePlan::Transformation transformation;
-  int num_threads;
-
-  bool operator==(const TransposePlanCacheKey& other) const;
-};
-
 bool TransposePlanCacheKey::operator==(
     const TransposePlanCacheKey& other) const {
   return elem_size_in_bytes == other.elem_size_in_bytes && dims == other.dims &&

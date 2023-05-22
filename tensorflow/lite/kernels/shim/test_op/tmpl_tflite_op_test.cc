@@ -19,19 +19,11 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
-#include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/node_def_builder.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
 namespace tflite {
 namespace shim {
 namespace {
-
-using ::tensorflow::DT_FLOAT;
-using ::tensorflow::DT_INT32;
-using ::tensorflow::DT_INT64;
 
 template <typename AType, typename BType>
 class TmplOpModel : public SingleOpModel {
@@ -79,8 +71,8 @@ TEST(TmplOpModel, float_int32) {
   // Test input
   flexbuffers::Builder builder;
   builder.Map([&]() {
-    builder.Int("AType", DT_FLOAT);
-    builder.Int("BType", DT_INT32);
+    builder.Int("AType", kTfLiteFloat32);
+    builder.Int("BType", kTfLiteInt32);
   });
   builder.Finish();
   std::vector<std::vector<int>> input_shapes = {{}, {}};
@@ -94,7 +86,7 @@ TEST(TmplOpModel, float_int32) {
       /*op_options=*/builder.GetBuffer(), input_types, input_shapes, input0,
       input1, output_types);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  // // Assertions
+  // Assertions
   EXPECT_THAT(m.GetOutput<float>(0), testing::ElementsAre(8.6f));
 }
 
@@ -102,8 +94,8 @@ TEST(TmplOpModel, int32_int64) {
   // Test input
   flexbuffers::Builder builder;
   builder.Map([&]() {
-    builder.Int("AType", DT_INT32);
-    builder.Int("BType", DT_INT64);
+    builder.Int("AType", kTfLiteInt32);
+    builder.Int("BType", kTfLiteInt64);
   });
   builder.Finish();
   std::vector<std::vector<int>> input_shapes = {{}, {}};
@@ -117,8 +109,31 @@ TEST(TmplOpModel, int32_int64) {
       /*op_options=*/builder.GetBuffer(), input_types, input_shapes, input0,
       input1, output_types);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  // // Assertions
+  // Assertions
   EXPECT_THAT(m.GetOutput<float>(0), testing::ElementsAre(45.0f));
+}
+
+TEST(TmplOpModel, int32_bool) {
+  // Test input
+  flexbuffers::Builder builder;
+  builder.Map([&]() {
+    builder.Int("AType", kTfLiteInt32);
+    builder.Int("BType", kTfLiteBool);
+  });
+  builder.Finish();
+  std::vector<std::vector<int>> input_shapes = {{}, {}};
+  std::vector<tflite::TensorType> input_types = {tflite::TensorType_INT32,
+                                                 tflite::TensorType_BOOL};
+  std::vector<tflite::TensorType> output_types = {tflite::TensorType_FLOAT32};
+  const std::vector<int32_t> input0 = {12};
+  const std::vector<bool> input1 = {true};
+  // Run the op
+  TmplOpModel<int32_t, bool> m(
+      /*op_options=*/builder.GetBuffer(), input_types, input_shapes, input0,
+      input1, output_types);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  // Assertions
+  EXPECT_THAT(m.GetOutput<float>(0), testing::ElementsAre(13.0f));
 }
 
 }  // namespace

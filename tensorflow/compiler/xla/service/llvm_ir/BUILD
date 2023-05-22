@@ -3,10 +3,7 @@
 
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
-)
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -49,7 +46,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "alias_analysis_test",
     srcs = ["alias_analysis_test.cc"],
     deps = [
@@ -89,6 +86,7 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:TargetParser",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//mlir:IR",
     ],
@@ -296,7 +294,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+xla_cc_test(
     name = "ir_array_test",
     srcs = ["ir_array_test.cc"],
     deps = [

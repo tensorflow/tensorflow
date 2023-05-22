@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines the operations used in the LHLO dialect.
 
-#ifndef MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
-#define MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
+#ifndef MLIR_HLO_LHLO_GPU_IR_LHLO_GPU_OPS_H
+#define MLIR_HLO_LHLO_GPU_IR_LHLO_GPU_OPS_H
 
 #include "llvm/ADT/StringRef.h"
 #include "mhlo/IR/hlo_ops.h"
@@ -42,4 +42,4 @@ class OpBuilder;
 #define GET_OP_CLASSES
 #include "lhlo_gpu/IR/lhlo_gpu_ops.h.inc"
 
-#endif  // MLIR_HLO_DIALECT_LHLO_GPU_IR_LHLO_GPU_OPS_H
+#endif  // MLIR_HLO_LHLO_GPU_IR_LHLO_GPU_OPS_H

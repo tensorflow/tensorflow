@@ -115,8 +115,9 @@ func.func @simple_gather(%operand : tensor<3x3xf32>,
 }
 
 // CHECK-LABEL: @simple_gather
-//   CHECK-DAG: %[[CAST:.*]] = arith.index_cast {{.*}} : tensor<3x2xi64> to tensor<3x2xindex>
-//   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
+//   CHECK:     %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xf32>
+//   CHECK:     %[[CAST_INIT:.*]] = tensor.empty() : tensor<3x2xindex>
+//   CHECK:     %[[CAST:.*]] = linalg.map { arith.index_cast }
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%{{.*}} : tensor<3x3xf32>, %[[CAST]] : tensor<3x2xindex>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xf32>)
@@ -139,7 +140,8 @@ func.func @simple_gather_unsigned(
 // CHECK-LABEL: @simple_gather_unsigned
 //   CHECK-DAG: %[[CAST:.*]] = builtin.unrealized_conversion_cast {{.*}} : tensor<3x3xui32> to tensor<3x3xi32>
 //   CHECK-DAG: %[[INIT:.*]] = tensor.empty() : tensor<3x1x1xi32>
-//   CHECK-DAG: %[[INDEX_CAST:.*]] = arith.index_castui {{.*}} to tensor<3x2xindex>
+//   CHECK:     %[[INDEX_CAST_INIT:.*]] = tensor.empty() : tensor<3x2xindex>
+//   CHECK:     %[[INDEX_CAST:.*]] = linalg.map { arith.index_castui }
 //       CHECK: %[[GATHER:.*]] = thlo.gather
 //  CHECK-SAME:   ins(%[[CAST]] : tensor<3x3xi32>, %[[INDEX_CAST]] : tensor<3x2xindex>)
 //  CHECK-SAME:   outs(%[[INIT]] : tensor<3x1x1xi32>)
@@ -226,7 +228,8 @@ func.func @simple_scatter(%dst: tensor<3x3xf32>, %indices: tensor<2x2xi32>,
 // CHECK-LABEL: @simple_scatter
 // CHECK-SAME: (%[[DST:.*]]: tensor<3x3xf32>, %[[INDICES:.*]]: tensor<2x2xi32>,
 // CHECK-SAME:  %[[UPDATE:.*]]: tensor<2x1x3xf32>)
-//      CHECK:   %[[CAST:.*]] = arith.index_cast %[[INDICES]] {{.*}} to tensor<2x2xindex>
+//      CHECK:   %[[CAST_INIT:.*]] = tensor.empty() : tensor<2x2xindex>
+//      CHECK:   %[[CAST:.*]] = linalg.map { arith.index_cast }
 //      CHECK:   thlo.scatter 
 // CHECK-SAME:     ins(%[[CAST]] : tensor<2x2xindex>,
 // CHECK-SAME:        %[[UPDATE]] : tensor<2x1x3xf32>)
@@ -273,3 +276,39 @@ func.func @sort(%input0: tensor<16x16xf32>, %input1: tensor<16x16xi32>) {
 // CHECK-NEXT:    %[[RESULT:.*]] = tensor.from_elements %[[CMPRESULT]] : tensor<i1>
 // CHECK-NEXT:    %[[EXTRACTED_RESULT:.*]] = tensor.extract %[[RESULT]][] : tensor<i1>
 // CHECK-NEXT:    thlo.yield %[[EXTRACTED_RESULT]] : i1
+
+func.func @reverse_static(%input: tensor<100xf32>)
+  -> tensor<100xf32> {
+  %res = "mhlo.reverse"(%input) {dimensions = dense<[0]> : tensor<1xi64>} :
+    (tensor<100xf32>) -> tensor<100xf32>
+  func.return %res : tensor<100xf32>
+}
+
+// CHECK-LABEL: func @reverse_static
+//  CHECK-SAME: (%[[ARG0:.*]]: tensor<100xf32>) -> tensor<100xf32>
+//       CHECK:   %[[EMPTY:.*]] = tensor.empty
+//       CHECK:   %[[REVERSED:.*]] = thlo.reverse
+//  CHECK-SAME:     ins(%[[ARG0]]
+//  CHECK-SAME:     outs(%[[EMPTY]]
+//  CHECK-SAME:     reverse_dimensions = [0]
+//  CHECK-NEXT:   return %[[REVERSED]]
+
+func.func @reverse_dynamic(%input: tensor<?x?xf32>)
+  -> tensor<?x?xf32> {
+  %res = "mhlo.reverse"(%input) {dimensions = dense<[0, 1]> : tensor<2xi64>} :
+    (tensor<?x?xf32>) -> tensor<?x?xf32>
+  func.return %res : tensor<?x?xf32>
+}
+
+// CHECK-LABEL: func @reverse_dynamic
+//  CHECK-SAME: (%[[ARG0:.*]]: tensor<?x?xf32>) -> tensor<?x?xf32>
+//       CHECK:   %[[C0:.*]] = arith.constant
+//       CHECK:   %[[DIM0:.*]] = tensor.dim %[[ARG0]], %[[C0]]
+//       CHECK:   %[[C1:.*]] = arith.constant
+//       CHECK:   %[[DIM1:.*]] = tensor.dim %[[ARG0]], %[[C1]]
+//       CHECK:   %[[EMPTY:.*]] = tensor.empty(%[[DIM0]],  %[[DIM1]])
+//       CHECK:   %[[REVERSED:.*]] = thlo.reverse
+//  CHECK-SAME:     ins(%[[ARG0]]
+//  CHECK-SAME:     outs(%[[EMPTY]]
+//  CHECK-SAME:     reverse_dimensions = [0, 1]
+//  CHECK-NEXT:   return %[[REVERSED]]

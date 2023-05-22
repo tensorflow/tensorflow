@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/kernels/builtin_op_kernels.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/core/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 
 namespace tflite {

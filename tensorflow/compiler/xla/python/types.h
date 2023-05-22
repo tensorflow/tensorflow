@@ -16,18 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
+#include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -51,15 +52,20 @@ StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
+  std::optional<pybind11::object> np_int4;
   pybind11::object np_int8;
   pybind11::object np_int16;
   pybind11::object np_int32;
   pybind11::object np_int64;
+  std::optional<pybind11::object> np_uint4;
   pybind11::object np_uint8;
   pybind11::object np_uint16;
   pybind11::object np_uint32;
   pybind11::object np_uint64;
   pybind11::object np_bfloat16;
+  pybind11::object np_float8_e4m3fn;
+  std::optional<pybind11::object> np_float8_e4m3b11fnuz;
+  pybind11::object np_float8_e5m2;
   pybind11::object np_float16;
   pybind11::object np_float32;
   pybind11::object np_float64;

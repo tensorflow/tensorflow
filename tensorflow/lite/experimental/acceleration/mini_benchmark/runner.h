@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/stderr_reporter.h"
@@ -75,8 +76,8 @@ class ProcessRunner {
   // The function will be called with argc and argv corresponding to a command
   // line like:
   //     helper_binary function_name (optional: model path) args
-  // If model is not null, runner will use pipe() to pass the model
-  // to subprocess. Otherwise, args[0] should be a model path.
+  // If model_allocation is not null, runner will use pipe() to pass the model
+  // data to subprocess. Otherwise, args[0] should be a model path.
   // The args are escaped for running through the shell.
   //
   // The 'output' and 'exitcode' and `signal` are set as follows based on the
@@ -101,7 +102,7 @@ class ProcessRunner {
   // To be considered successful, the function must return
   // kMinibenchmarkSuccess. This is because some GPU drivers call exit(0) as a
   // bailout and we don't want to confuse that with a successful run.
-  MinibenchmarkStatus Run(const flatbuffers::FlatBufferBuilder* model,
+  MinibenchmarkStatus Run(const Allocation* model_allocation,
                           const std::vector<std::string>& args,
                           std::string* output, int* exitcode, int* signal);
 
@@ -110,7 +111,7 @@ class ProcessRunner {
 
  private:
 #ifndef __ANDROID__
-  int RunInprocess(const flatbuffers::FlatBufferBuilder* model,
+  int RunInprocess(const Allocation* model_allocation,
                    const std::vector<std::string>& args);
 #endif  // !__ANDROID__
 

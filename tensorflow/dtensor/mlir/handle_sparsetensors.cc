@@ -186,8 +186,10 @@ struct DTensorSparseTensorToDenseTensor
     llvm::DenseMap<mlir::Value, llvm::ArrayRef<mlir::NamedAttribute>>
         arg_attribute_map;
     for (auto block_arg : main_func.getArguments()) {
-      arg_attribute_map.insert(std::make_pair(
-          block_arg, main_func.getArgAttrs(block_arg.getArgNumber())));
+      llvm::ArrayRef<mlir::NamedAttribute> attrs =
+          mlir::function_interface_impl::getArgAttrs(main_func,
+                                                     block_arg.getArgNumber());
+      arg_attribute_map.insert(std::make_pair(block_arg, attrs));
     }
 
     std::vector<SparseTensorToComponentInfo> sparse_tensor_components;

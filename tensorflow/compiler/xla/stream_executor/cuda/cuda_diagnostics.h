@@ -28,10 +28,10 @@ using DriverVersion = gpu::DriverVersion;
 std::string DriverVersionToString(DriverVersion version);
 
 // Converts a parsed driver version or status value to natural string form.
-std::string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
+std::string DriverVersionStatusToString(tsl::StatusOr<DriverVersion> version);
 
 // Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-port::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value);
+tsl::StatusOr<DriverVersion> StringToDriverVersion(const std::string& value);
 
 using Diagnostician = gpu::Diagnostician;
 

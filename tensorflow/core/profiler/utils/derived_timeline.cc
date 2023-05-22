@@ -62,7 +62,7 @@ inline std::string HloOpEventPrefix(const GpuEventStats& stats) {
 }
 
 std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
-    XPlaneBuilder& plane_builder, const GpuEventStats& stats) {
+    XPlaneBuilder& xplane, const GpuEventStats& stats, const Symbol symbol) {
   DCHECK(stats.IsXlaOp());
   DCHECK(!stats.hlo_module_name.empty());
   std::vector<XEventMetadata*> hlo_op_events_metadata;
@@ -71,14 +71,18 @@ std::vector<XEventMetadata*> GetOrCreateHloOpEventsMetadata(
   // different modules have different metadata.
   std::string hlo_op_event_prefix = HloOpEventPrefix(stats);
   for (absl::string_view hlo_op_name : stats.hlo_op_names) {
-    XEventMetadata* hlo_op_event_metadata =
-        plane_builder.GetOrCreateEventMetadata(
-            absl::StrCat(hlo_op_event_prefix, hlo_op_name));
+    XEventMetadata* hlo_op_event_metadata = xplane.GetOrCreateEventMetadata(
+        absl::StrCat(hlo_op_event_prefix, hlo_op_name));
     // Display the HLO name without the module name in tools.
     if (hlo_op_event_metadata->display_name().empty()) {
       hlo_op_event_metadata->set_display_name(std::string(hlo_op_name));
     }
     hlo_op_events_metadata.push_back(hlo_op_event_metadata);
+    if (!symbol.hlo_text.empty()) {
+      XStatsBuilder<XEventMetadata> event_stats(hlo_op_event_metadata, &xplane);
+      event_stats.SetOrAddStatValue(*xplane.GetOrCreateStatMetadata("hlo_text"),
+                                    symbol.hlo_text);
+    }
   }
   return hlo_op_events_metadata;
 }
@@ -129,7 +133,6 @@ DerivedXLineBuilder::DerivedXLineBuilder(
     int64_t timestamp_ns, std::vector<DerivedXLineBuilder*> dependent_lines)
     : group_id_stat_metadata_(
           plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))),
-      level_stat_metadata_(plane->GetOrCreateStatMetadata("l")),
       line_(plane->GetOrCreateLine(line_id)),
       dependent_lines_(std::move(dependent_lines)) {
   line_.SetName(name);
@@ -171,12 +174,52 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(
     if (group_id.has_value()) {
       event.AddStatValue(*group_id_stat_metadata_, *group_id);
     }
-    event.AddStatValue(*level_stat_metadata_, level);
     last_event.emplace(std::move(event), group_id);
   }
 }
 
+// When deriving a bunch of events with the same timespan, there could be
+// indeterministic behavior of how trace viewer stacking these events.
+// This function will shrink the stack of events with the same timespan when
+// necessary. Event at top of stack might shrink more than event at the bottom.
+// Because the time unit in trace viewer is nanosecond, therefore the minimum
+// difference is 1ns. However to prevent shrink induced inconsitency, we can
+// not shrink more than the duration of event at the top of the stack.
+void DerivedXLineBuilder::AdjustDurationForTraceViewer(int level) {
+  if (level >= last_event_by_level_.size() || !last_event_by_level_[level])
+    return;
+
+  int max_level = level;
+  for (; max_level < last_event_by_level_.size(); ++max_level) {
+    if (!last_event_by_level_[max_level].has_value()) {
+      break;
+    }
+  }
+  --max_level;
+  if (max_level <= level) return;
+  auto& event_on_top_stack = *last_event_by_level_[max_level];
+  Timespan timespan = event_on_top_stack.GetTimespan();
+  // We will at most shrink the top of the stack to 1ns.
+  int64_t max_shrink_ns = timespan.duration_ps() / 1000 - 1;
+  int64_t shrink_ns = 0;
+  std::optional<Timespan> last_level_timespan;
+  for (int i = level; i <= max_level; ++i) {
+    auto& current_event = *last_event_by_level_[i];
+    if (shrink_ns < max_shrink_ns &&
+        last_level_timespan == current_event.GetTimespan()) {
+      shrink_ns++;
+    }
+    last_level_timespan = current_event.GetTimespan();
+    if (shrink_ns) {
+      current_event.SetTimespan(Timespan::FromEndPoints(
+          last_level_timespan->begin_ps(),
+          last_level_timespan->end_ps() - 1000 * shrink_ns));
+    }
+  }
+}
+
 void DerivedXLineBuilder::ResetLastEvents(int level) {
+  AdjustDurationForTraceViewer(level);
   for (int i = level, end = last_event_by_level_.size(); i < end; ++i) {
     last_event_by_level_[i].reset();
   }
@@ -185,28 +228,6 @@ void DerivedXLineBuilder::ResetLastEvents(int level) {
       line->ResetLastEvents(0);
     }
   }
-}
-
-void AddGroupMetadataToStepEvents(const GroupMetadataMap& group_metadata_map,
-                                  XLineBuilder& line) {
-  if (group_metadata_map.empty()) return;
-  XPlaneBuilder* plane = line.Plane();
-  const XStatMetadata* group_id_stat_metadata =
-      plane->GetStatMetadata(GetStatTypeStr(StatType::kGroupId));
-  if (group_id_stat_metadata == nullptr) return;
-  const XStatMetadata* step_name_stat_metadata =
-      plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName));
-  line.ForEachEvent([&](XEventBuilder event) {
-    const XStat* group_id_stat = event.GetStat(*group_id_stat_metadata);
-    if (group_id_stat != nullptr) {
-      int64_t group_id = group_id_stat->int64_value();
-      if (const GroupMetadata* group_metadata =
-              gtl::FindOrNull(group_metadata_map, group_id)) {
-        // TODO(b/160255693): Change the event name directly.
-        event.AddStatValue(*step_name_stat_metadata, group_metadata->name);
-      }
-    }
-  });
 }
 
 void DeriveStepEventsFromGroups(const GroupMetadataMap& group_metadata_map,
@@ -266,11 +287,11 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     }
 
     if (stats.IsXlaOp()) {
-      hlo_ops.ExpandOrAddEvents(
-          GetOrCreateHloOpEventsMetadata(plane_builder, stats), event_span,
-          stats.group_id);
       auto symbol = symbol_resolver(stats.program_id, stats.hlo_module_name,
                                     stats.hlo_op_names.back());
+      hlo_ops.ExpandOrAddEvents(
+          GetOrCreateHloOpEventsMetadata(plane_builder, stats, symbol),
+          event_span, stats.group_id);
       if (!symbol.tf_op_name.empty()) {
         ProcessTfOpEvent(symbol.tf_op_name,
                          event_span, stats.group_id, plane_builder,

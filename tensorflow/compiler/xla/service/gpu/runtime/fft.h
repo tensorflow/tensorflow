@@ -19,10 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
-#include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
-#include "tensorflow/compiler/xla/stream_executor/fft.h"
 
 namespace xla {
 namespace gpu {
@@ -38,15 +36,5 @@ class FftPlans : public runtime::StateVector<std::unique_ptr<FftPlanCache>> {};
 
 }  //  namespace gpu
 }  //  namespace xla
-
-namespace xla {
-namespace runtime {
-
-// using llvm::ArrayRef;
-
-XLA_RUNTIME_REGISTER_ENUM_ATTR_DECODING(stream_executor::fft::Type);
-
-}  // namespace runtime
-}  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_FFT_H_

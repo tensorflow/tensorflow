@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,10 +35,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -166,7 +167,7 @@ struct HloProtoEvaluator {
                                   .ToProto();
     }
     if (opcode.has_value()) {
-      *inst.mutable_opcode() = HloOpcodeString(opcode.value());
+      *inst.mutable_opcode() = std::string(HloOpcodeString(opcode.value()));
     }
     absl::flat_hash_map<int64_t, HloComputation*> computation_map;
     if (inst.called_computation_ids_size() != 0) {
@@ -510,6 +511,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeConstantValueFallback(
     case HloOpcode::kSubtract:
     case HloOpcode::kCos:
     case HloOpcode::kSin:
+    case HloOpcode::kTan:
     case HloOpcode::kNegate:
     case HloOpcode::kAbs:
     case HloOpcode::kDivide:
@@ -1125,6 +1127,7 @@ StatusOr<PostorderDFSNode> PostorderDFSVisitor::AnalyzeIsDynamic(
     case HloOpcode::kConvert:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
+    case HloOpcode::kTan:
     case HloOpcode::kTanh: {
       // Forward operand as they don't change if a value is dynamic or static.
       return result.AddVisit([](Literal operand) { return operand; });
@@ -1653,7 +1656,7 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
   TF_ASSIGN_OR_RETURN(auto* inst, builder_->LookUpInstructionByHandle(handle));
   TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(inst->opcode()));
   std::vector<Literal> operands;
-  auto output_shape = Shape(inst->shape());
+  auto output_shape = std::make_unique<const Shape>(inst->shape());
   switch (opcode) {
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
@@ -1674,23 +1677,23 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
       // Only identity kConvert can be optimized away.
       auto operand =
           builder_->LookUpInstructionByHandle(inst->operand_ids(0)).value();
-      if (Shape::Equal()(output_shape, Shape(operand->shape()))) {
+      if (Shape::Equal()(*output_shape, Shape(operand->shape()))) {
         // Forward operand handle as result.
         return SimplifyOp(inst->operand_ids(0));
       } else {
-        return CreateS64Literal(-1, output_shape);
+        return CreateS64Literal(-1, *output_shape);
       }
     }
     case HloOpcode::kAdd: {
       // a + (b - a) => b
       // a + b + (c - a) => b + c
-      if (output_shape.rank() == 0) {
+      if (output_shape->rank() == 0) {
         TF_ASSIGN_OR_RETURN(auto lhs, SimplifyOp(inst->operand_ids(0)));
         TF_ASSIGN_OR_RETURN(auto rhs, SimplifyOp(inst->operand_ids(1)));
         int64_t lhs_handle = lhs.Get<int64_t>({});
         int64_t rhs_handle = rhs.Get<int64_t>({});
         if (lhs_handle == -1 || rhs_handle == -1) {
-          return CreateS64Literal(-1, output_shape);
+          return CreateS64Literal(-1, *output_shape);
         }
         // Recursive lambda needs explicit signature.
         std::function<std::optional<int64_t>(int64_t, int64_t)>
@@ -1747,14 +1750,14 @@ StatusOr<Literal> ValueInference::SimplifyOp(int64_t handle) {
 
         return LiteralUtil::CreateR0<int64_t>(new_sum.handle());
       } else {
-        return CreateS64Literal(-1, output_shape);
+        return CreateS64Literal(-1, *output_shape);
       }
     }
     default: {
-      if (ShapeUtil::IsScalar(output_shape)) {
+      if (ShapeUtil::IsScalar(*output_shape)) {
         return LiteralUtil::CreateR0<int64_t>(handle);
       } else {
-        return CreateS64Literal(-1, output_shape);
+        return CreateS64Literal(-1, *output_shape);
       }
     }
   }

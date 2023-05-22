@@ -303,13 +303,14 @@ class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                      multiplier=15.0,
                      tensor_slice_len=2,
                      batch_size=2,
+                     num_parallel_calls=None,
                      options=None):
     components = (np.arange(tensor_slice_len), np.array([[1, 2, 3]]) *
                   np.arange(tensor_slice_len)[:, np.newaxis],
                   np.array(multiplier) * np.arange(tensor_slice_len))
 
-    dataset = dataset_ops.Dataset.from_tensor_slices(components).batch(
-        batch_size)
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    dataset = dataset.batch(batch_size, num_parallel_calls=num_parallel_calls)
     if options:
       dataset = dataset.with_options(options)
     return dataset
@@ -318,16 +319,24 @@ class BatchCheckpointTest(checkpoint_test_base.CheckpointTestBase,
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(symbolic_checkpoint=[False, True])))
-  def test(self, verify_fn, symbolic_checkpoint):
+          combinations.combine(
+              symbolic_checkpoint=[False, True], num_parallel_calls=[None, 4]
+          ),
+      )
+  )
+  def test(self, verify_fn, symbolic_checkpoint, num_parallel_calls):
     tensor_slice_len = 8
     batch_size = 2
     options = options_lib.Options()
     options.experimental_symbolic_checkpoint = symbolic_checkpoint
     num_outputs = tensor_slice_len // batch_size
     verify_fn(
-        self, lambda: self._build_dataset(15.0, tensor_slice_len, batch_size,
-                                          options), num_outputs)
+        self,
+        lambda: self._build_dataset(
+            15.0, tensor_slice_len, batch_size, num_parallel_calls, options
+        ),
+        num_outputs,
+    )
 
   def _sparse(self, i):
     return sparse_tensor.SparseTensorValue(

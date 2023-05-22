@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/AssumeBundleQueries.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -41,13 +41,13 @@ namespace mlir {
 std::string GetMlirOpNameFromOpCode(const ::tflite::OperatorCodeT &op_code);
 
 // Returns the builtin op code for the given MLIR operation on success; emits
-// error and returns llvm::None on failure.
-llvm::Optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
+// error and returns std::nullopt on failure.
+std::optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
 
 // Packs the given MLIR operation into a TFLite FlatBuffer operator object.
 // Returns the FlatBuffer offset for the operator on success; emits error and
-// returns llvm::None on failure.
-llvm::Optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
+// returns std::nullopt on failure.
+std::optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
     const std::vector<int32_t> &intermediates,

@@ -195,7 +195,7 @@ TEST(ZlibInputStream, FailsToReadIfWindowBitsAreIncompatible) {
                      input_options);
   Status read_status = in.ReadNBytes(data.size(), &result);
   CHECK_EQ(read_status.code(), error::DATA_LOSS);
-  CHECK(read_status.error_message().find("inflate() failed") != string::npos);
+  CHECK(absl::StrContains(read_status.message(), "inflate() failed"));
 }
 
 void WriteCompressedFile(Env* env, const string& fname, int input_buf_size,

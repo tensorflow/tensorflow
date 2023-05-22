@@ -16,10 +16,10 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "pybind11/functional.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/functional.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/lite/python/interpreter_wrapper/interpreter_wrapper.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
@@ -38,11 +38,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   m.def("CreateWrapperFromFile",
         [](const std::string& model_path, int op_resolver_id,
            const std::vector<std::string>& registerers,
-           bool preserve_all_tensors) {
+           bool preserve_all_tensors, bool disable_delegate_clustering) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
               model_path.c_str(), op_resolver_id, registerers, &error,
-              preserve_all_tensors);
+              preserve_all_tensors, disable_delegate_clustering);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
@@ -53,11 +53,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
       [](const std::string& model_path, int op_resolver_id,
          const std::vector<std::string>& registerers_by_name,
          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-         bool preserve_all_tensors) {
+         bool preserve_all_tensors, bool disable_delegate_clustering) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
             model_path.c_str(), op_resolver_id, registerers_by_name,
-            registerers_by_func, &error, preserve_all_tensors);
+            registerers_by_func, &error, preserve_all_tensors,
+            disable_delegate_clustering);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }
@@ -66,11 +67,11 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
   m.def("CreateWrapperFromBuffer",
         [](const py::bytes& data, int op_resolver_id,
            const std::vector<std::string>& registerers,
-           bool preserve_all_tensors) {
+           bool preserve_all_tensors, bool disable_delegate_clustering) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
               data.ptr(), op_resolver_id, registerers, &error,
-              preserve_all_tensors);
+              preserve_all_tensors, disable_delegate_clustering);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }
@@ -81,11 +82,12 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
       [](const py::bytes& data, int op_resolver_id,
          const std::vector<std::string>& registerers_by_name,
          const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
-         bool preserve_all_tensors) {
+         bool preserve_all_tensors, bool disable_delegate_clustering) {
         std::string error;
         auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
             data.ptr(), op_resolver_id, registerers_by_name,
-            registerers_by_func, &error, preserve_all_tensors);
+            registerers_by_func, &error, preserve_all_tensors,
+            disable_delegate_clustering);
         if (!wrapper) {
           throw std::invalid_argument(error);
         }

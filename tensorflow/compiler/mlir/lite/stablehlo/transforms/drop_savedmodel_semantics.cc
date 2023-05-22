@@ -26,8 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 namespace mlir {
-namespace TFL {
-namespace mhlo {
+namespace odml {
 namespace {
 
 using ::mlir::tf_saved_model::kTfSavedModelExportedNamesAttr;
@@ -80,6 +79,5 @@ std::unique_ptr<Pass> CreateDropSavedModelSemanticsPass() {
 
 static PassRegistration<DropSavedModelSemanticsPass> pass;
 
-}  // namespace mhlo
-}  // namespace TFL
+}  // namespace odml
 }  // namespace mlir

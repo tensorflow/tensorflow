@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,20 +7,23 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "module",
     srcs = ["module.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/trackable:autotrackable",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "module_test",
     srcs = ["module_test.py"],
     deps = [

@@ -23,9 +23,10 @@ namespace mlir::quant {
 
 std::unique_ptr<OpQuantSpec> GetUniformOpQuantSpec(Operation* op) {
   auto spec = std::make_unique<OpQuantSpec>();
-  if (auto call_op = dyn_cast<TF::UniformQuantizedConvolutionHybridOp>(op)) {
+  if (isa<TF::UniformQuantizedConvolutionHybridOp>(op) ||
+      isa<TF::UniformQuantizedConvolutionOp>(op)) {
     spec->coeff_op_quant_dim[1] = 3;
-  } else if (auto call_op = dyn_cast<TF::UniformQuantizedDotHybridOp>(op)) {
+  } else if (isa<TF::UniformQuantizedDotHybridOp>(op)) {
     spec->coeff_op_quant_dim[1] = -1;
   }
 

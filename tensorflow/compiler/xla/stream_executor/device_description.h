@@ -23,6 +23,8 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_join.h"
@@ -41,9 +43,14 @@ struct CudaComputeCapability {
   int minor = 0;
 
   // MSVC does not like "PASCAL" symbol.
-  enum CudaComputeCapabilities { PASCAL_ = 6, VOLTA = 7, AMPERE = 8 };
+  enum CudaComputeCapabilities {
+    PASCAL_ = 6,
+    VOLTA = 7,
+    AMPERE = 8,
+    HOPPER = 9
+  };
 
-  CudaComputeCapability() {}
+  CudaComputeCapability() = default;
   CudaComputeCapability(int major, int minor) {
     this->major = major;
     this->minor = minor;
@@ -119,7 +126,8 @@ class RocmComputeCapability {
   explicit RocmComputeCapability(const RocmComputeCapabilityProto &proto)
       : gcn_arch_name_(proto.gcn_arch_name()) {}
 
-  ~RocmComputeCapability() {}
+  RocmComputeCapability() = default;
+  ~RocmComputeCapability() = default;
 
   std::string gcn_arch_name() { return gcn_arch_name_; }
 
@@ -213,6 +221,16 @@ class DeviceDescription {
 
   // Returns the name that the device reports. Vendor dependent.
   const std::string &name() const { return name_; }
+
+  // Gets a human-readable description of the device, e.g. "nvidia GPU
+  // supporting sm75 with 32GB RAM, 80 SMs, ...".  This is intended to be the
+  // same if and only if two devices are "the same" (e.g. the same make/model of
+  // GPU), though it may not completely succeed at this for all platforms.
+  //
+  // This string is not guaranteed to be stable between versions.  Please DO NOT
+  // rely on it never changing.  (Within one version of the code, it won't
+  // change, don't worry.)
+  const std::string &model_str() const { return model_str_; }
 
   // Returns the PCI bus identifier for this device, of the form
   // [domain]:[bus]:[device].[function]
@@ -310,8 +328,15 @@ class DeviceDescription {
   // partitioning between shared memory and L1 cache.
   int64_t shared_memory_per_core() const { return shared_memory_per_core_; }
 
-  // Returns the maximum amount of shared memory available for a single block.
+  // Returns the maximum amount of static shared memory
+  // available for a single block.
   int64_t shared_memory_per_block() const { return shared_memory_per_block_; }
+
+  // Returns the maximum amount of shared memory available for a single block
+  // including the dynamically allocated one.
+  int64_t shared_memory_per_block_optin() const {
+    return shared_memory_per_block_optin_;
+  }
 
   // TODO(leary): resident blocks per core will be useful.
 
@@ -341,6 +366,7 @@ class DeviceDescription {
   std::string runtime_version_;
   std::string pci_bus_id_;
   std::string name_;
+  std::string model_str_;
 
   ThreadDim thread_dim_limit_;
   BlockDim block_dim_limit_;
@@ -360,6 +386,7 @@ class DeviceDescription {
   // Shared memory limits on a given device.
   int64_t shared_memory_per_core_;
   int64_t shared_memory_per_block_;
+  int64_t shared_memory_per_block_optin_;
 
   float clock_rate_ghz_;
 
@@ -406,6 +433,9 @@ class DeviceDescriptionBuilder {
   void set_name(const std::string &value) {
     device_description_->name_ = value;
   }
+  void set_model_str(const std::string &value) {
+    device_description_->model_str_ = value;
+  }
 
   void set_thread_dim_limit(const ThreadDim &value) {
     device_description_->thread_dim_limit_ = value;
@@ -449,6 +479,9 @@ class DeviceDescriptionBuilder {
   }
   void set_shared_memory_per_block(int64_t value) {
     device_description_->shared_memory_per_block_ = value;
+  }
+  void set_shared_memory_per_block_optin(int64_t value) {
+    device_description_->shared_memory_per_block_optin_ = value;
   }
 
   void set_clock_rate_ghz(float value) {
@@ -496,10 +529,6 @@ class DeviceDescriptionBuilder {
 // VLOG(2) for this module.
 bool ThreadDimOk(const DeviceDescription &device_description,
                  const ThreadDim &thread_dim);
-
-// Equivalent to ceil(double(element_count) / threads_per_block).
-ABSL_DEPRECATED("Use MathUtil::CeilOfRatio directly instead.")
-int64_t DivideCeil(int64_t x, int64_t y);
 
 // Calculate the number of threads/blocks required to process element_count
 // elements. Note that you can still end up with more threads than

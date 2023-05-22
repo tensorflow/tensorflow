@@ -105,11 +105,9 @@ TpuPodState::TpuPodState(
 TpuPodState::~TpuPodState() {
   if (cache_service_) {
     VLOG(1) << "Shutting down Compilation Cache Service.";
-    if (cache_service_->Shutdown(20)) {
-      if (service_port_ >= 0) {
-        stream_executor::tpu::OpsApiFn()->TpuNetUtil_RecycleUnusedPortFn(
-            service_port_);
-      }
+    if (cache_service_->Shutdown(20) && service_port_ >= 0) {
+      stream_executor::tpu::OpsApiFn()->TpuNetUtil_RecycleUnusedPortFn(
+          service_port_);
     } else {
       LOG(ERROR)
           << "Failed to shutdown Compilation Cache Service within timeout.";

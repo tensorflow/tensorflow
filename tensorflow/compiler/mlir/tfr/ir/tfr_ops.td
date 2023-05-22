@@ -143,6 +143,8 @@ def TFR_CallOp : TFR_Op<"call", [CallOpInterface]> {
 
     // Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getCalleeAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(CallInterfaceCallable callee);
   }];
 
   let assemblyFormat = [{
@@ -414,7 +416,9 @@ def TFR_TFRFuncOp : TFR_Op<"func", [HasParent<"ModuleOp">,
 
   let arguments = (ins
     TypeAttrOf<FunctionType>:$function_type,
-    StrAttr:$sym_name
+    StrAttr:$sym_name,
+    OptionalAttr<DictArrayAttr>:$arg_attrs,
+    OptionalAttr<DictArrayAttr>:$res_attrs
   );
 
   let results = (outs);

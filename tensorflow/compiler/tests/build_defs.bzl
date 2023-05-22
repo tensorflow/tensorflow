@@ -82,7 +82,7 @@ def tf_xla_py_test(
                 "--test_device=" + cpu_xla_device,
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128",
             ]
-        elif backend == "gpu":
+        elif backend in ("gpu", "gpu_a100"):
             backend_args += [
                 "--test_device=" + gpu_xla_device,
                 "--types=DT_HALF,DT_FLOAT,DT_DOUBLE,DT_UINT8,DT_QUINT8,DT_INT8,DT_QINT8,DT_INT32,DT_QINT32,DT_INT64,DT_BOOL,DT_COMPLEX64,DT_COMPLEX128,DT_BFLOAT16",
@@ -123,7 +123,7 @@ def tf_xla_py_test(
                 #
                 # This is for testing book keeping because the bridge does not have any gpu specific
                 # logic at this time, so CPU testing is good enough and cheaper.
-                extra_tag = ["ondemand"] if backend == "gpu" else []
+                extra_tag = ["ondemand"] if backend in ("gpu", "gpu_a100") else []
             elif has_mlir_dep:
                 # Some tests run only with mlir_bridge by explicitly adding the MLIR
                 # bridge dep so if the dep is already present skip non MLIR

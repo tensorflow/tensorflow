@@ -137,6 +137,11 @@ struct ComparatorByNodeNameAndIndex {
 };
 
 bool IsHostMemory(const NodeDef& node, int output_port) {
+  // If a node contains the attribute _xla_input=True, the node will be compiled
+  // via XLA GPU. This node will not be in host memory.
+  if (node.attr().contains("_xla_input") && node.attr().at("_xla_input").b())
+    return false;
+
   DeviceNameUtils::ParsedName parsed_name;
   if (DeviceNameUtils::ParseFullName(node.device(), &parsed_name)) {
     DeviceType device_type(parsed_name.type);
@@ -534,7 +539,7 @@ Status Transposer::UpdateEdge(
         is_src_format_to_dst_format, &added_node));
     added_node_name = node_name;
   } else {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Unsupported op \"", op,
                                "\". Supported ops are Transpose, "
                                "DataFormatVecPerm, DataFormatDimMap."));

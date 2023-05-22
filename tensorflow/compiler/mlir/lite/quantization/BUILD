@@ -160,6 +160,8 @@ tf_native_cc_binary(
         "tools/tflite_op_coverage_spec_getters_gen.cc",
     ],
     deps = [
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:regexp",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TableGen",

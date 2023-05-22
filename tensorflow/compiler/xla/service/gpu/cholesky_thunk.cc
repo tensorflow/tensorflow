@@ -103,20 +103,22 @@ Status CholeskyThunk::ExecuteOnStream(const ExecuteParams& params) {
 
 Status RunCholesky(const se::GpuAsmOpts& asm_opts, PrimitiveType type,
                    CholeskyParams* cholesky_params, se::Stream* stream) {
-  TF_ASSIGN_OR_RETURN(thread_local GpuSolverContext context,
-                      GpuSolverContext::Create(stream));
+  thread_local StatusOr<GpuSolverContext> context = GpuSolverContext::Create();
+  TF_RETURN_IF_ERROR(context.status());
+  TF_RETURN_IF_ERROR(context->SetStream(stream));
 
   switch (type) {
     case F32:
-      return DoPotrfBatched<float>(asm_opts, cholesky_params, stream, context);
+      return DoPotrfBatched<float>(asm_opts, cholesky_params, stream, *context);
     case F64:
-      return DoPotrfBatched<double>(asm_opts, cholesky_params, stream, context);
+      return DoPotrfBatched<double>(asm_opts, cholesky_params, stream,
+                                    *context);
     case C64:
       return DoPotrfBatched<std::complex<float>>(asm_opts, cholesky_params,
-                                                 stream, context);
+                                                 stream, *context);
     case C128:
       return DoPotrfBatched<std::complex<double>>(asm_opts, cholesky_params,
-                                                  stream, context);
+                                                  stream, *context);
     default:
       return InvalidArgument("Invalid type for cholesky %s",
                              PrimitiveType_Name(type));

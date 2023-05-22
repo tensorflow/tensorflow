@@ -60,8 +60,8 @@ xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
 
   ApiConverter::ToC(shape, &c_shape);
 
-  tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(&c_shape,
-                                                             &c_infeed_shape);
+  stream_executor::tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(
+      &c_shape, &c_infeed_shape);
   xla::Shape infeed_shape = ApiConverter::FromC(&c_infeed_shape);
   ApiConverter::Destroy(&c_shape);
   ApiConverter::Destroy(&c_infeed_shape);

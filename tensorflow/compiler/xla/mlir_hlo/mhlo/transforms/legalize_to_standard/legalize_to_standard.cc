@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering MHLO dialect to Standard dialect.
 
+#include <optional>
 #include <utility>
 
 #include "mhlo/IR/hlo_ops.h"
@@ -56,7 +57,7 @@ class CompareIConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhsType.getElementType().isSignlessInteger())
       return failure();
 
-    Optional<arith::CmpIPredicate> comparePredicate = llvm::None;
+    std::optional<arith::CmpIPredicate> comparePredicate = std::nullopt;
     switch (op.getComparisonDirection()) {
       case ComparisonDirection::EQ:
         comparePredicate = arith::CmpIPredicate::eq;
@@ -104,7 +105,7 @@ class CompareFConvert : public OpRewritePattern<mhlo::CompareOp> {
         !rhsType.getElementType().isa<FloatType>())
       return failure();
 
-    Optional<arith::CmpFPredicate> comparePredicate = llvm::None;
+    std::optional<arith::CmpFPredicate> comparePredicate = std::nullopt;
     switch (op.getComparisonDirection()) {
       case ComparisonDirection::EQ:
         comparePredicate = arith::CmpFPredicate::OEQ;

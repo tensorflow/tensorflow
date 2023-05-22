@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -38,7 +39,12 @@ class SoftsignTest(test.TestCase):
     self.assertShapeEqual(np_softsign, softsign)
 
   def testNumbers(self):
-    for t in [np.float64, np.double]:
+    for t in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
       self._testSoftsign(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t),
           use_gpu=False)

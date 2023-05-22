@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
@@ -52,7 +53,7 @@ class DefaultWorkQueueWrapper : public WorkQueueInterface {
     work_queue_->AddTask(WrapWork(id(), "inter", std::move(work)));
   }
 
-  llvm::Optional<tfrt::TaskFunction> AddBlockingTask(
+  std::optional<tfrt::TaskFunction> AddBlockingTask(
       tfrt::TaskFunction work, bool allow_queuing) override {
     return work_queue_->AddBlockingTask(
         WrapWork(id(), "blocking", std::move(work)), allow_queuing);

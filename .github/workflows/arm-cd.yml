@@ -26,9 +26,14 @@ jobs:
   build:
     if: github.repository == 'tensorflow/tensorflow' # Don't do this in forks
     runs-on: [self-hosted, linux, ARM64]
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       matrix:
-        pyver: ['3.7', '3.8', '3.9', '3.10']
+        pyver: ['3.8', '3.9', '3.10']
+        experimental: [false]
+        include:
+          - pyver: '3.11'
+            experimental: true
     steps:
       - name: Stop old running containers (if any)
         shell: bash
@@ -46,12 +51,12 @@ jobs:
         run: find /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/. -name . -o -prune -exec sudo rm -rf -- {} + || true
       - name: Checkout repository for nightly (skipped for releases)
         if: ${{ github.event_name == 'schedule' }}
-        uses: actions/checkout@v3
+        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
         with:
           ref: 'nightly'
       - name: Checkout repository for releases (skipped for nightly)
         if: ${{ github.event_name == 'push' }}
-        uses: actions/checkout@v3
+        uses: actions/checkout@755da8c3cf115ac066823e79a1e1788f8940201b # v3.2.0
       - name: Build and test pip wheel
         shell: bash
         run: |

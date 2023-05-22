@@ -67,6 +67,12 @@ class RewriteXlaHostComputeMlir
 
   LogicalResult matchAndRewrite(TF::_XlaHostComputeMlirOp op,
                                 PatternRewriter& rewriter) const override {
+    if (op.getManualSharding()) {
+      op.emitOpError() << "manual_sharding not supported with fallback of "
+                          "phase 2 legalize TF/XLA bridge. manual_sharding is "
+                          "used by map_outside_compilation";
+      return failure();
+    }
     llvm::SmallVector<Attribute> shape_attrs;
     shape_attrs.reserve(op.getNumResults());
     for (Type ty : op.getResultTypes()) {
@@ -99,7 +105,8 @@ class RewriteXlaHostComputeMlir
       auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(
           func.getLoc(), op.getOperandTypes(), /*dynamic_key=*/dynamic_key,
           op.getSendKeyAttr(),
-          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
+          rewriter.getStringAttr("TPU"));
       for (auto result :
            llvm::zip(cloned_func.getArguments(), recv_at_host->getResults())) {
         std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
@@ -110,7 +117,8 @@ class RewriteXlaHostComputeMlir
           func.getLoc(),
           cloned_func.getBody().front().getTerminator()->getOperands(),
           /*dynamic_key=*/dynamic_key, op.getRecvKeyAttr(),
-          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
+          rewriter.getStringAttr("TPU"));
     }
 
     constexpr int64_t kDefaultCostEstimate = 1000000;

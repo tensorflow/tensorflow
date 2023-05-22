@@ -138,11 +138,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/framework:graph_debug_info_proto_cc",
         "//tensorflow/core/ir/importexport:graphdef_export",
         "//tensorflow/core/ir/importexport:graphdef_import",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",

@@ -566,8 +566,8 @@ message CompleteGroupResponse {
 }
 
 // Supplies data about one collective op belonging to the instance identified
-// by instance_key.  Service will respond when all group_size ops have
-// become known.  Most of the data being sent is for correctness checking,
+// by instance_key and step_id.  Service will respond when all group_size ops
+// have become known.  Most of the data being sent is for correctness checking,
 // to ensure that all ops in the instance share common attributes.
 message CompleteInstanceRequest {
   string name = 1;
@@ -581,6 +581,7 @@ message CompleteInstanceRequest {
   repeated int32 subdiv_offset = 9;
   string device = 10;
   bool is_source = 11;
+  int64 step_id = 12;
 }
 
 // Confirms that every op in the instance has consistently declared itself.
