@@ -98,6 +98,19 @@ tsl::StatusOr<int64_t> ParseStreamDirectoryName(
   return stream_index;
 }
 
+tsl::StatusOr<int64_t> ParseSourceDirectoryName(
+    absl::string_view source_directory_name) {
+  std::vector<std::string> tokens = absl::StrSplit(source_directory_name, '_');
+  int64_t source_index = 0;
+  if (tokens.size() != 2 || tokens[0] != "source" ||
+      !absl::SimpleAtoi(tokens[1], &source_index) || source_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid source directory name: ", source_directory_name,
+        ". Expected source_<source_index>.");
+  }
+  return source_index;
+}
+
 tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(
     absl::string_view split_filename) {
   std::vector<std::string> tokens =

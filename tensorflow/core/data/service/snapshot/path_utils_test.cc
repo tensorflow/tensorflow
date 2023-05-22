@@ -72,6 +72,19 @@ TEST(PathUtilsTest, ParseStreamDirectoryName) {
   EXPECT_THAT(ParseStreamDirectoryName("stream_1"), IsOkAndHolds(1));
 }
 
+TEST(PathUtilsTest, ParseSourceDirectoryName) {
+  EXPECT_THAT(ParseSourceDirectoryName("source_1"), IsOkAndHolds(1));
+  EXPECT_THAT(ParseSourceDirectoryName(""),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected source_<source_index>")));
+  EXPECT_THAT(ParseSourceDirectoryName("source_-1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected source_<source_index>")));
+  EXPECT_THAT(ParseSourceDirectoryName("chunk_1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected source_<source_index>")));
+}
+
 TEST(PathUtilsTest, InvalidStreamDirectoryName) {
   EXPECT_THAT(ParseStreamDirectoryName(""),
               StatusIs(error::INVALID_ARGUMENT,

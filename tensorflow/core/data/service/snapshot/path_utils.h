@@ -60,6 +60,12 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
 tsl::StatusOr<int64_t> ParseStreamDirectoryName(
     absl::string_view stream_directory_name);
 
+// Returns the index of the source. The expected format of
+// `source_directory_name` is:
+// source_<stream_index>
+tsl::StatusOr<int64_t> ParseSourceDirectoryName(
+    absl::string_view source_directory_name);
+
 // Returns a pair of {local_split_index, global_split_index} of the split. The
 // expected format of `split_filename` is:
 // split_<local_split_index>_<global_split_index>
