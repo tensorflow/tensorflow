@@ -472,7 +472,7 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   response.set_local_split_index(local_split_index);
 
   Source& source = sources_[request.source_index()];
-  if (request.repetition_index() < source.repetition_index) {
+  if (request.repetition_index() != source.repetition_index) {
     response.set_end_of_splits(true);
     return OkStatus();
   }
