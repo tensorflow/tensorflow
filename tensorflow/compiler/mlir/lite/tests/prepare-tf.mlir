@@ -737,4 +737,28 @@ func.func @UnsupportedGroupConv_DynamicDimAtInputDimThree(%arg0: tensor<?x1x26x?
   // CHECK: "tf.Conv2D"
 }
 
+func.func @Select_SameStaticShapeUnchanged(%arg0: tensor<2xi1>, %arg1: tensor<2xf32>, %arg2: tensor<2xf32>) -> (tensor<2xf32>) {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+  func.return %0 : tensor<2xf32>
+  // CHECK-LABEL: Select_SameStaticShapeUnchanged
+  // CHECK-NOT: "tf.SelectV2"
+  // CHECK: "tf.Select"
+}
+
+func.func @Select_SameStaticShapeUnchangedWithBroadcastedCond(%arg0: tensor<2xi1>, %arg1: tensor<2x2xf32>, %arg2: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  func.return %0 : tensor<2x2xf32>
+  // CHECK-LABEL: SameStaticShapeUnchangedWithBroadcastedCond
+  // CHECK-NOT: "tf.SelectV2"
+  // CHECK: "tf.Select"
+}
+
+func.func @Select_NotSameStaticShapeRewritesToSelectV2(%arg0: tensor<*xi1>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> (tensor<*xf32>) {
+  %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<*xi1>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+  // CHECK-LABEL: Select_NotSameStaticShapeRewritesToSelectV2
+  // CHECK-NOT: "tf.Select"
+  // CHECK: "tf.SelectV2"
+}
+
 }
