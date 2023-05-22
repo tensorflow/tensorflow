@@ -24,11 +24,7 @@ namespace gpu {
 class TestGpuDeviceInfo {
  public:
   static GpuDeviceInfo RTXA6000DeviceInfo();
-<<<<<<< HEAD
-  static GpuDeviceInfo AMDMI210DeviceInfo();  
-=======
   static GpuDeviceInfo AMDMI210DeviceInfo();
->>>>>>> upstream/master
 };
 
 }  // namespace gpu

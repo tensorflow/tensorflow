@@ -2341,10 +2341,7 @@ distribute_py_strict_test(
     shard_count = 2,
     tags = [
         "multi_and_single_gpu",
-<<<<<<< HEAD
-=======
         "no_oss",  # TODO(b/283033375)
->>>>>>> upstream/master
     ],
     xla_enable_strict_auto_jit = True,
     deps = [

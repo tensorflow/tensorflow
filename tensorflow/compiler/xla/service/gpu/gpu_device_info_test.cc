@@ -33,20 +33,12 @@ namespace {
 namespace se = stream_executor;
 
 TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
-<<<<<<< HEAD
-  string test_platform = "cuda";
-#if TENSORFLOW_USE_ROCM
-  test_platform = "rocm";
-#endif
-  se::Platform* platform = se::MultiPlatformManager::PlatformWithName(test_platform).value();
-=======
   std::string test_platform = "cuda";
 #if TENSORFLOW_USE_ROCM
   test_platform = "rocm";
 #endif
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName(test_platform).value();
->>>>>>> upstream/master
   se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   const xla::gpu::GpuDeviceInfo dev_info = xla::gpu::GetGpuDeviceInfo(executor);
   absl::string_view name(dev_info.name);
@@ -102,45 +94,6 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
                              /*device_memory_size=*/17'066'622'976));
   }
 #if TF_ROCM_VERSION >= 50500
-<<<<<<< HEAD
-  else if (name == "AMD Instinct MI210") {
-    xla::gpu::GpuDeviceInfo test_info =
-        xla::gpu::TestGpuDeviceInfo::AMDMI210DeviceInfo();
-    EXPECT_THAT(
-            dev_info,
-            ::testing::FieldsAre(
-                test_info.name, test_info.threads_per_block_limit,
-                test_info.threads_per_warp, test_info.shared_memory_per_block,
-                test_info.shared_memory_per_block_optin,
-                test_info.shared_memory_per_core, test_info.threads_per_core_limit,
-                test_info.core_count, test_info.fpus_per_core,
-                test_info.block_dim_limit_x, test_info.block_dim_limit_y,
-                test_info.block_dim_limit_z, test_info.memory_bandwidth,
-                test_info.l2_cache_size,
-                ::testing::Ge(test_info.clock_rate_ghz),
-                dev_info.device_memory_size));
-  }
-  else if (name == "AMD Instinct MI100"){
-    EXPECT_THAT(
-            dev_info,
-            ::testing::FieldsAre(name, /*threads_per_block_limit=*/1024,
-            /*threads_per_warp=*/64, /*shared_memory_per_block=*/64 * 1024,
-            /*shared_memory_per_block_optin=*/0, 
-            /*shared_memory_per_core=*/64 * 1024,
-            /*threads_per_core_limit=*/2560, /*core_count=*/120, 
-            /*fpus_per_core=*/0, /*block_dim_limit_x=*/2'147'483'647,
-            /*block_dim_limit_y=*/2'147'483'647,
-            /*block_dim_limit_z=*/2'147'483'647,
-            /*memory_bandwidth=*/1228800000000, 
-            /*l2_cache_size=*/8 * 1024 * 1024,
-            /*clock_rate_ghz=*/::testing::Ge(1.5),
-            /*device_memory_size=*/33'806'090'240));
-  }  
-  else if (name == "AMD Instinct MI50/MI60"){
-    EXPECT_THAT(
-            dev_info,
-            ::testing::FieldsAre(name, /*threads_per_block_limit=*/1024,
-=======
   else if (name == "AMD Instinct MI210") {  // NOLINT
     xla::gpu::GpuDeviceInfo test_info =
         xla::gpu::TestGpuDeviceInfo::AMDMI210DeviceInfo();
@@ -177,7 +130,6 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
         dev_info,
         ::testing::FieldsAre(
             name, /*threads_per_block_limit=*/1024,
->>>>>>> upstream/master
             /*threads_per_warp=*/64, /*shared_memory_per_block=*/64 * 1024,
             /*shared_memory_per_block_optin=*/0,
             /*shared_memory_per_core=*/64 * 1024,
@@ -190,13 +142,8 @@ TEST(DeviceInfoTest, DeviceInfoIsCorrect) {
             /*clock_rate_ghz=*/::testing::Ge(1.7),
             /*device_memory_size=*/17'163'091'968));
   }
-<<<<<<< HEAD
-#endif  
-  else {
-=======
 #endif    // TF_ROCM_VERSION >= 50500
   else {  // NOLINT
->>>>>>> upstream/master
     VLOG(1) << "Not tested for " << name;
   }
 }
