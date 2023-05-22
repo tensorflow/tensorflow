@@ -69,6 +69,14 @@ def HloLegalizeToArithmeticPass :Pass<"hlo-legalize-to-arithmetic", "ModuleOp"> 
   let constructor = "createLegalizeToArithmeticPass()";
 }
 
+def HloLegalizeSortPass : Pass<"hlo-legalize-sort", "func::FuncOp"> {
+  let summary = "Legalize from MHLO sort to SCF control flow.";
+  let constructor = "createLegalizeSortPass()";
+  let dependentDialects = ["arith::ArithDialect",
+                           "bufferization::BufferizationDialect",
+                           "scf::SCFDialect", "tensor::TensorDialect"];
+}
+
 def LegalizeControlFlowPass : Pass<"mhlo-legalize-control-flow", "func::FuncOp"> {
   let summary = "Legalize from MHLO control flow to SCF control flow.";
   let constructor = "createLegalizeControlFlowPass()";
