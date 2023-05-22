@@ -1201,20 +1201,11 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     if (abort_run) {
       TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
       if (cancellation_manager_) {
-        // Only log when the abort happens during the actual run time.
-        // Use LOG(INFO) instead of LOG(WARNING) because error status is
-        // expected when the executor is run under the grappler optimization
-        // phase. Do not log OutOfRange erros because they are expected when
-        // iterating through a tf.data input pipeline.
-        if (!errors::IsOutOfRange(s)) {
-          LOG(INFO) << "[" << immutable_state_.params().device->name()
-                    << "] (DEBUG INFO) Executor start aborting (this does not "
-                       "indicate an error and you can ignore this message): "
-                    << s;
-        } else {
-          VLOG(1) << "[" << immutable_state_.params().device->name()
-                  << "] Executor start aborting: " << s;
-        }
+        // Use VLOG instead of LOG(warning) because error status is expected
+        // when the executor is run under the grappler optimization phase or
+        // when iterating through a tf.data input pipeline.
+        VLOG(1) << "[" << immutable_state_.params().device->name()
+                << "] Executor start aborting: " << s;
       }
 
       if (rendezvous_) {
