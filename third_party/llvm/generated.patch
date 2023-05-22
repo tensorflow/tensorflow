@@ -1,13 +1,1 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel
---- a/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel
-+++ b/utils/bazel/llvm-project-overlay/mlir/test/BUILD.bazel
-@@ -386,6 +386,8 @@
-         "//llvm:Support",
-         "//mlir:Analysis",
-         "//mlir:ArithDialect",
-+        "//mlir:BytecodeReader",
-+        "//mlir:BytecodeWriter",
-         "//mlir:FuncDialect",
-         "//mlir:IR",
-         "//mlir:LinalgDialect",
