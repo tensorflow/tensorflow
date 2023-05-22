@@ -41,7 +41,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: ${RELEASE_BRANCH},
+                        git branch: "${RELEASE_BRANCH}",
                             url: "https://github.com/tensorflow/tensorflow.git"
                             
                         sh '''
@@ -76,7 +76,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: ${RELEASE_BRANCH},
+                        git branch: "${RELEASE_BRANCH}",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -109,7 +109,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: ${RELEASE_BRANCH},
+                        git branch: "${RELEASE_BRANCH}",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
@@ -143,7 +143,7 @@ pipeline {
 
                         sh 'python --version'
 
-                        git branch: ${RELEASE_BRANCH},
+                        git branch: "${RELEASE_BRANCH}",
                             url: "https://github.com/tensorflow/tensorflow.git"
 
                         sh '''
