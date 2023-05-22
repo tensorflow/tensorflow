@@ -2798,9 +2798,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     conc = func.get_concrete_function(*conc_args, **conc_kwargs)
 
-    # Remove _function_spec, to disable the structured signature.
-    conc._set_function_spec(None)  # pylint: disable=protected-access
-
+    # Remove _function_type to disable the structured signature.
+    conc._function_type = None
     with self.assertRaisesRegex(exception, error):
       self.evaluate(conc(*call_args, **call_kwargs))
 

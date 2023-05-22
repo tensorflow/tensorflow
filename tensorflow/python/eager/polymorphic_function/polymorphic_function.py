@@ -982,14 +982,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, filtered_flat_args = (
-        function_type_utils.canonicalize_function_inputs(
-            args,
-            kwargs,
-            concrete_fn._function_spec.function_type,
-            concrete_fn._function_spec.default_values,
-            concrete_fn._function_spec.is_pure,
-        )
+    _, _, filtered_flat_args = function_type_utils.canonicalize_function_inputs(
+        args, kwargs, concrete_fn.function_type
     )
 
     def compiler_ir_generator(stage="hlo", device_name=None):

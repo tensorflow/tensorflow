@@ -212,39 +212,28 @@ class TracingCompiler:
   ) -> List[concrete_function_lib.ConcreteFunction]:
     return self._function_cache.values()
 
-  def _create_concrete_function(self, args, kwargs, func_graph):
+  def _create_concrete_function(
+      self, function_type, placeholder_mapping, func_graph
+  ):
     """Create a `ConcreteFunction` from `args`, `kwargs`, and `func_graph`."""
     self.tracing_count += 1
 
-    arglen = len(args)
-    all_arg_names = function_type_utils.to_arg_names(self._function_type)
-    base_arg_names = all_arg_names[:arglen]
-    num_missing_args = arglen - len(all_arg_names)
-    if num_missing_args > 0:
-      # Must have variable positional args if there are missing args.
-      var_arg_name = next(
-          p.name
-          for p in self._function_type.parameters.values()
-          if p.kind is function_type_lib.Parameter.VAR_POSITIONAL
+    placeholder_context = trace_type.InternalPlaceholderContext(
+        func_graph, placeholder_mapping
+    )
+    with func_graph.as_default():
+      placeholder_bound_args = function_type.placeholder_arguments(
+          placeholder_context
       )
-      missing_arg_names = [var_arg_name] * num_missing_args
-      # Produce a list of missing args of the form ["arg_0", "arg_1", ...],
-      # where arg is based on the VAR_POSITIONAL arg name in FunctionType.
-      missing_arg_names = [
-          "%s_%d" % (arg, i) for i, arg in enumerate(missing_arg_names)
-      ]
-      arg_names = base_arg_names + missing_arg_names
-    else:
-      arg_names = base_arg_names
 
     traced_func_graph = func_graph_module.func_graph_from_py_func(
         self._name,
         self._python_function,
-        args,
-        kwargs,
+        placeholder_bound_args.args,
+        placeholder_bound_args.kwargs,
         None,
         func_graph=func_graph,
-        arg_names=arg_names,
+        arg_names=function_type_utils.to_arg_names(function_type),
         capture_by_value=self._capture_by_value,
         create_placeholders=False,
     )
@@ -254,12 +243,12 @@ class TracingCompiler:
     concrete_function = concrete_function_lib.ConcreteFunction(
         traced_func_graph,
         self._function_attributes,
-        spec=self.function_spec,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
         # scope. This is not the default behavior since it gets used in some
         # places (like Keras) where the FuncGraph lives longer than the
         # ConcreteFunction.
         shared_func_graph=False,
+        function_type=function_type
     )
 
     transform.call_concrete_function_callbacks(concrete_function)
@@ -350,18 +339,8 @@ class TracingCompiler:
           else:
             target_func_type = lookup_func_type
           placeholder_mapping = lookup_func_context.get_placeholder_mapping()
-          placeholder_context = trace_type.InternalPlaceholderContext(
-              func_graph, placeholder_mapping
-          )
-          with func_graph.as_default():
-            placeholder_bound_args = target_func_type.placeholder_arguments(
-                placeholder_context
-            )
-          args = placeholder_bound_args.args
-          kwargs = placeholder_bound_args.kwargs
-
           concrete_function = self._create_concrete_function(
-              args, kwargs, func_graph
+              target_func_type, placeholder_mapping, func_graph
           )
 
           # TODO(b/263520817): Remove access to private attribute.

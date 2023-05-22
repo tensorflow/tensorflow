@@ -214,6 +214,7 @@ cuda_py_strict_test(
     # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":attributes",
+        ":concrete_function",
         ":polymorphic_function",
         ":tracing_compiler",
         "//tensorflow/core/function/capture:capture_container",
