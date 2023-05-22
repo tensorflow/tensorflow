@@ -266,24 +266,8 @@ xla_cc_test(
     deps = [
         ":gpu_device_info",
         ":gpu_device_info_for_tests",
-<<<<<<< HEAD
-        "@com_google_absl//absl/strings",
-        "//tensorflow/tsl/platform:test",              
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-=======
->>>>>>> upstream/master
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/stream_executor",
-<<<<<<< HEAD
-        "//tensorflow/compiler/xla/stream_executor:device_description",        
-        ] + if_cuda_is_configured([
-        "@local_config_cuda//cuda:cuda_headers",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
-        ]) + if_rocm_is_configured([
-        "@local_config_rocm//rocm:rocm_headers",
-        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor_header",
-        ])
-=======
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -296,7 +280,6 @@ xla_cc_test(
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor_header",
     ]),
->>>>>>> upstream/master
 )
 
 cc_library(
@@ -470,14 +453,10 @@ xla_test(
     backends = [
         "gpu",
     ],
-<<<<<<< HEAD
+    shard_count = 10,
     tags = ["nomac",
 	    "no_rocm",
 	   ],
-=======
-    shard_count = 10,
-    tags = ["nomac"],
->>>>>>> upstream/master
     deps = [
         ":gpu_device_info_for_tests",
         ":ir_emitter_triton",
