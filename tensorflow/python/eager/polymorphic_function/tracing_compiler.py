@@ -80,7 +80,6 @@ class TracingCompiler:
       autograph=True,
       autograph_options=None,
       reduce_retracing=False,
-      capture_by_value=None,
       jit_compile=None,
   ):
     """Initializes a `TracingCompiler`.
@@ -101,9 +100,6 @@ class TracingCompiler:
       reduce_retracing: When True, `tf.function` uses
         `tf.types.experimental.TraceType` to trace supertypes of arguments to
         reduce the number of traces.
-      capture_by_value: Experimental. Whether to capture resource variables by
-        value or reference. If None, will inherit from a parent context or
-        default to False.
       jit_compile: Force-compile the function with XLA, cf. tf.function doc on
         jit_compile.
 
@@ -130,7 +126,6 @@ class TracingCompiler:
             f"TracingCompiler does not support `{attribute}` as an attribute."
         )
 
-    self._capture_by_value = capture_by_value
     self.tracing_count = 0
     # Maintein a dict of all captures: identifier -> lambda function. It's used
     # to get runtime values for all captures during ConcreteFunction dispatch,
@@ -234,7 +229,6 @@ class TracingCompiler:
         None,
         func_graph=func_graph,
         arg_names=function_type_utils.to_arg_names(function_type),
-        capture_by_value=self._capture_by_value,
         create_placeholders=False,
     )
 
@@ -329,9 +323,7 @@ class TracingCompiler:
         with ag_ctx.ControlStatusCtx(
             status=ag_status, options=self._autograph_options
         ):
-          func_graph = func_graph_module.FuncGraph(
-              self._name, capture_by_value=self._capture_by_value
-          )
+          func_graph = func_graph_module.FuncGraph(self._name)
           if self.input_signature is None and self._reduce_retracing:
             target_func_type = self._function_cache.generalize(
                 current_func_context, lookup_func_type
