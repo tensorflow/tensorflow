@@ -264,7 +264,8 @@ struct MaliInfo {
 };
 
 enum class PowerVRGpu {
-  kUnknown,
+  kRogueGm9xxx,
+  kRogueGe8xxx,
   kRogue,
   // New generation of IMG gpus after 2019:
   kAXE,
@@ -276,6 +277,7 @@ enum class PowerVRGpu {
   kBXT,
   kCXT,
   kDXT,
+  kUnknown,
 };
 
 struct PowerVRInfo {
@@ -294,6 +296,8 @@ struct PowerVRInfo {
   bool IsImgBxx() const;
   bool IsImgCxx() const;
   bool IsImgDxx() const;
+
+  bool IsBetterThan(PowerVRGpu gpu) const;
 };
 
 struct OpenGlInfo {
