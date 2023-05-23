@@ -256,6 +256,43 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertTrue(self._snapshot_is_done())
     # TODO(b/250921378): Verify the number of elements.
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleDatasetRecoversAndCompletes(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    dataset1 = dataset_ops.Dataset.range(1000)
+    datasets = [
+        dataset_ops.Dataset.from_tensors("a").repeat(100),
+        dataset_ops.Dataset.from_tensors("b").repeat(100),
+        dataset_ops.Dataset.from_tensors("c").repeat(100),
+    ]
+    choice_dataset = dataset_ops.Dataset.range(3).repeat()
+    dataset2 = dataset_ops.Dataset.choose_from_datasets(
+        datasets, choice_dataset
+    )
+
+    snapshot_path1 = os.path.join(self._path, "snapshot1")
+    snapshot_path2 = os.path.join(self._path, "snapshot2")
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset1, snapshot_path1, cluster.dispatcher_address()
+        )
+    )
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset2, snapshot_path2, cluster.dispatcher_address()
+        )
+    )
+
+    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    while not os.path.exists(os.path.join(snapshot_path1, "DONE")):
+      time.sleep(0.1)
+    while not os.path.exists(os.path.join(snapshot_path2, "DONE")):
+      time.sleep(0.1)
+    # TODO(b/250921378): Verify the number of elements.
+
   def _snapshot_is_done(self):
     return os.path.exists(os.path.join(self._path, "DONE"))
 

@@ -472,9 +472,16 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   response.set_local_split_index(local_split_index);
 
   Source& source = sources_[request.source_index()];
-  if (request.repetition_index() != source.repetition_index) {
+  if (request.repetition_index() < source.repetition_index) {
     response.set_end_of_splits(true);
     return OkStatus();
+  }
+  while (request.repetition_index() > source.repetition_index) {
+    // This could happen if an iterator is repeated before reaching end of
+    // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
+    // the previous repetitions as completed and advance to the requested
+    // repetition.
+    TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
   }
 
   Tensor split;
