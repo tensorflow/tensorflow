@@ -1969,7 +1969,7 @@ tf_py_strict_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/ops/parallel_for",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
