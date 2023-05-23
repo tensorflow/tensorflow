@@ -165,7 +165,7 @@ LogicalResult rewriteExtractSliceOfTileableOp(Operation* op,
       rewriter, /*resultNumber=*/0, sliceOp.getMixedOffsets(),
       sliceOp.getMixedSizes());
   if (failed(tilingResult)) return failure();
-  rewriter.replaceOp(op, tilingResult->tiledValues);
+  rewriter.replaceOp(sliceOp, tilingResult->tiledValues);
 
   return success();
 }
