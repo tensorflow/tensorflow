@@ -22,6 +22,11 @@ module.exports = async ({ github, context }) => {
         let issueLabels = issueList[i].labels
         let stringLabel = JSON.stringify(issueLabels)
         console.log("issue list",issueList[i])
+        let closeAfterStale = 7
+        if(nodeType.startsWith('PR'))
+           closeAfterStale = 14
+        else if(stringLabel.indexOf('stat:contribution welcome') !=-1 || stringLabel.indexOf('stat:good first issue') !=-1 )
+           closeAfterStale = 365
        
         //fetch all the events inside the issue.
         let resp = await github.rest.issues.listEventsForTimeline({
@@ -40,13 +45,6 @@ module.exports = async ({ github, context }) => {
                 let labeledDate = new Date(event_details.created_at)
                 let timeInDays = (currentDate - labeledDate) / 86400000
                 console.log(`Issue ${number} stale label is ${timeInDays} days old.`)
-                let closeAfterStale = 7
-                
-                if(nodeType.startsWith('PR'))
-                   closeAfterStale = 14
-                else if(stringLabel.indexOf('stat:contribution welcome') !=-1 || stringLabel.indexOf('stat:good first issue') !=-1 )
-                   closeAfterStale = 365
-
                 if (timeInDays > closeAfterStale)
                     closeIssue = true
             }
@@ -58,6 +56,12 @@ module.exports = async ({ github, context }) => {
         }
         if(closeIssue){
             console.log(`Closing the issue ${number} more then 7 days old with stale label.`)
+            let comment = "This issue was closed because it has been inactive for 7 days since being marked as stale. Please reopen if you'd like to work on this further."
+            if(closeAfterStale == 14)
+               comment = "This PR was closed because it has been inactive for 14 days since being marked as stale. Please reopen if you'd like to work on this further."
+            else if(closeAfterStale == 365)
+              comment = "This issue was closed because it has been inactive for 1 year"
+
             await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
@@ -69,7 +73,7 @@ module.exports = async ({ github, context }) => {
                 issue_number: number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: "This issue was closed because it has been inactive for 7 days since being marked as stale. Please reopen if you'd like to work on this further."
+                body: comment
             });
         }
     }
