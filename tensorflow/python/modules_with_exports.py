@@ -72,6 +72,14 @@ from tensorflow.python.distribute.coordinator.cluster_coordinator import *
 from tensorflow.python.distribute.failure_handling.failure_handling import *
 from tensorflow.python.distribute.failure_handling.preemption_watcher import *
 
+from tensorflow.python.ops.numpy_ops import np_random
+from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.ops.numpy_ops import np_array_ops
+from tensorflow.python.ops.numpy_ops import np_arrays
+from tensorflow.python.ops.numpy_ops import np_config
+from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_math_ops
+
 tf_export('__internal__.decorator.make_decorator', v1=[])(make_decorator)
 tf_export('__internal__.decorator.unwrap', v1=[])(unwrap)
 
