@@ -37,6 +37,12 @@ namespace async {
 class AsyncSignatureRunnerTest : public InterpreterTest {
  protected:
   void SetUp() override {
+    InitInterpreter();
+    const char kSignatureKey[] = "serving_default";
+    BuildSignature(kSignatureKey, {{"input", 0}}, {{"output", 1}});
+  }
+
+  void InitInterpreter() {
     kernel_ =
         std::make_unique<::testing::StrictMock<testing::MockAsyncKernel>>();
     backend_ = std::make_unique<testing::TestBackend>(kernel_->kernel());
@@ -54,8 +60,6 @@ class AsyncSignatureRunnerTest : public InterpreterTest {
     void* builtin_data_1 = malloc(sizeof(int));
     interpreter_->AddNodeWithParameters({0, 0}, {1}, nullptr, 0, builtin_data_1,
                                         reg);
-    const char kSignatureKey[] = "serving_default";
-    BuildSignature(kSignatureKey, {{"input", 0}}, {{"output", 1}});
     interpreter_->ModifyGraphWithDelegate(backend_->get_delegate());
   }
 
@@ -74,8 +78,20 @@ TEST_F(AsyncSignatureRunnerTest, GetAsyncSignatureRunner) {
   EXPECT_EQ(nullptr, signature_runner_);
   signature_runner_ = interpreter_->GetAsyncSignatureRunner("serving_default");
   EXPECT_NE(nullptr, signature_runner_);
+  auto* signature_runner_null_key =
+      interpreter_->GetAsyncSignatureRunner(nullptr);
+  EXPECT_EQ(signature_runner_null_key, signature_runner_);
+  EXPECT_STREQ("serving_default", signature_runner_->signature_key().c_str());
 
   EXPECT_EQ(nullptr, interpreter_->GetAsyncSignatureRunner("foo"));
+}
+
+TEST_F(AsyncSignatureRunnerTest, WrongSignatureKeyTest) {
+  const char kSignatureKey[] = "serving_default";
+  BuildSignature(interpreter_.get(), kSignatureKey, {{"input", 0}},
+                 {{"output", 1}}, 1);
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
+  EXPECT_EQ(nullptr, signature_runner_);
 }
 
 TEST_F(AsyncSignatureRunnerTest, InputsTest) {
@@ -119,6 +135,54 @@ TEST_F(AsyncSignatureRunnerTest, CreateTaskTest) {
 
   TfLiteExecutionTaskSetBuffer(task, kTfLiteIoTypeInput, "input", 24);
   TfLiteExecutionTaskSetBuffer(task, kTfLiteIoTypeOutput, "output", 12);
+  TfLiteBufferHandle input_buffer, output_buffer;
+  input_buffer = TfLiteExecutionTaskGetBufferByIndex(task, 0);
+  output_buffer = TfLiteExecutionTaskGetBufferByIndex(task, 1);
+  EXPECT_EQ(24, input_buffer);
+  EXPECT_EQ(12, output_buffer);
+  EXPECT_EQ(kTfLiteOk, signature_runner_->Finish(task));
+}
+
+class AsyncSignatureRunnerNoSignatureDefTest : public AsyncSignatureRunnerTest {
+ public:
+  void SetUp() override { InitInterpreter(); }
+};
+
+TEST_F(AsyncSignatureRunnerNoSignatureDefTest, GetAsyncSignatureRunner) {
+  EXPECT_EQ(nullptr, signature_runner_);
+  EXPECT_NE(nullptr, interpreter_->GetAsyncSignatureRunner(nullptr));
+
+  EXPECT_EQ(nullptr, interpreter_->GetAsyncSignatureRunner("foo"));
+}
+
+TEST_F(AsyncSignatureRunnerNoSignatureDefTest, InputsTest) {
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
+  EXPECT_EQ(1, signature_runner_->input_size());
+  EXPECT_EQ(0, signature_runner_->input_names().size());
+
+  EXPECT_EQ(1, signature_runner_->inputs().size());
+  EXPECT_NE(nullptr, signature_runner_->tensor(signature_runner_->inputs()[0]));
+}
+
+TEST_F(AsyncSignatureRunnerNoSignatureDefTest, OutputsTest) {
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
+  EXPECT_EQ(1, signature_runner_->output_size());
+  EXPECT_EQ(0, signature_runner_->output_names().size());
+
+  EXPECT_EQ(1, signature_runner_->outputs().size());
+  EXPECT_NE(nullptr,
+            signature_runner_->tensor(signature_runner_->outputs()[0]));
+}
+
+TEST_F(AsyncSignatureRunnerNoSignatureDefTest, CreateTaskTest) {
+  EXPECT_CALL(*kernel_, Finish(::testing::_, ::testing::_));
+
+  signature_runner_ = interpreter_->GetAsyncSignatureRunner(nullptr);
+  auto* task = signature_runner_->CreateTask();
+  EXPECT_NE(nullptr, task);
+
+  TfLiteExecutionTaskSetBufferByIndex(task, 0, 24);
+  TfLiteExecutionTaskSetBufferByIndex(task, 1, 12);
   TfLiteBufferHandle input_buffer, output_buffer;
   input_buffer = TfLiteExecutionTaskGetBufferByIndex(task, 0);
   output_buffer = TfLiteExecutionTaskGetBufferByIndex(task, 1);

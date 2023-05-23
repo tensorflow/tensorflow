@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_ASYNC_ASYNC_SIGNATURE_RUNNER_H_
 #define TENSORFLOW_LITE_CORE_ASYNC_ASYNC_SIGNATURE_RUNNER_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -147,7 +148,7 @@ class AsyncSignatureRunner {
   TfLiteStatus Finish(TfLiteExecutionTask* task);
 
   /// Returns the key for the corresponding signature.
-  const std::string& signature_key() { return signature_def_->signature_key; }
+  const std::string& signature_key() { return signature_key_; }
 
   /// Returns the number of inputs.
   size_t input_size() const { return subgraph_->inputs().size(); }
@@ -156,9 +157,11 @@ class AsyncSignatureRunner {
   size_t output_size() const { return subgraph_->outputs().size(); }
 
   /// Read-only access to list of signature input names.
+  /// Returns an empty vector if the model does not have signature.
   const std::vector<const char*>& input_names() { return input_names_; }
 
   /// Read-only access to list of signature output names.
+  /// Returns an empty vector if the model does not have signature.
   const std::vector<const char*>& output_names() { return output_names_; }
 
   /// Returns the input tensor information identified by 'input_name' in the
@@ -175,10 +178,29 @@ class AsyncSignatureRunner {
   /// accessed via hardware buffer directly.
   const TfLiteOpaqueTensor* output_tensor(const char* output_name) const;
 
+  /// Tensor index based accessors.
+
+  /// Read only access to list of input index.
+  const std::vector<int>& inputs() const { return subgraph_->inputs(); }
+
+  /// Read only access to list of output index.
+  const std::vector<int>& outputs() const { return subgraph_->outputs(); }
+
+  /// Returns the input tensor information by tensor index.
+  const TfLiteOpaqueTensor* tensor(int tensor_index) const {
+    // The following cast is safe only because this code is part of the
+    // TF Lite runtime implementation.  Apps using TF Lite should not rely on
+    // TfLiteOpaqueTensor and TfLiteTensor being equivalent.
+    return reinterpret_cast<const TfLiteOpaqueTensor*>(
+        subgraph_->tensor(tensor_index));
+  }
+
  private:
   friend class AsyncSignatureRunnerTest;
 
   int GetTensorIndex(TfLiteIoType io_type, const char* name) const;
+
+  std::string signature_key_;
 
   // The list of input tensor names.
   std::vector<const char*> input_names_;
@@ -186,11 +208,15 @@ class AsyncSignatureRunner {
   std::vector<const char*> output_names_;
 
   // Not owned.
-  const internal::SignatureDef* signature_def_ = nullptr;
+  // If the model does not have signature def, the name maps will be nullptr.
+  const std::map<std::string, uint32_t>* input_to_index_ = nullptr;
+  const std::map<std::string, uint32_t>* output_to_index_ = nullptr;
+
+  // Not owned.
   Subgraph* subgraph_ = nullptr;
 
   // Currently AsyncSubgraph is owned by SignatureRunner. However after
-  // we stablize the interface, the async subgraph should be owned by the
+  // we stabilize the interface, the async subgraph should be owned by the
   // interpreter and AsyncSignatureRunner won't own any of the subgraphs.
   std::unique_ptr<AsyncSubgraph> async_subgraph_;
 };
