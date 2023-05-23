@@ -1252,7 +1252,7 @@ py_strict_library(
 
 tf_py_strict_test(
     name = "text_line_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["text_line_dataset_test.py"],
     shard_count = 4,
     deps = [
