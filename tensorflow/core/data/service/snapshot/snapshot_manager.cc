@@ -382,7 +382,7 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
         *assigned_stream_index !=
             snapshot_progress->snapshot_task().stream_index()) {
       return absl::InternalError(absl::StrCat(
-          "Worker ", worker_address, " was assigned stream ",
+          "tf.data snapshot worker ", worker_address, " was assigned stream ",
           snapshot_progress->snapshot_task().stream_index(),
           ", but is now assigned a different stream ", *assigned_stream_index));
     }
@@ -459,10 +459,10 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                             request.stream_index(),
                             ", but the assignment is no longer available.");
   } else if (it->second != request.stream_index()) {
-    return errors::Internal("worker ", request.worker_address(),
-                            " think it's assigned stream ",
-                            request.stream_index(),
-                            " but it's actually assigned stream ", it->second);
+    return errors::Internal(
+        "tf.data snapshot worker ", request.worker_address(),
+        " was assigned stream ", request.stream_index(),
+        " but is now assigned a different stream ", it->second);
   }
 
   Stream& stream = streams_[request.stream_index()];
