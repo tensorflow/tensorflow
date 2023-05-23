@@ -64,7 +64,8 @@ void collectBackingMemory(Value source, DenseSet<Value>& visited,
       for (const auto& edge : getPredecessorRegions(
                rbi, bbarg.getParentRegion()->getRegionNumber())) {
         if (bbarg.getArgNumber() >= edge.successorValueIndex &&
-            (bbarg.getArgNumber() - edge.successorValueIndex) <=
+            static_cast<size_t>(bbarg.getArgNumber() -
+                                edge.successorValueIndex) <=
                 edge.getPredecessorOperands().size()) {
           Value dep = edge.getPredecessorOperand(bbarg.getArgNumber());
           collectBackingMemory(dep, visited, results);
