@@ -11,6 +11,7 @@ hlo_test(
             "rand_000060.hlo",
             "rand_000067.hlo",
             "rand_000072.hlo",
+	    "rand_000079.hlo",  # No int8 support on ROCM yet  
         ],
     ),
 )
