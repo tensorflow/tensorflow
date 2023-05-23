@@ -214,7 +214,7 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
   ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_ = true;
-  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = true;
 
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
