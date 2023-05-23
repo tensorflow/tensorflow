@@ -105,6 +105,7 @@ COMMON_PIP_DEPS = [
     ":xla_cmake",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
+    "//tensorflow/compiler/mlir/stablehlo:stablehlo",
     "//tensorflow/compiler/mlir/tensorflow:gen_mlir_passthrough_op_py",
     "//tensorflow/core/function/trace_type:serialization_test_proto_py",
     "//tensorflow/core/function/trace_type:serialization",
