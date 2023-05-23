@@ -2980,6 +2980,18 @@ void XlaCallModuleOp::getEffects(
   }
 }
 
+LogicalResult XlaCallModuleOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  for (auto f : getFunctionList()) {
+    auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+        getOperation(), f.cast<mlir::SymbolRefAttr>());
+    if (!func) {
+      return emitOpError() << "refers to an undefined function: " << f;
+    }
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // XlaLaunchOp
 //===----------------------------------------------------------------------===//
