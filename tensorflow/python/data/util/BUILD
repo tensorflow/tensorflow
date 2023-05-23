@@ -185,7 +185,7 @@ py_strict_library(
 
 py_strict_test(
     name = "random_seed_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_seed_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",

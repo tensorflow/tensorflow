@@ -60,7 +60,7 @@ py_strict_library(
 
 cuda_py_strict_test(
     name = "atomic_function_test",
-    size = "small",
+    size = "medium",
     srcs = ["atomic_function_test.py"],
     python_version = "PY3",
     deps = [
