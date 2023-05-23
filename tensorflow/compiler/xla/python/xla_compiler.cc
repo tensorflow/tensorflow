@@ -32,6 +32,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl_bind.h"  // from @pybind11
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -179,6 +180,62 @@ StatusOr<Shape> MakeShapeWithDenseLayout(
     shape.clear_layout();
   }
   return shape;
+}
+
+// Pybind function for HloSharding.iota_tile, which is a non-crashing factory
+// that produces a HloSharding instance backed by tile assignment of a
+// transposed and reshaped iota array of device ids. More specifically the tile
+// assignment array is as if it is produced by the following numpy code:
+// numpy.arange(math.prod(dims)).reshape(reshape_dims)
+//      .transpose(transpose_perm).reshape(math.prod(dims))
+// where:
+// `dims`: is the dimensions of the tile assignment array, which corresponds to
+// OpSharding.tile_assignment_dimensions.
+// `reshape_dims`: is the dimensions the 1D iota array is reshaped to.
+// `transpose_perm`: is the dimension permutation to transpose `reshape_dims`.
+// `replicate_last_dim`: indicates whether the last dimension in `dims` is a
+//     replicated dimension.
+//
+// In practice, `reshape_dims` often maps to the axises of user defined device
+// mesh, and `transpose_perm` often maps to the user specification of how a
+// tensor is partitioned based on the axes defined in the mesh, e.g. for a mesh
+// of size 4x2x2 as AxBxC:
+// PartitionSpec('A', 'B', 'C') corresponds to reshape_dims=[4,2,2],
+// transpose_perm=[0,1,2] (no transpose)
+// PartitionSpec('B', 'A', 'C') corresponds to reshape_dims=[4,2,2],
+// transpose_perm=[1,0,2] (swap A and B)
+StatusOr<HloSharding> IotaTileHelper(absl::Span<const int64_t> dims,
+                                     absl::Span<const int64_t> reshape_dims,
+                                     absl::Span<const int> transpose_perm,
+                                     bool replicate_last_dim) {
+  if (dims.empty()) {
+    return InvalidArgument("`dims` should not be empty.");
+  }
+  if (reshape_dims.size() != transpose_perm.size()) {
+    return InvalidArgument(
+        "`reshape_dims` and `transpose_perm` should have the same size, saw "
+        "[%s] v.s. [%s]",
+        absl::StrJoin(reshape_dims, ","), absl::StrJoin(transpose_perm, ","));
+  }
+  if (!reshape_dims.empty() && Product(dims) != Product(reshape_dims)) {
+    return InvalidArgument(
+        "Cannot reshape from `dims` [%s] to `reshape_dims` [%s].",
+        absl::StrJoin(dims, ","), absl::StrJoin(reshape_dims, ","));
+  }
+  auto make_assignment = [&] {
+    if (reshape_dims.empty() && transpose_perm.empty()) {
+      Array<int64_t> assignment(dims);
+      assignment.FillIota(0);
+      return assignment;
+    }
+    Array<int64_t> assignment(reshape_dims);
+    assignment.FillIota(0);
+    assignment.TransposeDimensions(transpose_perm);
+    assignment.Reshape(dims);
+    return assignment;
+  };
+  return replicate_last_dim ? HloSharding::PartialTile(make_assignment())
+                            : HloSharding::Tile(make_assignment());
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.
@@ -975,11 +1032,19 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             return HloSharding::Tuple(shape, shardings);
           },
           "Constructs a tuple sharding.")
+      .def_static("iota_tile", xla::ValueOrThrowWrapper(IotaTileHelper),
+                  py::arg("dims"),
+                  py::arg("reshape_dims") = absl::Span<const int64_t>(),
+                  py::arg("transpose_perm") = absl::Span<const int>(),
+                  py::arg("replicate_last_dim") = false)
+      .def_static("manual", [] { return HloSharding::Manual(); })
+      .def_static("replicate", [] { return HloSharding::Replicate(); })
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
            [](const xla::HloSharding& self) { return absl::HashOf(self); })
       .def("is_replicated", &xla::HloSharding::IsReplicated)
+      .def("is_manual", &xla::HloSharding::IsManual)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
       .def("tuple_elements",
