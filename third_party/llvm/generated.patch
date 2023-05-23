@@ -1,1 +1,88 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankcombiner-clamp-fmed3-const.mir b/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankcombiner-clamp-fmed3-const.mir
+--- a/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankcombiner-clamp-fmed3-const.mir
++++ b/llvm/test/CodeGen/AMDGPU/GlobalISel/regbankcombiner-clamp-fmed3-const.mir
+@@ -30,7 +30,7 @@
+     %5:sgpr(s32) = G_FCONSTANT float 0.000000e+00
+     %9:vgpr(s32) = COPY %5(s32)
+     %10:vgpr(s32) = COPY %6(s32)
+-    %4:vgpr(s32) = nnan G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %3(s32), %9(s32), %10(s32)
++    %4:vgpr(s32) = nnan G_AMDGPU_FMED3 %3(s32), %9(s32), %10(s32)
+     $vgpr0 = COPY %4(s32)
+ ...
+ 
+@@ -67,7 +67,7 @@
+     %6:sgpr(s16) = G_FCONSTANT half 0xH0000
+     %11:vgpr(s16) = COPY %6(s16)
+     %12:vgpr(s16) = COPY %7(s16)
+-    %5:vgpr(s16) = nnan G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %4(s16), %11(s16), %12(s16)
++    %5:vgpr(s16) = nnan G_AMDGPU_FMED3 %4(s16), %11(s16), %12(s16)
+     %9:vgpr(s32) = G_ANYEXT %5(s16)
+     $vgpr0 = COPY %9(s32)
+ ...
+@@ -104,7 +104,7 @@
+     %5:sgpr(s32) = G_FCONSTANT float 0.000000e+00
+     %10:vgpr(s32) = COPY %5(s32)
+     %11:vgpr(s32) = COPY %6(s32)
+-    %4:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %3(s32), %10(s32), %11(s32)
++    %4:vgpr(s32) = G_AMDGPU_FMED3 %3(s32), %10(s32), %11(s32)
+     $vgpr0 = COPY %4(s32)
+ ...
+ 
+@@ -138,7 +138,7 @@
+     %5:sgpr(s32) = G_FCONSTANT float 1.000000e+00
+     %9:vgpr(s32) = COPY %5(s32)
+     %10:vgpr(s32) = COPY %6(s32)
+-    %4:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %3(s32), %9(s32), %10(s32)
++    %4:vgpr(s32) = G_AMDGPU_FMED3 %3(s32), %9(s32), %10(s32)
+     $vgpr0 = COPY %4(s32)
+ ...
+ 
+@@ -168,8 +168,8 @@
+     ; CHECK-NEXT: [[C2:%[0-9]+]]:sgpr(s32) = G_FCONSTANT float 1.000000e+00
+     ; CHECK-NEXT: [[COPY2:%[0-9]+]]:vgpr(s32) = COPY [[C2]](s32)
+     ; CHECK-NEXT: [[COPY3:%[0-9]+]]:vgpr(s32) = COPY [[C1]](s32)
+-    ; CHECK-NEXT: [[INT:%[0-9]+]]:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), [[FMUL]](s32), [[COPY2]](s32), [[COPY3]](s32)
+-    ; CHECK-NEXT: $vgpr0 = COPY [[INT]](s32)
++    ; CHECK-NEXT: [[AMDGPU_FMED3_:%[0-9]+]]:vgpr(s32) = G_AMDGPU_FMED3 [[FMUL]], [[COPY2]], [[COPY3]]
++    ; CHECK-NEXT: $vgpr0 = COPY [[AMDGPU_FMED3_]](s32)
+     %0:vgpr(s32) = COPY $vgpr0
+     %2:sgpr(s32) = G_FCONSTANT float 2.000000e+00
+     %8:vgpr(s32) = COPY %2(s32)
+@@ -178,7 +178,7 @@
+     %5:sgpr(s32) = G_FCONSTANT float 1.000000e+00
+     %9:vgpr(s32) = COPY %5(s32)
+     %10:vgpr(s32) = COPY %6(s32)
+-    %4:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %3(s32), %9(s32), %10(s32)
++    %4:vgpr(s32) = G_AMDGPU_FMED3 %3(s32), %9(s32), %10(s32)
+     $vgpr0 = COPY %4(s32)
+ ...
+ 
+@@ -207,8 +207,8 @@
+     ; CHECK-NEXT: [[C2:%[0-9]+]]:sgpr(s32) = G_FCONSTANT float 0.000000e+00
+     ; CHECK-NEXT: [[COPY2:%[0-9]+]]:vgpr(s32) = COPY [[C2]](s32)
+     ; CHECK-NEXT: [[COPY3:%[0-9]+]]:vgpr(s32) = COPY [[C1]](s32)
+-    ; CHECK-NEXT: [[INT:%[0-9]+]]:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), [[FMINNUM_IEEE]](s32), [[COPY2]](s32), [[COPY3]](s32)
+-    ; CHECK-NEXT: $vgpr0 = COPY [[INT]](s32)
++    ; CHECK-NEXT: [[AMDGPU_FMED3_:%[0-9]+]]:vgpr(s32) = G_AMDGPU_FMED3 [[FMINNUM_IEEE]], [[COPY2]], [[COPY3]]
++    ; CHECK-NEXT: $vgpr0 = COPY [[AMDGPU_FMED3_]](s32)
+     %0:vgpr(s32) = COPY $vgpr0
+     %2:sgpr(s32) = G_FCONSTANT float 1.000000e+01
+     %8:vgpr(s32) = G_FCANONICALIZE %0
+@@ -218,7 +218,7 @@
+     %5:sgpr(s32) = G_FCONSTANT float 0.000000e+00
+     %10:vgpr(s32) = COPY %5(s32)
+     %11:vgpr(s32) = COPY %6(s32)
+-    %4:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %3(s32), %10(s32), %11(s32)
++    %4:vgpr(s32) = G_AMDGPU_FMED3 %3(s32), %10(s32), %11(s32)
+     $vgpr0 = COPY %4(s32)
+ ...
+ 
+@@ -252,6 +252,6 @@
+     %5:sgpr(s32) = G_FCONSTANT float 0.000000e+00
+     %9:vgpr(s32) = COPY %5(s32)
+     %10:vgpr(s32) = COPY %6(s32)
+-    %4:vgpr(s32) = G_INTRINSIC intrinsic(@llvm.amdgcn.fmed3), %3(s32), %9(s32), %10(s32)
++    %4:vgpr(s32) = G_AMDGPU_FMED3 %3(s32), %9(s32), %10(s32)
+     $vgpr0 = COPY %4(s32)
+ ...
