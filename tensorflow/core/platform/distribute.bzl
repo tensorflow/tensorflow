@@ -63,6 +63,7 @@ def distribute_py_test(
         shard_count = shard_count,
         tags = tags,
         args = args,
+        test_rule = test_rule,
         **kwargs
     )
 
