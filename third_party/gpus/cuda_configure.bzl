@@ -316,10 +316,35 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         ).stdout.strip() + "/share"
         inc_dirs += "\n" + resource_dir
 
-    return [
+    compiler_includes = [
         _normalize_include_path(repository_ctx, _cxx_inc_convert(p))
         for p in inc_dirs.split("\n")
     ]
+
+    # fix include path by also including paths where resolved symlink is replaced by original path
+    # Try to find real path to CC installation to "see through" compiler wrappers
+    # GCC has the path to g++
+    index1 = result.stderr.find("COLLECT_GCC=")
+    if index1 != -1:
+      index1 = result.stderr.find("=", index1)
+      index2 = result.stderr.find("\n", index1)
+      cc_topdir = repository_ctx.path(result.stderr[index1 + 1 : index2]).dirname.dirname
+    else:
+      # Clang has the directory
+      index1 = result.stderr.find("InstalledDir: ")
+      if index1 != -1:
+        index1 = result.stderr.find(" ", index1)
+        index2 = result.stderr.find("\n", index1)
+        cc_topdir = repository_ctx.path(result.stderr[index1 + 1 : index2]).dirname
+      else:
+        # Fallback to the CC path
+        cc_topdir = repository_ctx.path(cc).dirname.dirname
+    cc_topdir_resolved = str(cc_topdir.realpath).strip()
+    cc_topdir = str(cc_topdir).strip()
+    if cc_topdir_resolved != cc_topdir:
+        original_compiler_includes = [p.replace(cc_topdir_resolved, cc_topdir) for p in compiler_includes]
+        compiler_includes = compiler_includes + original_compiler_includes
+    return compiler_includes
 
 def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
     """Compute the list of default C and C++ include directories."""
