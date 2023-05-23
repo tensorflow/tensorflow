@@ -538,7 +538,8 @@ tensorflow::Status GraphExecutor::Run(
   std::unique_ptr<CostRecorder> cost_recorder;
   if (options_.enable_online_cost_analysis) {
     cost_recorder = loaded_client_graph.MaybeCreateCostRecorder(
-        options_.online_cost_analysis_normalize_ratio);
+        options_.online_cost_analysis_normalize_ratio,
+        options_.online_cost_analysis_record_in_cpu_cycle);
   }
 
   std::vector<tensorflow::Tensor> flat_outputs;
@@ -882,10 +883,11 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
 
 std::unique_ptr<CostRecorder>
 GraphExecutor::LoadedClientGraph::MaybeCreateCostRecorder(
-    uint64_t normalize_ratio) const {
+    uint64_t normalize_ratio, bool record_in_cpu_cycle) const {
   std::unique_ptr<CostRecorder> cost_recorder;
   absl::call_once(create_cost_recorder_once_, [&]() {
-    cost_recorder = std::make_unique<CostRecorder>(normalize_ratio);
+    cost_recorder =
+        std::make_unique<CostRecorder>(normalize_ratio, record_in_cpu_cycle);
   });
   return cost_recorder;
 }
