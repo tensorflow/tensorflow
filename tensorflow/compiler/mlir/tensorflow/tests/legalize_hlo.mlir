@@ -1476,7 +1476,16 @@ func.func @convert_slice(%arg0: tensor<1x4672xf32>) -> tensor<1x519xf32> {
 func.func @reshape(%arg0: tensor<4x6xf32>) -> tensor<2x2x6xf32> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<4x6xf32>) -> tensor<2x2x6xf32>
   func.return %0 : tensor<2x2x6xf32>
+}
 
+// CHECK-LABEL: func @round_nearest_even(
+// CHECK-SAME:                           %[[VAL_0:.*]]: tensor<2xf32>) -> tensor<2xf32> {
+// CHECK:         %[[VAL_1:.*]] = "tf.Round"(%[[VAL_0]]) : (tensor<2xf32>) -> tensor<2xf32>
+// CHECK:         return %[[VAL_1]] : tensor<2xf32>
+// CHECK:       }
+func.func @round_nearest_even(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  %0 = "mhlo.round_nearest_even"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
 }
 
 // CHECK-LABEL:   func @convert_dot_2d_1d(
