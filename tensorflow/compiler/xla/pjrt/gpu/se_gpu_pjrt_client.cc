@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -435,6 +436,21 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
  public:
   using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
 
+  StreamExecutorGpuClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+      int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      std::unique_ptr<tsl::Allocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+      : xla::PjRtStreamExecutorClient(
+            platform_name, client, std::move(devices), process_index,
+            std::move(allocator), std::move(host_memory_allocator),
+            should_stage_host_to_device_transfers, std::move(gpu_run_options)),
+        topology_(xla::StreamExecutorGpuTopologyDescription::Create(
+            xla::GpuId(), std::move(platform_name),
+            devices_.back()->device_kind(), devices_)) {}
+
   xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
@@ -460,6 +476,14 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return xla::AsyncHostToDeviceTransferManager::Create(
         shapes, stream_executor_device, this);
   }
+
+  StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return &topology_;
+  }
+
+ private:
+  xla::StreamExecutorGpuTopologyDescription topology_;
 };
 
 xla::StatusOr<xla::DeviceAssignment>

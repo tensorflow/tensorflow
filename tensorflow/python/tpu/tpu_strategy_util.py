@@ -18,7 +18,7 @@ import gc
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver.tpu import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import monitoring
 from tensorflow.python.eager.def_function import function
@@ -76,8 +76,8 @@ def initialize_tpu_system(cluster_resolver=None):
       if curr_device.job is not None:
         job = "{}/replica:0/task:0".format(curr_device.job)
 
-    cluster_resolver = TPUClusterResolver("")
-  assert isinstance(cluster_resolver, TPUClusterResolver)
+    cluster_resolver = tpu_cluster_resolver.TPUClusterResolver("")
+  assert isinstance(cluster_resolver, tpu_cluster_resolver.TPUClusterResolver)
 
   tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
   if tpu_name in _INITIALIZED_TPU_SYSTEMS:
@@ -206,8 +206,8 @@ def shutdown_tpu_system(cluster_resolver=None):
       if curr_device.job is not None:
         job = "{}/replica:0/task:0".format(curr_device.job)
 
-    cluster_resolver = TPUClusterResolver("")
-  assert isinstance(cluster_resolver, TPUClusterResolver)
+    cluster_resolver = tpu_cluster_resolver.TPUClusterResolver("")
+  assert isinstance(cluster_resolver, tpu_cluster_resolver.TPUClusterResolver)
 
   tpu_name = compat.as_text(cluster_resolver._tpu)  # pylint: disable=protected-access
   if tpu_name not in _INITIALIZED_TPU_SYSTEMS:

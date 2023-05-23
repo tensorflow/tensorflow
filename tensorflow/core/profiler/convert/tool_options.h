@@ -60,7 +60,7 @@ inline std::string DebugString(const ToolOptions& options) {
     absl::StrAppend(
         &output, k, ":",
         std::visit([](const auto& value) { return absl::StrCat(value); }, v),
-        ";");
+        ":", v.index(), ";");
   }
   return absl::StrCat("{", output, "}");
 }

@@ -356,16 +356,6 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
-struct LoadOptions {
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
-};
-
 class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -546,6 +536,18 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       Status error, const Shape& shape, PjRtDevice* device) {
     return Unimplemented("CreateErrorBuffer not supported.");
+  }
+
+  // Gets the pointer to the topology description held by the client.
+  virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const {
+    return Unimplemented("GetTopologyDescription not supported!");
+  }
+
+  // Returns topology object for compilation based on this client's topology.
+  virtual StatusOr<const PjRtTopologyDescription*>
+  GetFullTopologyForCompilation() const {
+    return GetTopologyDescription();
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt

@@ -624,3 +624,57 @@ func.func private @external()
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn0
 // CHECK-NEXT: gpu.launch_func @gpu_module::@fn1
 // CHECK-NEXT: return
+
+// -----
+// Check that lmhlo.constant_name is propogated to the graph capture function
+module attributes {gpu.container_module} {
+
+gpu.module @gpu_module attributes {binary = "kernel binary"} {
+  gpu.func @fn0(%arg0: memref<?xf32>) kernel {
+    gpu.return
+  }
+  gpu.func @fn1(%arg0: memref<?xf32>) kernel {
+    gpu.return
+  }
+}
+
+// CHECK: @func(
+// CHECK:   %[[ARG0:.*]]: memref<?xf32> {lmhlo.constant_name = "cst0"},
+// CHECK:   %[[ARG1:.*]]: memref<?xf32> {lmhlo.constant_name = "cst1"}
+// CHECK: )
+func.func @func(%arg0: memref<?xf32> {lmhlo.constant_name = "cst0"},
+                %arg1: memref<?xf32> {lmhlo.constant_name = "cst1"}) {
+  %c1 = arith.constant 1 : index
+
+  // CHECK: call @xla.gpu.cuda.graph.launch(%[[ARG0]], %[[ARG1]])
+  // CHECK-SAME: {capture = @xla.gpu.cuda.graph.capture}
+  // CHECK-NEXT: return
+
+  gpu.launch_func  @gpu_module::@fn0
+    blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1)
+    args(%arg0 : memref<?xf32>)
+
+  gpu.launch_func  @gpu_module::@fn1
+    blocks in (%c1, %c1, %c1)
+    threads in (%c1, %c1, %c1)
+    args(%arg1 : memref<?xf32>)
+
+  func.return
+}
+
+// CHECK: func @xla.gpu.cuda.graph.capture(
+// CHECK-SAME:  %[[ARG0]]: memref<?xf32> {lmhlo.constant_name = "cst0"},
+// CHECK-SAME:  %[[ARG1]]: memref<?xf32> {lmhlo.constant_name = "cst1"})
+// CHECK-NEXT:  %[[C1:.*]] = arith.constant 1
+// CHECK-NEXT:  gpu.launch_func @gpu_module::@fn0
+// CHECK-SAME:    blocks in (%[[C1]], %[[C1]], %[[C1]])
+// CHECK-SAME:    threads in (%[[C1]], %[[C1]], %[[C1]])
+// CHECK-NEXT:  gpu.launch_func @gpu_module::@fn1
+// CHECK-SAME:    blocks in (%[[C1]], %[[C1]], %[[C1]])
+// CHECK-SAME:    threads in (%[[C1]], %[[C1]], %[[C1]])
+// CHECK-NEXT:  return
+
+// CHECK: func private @xla.gpu.cuda.graph.launch(memref<?xf32>, memref<?xf32>)
+// CHECK-SAME: attributes {rt.custom_call = "xla.gpu.cuda.graph.launch"}
+}

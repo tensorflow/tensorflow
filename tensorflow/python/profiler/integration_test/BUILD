@@ -20,9 +20,9 @@ py_strict_library(
 cuda_py_strict_test(
     name = "profiler_api_test",
     srcs = ["profiler_api_test.py"],
-    flaky = True,
     python_version = "PY3",
     tags = [
+        "no_oss",  # TODO(b/283175845)
         "no_pip",
         "no_windows",  # TODO(b/192257727)
     ],

@@ -144,11 +144,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic);
 
   // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
@@ -207,11 +203,8 @@ static absl::Status RunGraphWithoutCapture(
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic);
+
   opts.diagnostic_engine = &diagnostic_engine;
 
   // Graph capture function should not launch any async tasks.

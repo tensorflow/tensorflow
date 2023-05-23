@@ -398,7 +398,10 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["linear_operator_kronecker_test.py"],
     shard_count = 10,
-    tags = ["optonly"],
+    tags = [
+        "no_oss",  # TODO(b/282984925)
+        "optonly",
+    ],
     xla_enable_strict_auto_jit = True,
     deps = [
         "//tensorflow/python:array_ops",
@@ -490,7 +493,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/parallel_for",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//third_party/py/numpy",
     ],
 )

@@ -353,6 +353,35 @@ static LogicalResult Outline(unsigned ordinal,
       "xla.gpu.cuda.graph.capture",
       FunctionType::get(ctx, TypeRange(ValueRange(args)), TypeRange()));
 
+  Operation* first_op = seq.front().first;
+  auto parent_func = first_op->getParentOfType<func::FuncOp>();
+
+  // If an argument to parent_func has the "lmhlo.constant_name" attribute and
+  // is passed to the graph capture function, we propagate the attribute the
+  // graph capture function.
+  for (unsigned i = 0; i < args.size(); ++i) {
+    Value arg = args[i];
+
+    // Check if arg is a function argument of parent_func.
+    if (!isa<BlockArgument>(arg)) continue;
+
+    // Function arguments are passed in as block arguments to the entry block.
+    auto block_arg = cast<BlockArgument>(arg);
+    Block* parent_block = block_arg.getParentBlock();
+    if (!parent_block->isEntryBlock()) continue;
+
+    // Check that the parent_block is in the SSACFG region of parent_func.
+    Region& parent_func_region = parent_func.getRegion();
+    if (parent_block->getParent() != &parent_func_region) continue;
+
+    unsigned parent_func_arg_index = block_arg.getArgNumber();
+    auto cst = parent_func.getArgAttrOfType<StringAttr>(parent_func_arg_index,
+                                                        "lmhlo.constant_name");
+    if (cst) {
+      func.setArgAttr(i, "lmhlo.constant_name", cst);
+    }
+  }
+
   for (auto op : seq) {
     mlir::Operation* captured_op = op.first;
     if (isa<lmhlo_gpu::GEMMOp>(captured_op)) {

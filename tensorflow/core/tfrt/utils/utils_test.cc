@@ -53,21 +53,6 @@ TEST(UtilsTest, CreateDummyTfDevices) {
   EXPECT_EQ(dummy_tf_devices[1]->name(), device_name[1]);
 }
 
-TEST(UtilsTest, AddDummyTfrtDevices) {
-  std::unique_ptr<HostContext> host_ctx = CreateHostContext();
-  const std::vector<std::string> device_name{"/device:tpu:0"};
-  AddDummyTfrtDevices(device_name, host_ctx.get());
-
-  RCReference<Device> device0 =
-      host_ctx->GetDeviceManager()->GetDeviceRef<Device>(device_name[0]);
-  ASSERT_TRUE(device0);
-  EXPECT_EQ(device0->name(), device_name[0]);
-
-  RCReference<Device> device1 =
-      host_ctx->GetDeviceManager()->GetDeviceRef<Device>("no-such-device");
-  EXPECT_FALSE(device1);
-}
-
 TEST(UtilsTest, ReturnIfErrorInImport) {
   auto status = []() {
     RETURN_IF_ERROR_IN_IMPORT(

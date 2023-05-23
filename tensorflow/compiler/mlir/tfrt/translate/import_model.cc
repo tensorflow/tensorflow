@@ -70,7 +70,7 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
 
     const auto func_op = symbol_table.lookup<mlir::func::FuncOp>(func_name);
     if (!func_op) {
-      return tensorflow::errors::Internal(
+      return absl::InternalError(
           absl::StrCat("Function ", func_name, " is not found."));
     }
     FunctionDef func_def;
@@ -92,6 +92,14 @@ StatusOr<std::vector<FunctionDef>> ExportXlaFunctions(mlir::ModuleOp module) {
         }
       }
     });
+
+    // Remove the function from the module, as it will be handled by XLA.
+    // It is safe to remove the function, i.e., the function won't be invoked on
+    // CPU. This is because bridge guarantees that each function has only one
+    // use. We don't replace the uses of the function, because we iterate from
+    // the root caller and hence its uses should have been removed.
+    func_op->erase();
+
     visited.insert(func_name);
   }
   return xla_func_defs;
@@ -111,9 +119,9 @@ Status ConvertFunctionToBef(
       tensorflow::ConvertFunctionToMlir(fbody, flib_def, &context);
 
   if (!expected_module.ok())
-    return tensorflow::errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Failed to convert function to mlir for function ", function_name.str(),
-        ". Error: ", expected_module.status().message());
+        ". Error: ", expected_module.status().message()));
 
   auto module = std::move(expected_module).value();
 
@@ -152,7 +160,7 @@ Status ConvertTfMlirToRuntimeExecutable(
         tensorflow::RunTPUBackwardCompatConversion(module, tpu_compile_options);
     if (mlir::failed(backward_compat_result)) {
       return diag_handler.Combine(
-          tensorflow::errors::Internal("Failed to handle legacy TPU Ops"));
+          absl::InternalError("Failed to handle legacy TPU Ops"));
     }
 
     if (VLOG_IS_ON(1)) {
@@ -165,7 +173,7 @@ Status ConvertTfMlirToRuntimeExecutable(
     auto tpu_partitioned_call_fallback_compat_result =
         tensorflow::RunTPUPartitionedCallFallbackCompatConversion(module);
     if (mlir::failed(tpu_partitioned_call_fallback_compat_result)) {
-      return diag_handler.Combine(tensorflow::errors::Internal(
+      return diag_handler.Combine(absl::InternalError(
           "Failed to process TPUPartitionedCallOp for fallback execution"));
     }
   } else if (options.device_target == TfrtDeviceInfraTarget::kGpu &&
@@ -222,7 +230,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
           if (VLOG_IS_ON(1)) {
             tensorflow::DumpMlirOpToFile("tf_to_corert_failure", module);
           }
-          return diag_handler.Combine(tensorflow::errors::Internal(
+          return diag_handler.Combine(absl::InternalError(
               "failed to lower TF Dialect to CoreRT dialect."));
         }
 
@@ -230,7 +238,7 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
             tfrt::ConvertMLIRToBEF(module, /*disable_optional_sections=*/true);
         if (bef_buffer->empty())
           return diag_handler.Combine(
-              tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+              absl::InternalError("failed to convert MLIR to BEF."));
 
         bef_buffer->shrink_to_fit();
         return OkStatus();

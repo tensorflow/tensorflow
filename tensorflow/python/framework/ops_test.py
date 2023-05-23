@@ -3700,7 +3700,7 @@ class GraphDefInputShapesTest(test_util.TensorFlowTestCase):
       concrete_function = eager_function.ConcreteFunction(
           concrete_function.graph,
           attrs={"_input_shapes": attr_value},
-          spec=concrete_function._pre_initialized_function_spec)
+          function_type=concrete_function.function_type)
 
     test_graph = ops.Graph()
     with test_graph.as_default():

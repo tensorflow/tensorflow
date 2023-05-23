@@ -100,6 +100,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
+  RegisterConcurrentRegionCustomCalls(registry);
   RegisterMatmulCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 
@@ -413,11 +414,7 @@ Status GpuRuntimeExecutable::Execute(
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic, true);
 
   // Prepare options for executing XLA Runtime program.
   runtime::Executable::ExecuteOpts opts;

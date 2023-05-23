@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 #include "tensorflow/core/runtime_fallback/util/type_util.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/device_with_custom_allocator.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
@@ -692,78 +693,6 @@ void FallbackAsyncExecuteOpSeq(tfrt::AsyncKernelFrame* frame) {
   out_op_chain = std::move(op_chain);
 }
 
-class DeviceWithCustomAllocator : public tensorflow::Device {
- public:
-  DeviceWithCustomAllocator(tensorflow::Device* device,
-                            tensorflow::Allocator* allocator)
-      : Device(device->env(), device->attributes()),
-        device_(device),
-        allocator_(allocator) {
-    DCHECK(device_);
-    DCHECK(allocator_);
-  }
-
-  Allocator* GetAllocator(AllocatorAttributes attr) override {
-    return allocator_;
-  }
-
-  const DeviceBase* UnderlyingDevice() const override {
-    return device_->UnderlyingDevice();
-  }
-  DeviceBase* UnderlyingDevice() override {
-    return device_->UnderlyingDevice();
-  }
-
-  const CpuWorkerThreads* tensorflow_cpu_worker_threads() const override {
-    return device_->tensorflow_cpu_worker_threads();
-  }
-
-  Allocator* GetScopedAllocator(AllocatorAttributes attr,
-                                int64_t step_id) override {
-    return device_->GetScopedAllocator(attr, step_id);
-  }
-
-  ScopedAllocatorMgr* GetScopedAllocatorMgr() const override {
-    return device_->GetScopedAllocatorMgr();
-  }
-
-  const Eigen::ThreadPoolDevice* eigen_cpu_device() override {
-    return device_->eigen_cpu_device();
-  }
-
-  thread::ThreadPool* tensorflow_device_thread_pool() override {
-    return device_->tensorflow_device_thread_pool();
-  }
-
-  bool has_eigen_cpu_device() const override {
-    return device_->has_eigen_cpu_device();
-  }
-
-  Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                             const AllocatorAttributes alloc_attrs,
-                             Tensor* tensor) override {
-    return device_->MakeTensorFromProto(tensor_proto, alloc_attrs, tensor);
-  }
-
-  void CopyTensorInSameDevice(const Tensor* input_tensor, Tensor* output_tensor,
-                              const DeviceContext* device_context,
-                              StatusCallback done) override {
-    device_->CopyTensorInSameDevice(input_tensor, output_tensor, device_context,
-                                    std::move(done));
-  }
-
-  Status Sync() override { return device_->Sync(); }
-
-  // Returns the resource manager associated w/ this device.
-  ResourceMgr* resource_manager() override {
-    return device_->resource_manager();
-  }
-
- private:
-  tensorflow::Device* device_ = nullptr;
-  tensorflow::Allocator* allocator_ = nullptr;
-};
-
 void KernelFallbackExecuteOpCustomAllocatorInternal(
     llvm::ArrayRef<tfrt::AsyncValue*> args,
     llvm::MutableArrayRef<tfrt::RCReference<tfrt::AsyncValue>> results,
@@ -798,7 +727,8 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
       GetDeviceFromFallbackState(*fallback_request_state, *kernel_runner);
 
   if (!kernel_runner->IsAsync()) {
-    DeviceWithCustomAllocator device_with_custom_allocator(device, allocator);
+    tfrt_stub::DeviceWithCustomAllocator device_with_custom_allocator(
+        device, allocator);
 
     KernelFallbackExecuteOpInternal(args, results,
                                     /*op_chain=*/op_chain, attr_frame, exec_ctx,
@@ -807,7 +737,8 @@ void KernelFallbackExecuteOpCustomAllocatorInternal(
                                     &device_with_custom_allocator);
   } else {
     auto device_with_custom_allocator =
-        std::make_unique<DeviceWithCustomAllocator>(device, allocator);
+        std::make_unique<tfrt_stub::DeviceWithCustomAllocator>(device,
+                                                               allocator);
 
     tfrt::AsyncValueRef<tfrt::Chain> op_ch;
     if (op_chain == nullptr) {

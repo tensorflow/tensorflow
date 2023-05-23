@@ -1369,6 +1369,21 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
       return success();
     }
 
+    // Special case when the reshape is sparse-to-sparse: We generate the
+    // tensor::ReshapeOp to avoid allocating temp buffer.
+    if (sparse_tensor::getSparseTensorEncoding(operandType) &&
+        sparse_tensor::getSparseTensorEncoding(resultType) &&
+        resultType.hasStaticShape()) {
+      auto shape = DenseIntElementsAttr::get(
+          RankedTensorType::get(resultType.getRank(), rewriter.getI64Type()),
+          resultType.getShape());
+      auto constShape =
+          rewriter.create<arith::ConstantOp>(reshapeOp.getLoc(), shape);
+      rewriter.replaceOpWithNewOp<tensor::ReshapeOp>(
+          reshapeOp, resultType, operand, constShape.getResult());
+      return success();
+    }
+
     // Compute the reassociation maps for the linalg operation. This will
     // succeed if the reshape can be done with a single expand_shape or
     // collapse_shape.
@@ -1414,9 +1429,6 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
       return exprs;
     };
 
-    int64_t totalElems = resultType.getNumElements();
-    auto collapsedType = RankedTensorType::get({totalElems}, elemType);
-
     // Otherwise, we need to first reduce all source dimensions into one and
     // then expand to the destination dimensions. If there is only a single
     // source dimension, the reduce step can be skipped. TensorCollapseShape
@@ -1427,23 +1439,12 @@ class ReshapeOpConverter : public OpConversionPattern<mhlo::ReshapeOp> {
           // dimensions.
           getIdentityExprs(operandType.getRank())};
 
-      // If the operand has a sparse encoding, then the collapsed type should
-      // have a sparse encoding.
-      if (sparse_tensor::getSparseTensorEncoding(operandType)) {
-        SmallVector<int64_t, 1> collapsedShape = {totalElems};
-        auto identityMap =
-            AffineMap::getMultiDimIdentityMap(1, rewriter.getContext());
-        auto oneDimensionType = RankedTensorType::get(collapsedShape, elemType);
-        collapsedType = sparse_tensor::getCOOFromTypeWithOrdering(
-            oneDimensionType, identityMap, true);
-        collapsedOp = rewriter.create<tensor::CollapseShapeOp>(
-            loc, collapsedType, operand, collapsingMap);
-      } else {
-        collapsedOp = rewriter.create<tensor::CollapseShapeOp>(loc, operand,
-                                                               collapsingMap);
-      }
+      collapsedOp =
+          rewriter.create<tensor::CollapseShapeOp>(loc, operand, collapsingMap);
     }
     // Cast to a known static type if the input has dynamic dimensions.
+    int64_t totalElems = resultType.getNumElements();
+    auto collapsedType = RankedTensorType::get({totalElems}, elemType);
     collapsedOp =
         rewriter.create<tensor::CastOp>(loc, collapsedType, collapsedOp);
     if (resultType.getRank() == 1) {

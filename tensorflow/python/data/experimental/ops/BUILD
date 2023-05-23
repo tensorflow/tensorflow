@@ -276,6 +276,19 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "pad_to_cardinality",
+    srcs = ["pad_to_cardinality.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
     name = "parsing_ops",
     srcs = ["parsing_ops.py"],
     srcs_version = "PY3",
@@ -511,6 +524,7 @@ py_strict_library(
         ":io",
         ":map_defun",
         ":matching_files",
+        ":pad_to_cardinality",
         ":prefetching_ops",
         ":random_access",
         ":readers",

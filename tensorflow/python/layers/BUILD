@@ -1,5 +1,7 @@
 # python/layers package
 
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
 visibility = [
     "//tensorflow:__subpackages__",
 ]
@@ -10,7 +12,7 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "layers_base",
     srcs = [
         "__init__.py",
@@ -22,7 +24,7 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "layers_util",
     srcs = [
         "utils.py",
@@ -30,13 +32,12 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:cond",
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:smart_cond",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "layers",
     srcs = [
         "convolutional.py",
@@ -51,6 +52,7 @@ py_library(
         "//tensorflow/python/keras/legacy_tf_layers:convolutional",
         "//tensorflow/python/keras/legacy_tf_layers:core",
         "//tensorflow/python/keras/legacy_tf_layers:pooling",
+        "//tensorflow/python/util:lazy_loader",
         # Normalization layer will need //third_party/py/keras/legacy_tf_layers:normalization
         # Client lib should import that, since this target can't import it due to
         # circular dependency.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -105,6 +106,9 @@ class DeviceSet {
 
  private:
   mutable mutex devices_mu_;
+
+  mutable absl::flat_hash_map<DeviceNameUtils::ParsedName, std::vector<Device*>>
+      matching_device_cache_;
 
   // Not owned.
   std::vector<Device*> devices_;

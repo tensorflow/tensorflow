@@ -8,7 +8,7 @@ load(
     "tf_cuda_cc_test",
     "tf_cuda_library",
 )
-load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup", "internal_tfrt_deps")
+load("//tensorflow:tensorflow.default.bzl", "cc_header_only_library", "filegroup")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -95,7 +95,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime/rpc/eager:grpc_eager_client",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
-    ] + internal_tfrt_deps(),
+    ],
     alwayslink = 1,
 )
 
@@ -653,7 +653,6 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":tfe_op_internal",
         ":tfe_tensorhandle_internal",
-        "@com_google_absl//absl/strings",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -663,10 +662,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        # copybara:uncomment_begin
-        # "//tensorflow/core/tfrt/eager:c_api_tfrt",
-        # "@tf_runtime//backends/cpu:tf_ops_alwayslink",
-        # copybara:uncomment_end
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -776,7 +772,7 @@ tf_cuda_cc_test(
 
 tf_cuda_cc_test(
     name = "c_api_cluster_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "c_api_cluster_test.cc",
     ],

@@ -30,6 +30,10 @@ build --copt=-mavx --host_copt=-mavx
 # See https://github.com/protocolbuffers/upb/blob/9effcbcb27f0a665f9f345030188c0b291e32482/upb/upb.c#L183.
 build --copt=-Wno-gnu-offsetof-extensions
 
+# Use lld as the linker
+build --linkopt="-fuse-ld=lld"
+build --linkopt="-lm"
+
 # Store performance profiling log in the mounted artifact directory.
 # The profile can be viewed by visiting chrome://tracing in a Chrome browser.
 # See https://docs.bazel.build/versions/main/skylark/performance.html#performance-profiling

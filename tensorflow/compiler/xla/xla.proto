@@ -518,7 +518,11 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 211
+  // Whether to enable dot strength reduction-related algebraic simplifications
+  // on GPU.
+  bool xla_gpu_enable_dot_strength_reduction = 211;
+
+  // Next id: 212
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

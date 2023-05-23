@@ -28,35 +28,50 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-// TODO(hyeontaek): Generalize `xla::CompileOptions`.
+// Abstract options for compiling an MLIR module and load it as
+// `LoadedExecutable`. Ideally, compile options should be present in the MLIR
+// module being compiled to help static checking and completeness. This option
+// structure is to express legacy compilation options that are not included in
+// the MLIR module.
+// TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
+// TODO(hyeontaek): Add `Serialize()`.
 struct CompileOptions : llvm::RTTIExtends<CompileOptions, llvm::RTTIRoot> {
-  CompileOptions() = default;
-  explicit CompileOptions(xla::CompileOptions xla_options)
-      : xla_options(std::move(xla_options)) {}
+  static char ID;  // NOLINT
+};
 
-  xla::CompileOptions xla_options;
-
+// Abstract options for deserializing an `Executable` and load it as
+// `LoadedExecutable`. This option structure is to express legacy compilation
+// options that are not included in the MLIR module.
+// TODO(hyeontaek): Make an new `LoadOptions` that is specific for loading.
+struct DeserializeOptions
+    : llvm::RTTIExtends<DeserializeOptions, llvm::RTTIRoot> {
   static char ID;  // NOLINT
 };
 
 // Represents a compiler that creates an `Executable` that can run a computation
 // on devices.
+//
+// TODO(hyeontaek): All `Compiler` methods should take target information such
+// as "Platform" or "Topology" that is not tied to a real hardware allocation,
+// and return unloaded objects only. `Client` should take over the role of
+// loading of compiled objects into the target low-level runtime and hardware to
+// ready the them for execution. This will enable ahead-of-time compilation,
+// better separation between compilation, loading, and serialization and
+// deserialization.
 class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
  public:
-  // Compiles `mlir_module` and returns an `Executable`.
-
-  // TODO(hyeontaek): Introduce `Platform`/`Topology` and return `Executable`
-  // instead of `LoadedExecutable`. This will factor out the loading portion of
-  // the compilation, enabling ahead-of-time compilation.
+  // Compiles `mlir_module` and returns a `LoadedExecutable`.
+  // TODO(hyeontaek): Move executable loading to `Client`.
   virtual StatusOr<std::unique_ptr<LoadedExecutable>> Compile(
       mlir::ModuleOp mlir_module, std::unique_ptr<CompileOptions> options) = 0;
 
   // Deserializes a serialized executable as produced by
   // `LoadedExecutable::Serialize()`. The compatibility of `serialized` is
   // implementation specific.
+  // TODO(hyeontaek): Move executable loading to `Client`.
   virtual StatusOr<std::unique_ptr<LoadedExecutable>>
   DeserializeLoadedExecutable(absl::string_view serialized,
-                              std::optional<xla::CompileOptions> options) = 0;
+                              std::unique_ptr<DeserializeOptions> options) = 0;
 
   static char ID;  // NOLINT
 };

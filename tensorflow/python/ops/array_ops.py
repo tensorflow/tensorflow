@@ -59,11 +59,6 @@ tf_export("newaxis").export_constant(__name__, "newaxis")
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
-if flags.config().tf_shape_default_int64.value():
-  DEFAULT_OUT_TYPE = dtypes.int64
-else:
-  DEFAULT_OUT_TYPE = dtypes.int32
-
 
 @tf_export("reshape", v1=["reshape", "manip.reshape"])
 @dispatch.add_dispatch_support
@@ -595,7 +590,7 @@ def broadcast_static_shape(shape_x, shape_y):
 
 @tf_export("shape", v1=[])
 @dispatch.add_dispatch_support
-def shape_v2(input, out_type=DEFAULT_OUT_TYPE, name=None):
+def shape_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
   # TODO(b/274626120) Update `tf_shape_default_int64` comment when it is better
   # supported.
@@ -646,12 +641,17 @@ def shape_v2(input, out_type=DEFAULT_OUT_TYPE, name=None):
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape(input, name, out_type)
 
 
 @tf_export(v1=["shape"])
 @dispatch.add_dispatch_support
-def shape(input, name=None, out_type=DEFAULT_OUT_TYPE):
+def shape(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
@@ -673,6 +673,11 @@ def shape(input, name=None, out_type=DEFAULT_OUT_TYPE):
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape_internal(input, name, optimize=True, out_type=out_type)
 
 

@@ -386,6 +386,7 @@ struct VectorizeForCPUPass
                ThloReverseVectorizationPattern,
                TransferReadOfOneDimExpandShape>(ctx);
       tensor::CastOp::getCanonicalizationPatterns(patterns, ctx);
+      vector::populateVectorTransferTensorSliceTransforms(patterns);
       if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
         return signalPassFailure();
     }

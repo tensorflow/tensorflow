@@ -526,7 +526,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 
-  def test_function_with_defaults_input(self, cycles, use_cpp_bindings):
+  def test_function_with_defaults_input_tensor(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
@@ -545,6 +545,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(5.0, imported.f().numpy())
     self.assertEqual(7.0, imported.f(constant_op.constant(7.0)).numpy())
+
+    # imported.signatures with defaults are not supported.
+    # TODO(b/277814477) support defaults in loaded.signatures
+    # self.assertEqual(
+    #     {"output_0": 5.0},
+    #     self.evaluate(
+    #         imported.signatures["serving_default"]()
+    #     ),
+    # )
+
+  def test_function_with_defaults_input_numpy(self, cycles, use_cpp_bindings):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def func(x=np.array(5.0)):
+      return x
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(5.0, root.f())
+    self.assertAllEqual(7.0, root.f(np.array(7.0)))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    self.assertEqual(5.0, imported.f().numpy())
+    self.assertEqual(7.0, imported.f(np.array(7.0)).numpy())
 
     # imported.signatures with defaults are not supported.
     # TODO(b/277814477) support defaults in loaded.signatures
@@ -1256,7 +1285,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(restored_concrete_functions, 1)
 
     with self.assertRaisesRegex(
-        TypeError, "Binding inputs to tf.function `f` failed"
+        TypeError, "Binding inputs to tf.function failed"
     ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()

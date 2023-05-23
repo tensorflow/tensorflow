@@ -36,6 +36,9 @@ constexpr char kDevice[] = "tac.device";
 // Inference type.
 constexpr char kInferenceType[] = "tac.inference_type";
 
+// Inference type.
+constexpr char kSkipTargetAnnotation[] = "tac.skip_target_annotation";
+
 // TODO(renjieliu): Add more inference types.
 enum InferenceType {
   UNKNOWN = 0,

@@ -921,7 +921,7 @@ py_library(
         ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
         "//tensorflow/python/platform:remote_utils",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
