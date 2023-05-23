@@ -418,8 +418,6 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithInplaceReshape) {
                       {{4}, {5}, {}}  // Fourth Op, output
                   },
                   {5});
-  (*graph.tensors())[2].bytes = 24;
-  (*graph.tensors())[4].bytes = 24;
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
@@ -439,11 +437,6 @@ TEST_F(ArenaPlannerTest, SimpleGraphWithChainOfInplaceOps) {
                       {{7}, {8}, {}},
                   },
                   {8});
-  (*graph.tensors())[2].bytes = 24;
-  (*graph.tensors())[4].bytes = 24;
-  (*graph.tensors())[5].bytes = 24;
-  (*graph.tensors())[6].bytes = 24;
-  (*graph.tensors())[7].bytes = 24;
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
@@ -464,8 +457,6 @@ TEST_F(ArenaPlannerTest, SimpleGraphsWithReshapeInputOutput) {
        {{2, 1}, {3}, {}, kTfLiteBuiltinReshape},
        {{3}, {4}, {}}},
       {4});
-  (*graph.tensors())[2].bytes = 24;
-  (*graph.tensors())[3].bytes = 24;
   SetGraph(&graph);
   Execute(0, graph.nodes().size() - 1);
 
