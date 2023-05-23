@@ -1004,7 +1004,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
 )
