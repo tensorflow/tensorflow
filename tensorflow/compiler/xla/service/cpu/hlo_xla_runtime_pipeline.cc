@@ -89,6 +89,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   // Sparse GPU acceleration enables parallel loops.
   const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
   mlir::SparsificationOptions sparsification_options;
+  sparsification_options.enableRuntimeLibrary = false;
   if (gpu_codegen) {
     sparsification_options.parallelizationStrategy =
         mlir::SparseParallelizationStrategy::kDenseOuterLoop;
