@@ -12,7 +12,6 @@ module.exports = async ({ github, context }) => {
         state: "open",
         labels: "stale"
     });
-    
     if (issues.status != 200)
         return
 
@@ -20,6 +19,8 @@ module.exports = async ({ github, context }) => {
     for (let i = 0; i < issueList.length; i++) {
         let number = issueList[i].number;
         let nodeType = issueList[i].node_id
+        let issueLabels = issueList[i].labels
+        let stringLabel = JSON.stringify(issueLabels)
         console.log("issue list",issueList[i])
        
         //fetch all the events inside the issue.
@@ -40,10 +41,12 @@ module.exports = async ({ github, context }) => {
                 let timeInDays = (currentDate - labeledDate) / 86400000
                 console.log(`Issue ${number} stale label is ${timeInDays} days old.`)
                 let closeAfterStale = 7
-
+                
                 if(nodeType.startsWith('PR'))
                    closeAfterStale = 14
-   
+                else if(stringLabel.indexOf('stat:contribution welcome') !=-1 || stringLabel.indexOf('stat:good first issue') !=-1 )
+                   closeAfterStale = 365
+
                 if (timeInDays > closeAfterStale)
                     closeIssue = true
             }
@@ -51,6 +54,7 @@ module.exports = async ({ github, context }) => {
                 console.log(`Stale is unlabel for issue ${number}.`)
                     closeIssue = false
             }
+           
         }
         if(closeIssue){
             console.log(`Closing the issue ${number} more then 7 days old with stale label.`)
