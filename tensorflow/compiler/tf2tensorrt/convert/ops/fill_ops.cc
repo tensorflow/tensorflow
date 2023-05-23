@@ -67,7 +67,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
                                      " operation in ", node_def.name(),
                                      " cannot be partial.");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -96,7 +96,7 @@ class ConvertFill : public ConvertFillBase<ConvertFill> {
                          is_dims_static, nbDims, trt_dims);
     ITensorProxyPtr output_tensor = (*layer)->getOutput(0);
     this->AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -205,7 +205,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -250,7 +250,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
 
       TF_RETURN_IF_ERROR(value_weights.status());
       TF_RETURN_IF_ERROR(value_weights->SetValues(start_));
-      value_input = TRT_TensorOrWeights(value_weights.ValueOrDie());
+      value_input = TRT_TensorOrWeights(value_weights.value());
 
       trt_dims.d[0] = num_values_;
       StatusOr<nvinfer1::IConstantLayer*> const_layer =
@@ -271,7 +271,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
     }
 
     this->AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:
@@ -288,7 +288,7 @@ class ConvertRange : public ConvertFillBase<ConvertRange> {
 };
 
 std::string convert_range_error_msg(float start, float limit, float delta) {
-  const char* format_string =
+  constexpr char* format_string =
       "For parameters (start, limit) = (%.2f, %.2f) "
       "of the Range operation delta cannot be %s, got %.2f";
   return absl::StrFormat(format_string, start, limit,

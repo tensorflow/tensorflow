@@ -107,7 +107,7 @@ class ConvertBinaryImpl {
           params.validation_only, &tensor_[i], node_def, i));
     }
     operation_ = op_pair->second;
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ConvertImpl(const OpConverterParams& params,
@@ -133,12 +133,12 @@ class ConvertBinaryImpl {
         TFTRT_RETURN_ERROR_IF_NULLPTR(unary_layer, node_def.name());
         params.outputs->push_back(
             TRT_TensorOrWeights(unary_layer->getOutput(0)));
-        return Status::OK();
+        return OkStatus();
       }
     }
 
     params.outputs->push_back(TRT_TensorOrWeights(output));
-    return Status::OK();
+    return OkStatus();
   }
 
   static constexpr std::array<InputArgSpec, 2> InputSpec() {

@@ -22,6 +22,7 @@ from tensorflow.python.data.experimental.ops import random_access
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -368,21 +369,27 @@ class FromTensorSlicesRandomAccessTest(test_base.DatasetTestBase,
 class FromTensorSlicesCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                      parameterized.TestCase):
 
-  def _build_tensor_slices_dataset(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components)
+  def _build_tensor_slices_dataset(self, components, options=None):
+    dataset = dataset_ops.Dataset.from_tensor_slices(components)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     # Equal length components
     components = (np.tile(np.array([[1], [2], [3], [4]]),
                           20), np.tile(np.array([[12], [13], [14], [15]]),
                                        22), np.array([37.0, 38.0, 39.0, 40.0]))
-
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
     verify_fn(
         self,
-        lambda: self._build_tensor_slices_dataset(components),
+        lambda: self._build_tensor_slices_dataset(components, options),
         num_outputs=4)
 
   @combinations.generate(

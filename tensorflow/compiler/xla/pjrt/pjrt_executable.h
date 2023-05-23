@@ -20,13 +20,17 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -78,8 +82,40 @@ struct CompileOptions {
   // slice operation.
   const MultiSliceConfig* multi_slice_config = nullptr;
 
+  // Key-value string pairs, parsed in order to set miscellaneous options,
+  // overriding if appropriate.
+  using OptionOverride = std::variant<std::string, bool>;
+  std::vector<std::pair<std::string, OptionOverride>> env_option_overrides;
+
+  // Used to indicate the precision configuration.
+  PrecisionConfig::Precision matrix_unit_operand_precision =
+      PrecisionConfig::DEFAULT;
+
+  // Applies env_option_overrides to executable_build_options.debug_options().
+  Status ApplyAllOptionOverrides();
+
+  // Applies a single option to executable_build_options.debug_options().
+  Status ApplyOption(const std::string& key, const OptionOverride& value);
+
   // Serialize the CompileOptions into a CompileOptionsProto.
   StatusOr<CompileOptionsProto> ToProto() const;
+
+  // Deserialize the CompileOptionsProto into a CompileOptions.
+  static StatusOr<CompileOptions> FromProto(const CompileOptionsProto& proto);
+};
+
+struct LoadOptions {
+  // Origin of the subslice of the target topology to run computation on.
+  struct ComputationOrigin {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  std::optional<ComputationOrigin> computation_origin;
+
+  // multi_slice_config to associate with the executable during load of a multi
+  // slice operation.
+  const MultiSliceConfig* multi_slice_config = nullptr;
 };
 
 // Static device memory usage for a compiled program.
@@ -95,6 +131,7 @@ struct CompiledMemoryStats {
   int64_t alias_size_in_bytes = 0;
   int64_t temp_size_in_bytes = 0;
 
+  std::string serialized_hlo_proto = "";
   std::string DebugString() const;
 };
 
@@ -115,6 +152,12 @@ class PjRtExecutable {
   virtual StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const = 0;
 
+  // Returns a list of parameter OpSharding protos.
+  virtual std::optional<std::vector<OpSharding>> GetParameterShardings() const;
+
+  // Returns a list of output OpSharding protos.
+  virtual std::optional<std::vector<OpSharding>> GetOutputShardings() const;
+
   // Return memory stats that allow callers to estimate device memory usage
   // when running this executable.
   virtual StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const {
@@ -129,6 +172,10 @@ class PjRtExecutable {
   // Return a fingerprint of this executable.
   virtual StatusOr<std::string> FingerprintExecutable() const {
     return Unimplemented("Fingerprinting executable is not supported.");
+  }
+
+  virtual StatusOr<struct CompileOptions> GetCompileOptions() const {
+    return Unimplemented("CompileOptions not available.");
   }
 };
 

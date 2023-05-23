@@ -14,6 +14,38 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/runner.h"
 
+#ifdef __ANDROID__
+#include <dlfcn.h>
+#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/stat.h>
+#ifndef _WIN32
+#include <poll.h>
+#include <signal.h>
+#include <unistd.h>
+#endif
+
+#include <cstdlib>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <thread>  // NOLINT(build/c++11)
+#include <vector>
+
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
+#include "tensorflow/lite/logger.h"
+#include "tensorflow/lite/minimal_logging.h"
+
+#ifdef __ANDROID__
+#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
+#endif  // __ANDROID__
+
 // Implementation notes and rationale:
 //
 // This class's primary client is the mini-benchmark. The mini-benchmark tries
@@ -59,44 +91,11 @@ limitations under the License.
 // be used to detect issues in production without using strings which can be
 // hard to make privacy-compliant.
 
-#ifdef __ANDROID__
-#include <dlfcn.h>
-#endif
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/stat.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
-
-#include <cstdlib>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <thread>  // NOLINT(build/c++11)
-#include <vector>
-
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/minimal_logging.h"
-
-#ifdef __ANDROID__
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_runner_executable.h"
-#endif  // __ANDROID__
-
 namespace tflite {
 namespace acceleration {
 namespace {
 std::string ShellEscape(const std::string& src);
 }  // namespace
-
-ProcessRunner::ProcessRunner(const std::string& temporary_path,
-                             const std::string& function_name,
-                             int (*function_pointer)(int argc, char** argv))
-    : temporary_path_(temporary_path),
-      function_name_(function_name),
-      function_pointer_(reinterpret_cast<void*>(function_pointer)) {}
 
 MinibenchmarkStatus ProcessRunner::Init() {
   if (!function_pointer_) {
@@ -171,7 +170,41 @@ MinibenchmarkStatus ProcessRunner::Init() {
 #endif  // !__ANDROID__
 }
 
-MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
+// TODO(b/245901066): Refactor the runner to separate Multi-process
+// implementation and in process implementors, and remove the ifdef guards.
+#ifndef _WIN32
+bool ProcessRunner::KillProcessWhenTimedOut(FILE* fstream) {
+  // The first fread() should get subprocess id. It's important to
+  // read the same number of bytes as on the write side, so that this fread()
+  // does not block.
+  const int array_length = 1 + kPidBufferLength;
+  char buffer[array_length];
+  memset(buffer, '\0', array_length);
+  ssize_t length = fread(buffer, 1, kPidBufferLength, fstream);
+  int pid;
+  if (length != kPidBufferLength || !absl::SimpleAtoi(buffer, &pid)) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed to get Validator subprocess id: %s", buffer);
+    return false;
+  }
+  struct pollfd pfd[1];
+  pfd[0].fd = fileno(fstream);
+  // Wait for the fstream to be closed.
+  pfd[0].events = POLLHUP;
+  int poll_ret = poll(pfd, 1, timeout_millisec_);
+  // Kill the subprocess if timed out.
+  if (poll_ret == 0) {
+    kill(pid, SIGKILL);
+    return true;
+  } else if (poll_ret < 0) {
+    TF_LITE_REPORT_ERROR(error_reporter_, "Validator timer failed: %s",
+                         strerror(errno));
+  }
+  return false;
+}
+#endif  // _WIN32
+
+MinibenchmarkStatus ProcessRunner::Run(const Allocation* model_allocation,
                                        const std::vector<std::string>& args,
                                        std::string* output, int* exitcode,
                                        int* signal) {
@@ -182,9 +215,10 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
     return kMinibenchmarkPreconditionNotMet;
   }
   int benchmark_process_status = 0;
+  MinibenchmarkStatus status = kMinibenchmarkCommandFailed;
 #ifndef __ANDROID__
   if (function_pointer_) {
-    benchmark_process_status = RunInprocess(model, args);
+    benchmark_process_status = RunInprocess(model_allocation, args);
   } else {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -199,13 +233,13 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
   // If model is not null, open a pipe() and add pipe model path as cmdline
   // argv[3]. If model is null, argv[0] should be the model path.
   int pipe_fds[2];
-  if (model != nullptr) {
+  if (model_allocation != nullptr) {
     if (pipe(pipe_fds) < 0) {
       *exitcode = errno;
       return kMinibenchmarkPipeFailed;
     }
     std::string pipe_model_path = absl::StrCat(
-        "pipe:", pipe_fds[0], ":", pipe_fds[1], ":", model->GetSize());
+        "pipe:", pipe_fds[0], ":", pipe_fds[1], ":", model_allocation->bytes());
     cmd = cmd + " " + ShellEscape(pipe_model_path);
   }
 
@@ -221,15 +255,16 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
   }
 
   // Write model to MiniBenchmark process.
-  if (model != nullptr) {
+  if (model_allocation != nullptr) {
     close(pipe_fds[0]);
     int written_bytes = 0;
-    int remaining_bytes = model->GetSize();
-    uint8_t* buffer = model->GetBufferPointer();
+    int remaining_bytes = model_allocation->bytes();
+    const uint8_t* current =
+        static_cast<const uint8_t*>(model_allocation->base());
     while (remaining_bytes > 0 &&
-           (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) > 0) {
+           (written_bytes = write(pipe_fds[1], current, remaining_bytes)) > 0) {
       remaining_bytes -= written_bytes;
-      buffer += written_bytes;
+      current += written_bytes;
     }
     close(pipe_fds[1]);
     if (written_bytes <= 0 || remaining_bytes > 0) {
@@ -238,6 +273,15 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
     }
   }
 
+  // Note: KillProcessWhenTimedOut() will block until f is closed or timeout has
+  // reached. It will cause issue if subprocess is blocked on writing to f.
+  if (timeout_millisec_ > 0 && KillProcessWhenTimedOut(f)) {
+    status = kMinibenchmarkCommandTimedOut;
+    TFLITE_LOG_PROD(
+        TFLITE_LOG_INFO,
+        "Validator did not finish after %dms. Tried to kill the test.",
+        timeout_millisec_);
+  }
   std::vector<char> buffer(4 * 1024, 0);
   ssize_t length;
   std::string ret;
@@ -252,13 +296,13 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
     *exitcode = WEXITSTATUS(benchmark_process_status);
     *signal = 0;
     if (*exitcode == kMinibenchmarkSuccess) {
-      return kMinibenchmarkSuccess;
+      status = kMinibenchmarkSuccess;
     }
   } else if (WIFSIGNALED(benchmark_process_status)) {
     *exitcode = 0;
     *signal = WTERMSIG(benchmark_process_status);
   }
-  return kMinibenchmarkCommandFailed;
+  return status;
 #endif  // _WIN32
 }
 
@@ -268,15 +312,16 @@ MinibenchmarkStatus ProcessRunner::Run(flatbuffers::FlatBufferBuilder* model,
 #define __W_EXITCODE(ret, sig) ((ret) << 8 | (sig))
 #endif
 
-int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
+int ProcessRunner::RunInprocess(const Allocation* model_allocation,
                                 const std::vector<std::string>& user_args) {
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running Validator in-process.");
   std::vector<std::string> args_string;
   args_string.push_back("inprocess");
   args_string.push_back("inprocess");
   args_string.push_back(function_name_);
 
   std::thread write_thread;
-  if (model != nullptr) {
+  if (model_allocation != nullptr) {
     int pipe_fds[2];
     if (pipe(pipe_fds) < 0) {
       return __W_EXITCODE(kMinibenchmarkPipeFailed, 0);
@@ -285,26 +330,29 @@ int ProcessRunner::RunInprocess(flatbuffers::FlatBufferBuilder* model,
     // Add pipe_model_path when model is not null.
     // Model loader won't close the write file descriptor when it's -1.
     args_string.push_back(
-        absl::StrCat("pipe:", pipe_fds[0], ":-1:", model->GetSize()));
+        absl::StrCat("pipe:", pipe_fds[0], ":-1:", model_allocation->bytes()));
 
     // When running MiniBenchmark in-process, we start a separate thread for
     // writing to pipe.
-    write_thread = std::thread([pipe_fds, model]() {
+    write_thread = std::thread([pipe_fds, model_allocation,
+                                error_reporter = error_reporter_]() {
       int written_bytes = 0;
-      int remaining_bytes = model->GetSize();
-      uint8_t* buffer = model->GetBufferPointer();
+      int remaining_bytes = model_allocation->bytes();
+      const uint8_t* current =
+          static_cast<const uint8_t*>(model_allocation->base());
       while (remaining_bytes > 0 &&
-             (written_bytes = write(pipe_fds[1], buffer, remaining_bytes)) >
+             (written_bytes = write(pipe_fds[1], current, remaining_bytes)) >
                  0) {
         remaining_bytes -= written_bytes;
-        buffer += written_bytes;
+        current += written_bytes;
       }
       close(pipe_fds[1]);
       if (written_bytes < 0 || remaining_bytes > 0) {
-        TFLITE_LOG_PROD(TFLITE_LOG_INFO,
-                        "Failed to write Model to pipe: %s. Expect to write %d "
-                        "bytes, %d bytes written.",
-                        strerror(errno), remaining_bytes, written_bytes);
+        TF_LITE_REPORT_ERROR(
+            error_reporter,
+            "Failed to write Model to pipe: %s. Expect to write %d "
+            "bytes, %d bytes written.",
+            strerror(errno), remaining_bytes, written_bytes);
       }
     });
   }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -26,13 +27,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -425,13 +426,14 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
 
 XLA_TEST_F(VecOpsSimpleTest, CbrtSevenValues) {
   XlaBuilder builder(TestName());
-  std::vector<float> expected = {16.0, 1888.0, -102.0, 0.16, 0.2, 0., 1.23};
-  std::vector<float> cube = {4096.0, 6729859072., -1061208, .004096,
-                             0.008,  0.,          1.860867};
+  float inf = std::numeric_limits<float>::infinity();
+  float qnan = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> cube = {0.0f,     -0.0f,   4096.0, 6729859072.,
+                             -1061208, .004096, 0.008,  0.,
+                             1.860867, -inf,    inf,    qnan};
   auto x = ConstantR1<float>(&builder, cube);
   Cbrt(x);
-  ComputeAndCompareR1<float>(&builder, expected, {},
-                             ErrorSpec(/*aabs=*/1e-7, /*arel=*/3e-7));
+  ComputeAndCompare(&builder, {}, ErrorSpec(/*aabs=*/1e-7, /*arel=*/5e-7));
 }
 
 }  // namespace

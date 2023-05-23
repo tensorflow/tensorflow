@@ -23,17 +23,17 @@ namespace tfrt {
 namespace {
 
 TEST(ErrorUtilTest, AllSupportedErrorConversion){
-#define ERROR_TYPE(TFRT_ERROR, TF_ERROR)                                  \
-  {                                                                       \
-    tensorflow::Status status(tensorflow::error::TF_ERROR, "error_test"); \
-    EXPECT_EQ(ConvertTfErrorCodeToTfrtErrorCode(status),                  \
-              tfrt::ErrorCode::TFRT_ERROR);                               \
+#define ERROR_TYPE(TFRT_ERROR, TF_ERROR)                                 \
+  {                                                                      \
+    tensorflow::Status status(absl::StatusCode::TF_ERROR, "error_test"); \
+    EXPECT_EQ(ConvertTfErrorCodeToTfrtErrorCode(status),                 \
+              tfrt::ErrorCode::TFRT_ERROR);                              \
   }
 #include "tensorflow/core/tfrt/utils/error_type.def"  // NOLINT
 }
 
 TEST(ErrorUtilTest, UnsupportedErrorConversion) {
-  tensorflow::Status status(tensorflow::error::UNAUTHENTICATED, "error_test");
+  tensorflow::Status status(absl::StatusCode::kUnauthenticated, "error_test");
   EXPECT_EQ(ConvertTfErrorCodeToTfrtErrorCode(status),
             tfrt::ErrorCode::kUnknown);
 }

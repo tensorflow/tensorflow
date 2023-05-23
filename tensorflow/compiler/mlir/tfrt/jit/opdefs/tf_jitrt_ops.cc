@@ -48,12 +48,12 @@ struct JitRuntimeInlinerInterface : public DialectInlinerInterface {
   }
 
   bool isLegalToInline(Region*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     return true;
   }
 
   bool isLegalToInline(Operation*, Region*, bool,
-                       BlockAndValueMapping&) const final {
+                       IRMapping&) const final {
     return true;
   }
 };
@@ -100,7 +100,7 @@ int64_t FallbackExecuteOp::cost() {
 
   // Find the referenced kernel function.
   auto kernel_fn =
-      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(self, kernel());
+      SymbolTable::lookupNearestSymbolFrom<func::FuncOp>(self, getKernel());
   if (!kernel_fn) return 1;
 
   int64_t cost = 0;

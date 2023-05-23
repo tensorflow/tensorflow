@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/load_library.h"
+#include "tensorflow/tsl/platform/load_library.h"
 
 #include <dlfcn.h>
 
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
-namespace tensorflow {
+namespace tsl {
 
 namespace internal {
 
@@ -28,7 +29,8 @@ Status LoadDynamicLibrary(const char* library_filename, void** handle) {
   if (!*handle) {
     // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* error_msg = dlerror();
-    return errors::NotFound(error_msg ? error_msg : "(null error message)");
+    return tsl::errors::NotFound(error_msg ? error_msg
+                                           : "(null error message)");
   }
   return OkStatus();
 }
@@ -44,7 +46,8 @@ Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
   if (!*symbol) {
     // Note that in C++17 std::string_view(nullptr) gives segfault!
     const char* error_msg = dlerror();
-    return errors::NotFound(error_msg ? error_msg : "(null error message)");
+    return tsl::errors::NotFound(error_msg ? error_msg
+                                           : "(null error message)");
   }
   return OkStatus();
 }
@@ -69,4 +72,4 @@ string FormatLibraryFileName(const string& name, const string& version) {
 
 }  // namespace internal
 
-}  // namespace tensorflow
+}  // namespace tsl

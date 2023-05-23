@@ -322,6 +322,9 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
   using OpMetricBySymbol =
       absl::flat_hash_map</*symbol_id=*/uint64_t, OpMetrics>;
   absl::flat_hash_map</*program_id=*/uint64_t, OpMetricBySymbol> flat_op_metric;
+
+  uint64_t total_op_time_ps = 0;
+
   plane.ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {
       OpKey key = GetOpKeyFromHloEventMetadata(event.Metadata());
@@ -331,6 +334,7 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
       if (key.symbol_id != kRootSymbolId) {
         OpMetrics& op_metrics = op_metric_by_symbol[key.symbol_id.value()];
         SetOpMetricsFromHloEvent(event, &op_metrics);
+        total_op_time_ps += op_metrics.self_time_ps();
       }
     });
   });
@@ -341,6 +345,9 @@ OpMetricsDb ConvertTpuDeviceTraceXPlaneToOpMetricsDb(
       result.add_metrics_db()->Swap(&op_metrics);
     }
   }
+  result.set_total_op_time_ps(total_op_time_ps);
+  auto total_time_ps = plane.GetStat(StatType::kTotalProfileDurationPs);
+  SetTotalTimePs(result, total_time_ps->IntOrUintValue());
   AddIdleOp(result);
   return result;
 }

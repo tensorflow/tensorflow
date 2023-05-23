@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: @unique_reuse_output
 func.func @unique_reuse_output() -> (index, memref<2x3xi64>) attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_output = 1 : i32
   %result_0 = arith.constant 1 : index
   %result_1 = memref.alloc() : memref<2x3xi64>
@@ -12,7 +12,7 @@ func.func @unique_reuse_output() -> (index, memref<2x3xi64>) attributes {tf_entr
 // CHECK-LABEL: @ambiguous_reuse_output
 func.func @ambiguous_reuse_output(%pred : i1)
     -> (memref<2x3xi64>, memref<2x3xi64>) attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK: reuse_output = -1 : i32
   %mem = memref.alloc() : memref<2x3xi64>
   %other_mem = memref.alloc() : memref<2x3xi64>
@@ -31,7 +31,7 @@ func.func @direct_reuse(%not_a_memref : index,
                    %reusable_0 : memref<2x3xi64>,
                    %reusable_1 : memref<6xi64>) -> memref<2x3xi64>
                    attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32, 2 : i32, 3 : i32, 4 : i32, 5 : i32]
   %result = memref.alloc() : memref<2x3xi64>
   func.return %result : memref<2x3xi64>
@@ -41,7 +41,7 @@ func.func @direct_reuse(%not_a_memref : index,
 func.func @local_reuse_with_memref_maps(
     %arg : memref<?xi64, strided<[3], offset: 2>>, %n : index)
     -> memref<?xi64, strided<[3], offset: 2>> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = memref.alloc(%n) : memref<?xi64, strided<[3], offset: 2>>
   linalg.generic {
@@ -59,7 +59,7 @@ func.func @local_reuse_with_memref_maps(
 func.func @local_reuse_with_broadcasting_memref_maps(
     %arg0 : memref<i64>, %arg1 : memref<?xi64>, %n : index)
     -> memref<?xi64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
   %result = memref.alloc(%n) : memref<?xi64>
   linalg.generic {
@@ -78,7 +78,7 @@ func.func @local_reuse_with_broadcasting_memref_maps(
 func.func @local_reuse_with_broadcasting_memref_maps2(
     %arg0 : memref<?xi64>, %arg1 : memref<?xi64>)
     -> memref<i64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
   %result = memref.alloc() : memref<i64>
   linalg.generic {
@@ -97,7 +97,7 @@ func.func @local_reuse_with_broadcasting_memref_maps2(
 func.func @local_reuse_with_broadcasting_memref_maps3(
     %arg0 : memref<i64>, %arg1 : memref<?xi64>)
     -> memref<i64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
   %result = memref.alloc() : memref<i64>
   linalg.generic {
@@ -116,7 +116,7 @@ func.func @local_reuse_with_broadcasting_memref_maps3(
 func.func @nolocal_reuse_with_broadcasting_memref_maps(
     %arg0 : memref<?xi64>, %arg1 : memref<?x?xi64>, %n : index)
     -> memref<?xi64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %result = memref.alloc(%n) : memref<?xi64>
   linalg.generic {
@@ -135,7 +135,7 @@ func.func @nolocal_reuse_with_broadcasting_memref_maps(
 func.func @nolocal_reuse_with_broadcasting_memref_maps2(
     %arg0 : memref<?x?x?xi64>, %arg1 : memref<?x?x?xi64>, %n : index)
     -> memref<?x?xi64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %result = memref.alloc(%n, %n) : memref<?x?xi64>
   linalg.generic {
@@ -159,7 +159,7 @@ func.func @memref.reinterpret_cast_alias(%arg : memref<f32>, %n : index)
       sizes: [%n],
       strides: [%c0]: memref<f32> to memref<?xf32>
 
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = memref.alloc(%n) : memref<?xf32>
 
@@ -180,7 +180,7 @@ func.func @memref.cast_alias(%arg : memref<*xf32>, %n : index)
     -> memref<?xf32> attributes {tf_entry} {
   %casted = memref.cast %arg : memref<*xf32> to memref<?xf32>
 
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = memref.alloc(%n) : memref<?xf32>
 
@@ -210,7 +210,7 @@ func.func @indirect_size_equality(%arg0 : memref<?xi64>,
     linalg.yield %a : i64
   }
 
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32, 1 : i32]
   %result = memref.alloc(%n) : memref<?xi64>
 
@@ -229,7 +229,7 @@ func.func @indirect_size_equality(%arg0 : memref<?xi64>,
 // CHECK-LABEL: @livetimes_incompatible
 func.func @livetimes_incompatible(%arg0 : memref<3xi64>)
     -> memref<3xi64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %result = memref.alloc() : memref<3xi64>
 
@@ -245,7 +245,7 @@ func.func @livetimes_incompatible(%arg0 : memref<3xi64>)
 
 // CHECK-LABEL: @never_used
 func.func @never_used(%arg0 : memref<3xi64>) -> memref<3xi64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = memref.alloc() : memref<3xi64>
   %c0 = arith.constant 0 : index
@@ -258,7 +258,7 @@ func.func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
   cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem0 = memref.alloc() : memref<6xi64>
 
@@ -269,7 +269,7 @@ func.func @branching_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
 
   cf.br ^bb2(%mem0 : memref<6xi64>)
 ^bb1:
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem1 = memref.alloc() : memref<6xi64>
   cf.br ^bb2(%mem1 : memref<6xi64>)
@@ -282,7 +282,7 @@ func.func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
   cf.cond_br %pred, ^bb0, ^bb1
 ^bb0:
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %mem0 = memref.alloc() : memref<6xi64>
 
@@ -295,7 +295,7 @@ func.func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
 
   cf.br ^bb2(%mem0 : memref<6xi64>)
 ^bb1:
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [1 : i32]
   %mem1 = memref.alloc() : memref<6xi64>
   cf.br ^bb2(%mem1 : memref<6xi64>)
@@ -307,7 +307,7 @@ func.func @branching_no_reuse(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
 func.func @branching_reuse_if(%pred : i1, %arg : memref<6xi64>)
     -> memref<6xi64> attributes {tf_entry} {
   %result = scf.if %pred -> (memref<6xi64>) {
-    // CHECK: alloc
+    // CHECK: memref.alloc
     // CHECK-SAME: reuse_input_candidates = [1 : i32]
     %mem0 = memref.alloc() : memref<6xi64>
 
@@ -318,7 +318,7 @@ func.func @branching_reuse_if(%pred : i1, %arg : memref<6xi64>)
 
     scf.yield %mem0 : memref<6xi64>
   } else {
-    // CHECK: alloc
+    // CHECK: memref.alloc
     // CHECK-SAME: reuse_input_candidates = [1 : i32]
     %mem1 = memref.alloc() : memref<6xi64>
     scf.yield %mem1 : memref<6xi64>
@@ -330,7 +330,7 @@ func.func @branching_reuse_if(%pred : i1, %arg : memref<6xi64>)
 func.func @branching_no_reuse_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
   %result = scf.if %pred -> (memref<6xi64>) {
-    // CHECK: alloc
+    // CHECK: memref.alloc
     // CHECK-SAME: reuse_input_candidates = []
     %mem0 = memref.alloc() : memref<6xi64>
 
@@ -343,7 +343,7 @@ func.func @branching_no_reuse_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi
 
     scf.yield %mem0 : memref<6xi64>
   } else {
-    // CHECK: alloc
+    // CHECK: memref.alloc
     // CHECK-SAME: reuse_input_candidates = [1 : i32]
     %mem1 = memref.alloc() : memref<6xi64>
     scf.yield %mem1 : memref<6xi64>
@@ -358,7 +358,7 @@ func.func @branching_no_reuse_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi
 // does not detect this case (yet). It is correct but incomplete.
 func.func @alloc_before_branching(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
   %c0 = arith.constant 0 : index
@@ -378,7 +378,7 @@ func.func @alloc_before_branching(%pred : i1, %arg : memref<6xi64>) -> memref<6x
 // CHECK-LABEL: @alloc_before_branching_2
 func.func @alloc_before_branching_2(%pred : i1, %arg : memref<6xi64>)
     -> memref<6xi64> attributes {tf_entry} {
-  // CHECK: alloc()
+  // CHECK: memref.alloc()
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
   %c0 = arith.constant 0 : index
@@ -402,7 +402,7 @@ func.func @alloc_before_branching_2(%pred : i1, %arg : memref<6xi64>)
 // does not detect this case (yet). It is correct but incomplete.
 func.func @alloc_before_branching_if(%pred : i1, %arg : memref<6xi64>) -> memref<6xi64>
     attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
   %result = scf.if %pred -> (memref<6xi64>) {
@@ -424,7 +424,7 @@ func.func @alloc_before_branching_if(%pred : i1, %arg : memref<6xi64>) -> memref
 // CHECK-LABEL: @alloc_before_branching_2_if
 func.func @alloc_before_branching_2_if(%pred : i1, %arg : memref<6xi64>)
     -> memref<6xi64> attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %mem = memref.alloc() : memref<6xi64>
   %result = scf.if %pred -> (memref<6xi64>) {
@@ -451,7 +451,7 @@ func.func @abs_unranked_i64(%arg : memref<*xi64>,
                        attributes {tf_entry} {
   %flat_arg = memref.reshape %arg(%flat_shape)
       : (memref<*xi64>, memref<1xindex>) -> memref<?xi64>
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32, 2 : i32], reuse_output = 0 : i32
   %flat_result = memref.alloc(%arg_size) : memref<?xi64>
   linalg.generic {
@@ -483,7 +483,7 @@ func.func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
   scf.if %true {
 
     // Allocation and use of new buffer.
-    // CHECK: alloc
+    // CHECK: memref.alloc
     // CHECK-SAME: reuse_input_candidates = [0 : i32]
     %mem = memref.alloc() : memref<3xf32>
     %use = memref.load %mem[%c0] : memref<3xf32>
@@ -496,7 +496,7 @@ func.func @old_buffer_alias_outside_block(%arg: memref<3xf32>)
 // CHECK-LABEL: @index_element_type
 func.func @index_element_type(%arg : memref<2x3xindex>) -> memref<2x3xindex>
     attributes {tf_entry} {
-  // CHECK: alloc
+  // CHECK: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %result = memref.alloc() : memref<2x3xindex>
   func.return %result : memref<2x3xindex>
@@ -509,7 +509,7 @@ func.func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
   %c0 = arith.constant 0 : index
   %0 = shape.shape_of %arg0 : memref<*xf32> -> tensor<?xindex>
   %1 = shape.num_elements %0 : tensor<?xindex> -> index
-  // CHECK-LABEL: alloc
+  // CHECK-LABEL: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %2 = memref.alloc() : memref<1xindex>
   memref.store %1, %2[%c0] : memref<1xindex>
@@ -517,13 +517,13 @@ func.func @abs_f32(%arg0: memref<*xf32>) -> memref<*xf32>
       : (memref<*xf32>, memref<1xindex>) -> memref<?xf32>
   %4 = memref.dim %3, %c0 : memref<?xf32>
   %5 = arith.index_cast %4 : index to i64
-  // CHECK-LABEL: alloc
+  // CHECK-LABEL: memref.alloc
   // CHECK-SAME: reuse_input_candidates = []
   %6 = memref.alloc() : memref<1xi64>
   memref.store %5, %6[%c0] : memref<1xi64>
   %7 = memref.load %6[%c0] : memref<1xi64>
   %8 = arith.index_cast %7 : i64 to index
-  // CHECK-LABEL: alloc
+  // CHECK-LABEL: memref.alloc
   // CHECK-SAME: reuse_input_candidates = [0 : i32]
   %9 = memref.alloc(%8) : memref<?xf32>
   linalg.generic {

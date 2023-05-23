@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <cstdint>
 
-// IWYU pragma: private, include "third_party/tensorflow/core/platform/types.h"
-// IWYU pragma: friend third_party/tensorflow/core/platform/types.h
+// IWYU pragma: private, include "third_party/tensorflow/tsl/platform/types.h"
+// IWYU pragma: friend third_party/tensorflow/tsl/platform/types.h
 
-namespace tensorflow {
+namespace tsl {
 
 typedef signed char int8;
 typedef short int16;
@@ -33,6 +33,6 @@ typedef unsigned short uint16;
 typedef unsigned int uint32;
 typedef std::uint64_t uint64;
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_INTEGRAL_TYPES_H_

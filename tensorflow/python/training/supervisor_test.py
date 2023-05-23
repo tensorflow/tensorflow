@@ -35,6 +35,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -420,7 +421,7 @@ class SupervisorTest(test.TestCase):
   def testLogdirButExplicitlyNoSummaryWriter(self):
     logdir = self._test_dir("explicit_no_summary_writer")
     with ops.Graph().as_default():
-      variables.VariableV1([1.0], name="foo")
+      variable_v1.VariableV1([1.0], name="foo")
       summary.scalar("c1", constant_op.constant(1))
       summary.scalar("c2", constant_op.constant(2))
       summary.scalar("c3", constant_op.constant(3))
@@ -488,7 +489,7 @@ class SupervisorTest(test.TestCase):
 
   def testNoLogdirSucceeds(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1.0, 2.0, 3.0])
+      variable_v1.VariableV1([1.0, 2.0, 3.0])
       sv = supervisor.Supervisor(logdir="", summary_op=None)
       sess = sv.prepare_or_wait_for_session("")
       sess.close()
@@ -496,7 +497,7 @@ class SupervisorTest(test.TestCase):
 
   def testUseSessionManager(self):
     with ops.Graph().as_default():
-      variables.VariableV1([1.0, 2.0, 3.0])
+      variable_v1.VariableV1([1.0, 2.0, 3.0])
       sm = session_manager_lib.SessionManager()
       # Pass in session_manager. The additional init_op is ignored.
       sv = supervisor.Supervisor(logdir="", session_manager=sm)
@@ -506,7 +507,7 @@ class SupervisorTest(test.TestCase):
   def testInitOp(self):
     logdir = self._test_dir("default_init_op")
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0])
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0])
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
       self.assertAllClose([1.0, 2.0, 3.0], sess.run(v))
@@ -516,7 +517,7 @@ class SupervisorTest(test.TestCase):
   def testInitFn(self):
     logdir = self._test_dir("default_init_op")
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0])
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0])
 
       def _init_fn(sess):
         sess.run(v.initializer)
@@ -531,7 +532,7 @@ class SupervisorTest(test.TestCase):
     logdir = self._test_dir("feed_dict_init_op")
     with ops.Graph().as_default():
       p = array_ops.placeholder(dtypes.float32, shape=(3,))
-      v = variables.VariableV1(p, name="v")
+      v = variable_v1.VariableV1(p, name="v")
       sv = supervisor.Supervisor(
           logdir=logdir,
           init_op=variables.global_variables_initializer(),
@@ -551,10 +552,10 @@ class SupervisorTest(test.TestCase):
       g = ops.Graph()
       with g.as_default():
         with ops.device("/job:localhost"):
-          v = variables.VariableV1(
+          v = variable_v1.VariableV1(
               1, name="default_ready_for_local_init_op_v_" + str(uid))
           vadd = v.assign_add(1)
-          w = variables.VariableV1(
+          w = variable_v1.VariableV1(
               v,
               trainable=False,
               collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -592,7 +593,7 @@ class SupervisorTest(test.TestCase):
 
     # Create a checkpoint.
     with ops.Graph().as_default():
-      v = variables.VariableV1(
+      v = variable_v1.VariableV1(
           10.0, name="ready_for_local_init_op_restore_v_" + str(uid))
       summary.scalar("ready_for_local_init_op_restore_v_" + str(uid), v)
       sv = supervisor.Supervisor(logdir=logdir)
@@ -609,10 +610,10 @@ class SupervisorTest(test.TestCase):
       g = ops.Graph()
       with g.as_default():
         with ops.device("/job:localhost"):
-          v = variables.VariableV1(
+          v = variable_v1.VariableV1(
               1.0, name="ready_for_local_init_op_restore_v_" + str(uid))
           vadd = v.assign_add(1)
-          w = variables.VariableV1(
+          w = variable_v1.VariableV1(
               v,
               trainable=False,
               collections=[ops.GraphKeys.LOCAL_VARIABLES],
@@ -644,13 +645,12 @@ class SupervisorTest(test.TestCase):
     logdir = self._test_dir("default_local_init_op")
     with ops.Graph().as_default():
       # A local variable.
-      v = variables.VariableV1(
-          [1.0, 2.0, 3.0],
-          trainable=False,
-          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0],
+                                 trainable=False,
+                                 collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
       # An entity which is initialized through a TABLE_INITIALIZER.
-      w = variables.VariableV1([4, 5, 6], trainable=False, collections=[])
+      w = variable_v1.VariableV1([4, 5, 6], trainable=False, collections=[])
       ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, w.initializer)
 
       # This shouldn't add a variable to the VARIABLES collection responsible
@@ -670,10 +670,9 @@ class SupervisorTest(test.TestCase):
     with ops.Graph().as_default():
       with ops.device("/job:localhost"):
         # A local variable.
-        v = variables.VariableV1(
-            [1.0, 2.0, 3.0],
-            trainable=False,
-            collections=[ops.GraphKeys.LOCAL_VARIABLES])
+        v = variable_v1.VariableV1([1.0, 2.0, 3.0],
+                                   trainable=False,
+                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
         # This shouldn't add a variable to the VARIABLES collection responsible
         # for variables that are saved/restored from checkpoints.
         self.assertEqual(len(variables.global_variables()), 0)
@@ -689,8 +688,8 @@ class SupervisorTest(test.TestCase):
     server = server_lib.Server.create_local_server()
     logdir = self._test_dir("default_init_op_fails")
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0, 2.0, 3.0], name="v")
-      variables.VariableV1([4.0, 5.0, 6.0], name="w")
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
+      variable_v1.VariableV1([4.0, 5.0, 6.0], name="w")
       # w will not be initialized.
       sv = supervisor.Supervisor(logdir=logdir, init_op=v.initializer)
       with self.assertRaisesRegex(RuntimeError, "Variables not initialized: w"):
@@ -700,14 +699,12 @@ class SupervisorTest(test.TestCase):
     server = server_lib.Server.create_local_server()
     logdir = self._test_dir("default_init_op_fails_for_local_variable")
     with ops.Graph().as_default():
-      v = variables.VariableV1(
-          [1.0, 2.0, 3.0],
-          name="v",
-          collections=[ops.GraphKeys.LOCAL_VARIABLES])
-      variables.VariableV1(
-          [1.0, 2.0, 3.0],
-          name="w",
-          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      v = variable_v1.VariableV1([1.0, 2.0, 3.0],
+                                 name="v",
+                                 collections=[ops.GraphKeys.LOCAL_VARIABLES])
+      variable_v1.VariableV1([1.0, 2.0, 3.0],
+                             name="w",
+                             collections=[ops.GraphKeys.LOCAL_VARIABLES])
       # w will not be initialized.
       sv = supervisor.Supervisor(logdir=logdir, local_init_op=v.initializer)
       with self.assertRaisesRegex(RuntimeError, "Variables not initialized: w"):
@@ -717,18 +714,18 @@ class SupervisorTest(test.TestCase):
   def testSetupFail(self):
     logdir = self._test_dir("setup_fail")
     with ops.Graph().as_default():
-      variables.VariableV1([1.0, 2.0, 3.0], name="v")
+      variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
       with self.assertRaisesRegex(ValueError, "must have their device set"):
         supervisor.Supervisor(logdir=logdir, is_chief=False)
     with ops.Graph().as_default(), ops.device("/job:ps"):
-      variables.VariableV1([1.0, 2.0, 3.0], name="v")
+      variable_v1.VariableV1([1.0, 2.0, 3.0], name="v")
       supervisor.Supervisor(logdir=logdir, is_chief=False)
 
   @test_util.run_v1_only("train.Supervisor is for v1 only")
   def testDefaultGlobalStep(self):
     logdir = self._test_dir("default_global_step")
     with ops.Graph().as_default():
-      variables.VariableV1(287, name="global_step")
+      variable_v1.VariableV1(287, name="global_step")
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
       self.assertEqual(287, sess.run(sv.global_step))
@@ -738,7 +735,7 @@ class SupervisorTest(test.TestCase):
   def testRestoreFromMetaGraph(self):
     logdir = self._test_dir("restore_from_meta_graph")
     with ops.Graph().as_default():
-      variables.VariableV1(1, name="v0")
+      variable_v1.VariableV1(1, name="v0")
       sv = supervisor.Supervisor(logdir=logdir)
       sess = sv.prepare_or_wait_for_session("")
       filename = sv.saver.save(sess, sv.save_path)
@@ -761,7 +758,7 @@ class SupervisorTest(test.TestCase):
     logdir = self._test_dir("standard_services_without_global_step")
     # Create a checkpoint.
     with ops.Graph().as_default():
-      v = variables.VariableV1([1.0], name="foo")
+      v = variable_v1.VariableV1([1.0], name="foo")
       summary.scalar("v", v[0])
       sv = supervisor.Supervisor(logdir=logdir)
       meta_graph_def = meta_graph.create_meta_graph_def(
@@ -800,7 +797,7 @@ class SupervisorTest(test.TestCase):
     self.assertRaises(StopIteration, lambda: next(rr))
     # There should be a checkpoint file with the variable "foo"
     with ops.Graph().as_default(), self.cached_session() as sess:
-      v = variables.VariableV1([10.10], name="foo")
+      v = variable_v1.VariableV1([10.10], name="foo")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
       self.assertEqual(1.0, self.evaluate(v)[0])
@@ -812,7 +809,7 @@ class SupervisorTest(test.TestCase):
     logdir = self._test_dir("standard_services_with_global_step")
     # Create a checkpoint.
     with ops.Graph().as_default():
-      v = variables.VariableV1([123], name="global_step")
+      v = variable_v1.VariableV1([123], name="global_step")
       sv = supervisor.Supervisor(logdir=logdir)
       meta_graph_def = meta_graph.create_meta_graph_def(
           saver_def=sv.saver.saver_def)
@@ -865,7 +862,7 @@ class SupervisorTest(test.TestCase):
     self.assertRaises(StopIteration, lambda: next(rr))
     # There should be a checkpoint file with the variable "foo"
     with ops.Graph().as_default(), self.cached_session() as sess:
-      v = variables.VariableV1([-12], name="global_step")
+      v = variable_v1.VariableV1([-12], name="global_step")
       sav = saver_lib.Saver([v])
       sav.restore(sess, save_path)
       self.assertEqual(123, self.evaluate(v)[0])

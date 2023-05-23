@@ -23,8 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -40,7 +40,8 @@ class GpuTransferManager : public GenericTransferManager {
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     MutableBorrowingLiteral literal) override;
-  Status ReadDynamicShapes(se::Stream* stream, ShapedBuffer* device_buffer,
+  Status ReadDynamicShapes(se::Stream* stream,
+                           const ShapedBuffer* device_buffer,
                            Shape* device_shape) override;
 
  private:

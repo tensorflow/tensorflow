@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/text_literal_writer.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/strings/str_cat.h"
@@ -24,14 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
 /* static */ Status TextLiteralWriter::WriteToPath(const Literal& literal,
                                                    absl::string_view path) {
-  std::unique_ptr<tensorflow::WritableFile> f;
-  auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
+  std::unique_ptr<tsl::WritableFile> f;
+  auto s = tsl::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
     return s;
   }
@@ -42,7 +43,7 @@ namespace xla {
   }
 
   Status status;
-  tensorflow::WritableFile* f_ptr = f.get();
+  tsl::WritableFile* f_ptr = f.get();
   literal.EachCellAsString([f_ptr, &status](absl::Span<const int64_t> indices,
                                             const std::string& value) {
     if (!status.ok()) {

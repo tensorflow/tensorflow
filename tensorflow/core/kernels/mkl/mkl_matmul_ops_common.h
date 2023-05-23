@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
 #ifdef DNNL_AARCH64_USE_ACL
-#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/mutex.h"
 #endif
 
@@ -41,7 +40,8 @@ namespace tensorflow {
 static Eigen::internal::CacheSizes cache_sizes = Eigen::internal::CacheSizes();
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-inline bool ExecuteSingleThreadedGemm(int m, int n, int k, int bytes) {
+inline bool ExecuteSingleThreadedGemm(int64_t m, int64_t n, int64_t k,
+                                      int bytes) {
   // Ideally we would like to determine blocking and then come up with
   // a heuristic but what we are targeting are very small models whose
   // total size is < x*L2. So we will do this simple calculation
@@ -66,9 +66,6 @@ struct MklDnnMatMulFwdParams {
   memory::format_tag dst_format;
   string dtypes = string("");
   bool const_weight;
-#ifdef DNNL_AARCH64_USE_ACL
-  uint64 weight_hash;
-#endif
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -405,9 +402,6 @@ class MklDnnMatMulFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dst_dims);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.dtypes);
     key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_format);
-#ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(mkldnn_matmul_fwd_dims.weight_hash);
-#endif
 
     // Generate keys for post-ops
     for (auto const& post_op_param : mkldnn_matmul_fwd_dims.post_op_params) {
@@ -588,9 +582,6 @@ struct MklMatMulParams {
   memory::dims a_strides;
   memory::dims b_strides;
   memory::dims c_strides;
-#ifdef DNNL_AARCH64_USE_ACL
-  int aarch64_counter;
-#endif
   struct PostOpParam {
     string name;
     std::vector<float> param;
@@ -665,6 +656,10 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.sp_mem->set_data_handle(DummyData);
     if (mul_data != nullptr) context_.mul_mem->set_data_handle(DummyData);
     if (add_data != nullptr) context_.add_mem->set_data_handle(DummyData);
+  }
+
+  std::shared_ptr<dnnl::matmul::primitive_desc> GetPrimitiveDesc() const {
+    return context_.prim_desc;
   }
 
  private:
@@ -763,7 +758,7 @@ class MklMatMulPrimitive : public MklPrimitive {
     context_.b_mem.reset(
         new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
     context_.c_mem.reset(
-        new dnnl::memory(*context_.b_md, cpu_engine_, DummyData));
+        new dnnl::memory(*context_.c_md, cpu_engine_, DummyData));
     auto scratchpad_md = context_.prim_desc->scratchpad_desc();
     context_.sp_mem.reset(
         new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
@@ -849,9 +844,6 @@ class MklMatMulPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(params.b_strides);
     key_creator.AddAsKey(params.c_strides);
     key_creator.AddAsKey(typeid(T).name());
-#ifdef DNNL_AARCH64_USE_ACL
-    key_creator.AddAsKey(params.aarch64_counter);
-#endif
     key_creator.AddAsKey(typeid(Tlhs).name());
     key_creator.AddAsKey(typeid(Trhs).name());
     key_creator.AddAsKey(typeid(Toutput).name());
@@ -905,15 +897,17 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
   MklMatMulParams params("dnnl_gemm", a_dims, b_dims, c_dims, a_strides,
                          b_strides, c_strides);
+  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
+  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
   MklMatMulPrimitive<T, T, T>* matmul_prim =
       MklMatMulPrimitiveFactory<T, T, T, T>::Get(params, 0);
 
   UserScratchPad<unsigned char> scratch_pad;
   scratch_pad.AllocateSPTensor(matmul_prim, ctx);
   // Execute matmul primitive.
-  auto st = ExecuteSingleThreadedGemm(m, n, k, sizeof(T));
+
   std::shared_ptr<stream> cpu_stream;
-  MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+
   cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
   matmul_prim->Execute(cpu_stream, a, b, c, scratch_pad.Get());
 }
@@ -922,5 +916,5 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_MATMUL_OPS_COMMON_H_

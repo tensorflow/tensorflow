@@ -20,7 +20,7 @@ limitations under the License.
 #include <string_view>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ErrorHandling.h"
 
 namespace xla {
 namespace runtime {
@@ -58,7 +58,7 @@ constexpr const char* kArgumentConstraintAttrName = "rt.constraint";
 //     %input0: memref<*xf32>   { rt.constraint = "rank"  },
 //     %input1: memref<?x?xf32> { rt.constraint = "shape" },
 //     %perm: memref<4xi32>     { rt.constraint = "value" }
-//   ) attributes { rt.entrypoint } { ... }
+//   ) { ... }
 //
 // Entrypoint function can define constraints on its arguments, that must be
 // resolved before the function can be compiled. If constraints can't be

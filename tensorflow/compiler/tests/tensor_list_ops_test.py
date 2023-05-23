@@ -236,6 +236,17 @@ class ListOpsTest(parameterized.TestCase, xla_test.XLATestCase):
       self.assertAllEqual(z.shape.as_list(), [None])
       self.assertAllEqual(z, [0.0, 0.0])
 
+  def testInvalidSplitLength(self):
+    with self.session(), self.test_scope():
+      tensor_list_split = list_ops.tensor_list_split(
+          tensor=[1], element_shape=[-1], lengths=[0]
+      )
+      with self.assertRaisesRegex(
+          errors.UnimplementedError, "All lengths must be positive"
+      ):
+        self.evaluate(tensor_list_split)
+
+
 if __name__ == "__main__":
   os.environ["TF_XLA_FLAGS"] = ("--tf_xla_min_cluster_size=2 " +
                                 os.environ.get("TF_XLA_FLAGS", ""))

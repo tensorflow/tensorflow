@@ -24,8 +24,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Status;
-
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);
 

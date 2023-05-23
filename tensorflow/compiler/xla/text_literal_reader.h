@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -44,14 +44,14 @@ class TextLiteralReader {
 
  private:
   // Ownership of file is transferred.
-  explicit TextLiteralReader(tensorflow::RandomAccessFile* file);
+  explicit TextLiteralReader(tsl::RandomAccessFile* file);
 
   // Parses a shape string on the first line, followed by lines of values to the
   // end of the file.
   StatusOr<Literal> ReadAllLines();
 
   // Owns the file being read
-  std::unique_ptr<tensorflow::RandomAccessFile> file_;
+  std::unique_ptr<tsl::RandomAccessFile> file_;
 
   TextLiteralReader(const TextLiteralReader&) = delete;
   TextLiteralReader& operator=(const TextLiteralReader&) = delete;

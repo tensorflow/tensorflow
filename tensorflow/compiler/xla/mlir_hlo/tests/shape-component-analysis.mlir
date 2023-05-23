@@ -133,7 +133,7 @@ func.func @dim(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %c0 = arith.constant 0 : index
   %d0 = tensor.dim %arg0, %c0 : tensor<?x?xf32>
   %t = tensor.from_elements %d0, %d0 : tensor<2xindex>
-  // CHECK:      Value info for %1 = tensor.from_elements %0, %0 : tensor<2xindex>
+  // CHECK:      Value info for %{{.*}} = tensor.from_elements %{{.*}}, %{{.*}} : tensor<2xindex>
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   // CHECK-NEXT:   s0 with
@@ -148,7 +148,7 @@ func.func @extract(%arg0: tensor<?x?xf32>) -> tensor<2xindex> {
   %shape = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
   %c1 = arith.constant 1 : index
   %d0 = tensor.extract %shape[%c1] : tensor<2xindex>
-  // CHECK:      Value info for %2 = tensor.from_elements %1, %1 : tensor<2xindex>
+  // CHECK:      Value info for %{{.*}} = tensor.from_elements %{{.*}}, %{{.*}} : tensor<2xindex>
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
   // CHECK-NEXT:   s0 with
@@ -188,14 +188,14 @@ func.func @dynamic_reshape(%arg0: tensor<?x8x?x64xf32>, %arg1: tensor<4xi32>)
     -> tensor<?x8x?x64xf32> {
   %0 = shape.shape_of %arg0 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %1 = shape.num_elements %0 : tensor<4xindex> -> index
-  %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32>
+  %2 = mhlo.compute_reshape_shape %1, %arg1 : (index, tensor<4xi32>)
       -> tensor<4xi32>
   // CHECK:      Shape info for %3 = mhlo.dynamic_reshape %arg0, %2 : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
   // CHECK-NEXT:   s0 with
-  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32> -> tensor<4xi32>[0]
+  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : (index, tensor<4xi32>) -> tensor<4xi32>[0]
   // CHECK-NEXT:   8
   // CHECK-NEXT:   s0 with
-  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : index, tensor<4xi32> -> tensor<4xi32>[2]
+  // CHECK-NEXT:     s0 = %2 = mhlo.compute_reshape_shape %1, %arg1 : (index, tensor<4xi32>) -> tensor<4xi32>[2]
   // CHECK-NEXT:   64
   %3 = "mhlo.dynamic_reshape"(%arg0, %2)
       : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
@@ -224,11 +224,11 @@ func.func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %5 = shape.shape_of %4 : tensor<?xf32> -> tensor<1xindex>
   %c1 = arith.constant 1 : index
   %c0 = arith.constant 0 : index
-  // CHECK:      Value info for %6 = tensor.extract
+  // CHECK:      Value info for %{{.*}} = tensor.extract
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   %6 = tensor.extract %5[%c0] : tensor<1xindex>
-  // CHECK:      Value info for %7 = tensor.from_elements
+  // CHECK:      Value info for %{{.*}} = tensor.from_elements
   // CHECK-NEXT:   s0 with
   // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
   // CHECK-NEXT:   1
@@ -238,13 +238,13 @@ func.func @softmax(%arg0: tensor<?x?xf32>) -> tensor<?x?xf32> {
   %10 = shape.shape_of %8 : tensor<?x1xf32> -> tensor<2xindex>
   %11 = shape.cstr_broadcastable %9, %10 : tensor<2xindex>, tensor<2xindex>
   %12 = shape.assuming %11 -> (tensor<?x?xf32>) {
-    // CHECK:      Value info for %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>:
+    // CHECK:      Value info for %{{.*}} = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>:
     // CHECK-NEXT:   s0 with
     // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
     // CHECK-NEXT:   s0 with
     // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[1]
     %26 = shape.shape_of %arg0 : tensor<?x?xf32> -> tensor<2xindex>
-    // CHECK:      Value info for %27 = shape.shape_of
+    // CHECK:      Value info for %{{.*}} = shape.shape_of
     // CHECK-NEXT:   s0 with
     // CHECK-NEXT:     s0 = shapeof(<block argument> of type 'tensor<?x?xf32>' at index: 0)[0]
     // CHECK-NEXT:   1
@@ -293,7 +293,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x6
   %0 = mhlo.constant dense<512> : tensor<1xi32>
   %1 = shape.shape_of %arg1 : tensor<?x8x?x64xf32> -> tensor<4xindex>
   %2 = shape.num_elements %1 : tensor<4xindex> -> index
-  %3 = mhlo.cstr_reshapable %2, %arg2 : index, tensor<4xi32>
+  %3 = mhlo.cstr_reshapable %2, %arg2 : (index, tensor<4xi32>) -> !shape.witness
   %4 = "mhlo.dynamic_reshape"(%arg1, %arg2) : (tensor<?x8x?x64xf32>, tensor<4xi32>) -> tensor<?x8x?x64xf32>
   %5 = "mhlo.transpose"(%4) {permutation = dense<[0, 2, 1, 3]> : tensor<4xi64>} : (tensor<?x8x?x64xf32>) -> tensor<?x?x8x64xf32>
   %6 = "mhlo.transpose"(%5) {permutation = dense<[0, 1, 3, 2]> : tensor<4xi64>} : (tensor<?x?x8x64xf32>) -> tensor<?x?x64x8xf32>
@@ -320,7 +320,7 @@ func.func @reshape_integration(%arg0: tensor<512x512xf32>, %arg1: tensor<?x8x?x6
   // CHECK-NEXT:   8
   %16 = shape.shape_of %6 : tensor<?x?x64x8xf32> -> tensor<4xindex>
   %17 = shape.num_elements %16 : tensor<4xindex> -> index
-  %18 = mhlo.cstr_reshapable %17, %15 : index, tensor<2xi32>
+  %18 = mhlo.cstr_reshapable %17, %15 : (index, tensor<2xi32>) -> !shape.witness
   %19 = shape.assuming %18 -> (tensor<?x512xf32>) {
     %21 = "mhlo.dynamic_reshape"(%6, %15) : (tensor<?x?x64x8xf32>, tensor<2xi32>) -> tensor<?x512xf32>
     shape.assuming_yield %21 : tensor<?x512xf32>

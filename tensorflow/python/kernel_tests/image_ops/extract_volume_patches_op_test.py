@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -41,7 +42,12 @@ class ExtractVolumePatches(test.TestCase):
     ksizes = [1] + ksizes + [1]
     strides = [1] + strides + [1]
 
-    for dtype in [np.float16, np.float32, np.float64]:
+    for dtype in [
+        np.float16,
+        np.float32,
+        np.float64,
+        dtypes.bfloat16.as_numpy_dtype,
+    ]:
       out_tensor = array_ops.extract_volume_patches(
           constant_op.constant(image.astype(dtype)),
           ksizes=ksizes,

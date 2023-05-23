@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NET_H_
 #define TENSORFLOW_TSL_PLATFORM_NET_H_
 
-namespace tensorflow {
+namespace tsl {
 namespace internal {
 
 int PickUnusedPortOrDie();
 
 }  // namespace internal
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_NET_H_

@@ -25,7 +25,7 @@ setup_file() {
 # gathers the list of all packages (i.e. directories) which contain those
 # targets.
 license_query() {
- bazel cquery --experimental_cc_shared_library "$1" 2>/dev/null --keep_going \
+ bazel cquery --experimental_cc_shared_library "$1" --keep_going \
   | grep -e "^//" -e "^@" \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
@@ -48,6 +48,7 @@ do_external_licenses_check(){
 @bazel_tools//tools
 @local
 @com_google_absl//absl
+@pybind11_abseil//pybind11_abseil
 @org_tensorflow//
 @com_github_googlecloudplatform_google_cloud_cpp//google
 @com_github_grpc_grpc//src/compiler
@@ -65,6 +66,7 @@ EOF
 @bazel_tools//tools/
 @org_tensorflow//tensorflow
 @com_google_absl//
+@pybind11_abseil//pybind11_abseil
 //external
 @local
 @com_github_googlecloudplatform_google_cloud_cpp//
@@ -149,8 +151,6 @@ _test_lib$
 //tensorflow:no_tensorflow_py_deps
 //tensorflow/tools/pip_package:win_pip_package_marker
 //tensorflow/core:image_testdata
-//tensorflow/core/lib/lmdb:lmdb_testdata
-//tensorflow/core/lib/lmdb/testdata:lmdb_testdata
 //tensorflow/core/kernels/cloud:bigquery_reader_ops
 //tensorflow/python:extra_py_tests_deps
 //tensorflow/python:mixed_precision
@@ -205,7 +205,7 @@ EOF
       # For every missing dependency, find the tests which directly depend on
       # it, and print that list for debugging. Not really clear if this is
       # helpful since the only examples I've seen are enormous.
-      bazel query "rdeps(kind(py_test, $(cat $BATS_TEST_TMPDIR/deps)), $dep, 1)" 2>/dev/null
+      bazel query "rdeps(kind(py_test, $(cat $BATS_TEST_TMPDIR/deps)), $dep, 1)"
     done < $BATS_TEST_TMPDIR/missing_deps
     exit 1
   fi
@@ -223,7 +223,7 @@ EOF
     "@local_config_cuda//cuda:cudnn + "\
     "@local_config_cuda//cuda:curand + "\
     "@local_config_cuda//cuda:cusolver + "\
-    "@local_config_tensorrt//:tensorrt)" --keep_going 2>/dev/null > $BATS_TEST_TMPDIR/out
+    "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 
   cat <<EOF
 There was a path found connecting //tensorflow/tools/pip_package:build_pip_package
@@ -245,7 +245,7 @@ EOF
     "@local_config_cuda//cuda:cudnn + "\
     "@local_config_cuda//cuda:curand + "\
     "@local_config_cuda//cuda:cusolver + "\
-    "@local_config_tensorrt//:tensorrt)" --keep_going 2>/dev/null > $BATS_TEST_TMPDIR/out
+    "@local_config_tensorrt//:tensorrt)" --keep_going > $BATS_TEST_TMPDIR/out
 
   cat <<EOF
 There was a path found connecting //tensorflow/tools/pip_package:build_pip_package

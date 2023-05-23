@@ -207,7 +207,7 @@ When filing bugs, attach the contents of the `/tmp/generated` directory
 
 If possible, try to isolate
 a bug to a single XLA program by using the
-[`replay_computation`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/tools/run_hlo_module_main.cc)
+[`run_hlo_module`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/tools/run_hlo_module_main.cc)
 and iteratively running it on generated programs.
 
 ## Further reading

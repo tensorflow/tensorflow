@@ -848,8 +848,10 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
     return OkStatus();
   }
 
-  DCHECK(Type() == REMOTE)
-      << "SetRemoteShape is only called on remote handles.";
+  if (Type() != REMOTE) {
+    return errors::InvalidArgument(
+        "SetRemoteShape should only be called on remote handles.");
+  }
 
   auto& data = absl::get<RemoteTensorHandleData>(data_);
   // context_view_id is currently used to validate mirrors. The shape of
@@ -1073,11 +1075,6 @@ int TensorHandle::DeviceId(Status* status) const {
   status->Update(WaitUnknownDevice());
   tensorflow::Device* d = op_device();
   return (d == nullptr) ? 0 : d->parsed_name().id;
-}
-
-tensorflow::ImmediateExecutionTensorHandle* TensorHandle::Copy() {
-  Ref();
-  return this;
 }
 
 }  // namespace tensorflow

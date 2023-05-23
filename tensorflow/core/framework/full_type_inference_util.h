@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -47,36 +48,41 @@ namespace full_type {
 // should never alter the node's existing type.
 // This is the same as not defining a type inference function at all, but
 // explicitly communicates that intent.
-ForwardTypeInferenceFn KeepExisting();
+TypeInferenceFn KeepExisting();
+
+// A helper for a type inference function that indicates a single output that
+// is a tensor of type t. This is the equivalent of a type construtor since it
+// does not depend on inputs. This can be used with Tuple.
+TypeInferenceFn Tensor(FullTypeId t);
 
 // Helper for a type inference function which has the same type as the i'th
 // input.
 // The n arg allows multiple outputs, e.g. (T -> Product[T, T]).
 // TODO(mdan): Drop defaults for readability if more non-(0, 1) cases appear.
 // TODO(mdan): Rename to just Replicate.
-ForwardTypeInferenceFn ReplicateInput(int i = 0, int n = 1);
+TypeInferenceFn ReplicateInput(int i = 0, int n = 1);
 
 // Helper for a type inference function which has the same type as a variadic
 // number of inputs, e.g. (T, T -> Product[T]), (T, T, T -> Product[T]), etc.
 // Infers the meet of the input types, in the sense of type meets (see
 // https://en.wikipedia.org/wiki/Join_and_meet). This implementation is
 // simplified to require the two inputs are a subtype of another.
-ForwardTypeInferenceFn Merge();
+TypeInferenceFn Merge();
 
 // Helper for ops with semantics of encoding an input, that is,
 // `T -> Encoded[T, <t>]`, where <t> is the encoded type.
-ForwardTypeInferenceFn Encode(FullTypeId t, int i);
+TypeInferenceFn Encode(FullTypeId t, int i);
 
 // Helper for ops with semantics of encoding an input, that is,
 // `Encoded[T, <t>] -> T`, where <t> is the encoded type.
-ForwardTypeInferenceFn Decode(FullTypeId t, int i);
+TypeInferenceFn Decode(FullTypeId t, int i);
 
 // Helper for the type inference counterpart of Unary, that is (U ->
 // PRODUCT[<t>[U]]), where <t> is parameterized by this factory, and U is the
 // type of the input specified by element_idx.
 // Note: when we migrate to a more formal type definition of an op, these two
 // functions will naturally merge.
-ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx);
+TypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx);
 
 // Helper for ops with semantics of adding an element to a container (<t>[T]),
 // that is (<t>[U], V -> PRODUCT[<t>[Union[U, V]]]), where <t> is parameterized
@@ -85,8 +91,8 @@ ForwardTypeInferenceFn UnaryContainerCreate(FullTypeId t, int element_idx);
 // for constraints which guarantee that U and V must have a subtyping
 // relationship, case in which either V or U is selected, whichever is the
 // supertype.
-ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
-                                         int element_idx, bool homogeneous);
+TypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
+                                  int element_idx, bool homogeneous);
 
 // Helper for ops with semantics of unstacking multiple inputs into a container
 // `<t>[T1, ..., Tn]`, that is `T1, ..., Tn -> <t>[PRODUCT[U1, ..., Un]]`
@@ -94,7 +100,7 @@ ForwardTypeInferenceFn UnaryContainerAdd(FullTypeId t, int container_idx,
 // "unstack" mapping are parameterized by this factory.
 // Note that when the "unstack" function is the identity function, this becomes
 // equivalent to ContainerCreate.
-ForwardTypeInferenceFn MultiaryUnstack(
+TypeInferenceFn MultiaryUnstack(
     FullTypeId t, std::function<FullTypeDef(const FullTypeDef&)> unstack);
 
 // Helper for ops with semantics of applying some transformation to the
@@ -103,7 +109,7 @@ ForwardTypeInferenceFn MultiaryUnstack(
 // where Ui is obtained by applying a map T -> U. Both <t> and the "map"
 // function are parameterized by this factory. See BatchTensor and ShardTensor
 // for examples of "map".
-ForwardTypeInferenceFn ContainerMap(
+TypeInferenceFn ContainerMap(
     FullTypeId t, int input_idx,
     std::function<FullTypeDef(const FullTypeDef&)> map);
 
@@ -111,7 +117,19 @@ ForwardTypeInferenceFn ContainerMap(
 // another `<t> -> <u>`, in a covariant way, that is, `<t>[T] -> <u>[T]`. <t>
 // and <u> are parameterized by this factory. The input type is specified by
 // element_idx.
-ForwardTypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx);
+TypeInferenceFn MapCovariant(FullTypeId t, FullTypeId u, int input_idx);
+
+// Helper for ops with semantics of calling a function. The function is
+// specified indirectly, as the name of an attribute that holds the actual
+// function name.
+TypeInferenceFn FunctionCall(const string& func_attr_name);
+
+// Compose the type of a function by concatenating the outputs of multiple
+// type inference functions. If func_list is {type inference function 1, type
+// inference function 2} which return PRODUCT[T1], PRODUCT[T2] resprectively,
+// the result is PRODUCT[T1, T2], This supports the Merge op that has an index
+// output in addition to the result of the Merge type inference function.
+TypeInferenceFn Tuple(const std::vector<TypeInferenceFn>& func_list);
 
 // Auxiliary constructs to help creation of type inference functions.
 // TODO(mdan): define these as type inference functions as well.

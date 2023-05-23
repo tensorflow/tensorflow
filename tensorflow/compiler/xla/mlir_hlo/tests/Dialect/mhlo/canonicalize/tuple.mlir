@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @fold_access
 // CHECK-SAME: [[ARG:%[a-zA-Z0-9]+]]

@@ -21,7 +21,7 @@ import sys
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops
@@ -29,6 +29,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
@@ -57,7 +58,7 @@ def parse_saved_model_with_debug_info(export_dir):
   saved_model = parse_saved_model(export_dir)
 
   debug_info_path = file_io.join(
-      saved_model_utils.get_debug_dir(export_dir),
+      path_helpers.get_debug_dir(export_dir),
       constants.DEBUG_INFO_FILENAME_PB)
   debug_info = graph_debug_info_pb2.GraphDebugInfo()
   if file_io.file_exists(debug_info_path):
@@ -348,7 +349,7 @@ class SavedModelLoader(object):
         variables to be loaded are located.
     """
     self._export_dir = export_dir
-    self._variables_path = saved_model_utils.get_variables_path(export_dir)
+    self._variables_path = path_helpers.get_variables_path(export_dir)
     self._saved_model = parse_saved_model(export_dir)
 
   @property

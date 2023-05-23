@@ -143,6 +143,20 @@ TEST(DynamicUpdateSliceOpTest, SimpleTestI32) {
                                                         7, -2, 9}));
 }
 
+TEST(DynamicUpdateSliceOpTest, ZeroSizeTestI32) {
+  DynamicUpdateSliceOpModel m({TensorType_INT32, {3, 3}},
+                              {TensorType_INT32, {2, 0}},
+                              {TensorType_INT32, {2}});
+  m.SetInput<int32_t>({1, 2, 3,  //
+                       4, 5, 6,  //
+                       7, 8, 9});
+  m.SetStartIndices<int32_t>({1, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({1, 2, 3,  //
+                                                        4, 5, 6,  //
+                                                        7, 8, 9}));
+}
+
 TEST(DynamicUpdateSliceOpTest, SimpleTestI64) {
   DynamicUpdateSliceOpModel m({TensorType_INT64, {3, 3}},
                               {TensorType_INT64, {2, 1}},

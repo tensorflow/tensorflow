@@ -15,46 +15,129 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/types.h"
 
+#include <optional>
+#include <string>
+#include <tuple>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/python/lib/core/bfloat16.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
 namespace py = pybind11;
 
+namespace {
+
+struct CustomDtypes {
+  py::dtype bfloat16;
+  py::dtype float8_e4m3fn;
+  std::optional<py::dtype> float8_e4m3b11fnuz;
+  py::dtype float8_e5m2;
+  std::optional<py::dtype> int4;
+  std::optional<py::dtype> uint4;
+};
+
+const CustomDtypes& GetCustomDtypes() {
+  static const CustomDtypes& custom_dtypes = *[]() {
+    py::module ml_dtypes = py::module::import("ml_dtypes");
+    auto* dtypes = new CustomDtypes;
+    dtypes->bfloat16 = py::dtype::from_args(ml_dtypes.attr("bfloat16"));
+    dtypes->float8_e4m3fn =
+        py::dtype::from_args(ml_dtypes.attr("float8_e4m3fn"));
+    dtypes->float8_e5m2 = py::dtype::from_args(ml_dtypes.attr("float8_e5m2"));
+    if (py::hasattr(ml_dtypes, "float8_e4m3b11fnuz")) {
+      dtypes->float8_e4m3b11fnuz =
+          py::dtype::from_args(ml_dtypes.attr("float8_e4m3b11fnuz"));
+    }
+    if (py::hasattr(ml_dtypes, "int4")) {
+      dtypes->int4 = py::dtype::from_args(ml_dtypes.attr("int4"));
+    }
+    if (py::hasattr(ml_dtypes, "uint4")) {
+      dtypes->uint4 = py::dtype::from_args(ml_dtypes.attr("uint4"));
+    }
+    return dtypes;
+  }();
+  return custom_dtypes;
+}
+
+}  // namespace
+
 xla::StatusOr<PrimitiveType> DtypeToPrimitiveType(const py::dtype& np_type) {
-  static auto* types =
-      new absl::flat_hash_map<std::pair<char, int>, PrimitiveType>({
-          {{'b', 1}, PRED},
-          {{'i', 1}, S8},
-          {{'i', 2}, S16},
-          {{'i', 4}, S32},
-          {{'i', 8}, S64},
-          {{'u', 1}, U8},
-          {{'u', 2}, U16},
-          {{'u', 4}, U32},
-          {{'u', 8}, U64},
-          {{'V', 2}, BF16},  // array protocol code for raw data (void*)
-          {{'f', 2}, F16},
-          {{'f', 4}, F32},
-          {{'f', 8}, F64},
-          {{'c', 8}, C64},
-          {{'c', 16}, C128},
+  static auto& builtin_dtypes =
+      *new absl::flat_hash_map<std::tuple<char, char, int>, PrimitiveType>({
+          {{'?', 'b', 1}, PRED},
+          {{'b', 'i', 1}, S8},
+          {{'h', 'i', 2}, S16},
+          {{'i', 'i', 4}, S32},
+          {{'l', 'i', 4}, S32},
+          {{'q', 'i', 8}, S64},
+          {{'l', 'i', 8}, S64},
+          {{'B', 'u', 1}, U8},
+          {{'H', 'u', 2}, U16},
+          {{'I', 'u', 4}, U32},
+          {{'L', 'u', 4}, U32},
+          {{'Q', 'u', 8}, U64},
+          {{'L', 'u', 8}, U64},
+          {{'e', 'f', 2}, F16},
+          {{'f', 'f', 4}, F32},
+          {{'d', 'f', 8}, F64},
+          {{'F', 'c', 8}, C64},
+          {{'D', 'c', 16}, C128},
       });
-  auto it = types->find({np_type.kind(), np_type.itemsize()});
-  if (it == types->end()) {
-    return InvalidArgument("Unknown NumPy type %c size %d", np_type.kind(),
-                           np_type.itemsize());
+  auto builtin_it = builtin_dtypes.find(
+      {np_type.char_(), np_type.kind(), np_type.itemsize()});
+  if (builtin_it != builtin_dtypes.end()) {
+    return builtin_it->second;
   }
-  return it->second;
+
+  struct DtypeEq {
+    bool operator()(const py::dtype& a, const py::dtype& b) const {
+      return a.equal(b);
+    }
+  };
+  struct DtypeHash {
+    ssize_t operator()(const py::dtype& key) const { return py::hash(key); }
+  };
+  static auto* custom_dtype_map = []() {
+    const CustomDtypes& custom_dtypes = GetCustomDtypes();
+    auto* map =
+        new absl::flat_hash_map<py::dtype, PrimitiveType, DtypeHash, DtypeEq>();
+    map->emplace(custom_dtypes.bfloat16, BF16);
+    map->emplace(custom_dtypes.float8_e4m3fn, F8E4M3FN);
+    if (custom_dtypes.float8_e4m3b11fnuz) {
+      map->emplace(*custom_dtypes.float8_e4m3b11fnuz, F8E4M3B11FNUZ);
+    }
+    map->emplace(custom_dtypes.float8_e5m2, F8E5M2);
+    if (custom_dtypes.int4) {
+      map->emplace(*custom_dtypes.int4, S4);
+    }
+    if (custom_dtypes.uint4) {
+      map->emplace(*custom_dtypes.uint4, U4);
+    }
+    return map;
+  }();
+
+  auto custom_it = custom_dtype_map->find(np_type);
+  if (custom_it != custom_dtype_map->end()) {
+    return custom_it->second;
+  }
+  return InvalidArgument("Unknown NumPy dtype %s char %c kind %c itemsize %d",
+                         static_cast<std::string>(py::repr(np_type)),
+                         np_type.char_(), np_type.kind(), np_type.itemsize());
 }
 
 xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
+  const CustomDtypes& custom_dtypes = GetCustomDtypes();
   switch (type) {
     case PRED:
       return py::dtype::of<bool>();
+    case S4:
+      if (custom_dtypes.int4) {
+        return *custom_dtypes.int4;
+      }
+      return InvalidArgument("ml_dtypes.int4 not found");
     case S8:
       return py::dtype::of<int8_t>();
     case S16:
@@ -63,6 +146,11 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<int32_t>();
     case S64:
       return py::dtype::of<int64_t>();
+    case U4:
+      if (custom_dtypes.uint4) {
+        return *custom_dtypes.uint4;
+      }
+      return InvalidArgument("ml_dtypes.uint4 not found");
     case U8:
       return py::dtype::of<uint8_t>();
     case U16:
@@ -71,10 +159,17 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
       return py::dtype::of<uint32_t>();
     case U64:
       return py::dtype::of<uint64_t>();
-    case BF16: {
-      py::handle bfloat16(tensorflow::Bfloat16Dtype());
-      return py::dtype::from_args(py::reinterpret_borrow<py::object>(bfloat16));
-    }
+    case F8E4M3FN:
+      return custom_dtypes.float8_e4m3fn;
+    case F8E4M3B11FNUZ:
+      if (custom_dtypes.float8_e4m3b11fnuz) {
+        return *custom_dtypes.float8_e4m3b11fnuz;
+      }
+      return InvalidArgument("ml_dtypes.float8_e4m3b11fnuz not found");
+    case F8E5M2:
+      return custom_dtypes.float8_e5m2;
+    case BF16:
+      return custom_dtypes.bfloat16;
     case F16:
       return py::dtype("e");  // PEP 3118 code for "float16
     case F32:
@@ -94,18 +189,30 @@ xla::StatusOr<py::dtype> PrimitiveTypeToDtype(PrimitiveType type) {
 const NumpyScalarTypes& GetNumpyScalarTypes() {
   static const NumpyScalarTypes* singleton = []() {
     NumpyScalarTypes* dtypes = new NumpyScalarTypes();
-    const auto numpy = py::module::import("numpy");
+    py::module numpy = py::module::import("numpy");
+    py::module ml_dtypes = py::module::import("ml_dtypes");
     dtypes->np_bool = py::object(numpy.attr("bool_"));
+    if (py::hasattr(ml_dtypes, "int4")) {
+      dtypes->np_int4 = py::object(ml_dtypes.attr("int4"));
+    }
     dtypes->np_int8 = py::object(numpy.attr("int8"));
     dtypes->np_int16 = py::object(numpy.attr("int16"));
     dtypes->np_int32 = py::object(numpy.attr("int32"));
     dtypes->np_int64 = py::object(numpy.attr("int64"));
+    if (py::hasattr(ml_dtypes, "uint4")) {
+      dtypes->np_uint4 = py::object(ml_dtypes.attr("uint4"));
+    }
     dtypes->np_uint8 = py::object(numpy.attr("uint8"));
     dtypes->np_uint16 = py::object(numpy.attr("uint16"));
     dtypes->np_uint32 = py::object(numpy.attr("uint32"));
     dtypes->np_uint64 = py::object(numpy.attr("uint64"));
-    dtypes->np_bfloat16 =
-        py::reinterpret_borrow<py::object>(tensorflow::Bfloat16Dtype());
+    dtypes->np_bfloat16 = py::object(ml_dtypes.attr("bfloat16"));
+    dtypes->np_float8_e4m3fn = py::object(ml_dtypes.attr("float8_e4m3fn"));
+    if (py::hasattr(ml_dtypes, "float8_e4m3b11fnuz")) {
+      dtypes->np_float8_e4m3b11fnuz =
+          py::object(ml_dtypes.attr("float8_e4m3b11fnuz"));
+    }
+    dtypes->np_float8_e5m2 = py::object(ml_dtypes.attr("float8_e5m2"));
     dtypes->np_float16 = py::object(numpy.attr("float16"));
     dtypes->np_float32 = py::object(numpy.attr("float32"));
     dtypes->np_float64 = py::object(numpy.attr("float64"));
@@ -159,39 +266,42 @@ StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
 }
 
 StatusOr<py::str> TypeDescriptorForPrimitiveType(PrimitiveType type) {
-  static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__,
-                "Big endian support not implemented");
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+#define ENDIAN_PREFIX "<"
+#else
+#define ENDIAN_PREFIX ">"
+#endif
   switch (type) {
     case PRED:
       return py::str("|b1");
     case S8:
       return py::str("|i1");
     case S16:
-      return py::str("<i2");
+      return py::str(ENDIAN_PREFIX "i2");
     case S32:
-      return py::str("<i4");
+      return py::str(ENDIAN_PREFIX "i4");
     case S64:
-      return py::str("<i8");
+      return py::str(ENDIAN_PREFIX "i8");
     case U8:
       return py::str("|u1");
     case U16:
-      return py::str("<u2");
+      return py::str(ENDIAN_PREFIX "u2");
     case U32:
-      return py::str("<u4");
+      return py::str(ENDIAN_PREFIX "u4");
     case U64:
-      return py::str("<u8");
+      return py::str(ENDIAN_PREFIX "u8");
     case BF16:
-      return py::str("<V2");
+      return py::str(ENDIAN_PREFIX "V2");
     case F16:
-      return py::str("<f2");
+      return py::str(ENDIAN_PREFIX "f2");
     case F32:
-      return py::str("<f4");
+      return py::str(ENDIAN_PREFIX "f4");
     case F64:
-      return py::str("<f8");
+      return py::str(ENDIAN_PREFIX "f8");
     case C64:
-      return py::str("<c8");
+      return py::str(ENDIAN_PREFIX "c8");
     case C128:
-      return py::str("<c16");
+      return py::str(ENDIAN_PREFIX "c16");
     default:
       return Unimplemented("Unimplemented primitive type %s",
                            PrimitiveType_Name(type));
@@ -326,7 +436,7 @@ std::optional<CastToArrayResult> CastToArray(py::handle h) {
   if (!type_or_status.ok()) {
     throw xla::XlaRuntimeError(type_or_status.status());
   }
-  PrimitiveType type = type_or_status.ValueOrDie();
+  PrimitiveType type = type_or_status.value();
 
   absl::InlinedVector<int64_t, 4> dims(array.ndim());
   for (int i = 0; i < array.ndim(); ++i) {

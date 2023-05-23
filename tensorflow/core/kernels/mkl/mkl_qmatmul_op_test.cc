@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL) && defined(ENABLE_MKL)
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 #define EIGEN_USE_THREADS
 
 #include <functional>
@@ -64,10 +64,10 @@ TEST_F(QuantizedMatMulTest, Small_withBias) {
   AddInputFromArray<qint8>(TensorShape({3, 4}),
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<qint32>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -116,10 +116,10 @@ TEST_F(QuantizedMatMulTest, Small_withNegBias) {
   AddInputFromArray<qint8>(TensorShape({3, 4}),
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<qint32>(TensorShape({4}), {100, -200, 300, -400});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -178,10 +178,10 @@ TEST_F(QuantizedMatMulTest, Small_WithNegInp) {
   AddInputFromArray<qint8>(TensorShape({3, 2}), {1, 4, 2, 5, 3, 6});
   // Bias
   AddInputFromArray<float>(TensorShape({2}), {10.0f, 20.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-12.0f});
-  AddInputFromArray<float>(TensorShape({1}), {243.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {-12.0f});
+  AddInputFromArray<float>(TensorShape({}), {243.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // First calculate C = A * B,
@@ -240,12 +240,12 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReq) {
   AddInputFromArray<qint8>(TensorShape({3, 4}),
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<qint32>(TensorShape({4}), {10, -20, 30, -40});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -308,12 +308,12 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndDeq) {
   AddInputFromArray<qint8>(TensorShape({3, 4}),
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<qint32>(TensorShape({4}), {10, -20, 30, -40});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -375,10 +375,10 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndRelu) {
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<float>(TensorShape({4}),
                            {100.0f, -200.0f, 300.0f, -400.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -431,12 +431,12 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReluAndReq) {
   AddInputFromArray<qint8>(TensorShape({3, 4}),
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<qint32>(TensorShape({4}), {10, -20, 30, -40});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
 
   TF_ASSERT_OK(RunOpKernel());
   // Here are the results we expect, from hand calculations:
@@ -502,10 +502,10 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
   AddInputFromArray<qint8>(TensorShape({3, 4}),
                            {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   AddInputFromArray<qint32>(TensorShape({4}), {1, 2, 3, 4});
-  AddInputFromArray<float>(TensorShape({1}), {0});
-  AddInputFromArray<float>(TensorShape({1}), {255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  AddInputFromArray<float>(TensorShape({}), {0});
+  AddInputFromArray<float>(TensorShape({}), {255.0f});
+  AddInputFromArray<float>(TensorShape({}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({}), {127.0f});
 
   int64 start_time = Env::Default()->NowMicros();
   TF_ASSERT_OK(RunOpKernel());
@@ -543,4 +543,4 @@ TEST_F(QuantizedMatMulTest, Small_withWeightCached) {
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL && ENABLE_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

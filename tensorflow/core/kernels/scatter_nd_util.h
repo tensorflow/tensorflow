@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SCATTER_ND_UTIL_H_
 
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 
@@ -24,6 +25,22 @@ namespace tensorflow {
 Status ValidateScatterNdUpdateShape(const TensorShape& params_shape,
                                     const TensorShape& indices_shape,
                                     const TensorShape& updates_shape);
+
+inline bool DisableScatterOpDeterminism() {
+  static bool cached_disable = [] {
+    bool disable = false;
+    // When determinism is enabled, the kernels for various scatter ops like
+    // ScatterNdAdd will still use the faster non-deterministic versions if this
+    // environmental variable is true. This is useful if the user is certain the
+    // scatter inputs don't have duplicate indices (in which cases scatter ops
+    // are always deterministic), since the deterministic implementations are
+    // currently slow.
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("TF_DISABLE_SCATTER_OP_DETERMINISM",
+                                        /*default_val=*/false, &disable));
+    return disable;
+  }();
+  return cached_disable;
+}
 
 }  // namespace tensorflow
 

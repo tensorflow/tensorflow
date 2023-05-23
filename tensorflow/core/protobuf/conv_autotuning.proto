@@ -31,3 +31,24 @@ message ConvolutionProto {
   int64 bias_address = 12;
   int64 side_input_address = 13;
 }
+
+message MatmulProto {
+  stream_executor.dnn.DataType ab_dtype = 1;
+  stream_executor.dnn.DataType c_dtype = 2;
+
+  bool trans_a = 3;
+  bool trans_b = 4;
+  uint64 m = 5;
+  uint64 n = 6;
+  uint64 k = 7;
+  int64 lda = 8;
+  int64 ldb = 9;
+  int64 ldc = 10;
+
+  stream_executor.dnn.ActivationMode activation = 11;
+
+  int64 a_address = 12;
+  int64 b_address = 13;
+  int64 c_address = 14;
+  int64 bias_address = 15;
+}

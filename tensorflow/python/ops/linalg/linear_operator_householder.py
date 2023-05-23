@@ -16,6 +16,7 @@
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -202,8 +203,9 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
     # Note that because this is a reflection, it lies in O(n) (for real vector
     # spaces) or U(n) (for complex vector spaces), and thus is its own adjoint.
-    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
-        self.reflection_axis)
+    reflection_axis = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis
+    )
     x = linalg.adjoint(x) if adjoint_arg else x
     normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
@@ -233,8 +235,9 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     return self._matmul(rhs, adjoint, adjoint_arg)
 
   def _to_dense(self):
-    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
-        self.reflection_axis)
+    reflection_axis = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis
+    )
     normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     mat = normalized_axis[..., array_ops.newaxis]
     matrix = -2 * math_ops.matmul(mat, mat, adjoint_b=True)
@@ -242,8 +245,9 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
         matrix, 1. + array_ops.matrix_diag_part(matrix))
 
   def _diag_part(self):
-    reflection_axis = ops.convert_to_tensor_v2_with_dispatch(
-        self.reflection_axis)
+    reflection_axis = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self.reflection_axis
+    )
     normalized_axis = nn.l2_normalize(reflection_axis, axis=-1)
     return 1. - 2 * normalized_axis * math_ops.conj(normalized_axis)
 

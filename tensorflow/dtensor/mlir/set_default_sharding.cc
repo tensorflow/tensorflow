@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORSETDEFAULTSHARDING
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Assigns inputs/outputs for TPU computation to logical core 0.
 void SetDefaultSharding(mlir::tf_device::ClusterFuncOp cluster,
@@ -51,7 +53,7 @@ void SetDefaultSharding(mlir::tf_device::ClusterFuncOp cluster,
 // MLIR pass that sets xla sharding of TPU computation input/outputs to
 // maximally assigned to logical core 0.
 struct DTensorSetDefaultSharding
-    : public DTensorSetDefaultShardingBase<DTensorSetDefaultSharding> {
+    : public impl::DTensorSetDefaultShardingBase<DTensorSetDefaultSharding> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

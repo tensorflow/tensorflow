@@ -18,7 +18,7 @@ limitations under the License.
 #include <complex>
 #include <string>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 // Most of the definitions have been moved to this subheader so that Micro
 // can include it without relying on <string> and <complex>, which isn't

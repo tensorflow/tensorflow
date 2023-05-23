@@ -19,33 +19,10 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/cloud/now_seconds_env.h"
 
 namespace tensorflow {
-
-/// This Env wrapper lets us control the NowSeconds() return value.
-class NowSecondsEnv : public EnvWrapper {
- public:
-  NowSecondsEnv() : EnvWrapper(Env::Default()) {}
-
-  /// The current (fake) timestamp.
-  uint64 NowSeconds() const override {
-    mutex_lock lock(mu_);
-    return now_;
-  }
-
-  /// Set the current (fake) timestamp.
-  void SetNowSeconds(uint64 now) {
-    mutex_lock lock(mu_);
-    now_ = now;
-  }
-
-  /// Guards access to now_.
-  mutable mutex mu_;
-
-  /// The NowSeconds() value that this Env will return.
-  uint64 now_ = 1;
-};
-
+using tsl::NowSecondsEnv;  // NOLINT(misc-unused-using-decls)
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PLATFORM_CLOUD_NOW_SECONDS_ENV_H_

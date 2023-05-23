@@ -20,7 +20,7 @@ limitations under the License.
 
 #define TF_HAS_STACKTRACE
 
-namespace tensorflow {
+namespace tsl {
 
 // Function to create a pretty stacktrace.
 std::string CurrentStackTrace();
@@ -48,6 +48,6 @@ class SavedStackTrace {
   void* stack_[32];
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_STACKTRACE_H_

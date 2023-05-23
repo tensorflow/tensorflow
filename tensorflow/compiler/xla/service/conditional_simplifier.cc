@@ -25,34 +25,32 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
 namespace {
 
 // A computation with array type that only contains parameters and tuples is
-// considered emtpy.
+// considered empty.
 bool ComputationIsEmptyWithArrayRoot(const HloComputation* computation) {
   bool empty_operations = absl::c_all_of(
-      computation->MakeInstructionPostOrder(), [](const HloInstruction* inst) {
-        return inst->opcode() == HloOpcode::kTuple ||
-               inst->opcode() == HloOpcode::kGetTupleElement ||
-               inst->opcode() == HloOpcode::kParameter;
-      });
+      computation->MakeInstructionPostOrder(),
+      HloPredicateIsOp<HloOpcode::kTuple, HloOpcode::kGetTupleElement,
+                       HloOpcode::kParameter>);
   bool contains_array = false;
   ShapeUtil::ForEachSubshape(computation->root_instruction()->shape(),
                              [&](const Shape& shape, const ShapeIndex& index) {
@@ -513,7 +511,7 @@ StatusOr<bool> ConditionalSimplifier::TryRemoveConditional(
       absl::c_any_of(conditional->branch_computation(1)->instructions(),
                      instruction_is_expensive)) {
     VLOG(2)
-        << "Not attempting  to remove conditional as its branch_index is not a "
+        << "Not attempting to remove conditional as its branch_index is not a "
            "compile-time constant or contains expensive instructions: "
         << conditional->ToShortString();
     return false;

@@ -110,7 +110,7 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
       typename TTypes<BatchT, NUM_BLOCK_DIMS + 2>::Tensor batch_tensor) {
     // Kernel execution fails if number of elements is zero.
     if (batch_tensor.size() == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     S2BParameters<NUM_BLOCK_DIMS> args;
     args.space_tensor_batch = space_tensor.dimension(0);
@@ -158,7 +158,7 @@ struct SpaceToBatchFunctor<GPUDevice, T, NUM_BLOCK_DIMS, B2S> {
 #define INSTANTIATE_FOR_T(T) \
   TF_SPACETOBATCH_FOR_EACH_NUM_BLOCK_DIMS(INSTANTIATE, T)
 
-TF_CALL_GPU_NUMBER_TYPES(INSTANTIATE_FOR_T)
+TF_CALL_GPU_NUMBER_TYPES(INSTANTIATE_FOR_T);
 
 #undef INSTANTIATE_FOR_T
 #undef INSTANTIATE

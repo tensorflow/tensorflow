@@ -15,12 +15,15 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/value_utils.h"
 
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/op_utils.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -48,7 +51,7 @@ mlir::Value GetForwardedInput(mlir::Value value) {
       // TODO(bfontain): Add cases for identity and control flow return values.
       if (mlir::TF::DTensorLayout layout_op =
               mlir::dyn_cast<mlir::TF::DTensorLayout>(op)) {
-        value = layout_op.input();
+        value = layout_op.getInput();
         value_updated = true;
       }
     }
@@ -91,6 +94,16 @@ mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
   return builder.create<mlir::TF::ConstOp>(loc, const_attr).getResult();
 }
 
+StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type) {
+  auto ranked_type = type.dyn_cast<mlir::RankedTensorType>();
+  if (!ranked_type) {
+    return errors::InvalidArgument(
+        llvm::formatv("Type {0} is not a RankedTensorType.", type).str());
+  }
+
+  return ConvertMlirShapeToTF(ranked_type.getShape());
+}
+
 mlir::Value Int64Const(mlir::OpBuilder& builder, mlir::Location loc,
                        llvm::ArrayRef<int64_t> values) {
   auto const_type = mlir::RankedTensorType::get(
@@ -107,6 +120,15 @@ mlir::Value FloatConst(mlir::OpBuilder& builder, mlir::Location loc,
   mlir::Attribute const_attr =
       mlir::DenseFPElementsAttr::get(const_type, values);
   return builder.create<mlir::TF::ConstOp>(loc, const_attr).getResult();
+}
+
+mlir::Value StringScalarConst(mlir::OpBuilder& builder, mlir::Location loc,
+                              llvm::StringRef value) {
+  return builder.create<mlir::TF::ConstOp>(
+      loc, mlir::DenseStringElementsAttr::get(
+               mlir::RankedTensorType::get(
+                   {}, builder.getType<mlir::TF::StringType>()),
+               value));
 }
 
 mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
@@ -167,31 +189,40 @@ mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
   }
 }
 
-absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
-                                                  mlir::Location loc,
-                                                  mlir::Type type) {
+StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
+                                            mlir::Location loc,
+                                            mlir::Type type) {
   if (type.isF64()) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseFPElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getF64Type()),
-                 static_cast<double>(0.)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseFPElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getF64Type()),
+                     static_cast<double>(0.)))
+        .getResult();
   } else if (type.isF32()) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseFPElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getF32Type()),
-                 static_cast<float>(0.f)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseFPElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getF32Type()),
+                     static_cast<float>(0.f)))
+        .getResult();
   } else if (type.isInteger(32)) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseIntElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getI32Type()),
-                 static_cast<int32_t>(0)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseIntElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getI32Type()),
+                     static_cast<int32_t>(0)))
+        .getResult();
   } else if (type.isInteger(64)) {
-    return builder.create<mlir::TF::ConstOp>(
-        loc, mlir::DenseIntElementsAttr::get(
-                 mlir::RankedTensorType::get({}, builder.getI64Type()),
-                 static_cast<int64_t>(0)));
+    return builder
+        .create<mlir::TF::ConstOp>(
+            loc, mlir::DenseIntElementsAttr::get(
+                     mlir::RankedTensorType::get({}, builder.getI64Type()),
+                     static_cast<int64_t>(0)))
+        .getResult();
   } else {
-    return absl::nullopt;
+    return errors::InvalidArgument(
+        "Unsupported element type. Please file a bug to the DTensor team.");
   }
 }
 
@@ -217,7 +248,7 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
       scalar_size_type.getShape(), builder, location);
   mlir::Value scalar_sliced_value = builder.create<mlir::TF::ReshapeOp>(
       location, mlir::ArrayRef<mlir::Type>{scalar_size_type},
-      mlir::ArrayRef<mlir::Value>{sliced_value.output(), scalar_shape},
+      mlir::ArrayRef<mlir::Value>{sliced_value.getOutput(), scalar_shape},
       mlir::ArrayRef<mlir::NamedAttribute>{});
   return scalar_sliced_value;
 }

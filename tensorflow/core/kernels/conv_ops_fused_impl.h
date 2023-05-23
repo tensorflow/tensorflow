@@ -39,12 +39,10 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -257,9 +255,6 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kUndefined:
         OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
         break;
-      case FusedComputationType::kBiasAddWithGeluApproximate:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
-        break;
       case FusedComputationType::kBiasAdd:
         conv2d(WithBiasAdd<T>(bias_add_args), context, input, filter, output);
         break;
@@ -304,9 +299,18 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
                                            fused_batch_norm_args),
                context, input, filter, output);
         break;
+      default:
+        OP_REQUIRES_OK(context, errors::Internal("Fusion type is unsupported"));
+        break;
     }
   }
 };
+
+template <>
+struct LaunchFusedConv2DOp<CPUDevice, int8>;
+
+template <>
+struct LaunchFusedConv2DOp<CPUDevice, qint8>;
 
 #if GOOGLE_CUDA
 
@@ -397,12 +401,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           std::abs(dimensions.pad_cols_after - dimensions.pad_cols_before);
       const int64_t new_in_rows = in_rows + padding_rows_diff;
       const int64_t new_in_cols = in_cols + padding_cols_diff;
+      TensorShape transformed_input_shape;
       OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(params.data_format, in_batch,
-                                         new_in_rows, new_in_cols, in_depths),
-                         &transformed_input));
+                     ShapeFromFormatWithStatus(
+                         params.data_format, in_batch, new_in_rows, new_in_cols,
+                         in_depths, &transformed_input_shape));
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     transformed_input_shape,
+                                                     &transformed_input));
       const int64_t input_pad_top =
           dimensions.pad_rows_before - common_padding_rows;
       const int64_t input_pad_bottom =
@@ -437,8 +443,10 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                      se::CudaComputeCapability::VOLTA);
     if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Convert the input tensor from NHWC to NCHW.
-      TensorShape nchw_shape =
-          ShapeFromFormat(FORMAT_NCHW, in_batch, in_rows, in_cols, in_depths);
+      TensorShape nchw_shape;
+      OP_REQUIRES_OK(
+          context, ShapeFromFormatWithStatus(FORMAT_NCHW, in_batch, in_rows,
+                                             in_cols, in_depths, &nchw_shape));
       if (in_depths > 1) {
         Tensor transformed_input;
         OP_REQUIRES_OK(context,
@@ -553,12 +561,13 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     Tensor transformed_output;
     if (!compute_in_nhwc && params.data_format == FORMAT_NHWC) {
       // Only allocate temporary memory when a layout transformation is needed.
-      OP_REQUIRES_OK(context,
-                     context->allocate_temp(
-                         DataTypeToEnum<T>::value,
-                         ShapeFromFormat(FORMAT_NCHW, out_batch, out_rows,
-                                         out_cols, out_depths),
-                         &transformed_output));
+      TensorShape transformed_output_shape;
+      OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
+                                  FORMAT_NCHW, out_batch, out_rows, out_cols,
+                                  out_depths, &transformed_output_shape));
+      OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                     transformed_output_shape,
+                                                     &transformed_output));
     } else {
       transformed_output = *output;
     }
@@ -581,9 +590,9 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
     constexpr double kSideInputScale = 0.0;
     double leakyrelu_alpha = fusion_args.leakyrelu_alpha;
 
-    int device_id = stream->parent()->device_ordinal();
     DataType dtype = input.dtype();
     ConvParameters conv_parameters = {
+        stream->parent(),
         in_batch,                      // batch
         in_depths,                     // in_depths
         {{in_rows,                     // in_rows
@@ -600,7 +609,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
         {{common_padding_rows,         // padding_rows
           common_padding_cols}},       // padding_cols
         dtype,                         // tensor datatype
-        device_id,                     // device_id
         conv_desc.group_count(),
         ConvParameters::FusionInfo{kConvScale, kSideInputScale, leakyrelu_alpha,
                                    dnn_activation_mode,  // activation_mode
@@ -636,14 +644,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
                                           dnn_activation_mode};
       auto primary_or = runners.primary->GetOrCreateRunner(config, stream);
       OP_REQUIRES_OK(context, primary_or.status());
-      auto* primary = primary_or.ValueOrDie();
+      auto* primary = primary_or.value();
 
       const se::dnn::FusedConvRunner* no_scratch_fallback = nullptr;
       if (runners.no_scratch_fallback) {
         auto no_scratch_fallback_or =
             runners.no_scratch_fallback->GetOrCreateRunner(config, stream);
         OP_REQUIRES_OK(context, no_scratch_fallback_or.status());
-        no_scratch_fallback = no_scratch_fallback_or.ValueOrDie();
+        no_scratch_fallback = no_scratch_fallback_or.value();
       }
 
       auto runner_and_scratch_or =
@@ -681,6 +689,12 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
   }
 };
 
+template <>
+struct LaunchFusedConv2DOp<GPUDevice, int8>;
+
+template <>
+struct LaunchFusedConv2DOp<GPUDevice, qint8>;
+
 #endif  // GOOGLE_CUDA
 
 template <typename Device, typename T>
@@ -715,12 +729,17 @@ class FusedConv2DOp : public OpKernel {
     // convolution with BiasAdd, but in practice it doesn't work, cuDNN ignores
     // this parameter and always does Relu activation.
     if (std::is_same<Device, GPUDevice>::value) {
-      patterns = {
-          {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
-          {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
-          {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
-          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
-      };
+      if (std::is_same<T, int8>::value || std::is_same<T, qint8>::value) {
+        patterns = {{FCT::kBiasAdd, {"BiasAdd"}},
+                    {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}}};
+      } else {
+        patterns = {
+            {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
+            {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
+            {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
+            {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
+        };
+      }
     }
 
     OP_REQUIRES_OK(context, InitializeFusedComputation(
@@ -741,9 +760,11 @@ class FusedConv2DOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    ComputeConv2DDimension(params_, input, filter, &dimensions));
 
-    TensorShape out_shape = ShapeFromFormat(
-        params_.data_format, dimensions.batch, dimensions.out_rows,
-        dimensions.out_cols, dimensions.out_depth);
+    TensorShape out_shape;
+    OP_REQUIRES_OK(
+        context, ShapeFromFormatWithStatus(
+                     params_.data_format, dimensions.batch, dimensions.out_rows,
+                     dimensions.out_cols, dimensions.out_depth, &out_shape));
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]
@@ -809,10 +830,12 @@ class FusedConv2DOp : public OpKernel {
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 // Registration of the GPU implementations.
-#define REGISTER_FUSED_GPU_CONV2D(T)                                  \
-  REGISTER_KERNEL_BUILDER(                                            \
-      Name("_FusedConv2D").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      FusedConv2DOp<GPUDevice, T>);
+#define REGISTER_FUSED_GPU_CONV2D(T)                    \
+  REGISTER_KERNEL_BUILDER(Name("_FusedConv2D")          \
+                              .Device(DEVICE_GPU)       \
+                              .TypeConstraint<T>("T")   \
+                              .HostMemory("host_args"), \
+                          FusedConv2DOp<GPUDevice, T>);
 
 #endif  // GOOGLE_CUDA
 

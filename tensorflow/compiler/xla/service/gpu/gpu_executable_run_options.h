@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 namespace gpu {
@@ -84,9 +84,9 @@ class GpuExecutableRunOptions {
 // NCCL-related execution parameters.
 struct NcclExecuteParams {
   NcclExecuteParams(const ServiceExecutableRunOptions& run_options,
-                    se::Stream* stream);
+                    se::StreamExecutor* stream_executor);
 
-  se::Stream* stream;
+  se::StreamExecutor* stream_executor;
   RunId run_id;
   const DeviceAssignment* device_assn;                         // never null
   const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null

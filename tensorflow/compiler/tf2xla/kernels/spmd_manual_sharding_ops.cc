@@ -60,7 +60,7 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
         /*input=*/input, /*single_dim=*/single_dim_,
         /*manual_sharding=*/sharding, /*unspecified_dims=*/unspecified_dims_);
     OP_REQUIRES_OK(ctx, status_or_output.status());
-    ctx->SetOutput(0, status_or_output.ValueOrDie());
+    ctx->SetOutput(0, status_or_output.value());
   }
 
  private:
@@ -91,7 +91,7 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
     auto status_or_input_shape = ctx->InputXlaShape(0);
     OP_REQUIRES_OK(ctx, status_or_input_shape.status());
     const xla::Shape output_shape = TensorShapeToXLAShape(
-        /*type=*/status_or_input_shape.ValueOrDie().element_type(),
+        /*type=*/status_or_input_shape.value().element_type(),
         /*tensor_shape=*/full_shape_);
 
     xla::OpSharding sharding;
@@ -108,7 +108,7 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
         /*single_dim=*/single_dim_,
         /*manual_sharding=*/sharding, /*unspecified_dims=*/unspecified_dims_);
     OP_REQUIRES_OK(ctx, status_or_output.status());
-    ctx->SetOutput(0, status_or_output.ValueOrDie());
+    ctx->SetOutput(0, status_or_output.value());
   }
 
  private:

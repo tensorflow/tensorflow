@@ -27,23 +27,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/lite/c/c_api.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/core/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/core/c/c_api.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/delegate_registry.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/interpreter_builder.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/logger.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 #ifndef TEMP_FAILURE_RETRY
 #ifdef __ANDROID__
@@ -62,12 +63,23 @@ std::unique_ptr<tflite::delegates::DelegatePluginInterface> LoadDelegatePlugin(
       name + "Plugin", tflite_settings);
 }
 
-void AddTensorDataToMap(TfLiteTensor* tensor,
-                        std::map<std::string, std::vector<char>>& output_map) {
+void AppendTensorDataToVector(const TfLiteTensor* tensor,
+                              std::vector<std::vector<char>>& output_vector) {
   std::vector<char> char_output(TfLiteTensorByteSize(tensor));
   memcpy(char_output.data(), TfLiteTensorData(tensor),
          TfLiteTensorByteSize(tensor));
-  output_map.emplace(TfLiteTensorName(tensor), std::move(char_output));
+  output_vector.emplace_back(std::move(char_output));
+}
+
+// Returns whether the tensor is embedded with data.
+inline bool HasTensorData(tools::ModelLoader* model_loader,
+                          const Subgraph& graph, int index) {
+  // TODO(b/247752800): Find a better approach to see if data is embedded,
+  // regardless of how the model is loaded.
+  const TfLiteTensor* tensor = graph.tensor(index);
+  return tensor->allocation != nullptr ||
+         (model_loader->IsLoadedFromFlatbufferBuilder() &&
+          tensor->data.data != nullptr);
 }
 
 constexpr int64_t kMicrosInSecond = 1000 * 1000;
@@ -120,8 +132,7 @@ class ValidatorProfiler : public ::tflite::Profiler {
 
 }  // namespace
 
-MinibenchmarkStatus Validator::CheckGoldenOutputEmbeddedValidation(
-    Results* results_out) {
+MinibenchmarkStatus Validator::CheckGoldenOutput(Results* results_out) {
   if (!interpreter_ || !model_loader_->GetModel()) {
     return kMinibenchmarkPreconditionNotMet;
   }
@@ -133,24 +144,14 @@ MinibenchmarkStatus Validator::CheckGoldenOutputEmbeddedValidation(
     return kMinibenchmarkValidationSubgraphHasTooFewOutputs;
   }
 
-  if (validation_entrypoint_->AllocateTensors() != kTfLiteOk) {
-    return kMinibenchmarkAllocateTensorsFailed;
-  }
-
-  // Check if we have validation data embedded or need to run CPU for it. If
-  // the data is embedded, there is already an allocation for it from the model.
-  // We can skip running it on CPU, and copy the embedded golden output to
-  // results_out.
-  TfLiteTensor* first_input_tensor =
-      validation_entrypoint_->tensor(validation_entrypoint_->inputs()[0]);
-  if (first_input_tensor->allocation) {
-    for (int i = 0; i < validation_entrypoint_->inputs().size() - 1; i++) {
-      AddTensorDataToMap(
-          validation_entrypoint_->tensor(validation_entrypoint_->inputs()[i]),
-          results_out->golden_inference_output);
-    }
+  // Check if we have golden output embedded or need to run CPU for it.  If
+  // embedded, we can skip running it on CPU.
+  if (HasTensorData(model_loader_.get(), *validation_entrypoint_,
+                    validation_entrypoint_->inputs()[0])) {
     return kMinibenchmarkSuccess;
   }
+  TFLITE_LOG_PROD(TFLITE_LOG_INFO,
+                  "Running on CPU to get golden output for comparison.");
 
   // Create the interpreter to run on CPU.
   tflite::InterpreterBuilder(*model_loader_->GetModel(),
@@ -188,39 +189,6 @@ MinibenchmarkStatus Validator::CheckGoldenOutputEmbeddedValidation(
 
     memcpy(input_tensor->data.data, golden_output_tensor->data.data,
            golden_output_tensor->bytes);
-
-    AddTensorDataToMap(golden_output_tensor,
-                       results_out->golden_inference_output);
-  }
-
-  return kMinibenchmarkSuccess;
-}
-
-MinibenchmarkStatus Validator::CheckGoldenOutputCustomValidation(
-    Results* results_out) {
-  // Create the interpreter to run on CPU.
-  tflite::InterpreterBuilder(*model_loader_->GetModel(),
-                             *resolver_)(&golden_interpreter_);
-  if (!golden_interpreter_) {
-    return kMinibenchmarkInterpreterBuilderFailed;
-  }
-  // Return error If input data was not prefilled.
-  if (!golden_interpreter_->input_tensor(0)->data.data) {
-    return kMinibenchmarkValidationInputMissing;
-  }
-  if (golden_interpreter_->AllocateTensors() != kTfLiteOk) {
-    return kMinibenchmarkAllocateTensorsFailed;
-  }
-  if (golden_interpreter_->Invoke() != kTfLiteOk) {
-    return kMinibenchmarkInvokeFailed;
-  }
-  for (int index : golden_interpreter_->outputs()) {
-    AddTensorDataToMap(golden_interpreter_->tensor(index),
-                       results_out->golden_inference_output);
-  }
-
-  if (main_model_->AllocateTensors() != kTfLiteOk) {
-    return kMinibenchmarkInvokeFailed;
   }
 
   return kMinibenchmarkSuccess;
@@ -233,25 +201,50 @@ MinibenchmarkStatus Validator::LoadDelegate() {
 
   // Create delegate plugin and delegate.
   Delegate which_delegate = Delegate_NONE;
-  if (compute_settings_->tflite_settings()) {
+  bool is_stable_delegate = false;
+  auto tflite_settings = compute_settings_->tflite_settings();
+  if (tflite_settings) {
     which_delegate = compute_settings_->tflite_settings()->delegate();
+    if (tflite_settings->stable_delegate_loader_settings() &&
+        tflite_settings->stable_delegate_loader_settings()->delegate_path()) {
+      is_stable_delegate = !tflite_settings->stable_delegate_loader_settings()
+                                ->delegate_path()
+                                ->str()
+                                .empty();
+    }
   }
   std::string delegate_name;
-  switch (which_delegate) {
-    case Delegate_NONE:
-      // Skip creating delegate if running on CPU.
-      return kMinibenchmarkSuccess;
-    case Delegate_NNAPI:
-      delegate_name = "Nnapi";
-      break;
-    case Delegate_GPU:
-      delegate_name = "Gpu";
-      break;
-    case Delegate_XNNPACK:
-      delegate_name = "XNNPack";
-      break;
-    default:
-      return kMinibenchmarkDelegateNotSupported;
+  if (is_stable_delegate) {
+    if (which_delegate == Delegate_GPU) {
+      // Load GPU plugin from GpuModulePlugin when delegate_path is provided.
+      // This is a workaround before StableDelegate is supported.
+      delegate_name = "GpuModule";
+    } else {
+      // When a stable delegate shared library is provided, the stable delegate
+      // plugin loads symbols from the shared library to initialize the
+      // delegates.
+      delegate_name = "StableDelegate";
+    }
+  } else {
+    switch (which_delegate) {
+      case Delegate_NONE:
+        // Skip creating delegate if running on CPU.
+        return kMinibenchmarkSuccess;
+      case Delegate_NNAPI:
+        delegate_name = "Nnapi";
+        break;
+      case Delegate_GPU:
+        delegate_name = "Gpu";
+        break;
+      case Delegate_XNNPACK:
+        delegate_name = "XNNPack";
+        break;
+      case Delegate_EDGETPU:
+        delegate_name = "EdgeTpu";
+        break;
+      default:
+        return kMinibenchmarkDelegateNotSupported;
+    }
   }
 
   TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Running mini-benchmark on %s",
@@ -273,7 +266,7 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
     return kMinibenchmarkPreconditionNotMet;
   }
 
-  if (main_model_) {
+  if (interpreter_) {
     // Already done.
     return kMinibenchmarkSuccess;
   }
@@ -313,17 +306,32 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   validation_entrypoint_index_ = -1;
   for (int i = 0; i < interpreter_->subgraphs_size(); i++) {
     Subgraph* subgraph = interpreter_->subgraph(i);
-    if (subgraph->GetName() == "VALIDATION:main") {
+    if (subgraph->GetName() == kValidationGraphName) {
       validation_entrypoint_index_ = i;
       validation_entrypoint_ = subgraph;
-      break;
+    } else if (subgraph->GetName() == "VALIDATION:metrics") {
+      has_accuracy_validation_ = true;
     }
+  }
+  if (!validation_entrypoint_) {
+    return kMinibenchmarkValidationSubgraphNotFound;
+  }
+  // Check if validation input exists and prefilled.
+  if (validation_entrypoint_->inputs().empty()) {
+    return kMinibenchmarkValidationSubgraphHasTooFewInputs;
+  }
+  if (!HasTensorData(model_loader_.get(), *validation_entrypoint_,
+                     validation_entrypoint_->inputs().back())) {
+    return kMinibenchmarkValidationInputMissing;
+  }
+  if (validation_entrypoint_->AllocateTensors() != kTfLiteOk) {
+    return kMinibenchmarkAllocateTensorsFailed;
   }
 
   // Check if the model is actually going to execute on the delegate.
-  // For now just give a warning, with the exception of NNAPI SL mini benchmark.
-  // Can consider changing to error in other contexts.
-  // The logic is copy/pasted from benchmark_tflite_model.cc
+  // For now just give a warning, with the exception of NNAPI SL mini
+  // benchmark. Can consider changing to error in other contexts. The logic is
+  // copy/pasted from benchmark_tflite_model.cc
   // TODO(b/232085640): Replace this logic with Subgraph::IsFullyDelegated()
   // after making that function public.
   absl::flat_hash_set<int> checked_node_ids;
@@ -352,48 +360,49 @@ MinibenchmarkStatus Validator::CreateInterpreter(int* delegate_error_out,
   return kMinibenchmarkSuccess;
 }
 
-MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
+Validator::Status Validator::RunValidation(Results* results_out) {
+  BenchmarkStage stage = BenchmarkStage_INITIALIZATION;
   if (!results_out) {
-    return kMinibenchmarkPreconditionNotMet;
+    return Validator::Status{kMinibenchmarkPreconditionNotMet, stage};
   }
   if (!model_loader_) {
-    return kMinibenchmarkModelReadFailed;
+    return Validator::Status{kMinibenchmarkModelReadFailed, stage};
+  }
+  if (!model_loader_->Init()) {
+    return Validator::Status{kMinibenchmarkModelInitFailed, stage};
   }
 
-#define MB_RETURN_IF_ERROR(s)                 \
-  {                                           \
-    MinibenchmarkStatus c = (s);              \
-    if (c != kMinibenchmarkSuccess) return c; \
+#define MB_RETURN_IF_ERROR(s, bs)                                      \
+  {                                                                    \
+    MinibenchmarkStatus c = (s);                                       \
+    if (c != kMinibenchmarkSuccess) return Validator::Status{c, (bs)}; \
   }
 
-  MB_RETURN_IF_ERROR(model_loader_->Init());
   // The lifetime of the delegate must be at least as long as the lifetime of
   // any Interpreter.
   int64_t delegate_load_start_time_us = ElapsedTimeMicros();
-  MB_RETURN_IF_ERROR(LoadDelegate());
+  MB_RETURN_IF_ERROR(LoadDelegate(), stage);
   MB_RETURN_IF_ERROR(CreateInterpreter(&results_out->delegate_error,
-                                       &results_out->delegated_kernels));
+                                       &results_out->delegated_kernels),
+                     stage);
   int64_t delegate_load_end_time_us = ElapsedTimeMicros();
 
   ValidatorProfiler profiler;
-  if (validation_entrypoint_) {
-    // Accuracy validation is embedded.
-    MB_RETURN_IF_ERROR(CheckGoldenOutputEmbeddedValidation(results_out));
-    main_model_->SetProfiler(&profiler, 0);
-    TfLiteStatus status = validation_entrypoint_->Invoke();
-    main_model_->SetProfiler(nullptr, 0);
-    if (status != kTfLiteOk) {
-      return kMinibenchmarkInvokeFailed;
-    }
+  stage = BenchmarkStage_INFERENCE;
 
-    // Create results_out.
-    int model_output_size = main_model_->outputs().size();
-    // Model output.
-    for (int i = 0; i < model_output_size; i++) {
-      AddTensorDataToMap(
-          validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
-          results_out->actual_inference_output);
-    }
+  if (has_accuracy_validation_) {
+    MB_RETURN_IF_ERROR(CheckGoldenOutput(results_out), stage);
+  }
+
+  main_model_->SetProfiler(&profiler, 0);
+  TfLiteStatus status = validation_entrypoint_->Invoke();
+  main_model_->SetProfiler(nullptr, 0);
+  if (status != kTfLiteOk) {
+    MB_RETURN_IF_ERROR(kMinibenchmarkInvokeFailed, stage);
+  }
+
+  int model_output_size = main_model_->outputs().size();
+  if (has_accuracy_validation_) {
     // Accuracy metrics.
     const std::string kMetricPrefix = "metrics/";
     const std::string kOk("ok");
@@ -427,23 +436,15 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
     TFLITE_LOG_PROD(TFLITE_LOG_INFO, "  accuracy: %s",
                     results_out->ok ? "ok" : "not ok");
   } else {
-    // Accuracy validation is not embedded.
-    MB_RETURN_IF_ERROR(CheckGoldenOutputCustomValidation(results_out));
-
-    main_model_->SetProfiler(&profiler, 0);
-    TfLiteStatus status = main_model_->Invoke();
-    main_model_->SetProfiler(nullptr, 0);
-    if (status != kTfLiteOk) {
-      return kMinibenchmarkInvokeFailed;
-    }
-    // Create results_out.
-    results_out->ok = false;
-    for (int output_index : main_model_->outputs()) {
-      AddTensorDataToMap(main_model_->tensor(output_index),
-                         results_out->actual_inference_output);
+    // Model output.
+    results_out->actual_inference_output.clear();
+    results_out->actual_inference_output.reserve(model_output_size);
+    for (int i = 0; i < model_output_size; i++) {
+      AppendTensorDataToVector(
+          validation_entrypoint_->tensor(validation_entrypoint_->outputs()[i]),
+          results_out->actual_inference_output);
     }
   }
-
   // Performance metrics.
   results_out->delegate_prep_time_us =
       (delegate_load_end_time_us == -1 || delegate_load_start_time_us == -1)
@@ -459,7 +460,7 @@ MinibenchmarkStatus Validator::RunValidation(Results* results_out) {
     }
   }
 #undef MB_RETURN_IF_ERROR
-  return kMinibenchmarkSuccess;
+  return Validator::Status{kMinibenchmarkSuccess};
 }
 
 int64_t Validator::BootTimeMicros() { return ElapsedTimeMicros(); }

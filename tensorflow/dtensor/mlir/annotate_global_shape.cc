@@ -30,11 +30,13 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORANNOTATEGLOBALSHAPE
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 // Sets `_global_shape` attributes to argument/return values of `function`.
 void AnnotateFunctionArgRetvalGlobalShapes(mlir::func::FuncOp function,
@@ -88,7 +90,7 @@ void AnnotateOperationGlobalShape(mlir::Operation* op,
 // preserve original global shape of operations in graph after shape has been
 // modified to local shape.
 struct DTensorAnnotateGlobalShape
-    : public DTensorAnnotateGlobalShapeBase<DTensorAnnotateGlobalShape> {
+    : public impl::DTensorAnnotateGlobalShapeBase<DTensorAnnotateGlobalShape> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OpBuilder builder(&context);

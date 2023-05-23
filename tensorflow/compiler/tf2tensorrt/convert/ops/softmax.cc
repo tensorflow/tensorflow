@@ -47,7 +47,7 @@ class ConvertSoftmax : public OpConverterBase<ConvertSoftmax> {
       return errors::InvalidArgument(
           "TensorRT Softmax cannot apply on the batch dimension");
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -68,7 +68,7 @@ class ConvertSoftmax : public OpConverterBase<ConvertSoftmax> {
 
     ITensorProxyPtr output_tensor = layer->getOutput(0);
     params.outputs->push_back(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

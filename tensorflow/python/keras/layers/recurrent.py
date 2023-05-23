@@ -21,7 +21,7 @@ import warnings
 
 import numpy as np
 
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -37,7 +37,8 @@ from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -436,7 +437,7 @@ class RNN(Layer):
     self._num_constants = 0
 
     if stateful:
-      if ds_context.has_strategy():
+      if distribute_lib.has_strategy():
         raise ValueError('RNNs with stateful=True not yet supported with '
                          'tf.distribute.Strategy.')
 
@@ -858,10 +859,10 @@ class RNN(Layer):
         non_zero_count = math_ops.add_n([math_ops.count_nonzero_v2(s)
                                          for s in nest.flatten(self.states)])
         # Set strict = True to keep the original structure of the state.
-        initial_state = control_flow_ops.cond(non_zero_count > 0,
-                                              true_fn=lambda: self.states,
-                                              false_fn=lambda: initial_state,
-                                              strict=True)
+        initial_state = cond.cond(non_zero_count > 0,
+                                  true_fn=lambda: self.states,
+                                  false_fn=lambda: initial_state,
+                                  strict=True)
       else:
         initial_state = self.states
     elif initial_state is None:
@@ -1843,7 +1844,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       if not self.reset_after:
         input_bias, recurrent_bias = self.bias, None
       else:
-        input_bias, recurrent_bias = array_ops.unstack(self.bias)
+        input_bias, recurrent_bias = array_ops_stack.unstack(self.bias)
 
     if self.implementation == 1:
       if 0. < self.dropout < 1.:

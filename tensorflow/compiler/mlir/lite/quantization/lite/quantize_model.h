@@ -27,8 +27,6 @@ limitations under the License.
 namespace mlir {
 namespace lite {
 
-using StringSet = absl::flat_hash_set<std::string>;
-
 // Quantize the `input_model` and write the result to a flatbuffer `builder`.
 // The `input_type`, `output_type` and `inference_type` can be
 // float32/qint8/int8/int16.
@@ -47,8 +45,9 @@ TfLiteStatus QuantizeModel(
     flatbuffers::FlatBufferBuilder* builder,
     tflite::ErrorReporter* error_reporter, bool verify_numeric = false,
     bool whole_model_verify = false, bool legacy_float_scale = true,
-    const StringSet& denylisted_ops = {},
-    const StringSet& denylisted_nodes = {});
+    const absl::flat_hash_set<std::string>& denylisted_ops = {},
+    const absl::flat_hash_set<std::string>& denylisted_nodes = {},
+    bool enable_variable_quantization = false);
 }  // namespace lite
 }  // namespace mlir
 

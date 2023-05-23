@@ -22,7 +22,11 @@
 #import "TFLQuantizationParameters+Internal.h"
 #import "TFLTensor+Internal.h"
 
-#include "tensorflow/lite/c/c_api_experimental.h"
+#ifdef COCOAPODS
+#import <TensorFlowLiteC/TensorFlowLiteC.h>
+#else
+#include "tensorflow/lite/core/c/c_api_experimental.h"
+#endif  // COCOAPODS
 
 NS_ASSUME_NONNULL_BEGIN
 

@@ -155,7 +155,7 @@ struct QDQOpSpec<ops::QuantizeAndDequantizeV2> {
         &args->max_range);
     TRT_ENSURE(args->scales.dequantize_scale[0] != 0);
     TRT_ENSURE(args->scales.quantize_scale[0] != 0);
-    return Status::OK();
+    return OkStatus();
   }
 
   // Converts in explicit precision mode. In this mode, QDQ operations are
@@ -223,7 +223,7 @@ struct QDQOpSpec<ops::QuantizeAndDequantizeV2> {
       final_output = (*undo_reshape)->getOutput(0);
     }
     params->outputs->push_back(final_output);
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -341,7 +341,7 @@ Status ConvertDynamicRangeMode(const OpConverterParams* params) {
                                    node_def.name());
   }
   if (params->validation_only) {
-    return Status::OK();
+    return OkStatus();
   }
 
   // Store ranges for tensor
@@ -358,7 +358,7 @@ Status ConvertDynamicRangeMode(const OpConverterParams* params) {
   // fusion will occur), then there is no problem with the current
   // implementation.
   params->outputs->push_back(inputs.at(0));
-  return Status::OK();
+  return OkStatus();
 }
 
 template <typename TFOpType>
@@ -378,7 +378,7 @@ class ConvertQDQ : public OpConverterBase<ConvertQDQ<TFOpType>> {
     if (this->params_->validation_only) {
       return ConvertDynamicRangeMode(this->params_);
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Validate() {

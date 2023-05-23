@@ -23,7 +23,7 @@ OverridableFetchContent_Declare(
   ruy
   GIT_REPOSITORY https://github.com/google/ruy
   # Sync with tensorflow/third_party/ruy/workspace.bzl
-  GIT_TAG 841ea4172ba904fe3536789497f9565f2ef64129
+  GIT_TAG 3286a34cc8de6149ac6844107dfdffac91531e72
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/ruy"
 )

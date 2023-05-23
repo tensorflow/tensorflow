@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
@@ -48,7 +49,7 @@ class GraphOptimizer {
 
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
-  // on "cluster". If the returned status is Status::OK() then
+  // on "cluster". If the returned status is OkStatus() then
   // *optimized_graph contains the rewritten graph.
   // Returns an error status if it failed to generate a solution.
   //
@@ -78,11 +79,12 @@ class GraphOptimizer {
   uint64 deadline_usec_;
 };
 
-#define GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED()                              \
-  do {                                                                      \
-    if (this->DeadlineExceeded()) {                                         \
-      return errors::DeadlineExceeded(this->name(), " exceeded deadline."); \
-    }                                                                       \
+#define GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED()                \
+  do {                                                        \
+    if (this->DeadlineExceeded()) {                           \
+      return absl::DeadlineExceededError(                     \
+          absl::StrCat(this->name(), " exceeded deadline.")); \
+    }                                                         \
   } while (0)
 
 }  // end namespace grappler

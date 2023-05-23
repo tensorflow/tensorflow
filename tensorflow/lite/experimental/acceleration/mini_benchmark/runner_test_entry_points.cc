@@ -20,35 +20,57 @@ limitations under the License.
 
 #include <iostream>
 #include <memory>
+#include <string>
 
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_loader.h"
+#include "absl/strings/numbers.h"
+#include "tensorflow/lite/allocation.h"
+#include "tensorflow/lite/experimental/acceleration/mini_benchmark/constants.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
-#include "tensorflow/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/lite/tools/model_loader.h"
 
 extern "C" {
 
 constexpr int kStdOutFd = 1;
 
-int JustReturnZero(int argc, char** argv) { return 0; }
+int TfLiteJustReturnZero(int argc, char** argv) { return 0; }
 
-int ReturnOne(int argc, char** argv) { return 1; }
+int TfLiteReturnOne(int argc, char** argv) { return 1; }
 
-int ReturnSuccess(int argc, char** argv) {
+int TfLiteReturnSuccess(int argc, char** argv) {
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int SigKill(int argc, char** argv) {
+int TfLiteSigKillSelf(int argc, char** argv) {
   kill(getpid(), SIGKILL);
   return 1;
 }
 
-int WriteOk(int argc, char** argv) {
-  write(kStdOutFd, "ok\n", 3);
+int TfLiteWriteOk(int argc, char** argv) {
+  if (write(kStdOutFd, "ok\n", 3) == -1) {
+    return -1;
+  }
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int Write10kChars(int argc, char** argv) {
+// Write the pid to output stream and then sleep N seconds. N is parsed from
+// argv[3].
+int TfLiteWritePidThenSleepNSec(int argc, char** argv) {
+  std::string pid = std::to_string(getpid());
+  pid.resize(::tflite::acceleration::kPidBufferLength);
+  if (write(kStdOutFd, pid.data(), ::tflite::acceleration::kPidBufferLength) ==
+      -1) {
+    return 1;
+  }
+
+  int sleep_sec;
+  if (!absl::SimpleAtoi(argv[3], &sleep_sec)) {
+    return 1;
+  }
+  sleep(sleep_sec);
+  return ::tflite::acceleration::kMinibenchmarkSuccess;
+}
+
+int TfLiteWrite10kChars(int argc, char** argv) {
   char buffer[10000];
   memset(buffer, 'A', 10000);
   return write(kStdOutFd, buffer, 10000) == 10000
@@ -56,35 +78,33 @@ int Write10kChars(int argc, char** argv) {
              : 1;
 }
 
-int WriteArgs(int argc, char** argv) {
+int TfLiteWriteArgs(int argc, char** argv) {
   for (int i = 3; i < argc; i++) {
-    write(1, argv[i], strlen(argv[i]));
-    write(1, "\n", 1);
+    if (write(1, argv[i], strlen(argv[i])) == -1 || write(1, "\n", 1) == -1) {
+      return 1;
+    }
   }
   return ::tflite::acceleration::kMinibenchmarkSuccess;
 }
 
-int ReadFromPipe(int argc, char** argv) {
-  std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
-      tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
-  if (model_loader->Init() != tflite::acceleration::kMinibenchmarkSuccess) {
+int TfLiteReadFromPipe(int argc, char** argv) {
+  std::unique_ptr<tflite::tools::ModelLoader> model_loader =
+      tflite::tools::CreateModelLoaderFromPath(argv[3]);
+  const tflite::Allocation* alloc;
+  if (!model_loader->Init() ||
+      !(alloc = model_loader->GetModel()->allocation()) || !alloc->base()) {
     return 1;
   }
-  tflite::ModelT model;
-  model_loader->GetModel()->GetModel()->UnPackTo(&model);
-  flatbuffers::FlatBufferBuilder fbb;
-  fbb.Finish(CreateModel(fbb, &model));
-
-  return write(kStdOutFd, fbb.GetBufferPointer(), fbb.GetSize()) ==
-                 fbb.GetSize()
+  return write(kStdOutFd, alloc->base(), alloc->bytes()) == alloc->bytes()
              ? ::tflite::acceleration::kMinibenchmarkSuccess
              : 1;
 }
 
-int ReadFromPipeInProcess(int argc, char** argv) {
-  std::unique_ptr<tflite::acceleration::ModelLoader> model_loader =
-      tflite::acceleration::CreateModelLoaderFromPath(argv[3]);
-  return model_loader->Init();
+int TfLiteReadFromPipeInProcess(int argc, char** argv) {
+  std::unique_ptr<tflite::tools::ModelLoader> model_loader =
+      tflite::tools::CreateModelLoaderFromPath(argv[3]);
+  return model_loader->Init() ? ::tflite::acceleration::kMinibenchmarkSuccess
+                              : 1;
 }
 
 }  // extern "C"

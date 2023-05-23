@@ -89,7 +89,7 @@ XlaComputation CreateScalarComparisonComputation(
     b->ReportError(shape_or.status());
     return {};
   }
-  Shape shape = shape_or.ValueOrDie();
+  Shape shape = shape_or.value();
   shape.set_element_type(PRED);
   XlaOp param_equal =
       Broadcast(One(b.get(), shape.element_type()), shape.dimensions());

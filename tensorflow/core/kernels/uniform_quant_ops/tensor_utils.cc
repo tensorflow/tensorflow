@@ -56,4 +56,13 @@ Status QuantizationAxisAndShapeValid(const TensorShape& data_shape,
   return OkStatus();
 }
 
+TensorShape TransposedShape(const TensorShape& in_shape,
+                            const gtl::ArraySlice<int32_t> perm) {
+  TensorShape out_shape = in_shape;
+  for (int i = 0; i < out_shape.dims(); ++i) {
+    out_shape.set_dim(i, in_shape.dim_size(perm[i]));
+  }
+  return out_shape;
+}
+
 }  // namespace tensorflow

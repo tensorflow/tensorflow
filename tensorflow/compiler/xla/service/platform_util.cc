@@ -25,11 +25,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 
@@ -68,13 +71,18 @@ StatusOr<std::vector<se::Platform*>> GetSupportedPlatforms() {
         if (!supported) {
           LOG(INFO) << "platform " << platform->Name() << " present but no "
                     << "XLA compiler available: "
-                    << compiler_status.status().error_message();
+                    << compiler_status.status().message();
         }
         return supported;
       });
 }
 
 }  // namespace
+
+/*static */ StatusOr<std::string> PlatformUtil::CanonicalPlatformName(
+    const std::string& platform_name) {
+  return xla::CanonicalPlatformName(platform_name);
+}
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
@@ -117,7 +125,7 @@ PlatformUtil::GetSupportedPlatforms() {
     const std::string& platform_name) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       se::MultiPlatformManager::PlatformWithName(
-                          CanonicalPlatformName(platform_name)));
+                          xla::CanonicalPlatformName(platform_name)));
   TF_RETURN_IF_ERROR(Compiler::GetForPlatform(platform).status());
   return platform;
 }
@@ -174,22 +182,22 @@ PlatformUtil::GetStreamExecutors(
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
   VLOG(1) << "Initializing devices";
   {
-    tensorflow::thread::ThreadPool thread_pool(
-        tensorflow::Env::Default(), "device_initialization", device_count);
+    tsl::thread::ThreadPool thread_pool(tsl::Env::Default(),
+                                        "device_initialization", device_count);
     auto create_fn = [](se::Platform* platform,
                         std::vector<se::StreamExecutor*>& stream_executors,
                         int device_ordinal, int count) {
       VLOG(1) << "Started device init " << device_ordinal;
       auto executor_status = platform->ExecutorForDevice(device_ordinal);
       if (executor_status.ok()) {
-        se::StreamExecutor* executor = executor_status.ValueOrDie();
+        se::StreamExecutor* executor = executor_status.value();
         if (IsDeviceSupported(executor)) {
           stream_executors[count] = executor;
         }
       } else {
         LOG(WARNING) << "unable to create StreamExecutor for "
                      << platform->Name() << ":" << device_ordinal << ": "
-                     << executor_status.status().error_message();
+                     << executor_status.status().message();
       }
       VLOG(1) << "Finished device init " << device_ordinal;
     };

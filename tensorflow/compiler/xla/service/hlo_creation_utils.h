@@ -19,9 +19,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -184,6 +184,10 @@ HloInstruction* MakeReducePrecisionHlo(HloInstruction* operand,
                                        int exponent_bits, int mantissa_bits,
                                        const OpMetadata* metadata = nullptr);
 
+StatusOr<HloInstruction*> MakeReduceWindowHlo(
+    HloInstruction* operand, HloInstruction* init_value, const Window& window,
+    HloComputation* reduce_computation, const OpMetadata* metadata = nullptr);
+
 // Creates a Reduce HLO instruction and adds it to the computation containing
 // the operand. This will create the sub-computation needed for the reduction in
 // the given module. binary_opcode should represent a binary operation.
@@ -275,7 +279,7 @@ HloInstruction* MakeScalarLike(HloInstruction* base, NativeT value) {
   auto scalar = base->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<NativeT>(value)
                                          .Convert(base->shape().element_type())
-                                         .ValueOrDie()));
+                                         .value()));
   if (base->shape().rank() == 0) {
     *scalar->mutable_shape() = base->shape();
     return scalar;
@@ -355,6 +359,10 @@ HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64_t> broadcast_dimensions);
 
+// Same as above, but allows to specify the broadcast shape.
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               const Shape& broadcast_shape);
+
 // Same as above, but fill the tensor with ones.
 HloInstruction* BroadcastOnes(HloComputation* computation,
                               PrimitiveType element_type,
@@ -365,6 +373,10 @@ HloInstruction* BroadcastOnes(HloComputation* computation,
 StatusOr<std::unique_ptr<HloComputation>> CreateComputationWithSignature(
     absl::Span<const Shape* const> domain, const Shape& range,
     absl::string_view name);
+
+// Expands a general degenerate reshape operation to a sequence of degenerate
+// adding and removing reshapes that changes only a single dimension.
+HloInstruction* ExpandDegenerateReshape(HloInstruction* inst);
 
 }  // namespace xla
 

@@ -158,6 +158,10 @@ tf_class {
     argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "build_from_config"
+    argspec: "args=[\'self\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\'], varargs=args, keywords=kwargs, defaults=None"
   }
@@ -184,6 +188,10 @@ tf_class {
   member_method {
     name: "from_config"
     argspec: "args=[\'cls\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_build_config"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_config"
@@ -218,6 +226,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "load_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "merge_state"
     argspec: "args=[\'self\', \'metrics\'], varargs=None, keywords=None, defaults=None"
   }
@@ -232,6 +244,10 @@ tf_class {
   member_method {
     name: "result"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save_own_variables"
+    argspec: "args=[\'self\', \'store\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "set_weights"

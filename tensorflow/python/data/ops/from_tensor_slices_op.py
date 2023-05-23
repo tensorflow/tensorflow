@@ -21,11 +21,11 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
-def from_tensor_slices(tensors, name=None):
-  return TensorSliceDataset(tensors, name=name)
+def _from_tensor_slices(tensors, name=None):
+  return _TensorSliceDataset(tensors, name=name)
 
 
-class TensorSliceDataset(dataset_ops.DatasetSource):
+class _TensorSliceDataset(dataset_ops.DatasetSource):
   """A `Dataset` of slices from a dataset element."""
 
   def __init__(self, element, is_files=False, name=None):
@@ -51,7 +51,7 @@ class TensorSliceDataset(dataset_ops.DatasetSource):
         output_shapes=structure.get_flat_tensor_shapes(self._structure),
         is_files=is_files,
         metadata=self._metadata.SerializeToString())
-    super(TensorSliceDataset, self).__init__(variant_tensor)
+    super().__init__(variant_tensor)
 
   @property
   def element_spec(self):

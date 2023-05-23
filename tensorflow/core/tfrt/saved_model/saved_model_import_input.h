@@ -31,7 +31,7 @@ class TfrtSavedModelMLIRImportInput : public SavedModelMLIRImportInput {
       const FallbackState& fallback_state, const MetaGraphDef* meta_graph_def,
       const GraphDebugInfo& debug_info,
       bool run_placer_grappler_on_nested_functions = false,
-      bool enable_tfrt_gpu = false);
+      bool enable_tfrt_gpu = false, bool use_bridge_for_gpu = false);
 
   TfrtSavedModelMLIRImportInput(
       const MetaGraphDef* meta_graph_def, const GraphDebugInfo& debug_info,

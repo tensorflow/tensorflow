@@ -58,11 +58,11 @@ class MinimalLogger {
 // stripped in release optimized builds. In general, prefer the error reporting
 // APIs for developer-facing errors, and only use this for diagnostic output
 // that should always be logged in user builds.
-#define TFLITE_LOG_PROD(severity, format, ...)                            \
-  if (severity >=                                                         \
-      tflite::logging_internal::MinimalLogger::GetMinimumLogSeverity()) { \
-    tflite::logging_internal::MinimalLogger::Log(severity, format,        \
-                                                 ##__VA_ARGS__);          \
+#define TFLITE_LOG_PROD(severity, format, ...)                              \
+  if (severity >=                                                           \
+      ::tflite::logging_internal::MinimalLogger::GetMinimumLogSeverity()) { \
+    ::tflite::logging_internal::MinimalLogger::Log(severity, format,        \
+                                                   ##__VA_ARGS__);          \
   }
 
 // Convenience macro for logging a statement *once* for a given process lifetime

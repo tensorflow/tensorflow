@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_test_util.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/tf_datatype.h"
@@ -434,6 +438,8 @@ tensorflow::ServerDef GetServerDef(const string& job_name, int num_tasks) {
     int port = tensorflow::testing::PickUnusedPortOrDie();
     job_def->mutable_tasks()->insert(
         {i, tensorflow::strings::StrCat("localhost:", port)});
+    LOG(INFO) << "Picked test port: " << port << " for job: " << job_name
+              << ", task: " << i;
   }
   return server_def;
 }

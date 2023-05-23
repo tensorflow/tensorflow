@@ -112,6 +112,9 @@ MklEagerOpRewrite::MklEagerOpRewrite(string name, string file, string line)
   InsertMKLEagerOps(
       {"FusedBatchNormV3", RewriteFusedBatchNormV3, CreateGenericMklOp});
   InsertMKLEagerOps({"MatMul", AlwaysRewrite, CreateGenericMklOp});
+  // TODO(Intel-tf): Support MaxPool, MaxPool3D rewrite, handle workspace.
+  // Note: MaxPoolGrad, MaxPool3DGrad rewrite cannot be supported in eager
+  // mode due to workspace restriction
 };
 
 void MklEagerOpRewrite::InsertMKLEagerOps(MklEagerOp op) {
@@ -124,7 +127,7 @@ Status MklEagerOpRewrite::Run(
   if (ShouldRewriteOp(orig_op)) {
     TF_CHECK_OK(RewriteToMklOp(orig_op, out_op));
   }
-  return Status::OK();
+  return OkStatus();
 }
 
 Status MklEagerOpRewrite::SetupNewOp(
@@ -164,7 +167,7 @@ Status MklEagerOpRewrite::CreateGenericMklOp(
   const string mkl_op_name =
       mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
@@ -173,7 +176,7 @@ bool MklEagerOpRewrite::ShouldRewriteOp(EagerOperation* op) {
     return false;
   }
   DataType data_type;
-  if (op->Attrs().Get("T", &data_type) != Status::OK()) {
+  if (op->Attrs().Get("T", &data_type) != OkStatus()) {
     return false;
   }
   // Only rewrite if op is to be run on CPU device.
@@ -218,7 +221,7 @@ Status MklEagerOpRewrite::RewriteToMklOp(
   // (once each in ShouldRewriteOp & RewriteToMklOp) to just once.
   TF_RETURN_IF_ERROR(
       mkl_eager_ops_[orig_op->Name()].CreateMklOp(orig_op, mkl_op));
-  return Status::OK();
+  return OkStatus();
 }
 
 bool MklEagerOpRewrite::RewriteConv2D(EagerOperation* op) {

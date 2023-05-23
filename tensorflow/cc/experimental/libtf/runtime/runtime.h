@@ -84,7 +84,7 @@ tensorflow::StatusOr<Tensor> Runtime::CreateHostTensor(
   if (!maybe_capsule.status().ok()) {
     return maybe_capsule.status();
   }
-  auto capsule = maybe_capsule.ValueOrDie();
+  auto capsule = maybe_capsule.value();
   auto ctx = capsule.cast<tensorflow::ImmediateExecutionContext*>();
   tensorflow::AbstractTensorPtr t(
       ctx->CreateTensor(static_cast<tensorflow::DataType>(dtype), shape));

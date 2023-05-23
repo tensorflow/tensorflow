@@ -75,6 +75,11 @@ def mlir_convert(
   if test_params.get("dynamic_range_quantize", False):
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
+  if options.experimental_low_bit_qat:
+    converter._experimental_low_bit_qat = (   # pylint: disable=protected-access
+        True
+    )
+
   if test_params.get("fully_quantize", False):
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
 

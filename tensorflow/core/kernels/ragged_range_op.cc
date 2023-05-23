@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 
@@ -79,7 +80,7 @@ class RaggedRangeOp : public OpKernel {
       T limit = broadcast_limits ? limits(0) : limits(row);
       T delta = broadcast_deltas ? deltas(0) : deltas(row);
       OP_REQUIRES(context, delta != 0, InvalidArgument("Requires delta != 0"));
-      int64_t size;  // The number of elements in the specified range.
+      SPLITS_TYPE size;  // The number of elements in the specified range.
       if (((delta > 0) && (limit < start)) ||
           ((delta < 0) && (limit > start))) {
         size = 0;
@@ -95,8 +96,15 @@ class RaggedRangeOp : public OpKernel {
             context, size_auto <= std::numeric_limits<int64_t>::max(),
             errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
                                     std::numeric_limits<int64_t>::max()));
-        size = static_cast<int64_t>(size_auto);
+        size = static_cast<SPLITS_TYPE>(size_auto);
       }
+      OP_REQUIRES(context, size >= 0, InvalidArgument("Requires size >= 0"));
+      OP_REQUIRES(
+          context,
+          size <=
+              std::numeric_limits<SPLITS_TYPE>::max() - rt_nested_splits(row),
+          InvalidArgument("The total range size overflowed. Consider using "
+                          "int64 instead of int32 for row_splits_dtype."));
       rt_nested_splits(row + 1) = rt_nested_splits(row) + size;
     }
     SPLITS_TYPE nvals = rt_nested_splits(nrows);

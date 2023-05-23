@@ -19,17 +19,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -130,10 +130,10 @@ class BufferDonationTest : public HloTestBase {
                                          /*hlo_execution_profile=*/nullptr);
     if (!expected_failure.empty()) {
       ASSERT_FALSE(output_status.ok());
-      ASSERT_TRUE(absl::StrContains(output_status.status().error_message(),
-                                    expected_failure))
+      ASSERT_TRUE(
+          absl::StrContains(output_status.status().message(), expected_failure))
           << "got: \n"
-          << output_status.status().error_message() << " \nvs want\n"
+          << output_status.status().message() << " \nvs want\n"
           << expected_failure;
       return;
     }

@@ -17,7 +17,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -85,7 +85,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
     def dataset_fn():
       return dataset_ops.Dataset.range(1).map(increment_fn)
 
-    @function.defun
+    @def_function.function
     def fn():
       _ = dataset_fn().get_single_element()
       return "hello"
@@ -112,7 +112,7 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
     def dataset2_fn():
       return dataset_ops.Dataset.range(1).map(multiply_fn)
 
-    @function.defun
+    @def_function.function
     def fn():
       _ = dataset1_fn().get_single_element()
       _ = dataset2_fn().get_single_element()

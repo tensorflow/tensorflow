@@ -13,17 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/tsl/platform/env_time.h"
 
 #include <time.h>
 #include <windows.h>
+
 #include <chrono>
 
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 using std::chrono::system_clock;
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
@@ -68,4 +69,4 @@ uint64 EnvTime::NowNanos() {
       .count();
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

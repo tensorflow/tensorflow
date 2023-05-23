@@ -519,9 +519,9 @@ std::string GetConvnetDataFormat2D3DAttrString();
 // FORMAT_NCHW:        (N, C, spatial); rank = spatial.size() + 2
 // FORMAT_NCHW_VECT_C: (N, C, spatial, InnerC); rank = spatial.size() + 3
 // FORMAT_NHWC_VECT_W: (N, spatial, C, InnerW); rank = spatial.size() + 3
-inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N,
-                                   gtl::ArraySlice<int64_t> spatial,
-                                   int64_t C) {
+inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N,
+                                        gtl::ArraySlice<int64_t> spatial,
+                                        int64_t C, TensorShape* shape) {
   const int dims = GetTensorDimsFromSpatialDims(spatial.size(), format);
   gtl::InlinedVector<int64_t, 6> dim_sizes(dims);
   dim_sizes[GetTensorBatchDimIndex(dims, format)] = N;
@@ -546,7 +546,15 @@ inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N,
     dim_sizes[GetTensorInnerFeatureDimIndex(dims, format)] = 4;
   }
   dim_sizes[feature_index] = C;
-  return TensorShape(dim_sizes);
+  return TensorShapeUtils::MakeShape(dim_sizes, shape);
+}
+
+inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N,
+                                   gtl::ArraySlice<int64_t> spatial,
+                                   int64_t C) {
+  TensorShape shape;
+  TF_CHECK_OK(ShapeFromFormatWithStatus(format, N, spatial, C, &shape));
+  return shape;
 }
 
 // Return a tensor shape of the specified 'format', and dimensions.
@@ -574,9 +582,18 @@ inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
 }
 
 // Return a tensor shape of the specified 'format', and dimensions.
+inline Status ShapeFromFormatWithStatus(TensorFormat format, int64_t N,
+                                        int64_t H, int64_t W, int64_t C,
+                                        TensorShape* shape) {
+  return ShapeFromFormatWithStatus(format, N, {H, W}, C, shape);
+}
+
+// Return a tensor shape of the specified 'format', and dimensions.
 inline TensorShape ShapeFromFormat(TensorFormat format, int64_t N, int64_t H,
-                                   int64_t W, int64_t C) {
-  return ShapeFromFormat(format, N, {H, W}, C);
+                              int64_t W, int64_t C) {
+  TensorShape shape;
+  TF_CHECK_OK(ShapeFromFormatWithStatus(format, N, {H, W}, C, &shape));
+  return shape;
 }
 
 // Return a filter tensor shape of the specified 'format', and dimensions.
@@ -588,11 +605,13 @@ inline TensorShape ShapeFromFilterTensorFormat(FilterTensorFormat format,
 
 // Returns a copy of the specified tensor 'src_shape' converted from
 // 'src_format' to 'dst_format'.
-inline TensorShape ShapeFromFormat(TensorFormat dst_format,
-                                   const TensorShape& src_shape,
-                                   TensorFormat src_format) {
+inline Status ShapeFromFormatWithStatus(TensorFormat dst_format,
+                                        const TensorShape& src_shape,
+                                        TensorFormat src_format,
+                                        TensorShape* shape) {
   if (src_format == dst_format) {
-    return src_shape;
+    *shape = src_shape;
+    return OkStatus();
   }
 
   const int64_t batch = GetTensorDim(src_shape, src_format, 'N');
@@ -609,7 +628,17 @@ inline TensorShape ShapeFromFormat(TensorFormat dst_format,
   if (src_format == FORMAT_NHWC_VECT_W) {
     spatial_dims[num_src_spatial_dims - 1] *= 4;
   }
-  return ShapeFromFormat(dst_format, batch, {spatial_dims}, channels);
+  return ShapeFromFormatWithStatus(dst_format, batch, {spatial_dims}, channels,
+                                   shape);
+}
+
+inline TensorShape ShapeFromFormat(TensorFormat dst_format,
+                                   const TensorShape& src_shape,
+                                   TensorFormat src_format) {
+  TensorShape shape;
+  TF_CHECK_OK(
+      ShapeFromFormatWithStatus(dst_format, src_shape, src_format, &shape));
+  return shape;
 }
 
 // Returns a copy of the specified filter tensor 'src_shape' converted from

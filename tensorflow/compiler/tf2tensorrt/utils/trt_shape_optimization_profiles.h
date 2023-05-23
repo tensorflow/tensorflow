@@ -130,14 +130,15 @@ struct OptimizationProfileConfig {
         j++;
       }
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   // Returns true if profile range completely includes the given shapes.
   bool IncludesShapes(const std::vector<TensorShape>& shapes,
                       bool has_shape_tensor,
                       const std::vector<nvinfer1::Dims>& shape_values,
-                      const std::vector<bool>& is_pruned_input) const {
+                      const std::vector<bool>& is_pruned_input,
+                      const std::vector<bool>& is_shape_tensor) const {
     // min, max, and opt must have the same size which is already verified in
     // SetDimensions.
     if (min.size() != shapes.size() * 2 ||
@@ -169,7 +170,7 @@ struct OptimizationProfileConfig {
     if (has_shape_tensor) {
       int offset = shapes.size();
       for (int i = 0; i < shape_values.size(); i++) {
-        if (is_pruned_input[i]) {
+        if (is_pruned_input[i] || !is_shape_tensor[i]) {
           continue;
         }
         auto shape_val = shape_values[i];
@@ -271,8 +272,11 @@ class TrtShapeOptimizationProfile {
   // Whether the optimization profiles describe input that can be handled with
   // a static engine (only 1 profile with min=max).
   bool IsStaticCompatible() {
-    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1 &&
-           !HasShapeTensor();
+    return strategy_ == ProfileStrategy::kOptimal && profiles_.size() == 1
+#if !IS_TRT_VERSION_GE(8, 0, 0, 0)
+           && !HasShapeTensor()
+#endif
+        ;
     // TODO(tfeher): remove !HasShapeTensor() condition once the
     // FixShapeValueProfile workaround is turned off.
   }

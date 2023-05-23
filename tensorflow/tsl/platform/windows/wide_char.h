@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string>
 
-namespace tensorflow {
+namespace tsl {
 
 std::wstring Utf8ToWideChar(const std::string& utf8str);
 
 std::string WideCharToUtf8(const std::wstring& wstr);
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_WIDE_CHAR_H_

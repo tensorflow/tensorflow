@@ -19,7 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
-#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#include "tensorflow/tsl/framework/contraction/eigen_contraction_kernel.h"
 #endif
 
 namespace {

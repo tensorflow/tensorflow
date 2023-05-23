@@ -16,7 +16,7 @@
 
 from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.experimental.ops import map_defun
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
@@ -45,7 +45,8 @@ class MapDefunBenchmark(benchmark_base.DatasetBenchmarkBase):
   def benchmark_defun_vs_map_fn(self):
     """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
 
-    @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
     def defun(x):
       return array_ops.identity(x)
 

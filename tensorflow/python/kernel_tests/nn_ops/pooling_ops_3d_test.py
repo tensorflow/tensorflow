@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -24,8 +25,7 @@ from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
-from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import nn_ops
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -49,7 +49,7 @@ def GetTestConfigs():
 class PoolingTest(test.TestCase):
 
   def _VerifyOneTest(self, pool_func, input_sizes, window, strides, padding,
-                     data_format, expected, use_gpu):
+                     data_format, data_type, expected, use_gpu):
     """Verifies the output values of the pooling function.
 
     Args:
@@ -59,6 +59,7 @@ class PoolingTest(test.TestCase):
       strides: Tuple of strides for dims: planes, rows, cols.
       padding: Padding type.
       data_format: The data format we use to run the pooling operation.
+      data_type: The data type to use to run the pooling operation.
       expected: An array containing the expected operation outputs.
       use_gpu: Whether to run ops on GPU.
     """
@@ -68,8 +69,11 @@ class PoolingTest(test.TestCase):
     # Initializes the input tensor with array containing incrementing
     # numbers from 1.
     x = [f * 1.0 for f in range(1, total_size + 1)]
+    if data_type == dtypes.bfloat16:
+      x = [f * 0.1 for f in x]
+      expected = [f * 0.1 for f in expected]
     with self.cached_session(use_gpu=use_gpu):
-      t = constant_op.constant(x, shape=input_sizes)
+      t = constant_op.constant(x, shape=input_sizes, dtype=data_type)
       window = [1] + list(window) + [1]
       strides = [1] + list(strides) + [1]
       if data_format == "NCDHW":
@@ -87,13 +91,20 @@ class PoolingTest(test.TestCase):
       vals = self.evaluate(t)
     # Verifies values.
     actual = vals.flatten()
-    self.assertAllClose(expected, actual)
+    rtol = atol = 1e-6
+    if data_type == dtypes.bfloat16:
+      rtol = atol = 2e-2
+    self.assertAllClose(expected, actual, rtol=rtol, atol=atol)
 
   def _VerifyValues(self, pool_func, input_sizes, window, strides,
                     padding, expected):
     for data_format, use_gpu in GetTestConfigs():
       self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
-                          data_format, expected, use_gpu)
+                          data_format, dtypes.float32, expected, use_gpu)
+      # Don't test bfloat16 on GPU if there is no GPU available.
+      if (not use_gpu) or test_util.is_gpu_available(cuda_only=True):
+        self._VerifyOneTest(pool_func, input_sizes, window, strides, padding,
+                            data_format, dtypes.bfloat16, expected, use_gpu)
 
   def testAvgPool3dValidPadding(self):
     expected_output = [20.5, 21.5, 22.5]
@@ -125,21 +136,39 @@ class PoolingTest(test.TestCase):
         padding="SAME",
         expected=expected_output)
 
-  def testMaxPool3dGrad(self):
+  def testAvgPool3dGrad(self):
     with self.assertRaises(
         (errors.ResourceExhaustedError, errors.InvalidArgumentError)):
-      with self.cached_session():
-        orig_input_shape = constant_op.constant(
-            1879048192, shape=[5], dtype=dtypes.int32)
+      for dtype in [dtypes.float32, dtypes.bfloat16]:
+        with self.cached_session():
+          orig_input_shape = constant_op.constant(
+              1879048192, shape=[5], dtype=dtypes.int32
+          )
+          grad = constant_op.constant(1, shape=[1, 3, 2, 4, 2], dtype=dtype)
+          t = gen_nn_ops.AvgPool3DGrad(
+              orig_input_shape=orig_input_shape,
+              grad=grad,
+              ksize=[1, 1, 1, 1, 1],
+              strides=[1, 1, 1, 1, 1],
+              padding="SAME",
+              data_format="NDHWC",
+          )
+          self.evaluate(t)
+
+  def testAvgPool3dGradEmptyInput(self):
+    for data_format, use_gpu in GetTestConfigs():
+      with self.cached_session(use_gpu=use_gpu):
+        orig_input_shape = constant_op.constant([5, 6, 7, 0, 8],
+                                                dtype=dtypes.int32)
         grad = constant_op.constant(
-            1, shape=[1, 3, 2, 4, 2], dtype=dtypes.float32)
+            1, shape=[5, 6, 7, 0, 8], dtype=dtypes.float32)
         t = gen_nn_ops.AvgPool3DGrad(
             orig_input_shape=orig_input_shape,
             grad=grad,
             ksize=[1, 1, 1, 1, 1],
             strides=[1, 1, 1, 1, 1],
             padding="SAME",
-            data_format="NDHWC")
+            data_format=data_format)
         self.evaluate(t)
 
   def testMaxPool3dValidPadding(self):
@@ -245,15 +274,76 @@ class PoolingTest(test.TestCase):
     values = self.evaluate(max_pool_3d)
     self.assertEqual(values.shape, (0, 56, 56, 56, 64))
 
-  def _ConstructAndTestGradientForConfig(self,
-                                         pool_func,
-                                         input_sizes,
-                                         output_sizes,
-                                         window,
-                                         strides,
-                                         padding,
-                                         data_format,
-                                         use_gpu):
+  # TODO(penporn): Determine if we will allow input_sizes[3] < ksize[3].
+  def DISABLED_testAvgPool3dEmptyOutTensor(self):
+    input_sizes = [30, 19, 4, 19, 17]
+    input_data = 1.0
+    input_tensor = constant_op.constant(
+        input_data, shape=input_sizes, name="input")
+    avg_pool_3d = nn_ops.avg_pool3d(
+        input_tensor,
+        ksize=(1, 13, 3, 20, 1),
+        strides=(1, 14, 4, 1, 1),
+        padding="VALID",
+        data_format="NDHWC",
+        name="avg_pool_3d")
+    values = self.evaluate(avg_pool_3d)
+    self.assertEqual(values.shape, (30, 1, 1, 0, 17))
+
+  def _getJacobians(self,
+                    pool_func,
+                    input_sizes,
+                    output_sizes,
+                    window,
+                    strides,
+                    padding,
+                    data_format,
+                    use_gpu,
+                    dtype=np.float32):
+    with self.cached_session(use_gpu=use_gpu):
+      x = np.arange(np.prod(input_sizes)).reshape(input_sizes).astype(dtype)
+      input_tensor = constant_op.constant(x, shape=input_sizes)
+      ksize = [1, window[0], window[1], window[2], 1]
+      strides = [1, strides[0], strides[1], strides[2], 1]
+      if data_format == "NCDHW":
+        ksize = test_util.NHWCToNCHW(ksize)
+        strides = test_util.NHWCToNCHW(strides)
+        input_tensor = test_util.NHWCToNCHW(input_tensor)
+        output_sizes = test_util.NHWCToNCHW(output_sizes)
+
+      def func(in_tensor):
+        return pool_func(
+            in_tensor,
+            ksize=ksize,
+            strides=strides,
+            padding=padding,
+            data_format=data_format)
+
+      input_jacob_a, input_jacob_n = gradient_checker_v2.compute_gradient(
+          func, [input_tensor])
+
+      def pool_grad_function(upstream_gradients):
+        with backprop.GradientTape() as tape:
+          tape.watch(input_tensor)
+          pool_output = pool_func(
+              input_tensor,
+              ksize=ksize,
+              strides=strides,
+              padding=padding,
+              data_format=data_format)
+          gradient_injector_output = pool_output * upstream_gradients
+          return tape.gradient(gradient_injector_output, input_tensor)
+
+      upstream_tensor = constant_op.constant(
+          2 * np.random.rand(*output_sizes) - 1, dtype=dtype)
+      grad_jacob_a, grad_jacob_n = gradient_checker_v2.compute_gradient(
+          pool_grad_function, [upstream_tensor])
+
+      return ((input_jacob_a, grad_jacob_a), (input_jacob_n, grad_jacob_n))
+
+  def _ConstructAndTestGradientForConfig(self, pool_func, input_sizes,
+                                         output_sizes, window, strides, padding,
+                                         data_format, data_type, use_gpu):
     """Verifies the gradients of a pooling function.
 
     Args:
@@ -265,64 +355,37 @@ class PoolingTest(test.TestCase):
       strides: Tuple of strides for dims: planes, rows, cols.
       padding: Padding type.
       data_format: Data format string.
+      data_type: The data type to use to run the pooling operation.
       use_gpu: Whether to run on GPU.
     """
-    total_size = 1
-    for s in input_sizes:
-      total_size *= s
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
-    x = np.arange(1, total_size + 1, dtype=np.float32)
-    with self.cached_session(use_gpu=use_gpu):
-      input_tensor = constant_op.constant(x, shape=input_sizes, name="input")
-      err_g_margin = 1e-3
-      err_gg_margin = 1.5e-2
-      if pool_func == nn_ops.avg_pool3d:
-        func_name = "avg_pool3d"
-        x_init_value = None
-      else:
-        x_init_value = np.asfarray(np.arange(1, total_size + 1),
-                                   dtype=np.float32).reshape(input_sizes)
-        func_name = "max_pool3d"
+    jacob_a, jacob_n = self._getJacobians(
+        pool_func,
+        input_sizes,
+        output_sizes,
+        window,
+        strides,
+        padding,
+        data_format,
+        use_gpu,
+        dtype=data_type.as_numpy_dtype)
 
-      ksize = [1, window[0], window[1], window[2], 1]
-      strides = [1, strides[0], strides[1], strides[2], 1]
-      t = input_tensor
-
-      if data_format == "NCDHW":
-        ksize = test_util.NHWCToNCHW(ksize)
-        strides = test_util.NHWCToNCHW(strides)
-        t = test_util.NHWCToNCHW(t)
-        output_sizes = test_util.NHWCToNCHW(output_sizes)
-
-      t = pool_func(
-          t,
-          ksize=ksize,
-          strides=strides,
-          padding=padding,
-          data_format=data_format,
-          name=func_name)
-      t_g = gradients_impl.gradients(t**2, input_tensor)[0]
-
-      err_g = gradient_checker.compute_gradient_error(
-          input_tensor,
+    if data_type == dtypes.bfloat16:
+      # Compare bf16 analytical gradients to fp32 numerical gradients.
+      _, jacob_n = self._getJacobians(
+          pool_func,
           input_sizes,
-          t,
           output_sizes,
-          x_init_value=x_init_value,
-          delta=1e-2)
-      err_gg = gradient_checker.compute_gradient_error(
-          input_tensor,
-          input_sizes,
-          t_g,
-          input_sizes,
-          x_init_value=x_init_value,
-          delta=1e-2)
+          window,
+          strides,
+          padding,
+          data_format,
+          use_gpu,
+          dtype=np.float32)
 
-    print("%s gradient error = " % func_name, err_g)
-    self.assertLess(err_g, err_g_margin)
-    print("%s second-order gradient error = " % func_name, err_gg)
-    self.assertLess(err_gg, err_gg_margin)
+    input_jacob_a, grad_jacob_a = jacob_a
+    input_jacob_n, grad_jacob_n = jacob_n
+    self.assertAllClose(input_jacob_a, input_jacob_n, rtol=1e-3, atol=1e-3)
+    self.assertAllClose(grad_jacob_a, grad_jacob_n, rtol=1e-3, atol=1e-3)
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
@@ -330,10 +393,19 @@ class PoolingTest(test.TestCase):
     """Runs _ConstructAndTestGradientForConfig for all tests configurations."""
 
     for data_format, use_gpu in GetTestConfigs():
-      self._ConstructAndTestGradientForConfig(pool_func,
-                                              data_format=data_format,
-                                              use_gpu=use_gpu,
-                                              **kwargs)
+      self._ConstructAndTestGradientForConfig(
+          pool_func,
+          data_format=data_format,
+          data_type=dtypes.float32,
+          use_gpu=use_gpu,
+          **kwargs)
+      if use_gpu and test_util.is_gpu_available(cuda_only=True):
+        self._ConstructAndTestGradientForConfig(
+            pool_func,
+            data_format=data_format,
+            data_type=dtypes.bfloat16,
+            use_gpu=use_gpu,
+            **kwargs)
 
   @test_util.run_deprecated_v1
   def testMaxPoolGradValidPadding1_1_3d(self):

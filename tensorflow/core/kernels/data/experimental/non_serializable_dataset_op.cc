@@ -87,8 +87,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
                                    " does not support serialization.");
     }
 
-    int64_t CardinalityInternal() const override {
-      return input_->Cardinality();
+    int64_t CardinalityInternal(CardinalityOptions options) const override {
+      return input_->Cardinality(options);
     }
 
    private:

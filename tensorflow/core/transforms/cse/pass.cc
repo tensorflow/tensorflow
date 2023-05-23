@@ -25,12 +25,15 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
-#include "tensorflow/core/transforms/pass_detail.h"
 
 namespace mlir {
 namespace tfg {
 namespace {
-class CSEPass : public CSEPassBase<CSEPass> {
+
+#define GEN_PASS_DEF_CSEPASS
+#include "tensorflow/core/transforms/passes.h.inc"
+
+class CSEPass : public impl::CSEPassBase<CSEPass> {
  public:
   LogicalResult initialize(MLIRContext *context) override {
     dialect_ = context->getOrLoadDialect<TFGraphDialect>();

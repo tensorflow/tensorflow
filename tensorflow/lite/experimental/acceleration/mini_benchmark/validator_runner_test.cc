@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner.h"
 
+#include <fcntl.h>
+
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -23,8 +25,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_mobilenet_validation_model.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/embedded_nnapi_sl_fake_impl.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/mini_benchmark_test_helper.h"
@@ -92,20 +94,6 @@ class ValidatorRunnerTest : public ::testing::Test {
         g_tflite_acceleration_embedded_mobilenet_validation_model,
         g_tflite_acceleration_embedded_mobilenet_validation_model_len);
     ASSERT_TRUE(!model_path_.empty());
-
-#ifdef __ANDROID__
-    // We extract the test files here as that's the only way to get the right
-    // architecture when building tests for multiple architectures.
-    std::string entry_point_file = MiniBenchmarkTestHelper::DumpToTempFile(
-        "libvalidator_runner_entrypoint.so",
-        g_tflite_acceleration_embedded_validator_runner_entrypoint,
-        g_tflite_acceleration_embedded_validator_runner_entrypoint_len);
-    ASSERT_TRUE(!entry_point_file.empty());
-
-    void* module =
-        dlopen(entry_point_file.c_str(), RTLD_NOW | RTLD_LOCAL | RTLD_NODELETE);
-    EXPECT_TRUE(module) << dlerror();
-#endif  // __ANDROID__
   }
 
   void CheckConfigurations(bool use_path = true) {
@@ -117,7 +105,7 @@ class ValidatorRunnerTest : public ::testing::Test {
     auto status = RequestAndroidInfo(&android_info);
     ASSERT_TRUE(status.ok());
 
-    ValidatorRunner::Options options;
+    ValidatorRunnerOptions options;
     options.data_directory_path = ::testing::TempDir();
     options.storage_path = ::testing::TempDir() + "/storage_path.fb";
     (void)unlink(options.storage_path.c_str());
@@ -214,7 +202,7 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
       LoadNnApiSupportLibrary();
   ASSERT_THAT(nnapi_sl.get(), ::testing::NotNull());
 
-  ValidatorRunner::Options options;
+  ValidatorRunnerOptions options;
   options.model_path = model_path_;
   options.storage_path = ::testing::TempDir() + "/storage_path.fb";
   (void)unlink(options.storage_path.c_str());
@@ -239,7 +227,15 @@ TEST_F(ValidatorRunnerTest, ShouldUseNnApiSl) {
   while (event_count < settings.size()) {
     events = validator.GetAndFlushEventsToLog();
     event_count += events.size();
+    // Duplicating the sleep(1) from CheckConfigurations() method above in this
+    // file. The validation is done in a separate process, this is likely needed
+    // to properly wait for the async process to finish.
+#ifndef _WIN32
+    sleep(1);
+#endif  // !_WIN32
   }
+  ASSERT_EQ(validator.TriggerMissingValidation(settings), 0);
+
   EXPECT_TRUE(WasNnApiSlInvoked());
 }
 
@@ -255,7 +251,7 @@ TEST_F(ValidatorRunnerTest, ShouldFailIfItCannotFindNnApiSlPath) {
   // Building an NNAPI SL structure with invalid handle.
   NnApiSLDriverImplFL5 wrong_handle_nnapi_sl{};
 
-  ValidatorRunner::Options options;
+  ValidatorRunnerOptions options;
   options.model_path = model_path_;
   options.storage_path = ::testing::TempDir() + "/storage_path.fb";
   (void)unlink(options.storage_path.c_str());

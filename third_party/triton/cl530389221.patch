@@ -1,0 +1,41 @@
+==== triton/include/triton/Dialect/Triton/IR/TritonOps.td#7 - /google/src/cloud/peiming/mlir_a2ab6a5e2b8d4e10ce29b24db7d6ae18c9acbec1_1683576894/triton/include/triton/Dialect/Triton/IR/TritonOps.td ====
+# action=edit type=text
+--- triton/include/triton/Dialect/Triton/IR/TritonOps.td	2023-04-24 23:33:26.000000000 -0700
++++ triton/include/triton/Dialect/Triton/IR/TritonOps.td	2023-05-08 13:18:46.000000000 -0700
+@@ -591,6 +591,8 @@
+     CallInterfaceCallable getCallableForCallee() {
+       return (*this)->getAttrOfType<SymbolRefAttr>("callee");
+     }
++    /// Set the callee from the callable
++    void setCalleeFromCallable(CallInterfaceCallable);
+   }];
+ 
+   let assemblyFormat = [{
+==== triton/lib/Dialect/Triton/IR/Ops.cpp#8 - /google/src/cloud/peiming/mlir_a2ab6a5e2b8d4e10ce29b24db7d6ae18c9acbec1_1683576894/triton/lib/Dialect/Triton/IR/Ops.cpp ====
+# action=edit type=text
+--- triton/lib/Dialect/Triton/IR/Ops.cpp	2023-05-02 04:45:24.000000000 -0700
++++ triton/lib/Dialect/Triton/IR/Ops.cpp	2023-05-08 13:48:19.000000000 -0700
+@@ -4,6 +4,7 @@
+ #include "mlir/IR/FunctionImplementation.h"
+ #include "mlir/IR/FunctionInterfaces.h"
+ #include "mlir/IR/OperationSupport.h"
++#include "mlir/Interfaces/CallInterfaces.h"
+ #include "triton/Dialect/Triton/IR/Dialect.h"
+ #include "triton/Dialect/Triton/IR/Types.h"
+ 
+@@ -683,6 +684,15 @@
+ 
+   return success();
+ }
++
++void triton::CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
++  // Direct call
++  if ((*this)->getAttrOfType<mlir::SymbolRefAttr>("callee")) {
++    (*this)->setAttr("callee", callee.get<mlir::SymbolRefAttr>());
++  }
++  // Indirect call, callee Value is the first operand.
++  return setOperand(0, callee.get<mlir::Value>());
++}
+ 
+ // -- ReturnOp --
+ LogicalResult triton::ReturnOp::verify() {

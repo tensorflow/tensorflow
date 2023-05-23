@@ -74,6 +74,21 @@ func.func @tf2xla_fallback_op() -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+// CHECK-LABEL: func @tf2xla_fallback_op_approx_top_k
+func.func @tf2xla_fallback_op_approx_top_k(%arg0: tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>) {
+  %0:2 = "tf_device.cluster"() ({
+    // CHECK: tf.ApproxTopK
+    // CHECK-NOT: _xla_outside_compilation
+    %1:2 = "tf.ApproxTopK"(%arg0) {k = 2} : (tensor<16xf32>) -> (tensor<?xf32>, tensor<?xi32>)
+    tf_device.return %1#0, %1#1 : tensor<?xf32>, tensor<?xi32>
+  }) {allow_soft_placement = true, num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> (tensor<?xf32>, tensor<?xi32>)
+  func.return %0#0, %0#1 : tensor<?xf32>, tensor<?xi32>
+}
+
+// -----
+
 // CHECK-LABEL: func @ignore_embedding_ops
 func.func @ignore_embedding_ops() -> () {
   "tf_device.cluster"() ({
@@ -543,3 +558,40 @@ func.func @variant_block_arg(tensor<!tf_type.variant<tensor<f32>>>) -> () {
     func.return
 }
 
+// CHECK-LABEL: func @set_bound
+func.func @set_bound(%arg0: tensor<i32>) -> tensor<i32> {
+  %bound = "tf.Const"() {value = dense<16> : tensor<i32>} : () -> tensor<i32>
+  // CHECK: tf.XlaSetBound
+  // CHECK-NOT: _xla_outside_compilation
+  %bounded = "tf.XlaSetBound"(%arg0, %bound) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+  func.return %bounded : tensor<i32>
+}
+
+
+// CHECK-LABEL: func @unsupported_op_cpu_cluster
+func.func @unsupported_op_cpu_cluster() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ({
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, _xla_compile_device_type = "CPU"} : () -> tensor<i32>
+  func.return %0 : tensor<i32>
+}
+
+// CHECK-LABEL: func @unsupported_op_gpu_cluster
+func.func @unsupported_op_gpu_cluster() -> tensor<i32> {
+  %0 = "tf_device.cluster"() ({
+    // CHECK: "tf.UnsupportedOp"
+    // CHECK-SAME: _xla_outside_compilation
+    // CHECK: "tf.Identity"
+    // CHECK-NOT: _xla_outside_compilation
+    %1 = "tf.UnsupportedOp"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+    %2 = "tf.Identity"(%1) : (tensor<i32>) -> tensor<i32>
+    tf_device.return %2 : tensor<i32>
+  }) {allow_soft_placement = true, _xla_compile_device_type = "GPU"} : () -> tensor<i32>
+  func.return %0 : tensor<i32>
+}

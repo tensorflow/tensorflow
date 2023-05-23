@@ -21,18 +21,22 @@ limitations under the License.
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_arguments.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_errors.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type_util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/precision.h"
 #include "tensorflow/lite/delegates/gpu/common/task/arguments.h"
+#include "tensorflow/lite/delegates/gpu/common/task/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/task/util.h"
 #include "tensorflow/lite/delegates/gpu/common/task/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/conversion.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 
 namespace tflite {
@@ -49,12 +53,10 @@ class OpenClConverterImpl : public TensorObjectConverter {
   void SetGpuInfo(const GpuInfo& info) { gpu_info_ = info; }
 
  protected:
-  absl::Status DispatchKernel(cl_mem buffer_mem, Tensor* tensor) {
-    kernel_.ResetBindingCounter();
-    RETURN_IF_ERROR(kernel_.SetMemoryAuto(buffer_mem));
+  absl::Status DispatchKernel(Buffer* buffer, Tensor* tensor) {
+    RETURN_IF_ERROR(cl_args_.SetObjectRef("buffer", buffer));
     RETURN_IF_ERROR(cl_args_.SetObjectRef("tensor", tensor));
-    RETURN_IF_ERROR(
-        cl_args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
+    RETURN_IF_ERROR(cl_args_.Bind(kernel_.kernel()));
     const int3 grid = int3(tensor->Width() * tensor->Batch(), tensor->Height(),
                            tensor->Slices());
     std::vector<int3> work_groups;
@@ -76,7 +78,7 @@ class OpenClConverterImpl : public TensorObjectConverter {
 
 bool IsSupportedDataType(DataType type) {
   return type == DataType::FLOAT16 || type == DataType::FLOAT32 ||
-         type == DataType::BOOL;
+         type == DataType::INT32 || type == DataType::BOOL;
 }
 
 bool IsBHWCOpenCLBuffer(const ObjectDef& def) {
@@ -130,51 +132,35 @@ class TensorToTensorConverter : public OpenClConverterImpl {
                          ToTensorStorageType(input_def.object_def.object_type,
                                              input_def.object_def.data_layout),
                          Layout::BHWC);
-    Arguments args;
-    args.AddObjectRef(
-        "src_tensor", AccessType::READ,
-        std::make_unique<TensorDescriptor>(src_tensor_descriptor_));
 
     dst_tensor_descriptor_ =
         TensorDescriptor(output_def.object_def.data_type,
                          ToTensorStorageType(output_def.object_def.object_type,
                                              output_def.object_def.data_layout),
                          Layout::BHWC);
-    args.AddObjectRef(
-        "dst_tensor", AccessType::WRITE,
-        std::make_unique<TensorDescriptor>(dst_tensor_descriptor_));
+
+    GPUOperation gpu_op =
+        CreateTensorToTensorOp(environment->GetDevicePtr()->GetInfo(),
+                               src_tensor_descriptor_, dst_tensor_descriptor_);
+    gpu_op.code_ =
+        "#define MAIN_FUNCTION __kernel void tensor_to_tensor\n" + gpu_op.code_;
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
         output_def.object_def.data_type == DataType::FLOAT16;
-    const std::string out_data_type =
-        ToCLDataType(output_def.object_def.data_type);
-    std::string shader_src;
     if (need_fp16_support) {
-      shader_src += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      gpu_op.code_ =
+          "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n" + gpu_op.code_;
     }
-    shader_src +=
-        R"(__kernel void tensor_to_tensor($0) {
-  int linear_id = get_global_id(0);
-  int x = linear_id / args.dst_tensor.Batch();
-  int b = linear_id % args.dst_tensor.Batch();
-  int y = get_global_id(1);
-  int d = get_global_id(2);
-  if (x >= args.dst_tensor.Width() || y >= args.dst_tensor.Height() || d >= args.dst_tensor.Slices()) return;
-)";
-    shader_src += "  " + out_data_type + "4 input = args.src_tensor.Read<" +
-                  out_data_type + ">(x, y, d, b);\n";
-    shader_src += "  args.dst_tensor.Write(input, x, y, d, b);\n}";
     queue_ = environment->queue();
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args.Compile(environment->device().GetInfo(), {}, &shader_src));
+    RETURN_IF_ERROR(gpu_op.AssembleCode(environment->device().GetInfo()));
     RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), nullptr,
-                                  &args, &shader_src));
+                                  &gpu_op.args_, &gpu_op.code_));
     return environment->program_cache()->GetOrCreateCLKernel(
-        shader_src, "tensor_to_tensor", environment->context(),
+        gpu_op.code_, "tensor_to_tensor", environment->context(),
         environment->device(), &kernel_);
   }
 
@@ -225,61 +211,42 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
         input_def.object_def.object_type, input_def.object_def.data_layout);
     tensor_descriptor_ = TensorDescriptor(input_def.object_def.data_type,
                                           src_tensor_type, Layout::BHWC);
-    Arguments args;
-    args.AddObjectRef("tensor", AccessType::READ,
-                      std::make_unique<TensorDescriptor>(tensor_descriptor_));
+
+    BufferDescriptor buffer_desc;
+    buffer_desc.element_type = output_def.object_def.data_type;
+    buffer_desc.element_size = 1;
+    buffer_desc.memory_type = MemoryType::GLOBAL;
+
+    GPUOperation gpu_op =
+        CreateTensorToBhwcBufferOp(environment->GetDevicePtr()->GetInfo(),
+                                   tensor_descriptor_, buffer_desc);
+
+    gpu_op.code_ =
+        "#define MAIN_FUNCTION __kernel void tensor_to_bhwc\n" + gpu_op.code_;
+    if (output_def.object_def.data_type == DataType::BOOL ||
+        input_def.object_def.data_type == DataType::BOOL) {
+      gpu_op.code_ =
+          "#define convert_bool4(value) (convert_uchar4((value) != 0) & "
+          "(uchar4) 1)\n#define bool4 uchar4\n" +
+          gpu_op.code_;
+    }
 
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
         output_def.object_def.data_type == DataType::FLOAT16;
-    std::string shader_src;
     if (need_fp16_support) {
-      shader_src += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      gpu_op.code_ =
+          "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n" + gpu_op.code_;
     }
-    if (output_def.object_def.data_type == DataType::BOOL ||
-        input_def.object_def.data_type == DataType::BOOL) {
-      shader_src +=
-          "#define convert_bool4(value) (convert_uchar4((value) != 0) & "
-          "(uchar4) 1)\n";
-      shader_src += "#define bool4 uchar4\n";
-    }
-    const std::string out_data_type =
-        ToCLDataType(output_def.object_def.data_type);
-    shader_src += "__kernel void tensor_to_bhwc(";
-    shader_src += "__global " + out_data_type + "* dst, $0) {\n";
-    shader_src += R"(  int linear_id = get_global_id(0);
-  int x = linear_id / args.tensor.Batch();
-  int b = linear_id % args.tensor.Batch();
-  int y = get_global_id(1);
-  int d = get_global_id(2);
-  if (x >= args.tensor.Width() || y >= args.tensor.Height() || d >= args.tensor.Slices()) return;
-)";
-    shader_src += "  " + out_data_type + "4 input = args.tensor.Read<" +
-                  out_data_type + ">(x, y, d, b);\n";
-    shader_src += R"(  int c = d * 4;
-  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
-
-  dst[index] = input.x;
-  if (c + 1 < args.tensor.Channels()) {
-    dst[index + 1] = input.y;
-  }
-  if (c + 2 < args.tensor.Channels()) {
-    dst[index + 2] = input.z;
-  }
-  if (c + 3 < args.tensor.Channels()) {
-    dst[index + 3] = input.w;
-  }
-})";
     queue_ = environment->queue();
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args.Compile(environment->device().GetInfo(), {}, &shader_src));
+    RETURN_IF_ERROR(gpu_op.AssembleCode(environment->device().GetInfo()));
     RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), nullptr,
-                                  &args, &shader_src));
+                                  &gpu_op.args_, &gpu_op.code_));
     return environment->program_cache()->GetOrCreateCLKernel(
-        shader_src, "tensor_to_bhwc", environment->context(),
+        gpu_op.code_, "tensor_to_bhwc", environment->context(),
         environment->device(), &kernel_);
   }
 
@@ -298,7 +265,8 @@ class TensorToBHWCBufferConverter : public OpenClConverterImpl {
     descriptor_with_shape.SetBHWCShape(shape_);
     RETURN_IF_ERROR(CreateTensorShared(*context_, in_memory,
                                        descriptor_with_shape, &tensor));
-    return DispatchKernel(output->memobj, &tensor);
+    Buffer buffer = CreateBufferShared(output->memobj);
+    return DispatchKernel(&buffer, &tensor);
   }
 };
 
@@ -310,81 +278,49 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     return IsBHWCOpenCLBuffer(input) && IsOpenCLTensor(output);
   }
 
-  std::pair<std::string, std::string> GetFromBhwcKernel(
-      const TensorObjectDef& input_def,
-      const TensorObjectDef& output_def) const {
-    return std::make_pair(
-        "__global " + ToCLDataType(input_def.object_def.data_type) + "* src",
-        R"(int c = d * 4;
-  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
-  result.x = src[index];
-  result.y = c + 1 < args.tensor.Channels() ? src[index + 1] : 1;
-  result.z = c + 2 < args.tensor.Channels() ? src[index + 2] : 2;
-  result.w = c + 3 < args.tensor.Channels() ? src[index + 3] : 3;
-)");
-  }
-
   absl::Status Init(const TensorObjectDef& input_def,
                     const TensorObjectDef& output_def,
                     Environment* environment) final {
-    auto params_kernel = GetFromBhwcKernel(input_def, output_def);
-
     TensorStorageType dst_tensor_type = ToTensorStorageType(
         output_def.object_def.object_type, output_def.object_def.data_layout);
     tensor_descriptor_ = TensorDescriptor(output_def.object_def.data_type,
-                                          dst_tensor_type, Layout::BHWC);
-    Arguments args;
-    args.AddObjectRef("tensor", AccessType::WRITE,
-                      std::make_unique<TensorDescriptor>(tensor_descriptor_));
 
+                                          dst_tensor_type, Layout::BHWC);
+
+    BufferDescriptor buffer_desc;
+    buffer_desc.element_type = input_def.object_def.data_type;
+    buffer_desc.element_size = 1;
+    buffer_desc.memory_type = MemoryType::GLOBAL;
+
+    GPUOperation gpu_op =
+        CreateBhwcBufferToTensorOp(environment->GetDevicePtr()->GetInfo(),
+                                   buffer_desc, tensor_descriptor_);
+
+    gpu_op.code_ =
+        "#define MAIN_FUNCTION __kernel void bhwc_to_tensor\n" + gpu_op.code_;
+    if (output_def.object_def.data_type == DataType::BOOL ||
+        input_def.object_def.data_type == DataType::BOOL) {
+      gpu_op.code_ =
+          "#define convert_bool4(value) (convert_uchar4((value) != 0) & "
+          "(uchar4) 1)\n#define bool4 uchar4\n" +
+          gpu_op.code_;
+    }
     const bool need_fp16_support =
         input_def.object_def.data_type == DataType::FLOAT16 ||
         output_def.object_def.data_type == DataType::FLOAT16;
-    std::string shader_src;
     if (need_fp16_support) {
-      shader_src += "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n";
+      gpu_op.code_ =
+          "#pragma OPENCL EXTENSION cl_khr_fp16 : enable\n" + gpu_op.code_;
     }
-    if (output_def.object_def.data_type == DataType::BOOL ||
-        input_def.object_def.data_type == DataType::BOOL) {
-      shader_src +=
-          "#define convert_bool4(value) (convert_uchar4((value) != 0) & "
-          "(uchar4) 1)\n";
-      shader_src += "#define bool4 uchar4\n";
-    }
-    const std::string in_data_type =
-        ToCLDataType(input_def.object_def.data_type);
-    const std::string out_data_type =
-        ToCLDataType(output_def.object_def.data_type);
-    shader_src += "__kernel void bhwc_to_tensor(";
-    shader_src += "__global " + in_data_type + "* src, $0) {\n";
-
-    shader_src += R"(  int linear_id = get_global_id(0);
-  int x = linear_id / args.tensor.Batch();
-  int b = linear_id % args.tensor.Batch();
-  int y = get_global_id(1);
-  int d = get_global_id(2);
-
-  if (x >= args.tensor.Width() || y >= args.tensor.Height() || d >= args.tensor.Slices()) return;
-)";
-    shader_src += "  " + out_data_type + "4 result;\n";
-    shader_src += R"(  int c = d * 4;
-  int index = ((b * args.tensor.Height() + y) * args.tensor.Width() + x) * args.tensor.Channels() + c;
-  result.x = src[index];
-  result.y = c + 1 < args.tensor.Channels() ? src[index + 1] : 1;
-  result.z = c + 2 < args.tensor.Channels() ? src[index + 2] : 2;
-  result.w = c + 3 < args.tensor.Channels() ? src[index + 3] : 3;
-)";
-    shader_src += "  args.tensor.Write(result, x, y, d, b);\n}";
     queue_ = environment->queue();
     context_ = &environment->context();
     shape_ = BHWC(output_def.dimensions.b, output_def.dimensions.h,
                   output_def.dimensions.w, output_def.dimensions.c);
-    RETURN_IF_ERROR(
-        args.Compile(environment->device().GetInfo(), {}, &shader_src));
+    RETURN_IF_ERROR(gpu_op.AssembleCode(environment->device().GetInfo()));
     RETURN_IF_ERROR(cl_args_.Init(environment->device().GetInfo(), nullptr,
-                                  &args, &shader_src));
+                                  &gpu_op.args_, &gpu_op.code_));
     return environment->program_cache()->GetOrCreateCLKernel(
-        shader_src, "bhwc_to_tensor", environment->context(),
+        gpu_op.code_, "bhwc_to_tensor", environment->context(),
         environment->device(), &kernel_);
   }
 
@@ -402,7 +338,8 @@ class BHWCBufferToTensorConverter : public OpenClConverterImpl {
     descriptor_with_shape.SetBHWCShape(shape_);
     RETURN_IF_ERROR(CreateTensorShared(*context_, out_memory,
                                        descriptor_with_shape, &tensor));
-    return DispatchKernel(input->memobj, &tensor);
+    Buffer buffer = CreateBufferShared(input->memobj);
+    return DispatchKernel(&buffer, &tensor);
   }
 };
 
@@ -591,20 +528,22 @@ class CpuCopier : public OpenClConverterImpl {
                                const TensorObject& tensor_obj) {
     const size_t num_elements = cpu_memory->size_bytes;
     const bool* bool_data = reinterpret_cast<bool*>(cpu_memory->data);
-    std::vector<uint8_t> tmp_data(num_elements);
+    tmp_bool_data_ = std::make_unique<std::vector<uint8_t>>();
+    tmp_bool_data_->reserve(num_elements);
     for (int i = 0; i < num_elements; ++i) {
-      tmp_data[i] = bool_data[i];
+      tmp_bool_data_->push_back(bool_data[i]);
     }
     auto texture_output = std::get_if<OpenClTexture>(&tensor_obj);
     if (texture_output) {
       return queue_->EnqueueWriteImage(texture_output->memobj,
                                        int3(region_[0], region_[1], region_[2]),
-                                       tmp_data.data(), async_);
+                                       tmp_bool_data_->data(), async_);
     }
     auto buffer_output = std::get_if<OpenClBuffer>(&tensor_obj);
     if (buffer_output) {
-      return queue_->EnqueueWriteBuffer(buffer_output->memobj, tmp_data.size(),
-                                        tmp_data.data(), async_);
+      return queue_->EnqueueWriteBuffer(buffer_output->memobj,
+                                        tmp_bool_data_->size(),
+                                        tmp_bool_data_->data(), async_);
     }
     return absl::InternalError("Unexpected object");
   }
@@ -613,6 +552,7 @@ class CpuCopier : public OpenClConverterImpl {
   bool async_;
   DataType input_data_type_;
   DataType output_data_type_;
+  std::unique_ptr<std::vector<uint8_t>> tmp_bool_data_;
 };
 
 class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {

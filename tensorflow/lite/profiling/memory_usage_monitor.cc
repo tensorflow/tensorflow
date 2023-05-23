@@ -52,8 +52,8 @@ void MemoryUsageMonitor::Start() {
     // Note we retrieve the memory usage at the very beginning of the thread.
     while (true) {
       const auto mem_info = sampler_->GetMemoryUsage();
-      if (mem_info.max_rss_kb > peak_max_rss_kb_) {
-        peak_max_rss_kb_ = mem_info.max_rss_kb;
+      if (mem_info.mem_footprint_kb > peak_mem_footprint_kb_) {
+        peak_mem_footprint_kb_ = mem_info.mem_footprint_kb;
       }
       if (stop_signal_->HasBeenNotified()) break;
       sampler_->SleepFor(sampling_interval_);

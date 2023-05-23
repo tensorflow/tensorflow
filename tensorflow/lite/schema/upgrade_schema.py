@@ -230,8 +230,7 @@ class Converter:
 
       Args:
         operator_type: String representing the builtin operator data type
-          string.
-        (see :schema.fbs).
+          string. (see :schema.fbs).
       Raises:
         ValueError: When the model has consistency problems.
       Returns:

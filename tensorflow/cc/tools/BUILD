@@ -1,4 +1,5 @@
-# Description:
+#include "third_party/absl/strings/str_cat.h"
+#Description:
 # TensorFlow cc tools.
 
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
@@ -8,6 +9,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -21,6 +23,8 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

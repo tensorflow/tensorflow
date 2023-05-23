@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
 
 #define EIGEN_USE_THREADS
 
@@ -80,7 +81,25 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     auto dense_shape_vec = dense_shape.vec<int64_t>();
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape_vec(0);
     const int64_t num_rows = dense_shape_vec((rank == 2) ? 0 : 1);
+    const int64_t num_cols = dense_shape_vec((rank == 2) ? 1 : 2);
     const int64_t total_nnz = values.NumElements();
+
+    static constexpr int64_t kInt32Max = std::numeric_limits<int32>::max();
+    OP_REQUIRES(
+        ctx, batch_size < kInt32Max,
+        errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
+                                " but the input value is ",
+                                batch_size));
+    OP_REQUIRES(ctx, total_nnz <= kInt32Max,
+                errors::InvalidArgument("values number of elements must be <="
+                                        " Int32Max, but the input value is ",
+                                        total_nnz));
+    OP_REQUIRES(
+        ctx, (num_rows + 1) * batch_size <= kInt32Max,
+        errors::InvalidArgument("The csr row index size, computed based on the"
+                                " dense_shape, must be <= Int32Max, but is too"
+                                " large. Current value is ",
+                                (num_rows + 1) * batch_size));
 
     // Allocate output Tensors.
     TensorShape batch_ptr_shape;
@@ -104,9 +123,9 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
     functor::SparseTensorToCSRSparseMatrixCPUFunctor coo_to_csr;
     OP_REQUIRES_OK(
         ctx,
-        coo_to_csr(batch_size, num_rows, indices.template matrix<int64_t>(),
-                   batch_ptr.vec<int32>(), csr_row_ptr.vec<int32>(),
-                   csr_col_ind.vec<int32>()));
+        coo_to_csr(batch_size, num_rows, num_cols,
+                   indices.template matrix<int64_t>(), batch_ptr.vec<int32>(),
+                   csr_row_ptr.vec<int32>(), csr_col_ind.vec<int32>()));
 
     // Create the CSRSparseMatrix object from its component Tensors and prepare
     // the Variant output Tensor.
@@ -151,6 +170,27 @@ class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
     const int64_t batch_size = (rank == 2) ? 1 : dense_shape(0);
     const int64_t rows = dense_shape((rank == 2) ? 0 : 1);
     const int64_t cols = dense_shape((rank == 2) ? 1 : 2);
+
+    static constexpr int64_t kInt32Max = std::numeric_limits<int32>::max();
+    OP_REQUIRES_ASYNC(
+        c, batch_size < kInt32Max,
+        errors::InvalidArgument("dense_shape batch_size must be < Int32Max,"
+                                " but the input value is ",
+                                batch_size),
+        done);
+    OP_REQUIRES_ASYNC(
+        c, values_t.NumElements() <= kInt32Max,
+        errors::InvalidArgument("values number of elements must be <="
+                                " Int32Max, but the input value is ",
+                                values_t.NumElements()),
+        done);
+    OP_REQUIRES_ASYNC(
+        c, (rows + 1) * batch_size <= kInt32Max,
+        errors::InvalidArgument("The csr row index size, computed based on the"
+                                " dense_shape, must be <= Int32Max, but is too"
+                                " large. Current value is ",
+                                (rows + 1) * batch_size),
+        done);
 
     ScratchSpace<int32> nnz_per_batch_host(c, batch_size, /*on_host*/ true);
 

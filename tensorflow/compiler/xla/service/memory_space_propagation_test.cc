@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -64,7 +64,7 @@ TEST_F(MemorySpacePropagationTest, NoMemorySpace) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
-  EXPECT_FALSE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(memory_space_propagation.Run(module.get()).value());
   TF_ASSERT_OK_AND_ASSIGN(auto ref, ParseAndReturnVerifiedModule(hlo_string));
   EXPECT_EQ(absl::HashOf(*module), absl::HashOf(*ref));
 }
@@ -123,7 +123,7 @@ TEST_F(MemorySpacePropagationTest, NonTupleOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
-  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
@@ -192,7 +192,7 @@ TEST_F(MemorySpacePropagationTest, TupleOutput) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
-  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
@@ -266,7 +266,7 @@ TEST_F(MemorySpacePropagationTest, NestedInputFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
-  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
@@ -340,7 +340,7 @@ TEST_F(MemorySpacePropagationTest, NestedOutputFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
-  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));
@@ -403,7 +403,7 @@ TEST_F(MemorySpacePropagationTest, BitcastInFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   MemorySpacePropagation memory_space_propagation;
-  EXPECT_TRUE(memory_space_propagation.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(memory_space_propagation.Run(module.get()).value());
   TF_EXPECT_OK(Verify(module.get()));
   TF_ASSERT_OK_AND_ASSIGN(auto ref,
                           ParseAndReturnVerifiedModule(expected_hlo_string));

@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""DTensor Checkpoint."""
+"""DTensor Checkpoint.
+
+Note that this module contains deprecated functionality, and the DTensor related
+checkpoint has been integrated with tf.train.Checkpoint. It can be used out of
+the box to save and restore dtensors.
+"""
 
 from typing import Dict, List, Optional
 import weakref
@@ -38,6 +43,7 @@ from tensorflow.python.trackable import data_structures
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -170,12 +176,14 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
     super().__init__(**kwargs)
     self._mesh = mesh
 
-  def restore_saveables(
-      self,
-      tensor_saveables: Dict[str, saveable_object.SaveableObject],
-      python_positions: List[restore_lib.CheckpointPosition],
-      registered_savers: Optional[Dict[str, Dict[str, base.Trackable]]] = None
-  ) -> Optional[List[ops.Operation]]:
+  def restore_saveables(self,
+                        tensor_saveables: Dict[str,
+                                               saveable_object.SaveableObject],
+                        python_positions: List[restore_lib.CheckpointPosition],
+                        registered_savers: Optional[Dict[str, Dict[
+                            str, base.Trackable]]] = None,
+                        reader: py_checkpoint_reader.NewCheckpointReader = None
+                        ) -> Optional[List[ops.Operation]]:
     """Run or build restore operations for SaveableObjects.
 
     Args:
@@ -184,6 +192,7 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
         Trackables bound to the checkpoint.
       registered_savers: a dict mapping saver names-> object name -> Trackable.
         This argument is not implemented for DTensorCheckpoint.
+      reader: A CheckpointReader. Creates one lazily if None.
 
     Returns:
       When graph building, a list of restore operations, either cached or newly
@@ -196,7 +205,8 @@ class _DCheckpointRestoreCoordinator(util._CheckpointRestoreCoordinator):  # pyl
     if python_positions:
       # Lazily create the NewCheckpointReader, since this requires file access
       # and we may not have any Python saveables.
-      reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
+      if reader is None:
+        reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
       for position in python_positions:
         key = position.object_proto.attributes[0].checkpoint_key
         position.trackable.deserialize(reader.get_tensor(key))
@@ -393,6 +403,11 @@ class DTrackableSaver(util.TrackableSaver):
     return load_status
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions="Please use tf.train.Checkpoint instead of DTensorCheckpoint. "
+    "DTensor is integrated with tf.train.Checkpoint and it can be "
+    "used out of the box to save and restore dtensors.")
 @tf_export("experimental.dtensor.DTensorCheckpoint", v1=[])
 class DTensorCheckpoint(util.Checkpoint):
   """Manages saving/restoring trackable values to disk, for DTensor."""

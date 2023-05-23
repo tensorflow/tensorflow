@@ -42,12 +42,12 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
                         typename TTypes<T, 1>::Tensor& output,
                         const Tidx num_bins) {
     if (weights.size() != 0) {
-      return errors::InvalidArgument(
-          "Weights should not be passed as it should be "
-          "handled by unsorted_segment_sum");
+      return errors::Unimplemented(
+          "Weights are not yet supported by the GPU implementation of Bincount."
+          " Please use unsorted_segment_sum instead.");
     }
     if (output.size() == 0) {
-      return Status::OK();
+      return OkStatus();
     }
     if (tensorflow::OpDeterminismRequired()) {
       // TODO(reedwm): Is this really nondeterministic?
@@ -108,7 +108,7 @@ struct BincountFunctor<GPUDevice, Tidx, T, false> {
       return errors::Internal(
           "Could not launch HistogramEven: ", GpuGetErrorString(err), ".");
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

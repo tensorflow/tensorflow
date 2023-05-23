@@ -17,21 +17,21 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -63,7 +63,7 @@ TEST_F(HloDceTest, NoDeadCode) {
   EXPECT_EQ(3, computation->instruction_count());
 
   HloDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
 
   EXPECT_EQ(3, computation->instruction_count());
 }
@@ -85,7 +85,7 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
   EXPECT_EQ(5, computation->instruction_count());
 
   HloDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
 
   EXPECT_EQ(5, computation->instruction_count());
 }
@@ -151,7 +151,7 @@ TEST_F(HloDceTest, DeadParameters) {
   EXPECT_EQ(1, dead_param1->user_count());
 
   HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_EQ(0, dead_param1->user_count());
@@ -198,7 +198,7 @@ TEST_F(HloDceTest, ControlDependencies) {
   EXPECT_TRUE(HasInstruction(*computation, dead_add_with_control_dep));
 
   HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
 
   EXPECT_EQ(5, computation->instruction_count());
   EXPECT_FALSE(HasInstruction(*computation, dead_negate));
@@ -239,7 +239,7 @@ TEST_F(HloDceTest, DeadInstructionWithCalledComputation) {
   EXPECT_TRUE(HasInstruction(*computation, dead_call));
 
   HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
 
   EXPECT_EQ(2, computation->instruction_count());
   EXPECT_EQ(1, param->user_count());
@@ -297,7 +297,7 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
   EXPECT_TRUE(HasInstruction(*computation, live_while));
 
   HloDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
 
   EXPECT_EQ(3, computation->instruction_count());
   EXPECT_EQ(2, param->user_count());
@@ -349,7 +349,7 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
   EXPECT_TRUE(HasInstruction(*computation, live_call));
 
   HloDCE dce;
-  EXPECT_FALSE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_FALSE(dce.Run(module.get()).value());
 
   EXPECT_EQ(2, computation->instruction_count());
   EXPECT_EQ(1, param->user_count());
@@ -391,7 +391,7 @@ TEST_F(HloDceTest, RemoveDeadSubcomputation) {
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
 
   HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
 
   // We should have DCE'ed the reduction computation along with the reduction
   // instruction.
@@ -438,7 +438,7 @@ TEST_F(HloDceTest, KeepUsedSubcomputation) {
   EXPECT_EQ(module->MakeComputationPostOrder().size(), 2);
 
   HloDCE dce;
-  EXPECT_TRUE(dce.Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(dce.Run(module.get()).value());
 
   // We shouldn't have DCE'ed reduce_subcomp, even though we removed one of
   // its users.

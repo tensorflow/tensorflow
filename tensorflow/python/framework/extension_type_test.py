@@ -38,14 +38,14 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
+from tensorflow.python.framework import type_spec_registry
 from tensorflow.python.framework.type_utils import fulltypes_for_flat_tensors
-from tensorflow.python.keras.engine import input_layer
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond as tf_cond
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -233,6 +233,13 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     self.assertEqual(expected, repr(mt))
     self.assertEqual(expected, repr(mt))
+
+  def testAsDict(self):
+    values = constant_op.constant([1, 2, 3, 4])
+    mask = constant_op.constant([True, True, False, True])
+    mt = MaskedTensorV1(values, mask)
+    mt_dict = extension_type.as_dict(mt)
+    self.assertEqual({'values': values, 'mask': mask}, mt_dict)
 
   def testConstructorSignature(self):
 
@@ -511,9 +518,9 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = MaskedTensorV1([1, 2, 3, 4], [True, False, True, False])
     y = MaskedTensorV1([5, 6, 7, 8], [False, True, True, False])
 
-    x_2 = control_flow_ops.cond(
+    x_2 = tf_cond.cond(
         constant_op.constant(True), lambda: x, lambda: y)
-    y_2 = control_flow_ops.cond(
+    y_2 = tf_cond.cond(
         constant_op.constant(False), lambda: x, lambda: y)
 
     self.assertAllEqual(x.values, x_2.values)
@@ -533,8 +540,8 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           array_ops.where_v2(mt.mask, 100, mt.values * 2),
           math_ops.logical_not(mt.mask))
 
-    x = control_flow_ops.cond(constant_op.constant(True), true_fn, false_fn)
-    y = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
+    x = tf_cond.cond(constant_op.constant(True), true_fn, false_fn)
+    y = tf_cond.cond(constant_op.constant(False), true_fn, false_fn)
 
     self.assertAllEqual(x.values, [1, -1, 3, -1])
     self.assertAllEqual(x.mask, [False, False, False, True])
@@ -561,7 +568,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       # In eager mode, tf.cond eagerly runs either true_fn or false_fn, and
       # ignores the other one; so it doesn't detect any type mismatches
       # between the two outcomes.  (See _eager_cond_implementation in
-      # control_flow_ops.py.)
+      # cond.py.)
       return
 
     a = lambda: MaskedTensorV1([1, 2, 3], [True, True, False])
@@ -573,16 +580,16 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         ValueError,
         'Incompatible return values of true_fn and false_fn: The two '
         "structures don't have the same nested structure"):
-      control_flow_ops.cond(constant_op.constant(True), a, b)
+      tf_cond.cond(constant_op.constant(True), a, b)
     with self.assertRaisesRegex(
         TypeError, 'Incompatible return types of true_fn and false_fn: The two '
         "structures don't have the same nested structure"):
-      control_flow_ops.cond(constant_op.constant(True), a, c)
+      tf_cond.cond(constant_op.constant(True), a, c)
     with self.assertRaisesRegex(
         ValueError,
         'Incompatible return values of true_fn and false_fn: The two '
         "structures don't have the same nested structure"):
-      control_flow_ops.cond(constant_op.constant(True), a, d)
+      tf_cond.cond(constant_op.constant(True), a, d)
 
   def testCondPacked(self):
     x = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
@@ -590,9 +597,9 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     x = extension_type.pack(x)
     y = extension_type.pack(y)
 
-    x_2 = control_flow_ops.cond(
+    x_2 = tf_cond.cond(
         constant_op.constant(True), lambda: x, lambda: y)
-    y_2 = control_flow_ops.cond(
+    y_2 = tf_cond.cond(
         constant_op.constant(False), lambda: x, lambda: y)
 
     self.assertAllEqual(x.values, x_2.values)
@@ -602,7 +609,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     a = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
     b = extension_type.pack(a)
-    b = control_flow_ops.cond(
+    b = tf_cond.cond(
         constant_op.constant(True), lambda: array_ops.size(a.mask),
         lambda: array_ops.size(a.values))
     self.assertAllEqual(b, 4)
@@ -612,7 +619,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # the value.  See the comment in `ExtensionType.__getattr__` for details.
     c = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
     c = extension_type.pack(c)
-    d = control_flow_ops.cond(
+    d = tf_cond.cond(
         constant_op.constant(False), lambda: array_ops.size(c.mask),
         lambda: array_ops.size(c.values))
     self.assertAllEqual(d, 4)
@@ -622,7 +629,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     cond = lambda i, x: i < 10
     body = lambda i, x: (i + 1, MaskedTensorV1(x.values * 2, x.mask))
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
 
     self.assertIsInstance(y, MaskedTensorV1)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
@@ -654,7 +661,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure"):
-      control_flow_ops.while_loop_v2(cond, body, [0, x])
+      while_loop.while_loop_v2(cond, body, [0, x])
 
   def testWhileLoopPacked(self):
     x = MaskedTensorV2([1, 2, 3, 4], [True, False, True, False])
@@ -664,7 +671,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     def body(i, x):
       return i + 1, extension_type.pack(MaskedTensorV2(x.values * 2, x.mask))
 
-    _, y = control_flow_ops.while_loop_v2(cond, body, [0, x])
+    _, y = while_loop.while_loop_v2(cond, body, [0, x])
     self.assertIsInstance(y, MaskedTensorV2)
     self.assertAllEqual(y.values, [1024, 2048, 3072, 4096])
     self.assertAllEqual(y.mask, [True, False, True, False])
@@ -747,7 +754,7 @@ class ExtensionTypeTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     @def_function.function
     def fn(info):
       prices = [toy.price for toy in info.toys]
-      return math_ops.reduce_sum(array_ops.stack(prices))
+      return math_ops.reduce_sum(array_ops_stack.stack(prices))
 
     self.assertAllClose(fn(toy_info), 4.7)
 
@@ -1073,42 +1080,6 @@ class ExtensionTypeIntegrationTest(test_util.TensorFlowTestCase):
     self.assertEqual(per_replica_result.values[0].values, expect.values[0])
     self.assertEqual(per_replica_result.values[0].mask, expect.mask[0])
 
-  # TODO(edloper): Move this test to Keras.
-  @test_util.run_v2_only
-  def testKerasModel(self):
-    mt_spec = MaskedTensorV3.Spec(
-        tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.int32),
-        tensor_spec.TensorSpec(shape=[None, 1], dtype=dtypes.bool),
-    )
-    model_input = input_layer.Input(type_spec=mt_spec)
-    model_output = array_ops.identity(model_input, name='output')
-    model = training.Model(inputs=model_input, outputs=model_output)
-    mt = MaskedTensorV3([[1], [2], [3]], [[True], [False], [True]])
-    self.assertEqual(model(mt), mt)
-    ds = dataset_ops.DatasetV2.from_tensors(mt)
-    self.assertEqual(model.predict(ds), mt)
-
-    with self.subTest('keras save'):
-      path = self.create_tempdir().full_path
-      model.save(path)
-      loaded_model = keras_save.load_model(path)
-      self.assertEqual(loaded_model.input.type_spec, mt_spec)
-      self.assertEqual(loaded_model(mt), mt)
-
-      loaded_fn = load.load(path)
-      self.assertEqual(loaded_fn(mt), mt)
-      with self.assertRaisesRegex(
-          ValueError,
-          'Could not find matching concrete function to call '
-          'loaded from the SavedModel',
-      ):
-        loaded_fn(MaskedTensorV3([1, 2, 3], [True, False, True]))
-
-      # The serving_fn use flatten signature
-      serving_fn = loaded_fn.signatures['serving_default']
-      self.assertEqual(
-          serving_fn(args_0=mt.values, args_0_1=mt.mask)['tf.identity'], mt)
-
 
 @test_util.run_all_in_graph_and_eager_modes
 class ExtensionTypeSpecTest(test_util.TensorFlowTestCase,
@@ -1400,7 +1371,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
       [
           lambda: extension_type.AnonymousExtensionType(
               values=(1, 2, 3), mask=None), MaskedTensorV2,
-          'mask: expected a Tensor, got None'
+          "mask: expected a Tensor, got 'NoneType'"
       ],
       [
           lambda: extension_type.AnonymousExtensionType(
@@ -1454,7 +1425,7 @@ class AnonymousExtensionTypeTest(test_util.TensorFlowTestCase,
     loaded_model = load.load(path)
 
     with self.assertRaises(ValueError):
-      type_spec.lookup('tf.test.MaskedTensorV1')
+      type_spec_registry.lookup('tf.test.MaskedTensorV1')
 
     t = constant_op.constant([10, 20, 30])
     v1 = loaded_model.f(t, t)
@@ -1524,10 +1495,10 @@ def temporarily_add_dispatch(op, typ, fn):
 @contextlib.contextmanager
 def temporarily_register_type_spec(name, cls):
   """Context manager for making temporary changes to the TypeSpec registry."""
-  type_spec.register(name)(cls)
+  type_spec_registry.register(name)(cls)
   yield
-  assert type_spec._TYPE_SPEC_TO_NAME.pop(cls) == name
-  assert type_spec._NAME_TO_TYPE_SPEC.pop(name) is cls
+  assert type_spec_registry._TYPE_SPEC_TO_NAME.pop(cls) == name
+  assert type_spec_registry._NAME_TO_TYPE_SPEC.pop(name) is cls
 
 
 if __name__ == '__main__':

@@ -23,16 +23,16 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -80,7 +80,7 @@ Status Defuse(HloInstruction* fusion_instruction) {
   TF_RETURN_IF_ERROR(fusion_instruction->ReplaceAllUsesWith(
       defused_instructions.at(fusion_instruction->fused_expression_root())));
 
-  HloModule* module = fusion_instruction->parent()->parent();
+  HloModule* module = fusion_instruction->GetModule();
   TF_RETURN_IF_ERROR(
       fusion_instruction->parent()->RemoveInstruction(fusion_instruction));
   return module->RemoveEmbeddedComputation(fused_computation);

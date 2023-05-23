@@ -17,17 +17,19 @@ limitations under the License.
 #define TENSORFLOW_CORE_PUBLIC_SESSION_OPTIONS_H_
 
 #include <string>
+
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
-namespace tensorflow {
-
+namespace tsl {
 class Env;
+}  // namespace tsl
+namespace tensorflow {
 
 /// Configuration information for a Session.
 struct SessionOptions {
   /// The environment to use.
-  Env* env;
+  tsl::Env* env;
 
   /// \brief The TensorFlow runtime to connect to.
   ///

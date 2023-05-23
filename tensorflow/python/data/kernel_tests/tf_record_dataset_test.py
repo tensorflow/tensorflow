@@ -24,6 +24,7 @@ from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.kernel_tests import tf_record_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import options as options_lib
 from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
@@ -194,9 +195,9 @@ class TFRecordDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
 
   def make_dataset(self,
                    num_epochs,
-                   batch_size=1,
                    compression_type=None,
-                   buffer_size=None):
+                   buffer_size=None,
+                   symbolic_checkpoint=False):
     filenames = self._createFiles()
     if compression_type == "ZLIB":
       zlib_files = []
@@ -219,21 +220,30 @@ class TFRecordDatasetCheckpointTest(tf_record_test_base.TFRecordTestBase,
           gzip_files.append(gzfn)
       filenames = gzip_files
 
-    return readers.TFRecordDataset(
+    dataset = readers.TFRecordDataset(
         filenames, compression_type,
-        buffer_size=buffer_size).repeat(num_epochs).batch(batch_size)
+        buffer_size=buffer_size).repeat(num_epochs)
+    if symbolic_checkpoint:
+      options = options_lib.Options()
+      options.experimental_symbolic_checkpoint = symbolic_checkpoint
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           checkpoint_test_base.default_test_combinations(),
-          combinations.combine(batch_size=[1, 5])))
-  def testBatchSize(self, verify_fn, batch_size):
+          combinations.combine(symbolic_checkpoint=[True, False])))
+  def test(self, verify_fn, symbolic_checkpoint):
     num_epochs = 5
-    num_outputs = num_epochs * self._num_files * self._num_records // batch_size
-    verify_fn(self,
-              lambda: self.make_dataset(num_epochs, batch_size=batch_size),
-              num_outputs)
+    num_outputs = num_epochs * self._num_files * self._num_records
+    verify_fn(
+        self,
+        lambda: self.make_dataset(
+            num_epochs, symbolic_checkpoint=symbolic_checkpoint
+        ),
+        num_outputs,
+    )
 
   @combinations.generate(
       combinations.times(

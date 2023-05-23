@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -30,9 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
-#include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/framework/allocator.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -40,7 +41,7 @@ namespace stream_executor {
 // then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 static T RoundUpToNearest(T value, T divisor) {
-  return tensorflow::MathUtil::CeilOfRatio(value, divisor) * divisor;
+  return tsl::MathUtil::CeilOfRatio(value, divisor) * divisor;
 }
 
 // The size of the redzone at the end of the user buffer is rounded up to a
@@ -59,17 +60,17 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
       memory_limit_(memory_limit),
       redzone_size_(RoundUpToNearest(
           redzone_size,
-          static_cast<int64_t>(tensorflow::Allocator::kAllocatorAlignment))),
+          static_cast<int64_t>(tsl::Allocator::kAllocatorAlignment))),
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator),
       gpu_compilation_opts_(ptx_compilation_opts) {}
 
-port::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
+tsl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
-    return port::Status(
-        port::error::RESOURCE_EXHAUSTED,
+    return tsl::Status(
+        absl::StatusCode::kResourceExhausted,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",
             byte_size, GetMemoryLimitInBytes()));
@@ -182,7 +183,7 @@ using ComparisonKernelT = TypedKernel<DeviceMemory<uint8_t>, uint8_t, uint64_t,
 // Check that redzones weren't overwritten on a host.
 //
 // Slower, but gives a more useful error message.
-static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
+static tsl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
     DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
     absl::string_view name, Stream* stream, uint8_t redzone_pattern) {
   uint64_t size = redzone.size();
@@ -216,7 +217,7 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
 // Run the redzone checker on the provided buffer redzone.
 //
 // Increment out_param if mismatch occurs.
-static port::Status RunRedzoneChecker(
+static tsl::Status RunRedzoneChecker(
     Stream* stream, const DeviceMemory<uint8_t>& redzone,
     uint8_t redzone_pattern, const DeviceMemory<uint64_t>& out_param,
     const ComparisonKernelT& comparison_kernel) {
@@ -226,32 +227,31 @@ static port::Status RunRedzoneChecker(
   int64_t threads_per_block = std::min(
       executor->GetDeviceDescription().threads_per_block_limit(), num_elements);
   int64_t block_count =
-      tensorflow::MathUtil::CeilOfRatio(num_elements, threads_per_block);
+      tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block);
 
   TF_RETURN_IF_ERROR(stream->ThenLaunch(
       ThreadDim(threads_per_block), BlockDim(block_count), comparison_kernel,
       redzone, redzone_pattern, redzone.size(), out_param));
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 // Since we reuse the same buffer for multiple checks, we re-initialize redzone
 // with a NaN pattern after a failed check.
 //
 // This function is blocking, since redzone failing is a rare event.
-static port::Status ReinitializeRedzone(Stream* stream,
-                                        DeviceMemoryBase redzone,
-                                        uint8_t redzone_pattern) {
+static tsl::Status ReinitializeRedzone(Stream* stream, DeviceMemoryBase redzone,
+                                       uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
   stream->ThenMemcpy(&redzone, redzone_array.data(), redzone.size());
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 // Check redzones around the user allocation.
 //
 // Precondition: the memory pointed out by out_param is zeroed.
-static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
+static tsl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
     Stream* stream, DeviceMemoryBase memory,
     const DeviceMemory<uint64_t>& out_param,
     const ComparisonKernelT& comparison_kernel, int64_t user_allocation_size,
@@ -303,15 +303,15 @@ static port::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   return RedzoneCheckStatus::OK();
 }
 
-port::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
+tsl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
   StreamExecutor* executor = stream_->parent();
 
   absl::Span<const uint8_t> compiled_ptx = {};
-  port::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
+  tsl::StatusOr<absl::Span<const uint8_t>> compiled_ptx_or =
       CompileGpuAsmOrGetCached(executor->device_ordinal(), redzone_checker_ptx,
                                gpu_compilation_opts_);
   if (compiled_ptx_or.ok()) {
-    compiled_ptx = compiled_ptx_or.ValueOrDie();
+    compiled_ptx = compiled_ptx_or.value();
   } else {
     static absl::once_flag ptxas_not_found_logged;
     absl::call_once(ptxas_not_found_logged, [&]() {

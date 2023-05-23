@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/core/kernels/register.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
@@ -81,6 +81,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT32;
     case kTfLiteUInt32:
       return TensorType_UINT32;
+    case kTfLiteInt4:
+      return TensorType_INT4;
     case kTfLiteUInt8:
       return TensorType_UINT8;
     case kTfLiteInt8:

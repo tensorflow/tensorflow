@@ -17,62 +17,28 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_
 
 #include <complex>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-// Disable clang-format to prevent 'FixedPoint' header from being included
-// before 'Tensor' header on which it depends.
-// clang-format off
-#include "third_party/eigen3/unsupported/Eigen/CXX11/FixedPoint"
-// clang-format on
 
+// clang-format off
+// This include order is required to avoid instantiating templates
+// quantized types in the Eigen namespace before their specialization.
+#include "tensorflow/tsl/framework/numeric_types.h"
 #include "tensorflow/core/platform/types.h"
+// clang-format on
 
 namespace tensorflow {
 
-// Single precision complex.
-typedef std::complex<float> complex64;
-// Double precision complex.
-typedef std::complex<double> complex128;
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::complex128;
+using tsl::complex64;
 
 // We use Eigen's QInt implementations for our quantized int types.
-typedef Eigen::QInt8 qint8;
-typedef Eigen::QUInt8 quint8;
-typedef Eigen::QInt32 qint32;
-typedef Eigen::QInt16 qint16;
-typedef Eigen::QUInt16 quint16;
+using tsl::qint16;
+using tsl::qint32;
+using tsl::qint8;
+using tsl::quint16;
+using tsl::quint8;
+// NOLINTEND(misc-unused-using-decls)
 
 }  // namespace tensorflow
-
-static inline tensorflow::bfloat16 FloatToBFloat16(float float_val) {
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  return *reinterpret_cast<tensorflow::bfloat16*>(
-      reinterpret_cast<uint16_t*>(&float_val));
-#else
-  return *reinterpret_cast<tensorflow::bfloat16*>(
-      &(reinterpret_cast<uint16_t*>(&float_val)[1]));
-#endif
-}
-
-namespace Eigen {
-template <>
-struct NumTraits<tensorflow::tstring> : GenericNumTraits<tensorflow::tstring> {
-  enum {
-    RequireInitialization = 1,
-    ReadCost = HugeCost,
-    AddCost = HugeCost,
-    MulCost = HugeCost
-  };
-
-  static inline int digits10() { return 0; }
-
- private:
-  static inline tensorflow::tstring epsilon();
-  static inline tensorflow::tstring dummy_precision();
-  static inline tensorflow::tstring lowest();
-  static inline tensorflow::tstring highest();
-  static inline tensorflow::tstring infinity();
-  static inline tensorflow::tstring quiet_NaN();
-};
-
-}  // namespace Eigen
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_NUMERIC_TYPES_H_

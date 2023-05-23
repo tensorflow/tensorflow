@@ -21,18 +21,20 @@ limitations under the License.
 #include <string.h>
 
 #include <cstdint>
+#include <memory>
+#include <utility>
 
+#include "absl/functional/any_invocable.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/plugin_registry.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/core/platform/mem.h"
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
+#include "tensorflow/tsl/platform/mem.h"
+#include "tensorflow/tsl/platform/profile_utils/cpu_utils.h"
 
 namespace stream_executor {
 namespace host {
@@ -47,22 +49,22 @@ HostExecutor::HostExecutor(const PluginConfig& plugin_config)
 
 HostExecutor::~HostExecutor() {}
 
-port::Status HostExecutor::Init(int device_ordinal,
-                                DeviceOptions device_options) {
+tsl::Status HostExecutor::Init(int device_ordinal,
+                               DeviceOptions device_options) {
   auto it =
       device_options.non_portable_tags.find("host_thread_stack_size_in_bytes");
   if (it != device_options.non_portable_tags.end()) {
     if (!absl::SimpleAtoi(it->second, &thread_stack_size_in_bytes_)) {
-      return port::InvalidArgumentError(absl::StrCat(
+      return tsl::errors::InvalidArgument(
           "Unable to parse host_thread_stack_size_in_bytes as an integer: ",
-          it->second));
+          it->second);
     }
   }
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool HostExecutor::DeviceMemoryUsage(int64_t* free, int64_t* total) const {
-  tensorflow::port::MemoryInfo mem_info = tensorflow::port::GetMemoryInfo();
+  tsl::port::MemoryInfo mem_info = tsl::port::GetMemoryInfo();
   *free = (mem_info.free != INT64_MAX) ? mem_info.free : -1;
   *total = (mem_info.total != INT64_MAX) ? mem_info.total : -1;
   return true;
@@ -72,9 +74,9 @@ DeviceMemoryBase HostExecutor::Allocate(uint64_t size, int64_t memory_space) {
   CHECK_EQ(memory_space, 0);
   // Use a minimum alignment of 64 bytes to be friendly to AVX512 code.
   // This should probably be kept in sync with
-  // tensorflow::Allocator::kAllocatorAlignment.
+  // tsl::Allocator::kAllocatorAlignment.
   return DeviceMemoryBase(
-      tensorflow::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
+      tsl::port::AlignedMalloc(size, /*minimum_alignment=*/64), size);
 }
 
 void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
@@ -83,19 +85,19 @@ void* HostExecutor::GetSubBuffer(DeviceMemoryBase* parent,
 }
 
 void HostExecutor::Deallocate(DeviceMemoryBase* mem) {
-  tensorflow::port::AlignedFree(mem->opaque());
+  tsl::port::AlignedFree(mem->opaque());
 }
 
-port::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
-                                              uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemZero(DeviceMemoryBase* location,
+                                             uint64_t size) {
   memset(location->opaque(), 0, size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
-                                             int value, uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemSet(DeviceMemoryBase* location,
+                                            int value, uint64_t size) {
   memset(location->opaque(), value, size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool HostExecutor::Memcpy(Stream* stream, void* host_dst,
@@ -132,59 +134,59 @@ bool HostExecutor::MemcpyDeviceToDevice(Stream* stream,
   return true;
 }
 
-port::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
-                                   uint64_t size) {
+tsl::Status HostExecutor::MemZero(Stream* stream, DeviceMemoryBase* location,
+                                  uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size]() { memset(gpu_mem, 0, size); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
-                                  uint8 pattern, uint64_t size) {
+tsl::Status HostExecutor::Memset(Stream* stream, DeviceMemoryBase* location,
+                                 uint8 pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
-                                    uint32_t pattern, uint64_t size) {
+tsl::Status HostExecutor::Memset32(Stream* stream, DeviceMemoryBase* location,
+                                   uint32_t pattern, uint64_t size) {
   void* gpu_mem = location->opaque();
   // Enqueue the [asynchronous] memzero on the stream (HostStream) associated
   // with the HostExecutor.
   AsHostStream(stream)->EnqueueTask(
       [gpu_mem, size, pattern]() { memset(gpu_mem, pattern, size); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
-                                             const void* host_src,
-                                             uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemcpy(DeviceMemoryBase* gpu_dst,
+                                            const void* host_src,
+                                            uint64_t size) {
   memcpy(gpu_dst->opaque(), host_src, size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemcpy(void* host_dst,
-                                             const DeviceMemoryBase& gpu_src,
-                                             uint64_t size) {
+tsl::Status HostExecutor::SynchronousMemcpy(void* host_dst,
+                                            const DeviceMemoryBase& gpu_src,
+                                            uint64_t size) {
   memcpy(host_dst, gpu_src.opaque(), size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
+tsl::Status HostExecutor::SynchronousMemcpyDeviceToDevice(
     DeviceMemoryBase* gpu_dst, const DeviceMemoryBase& gpu_src, uint64_t size) {
   memcpy(gpu_dst->opaque(), gpu_src.opaque(), size);
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 bool HostExecutor::HostCallback(Stream* stream,
-                                std::function<port::Status()> callback) {
-  AsHostStream(stream)->EnqueueTaskWithStatus(callback);
+                                absl::AnyInvocable<tsl::Status() &&> callback) {
+  AsHostStream(stream)->EnqueueTaskWithStatus(std::move(callback));
   return true;
 }
 
@@ -223,30 +225,30 @@ static HostEvent* AsHostEvent(Event* event) {
   return static_cast<HostEvent*>(event->implementation());
 }
 
-port::Status HostExecutor::AllocateEvent(Event* /*event*/) {
-  return ::tensorflow::OkStatus();
+tsl::Status HostExecutor::AllocateEvent(Event* /*event*/) {
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
-  return ::tensorflow::OkStatus();
+tsl::Status HostExecutor::DeallocateEvent(Event* /*event*/) {
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
+tsl::Status HostExecutor::RecordEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask([notification]() {
     CHECK(!notification->HasBeenNotified());
     notification->Notify();
   });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
-port::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
+tsl::Status HostExecutor::WaitForEvent(Stream* stream, Event* event) {
   std::shared_ptr<absl::Notification> notification =
       AsHostEvent(event)->notification();
   AsHostStream(stream)->EnqueueTask(
       [notification]() { notification->WaitForNotification(); });
-  return ::tensorflow::OkStatus();
+  return ::tsl::OkStatus();
 }
 
 Event::Status HostExecutor::PollForEventStatus(Event* event) {
@@ -265,11 +267,11 @@ bool HostExecutor::StopTimer(Stream* stream, Timer* timer) {
   return true;
 }
 
-port::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
+tsl::Status HostExecutor::BlockHostUntilDone(Stream* stream) {
   return AsHostStream(stream)->BlockUntilDone();
 }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 HostExecutor::CreateDeviceDescription(int device_ordinal) {
   internal::DeviceDescriptionBuilder builder;
 
@@ -280,7 +282,7 @@ HostExecutor::CreateDeviceDescription(int device_ordinal) {
   builder.set_device_memory_size(static_cast<uint64_t>(4) * 1024 * 1024 * 1024);
 
   float cycle_counter_frequency = static_cast<float>(
-      tensorflow::profile_utils::CpuUtils::GetCycleCounterFrequency());
+      tsl::profile_utils::CpuUtils::GetCycleCounterFrequency());
   builder.set_clock_rate_ghz(cycle_counter_frequency / 1e9);
 
   builder.set_name("Host");
@@ -298,16 +300,16 @@ bool HostExecutor::SupportsBlas() const {
 
 blas::BlasSupport* HostExecutor::CreateBlas() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::BlasFactory> status =
+  tsl::StatusOr<PluginRegistry::BlasFactory> status =
       registry->GetFactory<PluginRegistry::BlasFactory>(kHostPlatformId,
                                                         plugin_config_.blas());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve BLAS factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 bool HostExecutor::SupportsFft() const {
@@ -319,16 +321,16 @@ bool HostExecutor::SupportsFft() const {
 
 fft::FftSupport* HostExecutor::CreateFft() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::FftFactory> status =
+  tsl::StatusOr<PluginRegistry::FftFactory> status =
       registry->GetFactory<PluginRegistry::FftFactory>(kHostPlatformId,
                                                        plugin_config_.fft());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve FFT factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 bool HostExecutor::SupportsRng() const {
@@ -340,16 +342,16 @@ bool HostExecutor::SupportsRng() const {
 
 rng::RngSupport* HostExecutor::CreateRng() {
   PluginRegistry* registry = PluginRegistry::Instance();
-  port::StatusOr<PluginRegistry::RngFactory> status =
+  tsl::StatusOr<PluginRegistry::RngFactory> status =
       registry->GetFactory<PluginRegistry::RngFactory>(kHostPlatformId,
                                                        plugin_config_.rng());
   if (!status.ok()) {
     LOG(ERROR) << "Unable to retrieve RNG factory: "
-               << status.status().error_message();
+               << status.status().message();
     return nullptr;
   }
 
-  return status.ValueOrDie()(this);
+  return status.value()(this);
 }
 
 std::unique_ptr<internal::StreamInterface>

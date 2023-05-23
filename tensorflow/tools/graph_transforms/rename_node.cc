@@ -44,7 +44,7 @@ Status RenameNode(const GraphDef& input_graph_def,
     NodeDef* node = output_graph_def->mutable_node()->Add();
     *node = input_node;
     if (node->name() == new_node_name) {
-      return Status(error::Code::INVALID_ARGUMENT,
+      return Status(absl::StatusCode::kInvalidArgument,
                     "A node is alreading using " + new_node_name + "as name.");
     }
     if (node->name() == old_node_name) {

@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/regexp.h"
 
 namespace xla {
 
@@ -37,10 +37,13 @@ enum class TokKind {
   kError,
 
   // Tokens with no info.
-  kEqual,     // =
-  kComma,     // ,
-  kColon,     // :
-  kAsterisk,  // *
+  kEqual,      // =
+  kComma,      // ,
+  kColon,      // :
+  kAsterisk,   // *
+  kOctothorp,  // #
+  kPlus,       // +
+  kTilde,      // ~
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,

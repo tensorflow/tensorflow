@@ -18,10 +18,12 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import benchmark
@@ -30,24 +32,34 @@ from tensorflow.python.platform import test
 
 class InverseOpTest(test.TestCase):
 
+  def _high_precision_matmul(self, a, b, adjoint_b):
+    """Do a higher-precision matmul, casting either to float32 or float64."""
+    if a.dtype == dtypes.float16:
+      a = math_ops.cast(a, dtypes.float32)
+      b = math_ops.cast(b, dtypes.float32)
+
+    ret = test_util.matmul_without_tf32(a, b, adjoint_b=adjoint_b)
+    return math_ops.cast(ret, a.dtype)
+
   def _verifyInverse(self, x, np_type):
     for adjoint in False, True:
       y = x.astype(np_type)
-      with self.cached_session():
+      with self.cached_session(use_gpu=test_util.is_gpu_available()):
         # Verify that x^{-1} * x == Identity matrix.
         inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
-        tf_ans = test_util.matmul_without_tf32(inv, y, adjoint_b=adjoint)
-        np_ans = np.identity(y.shape[-1])
+        tf_ans = self._high_precision_matmul(inv, y, adjoint_b=adjoint)
+        np_ans = np.identity(y.shape[-1]).astype(np_type)
         if x.ndim > 2:
           tiling = list(y.shape)
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
         out = self.evaluate(tf_ans)
-        self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+        self.assertAllCloseAccordingToType(
+            np_ans, out, atol=0.001, half_atol=0.1)
         self.assertShapeEqual(y, tf_ans)
 
   def _verifyInverseReal(self, x):
-    for np_type in [np.float32, np.float64]:
+    for np_type in [np.float16, np.float32, np.float64]:
       self._verifyInverse(x, np_type)
 
   def _verifyInverseComplex(self, x):

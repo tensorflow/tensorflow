@@ -26,7 +26,7 @@ limitations under the License.
 #define TF_VALIDATE_STRUCT_SIZE(STRUCT_NAME, STRUCT_OBJ, SIZE_VALUE_NAME) \
   do {                                                                    \
     if (STRUCT_OBJ.struct_size == 0) {                                    \
-      return tensorflow::Status(tensorflow::error::FAILED_PRECONDITION,   \
+      return tensorflow::Status(absl::StatusCode::kFailedPrecondition,    \
                                 "Expected initialized `" #STRUCT_NAME     \
                                 "` structure with `struct_size` field "   \
                                 "set to " #SIZE_VALUE_NAME                \
@@ -35,13 +35,13 @@ limitations under the License.
   } while (0)
 
 // Macro to verify that the field NAME of STRUCT_OBJ is not null.
-#define TF_VALIDATE_NOT_NULL(STRUCT_NAME, STRUCT_OBJ, NAME)             \
-  do {                                                                  \
-    if (STRUCT_OBJ.NAME == 0) {                                         \
-      return tensorflow::Status(tensorflow::error::FAILED_PRECONDITION, \
-                                "'" #NAME "' field in " #STRUCT_NAME    \
-                                " must be set.");                       \
-    }                                                                   \
+#define TF_VALIDATE_NOT_NULL(STRUCT_NAME, STRUCT_OBJ, NAME)            \
+  do {                                                                 \
+    if (STRUCT_OBJ.NAME == 0) {                                        \
+      return tensorflow::Status(absl::StatusCode::kFailedPrecondition, \
+                                "'" #NAME "' field in " #STRUCT_NAME   \
+                                " must be set.");                      \
+    }                                                                  \
   } while (0)
 
 #endif  // __cplusplus

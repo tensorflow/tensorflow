@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -31,7 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_query_of_death.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/transforms/tf_jitrt_passes.h"
-#include "tensorflow/compiler/xla/mlir/utils/runtime/async_runtime_api.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tensorflow/compiler/xla/runtime/async_runtime.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
@@ -50,6 +52,7 @@ limitations under the License.
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
 #include "tfrt/host_context/execution_context.h"  // from @tf_runtime
 #include "tfrt/host_context/host_buffer.h"  // from @tf_runtime
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -70,9 +73,6 @@ using ::std::any_cast;
 
 using ::llvm::cast;
 using ::llvm::Expected;
-using ::llvm::MutableArrayRef;
-using ::llvm::None;
-using ::llvm::Optional;
 
 using ::tfrt::Argument;
 using ::tfrt::ArrayRef;
@@ -82,8 +82,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Attribute;
 using ::tfrt::Chain;
 using ::tfrt::CompilationUnitAttribute;
-using ::tfrt::DecodedDiagnostic;
-using ::tfrt::DType;
 using ::tfrt::EmitErrorAsync;
 using ::tfrt::ExecutionContext;
 using ::tfrt::HostContext;
@@ -114,7 +112,6 @@ using ::tfrt::jitrt::StaticRemainingResultsConverter;
 using ::xla::runtime::ArgumentConstraint;
 using ::xla::runtime::ArgumentsRef;
 using ::xla::runtime::AsyncValuesCache;
-using ::xla::runtime::EigenThreadPoolAsyncTaskRunner;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
@@ -164,6 +161,21 @@ class CompilationThreadPool : public SharedContext {
 
  private:
   std::unique_ptr<ThreadPool> thread_pool_;
+};
+
+// -------------------------------------------------------------------------- //
+// Runs async tasks by scheduling them into the Eigen thread pool.
+// -------------------------------------------------------------------------- //
+
+class EigenThreadPoolAsyncTaskRunner : public xla::runtime::AsyncTaskRunner {
+ public:
+  explicit EigenThreadPoolAsyncTaskRunner(
+      Eigen::ThreadPoolInterface* thread_pool)
+      : thread_pool_(thread_pool) {}
+  void Schedule(Task task) override { thread_pool_->Schedule(std::move(task)); }
+
+ private:
+  Eigen::ThreadPoolInterface* thread_pool_;
 };
 
 // -------------------------------------------------------------------------- //
@@ -276,7 +288,7 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
-    const Optional<TfJitRtPipelineOpts>& opts = None) {
+    const std::optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
   if (LLVM_UNLIKELY(!state))
@@ -446,37 +458,40 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
                               : JitExecutable::Specialization::kEnabled;
 
     // Register dialects and interfaces required for the compilation pipeline.
-    opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-      mlir::RegisterAllTensorFlowDialects(registry);
-      RegisterDefaultJitRtDialects(registry);
-    };
+    opts.compiler.register_dialects =
+        [](xla::runtime::DialectRegistry& dialects) {
+          mlir::RegisterAllTensorFlowDialects(*dialects);
+          RegisterDefaultJitRtDialects(dialects);
+        };
 
     // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-    opts.compiler.create_compilation_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
+    opts.compiler.create_compilation_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
 
-      TfJitRtPipelineOptions opts;
-      if (tf_jitrt_opts) {
-        opts.vectorize = tf_jitrt_opts->vectorize;
-        opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
-      } else {
-        opts.vectorize = GetJitRtFlags().vectorize;
-      }
+          TfJitRtPipelineOptions opts;
+          if (tf_jitrt_opts) {
+            opts.vectorize = tf_jitrt_opts->vectorize;
+            opts.legalize_i1_tensors = tf_jitrt_opts->legalize_i1_tensors;
+          } else {
+            opts.vectorize = GetJitRtFlags().vectorize;
+          }
 
-      // Lower from Tensorflow to Linalg on buffers.
-      CreateTfJitRtPipeline(pm, opts);
+          // Lower from Tensorflow to Linalg on buffers.
+          CreateTfJitRtPipeline(*passes, opts);
 
-      // Use default JitRt compilation pipeline to lower to LLVM.
-      CreateDefaultJitRtCompilationPipeline(pm, copts);
-    };
+          // Use default JitRt compilation pipeline to lower to LLVM.
+          CreateDefaultJitRtCompilationPipeline(passes, copts);
+        };
 
     // Register a custom pipeline to propagate specialization information.
-    opts.compiler.create_specialization_pipeline = [=](mlir::PassManager& pm) {
-      if (GetJitRtFlags().enable_crash_reproducer)
-        SetCrashReproducer(pm, kCrashReproducerStdErr);
-      CreateJitRtSpecializationPipeline(pm);
-    };
+    opts.compiler.create_specialization_pipeline =
+        [=](xla::runtime::PassManager& passes) {
+          if (GetJitRtFlags().enable_crash_reproducer)
+            SetCrashReproducer(*passes, kCrashReproducerStdErr);
+          CreateJitRtSpecializationPipeline(passes);
+        };
 
     // When lowering Tensorflow functions to JitRt we convert all input and
     // result tensors to memrefs, and add a kernel context input.
@@ -506,7 +521,7 @@ static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
 
     // Set the entry async value state to error or concrete.
     if (!jit_executable.ok())
-      ref.SetError(MakeStringError(jit_executable.status().message()));
+      ref.SetError(jit_executable.status());
     else
       ref.emplace(std::move(*jit_executable));
   });
@@ -636,7 +651,7 @@ struct DebugListener : public SpecializationListener {
     std::string message;
     llvm::raw_string_ostream os(message);
     os << "Specialized operands:\n";
-    for (auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+    for (const auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
       mlir::Type type = std::get<0>(tuple.value());
       mlir::Attribute attr = std::get<1>(tuple.value());
       os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";
@@ -660,7 +675,7 @@ struct DebugListener : public SpecializationListener {
 template <typename Error>
 static void ReturnErrors(RemainingResults results, Error error,
                          const ExecutionContext& exec_ctx) {
-  EmitError(exec_ctx, StrCat(error));
+  EmitError(exec_ctx, error);
   ReturnErrors(results, std::move(error));
 }
 
@@ -711,7 +726,7 @@ static void ExecuteImpl(Executable& executable, ArrayRef<MemrefDesc> memrefs,
   // notify the HostContext to emit the diagnostics for the kernel invocation.
   auto status = executable.Execute(memrefs, converter, opts);
   if (LLVM_UNLIKELY(!status.ok())) {
-    EmitError(exec_ctx, status.message());
+    EmitError(exec_ctx, status.status().message());
     return;
   }
 }
@@ -746,7 +761,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
 
   // ... or maybe return errors.
   if (LLVM_UNLIKELY(executable->IsError()))
-    return ReturnErrors(results, executable->GetError(), exec_ctx);
+    return ReturnErrors(
+        results, MakeStringError(executable->GetError().message()), exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -771,7 +787,8 @@ static void ExecuteImpl(JitExecutable& jit_executable,
     RemainingResults results(results_storage);
 
     if (executable.IsError()) {
-      ReturnErrors(results, executable.GetError(), exec_ctx);
+      ReturnErrors(results, MakeStringError(executable.GetError().message()),
+                   exec_ctx);
     } else {
       ExecuteImpl(*executable, memrefs, operands, results, exec_ctx);
     }
@@ -803,7 +820,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, const StringAttribute& device,
                         const CompilationUnitAttribute& kernel,
                         const ExecutionContext& exec_ctx, bool debug,
-                        const Optional<TfJitRtPipelineOpts>& opts) {
+                        const std::optional<TfJitRtPipelineOpts>& opts) {
   VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
           << ", operands: " << OperandsToString(operands);
 
@@ -820,7 +837,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
 
   // ... or maybe return errors.
   if (LLVM_UNLIKELY(jit_executable->IsError()))
-    return ReturnErrors(results, jit_executable->GetError(), exec_ctx);
+    return ReturnErrors(results,
+                        MakeStringError(jit_executable->GetError().message()),
+                        exec_ctx);
 
   // Otherwise execute it when the executable will become available. This
   // requires careful lifetime extension of all async values passed as operands
@@ -844,7 +863,9 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
     RemainingResults results(results_storage);
 
     if (jit_executable.IsError()) {
-      ReturnErrors(results, jit_executable.GetError(), exec_ctx);
+      ReturnErrors(results,
+                   MakeStringError(jit_executable.GetError().message()),
+                   exec_ctx);
     } else {
       ExecuteImpl(*jit_executable, operands, results, exec_ctx, debug);
     }
@@ -860,7 +881,7 @@ static void ExecuteImplAndMaybeLogQueryOfDeath(
     RepeatedArguments<FallbackTensor> operands, RemainingResults results,
     const StringAttribute& device, const CompilationUnitAttribute& kernel,
     const ExecutionContext& exec_ctx, bool debug = false,
-    const Optional<TfJitRtPipelineOpts>& opts = None) {
+    const std::optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
     return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
                        opts);

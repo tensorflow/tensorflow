@@ -62,7 +62,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     entry.size = entry.tpu_program_group->program_size();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(

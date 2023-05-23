@@ -42,7 +42,8 @@ absl::Status SoftmaxTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreateSoftmax(op_def);
+      GPUOperation operation =
+          CreateSoftmax(op_def, env->GetGpuInfo(), src_tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
@@ -82,7 +83,8 @@ absl::Status SoftmaxBigNumberTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation = CreateSoftmax(op_def);
+      GPUOperation operation =
+          CreateSoftmax(op_def, env->GetGpuInfo(), src_tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 2), &dst_tensor));
@@ -112,7 +114,8 @@ absl::Status Softmax1x1Test(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Softmax1x1 operation = CreateSoftmax1x1(op_def);
+      Softmax1x1 operation =
+          CreateSoftmax1x1(op_def, env->GetGpuInfo(), src_tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<Softmax1x1>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));
@@ -151,7 +154,8 @@ absl::Status Softmax1x1BigNumberTest(TestExecutionEnvironment* env) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Softmax1x1 operation = CreateSoftmax1x1(op_def);
+      Softmax1x1 operation =
+          CreateSoftmax1x1(op_def, env->GetGpuInfo(), src_tensor.shape);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<Softmax1x1>(std::move(operation)),
           BHWC(1, 1, 1, 4), &dst_tensor));

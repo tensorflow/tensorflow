@@ -20,27 +20,27 @@ limitations under the License.
 #include <iterator>
 #include <utility>
 
-#include "tensorflow/core/lib/gtl/iterator_range.h"
+#include "tensorflow/tsl/lib/gtl/iterator_range.h"
 
 namespace xla {
 
 // UnwrappingIterator is a transforming iterator that calls get() on the
 // elements it returns.
 //
-// Together with tensorflow::gtl::iterator_range, this lets classes which
+// Together with tsl::gtl::iterator_range, this lets classes which
 // contain a collection of smart pointers expose a view of raw pointers to
 // consumers.  For example:
 //
 //  class MyContainer {
 //   public:
-//    tensorflow::gtl::iterator_range<
+//    tsl::gtl::iterator_range<
 //        UnwrappingIterator<std::vector<std::unique_ptr<Thing>>::iterator>>
 //    things() {
 //      return {MakeUnwrappingIterator(things_.begin()),
 //              MakeUnwrappingIterator(things_.end())};
 //    }
 //
-//    tensorflow::gtl::iterator_range<UnwrappingIterator<
+//    tsl::gtl::iterator_range<UnwrappingIterator<
 //        std::vector<std::unique_ptr<Thing>>::const_iterator>>
 //    things() const {
 //      return {MakeUnwrappingIterator(things_.begin()),
@@ -165,7 +165,7 @@ MakeFilteringUnwrappingIterator(NestedIter iter, NestedIter end_iter,
 
 // Create and return a filtering unwrapping iterator range.
 template <typename NestedIter, typename UnaryPredicate>
-tensorflow::gtl::iterator_range<
+tsl::gtl::iterator_range<
     FilteringUnwrappingIterator<NestedIter, UnaryPredicate>>
 MakeFilteringUnwrappingIteratorRange(NestedIter begin_iter, NestedIter end_iter,
                                      UnaryPredicate pred) {

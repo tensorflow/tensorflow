@@ -21,7 +21,7 @@ namespace xla {
 namespace {
 
 using ::Eigen::half;
-using ::tensorflow::bfloat16;
+using ::tsl::bfloat16;
 
 TEST(BitCastTest, BackAndForth) {
   for (uint32_t n = 0; n < 0x10000; ++n) {

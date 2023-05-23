@@ -56,12 +56,22 @@ enum {
 }  // namespace
 
 namespace tensorflow {
+
+#ifndef ENABLE_ONEDNN_V3
+#define SET_MKL_LAYOUT(md) SetMklLayout(&md)
+#else
+#define SET_MKL_LAYOUT(md) SetMklLayout(md)
+#endif  // !ENABLE_ONEDNN_V3
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 struct MklReorderWithScaleFwdParams {
   memory::dims src_dims;
   memory::desc src_md;
   memory::desc dst_md;
+#ifdef ENABLE_ONEDNN_V3
+  memory::desc scale_md;
+#endif  // ENABLE_ONEDNN_V3
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -69,9 +79,18 @@ struct MklReorderWithScaleFwdParams {
   };
   PostOpParam post_op_params;
 
+#ifndef ENABLE_ONEDNN_V3
   MklReorderWithScaleFwdParams(memory::dims src_dims, memory::desc src_md,
                                memory::desc dst_md)
       : src_dims(src_dims), src_md(src_md), dst_md(dst_md) {}
+#else
+  MklReorderWithScaleFwdParams(memory::dims src_dims, memory::desc src_md,
+                               memory::desc dst_md, memory::desc scale_md)
+      : src_dims(src_dims),
+        src_md(src_md),
+        dst_md(dst_md),
+        scale_md(scale_md) {}
+#endif  // ENABLE_ONEDNN_V3
 };
 
 class MklReorderWithScalePrimitive : public MklPrimitive {
@@ -88,21 +107,30 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
   std::shared_ptr<primitive> GetPrimitive() { return context_.reorder_prim; }
 
   void Execute(void* src_data, void* dst_data,
+#ifdef ENABLE_ONEDNN_V3
+               void* scale_data,
+#endif  // ENABLE_ONEDNN_V3
                std::shared_ptr<stream> reorder_stream) {
 #ifdef DNNL_AARCH64_USE_ACL
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#ifndef ENABLE_ONEDNN_OPENMP
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(src_data, *reorder_stream);
     context_.dst_mem->set_data_handle(dst_data, *reorder_stream);
 #else
     context_.src_mem->set_data_handle(src_data);
     context_.dst_mem->set_data_handle(dst_data);
-#endif  // !ENABLE_ONEDNN_OPENMP
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+#ifdef ENABLE_ONEDNN_V3
+    context_.scale_mem->set_data_handle(scale_data);
+#endif  // ENABLE_ONEDNN_V3
     context_.reorder_prim->execute(*reorder_stream, context_.prim_args);
     // After execution, set data handle back.
     context_.src_mem->set_data_handle(DummyData);
     context_.dst_mem->set_data_handle(DummyData);
+#ifdef ENABLE_ONEDNN_V3
+    context_.scale_mem->set_data_handle(DummyData);
+#endif  // ENABLE_ONEDNN_V3
   }
 
  private:
@@ -111,6 +139,9 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     // MKL-DNN memory
     std::shared_ptr<dnnl::memory> src_mem;
     std::shared_ptr<dnnl::memory> dst_mem;
+#ifdef ENABLE_ONEDNN_V3
+    std::shared_ptr<dnnl::memory> scale_mem;
+#endif  // ENABLE_ONEDNN_V3
 
     // Reorder primitive descriptor and primitive
     std::shared_ptr<reorder::primitive_desc> reorder_pd;
@@ -124,8 +155,12 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     ReorderContext()
         : src_mem(nullptr),
           dst_mem(nullptr),
+#ifdef ENABLE_ONEDNN_V3
+          scale_mem(nullptr),
+#endif  // ENABLE_ONEDNN_V3
           reorder_pd(nullptr),
-          reorder_prim(nullptr) {}
+          reorder_prim(nullptr) {
+    }
   } context_;
 
   // Reorder primitive setup
@@ -135,16 +170,23 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
         new memory(fwdParams.src_md, cpu_engine_, DummyData));
     context_.dst_mem.reset(
         new memory(fwdParams.dst_md, cpu_engine_, DummyData));
+#ifdef ENABLE_ONEDNN_V3
+    context_.scale_mem.reset(
+        new memory(fwdParams.scale_md, cpu_engine_, DummyData));
+#endif  // ENABLE_ONEDNN_V3
 
     // Check if there is any fusion as post-ops
-    auto const& post_op_params = fwdParams.post_op_params;
     dnnl::primitive_attr post_ops_attr;
-
+#ifndef ENABLE_ONEDNN_V3
+    auto const& post_op_params = fwdParams.post_op_params;
     DCHECK(post_op_params.name == "scale");
     DCHECK_EQ(post_op_params.param.size(), 1);
     std::vector<float> scales;
     scales.push_back(post_op_params.param[0]);
     post_ops_attr.set_output_scales(0, scales);
+#else
+    post_ops_attr.set_scales_mask(DNNL_ARG_SRC, 0 /* mask */);
+#endif  // !ENABLE_ONEDNN_V3
 
     context_.reorder_pd.reset(
         new ReorderPd(cpu_engine_, context_.src_mem->get_desc(), cpu_engine_,
@@ -154,6 +196,10 @@ class MklReorderWithScalePrimitive : public MklPrimitive {
     context_.reorder_prim.reset(new reorder(*context_.reorder_pd));
     context_.prim_args.insert({DNNL_ARG_FROM, *context_.src_mem});
     context_.prim_args.insert({DNNL_ARG_TO, *context_.dst_mem});
+#ifdef ENABLE_ONEDNN_V3
+    context_.prim_args.insert(
+        {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.scale_mem});
+#endif  // ENABLE_ONEDNN_V3
   }
 
 #ifdef DNNL_AARCH64_USE_ACL
@@ -167,6 +213,7 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
   static MklReorderWithScalePrimitive* Get(
       const memory* from, const memory* to,
       const MklReorderWithScaleFwdParams& fwdParams) {
+#ifndef ENABLE_ONEDNN_V3
     // Try to find a suitable primitive from the cached pool
     auto reorderPrim = static_cast<MklReorderWithScalePrimitive*>(
         MklReorderWithScalePrimitiveFactory<T>::GetInstance().GetReorder(
@@ -177,17 +224,25 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
           from, to, reorderPrim, fwdParams);
     }
     return reorderPrim;
+#else
+    // TODO(intel-tf): enable ReorderWithScale primitive cache for v3.x
+    auto reorderPrim = new MklReorderWithScalePrimitive(fwdParams);
+    return reorderPrim;
+#endif  // !ENABLE_ONEDNN_V3
   }
 
+#ifndef ENABLE_ONEDNN_V3
   static MklReorderWithScalePrimitiveFactory& GetInstance() {
     static MklReorderWithScalePrimitiveFactory instance_;
     return instance_;
   }
+#endif  // !ENABLE_ONEDNN_V3
 
  private:
   MklReorderWithScalePrimitiveFactory() {}
   ~MklReorderWithScalePrimitiveFactory() {}
 
+#ifndef ENABLE_ONEDNN_V3
   static string CreateKey(const memory* from, const memory* to,
                           const MklReorderWithScaleFwdParams& fwdParams) {
     FactoryKeyCreator key_creator;
@@ -215,6 +270,7 @@ class MklReorderWithScalePrimitiveFactory : public MklPrimitiveFactory<T> {
     string key = CreateKey(from, to, fwdParams);
     this->SetOp(key, op);
   }
+#endif  // !ENABLE_ONEDNN_V3
 };
 
 // Quantizes a tensor from float to T, with user-specified min_range and
@@ -271,6 +327,18 @@ class MklQuantizeV2Op : public OpKernel {
                     "Scalar calculation in MKL is supported only for"
                     "MIN_FIRST mode for now."));
 
+    // Min and max values of input range should be scalar.
+    const Tensor& min_tensor = ctx->input(1);
+    const Tensor& max_tensor = ctx->input(2);
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(min_tensor.shape()),
+        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
+                                min_tensor.dims()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(max_tensor.shape()),
+        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
+                                max_tensor.dims()));
+
     auto cpu_engine = engine(engine::kind::cpu, 0);
     const unsigned int src_idx = 0;
     const Tensor& src_tensor = MklGetInput(ctx, src_idx);
@@ -304,8 +372,8 @@ class MklQuantizeV2Op : public OpKernel {
     T* out_data = output_tensor->flat<T>().data();
 
     out_data[0] = (src_data[0] - min_range) * scale_factor;
-    output_min_tensor->flat<float>()(0) = min_range;
-    output_max_tensor->flat<float>()(0) = max_range;
+    output_min_tensor->scalar<float>()() = min_range;
+    output_max_tensor->scalar<float>()() = max_range;
 
     return;
   }
@@ -313,8 +381,8 @@ class MklQuantizeV2Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const unsigned int src_idx = 0;
     const Tensor& input = ctx->input(src_idx);
-    const float input_min_range = ctx->input(1).flat<float>()(0);
-    const float input_max_range = ctx->input(2).flat<float>()(0);
+    const float input_min_range = ctx->input(1).scalar<float>()();
+    const float input_max_range = ctx->input(2).scalar<float>()();
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
     OP_REQUIRES(ctx, (input_max_range >= input_min_range),
@@ -376,6 +444,10 @@ class MklQuantizeV2Op : public OpKernel {
     // they are wrapper
     MklDnnData<float> src(&cpu_engine);
     MklDnnData<T> dst(&cpu_engine);
+#ifdef ENABLE_ONEDNN_V3
+    MklDnnData<float> scale(&cpu_engine);
+#endif  // ENABLE_ONEDNN_V3
+
     auto src_md =
         src_mkl_shape.IsMklTensor()
             ? src_mkl_shape.GetMklLayout()
@@ -415,7 +487,7 @@ class MklQuantizeV2Op : public OpKernel {
     TensorShape output_tf_shape;
     if (src_mkl_shape.IsMklTensor()) {
       output_mkl_shape.SetMklTensor(true);
-      output_mkl_shape.SetMklLayout(&dst_md);
+      output_mkl_shape.SET_MKL_LAYOUT(dst_md);
       output_mkl_shape.SetElemType(MklDnnType<T>());
       output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                    src_mkl_shape.GetSizesAsMklDnnDims(),
@@ -473,23 +545,36 @@ class MklQuantizeV2Op : public OpKernel {
       const int64 number_of_steps = static_cast<int64_t>(1) << number_of_bits;
       scale_factor = (number_of_steps - 1.0) / (max_range - min_range);
     }
-
+#ifdef ENABLE_ONEDNN_V3
+    auto scale_md =
+        memory::desc({1}, MklDnnType<float>(), memory::format_tag::x);
+    MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md, scale_md);
+    Tensor scale_tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {1}, &scale_tensor));
+    scale_tensor.flat<float>()(0) = scale_factor;
+    scale.SetUsrMem(scale_md, &scale_tensor);
+#else
     MklReorderWithScaleFwdParams fwdParams(src_dims, src_md, dst_md);
     fwdParams.dtypes.append(typeid(T).name());
     fwdParams.post_op_params.name = "scale";
     fwdParams.post_op_params.param.push_back(scale_factor);
+#endif  // ENABLE_ONEDNN_V3
 
+    MklDnnThreadPool eigen_tp(ctx);
     MklReorderWithScalePrimitive* reorder_prim =
         MklReorderWithScalePrimitiveFactory<T>::Get(src.GetUsrMem(),
                                                     dst.GetUsrMem(), fwdParams);
     std::shared_ptr<stream> cpu_stream;
-    MklDnnThreadPool eigen_tp(ctx);
+
     cpu_stream.reset(CreateStream(&eigen_tp, reorder_prim->GetEngine()));
     reorder_prim->Execute(src.GetUsrMemDataHandle(), dst.GetUsrMemDataHandle(),
+#ifdef ENABLE_ONEDNN_V3
+                          scale.GetUsrMemDataHandle(),
+#endif  // ENABLE_ONEDNN_V3
                           cpu_stream);
 
-    output_min_tensor->flat<float>()(0) = min_range;
-    output_max_tensor->flat<float>()(0) = max_range;
+    output_min_tensor->scalar<float>()() = min_range;
+    output_max_tensor->scalar<float>()() = max_range;
   }
 
  private:
@@ -510,6 +595,9 @@ REGISTER_KERNEL_BUILDER(Name("_MklQuantizeV2")
                             .TypeConstraint<qint8>("T")
                             .Label(mkl_op_registry::kMklQuantizedOpLabel),
                         MklQuantizeV2Op<CPUDevice, qint8, true>);
+
+#undef SET_MKL_LAYOUT
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

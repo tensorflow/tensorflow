@@ -21,10 +21,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/error.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/initialize.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -45,7 +44,7 @@ void ROCmPlatform::InspectNumaNodes() {
     StreamExecutorConfig config;
     for (int i = 0; i < VisibleDeviceCount(); i++) {
       config.ordinal = i;
-      StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+      StreamExecutor* exec = GetExecutor(config).value();
       if (i == 0) {
         // NUMA nodes may not start at 0, so set the minimum node  based on the
         // first executor we see.
@@ -69,11 +68,11 @@ int ROCmPlatform::BusCount() {
 int ROCmPlatform::DeviceToBus(int device_ordinal) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
-  StreamExecutor* exec = GetExecutor(config).ValueOrDie();
+  StreamExecutor* exec = GetExecutor(config).value();
   return exec->GetDeviceDescription().numa_node() - min_numa_node_;
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
     int bus_ordinal) {
   InspectNumaNodes();
   CHECK_LT(bus_ordinal, BusCount()) << "bus ordinal out of available range";
@@ -81,12 +80,12 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::FirstExecutorForBus(
     if (DeviceToBus(i) == bus_ordinal) {
       StreamExecutorConfig config;
       config.ordinal = i;
-      return GetExecutor(config).ValueOrDie();
+      return GetExecutor(config).value();
     }
   }
 
-  return port::Status{
-      port::error::NOT_FOUND,
+  return tsl::Status{
+      absl::StatusCode::kNotFound,
       absl::StrFormat("Executor for bus %d not found.", bus_ordinal)};
 }
 
@@ -105,12 +104,12 @@ int ROCmPlatform::VisibleDeviceCount() const {
 
 const string& ROCmPlatform::Name() const { return name_; }
 
-port::StatusOr<std::unique_ptr<DeviceDescription>>
+tsl::StatusOr<std::unique_ptr<DeviceDescription>>
 ROCmPlatform::DescriptionForDevice(int ordinal) const {
   return GpuExecutor::CreateDeviceDescription(ordinal);
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
@@ -118,7 +117,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDevice(int ordinal) {
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
     int device_ordinal, const PluginConfig& plugin_config) {
   StreamExecutorConfig config;
   config.ordinal = device_ordinal;
@@ -127,7 +126,7 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::ExecutorForDeviceWithPluginConfig(
   return GetExecutor(config);
 }
 
-port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
+tsl::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
     const StreamExecutorConfig& config) {
   if (config.gpu_stream) {
     // If the GPU stream was provided, it's not possible to get-or-create a
@@ -139,15 +138,15 @@ port::StatusOr<StreamExecutor*> ROCmPlatform::GetExecutor(
       config, [&]() { return GetUncachedExecutor(config); });
 }
 
-port::StatusOr<std::unique_ptr<StreamExecutor>>
+tsl::StatusOr<std::unique_ptr<StreamExecutor>>
 ROCmPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
   auto executor = std::make_unique<StreamExecutor>(
       this, std::make_unique<GpuExecutor>(config.plugin_config),
       config.ordinal);
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
-    return port::Status{
-        port::error::INTERNAL,
+    return tsl::Status{
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for ROCM device ordinal %d: %s",
             config.ordinal, init_status.ToString().c_str())};
@@ -173,7 +172,7 @@ static void InitializeROCmPlatform() {
   auto status = MultiPlatformManager::PlatformWithName("ROCM");
   if (!status.ok()) {
     std::unique_ptr<gpu::ROCmPlatform> platform(new gpu::ROCmPlatform);
-    SE_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
+    TF_CHECK_OK(MultiPlatformManager::RegisterPlatform(std::move(platform)));
   }
 }
 

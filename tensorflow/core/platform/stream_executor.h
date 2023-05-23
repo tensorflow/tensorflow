@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
@@ -30,16 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/platform.h"
-
-namespace perftools {
-namespace gputools {
-
-// Temporarily pull stream_executor into perftools::gputools while we migrate
-// code to the new namespace.  TODO(jlebar): Remove this once we've completed
-// the migration.
-using namespace stream_executor;  // NOLINT[build/namespaces]
-
-}  // namespace gputools
-}  // namespace perftools
+#include "tensorflow/core/platform/types.h"
 
 #endif  // TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_H_

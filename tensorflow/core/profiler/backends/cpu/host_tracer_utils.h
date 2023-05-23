@@ -18,14 +18,12 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/backends/cpu/traceme_recorder.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/backends/cpu/host_tracer_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Convert complete events to XPlane format.
-void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
-                                   TraceMeRecorder::Events&& events,
-                                   XPlane* raw_plane);
+using tsl::profiler::ConvertCompleteEventsToXPlane;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

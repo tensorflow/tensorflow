@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/strings/string_view.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/core/util/events_writer.h"
 #include "tensorflow/python/lib/core/pybind11_absl.h"
 #include "tensorflow/python/lib/core/pybind11_proto.h"

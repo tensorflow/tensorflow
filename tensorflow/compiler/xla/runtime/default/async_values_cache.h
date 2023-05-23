@@ -18,18 +18,20 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "llvm/ADT/DenseMap.h"
-#include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/chain.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value.h"  // from @tf_runtime
+#include "tfrt/concurrency/async_value_ref.h"  // from @tf_runtime
+#include "tfrt/concurrency/chain.h"  // from @tf_runtime
 
 namespace xla {
 namespace runtime {
 
-using tfrt::AsyncValue;
-using tfrt::AsyncValuePtr;
-using tfrt::AsyncValueRef;
-using tfrt::Chain;
-using tfrt::MakeConstructedAsyncValueRef;
-using tfrt::MakeUnconstructedAsyncValueRef;
+using tsl::AsyncValue;
+using tsl::AsyncValuePtr;
+using tsl::AsyncValueRef;
+using tsl::Chain;
+using tsl::MakeConstructedAsyncValueRef;
+using tsl::MakeUnconstructedAsyncValueRef;
+using tsl::RunWhenReady;
 
 template <typename Key, typename Value>
 class AsyncValuesCache {
@@ -97,6 +99,7 @@ AsyncValueRef<Chain> AsyncValuesCache<Key, Value>::AllAvailable() const {
   absl::MutexLock lock(&mu_);
 
   llvm::SmallVector<AsyncValue*> avs;
+  avs.reserve(cache_.size());
   for (auto& it : cache_) avs.push_back(it.getSecond().GetAsyncValue());
 
   AsyncValueRef<Chain> chain = MakeConstructedAsyncValueRef<Chain>();

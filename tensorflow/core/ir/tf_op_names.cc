@@ -811,6 +811,11 @@ bool TFGraphDialect::IsSoftmax(TFOp op) const {
   return op_name == softmax_;
 }
 
+bool TFGraphDialect::IsSoftplus(TFOp op) const {
+  StringAttr op_name = op->getName().getIdentifier();
+  return op_name == softplus_;
+}
+
 bool TFGraphDialect::IsSoftplusGrad(TFOp op) const {
   StringAttr op_name = op->getName().getIdentifier();
   return op_name == softplus_grad_;

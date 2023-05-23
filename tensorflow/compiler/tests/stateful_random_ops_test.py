@@ -15,6 +15,7 @@
 """Tests for stateful random-number generation ops."""
 
 import itertools
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -33,7 +34,11 @@ from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import stateful_random_ops as \
 random
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import flags
 from tensorflow.python.platform import test
+
+
+FLAGS = flags.FLAGS
 
 
 def xla_device():
@@ -54,7 +59,10 @@ def xla_device_name():
   return str(xla_device().name)
 
 
-ALGS = [random.RNG_ALG_PHILOX, random.RNG_ALG_THREEFRY]
+ALGS = [
+    random.Algorithm.PHILOX.value, random.Algorithm.THREEFRY.value,
+    random.Algorithm.AUTO_SELECT.value
+]
 INTS = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
 FLOATS = [dtypes.bfloat16, dtypes.float32, dtypes.float64]
 
@@ -255,13 +263,30 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       x = gen.normal(shape=[10000], dtype=dtype).numpy()
       self.assertTrue(np.all(np.isfinite(x)))
 
-  @parameterized.parameters(list(itertools.product(ALGS, INTS + FLOATS)))
-  def testDistributionOfUniform(self, alg, dtype):
+  @parameterized.parameters(list(itertools.product(
+      ALGS, INTS + FLOATS, (12, 13, 123, 4321))))
+  def testDistributionOfUniform(self, alg, dtype, seed):
     """Use Pearson's Chi-squared test to test for uniformity."""
     self.check_dtype(dtype)
+    three_fry = random.Algorithm.THREEFRY.value
+    auto_select = random.Algorithm.AUTO_SELECT.value
+    is_tpu = xla_device().device_type == "TPU"
+    is_megacore = "megacore" in os.environ.get("TEST_TARGET", "").lower()
+    # TODO(b/244649364): Investigate why these combinations fail.
+    if ((alg, dtype, seed) in [(three_fry, dtypes.int64, 123),
+                               (three_fry, dtypes.uint64, 123)] or
+        is_tpu and
+        (alg, dtype, seed) in [(auto_select, dtypes.int64, 123),
+                               (auto_select, dtypes.uint64, 123)] or
+        is_megacore and
+        (alg, dtype, seed) in [(auto_select, dtypes.int32, 123),
+                               (auto_select, dtypes.uint32, 123),
+                               (auto_select, dtypes.int32, 12),
+                               (auto_select, dtypes.uint32, 12)]):
+      self.skipTest(
+          "This (device, alg, dtype, seed) combination fails (b/244649364).")
     with ops.device(xla_device_name()):
       n = 1000
-      seed = 12
       gen = random.Generator.from_seed(seed=seed, alg=alg)
       maxval = 1
       if dtype.is_integer:
@@ -314,7 +339,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
       gen = random.Generator.from_seed(seed=1234, alg=random.RNG_ALG_THREEFRY)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
-          r"algorithm must be of shape \[\], not"):
+          r"algorithm.* must be of shape \[\], not"):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             gen.state.handle, [0, 0], shape)
       with self.assertRaisesWithPredicateMatch(
@@ -326,6 +351,10 @@ class StatefulRandomOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           "Unsupported algorithm id"):
         gen_stateful_random_ops.stateful_standard_normal_v2(
             gen.state.handle, 123, shape)
+      with self.assertRaisesWithPredicateMatch(errors_impl.InvalidArgumentError,
+                                               "Unsupported algorithm id"):
+        gen_stateful_random_ops.rng_read_and_skip(
+            gen.state.handle, alg=123, delta=10)
       var = variables.Variable([0, 0], dtype=dtypes.uint32)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,

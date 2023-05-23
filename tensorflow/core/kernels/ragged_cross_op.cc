@@ -596,7 +596,11 @@ class RaggedCrossOp : public OpKernel {
     int64_t cross_count_total = 0;
     flat_row_splits(0) = 0;
     for (int64_t b = 0; b < batch_size; b++) {
-      cross_count_total += CrossCountByBatchIndex(features, b);
+      int64_t cross_count_by_batch_index = CrossCountByBatchIndex(features, b);
+      if (cross_count_by_batch_index < 0) {
+        return errors::InvalidArgument("Invalid RaggedTensor");
+      }
+      cross_count_total += cross_count_by_batch_index;
       flat_row_splits(b + 1) = cross_count_total;
     }
 
@@ -613,6 +617,8 @@ class RaggedCrossOp : public OpKernel {
     int64_t cross_count = 1;
     for (int i = 0; i < features.size(); ++i) {
       const auto feature_count = features[i]->FeatureCount(batch_index);
+      // If feature_count is invalid, return -1 to let caller know.
+      if (feature_count < 0) return -1;
       if (feature_count == 0) return 0;
       cross_count *= feature_count;
     }

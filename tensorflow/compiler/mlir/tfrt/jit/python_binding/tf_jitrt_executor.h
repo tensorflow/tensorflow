@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/DenseMap.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
@@ -43,8 +44,7 @@ class TfJitRtExecutor {
   // execute function.
   Handle Compile(const std::string& mlir_module, const std::string& entrypoint,
                  Specialization specialization, bool vectorize,
-                 bool codegen_transpose, bool legalize_i1_tensors,
-                 bool one_shot_bufferize);
+                 bool legalize_i1_tensors);
 
   // Executes compiled mlir module with Python array arguments. Converts
   // returned memrefs into Python arrays.

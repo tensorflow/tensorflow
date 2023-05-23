@@ -33,6 +33,7 @@ import fnmatch
 import os
 import re
 import sys
+import platform
 
 from setuptools import Command
 from setuptools import find_packages
@@ -46,7 +47,7 @@ from setuptools.dist import Distribution
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '2.11.0'
+_VERSION = '2.14.0'
 
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
@@ -58,6 +59,13 @@ if '--project_name' in sys.argv:
   project_name = sys.argv[project_name_idx + 1]
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
+
+
+collaborator_build = False
+if '--collaborator_build' in sys.argv:
+  sys.argv.remove('--collaborator_build')
+  collaborator_build = True
+
 
 # Returns standard if a tensorflow-* package is being built, and nightly if a
 # tf_nightly-* package is being built.
@@ -76,29 +84,23 @@ def standard_or_nightly(standard, nightly):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 2.0',
+    'flatbuffers >= 23.1.21',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
     'h5py >= 2.9.0',
     'libclang >= 13.0.0',
-    'numpy >= 1.20',
+    'numpy >= 1.22',
     'opt_einsum >= 2.3.2',
     'packaging',
-    # TODO(b/182876485): Protobuf 3.20 results in linker errors on Windows
-    # Protobuf 4.0 is binary incompatible with what C++ TF uses.
-    # We need ~1 quarter to update properly.
-    # See also: https://github.com/tensorflow/tensorflow/issues/53234
-    # See also: https://github.com/protocolbuffers/protobuf/issues/9954
-    # See also: https://github.com/tensorflow/tensorflow/issues/56077
-    # This is a temporary patch for now, to patch previous TF releases.
-    'protobuf >= 3.9.2, < 3.20',
+    'protobuf>=3.20.3,<5.0.0dev,!=4.21.0,!=4.21.1,!=4.21.2,!=4.21.3,!=4.21.4,!=4.21.5',
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
     'typing_extensions >= 3.6.6',
     'wrapt >= 1.11.0',
-    'tensorflow-io-gcs-filesystem >= 0.23.1',
+    'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
+    'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
@@ -110,14 +112,49 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.10, < 2.11',
-                        'tb-nightly ~= 2.11.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.10.0rc0, < 2.11',
-                        'tf-estimator-nightly ~= 2.11.0.dev'),
-    standard_or_nightly('keras >= 2.10.0rc0, < 2.11',
-                        'keras-nightly ~= 2.11.0.dev'),
+    standard_or_nightly('tensorboard >= 2.13, < 2.14',
+                        'tb-nightly ~= 2.14.0.a'),
+    standard_or_nightly('tensorflow_estimator >= 2.13.0rc0, < 2.14',
+                        'tf-estimator-nightly ~= 2.14.0.dev'),
+    standard_or_nightly('keras >= 2.13.1rc0, < 2.14',
+                        'keras-nightly ~= 2.14.0.dev'),
 ]
-REQUIRED_PACKAGES = [ p for p in REQUIRED_PACKAGES if p is not None ]
+REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
+
+FAKE_REQUIRED_PACKAGES = [
+    # The depedencies here below are not actually used but are needed for
+    # package managers like poetry to parse as they are confused by the
+    # different architectures having different requirements.
+    # The entries here should be a simple duplicate of those in the collaborator
+    # build section.
+    standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+    _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+    'platform_machine=="aarch64")',
+    standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+    _VERSION + ';platform_system=="Windows"',
+]
+
+if platform.system() == 'Linux' and platform.machine() == 'x86_64':
+  REQUIRED_PACKAGES.append(FAKE_REQUIRED_PACKAGES)
+
+if collaborator_build:
+  # If this is a collaborator build, then build an "installer" wheel and
+  # add the collaborator packages as the only dependencies.
+  REQUIRED_PACKAGES = [
+      # Install the TensorFlow package built by AWS if the user is running
+      # Linux on an Aarch64 machine.
+      standard_or_nightly('tensorflow-cpu-aws', 'tf-nightly-cpu-aws') + '==' +
+      _VERSION + ';platform_system=="Linux" and (platform_machine=="arm64" or '
+      'platform_machine=="aarch64")',
+      # Install the TensorFlow package built by Intel if the user is on a
+      # Windows machine.
+      standard_or_nightly('tensorflow-intel', 'tf-nightly-intel') + '==' +
+      _VERSION + ';platform_system=="Windows"',
+      # Install the TensorFlow package built by Apple if the user is running
+      # macOS on an Apple Silicon machine.
+      standard_or_nightly('tensorflow-macos', 'tf-nightly-macos') + '==' +
+      _VERSION + ';platform_system=="Darwin" and platform_machine=="arm64"',
+  ]
 
 DOCLINES = __doc__.split('\n')
 if project_name.endswith('-gpu'):
@@ -146,7 +183,7 @@ CONSOLE_SCRIPTS = [
     'estimator_ckpt_converter = '
     'tensorflow_estimator.python.estimator.tools.checkpoint_converter:main',
 ]
-CONSOLE_SCRIPTS = [ s for s in CONSOLE_SCRIPTS if s is not None ]
+CONSOLE_SCRIPTS = [s for s in CONSOLE_SCRIPTS if s is not None]
 # pylint: enable=line-too-long
 
 
@@ -261,6 +298,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
     list(find_files('*.proto', 'tensorflow/python/framework')) +
+    list(find_files('*.proto', 'tensorflow/tsl')) +
     list(find_files('*.def', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
@@ -277,9 +315,10 @@ headers = (
     list(find_files('*.h', 'google/com_google_protobuf/src')) +
     list(find_files('*.inc', 'google/com_google_protobuf/src')) +
     list(find_files('*', 'third_party/eigen3')) +
+    list(find_files('*', 'third_party/gpus')) +
     list(find_files('*.h', 'tensorflow/include/external/com_google_absl')) +
     list(find_files('*.inc', 'tensorflow/include/external/com_google_absl')) +
-    list(find_files('*', 'tensorflow/include/external/eigen_archive'))) 
+    list(find_files('*', 'tensorflow/include/external/eigen_archive')))
 
 setup(
     name=project_name,
@@ -292,41 +331,38 @@ setup(
     author='Google Inc.',
     author_email='packages@tensorflow.org',
     # Contained modules and scripts.
-    packages=find_packages(),
+    packages=find_packages() if not collaborator_build else [],
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
-    },
-    headers=headers,
+    } if not collaborator_build else {},
+    headers=headers if not collaborator_build else [],
     install_requires=REQUIRED_PACKAGES,
     # Add in any packaged data.
-    include_package_data=True,
+    include_package_data=True if not collaborator_build else False,
     package_data={
-        'tensorflow': [
-            EXTENSION_NAME,
-        ] + matches,
-    },
+        'tensorflow': [EXTENSION_NAME,] + matches,
+    } if not collaborator_build else {},
     zip_safe=False,
-    distclass=BinaryDistribution,
+    distclass=BinaryDistribution if not collaborator_build else None,
     cmdclass={
         'install_headers': InstallHeaders,
-        'install': InstallCommand,
-    },
+        'install': InstallCommand,} if not collaborator_build else {},
     # Supported Python versions
-    python_requires='>=3.7',
+    python_requires='>=3.8',
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
         # TODO(angerson) Add IFTTT when possible
-        'Environment :: GPU :: NVIDIA CUDA :: 11.2',
+        'Environment :: GPU :: NVIDIA CUDA :: 11.8',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.7',
         'Programming Language :: Python :: 3.8',
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',

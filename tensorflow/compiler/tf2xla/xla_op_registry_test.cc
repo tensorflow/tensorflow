@@ -82,6 +82,25 @@ TEST(XlaOpRegistryTest, XlaOpRegistrationWithOverride) {
   }
 }
 
+TEST(XlaOpReigstryTest, XlaOpRegistrationDeviceKernels) {
+  XlaOpRegistry::RegisterCompilationKernels();
+  auto registered_devices = XlaOpRegistry::BackendNames();
+  for (const auto& resgistered_device : registered_devices) {
+    auto kernels = XlaOpRegistry::DeviceKernels(resgistered_device, true);
+    for (const auto& kernel : kernels) {
+      if (kernel->op() == "DummyDuplicateOp") {
+        if (resgistered_device == DEVICE_CPU_XLA_JIT) {
+          EXPECT_EQ(kernel->constraint(0).allowed_values().list().type(0),
+                    DT_INT32);
+        } else {
+          EXPECT_EQ(kernel->constraint(0).allowed_values().list().type(0),
+                    DT_FLOAT);
+        }
+      }
+    }
+  }
+}
+
 // A dummy generic OpKernel for all backends.
 class DummyInfeasibleTypeConstraintOp : public XlaOpKernel {
  public:

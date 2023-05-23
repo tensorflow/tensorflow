@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/custom_call_status_internal.h"
 #include "tensorflow/compiler/xla/service/custom_call_status_test_c_caller.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 TEST(XlaCustomCallStatusTest, DefaultIsSuccess) {
   XlaCustomCallStatus status;

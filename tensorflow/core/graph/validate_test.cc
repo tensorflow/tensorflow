@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -27,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -176,6 +178,81 @@ TEST(VerifyNoDuplicateNodeNames, DuplicateNodeNames) {
   CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
   EXPECT_EQ(graph::VerifyNoDuplicateNodeNames(graph_def).code(),
             tensorflow::error::ALREADY_EXISTS);
+}
+
+TEST(ValidateGraphHasNoCycleTest, NoCyclePasses) {
+  const string graph_def_str =
+      "node { name: 'A' op: 'FloatInput' }"
+      "node { name: 'B' op: 'FloatInput' }"
+      "node { name: 'C' op: 'Mul' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['A', 'B'] }";
+  GraphDef graph_def;
+  auto parser = protobuf::TextFormat::Parser();
+  CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
+
+  Graph graph(OpRegistry::Global());
+  GraphConstructorOptions opts;
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+
+  TF_EXPECT_OK(graph::ValidateGraphHasNoCycle(graph));
+}
+
+TEST(ValidateGraphHasNoCycleTest, NoCycleWithMergePasses) {
+  const string graph_def_str =
+      R"EOF(
+      node { name: 'A' op: 'FloatInput' }
+      node { name: 'merge' op: 'Merge' input: [ 'A:0', 'next:0' ]
+             attr { key: "N" value: { i: 2 } }
+             attr { key: "T" value: { type: DT_FLOAT } } }
+      node { name: 'B' op: 'Mul'
+             attr { key: 'T' value { type: DT_FLOAT } }
+             input: [ 'merge:0', 'merge:0' ] }
+      node { name: 'next' op: 'NextIteration' input: ['B:0']
+             attr { key: "T" value: { type: DT_FLOAT } } }
+      )EOF";
+  GraphDef graph_def;
+  auto parser = protobuf::TextFormat::Parser();
+  CHECK(parser.MergeFromString(graph_def_str, &graph_def)) << graph_def_str;
+
+  Graph graph(OpRegistry::Global());
+  GraphConstructorOptions opts;
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+
+  TF_EXPECT_OK(graph::ValidateGraphHasNoCycle(graph));
+}
+
+Node* AddNodeFromNodeDef(Graph& graph, const string& name,
+                         const string& node_type, int num_inputs) {
+  auto builder = NodeDefBuilder(name, node_type);
+  for (int i = 0; i < num_inputs; ++i) {
+    builder = builder.Input(strings::StrCat("node_", i), i, DT_FLOAT);
+  }
+
+  NodeDef node_def;
+  TF_CHECK_OK(builder.Finalize(&node_def));
+
+  Status s;
+  Node* node = graph.AddNode(node_def, &s);
+  TF_CHECK_OK(s);
+  return node;
+}
+
+TEST(ValidateGraphHasNoCycleTest, CycleFails) {
+  // Need to construct graph explicitly, since GraphDefToGraph has its own
+  // cycle validation routine.
+  Graph graph(OpRegistry::Global());
+  GraphConstructorOptions opts;
+
+  Node* a = AddNodeFromNodeDef(graph, "A", "FloatInput", 0);
+  Node* c = AddNodeFromNodeDef(graph, "B", "Mul", 2);
+  graph.AddEdge(a, 0, c, 0);
+  graph.AddEdge(c, 0, c, 1);  // Loop from C->C.
+
+  EXPECT_THAT(
+      graph::ValidateGraphHasNoCycle(graph),
+      tsl::testing::StatusIs(
+          tsl::error::Code::INVALID_ARGUMENT,
+          ::testing::ContainsRegex("Graph is invalid, contains a cycle")));
 }
 
 }  // namespace

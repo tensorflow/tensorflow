@@ -149,7 +149,7 @@ struct EngineContext {
     }
     *exec_ctx = execution_contexts[idx].get();
     *has_device_memory = execution_contexts[idx].HasDeviceMemory();
-    return Status::OK();
+    return OkStatus();
   }
 
   int GetNumContexts() {

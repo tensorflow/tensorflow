@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 #define TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_
 
-#include "tensorflow/core/platform/file_system.h"
-#include "tensorflow/core/platform/path.h"
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/file_system.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/platform.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile
 #endif
 
-namespace tensorflow {
+namespace tsl {
 
 class WindowsFileSystem : public FileSystem {
  public:
@@ -67,6 +67,10 @@ class WindowsFileSystem : public FileSystem {
 
   Status DeleteDir(const string& name, TransactionToken* token) override;
 
+  Status DeleteRecursively(const std::string& dirname, TransactionToken* token,
+                           int64_t* undeleted_files,
+                           int64_t* undeleted_dirs) override;
+
   Status GetFileSize(const string& fname, TransactionToken* token,
                      uint64* size) override;
 
@@ -89,6 +93,6 @@ class LocalWinFileSystem : public WindowsFileSystem {
   }
 };
 
-}  // namespace tensorflow
+}  // namespace tsl
 
 #endif  // TENSORFLOW_TSL_PLATFORM_WINDOWS_WINDOWS_FILE_SYSTEM_H_

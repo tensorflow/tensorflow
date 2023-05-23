@@ -74,7 +74,10 @@ struct SparseXentFunctor<GPUDevice, T, Index> {
   template struct functor::SparseXentFunctor<GPUDevice, float, Index>;       \
   template class generator::SparseXentGradGenerator<float, Index>;           \
   template struct functor::SparseXentFunctor<GPUDevice, Eigen::half, Index>; \
-  template class generator::SparseXentGradGenerator<Eigen::half, Index>;
+  template class generator::SparseXentGradGenerator<Eigen::half, Index>;     \
+  template struct functor::SparseXentFunctor<GPUDevice, Eigen::bfloat16,     \
+                                             Index>;                         \
+  template class generator::SparseXentGradGenerator<Eigen::bfloat16, Index>;
 REGISTER(int32)
 REGISTER(int64)
 #undef REGISTER

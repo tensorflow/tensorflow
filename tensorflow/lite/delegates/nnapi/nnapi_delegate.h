@@ -20,7 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/serialization.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -93,7 +93,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // of number of nodes and selecting them until the limit is reached.
     int max_number_delegated_partitions = 3;
 
-    // allow fp32 compuation to be run in fp16.
+    // allow fp32 computation to be run in fp16.
     bool allow_fp16 = false;
 
     // Specifies the relative priority for executions of the model.
@@ -173,6 +173,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // must provide max tensor size in the "tensor_max_size_hints" field for all
     // output tensors with dynamic shapes.
     NnapiDelegateVendorPlugin* vendor_plugin = nullptr;
+
+    // Controls disabling of the debugging diagnostics callbacks that only print
+    // debug logs, which are otherwise enabled by default.
+    // Use this in case different callbacks are being registered elsewhere, such
+    // as for example to send logs through some logger.
+    bool disable_debugging_diagnostics_callbacks = false;
   };
 
   // Uses default options.
@@ -249,7 +255,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     ANeuralNetworksMemory* memory;
     CopyToHostTensorFnPtr callback;
     void* callback_context;
-    // The registeration timestamp. It is unique for each registered memory in
+    // The registration timestamp. It is unique for each registered memory in
     // the lifetime of a StatefulNnApiDelegate.
     uint64_t timestamp;
   };
@@ -357,6 +363,12 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // TFLite Serialization in case caching has been enabled by the user through
     // Options.
     std::unique_ptr<delegates::Serialization> cache;
+
+    // Controls disabling of the default diagnostics callbacks that only print
+    // debug logs, which are otherwise enabled by default.
+    // Use this in case different callbacks are being registered elsewhere, such
+    // as for example to send logs through some logger.
+    bool disable_debugging_diagnostics_callbacks = false;
 
     explicit Data(const NnApi* nnapi);
     explicit Data(std::unique_ptr<const NnApi> nnapi);

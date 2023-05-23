@@ -17,7 +17,7 @@
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -48,7 +48,7 @@ class UtilsTest(test.TestCase):
   @test_util.run_v1_only(
       "b/120545219: `build_tensor_info` is only available in graph mode.")
   def testBuildTensorInfoDefunOp(self):
-    @function.defun
+    @def_function.function
     def my_init_fn(x, y):
       self.x_var = x
       self.y_var = y

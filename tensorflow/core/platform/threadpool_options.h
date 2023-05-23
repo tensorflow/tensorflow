@@ -17,17 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_THREADPOOL_OPTIONS_H_
 
 #include "tensorflow/core/platform/threadpool_interface.h"
+#include "tensorflow/tsl/platform/threadpool_options.h"
 
 namespace tensorflow {
 namespace thread {
 
-struct ThreadPoolOptions {
-  // If not null, use this threadpool to schedule inter-op operation
-  thread::ThreadPoolInterface* inter_op_threadpool = nullptr;
-
-  // If not null, use this threadpool to schedule intra-op operation
-  thread::ThreadPoolInterface* intra_op_threadpool = nullptr;
-};
+using tsl::thread::ThreadPoolOptions;  // NOLINT
 
 }  // namespace thread
 }  // namespace tensorflow

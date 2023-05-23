@@ -34,14 +34,14 @@ std::vector<Tindices> ParseRowStartIndices(
     const tensorflow::Tensor& tensor,
     const Tindices num_nonzero_entries_in_sparse_mat);
 
-// Returns Status::OK() if and only if config is a float scalar or a matrix with
+// Returns OkStatus() if and only if config is a float scalar or a matrix with
 // dimensions M x 3. If config is a scalar then config must be in the range
 // [0, 1.0). If config is a matrix then config must have shape M x 3, all of
 // its entries must be positive, and entries in the last column may not
 // exceed 1.0. If config is a matrix then it may not be empty.
 Status ValidateSparseMatrixShardingConfig(const Tensor& config);
 
-// Returns Status::OK() if and only if config is a float scalar or a non-empty
+// Returns OkStatus() if and only if config is a float scalar or a non-empty
 // matrix with dimensions M x 2.
 Status ValidateScalarQuantityShardingConfig(const Tensor& config);
 

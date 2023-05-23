@@ -1,4 +1,4 @@
-// RUN: tfg-transforms-opt -pass-pipeline='tfg-lift-graph-to-func{feeds=Placeholder1 fetches=Placeholder1}' %s | FileCheck %s
+// RUN: tfg-transforms-opt -pass-pipeline='builtin.module(tfg-lift-graph-to-func{feeds=Placeholder1 fetches=Placeholder1})' %s | FileCheck %s
 
 // CHECK:   tfg.func @_mlir_lifted_graph(%Placeholder1_0: tensor<*xf32> {tfg.lifted_value_attr = ["Placeholder1", 0 : index], tfg.name = "Placeholder1_0"}
 // CHECK-NEXT: -> (tensor<*xf32> {tfg.name = "Placeholder1_0"})

@@ -28,6 +28,8 @@ REGISTER4(UnaryOp, GPU, "Abs", functor::abs, Eigen::half, float, double, int64);
 REGISTER2(UnaryOp, GPU, "ComplexAbs", functor::abs, complex64, complex128);
 #endif
 
+REGISTER(UnaryOp, GPU, "Abs", functor::abs, Eigen::bfloat16);
+
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.

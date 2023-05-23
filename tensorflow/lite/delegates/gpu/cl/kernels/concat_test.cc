@@ -29,22 +29,22 @@ namespace {
 
 TEST_F(OpenCLOperationTest, ConcatWidth) {
   auto status = ConcatWidthTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConcatHeight) {
   auto status = ConcatHeightTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConcatChannels) {
   auto status = ConcatChannelsTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, ConcatChannelsAlignedx4) {
   auto status = ConcatChannelsAlignedx4Test(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

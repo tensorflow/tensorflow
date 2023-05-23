@@ -15,8 +15,8 @@ limitations under the License.
 
 // Transform pass for LSTMs.
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER
-#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER_H_
 
 #include <algorithm>
 #include <cmath>
@@ -62,9 +62,10 @@ constexpr const char* intermediate_attributes[] = {
     "effective_hidden_scale_intermediate"};
 
 // Calculates the minimum power of two that is not less than the value.
-inline double PowerOfTwoBound(double value) {
-  return std::pow(2, std::ceil(std::log2(value)));
-}
+double PowerOfTwoBound(double value);
+
+tensorflow::DataType GetQuantizedInferenceType(bool is_signed,
+                                               int activation_number_of_bits);
 
 // Returns the element type of LSTM's intermediate tensor designated by the
 // index.
@@ -84,9 +85,10 @@ using Q = quantfork::QuantizeCastOp;
 using DQ = quantfork::DequantizeCastOp;
 
 template <typename LstmOp>
-LogicalResult GetLstmProperty(
-    LstmOp op, operator_property::OpVariant* lstm_variant,
-    operator_property::OperatorProperty* op_property) {
+LogicalResult GetLstmProperty(LstmOp op,
+                              operator_property::OpVariant* lstm_variant,
+                              operator_property::OperatorProperty* op_property,
+                              int activation_number_of_bits = 8) {
   if (llvm::isa<TFL::LSTMOp>(op.getOperation())) {
     lstm_variant->op_code = tflite::BuiltinOperator_LSTM;
   } else if (llvm::isa<TFL::UnidirectionalSequenceLSTMOp>(op.getOperation())) {
@@ -97,18 +99,19 @@ LogicalResult GetLstmProperty(
     return failure();
   }
   lstm_variant->use_projection =
-      !op.projection_weights().getType().template isa<NoneType>();
+      !op.getProjectionWeights().getType().template isa<NoneType>();
   lstm_variant->use_peephole =
-      !op.cell_to_output_weights().getType().template isa<NoneType>();
+      !op.getCellToOutputWeights().getType().template isa<NoneType>();
   lstm_variant->use_layer_norm =
-      !op.forget_layer_norm_coefficients().getType().template isa<NoneType>();
+      !op.getForgetLayerNormCoefficients().getType().template isa<NoneType>();
 
-  *op_property = operator_property::GetOperatorProperty(*lstm_variant);
+  *op_property = operator_property::GetOperatorProperty(
+      *lstm_variant, activation_number_of_bits);
 
   // TODO(b/176258587) move this to operator_property.cc if this is needed in
   // other components, too.
   bool use_cifg =
-      op.input_to_input_weights().getType().template isa<NoneType>();
+      op.getInputToInputWeights().getType().template isa<NoneType>();
   if (use_cifg) {
     const absl::flat_hash_set<int> cifg_non_inputs = {1, 5, 9, 12, 20};
     const int cifg_non_intermediate = 0;
@@ -308,12 +311,12 @@ class ConvertOpStatsToQDQs : public OpRewritePattern<SourceOp> {
           rewriter.getIntegerType(16), attr.getType().getElementType(), scale,
           /*zeroPoint=*/0, llvm::minIntN(10), -llvm::minIntN(10));
     } else {
-      quant_type =
-          quant::GetUniformQuantizedTypeForWeight(
-              attr, /*symmetric=*/true,
-              /*num_bits=*/tensor_property.number_of_bits, /*is_signed=*/true,
-              /*narrow_range=*/true, quant_specs_.legacy_float_scale)
-              .template dyn_cast<quant::UniformQuantizedType>();
+      quant_type = quant::GetUniformQuantizedTypeForWeight(
+                       attr, /*symmetric=*/true,
+                       /*num_bits=*/tensor_property.number_of_bits,
+                       /*is_signed=*/true,
+                       /*narrow_range=*/true, quant_specs_.legacy_float_scale)
+                       .template dyn_cast<quant::UniformQuantizedType>();
     }
     if (!quant_type) {
       const_op->emitError("Failed to get quantized type");
@@ -405,13 +408,14 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
  public:
   ConvertLstmStatsToQDQs(MLIRContext* context,
                          const quant::QuantizationSpecs& quant_specs)
-
-      : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs) {}
+      : ConvertOpStatsToQDQs<SourceOp>(context, quant_specs),
+        activation_number_of_bits_(quant_specs.GetQuantizationTypeWidth()) {}
   LogicalResult matchAndRewrite(SourceOp op,
                                 PatternRewriter& rewriter) const override {
     operator_property::OpVariant lstm_variant;
     operator_property::OperatorProperty lstm_property;
-    if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property))) {
+    if (failed(GetLstmProperty(op, &lstm_variant, &lstm_property,
+                               activation_number_of_bits_))) {
       return failure();
     }
 
@@ -491,6 +495,8 @@ class ConvertLstmStatsToQDQs : public ConvertOpStatsToQDQs<SourceOp> {
     }
     return success();
   }
+
+  int activation_number_of_bits_;
 };
 
 // Returns a function that returns the quantized type of a bias input.
@@ -571,4 +577,4 @@ class ConvertSvdfStatsToQDQs : public ConvertOpStatsToQDQs<TFL::SVDFOp> {
 }  // namespace TFL
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_TRANSFORMS_PREPARE_QUANTIZE_HELPER_H_

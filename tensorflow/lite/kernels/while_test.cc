@@ -18,7 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/profiling/memory_info.h"
 
@@ -83,12 +83,12 @@ TEST_F(WhileTest, TestTriangularNumberSequenceWithShallowCopy) {
     options.OptimizeMemoryForLargeTensors(1000000);
     ASSERT_EQ(interpreter_->ApplyOptions(&options), kTfLiteOk);
     const size_t initial_mem_usage =
-        profiling::memory::GetMemoryUsage().max_rss_kb;
+        profiling::memory::GetMemoryUsage().mem_footprint_kb;
     ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
     // Memory usage shouldn't exceed 9MB (2 x inputs + margin).
-    ASSERT_LE(
-        profiling::memory::GetMemoryUsage().max_rss_kb - initial_mem_usage,
-        9000);
+    ASSERT_LE(profiling::memory::GetMemoryUsage().mem_footprint_kb -
+                  initial_mem_usage,
+              9000);
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
     const std::vector<int> input_vector(1000000, 1);
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]),

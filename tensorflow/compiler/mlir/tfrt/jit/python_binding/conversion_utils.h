@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_JIT_PYTHON_BINDING_CONVERSION_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_JIT_PYTHON_BINDING_CONVERSION_UTILS_H_
 
-#include "pybind11/numpy.h"
+#include "pybind11/numpy.h"  // from @pybind11
 #include "tensorflow/compiler/xla/runtime/arguments.h"
 #include "tfrt/dtype/dtype.h"  // from @tf_runtime
 

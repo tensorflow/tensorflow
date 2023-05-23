@@ -16,48 +16,36 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_STATUS_H_
 #define TENSORFLOW_C_TF_STATUS_H_
 
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
+#include "tensorflow/c/c_api_macros.h"
+#include "tensorflow/tsl/c/tsl_status.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef struct TF_Status TF_Status;
+typedef struct TSL_Status TF_Status;
 
 // --------------------------------------------------------------------------
 // TF_Code holds an error code.  The enum values here are identical to
 // corresponding values in error_codes.proto.
-typedef enum TF_Code {
-  TF_OK = 0,
-  TF_CANCELLED = 1,
-  TF_UNKNOWN = 2,
-  TF_INVALID_ARGUMENT = 3,
-  TF_DEADLINE_EXCEEDED = 4,
-  TF_NOT_FOUND = 5,
-  TF_ALREADY_EXISTS = 6,
-  TF_PERMISSION_DENIED = 7,
-  TF_UNAUTHENTICATED = 16,
-  TF_RESOURCE_EXHAUSTED = 8,
-  TF_FAILED_PRECONDITION = 9,
-  TF_ABORTED = 10,
-  TF_OUT_OF_RANGE = 11,
-  TF_UNIMPLEMENTED = 12,
-  TF_INTERNAL = 13,
-  TF_UNAVAILABLE = 14,
-  TF_DATA_LOSS = 15,
-} TF_Code;
+typedef TSL_Code TF_Code;
+#define TF_OK TSL_OK
+#define TF_CANCELLED TSL_CANCELLED
+#define TF_UNKNOWN TSL_UNKNOWN
+#define TF_INVALID_ARGUMENT TSL_INVALID_ARGUMENT
+#define TF_DEADLINE_EXCEEDED TSL_DEADLINE_EXCEEDED
+#define TF_NOT_FOUND TSL_NOT_FOUND
+#define TF_ALREADY_EXISTS TSL_ALREADY_EXISTS
+#define TF_PERMISSION_DENIED TSL_PERMISSION_DENIED
+#define TF_UNAUTHENTICATED TSL_UNAUTHENTICATED
+#define TF_RESOURCE_EXHAUSTED TSL_RESOURCE_EXHAUSTED
+#define TF_FAILED_PRECONDITION TSL_FAILED_PRECONDITION
+#define TF_ABORTED TSL_ABORTED
+#define TF_OUT_OF_RANGE TSL_OUT_OF_RANGE
+#define TF_UNIMPLEMENTED TSL_UNIMPLEMENTED
+#define TF_INTERNAL TSL_INTERNAL
+#define TF_UNAVAILABLE TSL_UNAVAILABLE
+#define TF_DATA_LOSS TSL_DATA_LOSS
 
 // --------------------------------------------------------------------------
 

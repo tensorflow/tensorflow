@@ -111,7 +111,31 @@ func.func @sort(%arg0 : tensor<37xi32>, %arg1 : tensor<37xi32>) -> (tensor<37xi3
 // CHECK:     scf.yield %[[ADDI_3]], %[[SUBI_3]], %[[ARG6]], %[[ARG7]], %[[ARG4_0]], %[[ARG5_0]] : index, i1, memref<37xi32>, memref<37xi32>, memref<37xi32>, memref<37xi32>
 // CHECK:   }
 // CHECK:   %[[SELECT_7:.*]] = arith.select %[[WHILE_0]]#1, %[[ALLOC_0]], %[[ALLOC]] : memref<37xi32>
-// CHECK:   %[[TO:.*]] = bufferization.to_tensor %[[SELECT_7]] : memref<37xi32>
+// CHECK:   %[[TO:.*]] = bufferization.to_tensor %[[SELECT_7]] restrict : memref<37xi32>
 // CHECK:   %[[SELECT_8:.*]] = arith.select %[[WHILE_0]]#1, %[[ALLOC_2]], %[[ALLOC_1]] : memref<37xi32>
-// CHECK:   %[[TO_0:.*]] = bufferization.to_tensor %[[SELECT_8]] : memref<37xi32>
+// CHECK:   %[[TO_0:.*]] = bufferization.to_tensor %[[SELECT_8]] restrict : memref<37xi32>
 // CHECK:   return %[[TO]], %[[TO_0]] : tensor<37xi32>, tensor<37xi32>
+
+// -----
+
+func.func @sort_dyn(%arg0 : tensor<?xi32>, %arg1 : tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>) {
+  %result:2 = "mhlo.sort"(%arg0, %arg1) ({
+    ^bb0(%00: tensor<i32>, %01: tensor<i32>, %10: tensor<i32>, %11: tensor<i32>):
+      %50 = tensor.extract %00[] : tensor<i32>
+      %51 = tensor.extract %01[] : tensor<i32>
+      %52 = arith.cmpi sgt, %50, %51 : i32
+      %cmp_result = tensor.from_elements %52 : tensor<i1>
+      "mhlo.return"(%cmp_result) : (tensor<i1>) -> ()
+    }) {dimension = 0 : i64, is_stable = true} : (tensor<?xi32>, tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>)
+  func.return %result#0, %result#1 : tensor<?xi32>, tensor<?xi32>
+}
+// CHECK: func.func @sort_dyn(%[[ARG0:.*]]: tensor<?xi32>, %[[ARG1:.*]]: tensor<?xi32>) -> (tensor<?xi32>, tensor<?xi32>) {
+// CHECK:   %[[SORTDIM:.*]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?xi32>
+// CHECK:   %[[ALLOCDIM:.*]] = tensor.dim %[[ARG0]], %[[C0]] : tensor<?xi32>
+// CHECK:   memref.alloc(%[[ALLOCDIM]]) : memref<?xi32>
+// CHECK:   memref.alloc(%[[ALLOCDIM]]) : memref<?xi32>
+// CHECK:   memref.alloc(%[[ALLOCDIM]]) : memref<?xi32>
+// CHECK:   memref.alloc(%[[ALLOCDIM]]) : memref<?xi32>
+// CHECK:   scf.for %[[ARG2:.*]] = %[[C0]] to %[[SORTDIM]]
+// CHECK:   scf.while
+// CHECK:     scf.for %[[ARG8:.*]] = %[[C0]] to %[[SORTDIM]]

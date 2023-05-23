@@ -119,6 +119,10 @@ class PadOpTest(test.TestCase):
 
     with self.cached_session():
       jacob_t, jacob_n = gradient_checker_v2.compute_gradient(pad, [x])
+      if x.dtype == dtypes.bfloat16.as_numpy_dtype:
+        # Compare bf16 analytical gradients to fp32 numerical gradients.
+        x_fp32 = constant_op.constant(x, shape=x.shape, dtype=dtypes.float32)
+        _, jacob_n = gradient_checker_v2.compute_gradient(pad, [x_fp32])
       tol = 1e-3 if x.dtype == np.float16 else 4e-5
       self.assertAllClose(jacob_t, jacob_n, rtol=tol, atol=tol)
 
@@ -127,12 +131,18 @@ class PadOpTest(test.TestCase):
                  "constant"):
       # Zero-sized input is not allowed for REFLECT mode, but we still want
       # zero-sized input test cases for the other modes.
-      if np_inputs.size or mode.upper() != "REFLECT":
-        self._testPad(np_inputs, paddings, mode=mode,
-                      constant_values=constant_values)
-        if np_inputs.dtype == np.float32:
-          self._testGradient(np_inputs, paddings, mode=mode,
-                             constant_values=constant_values)
+      if not np_inputs.size and mode.upper() == "REFLECT":
+        continue
+      # Empty tensor is not allowed for MirrorPad.
+      if 0 in np_inputs.shape and mode.upper() in ["REFLECT", "SYMMETRIC"]:
+        continue
+      self._testPad(
+          np_inputs, paddings, mode=mode, constant_values=constant_values)
+      if np_inputs.dtype in [
+          np.float32, np.float16, dtypes.bfloat16.as_numpy_dtype
+      ]:
+        self._testGradient(
+            np_inputs, paddings, mode=mode, constant_values=constant_values)
 
   def testInputDims(self):
     with test_util.use_gpu():
@@ -278,13 +288,19 @@ class PadOpTest(test.TestCase):
           [[0, 0], [0, 0], [0, 0], [0, 0]], -123)
 
   def testFloatTypes(self):
-    self.skipTest("b/183965033")
-    for t in [np.float16, np.float32, np.float64]:
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       self._testAll(np.random.rand(2, 5).astype(t), [[1, 0], [2, 0]], 0.0)
       self._testAll(
           np.random.rand(2, 3, 4).astype(t), [[0, 0], [0, 0], [0, 0]], -12.34)
       self._testAll(
-          np.random.rand(12, 13, 14).astype(t), [[0, 0], [3, 3], [3, 3]], 1.41)
+          np.random.rand(1, 3, 4).astype(t), [[0, 0], [1, 1], [2, 2]], 1.41)
+
+  def testEmptyTensor(self):
+    for t in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype
+    ]:
       self._testAll(np.random.rand(0, 3, 4).astype(t),
                     [[0, 0], [2, 1], [2, 3]], 0.0)
 

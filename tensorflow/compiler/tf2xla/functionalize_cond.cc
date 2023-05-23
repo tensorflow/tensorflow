@@ -1174,7 +1174,7 @@ Status FunctionalizeCond::DetermineCondStateMerge(Node* dst) {
     auto id_or = JoinCondStatesMerge(dst, prop, state_map_.LookupCondId(dst));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
                                     FormatNodeForError(*dst));
-    state_map_.ResetCondId(dst, id_or.ValueOrDie());
+    state_map_.ResetCondId(dst, id_or.value());
   }
 
   // Incomplete Merge nodes are not supported.
@@ -1199,7 +1199,7 @@ Status FunctionalizeCond::DetermineCondStateNonMerge(Node* dst) {
     auto id_or = JoinCondStatesNonMerge(prop, state_map_.LookupCondId(dst));
     TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
                                     FormatNodeForError(*dst));
-    state_map_.ResetCondId(dst, id_or.ValueOrDie());
+    state_map_.ResetCondId(dst, id_or.value());
   }
   return OkStatus();
 }
@@ -1293,12 +1293,12 @@ Status FunctionalizeCond::RemoveRedundantSwitch(Node* node) {
                                          state_map_.LookupCondId(dst_node));
         TF_RETURN_WITH_CONTEXT_IF_ERROR(id_or.status(), "for node ",
                                         FormatNodeForError(*dst_node));
-        state_map_.ResetCondId(dst_node, id_or.ValueOrDie());
+        state_map_.ResetCondId(dst_node, id_or.value());
       } else {
         auto id_or =
             JoinCondStatesNonMerge(dst_id, state_map_.LookupCondId(dst_node));
         TF_RETURN_IF_ERROR(id_or.status());
-        state_map_.ResetCondId(dst_node, id_or.ValueOrDie());
+        state_map_.ResetCondId(dst_node, id_or.value());
       }
     } else if (BranchType(switch_branch) != b) {
       state_map_.MarkDead(dst_node);
@@ -1528,10 +1528,10 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   // nesting. (CondId, AncestorId) is not enough, e.g.
   //   pred1 = array_ops.placeholder(dtypes.bool, name='pred1')
   //   pred2 = array_ops.placeholder(dtypes.bool, name='pred2')
-  //   cond1 = control_flow_ops.cond(pred1, ...)
-  //   cond2 = control_flow_ops.cond(pred2, ...)
-  //   cond3 = control_flow_ops.cond(pred1, use cond1 and cond2)
-  //   cond4 = control_flow_ops.cond(pred2, use cond1 and cond2)
+  //   cond1 = cond.cond(pred1, ...)
+  //   cond2 = cond.cond(pred2, ...)
+  //   cond3 = cond.cond(pred1, use cond1 and cond2)
+  //   cond4 = cond.cond(pred2, use cond1 and cond2)
   // cond3 and cond4 have the same (CondId, AncestorId), but they should not
   // be merged into one "If" node (because they have different predicates).
   std::deque<std::vector<Node*>> merge_clusters;

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/equal_graph_def.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 
@@ -179,7 +178,7 @@ TEST(EncapsulateXlaComputations, DeterministicEncapsulate) {
       }
     }
     TF_CHECK_OK(EncapsulateXlaComputationsPass::Encapsulate(&graph, &flib_def));
-    return SerializeGraphDeterministic(*graph).ValueOrDie();
+    return SerializeGraphDeterministic(*graph).value();
   };
 
   // Changing the order of control input shouldn't affect the graph generated.

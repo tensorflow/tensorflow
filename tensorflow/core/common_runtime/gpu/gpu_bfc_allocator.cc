@@ -15,9 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
 
+#include <cstdlib>
+#include <cstring>
+#include <memory>
+#include <string>
 #include <utility>
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/tsl/framework/bfc_allocator.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace tensorflow {
 
@@ -77,9 +82,9 @@ bool GetGarbageCollectionValue() {
 }
 }  // anonymous namespace
 
-GPUBFCAllocator::GPUBFCAllocator(std::unique_ptr<SubAllocator> sub_allocator,
-                                 size_t total_memory, const string& name,
-                                 const Options& opts)
+GPUBFCAllocator::GPUBFCAllocator(
+    std::unique_ptr<tsl::SubAllocator> sub_allocator, size_t total_memory,
+    const std::string& name, const Options& opts)
     : BFCAllocator(std::move(sub_allocator), total_memory, name, [&] {
         BFCAllocator::Options o;
         o.allow_growth = GetAllowGrowthValue(opts.allow_growth);

@@ -18,15 +18,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/utils/tpu_xplane_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Find and return TensorCore XPlanes from the XSpace.
-std::vector<const XPlane*> FindTensorCorePlanes(const XSpace& xspace);
-
-// Find and return Mutable TensorCore XPlanes from the XSpace.
-std::vector<XPlane*> FindMutableTensorCorePlanes(XSpace* xspace);
+using tsl::profiler::FindMutableTensorCorePlanes;  // NOLINT
+using tsl::profiler::FindTensorCorePlanes;         // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

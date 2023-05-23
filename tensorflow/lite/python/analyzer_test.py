@@ -38,7 +38,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
     self.assertIn('Subgraph#0(T#1) -> [T#2]', txt)
     self.assertIn('Op#0 ADD(T#1, T#1) -> [T#0]', txt)
     self.assertIn('Op#1 ADD(T#0, T#1) -> [T#2]', txt)
-    self.assertNotIn('Your model looks compatibile with GPU delegate', txt)
+    self.assertNotIn('Your model looks compatible with GPU delegate', txt)
 
   def testMlir(self):
     model_path = resource_loader.get_path_to_datafile('../testdata/add.bin')
@@ -144,7 +144,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
           model_content=fb_model, gpu_compatibility=True)
     txt = mock_stdout.getvalue()
     self.assertIn(
-        'Your model looks compatibile with GPU delegate with TFLite runtime',
+        'Your model looks compatible with GPU delegate with TFLite runtime',
         txt)
 
   def testTxtSignatureDefs(self):

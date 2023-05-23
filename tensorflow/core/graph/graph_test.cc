@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph.h"
 
+#include <memory>
 #include <set>
 #include <unordered_map>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -34,7 +39,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
-namespace {
+
+using ::testing::UnorderedElementsAre;
 
 REGISTER_OP("OneInput").Input("x: float");
 
@@ -68,6 +74,17 @@ class GraphTest : public ::testing::Test {
       out.push_back(e->dst());
     }
     EXPECT_EQ(Stringify(expected_out), Stringify(out));
+  }
+
+  std::unique_ptr<Edge> BuildEdge(int id = 0, Node* src = nullptr,
+                                  Node* dst = nullptr, int x = 0, int y = 0) {
+    Edge* e = new Edge;
+    e->id_ = id;
+    e->src_ = src;
+    e->dst_ = dst;
+    e->src_output_ = x;
+    e->dst_input_ = y;
+    return absl::WrapUnique(e);
   }
 
   void VerifyGraphStats() {
@@ -153,6 +170,8 @@ class GraphTest : public ::testing::Test {
     return result;
   }
 };
+
+namespace {
 
 TEST_F(GraphTest, Constructor) {
   Node* source = graph_.source_node();
@@ -429,20 +448,20 @@ TEST_F(GraphTest, IsValidNode) {
   // nullptr
   Status s = graph_.IsValidNode(nullptr);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_EQ(string("Node is null"), s.error_message());
+  EXPECT_EQ(string("Node is null"), s.message());
 
   // node id_ is too high
   s = graph_.IsValidNode(g2_node2);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(string("node id 3 is >= than number of nodes in graph 3"),
-            s.error_message());
+            s.message());
 
   // valid id_ but different ptr
   s = graph_.IsValidNode(g2_node1);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_EQ(string("Node with id 2 is different from the passed in node. "
                    "Does it belong to a different graph?"),
-            s.error_message());
+            s.message());
 }
 
 TEST_F(GraphTest, AddControlEdge) {
@@ -570,14 +589,14 @@ TEST_F(GraphTest, UpdateEdge) {
   Status s = graph_.UpdateEdge(a, 1, d, 0);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(
-      s.error_message(),
+      s.message(),
       "Node 'A' (type: 'OneOutput', num of outputs: 1) does not have output 1");
 
   // Update a's 1st input which is out of range.
   s = graph_.UpdateEdge(c, 0, a, 0);
   EXPECT_FALSE(s.ok());
   EXPECT_EQ(
-      s.error_message(),
+      s.message(),
       "Node 'A' (type: 'OneOutput', num of inputs: 0) does not have input 0");
 }
 
@@ -589,6 +608,30 @@ TEST_F(GraphTest, InputEdges) {
   EXPECT_EQ(error::INVALID_ARGUMENT, b->input_edges(&edges).code());
   graph_.AddEdge(a, 0, b, 1);
   TF_EXPECT_OK(b->input_edges(&edges));
+}
+
+TEST_F(GraphTest, EdgeDebugString) {
+  // Print valid edge
+  Node* a = FromNodeDef("A", "OneOutput", 0);
+  Node* b = FromNodeDef("B", "OneInput", 1);
+  auto e = graph_.AddEdge(a, 0, b, 0);
+  auto s = e->DebugString();
+  EXPECT_EQ(s, "[id=1 A:0 -> B:0]");
+
+  // Print empty edge
+  auto e1 = BuildEdge();
+  auto s1 = e1->DebugString();
+  EXPECT_EQ(s1, "[id=0 <NULL>:0 -> <NULL>:0]");
+
+  // Print edge with null src node
+  auto e2 = BuildEdge(2, 0, b, 1, 1);
+  auto s2 = e2->DebugString();
+  EXPECT_EQ(s2, "[id=2 <NULL>:1 -> B:1]");
+
+  // Print edge with null dst node
+  auto e3 = BuildEdge(3, a, 0, 2, 1);
+  auto s3 = e3->DebugString();
+  EXPECT_EQ(s3, "[id=3 A:2 -> <NULL>:1]");
 }
 
 TEST_F(GraphTest, AddFunctionLibrary) {
@@ -611,7 +654,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
       error_proto.function(0).node_def(0);
   Status s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'XTimesTwo' because a different function with "
             "the same name already exists.");
 
@@ -620,7 +663,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
   error_proto.mutable_function(0)->mutable_signature()->set_name("Add");
   s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot add function 'Add' because an op with the same name "
             "already exists.");
 
@@ -640,7 +683,7 @@ TEST_F(GraphTest, AddFunctionLibrary) {
   error_proto.mutable_gradient(0)->set_gradient_func("Undefined2");
   s = graph_.AddFunctionLibrary(error_proto);
   EXPECT_FALSE(s.ok());
-  EXPECT_EQ(s.error_message(),
+  EXPECT_EQ(s.message(),
             "Cannot assign gradient function 'Undefined2' to 'XTimesTwo' "
             "because it already has gradient function 'Undefined'");
 }
@@ -672,6 +715,193 @@ TEST_F(GraphTest, Clear) {
   TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
   graph.Clear();
   EXPECT_EQ(graph.num_nodes(), 2);
+}
+
+TEST_F(GraphTest, NodeFullType) {
+  FromNodeDef("A", "OneOutput", 0);
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  FullTypeDef* output_t = node_t.add_args();
+  output_t->set_type_id(TFT_TENSOR);
+  output_t->add_args()->set_type_id(TFT_FLOAT);
+  graph_.SetNodeType("A", node_t);
+
+  const FullTypeDef* ft;
+  graph_.NodeType("A", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
+}
+
+TEST_F(GraphTest, NodeShrinkTypeOutput) {
+  // The inputs and outputs of a While node are the same and described by
+  // attr T.
+  auto builder = NodeDefBuilder("while", "While");
+  builder = builder.Input({NodeDefBuilder::NodeOut("node_0", 0, DT_FLOAT),
+                           NodeDefBuilder::NodeOut("node_1", 0, DT_INT32),
+                           NodeDefBuilder::NodeOut("node_2", 0, DT_INT64),
+                           NodeDefBuilder::NodeOut("node_3", 0, DT_STRING)});
+
+  NodeDef node_def;
+  TF_CHECK_OK(builder.Finalize(&node_def));
+
+  Status s;
+  Node* node = graph_.AddNode(node_def, &s);
+  TF_CHECK_OK(s);
+
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  for (FullTypeId id : {TFT_FLOAT, TFT_INT32, TFT_INT64, TFT_STRING}) {
+    FullTypeDef* output_t = node_t.add_args();
+    output_t->set_type_id(TFT_TENSOR);
+    output_t->add_args()->set_type_id(id);
+  }
+  graph_.SetNodeType("while", node_t);
+
+  // Keep the DT_INT32 and DT_STRING inputs/outputs, removing the other two.
+  TF_CHECK_OK(
+      node->ShrinkTypeInfo({{1, 0}, {3, 1}}, "T", /*update_full_type=*/true));
+
+  std::vector<DataType> new_dtypes;
+  TF_CHECK_OK(GetNodeAttr(node->def(), "T", &new_dtypes));
+
+  ASSERT_EQ(new_dtypes.size(), 2);
+  EXPECT_EQ(new_dtypes[0], DT_INT32);
+  EXPECT_EQ(new_dtypes[1], DT_STRING);
+
+  const FullTypeDef* ft;
+  graph_.NodeType("while", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft->args_size(), 2);
+  ASSERT_EQ(ft->args(0).args_size(), 1);
+  EXPECT_EQ(ft->args(0).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(ft->args(1).args_size(), 1);
+  EXPECT_EQ(ft->args(1).args(0).type_id(), TFT_STRING);
+}
+
+TEST_F(GraphTest, NodeShrinkTypeInput) {
+  // The inputs an If node aredescribed by attr Tin.
+  auto builder = NodeDefBuilder("if", "If");
+  builder = builder.Input("cond", 0, DT_BOOL);
+  builder = builder.Input({NodeDefBuilder::NodeOut("node_0", 0, DT_FLOAT),
+                           NodeDefBuilder::NodeOut("node_1", 0, DT_INT32),
+                           NodeDefBuilder::NodeOut("node_2", 0, DT_INT64),
+                           NodeDefBuilder::NodeOut("node_3", 0, DT_STRING)});
+  builder = builder.Attr("Tout", "[DT_FLOAT, DT_INT32, DT_INT63, DT_STRING]");
+
+  NodeDef node_def;
+  TF_CHECK_OK(builder.Finalize(&node_def));
+
+  Status s;
+  Node* node = graph_.AddNode(node_def, &s);
+  TF_CHECK_OK(s);
+
+  FullTypeDef node_t;
+  node_t.set_type_id(TFT_PRODUCT);
+  for (FullTypeId id : {TFT_FLOAT, TFT_INT32, TFT_INT64, TFT_STRING}) {
+    FullTypeDef* output_t = node_t.add_args();
+    output_t->set_type_id(TFT_TENSOR);
+    output_t->add_args()->set_type_id(id);
+  }
+  graph_.SetNodeType("if", node_t);
+
+  // Keep the DT_INT32 and DT_STRING inputs, removing the other two.
+  TF_CHECK_OK(node->ShrinkTypeInfo({{1, 0}, {3, 1}}, "Tin",
+                                   /*update_full_type=*/false));
+
+  std::vector<DataType> new_dtypes;
+  TF_CHECK_OK(GetNodeAttr(node->def(), "Tin", &new_dtypes));
+
+  ASSERT_EQ(new_dtypes.size(), 2);
+  EXPECT_EQ(new_dtypes[0], DT_INT32);
+  EXPECT_EQ(new_dtypes[1], DT_STRING);
+
+  // Full type information is unchanged.
+  const FullTypeDef* ft;
+  graph_.NodeType("if", &ft);
+  EXPECT_NE(ft, nullptr);
+  EXPECT_EQ(ft->type_id(), TFT_PRODUCT);
+  ASSERT_EQ(ft->args_size(), 4);
+  ASSERT_EQ(ft->args(0).args_size(), 1);
+  EXPECT_EQ(ft->args(0).args(0).type_id(), TFT_FLOAT);
+  ASSERT_EQ(ft->args(1).args_size(), 1);
+  EXPECT_EQ(ft->args(1).args(0).type_id(), TFT_INT32);
+  ASSERT_EQ(ft->args(2).args_size(), 1);
+  EXPECT_EQ(ft->args(2).args(0).type_id(), TFT_INT64);
+  ASSERT_EQ(ft->args(3).args_size(), 1);
+  EXPECT_EQ(ft->args(3).args(0).type_id(), TFT_STRING);
+}
+
+TEST_F(GraphTest, BuildDebugInfo) {
+  class TestStackTrace : public AbstractStackTrace {
+   public:
+    explicit TestStackTrace(const std::vector<StackFrame> frames)
+        : frames_(std::move(frames)) {}
+
+    absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+
+    std::vector<StackFrame> GetUserFrames(int limit) const override {
+      return frames_;
+    }
+
+    StackFrame LastUserFrame() const override { return frames_.back(); }
+
+    string ToString(const TracePrintingOptions& opts) const override {
+      StackFrame frame = LastUserFrame();
+      return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
+                          frame.function_name);
+    }
+
+    std::vector<StackFrame> frames_;
+  };
+
+  FunctionDef func = test::function::XTimesTwo();
+
+  // Hard-code the node names "two", "scale", and "y" from XTimesTwo.
+  StackTracesMap stack_traces;
+  stack_traces["two"] = std::make_shared<TestStackTrace>(
+      std::vector<StackFrame>{{"dummy_file_alpha.cc", 20, "function_bar"},
+                              {"dummy_file_beta.cc", 30, "function_sop"}});
+  stack_traces["scale"] =
+      std::make_shared<TestStackTrace>(std::vector<StackFrame>{
+          {"dummy_file_alpha.cc", 10, "function_foo"},
+          {"dummy_file_beta.cc", 30, "function_sop"},
+      });
+  stack_traces["y"] = std::make_shared<TestStackTrace>(std::vector<StackFrame>{
+      {"dummy_file_alpha.cc", 15, "function_flex"},
+      {"dummy_file_alpha.cc", 20, "function_bar"},
+      {"dummy_file_beta.cc", 30, "function_sop"},
+  });
+
+  TF_CHECK_OK(graph_.AddFunctionDef(func, stack_traces));
+
+  GraphDebugInfo debug_info = graph_.BuildDebugInfo();
+
+  EXPECT_THAT(debug_info.files(), UnorderedElementsAre("dummy_file_alpha.cc",
+                                                       "dummy_file_beta.cc"));
+  EXPECT_EQ(debug_info.traces_size(), 3);
+
+  // Examine one of the three stack traces in detail.
+  EXPECT_NE(debug_info.traces().find("scale@XTimesTwo"),
+            debug_info.traces().end());
+  GraphDebugInfo::StackTrace stack_trace =
+      debug_info.traces().find("scale@XTimesTwo")->second;
+  EXPECT_EQ(stack_trace.file_line_cols_size(), 2);
+
+  // `FileLineCol.file_index` is non-deterministic because the GraphDebugInfo is
+  // built by accumulating all file names into a set, and then storing that in
+  // the `files` field in an arbitrary order.
+  const GraphDebugInfo::FileLineCol& file_line_col_0 =
+      stack_trace.file_line_cols(0);
+  const GraphDebugInfo::FileLineCol& file_line_col_1 =
+      stack_trace.file_line_cols(1);
+  EXPECT_THAT(std::vector<int>(
+                  {file_line_col_0.file_index(), file_line_col_1.file_index()}),
+              UnorderedElementsAre(0, 1));
+  EXPECT_EQ(file_line_col_0.line(), 10);
+  EXPECT_EQ(file_line_col_0.func(), "function_foo");
+  EXPECT_EQ(file_line_col_1.line(), 30);
+  EXPECT_EQ(file_line_col_1.func(), "function_sop");
 }
 
 void BM_InEdgeIteration(::testing::benchmark::State& state) {

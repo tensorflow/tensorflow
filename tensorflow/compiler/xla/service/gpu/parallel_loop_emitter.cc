@@ -17,8 +17,8 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Value.h"

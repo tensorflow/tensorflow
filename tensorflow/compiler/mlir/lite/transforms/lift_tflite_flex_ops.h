@@ -26,6 +26,9 @@ namespace TFL {
 // ops into TF dialect operations.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
 
+void AddLiftTfliteFlexOpsPatterns(MLIRContext *context,
+                                  RewritePatternSet &patterns);
+
 }  // namespace TFL
 }  // namespace mlir
 

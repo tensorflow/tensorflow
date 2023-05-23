@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -36,9 +36,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
-
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 
@@ -57,24 +54,6 @@ using GraphRunnerGrad = std::function<void(
 template <typename T>
 class CommonTestUtilities : public OpsTestBase {
  public:
-  void PerformConversion(DataType dtype, const Tensor& tensor,
-                         const Tensor& mkl_meta_tensor, Tensor* output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // Mkl second tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklLayoutDependentOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(tensor.shape(), tensor.flat<T>());
-    AddInputFromArray<uint8>(mkl_meta_tensor.shape(),
-                             mkl_meta_tensor.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    *output = *GetOutput(0);
-  }
-
   void TestBody() {}
 
   static void VerifyTensorsClose(const float exponential_avg_factor,
@@ -180,7 +159,8 @@ class CommonTestUtilities : public OpsTestBase {
     ASSERT_EQ(offset_backprop.shape(), mkl_offset_backprop.shape());
 
     test::ExpectClose(output, mkl_output, 1e-5);
-    test::ExpectClose(scale_backprop, mkl_scale_backprop, 1e-5);
+    test::ExpectClose(scale_backprop, mkl_scale_backprop, /*atol=*/1e-5,
+                      /*rtol=*/1e-5);
     test::ExpectClose(offset_backprop, mkl_offset_backprop, 1e-5);
   }
 
@@ -193,29 +173,23 @@ class Conv2DOpTest : public OpsTestBase {
   void TestBody() {}
 
  public:
-  void RunConv2D(const Tensor& input, const Tensor& filter, Tensor* output,
-                 Tensor* meta_output) {
+  void RunConv2D(const Tensor& input, const Tensor& filter, Tensor* output) {
     DataType dtype = DataTypeToEnum<T>::v();
 
-    TF_EXPECT_OK(NodeDefBuilder("MklConv2D", "_MklConv2D")
+    TF_EXPECT_OK(NodeDefBuilder("MklConv2D", "_MklNativeConv2D")
                      .Input(FakeInput(dtype))
                      .Input(FakeInput(dtype))
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
                      .Attr("strides", {1, 1, 1, 1})
                      .Attr("padding", "SAME")
                      .Attr("data_format", "NHWC")
-                     .Attr("_kernel", "MklLayoutDependentOp")
+                     .Attr("_kernel", "MklNameChangeOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     AddInputFromArray<T>(input.shape(), input.flat<T>());
     AddInputFromArray<T>(filter.shape(), filter.flat<T>());
-    for (int i = 0; i < 2; ++i)
-      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     TF_ASSERT_OK(RunOpKernel());
 
     *output = *GetOutput(0);
-    *meta_output = *GetOutput(2);
   }
 };
 
@@ -277,37 +251,18 @@ class FusedBatchNormOpTest : public OpsTestBase {
                                        const bool is_training, Tensor* output,
                                        Tensor* batch_mean, Tensor* batch_var) {
       DataType dtype = DataTypeToEnum<T>::v();
-      if (!NativeFormatEnabled()) {
-        TF_EXPECT_OK(NodeDefBuilder("MklFusedBatchNorm", "_MklFusedBatchNorm")
-                         .Input(FakeInput(dtype))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_UINT8))
-                         .Input(FakeInput(DT_UINT8))
-                         .Input(FakeInput(DT_UINT8))
-                         .Input(FakeInput(DT_UINT8))
-                         .Input(FakeInput(DT_UINT8))
-                         .Attr("exponential_avg_factor", exponential_avg_factor)
-                         .Attr("epsilon", 0.001)
-                         .Attr("is_training", is_training)
-                         .Attr("_kernel", "MklLayoutDependentOp")
-                         .Finalize(node_def()));
-      } else {
-        TF_EXPECT_OK(NodeDefBuilder("MklNativeFusedBatchNorm",
-                                    "_MklNativeFusedBatchNorm")
-                         .Input(FakeInput(dtype))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Input(FakeInput(DT_FLOAT))
-                         .Attr("exponential_avg_factor", exponential_avg_factor)
-                         .Attr("epsilon", 0.001)
-                         .Attr("is_training", is_training)
-                         .Attr("_kernel", "MklNameChangeOp")
-                         .Finalize(node_def()));
-      }
+      TF_EXPECT_OK(
+          NodeDefBuilder("MklNativeFusedBatchNorm", "_MklNativeFusedBatchNorm")
+              .Input(FakeInput(dtype))
+              .Input(FakeInput(DT_FLOAT))
+              .Input(FakeInput(DT_FLOAT))
+              .Input(FakeInput(DT_FLOAT))
+              .Input(FakeInput(DT_FLOAT))
+              .Attr("exponential_avg_factor", exponential_avg_factor)
+              .Attr("epsilon", 0.001)
+              .Attr("is_training", is_training)
+              .Attr("_kernel", "MklNameChangeOp")
+              .Finalize(node_def()));
       TF_EXPECT_OK(InitOp());
 
       AddInputFromArray<T>(input.shape(), input.flat<T>());
@@ -315,29 +270,11 @@ class FusedBatchNormOpTest : public OpsTestBase {
       AddInputFromArray<float>(offset.shape(), offset.flat<float>());
       AddInputFromArray<float>(mean.shape(), mean.flat<float>());
       AddInputFromArray<float>(variance.shape(), variance.flat<float>());
-      if (!NativeFormatEnabled()) {
-        for (int i = 0; i < 5; ++i)
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-      }
       TF_ASSERT_OK(RunOpKernel());
 
-      if (!NativeFormatEnabled()) {
-        CommonTestUtilities<T> test_util;
-        test_util.PerformConversion(dtype, *GetOutput(0), *GetOutput(5),
-                                    output);
-
-        CommonTestUtilities<T> test_util_mean;
-        test_util_mean.PerformConversion(dtype, *GetOutput(1), *GetOutput(6),
-                                         batch_mean);
-
-        CommonTestUtilities<T> test_util_var;
-        test_util_var.PerformConversion(dtype, *GetOutput(2), *GetOutput(7),
-                                        batch_var);
-      } else {
-        *output = *GetOutput(0);
-        *batch_mean = *GetOutput(1);
-        *batch_var = *GetOutput(2);
-      }
+      *output = *GetOutput(0);
+      *batch_mean = *GetOutput(1);
+      *batch_var = *GetOutput(2);
     };
 
     CommonTestUtilities<T>::VerifyTensorsClose(exponential_avg_factor,
@@ -345,8 +282,6 @@ class FusedBatchNormOpTest : public OpsTestBase {
   }
 
   void VerifyFusedBatchNormGradWithConv2D(const float epsilon) {
-#ifdef ENABLE_MKL
-    // This test only runs with MKL blocked format.
     const GraphRunnerGrad run =
         [this](const Tensor& input, const Tensor& filter,
                const Tensor& y_backprop, const Tensor& scale,
@@ -415,31 +350,24 @@ class FusedBatchNormOpTest : public OpsTestBase {
                const Tensor& res_sp3, Tensor* x_backprop_tensor,
                Tensor* scale_backprop_tensor, Tensor* offset_backprop_tensor,
                const float epsilon) {
-          Tensor conv2d_output, conv2d_meta_output;
+          Tensor conv2d_output;
           Conv2DOpTest<T> conv2d_test;
-          conv2d_test.RunConv2D(input, filter, &conv2d_output,
-                                &conv2d_meta_output);
+          conv2d_test.RunConv2D(input, filter, &conv2d_output);
 
           DataType dtype = DataTypeToEnum<T>::v();
-          TF_EXPECT_OK(
-              NodeDefBuilder("MklFusedBatchNorm", "_MklFusedBatchNormGradV3")
-                  .Input(FakeInput(dtype))
-                  .Input(FakeInput(dtype))
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_FLOAT))
-                  .Input(FakeInput(DT_UINT8))
-                  .Input(FakeInput(DT_UINT8))
-                  .Input(FakeInput(DT_UINT8))
-                  .Input(FakeInput(DT_UINT8))
-                  .Input(FakeInput(DT_UINT8))
-                  .Input(FakeInput(DT_UINT8))
-                  .Attr("epsilon", epsilon)
-                  .Attr("is_training", true)
-                  .Attr("data_format", "NHWC")
-                  .Attr("_kernel", "MklLayoutDependentOp")
-                  .Finalize(node_def()));
+          TF_EXPECT_OK(NodeDefBuilder("MklFusedBatchNorm",
+                                      "_MklNativeFusedBatchNormGradV3")
+                           .Input(FakeInput(dtype))
+                           .Input(FakeInput(dtype))
+                           .Input(FakeInput(DT_FLOAT))
+                           .Input(FakeInput(DT_FLOAT))
+                           .Input(FakeInput(DT_FLOAT))
+                           .Input(FakeInput(DT_FLOAT))
+                           .Attr("epsilon", epsilon)
+                           .Attr("is_training", true)
+                           .Attr("data_format", "NHWC")
+                           .Attr("_kernel", "MklNameChangeOp")
+                           .Finalize(node_def()));
           TF_EXPECT_OK(InitOp());
 
           AddInputFromArray<T>(y_backprop.shape(), y_backprop.flat<T>());
@@ -448,30 +376,14 @@ class FusedBatchNormOpTest : public OpsTestBase {
           AddInputFromArray<float>(mean.shape(), mean.flat<float>());
           AddInputFromArray<float>(variance.shape(), variance.flat<float>());
           AddInputFromArray<float>(res_sp3.shape(), res_sp3.flat<float>());
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-          AddInputFromArray<uint8>(conv2d_meta_output.shape(),
-                                   conv2d_meta_output.flat<uint8>());
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
-          AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
           TF_ASSERT_OK(RunOpKernel());
 
-          CommonTestUtilities<T> test_util;
-          test_util.PerformConversion(dtype, *GetOutput(0), *GetOutput(5),
-                                      x_backprop_tensor);
-
-          CommonTestUtilities<T> test_util_mean;
-          test_util_mean.PerformConversion(dtype, *GetOutput(1), *GetOutput(6),
-                                           scale_backprop_tensor);
-
-          CommonTestUtilities<T> test_util_var;
-          test_util_var.PerformConversion(dtype, *GetOutput(2), *GetOutput(7),
-                                          offset_backprop_tensor);
+          *x_backprop_tensor = *GetOutput(0);
+          *scale_backprop_tensor = *GetOutput(1);
+          *offset_backprop_tensor = *GetOutput(2);
         };
 
     CommonTestUtilities<T>::VerifyTensorsCloseForGrad(epsilon, run, run_mkl);
-#endif  // ENABLE_MKL
   }
 };
 
@@ -516,4 +428,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormOpTest,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

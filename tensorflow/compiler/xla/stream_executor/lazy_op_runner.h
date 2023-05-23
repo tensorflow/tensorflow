@@ -16,6 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_LAZY_OP_RUNNER_H_
 
+#include <atomic>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+
+#include "absl/base/call_once.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 
@@ -50,10 +57,10 @@ class LazyOpRunner {
  public:
   // Construct from a pre-initialized OpRunner; all calls to GetOrCreateRunner
   // will return a pointer to exactly this runner.
-  static port::StatusOr<std::unique_ptr<LazyOpRunner>> FromOpRunner(
+  static tsl::StatusOr<std::unique_ptr<LazyOpRunner>> FromOpRunner(
       std::unique_ptr<const OpRunner<typename Op::Signature>> runner) {
     if (!runner) {
-      return port::InternalError("Null runner argument to FromOpRunner");
+      return tsl::errors::Internal("Null runner argument to FromOpRunner");
     }
     TF_ASSIGN_OR_RETURN(auto desc, runner->ToAlgorithmDesc());
     // Private constructor cannot be called by make_unique :(
@@ -75,23 +82,29 @@ class LazyOpRunner {
   // executor will be errors.
   //
   // The result is owned by LazyOpRunner.
-  port::StatusOr<const OpRunner<typename Op::Signature>*> GetOrCreateRunner(
+  tsl::StatusOr<const OpRunner<typename Op::Signature>*> GetOrCreateRunner(
       typename Op::Config config, Stream* stream) {
-    absl::MutexLock lock(&mu_);
-    if (!runner_) {
-      TF_ASSIGN_OR_RETURN(runner_, Op::RunnerFromAlgorithmDesc(
-                                       desc_, std::move(config), stream));
-    }
+    absl::call_once(once_flag_, [&] {
+      if (runner_) return;  // runner was passed via constructor argument
+
+      auto r = Op::RunnerFromAlgorithmDesc(desc_, std::move(config), stream);
+      if (!r.ok()) {
+        error_ = std::move(r).status();
+      } else {
+        runner_ = std::move(r).value();
+      }
+    });
+
+    if (!error_.ok()) return error_;
     return runner_.get();
   }
 
   // Get the contained runner with the invariant that it's already initialized.
-  port::StatusOr<const OpRunner<typename Op::Signature>*> GetRunner() {
-    absl::MutexLock lock(&mu_);
-    if (!runner_) {
-      return port::InternalError("LazyOpRunner::GetRunner: not initialized");
+  tsl::StatusOr<const OpRunner<typename Op::Signature>*> GetRunner() {
+    if (auto* runner = runner_ptr_.load(std::memory_order_acquire)) {
+      return runner;
     }
-    return runner_.get();
+    return tsl::errors::Internal("LazyOpRunner::GetRunner: not initialized");
   }
 
   bool operator==(const LazyOpRunner& other) const {
@@ -105,12 +118,21 @@ class LazyOpRunner {
  private:
   LazyOpRunner(AlgorithmDesc desc,
                std::unique_ptr<const OpRunner<typename Op::Signature>> runner)
-      : desc_(std::move(desc)), runner_(std::move(runner)) {}
+      : desc_(std::move(desc)),
+        error_(tsl::OkStatus()),
+        runner_(std::move(runner)),
+        runner_ptr_(runner_.get()) {}
 
   AlgorithmDesc desc_;
-  absl::Mutex mu_;
-  std::unique_ptr<const OpRunner<typename Op::Signature>> runner_
-      ABSL_GUARDED_BY(mu_);
+
+  // We use absl::call_once to lazily initialize `runner_` (or `error_`).
+  absl::once_flag once_flag_;
+  tsl::Status error_;  // holds error if runner can't be initialized
+  std::unique_ptr<const OpRunner<typename Op::Signature>> runner_;
+
+  // Once we initialize `runner_` we publish a pointer through atomic so that
+  // `GetRunner` can read it without data races with initialization.
+  std::atomic<const OpRunner<typename Op::Signature>*> runner_ptr_;
 };
 
 // Implementation of the concept required by LazyOpRunner, for ConvRunner.
@@ -126,7 +148,7 @@ struct ConvOp {
     const ConvolutionDescriptor& convolution_descriptor;
   };
 
-  static port::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<ConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
     return stream->ConvolveRunnerFromDesc(
@@ -152,7 +174,7 @@ struct FusedConvOp {
     ActivationMode activation_mode;
   };
 
-  static port::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedConvSignature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
     return stream->FusedConvolveRunnerFromDesc(
@@ -174,10 +196,118 @@ struct FusedMatmulOp {
   // this feature.
   struct Config {};
 
-  static port::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<Signature>>>
   RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
                           Stream* stream) {
-    return port::UnimplementedError("Unimplemented");
+    return tsl::errors::Unimplemented("Unimplemented");
+  }
+};
+
+struct FusedMHASoftmaxOp {
+  using Signature = FusedMHASoftmaxSignature;
+
+  struct Config {
+    FusedMHAKind kind;
+    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
+    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
+    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
+    const TensorDescriptor& output_descriptor;
+    std::optional<double> dropout_rate;
+    std::optional<int64_t> seed;
+  };
+
+  static tsl::StatusOr<
+      std::unique_ptr<const OpRunner<FusedMHASoftmaxSignature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->FusedMHASoftmaxRunnerFromDesc(
+        desc, config.kind, config.bmm1_lhs_descriptor,
+        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
+        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
+        config.dropout_rate, config.seed);
+  }
+};
+
+struct FusedMHAScaleMaskSoftmaxOp {
+  using Signature = FusedMHAMaskSignature;
+
+  struct Config {
+    FusedMHAKind kind;
+    double scale;
+    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
+    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
+    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
+    const TensorDescriptor& output_descriptor;
+    const TensorDescriptor& mask_descriptor;
+    std::optional<double> dropout_rate;
+    std::optional<int64_t> seed;
+  };
+
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedMHAMaskSignature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->FusedMHAScaleMaskSoftmaxRunnerFromDesc(
+        desc, config.kind, config.bmm1_lhs_descriptor,
+        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
+        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
+        config.mask_descriptor, config.scale, config.dropout_rate, config.seed);
+  }
+};
+
+struct FusedMHAScaleBiasMaskSoftmaxOp {
+  using Signature = FusedMHABiasMaskSignature;
+  struct Config {
+    FusedMHAKind kind;
+    double scale;
+    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
+    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
+    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
+    const TensorDescriptor& output_descriptor;
+    const TensorDescriptor& bias_descriptor;
+    const TensorDescriptor& mask_descriptor;
+    std::optional<double> dropout_rate;
+    std::optional<int64_t> seed;
+  };
+
+  static tsl::StatusOr<
+      std::unique_ptr<const OpRunner<FusedMHABiasMaskSignature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->FusedMHAScaleBiasMaskSoftmaxRunnerFromDesc(
+        desc, config.kind, config.bmm1_lhs_descriptor,
+        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
+        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
+        config.mask_descriptor, config.bias_descriptor, config.scale,
+        config.dropout_rate, config.seed);
+  }
+};
+
+struct FusedMHAScaleBiasSoftmaxOp {
+  using Signature = FusedMHABiasSignature;
+  struct Config {
+    FusedMHAKind kind;
+    double scale;
+    const MatmulTensorDescriptor& bmm1_lhs_descriptor;
+    const MatmulTensorDescriptor& bmm1_rhs_descriptor;
+    const MatmulTensorDescriptor& bmm2_rhs_descriptor;
+    const MatmulTensorDescriptor& intermediate_bmm2_lhs_descriptor;
+    const TensorDescriptor& output_descriptor;
+    const TensorDescriptor& bias_descriptor;
+    std::optional<double> dropout_rate;
+    std::optional<int64_t> seed;
+  };
+
+  static tsl::StatusOr<std::unique_ptr<const OpRunner<FusedMHABiasSignature>>>
+  RunnerFromAlgorithmDesc(const AlgorithmDesc& desc, Config config,
+                          Stream* stream) {
+    return stream->FusedMHAScaleBiasSoftmaxRunnerFromDesc(
+        desc, config.kind, config.bmm1_lhs_descriptor,
+        config.bmm1_rhs_descriptor, config.bmm2_rhs_descriptor,
+        config.intermediate_bmm2_lhs_descriptor, config.output_descriptor,
+        config.bias_descriptor, config.scale, config.dropout_rate, config.seed);
   }
 };
 

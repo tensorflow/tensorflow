@@ -34,9 +34,20 @@ inline std::string OpName(mlir::Operation* op) {
   return ref.str();
 }
 
+inline std::string GetFullOpName(const std::string& name) {
+  return "tf." + name;
+}
+
 // Returns FuncOp if `op` is a callable.
 absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op);
 
+// DTensorLayout only conveys layout information of tensors which is no
+// longer needed after SPMD expansion. As so, remove all layouts from
+// graph.
+//
+// If `remove_xla_spmd_layouts` is set to false, then Layouts that have
+// Mesh config with use_xla_spmd=True will not be deleted.
+//
 // Removes tf.DTensorLayout op and forwards it's input to it's users.
 // For example:
 //   %0 = tf.A()
@@ -46,8 +57,25 @@ absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op);
 // Will be converted to:
 //   %0 = tf.A()
 //   %2 = tf.B(%0)
-void RemoveDTensorLayoutOp(mlir::TF::DTensorLayout layout);
+void RemoveDTensorLayoutOps(mlir::ModuleOp module,
+                            bool remove_xla_spmd_layouts);
 
+// Canonicalizer and DCE transformation passes may removed ops in the graph and
+// result in multiple consecutive DTensorLayout ops. Detect all such cases and
+// replace unnecessary DTensorLayout ops with Identity ops.
+//
+// Removes tf.DTensorLayouts and inserts a tf.Identity.
+// For example:
+//   %0 = tf.DTensorLayout(arg0)
+//   %1 = tf.DTensorLayout(%0)
+//   %2 = tf.Add(%1, %1)
+//
+// Will be converted to:
+//   %0 = tf.Identity(arg0)
+//   %1 = tf.DTensorLayout(%0)
+//   %2 = tf.Add(%1, %1)
+mlir::LogicalResult ReplaceAuxiliaryDTensorLayoutOpsWithIdentity(
+    mlir::ModuleOp module);
 }  // namespace dtensor
 }  // namespace tensorflow
 

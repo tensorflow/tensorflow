@@ -18,4 +18,10 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/init_main.h"
 
+namespace tensorflow {
+namespace port {
+using tsl::port::InitMain;
+}  // namespace port
+}  // namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_PLATFORM_INIT_MAIN_H_

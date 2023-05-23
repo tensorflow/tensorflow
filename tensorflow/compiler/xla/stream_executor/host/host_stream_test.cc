@@ -18,15 +18,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace se = stream_executor;
 
 TEST(HostStream, EnforcesFIFOOrder) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
 
@@ -49,31 +50,31 @@ TEST(HostStream, EnforcesFIFOOrder) {
 
 TEST(HostStream, ReportsHostCallbackError) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error!"); });
+      []() { return tsl::errors::Internal("error!"); });
 
-  se::port::Status status = stream.BlockHostUntilDone();
-  ASSERT_EQ(status.code(), tensorflow::error::INTERNAL);
-  ASSERT_EQ(status.error_message(), "error!");
+  auto status = stream.BlockHostUntilDone();
+  ASSERT_EQ(status.code(), tsl::error::INTERNAL);
+  ASSERT_EQ(status.message(), "error!");
 }
 
 TEST(HostStream, ReportsFirstHostCallbackError) {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  se::StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+      se::MultiPlatformManager::PlatformWithName("Host").value();
+  se::StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   se::Stream stream(executor);
   stream.Init();
 
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error 1"); });
+      []() { return tsl::errors::Internal("error 1"); });
   stream.ThenDoHostCallbackWithStatus(
-      []() { return se::port::InternalError("error 2"); });
+      []() { return tsl::errors::Internal("error 2"); });
 
   // "error 2" is just lost.
-  ASSERT_EQ(stream.BlockHostUntilDone().error_message(), "error 1");
+  ASSERT_EQ(stream.BlockHostUntilDone().message(), "error 1");
 }

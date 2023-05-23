@@ -13,15 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/tsl/platform/resource_loader.h"
 
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/path.h"
+#include <cstdlib>
+
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/test.h"
 #include "tools/cpp/runfiles/runfiles.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
 
-namespace tensorflow {
+namespace tsl {
 
 std::string GetDataDependencyFilepath(const std::string& relative_path) {
   std::string error;
@@ -31,7 +34,10 @@ std::string GetDataDependencyFilepath(const std::string& relative_path) {
     LOG(FATAL) << "Unable to access the data dependencies of this test.\n"
                   "Make sure you are running this test using bazel.";
   }
-  return runfiles->Rlocation(io::JoinPath("org_tensorflow", relative_path));
+
+  const char* workspace_cstr = std::getenv("TEST_WORKSPACE");
+  EXPECT_THAT(workspace_cstr, ::testing::NotNull());
+  return runfiles->Rlocation(io::JoinPath(workspace_cstr, relative_path));
 }
 
-}  // namespace tensorflow
+}  // namespace tsl

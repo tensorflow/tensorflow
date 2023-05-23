@@ -26,6 +26,8 @@ namespace tensorflow {
 // compilation device type.
 inline constexpr absl::string_view kCompileDeviceTypeAttr =
     "_xla_compile_device_type";
+// Marks a node for XLA compilation.
+inline constexpr absl::string_view kMustCompileAttr = "_XlaMustCompile";
 // Marks a node for replication. The attribute value indicates the replication
 // metadata op.
 inline constexpr absl::string_view kReplicationInfoAttr = "_replication_info";
@@ -40,11 +42,14 @@ inline constexpr absl::string_view kXlaOutsideCompilationAttr =
 inline constexpr absl::string_view kXlaFrontendAttributesAttrName =
     "_XlaFrontendAttributes";
 // Device types.
+inline constexpr absl::string_view kDeviceAttr = "device";
 inline constexpr absl::string_view kCpuDevice = "CPU";
 inline constexpr absl::string_view kGpuDevice = "GPU";
 inline constexpr absl::string_view kTpuDevice = "TPU";
-inline constexpr std::array<absl::string_view, 3> kValidDeviceTypes = {
-    kCpuDevice, kGpuDevice, kTpuDevice};
+inline constexpr absl::string_view kEmptyDevice = "";
+// Device type may be empty in ops such as TF.PartitionedCall.
+inline constexpr std::array<absl::string_view, 4> kValidDeviceTypes = {
+    kCpuDevice, kGpuDevice, kTpuDevice, kEmptyDevice};
 // Attributes that need to be propagated during rewrites (e.g., in
 // functionalization).
 inline constexpr std::array<absl::string_view, 5> kAttrsToPropagate = {

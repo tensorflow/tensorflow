@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 
 #if !defined(IS_MOBILE_PLATFORM) && defined(PLATFORM_POSIX) && \
     (defined(__clang__) || defined(__GNUC__))
@@ -28,13 +28,14 @@ limitations under the License.
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>
+
 #include <string>
 
-#include "tensorflow/core/platform/stacktrace.h"
+#include "tensorflow/tsl/platform/stacktrace.h"
 
 #endif  // defined(TF_GENERATE_STACKTRACE)
 
-namespace tensorflow {
+namespace tsl {
 namespace testing {
 
 #if defined(TF_GENERATE_STACKTRACE)
@@ -132,4 +133,4 @@ void InstallStacktraceHandler() {}
 #endif  // defined(TF_GENERATE_STACKTRACE)
 
 }  // namespace testing
-}  // namespace tensorflow
+}  // namespace tsl

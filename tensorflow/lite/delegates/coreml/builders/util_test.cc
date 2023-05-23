@@ -18,7 +18,8 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/lite/core/c/common.h"
 
 using tflite::delegates::coreml::IsBinaryOpSupported;
 
@@ -37,6 +38,7 @@ class IsBinaryOpSupportedTest : public testing::Test {
 
     for (auto& tensor : tensors_) {
       tensor.allocation_type = kTfLiteArenaRw;
+      tensor.type = kTfLiteFloat32;
       tensor.dims = nullptr;
     }
   }
@@ -107,4 +109,34 @@ TEST_F(IsBinaryOpSupportedTest, NotSupportedBroadcastTest) {
     FreeInputShapes();
   }
 }
+
+TEST_F(IsBinaryOpSupportedTest, SupportConstFloat16InputTest) {
+  tensors_[0].allocation_type = kTfLiteMmapRo;
+  tensors_[0].type = kTfLiteFloat16;
+  SetInputShapes({{2, 2, 3}, {2, 2, 3}});
+  ASSERT_TRUE(IsBinaryOpSupported(nullptr, &node_, &context_));
+}
+
+TEST_F(IsBinaryOpSupportedTest, NotSupportNonConstFloat16InputTest) {
+  tensors_[0].allocation_type = kTfLiteArenaRw;
+  tensors_[0].type = kTfLiteFloat16;
+  SetInputShapes({{2, 2, 3}, {2, 2, 3}});
+  ASSERT_FALSE(IsBinaryOpSupported(nullptr, &node_, &context_));
+}
+
+TEST(UtilTest, GetScalarFloatFromTensorTest) {
+  std::vector<Eigen::half> half{Eigen::half{-535.54f}};
+  std::vector<float> float32{-535.54f};
+  TfLiteTensor tensor;
+  tensor.type = kTfLiteFloat16;
+  tensor.data.data = reinterpret_cast<uint16_t*>(half.data());
+  EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
+              testing::FloatNear(-535.54f, 0.1f));
+
+  tensor.type = kTfLiteFloat32;
+  tensor.data.data = float32.data();
+  EXPECT_THAT(tflite::delegates::coreml::GetScalarFloatFromTensor(&tensor),
+              testing::FloatNear(-535.54f, 0.f));
+}
+
 }  // namespace

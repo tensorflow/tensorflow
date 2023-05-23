@@ -21,7 +21,7 @@ limitations under the License.
 #include <string_view>
 #include <system_error>  // NOLINT
 
-#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/tsl/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/compiler/xla/runtime/google/memory_mapper.h"

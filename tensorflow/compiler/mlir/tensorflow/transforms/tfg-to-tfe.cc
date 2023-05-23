@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/core/transforms/toposort/pass.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -124,10 +123,10 @@ static void SplitNextIteration(Block &block) {
     auto source_op = builder.create<tf_executor::NextIterationSourceOp>(
         op->getLoc(), op->getOperand(0).getType());
     builder.create<tf_executor::NextIterationSinkOp>(
-        op->getLoc(), source_op.token(), /*input=*/op->getOperand(0),
+        op->getLoc(), source_op.getToken(), /*input=*/op->getOperand(0),
         /*controlInputs=*/new_operands);
     op->replaceAllUsesWith(
-        ValueRange({source_op.output(), source_op.control()}));
+        ValueRange({source_op.getOutput(), source_op.getControl()}));
     op->erase();
   });
 }
@@ -150,11 +149,11 @@ class ConvertGraphOp : public OpConversionPattern<tfg::GraphOp> {
     rewriter.setInsertionPointToStart(func.addEntryBlock());
     auto executor_graph =
         rewriter.create<tf_executor::GraphOp>(loc, func_type.getResults());
-    rewriter.inlineRegionBefore(graph.nodes(), executor_graph.body(),
-                                executor_graph.body().end());
+    rewriter.inlineRegionBefore(graph.getNodes(), executor_graph.getBody(),
+                                executor_graph.getBody().end());
 
     // Add terminator of tf_executor::graph
-    rewriter.setInsertionPointToEnd(&executor_graph.body().front());
+    rewriter.setInsertionPointToEnd(&executor_graph.getBody().front());
     rewriter.create<tf_executor::FetchOp>(loc);
 
     // Add terminator of func
@@ -174,7 +173,7 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
   LogicalResult matchAndRewrite(
       tfg::GraphFuncOp graph_func, OpAdaptor adaptor,
       ConversionPatternRewriter &rewriter) const final {
-    assert(!graph_func.generic());
+    assert(!graph_func.getGeneric());
     Location loc = graph_func.getLoc();
     FunctionType ftype = graph_func.getFunctionType();
 
@@ -216,15 +215,15 @@ class ConvertGraphFuncOp : public OpConversionPattern<tfg::GraphFuncOp> {
     // can't erase the arguments here because the operations may still use them
     // and these uses will be dropped after legalization of each op.
     unsigned idx = 0;
-    Block &block = graph_func.body().front();
+    Block &block = graph_func.getBody().front();
     for (auto iter = block.args_begin(), end_iter = block.args_end();
          iter != end_iter; ++iter) {
       if (!iter->getType().isa<tfg::ControlType>())
         iter->replaceAllUsesWith(func.getBody().getArgument(idx++));
     }
 
-    rewriter.inlineRegionBefore(graph_func.body(), executor_graph.body(),
-                                executor_graph.body().end());
+    rewriter.inlineRegionBefore(graph_func.getBody(), executor_graph.getBody(),
+                                executor_graph.getBody().end());
 
     rewriter.setInsertionPointToEnd(&func.getBody().front());
     rewriter.create<func::ReturnOp>(
@@ -424,9 +423,9 @@ class ConvertGeneralOp : public ConversionPattern {
 
     auto island = rewriter.create<tf_executor::IslandOp>(
         loc, new_types, island_control_operands);
-    island.body().push_back(new mlir::Block);
+    island.getBody().push_back(new mlir::Block);
 
-    rewriter.setInsertionPointToEnd(&island.body().front());
+    rewriter.setInsertionPointToEnd(&island.getBody().front());
 
     // Control dependency has been applied on tf_executor.island. Remove it
     // while creating the tf operations.
@@ -475,7 +474,11 @@ class ConvertGeneralOp : public ConversionPattern {
   const DenseSet<StringRef> &func_symbols_;
 };
 
-class LegalizeTFGToTFE : public TF::LegalizeTFGToTFPassBase<LegalizeTFGToTFE> {
+#define GEN_PASS_DEF_LEGALIZETFGTOTFPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class LegalizeTFGToTFE
+    : public impl::LegalizeTFGToTFPassBase<LegalizeTFGToTFE> {
   void getDependentDialects(DialectRegistry &registry) const override {
     RegisterAllTensorFlowDialects(registry);
   }
@@ -539,11 +542,13 @@ void LegalizeTFGToTFE::runOnOperation() {
     if (!graph) continue;
     Builder b(&context);
     auto producer = b.getNamedAttr(
-        "producer", b.getI32IntegerAttr(graph.version().getProducer()));
+        "producer", b.getI32IntegerAttr(graph.getVersion().getProducer()));
     auto min_consumer = b.getNamedAttr(
-        "min_consumer", b.getI32IntegerAttr(graph.version().getMinConsumer()));
-    auto bad_consumers = b.getNamedAttr(
-        "bad_consumers", b.getI32ArrayAttr(graph.version().getBadConsumers()));
+        "min_consumer",
+        b.getI32IntegerAttr(graph.getVersion().getMinConsumer()));
+    auto bad_consumers =
+        b.getNamedAttr("bad_consumers",
+                       b.getI32ArrayAttr(graph.getVersion().getBadConsumers()));
     module->setAttr("tf.versions",
                     b.getDictionaryAttr(llvm::ArrayRef<NamedAttribute>(
                         {producer, min_consumer, bad_consumers})));
@@ -556,7 +561,8 @@ void LegalizeTFGToTFE::runOnOperation() {
   // The uses of arg control dependency has been dropped. We can safely remove
   // the block argument here.
   module.walk([&](tf_executor::GraphOp graph) {
-    graph.body().front().eraseArguments([](BlockArgument arg) { return true; });
+    graph.getBody().front().eraseArguments(
+        [](BlockArgument arg) { return true; });
   });
 }
 

@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -59,14 +60,14 @@ int PprofProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
     location->set_id(ret.first->second);
     auto* line = location->add_line();
     line->set_function_id(FunctionId(code));
-    line->set_line(PyCode_Addr2Line(code, instruction));
+    line->set_line(PyCode_Addr2Line(code, instruction * kLastiWordBytes));
   }
   return ret.first->second;
 }
 
 StatusOr<pybind11::bytes> JsonToPprofProfile(std::string json) {
   tensorflow::tfprof::pprof::Profile profile;
-  auto status = tensorflow::protobuf::util::JsonStringToMessage(json, &profile);
+  auto status = tsl::protobuf::util::JsonStringToMessage(json, &profile);
   if (!status.ok()) {
     // TODO(phawkins): the explicit `std::string` cast here is to work around
     // https://github.com/google/jax/issues/9534 which appears to be an ABSL and
@@ -81,8 +82,7 @@ StatusOr<std::string> PprofProfileToJson(py::bytes binary_proto) {
   tensorflow::tfprof::pprof::Profile profile;
   profile.ParseFromString(binary_proto);
   std::string output;
-  auto status =
-      tensorflow::protobuf::util::MessageToJsonString(profile, &output);
+  auto status = tsl::protobuf::util::MessageToJsonString(profile, &output);
   if (!status.ok()) {
     // TODO(phawkins): the explicit `std::string` cast here is to work around
     // https://github.com/google/jax/issues/9534 which appears to be an ABSL and

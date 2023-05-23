@@ -36,7 +36,7 @@ TEST_F(HloExecutionProfileTest, Basic) {
     add = f32[30,30]{1,0} add(lhs, rhs)
     ROOT dot = f32[30,30]{1,0} dot(lhs, add), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   })")
-                        .ValueOrDie();
+                        .value();
   const HloInstruction* dot_instruction =
       hlo_module->entry_computation()->root_instruction();
   const HloInstruction* add_instruction = dot_instruction->operand(1);

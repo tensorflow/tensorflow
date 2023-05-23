@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
@@ -48,10 +49,11 @@ RankedTensorType GetRankedTensorType(mlir::Value val) {
 
 mlir::LogicalResult DTensorLayout::verify() {
   DTensorLayout op = *this;
-  const auto& layout = op.layout();
+  const auto& layout = op.getLayout();
   if (layout.IsEmpty()) return mlir::success();
+  if (layout.IsSingleDevice()) return mlir::success();
 
-  auto input_value = op.input();
+  auto input_value = op.getInput();
 
   RankedTensorType type = GetRankedTensorType(input_value);
 
@@ -86,8 +88,8 @@ mlir::LogicalResult DTensorLayout::verify() {
 
 mlir::LogicalResult DTensorAllGatherOp::verify() {
   DTensorAllGatherOp op = *this;
-  const tensorflow::dtensor::Layout input_layout = op.input_layout();
-  const tensorflow::dtensor::Layout output_layout = op.output_layout();
+  const tensorflow::dtensor::Layout input_layout = op.getInputLayout();
+  const tensorflow::dtensor::Layout output_layout = op.getOutputLayout();
 
   if (input_layout.rank() != output_layout.rank())
     return op.emitOpError()
@@ -107,7 +109,7 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.input().getType().dyn_cast<RankedTensorType>();
+      op.getInput().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -116,7 +118,7 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.output().getType().dyn_cast<RankedTensorType>();
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())
@@ -142,8 +144,8 @@ mlir::LogicalResult DTensorAllGatherOp::verify() {
 
 mlir::LogicalResult DTensorAllScatterOp::verify() {
   DTensorAllScatterOp op = *this;
-  const tensorflow::dtensor::Layout input_layout = op.input_layout();
-  const tensorflow::dtensor::Layout output_layout = op.output_layout();
+  const tensorflow::dtensor::Layout input_layout = op.getInputLayout();
+  const tensorflow::dtensor::Layout output_layout = op.getOutputLayout();
 
   if (input_layout.rank() != output_layout.rank())
     return op.emitOpError()
@@ -163,7 +165,7 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
   }
 
   RankedTensorType input_type =
-      op.input().getType().dyn_cast<RankedTensorType>();
+      op.getInput().getType().dyn_cast<RankedTensorType>();
   if (!input_type) return mlir::success();
 
   if (input_type.getRank() != input_layout.rank())
@@ -172,7 +174,78 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
            << " is not equal to input rank " << input_type.getRank();
 
   RankedTensorType output_type =
-      op.output().getType().dyn_cast<RankedTensorType>();
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
+  if (!output_type) return mlir::success();
+
+  if (output_type.getRank() != output_layout.rank())
+    return op.emitOpError()
+           << "output layout rank " << output_layout.rank()
+           << " is not equal to output rank " << output_type.getRank();
+
+  std::vector<int64_t> computed_output_shape =
+      output_layout.LocalShapeFromGlobalShape(
+          input_layout.GlobalShapeFromLocalShape(input_type.getShape()));
+
+  for (int32_t i = 0; i < computed_output_shape.size(); ++i) {
+    if (computed_output_shape[i] != output_type.getShape()[i]) {
+      return op.emitOpError()
+             << "computed output shape " << computed_output_shape[i]
+             << " at dimension " << i << " is not equal to actual output shape "
+             << output_type.getShape()[i];
+    }
+  }
+
+  return mlir::success();
+}
+
+mlir::LogicalResult DTensorAllToAllOp::verify() {
+  DTensorAllToAllOp op = *this;
+  const tensorflow::dtensor::Layout input_layout = op.getInputLayout();
+  const tensorflow::dtensor::Layout output_layout = op.getOutputLayout();
+
+  if (input_layout.rank() != output_layout.rank())
+    return op.emitOpError()
+           << "received input and output layouts of unequal ranks "
+           << input_layout.rank() << " and " << output_layout.rank();
+
+  int32_t num_split_dims = 0;
+  int32_t num_concat_dims = 0;
+  tensorflow::dtensor::ShardingSpec split_spec;
+  tensorflow::dtensor::ShardingSpec concat_spec;
+  for (int32_t i = 0; i < input_layout.rank(); ++i) {
+    if (input_layout.sharding_spec(i) == output_layout.sharding_spec(i))
+      continue;
+    if (tensorflow::dtensor::Layout::IsUnshardedDimension(
+            input_layout.sharding_spec(i)) &&
+        tensorflow::dtensor::Layout::IsShardedDimension(
+            output_layout.sharding_spec(i))) {
+      num_split_dims++;
+      split_spec = output_layout.dim(i);
+    } else if (tensorflow::dtensor::Layout::IsShardedDimension(
+                   input_layout.sharding_spec(i)) &&
+               tensorflow::dtensor::Layout::IsUnshardedDimension(
+                   output_layout.sharding_spec(i))) {
+      num_concat_dims++;
+      concat_spec = input_layout.dim(i);
+    }
+  }
+  if (num_split_dims != 1 || num_concat_dims != 1 ||
+      split_spec.sharding_spec() != concat_spec.sharding_spec()) {
+    return op.emitOpError() << "must have one mesh dimension which is being "
+                               "unsharded in one axis and sharded in another";
+  }
+
+  RankedTensorType input_type =
+      op.getInput().getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return mlir::success();
+
+  if (input_type.getRank() != input_layout.rank())
+    return op.emitOpError()
+           << "input layout rank " << input_layout.rank()
+           << " is not equal to input rank " << input_type.getRank();
+
+  RankedTensorType output_type =
+      op.getOutput().getType().dyn_cast<RankedTensorType>();
   if (!output_type) return mlir::success();
 
   if (output_type.getRank() != output_layout.rank())
@@ -197,8 +270,8 @@ mlir::LogicalResult DTensorAllScatterOp::verify() {
 }
 
 LogicalResult DTensorLayout::inferReturnTypes(
-    MLIRContext* context, Optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    MLIRContext* context, std::optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   assert(operands.size() == 1);
   inferredReturnTypes.assign({operands[0].getType()});

@@ -45,22 +45,6 @@ Status CreateFileForDumping(llvm::StringRef name,
                             std::string* filepath,
                             llvm::StringRef dirname = "");
 
-// Dumps the configuration of the pass pipeline and the MLIR module to a file
-// and returns the file name used. The file will be in the same format of an
-// MLIR crash reproducer.
-//
-// If the TF_DUMP_GRAPH_PREFIX environment variable is kCrashReproducerStdErr,
-// then the MLIR operation will be logged (using the LOG(INFO) macro) instead.
-//
-// This will create a file name via prefixing `name` with the value of the
-// TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
-// suffixing `name` with ".mlir".
-
-std::string DumpCrashReproducerToFile(llvm::StringRef name,
-                                      const mlir::PassManager& pm,
-                                      mlir::Operation* op,
-                                      llvm::StringRef dirname = "");
-
 // Dumps MLIR operation to a file and returns the file name used.
 //
 // If the TF_DUMP_GRAPH_PREFIX environment variable is kCrashReproducerStdErr,
@@ -112,6 +96,9 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path = "");
 
+// Prints the pass pipeline of `pass_manager` to `os`.
+void PrintPassPipeline(const mlir::PassManager& pass_manager,
+                       mlir::Operation* op, llvm::raw_ostream& os);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_

@@ -44,7 +44,7 @@ XLA_TEST_F(TrivialAllReduceTest, OneOperand) {
   })";
   auto module =
       ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
-          .ValueOrDie();
+          .value();
   auto literal = LiteralUtil::CreateR1<float>({1, 2, 3});
   EXPECT_EQ(literal, ExecuteAndTransfer(std::move(module), {&literal}));
 }
@@ -66,7 +66,7 @@ XLA_TEST_F(TrivialAllReduceTest, MultipleOperands) {
   })";
   auto module =
       ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
-          .ValueOrDie();
+          .value();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
   EXPECT_EQ(LiteralUtil::MakeTuple({&literal0, &literal1}),
@@ -93,7 +93,7 @@ XLA_TEST_F(TrivialAllReduceTest, ConstantOperand) {
   })";
   auto module =
       ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
-          .ValueOrDie();
+          .value();
   auto literal0 = LiteralUtil::CreateR1<float>({1, 2, 3});
   auto literal1 = LiteralUtil::CreateR1<float>({10, 20});
   EXPECT_EQ(LiteralUtil::MakeTuple({&literal0, &literal1}),
@@ -134,7 +134,7 @@ ENTRY %test_computation {
 
   auto module =
       ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
-          .ValueOrDie();
+          .value();
   auto literal_in = LiteralUtil::CreateR0<float>(0);
   auto literal0 = LiteralUtil::CreateR1<uint8_t>({1, 0, 0, 0, 0, 0, 0, 0});
   EXPECT_EQ(LiteralUtil::MakeTuple({&literal0}),
@@ -176,7 +176,7 @@ ENTRY %test_computation {
 
   auto module =
       ParseAndReturnVerifiedModule(module_str, GetModuleConfigForTest())
-          .ValueOrDie();
+          .value();
   auto literal_in = LiteralUtil::CreateR0<float>(0);
   auto literal0 = LiteralUtil::CreateR1<int32_t>({1, 0, 0, 0, 0, 0, 0, 0});
   EXPECT_EQ(LiteralUtil::MakeTuple({&literal0}),

@@ -26,23 +26,33 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/task/tensor_desc.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/conv_pointwise.h"
-#include "tensorflow/lite/delegates/gpu/common/tasks/special/depthwise_conv_plus_1x1_conv.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/dw7x7_conv2to6_concat_conv8to8.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/special/fc_fc_add.h"
+#include "tensorflow/lite/delegates/gpu/common/tasks/special/thin_pointwise_fuser.h"
 
 namespace tflite {
 namespace gpu {
 absl::Status GPUSubgraphFromGraph(
-    const GpuInfo& gpu_info, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
+    const ModelHints& hints, const GpuInfo& gpu_info,
+    CalculationsPrecision precision, const GraphFloat32& graph,
+    NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  if (TryDepthwiseConvPlus1x1Conv(gpu_info, precision, graph, first_node_id,
-                                  tensor_descriptors, consumed_nodes,
-                                  gpu_subgraph)
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryDW7x7Conv2To6ConcatConv8to8(gpu_info, precision, graph, first_node_id,
+                                     tensor_descriptors, consumed_nodes,
+                                     gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
   }
-  if (TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryThinPointwiseFuser(gpu_info, precision, graph, first_node_id,
+                            tensor_descriptors, consumed_nodes, gpu_subgraph)
+          .ok()) {
+    return absl::OkStatus();
+  }
+  if (hints.Check(ModelHints::kAllowSpecialKernels) &&
+      TryFCFCAdd(gpu_info, precision, graph, first_node_id, tensor_descriptors,
                  consumed_nodes, gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
@@ -50,7 +60,8 @@ absl::Status GPUSubgraphFromGraph(
   if (TryFusedPointwiseConv(graph, first_node_id, precision, tensor_descriptors,
                             consumed_nodes, gpu_subgraph)
           .ok()) {
-    gpu_subgraph->operations[0].name = "slice_mul_mean_concat";
+    // TODO(b/278745183) Add tests for slice_mul_reduce_concat
+    gpu_subgraph->operations[0].name = "slice_mul_reduce_concat";
     return absl::OkStatus();
   }
   if (TryMeanStdDevNormalization(gpu_info, precision, graph, first_node_id,

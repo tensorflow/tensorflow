@@ -19,28 +19,10 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/tsl/framework/device_id_manager.h"
 
 namespace tensorflow {
-
-// Class that maintains a map from TfDeviceId to PlatformDeviceId, and manages
-// the translation between them.
-class DeviceIdManager {
- public:
-  // Adds a mapping from tf_device_id to platform_device_id.
-  static Status InsertTfPlatformDeviceIdPair(
-      const DeviceType& type, TfDeviceId tf_device_id,
-      PlatformDeviceId platform_device_id);
-
-  // Gets the platform_device_id associated with tf_device_id. Returns OK if
-  // found.
-  static Status TfToPlatformDeviceId(const DeviceType& type,
-                                     TfDeviceId tf_device_id,
-                                     PlatformDeviceId* platform_device_id);
-
-  // Clears the map. Used in unit tests only.
-  static void TestOnlyReset();
-};
-
+using tsl::DeviceIdManager;  // NOLINT
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_DEVICE_ID_MANAGER_H_

@@ -45,7 +45,7 @@ class TridiagonalSolveOp : public XlaOpKernel {
       ctx->SetStatus(result.status());
       return;
     }
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, result.value());
   }
 };
 
@@ -64,7 +64,7 @@ class TridiagonalMatMulOp : public XlaOpKernel {
       ctx->SetStatus(result.status());
       return;
     }
-    ctx->SetOutput(0, result.ValueOrDie());
+    ctx->SetOutput(0, result.value());
   }
 };
 

@@ -17,15 +17,15 @@ limitations under the License.
 
 #include <optional>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/all_reduce_key.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace {
@@ -44,7 +44,9 @@ bool AreCompatible(const HloReduceScatterInstruction *rs0,
   std::optional<AllReduceKey> key0 = GetAllReduceKey(rs0);
   std::optional<AllReduceKey> key1 = GetAllReduceKey(rs1);
   auto kind0 = MatchReductionComputation(rs0->to_apply());
-  return key0 && key1 && kind0 && *key0 == *key1 && kind0 == op_kind;
+  auto dims_match = rs0->scatter_dimension() == rs1->scatter_dimension();
+  return key0 && key1 && kind0 && *key0 == *key1 && kind0 == op_kind &&
+         dims_match;
 }
 
 }  // namespace

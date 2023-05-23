@@ -13,7 +13,7 @@ cc_library(
 )
 
 _COMPUTE_LIBRARY_DEFINES = [
-    "ARM_COMPUTE_CPP_SCHEDULER",
+    "ARM_COMPUTE_OPENMP_SCHEDULER",
     "ARM_COMPUTE_CPU_ENABLED",
     "ENABLE_NEON",
     "ARM_COMPUTE_ENABLE_NEON",
@@ -29,6 +29,7 @@ _COMPUTE_LIBRARY_DEFINES = [
     "ENABLE_INTEGER_KERNELS",
     "ENABLE_NHWC_KERNELS",
     "ENABLE_NCHW_KERNELS",
+    "ARM_COMPUTE_ENABLE_FIXED_FORMAT_KERNELS",
 ]
 
 cc_library(
@@ -41,7 +42,10 @@ cc_library(
             "**/*.inl",
         ],
     ),
-    copts = ["-march=armv8.6-a+sve2"],
+    copts = [
+        "-march=armv8.6-a+sve2",
+        "-fopenmp",
+    ],
     defines = _COMPUTE_LIBRARY_DEFINES + ["ARM_COMPUTE_ENABLE_SVE2"],
     includes = [
         "src/core/NEON/kernels/arm_conv",
@@ -50,7 +54,7 @@ cc_library(
         "src/core/cpu/kernels/assembly",
         "src/cpu/kernels/assembly",
     ],
-    linkopts = ["-lpthread"],
+    linkopts = ["-fopenmp"],
     deps = ["include"],
 )
 
@@ -62,16 +66,20 @@ cc_library(
             "src/core/NEON/kernels/arm_conv/**/kernels/sve_*/*.cpp",
             "src/core/NEON/kernels/arm_conv/depthwise/interleaves/sve_*.cpp",
             "src/core/NEON/kernels/batchnormalization/impl/SVE/*.cpp",
+            "src/core/NEON/kernels/convolution/winograd/input_transforms/sve_fp32_6x6.cpp",
             "src/cpu/kernels/**/sve/*.cpp",
             "**/*.h",
             "**/*.hpp",
             "**/*.inl",
         ],
     ) + [
-        "src/core/NEON/kernels/arm_gemm/transform-sve.cpp",
         "src/core/NEON/kernels/arm_gemm/mergeresults-sve.cpp",
+        "src/core/NEON/kernels/arm_gemm/transform-sve.cpp",
     ],
-    copts = ["-march=armv8.2-a+sve"],
+    copts = [
+        "-march=armv8.2-a+sve",
+        "-fopenmp",
+    ],
     defines = _COMPUTE_LIBRARY_DEFINES,
     includes = [
         "src/core/NEON/kernels/arm_conv",
@@ -80,7 +88,7 @@ cc_library(
         "src/core/cpu/kernels/assembly",
         "src/cpu/kernels/assembly",
     ],
-    linkopts = ["-lpthread"],
+    linkopts = ["-fopenmp"],
     deps = ["include"],
 )
 
@@ -106,6 +114,7 @@ cc_library(
             "src/core/NEON/kernels/batchnormalization/impl/NEON/*.cpp",
             "src/cpu/*.cpp",
             "src/cpu/kernels/*.cpp",
+            "src/cpu/kernels/fuse_batch_normalization/**/*.cpp",
             "src/cpu/kernels/*/generic/*.cpp",
             "src/cpu/operators/**/*.cpp",
             "src/cpu/utils/*.cpp",
@@ -122,15 +131,16 @@ cc_library(
             "src/core/TracePoint.cpp",
             "src/core/NEON/kernels/arm_gemm/mergeresults-sve.cpp",
             "src/core/NEON/kernels/arm_gemm/transform-sve.cpp",
+            "src/core/NEON/kernels/convolution/winograd/input_transforms/sve_fp32_6x6.cpp",
             "src/runtime/CL/**",
             "src/gpu/**",
         ],
     ) + [
-        "src/core/CPP/CPPTypes.cpp",
         "src/c/operators/AclActivation.cpp",
-        "src/core/NEON/kernels/arm_conv/pooling/kernels/cpp_nhwc_1x1_stride_any_depthfirst/generic.cpp",
-        "src/core/NEON/kernels/arm_conv/depthwise/interleaves/8b_mla.cpp",
+        "src/core/CPP/CPPTypes.cpp",
         "src/core/NEON/kernels/arm_conv/addressing.cpp",
+        "src/core/NEON/kernels/arm_conv/depthwise/interleaves/8b_mla.cpp",
+        "src/core/NEON/kernels/arm_conv/pooling/kernels/cpp_nhwc_1x1_stride_any_depthfirst/generic.cpp",
     ],
     hdrs = glob([
         "src/core/NEON/kernels/**/*.h",
@@ -142,7 +152,10 @@ cc_library(
     ]) + [
         "arm_compute_version.embed",
     ],
-    copts = ["-march=armv8-a"],
+    copts = [
+        "-march=armv8-a",
+        "-fopenmp",
+    ],
     defines = _COMPUTE_LIBRARY_DEFINES,
     includes = [
         "arm_compute/runtime",
@@ -152,7 +165,7 @@ cc_library(
         "src/core/cpu/kernels/assembly",
         "src/cpu/kernels/assembly",
     ],
-    linkopts = ["-lpthread"],
+    linkopts = ["-fopenmp"],
     visibility = ["//visibility:public"],
     deps = [
         "arm_compute_sve",

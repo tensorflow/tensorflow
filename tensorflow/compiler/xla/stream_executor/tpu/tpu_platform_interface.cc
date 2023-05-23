@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -33,8 +33,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
       stream_executor::MultiPlatformManager::PlatformWithName(
           "TPU", initialize_platform);
   if (status_or_tpu_platform.ok()) {
-    return static_cast<TpuPlatformInterface*>(
-        status_or_tpu_platform.ValueOrDie());
+    return static_cast<TpuPlatformInterface*>(status_or_tpu_platform.value());
   }
   if (status_or_tpu_platform.status().code() != error::NOT_FOUND) {
     LOG(WARNING) << "Error when getting the TPU platform: "
@@ -62,7 +61,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   // If we find at least one thing, we return the first thing we see.
   if (status_or_other_tpu_platforms.ok() &&
       !status_or_other_tpu_platforms->empty()) {
-    auto other_tpu_platforms = status_or_other_tpu_platforms.ValueOrDie();
+    auto other_tpu_platforms = status_or_other_tpu_platforms.value();
     LOG(WARNING) << other_tpu_platforms.size()
                  << " TPU platforms registered, selecting "
                  << other_tpu_platforms[0]->Name();
@@ -77,7 +76,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
   LOG(INFO)
       << "No TPU platform registered. Waiting 1 second and trying again... ("
       << tries_left << " tries left)";
-  Env::Default()->SleepForMicroseconds(1000000);  // 1 second
+  tsl::Env::Default()->SleepForMicroseconds(1000000);  // 1 second
   return GetRegisteredPlatformStatic(initialize_platform, tries_left);
 }
 }  // namespace

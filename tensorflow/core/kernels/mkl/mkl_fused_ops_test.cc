@@ -63,24 +63,6 @@ using FusedMatMulRunner =
 template <typename T>
 class CommonTestUtilities : public OpsTestBase {
  public:
-  void PerformConversion(DataType dtype, const Tensor& tensor,
-                         const Tensor& mkl_meta_tensor, Tensor* output) {
-    // Create an MKL to TF conversion node and execute it
-    TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
-                     .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // Mkl second tensor
-                     .Attr("T", dtype)
-                     .Attr("_kernel", "MklLayoutDependentOp")
-                     .Finalize(node_def()));
-    TF_EXPECT_OK(InitOp());
-    AddInputFromArray<T>(tensor.shape(), tensor.flat<T>());
-    AddInputFromArray<uint8>(mkl_meta_tensor.shape(),
-                             mkl_meta_tensor.flat<uint8>());
-    TF_ASSERT_OK(RunOpKernel());
-
-    *output = *GetOutput(0);
-  }
-
   // Runs a Tensorflow graph defined by the root scope, and fetches the result
   // of 'fetch' node into the output Tensor.
   static void RunAndFetch(const tensorflow::Scope& root, const string& fetch,
@@ -98,21 +80,6 @@ class CommonTestUtilities : public OpsTestBase {
     *output = unfused_tensors[0];
   }
 
-  void ConvertAndCompare(DataType dtype, const Tensor& tensor,
-                         const Tensor& mkl_meta_tensor,
-                         const Tensor& expected) {
-    Tensor output;
-    PerformConversion(dtype, tensor, mkl_meta_tensor, &output);
-    test::ExpectTensorNear<T>(expected, output, 1e-5);
-  }
-
-  void ConvertAndCompareIntegral(DataType dtype, const Tensor& tensor,
-                                 const Tensor& mkl_meta_tensor,
-                                 const Tensor& expected) {
-    Tensor output;
-    PerformConversion(dtype, tensor, mkl_meta_tensor, &output);
-    test::ExpectTensorEqual<T>(expected, output);
-  }
   void TestBody() {}
 
   static void VerifyBiasAddTensorsClose(int depth, int image_width,
@@ -882,6 +849,7 @@ TEST_F(FilterCacheTest, Conv2DFilterCacheTest) {
   Run<float>(DT_FLOAT, image, filter, expected, true);
 }
 
+#ifndef ENABLE_ONEDNN_V3
 // Testing fusion of MatMul and BiasAdd
 template <typename T>
 class MklFusedMatMulOpTest : public OpsTestBase {
@@ -1157,6 +1125,7 @@ TEST_F(MklFusedMatMulCacheTest, WeightCachedTrue) { Run(true); }
 
 // Test that a non-const filter can not be cached.
 TEST_F(MklFusedMatMulCacheTest, WeightCachedFalse) { Run(false); }
+#endif  // !ENABLE_ONEDNN_V3
 
 class BiasCacheTest : public OpsTestBase {
  public:
@@ -1164,32 +1133,57 @@ class BiasCacheTest : public OpsTestBase {
   void Run(DataType dtype, Tensor& image, Tensor& filter, Tensor& bias,
            Tensor& min_input, Tensor& max_input, Tensor& min_filter,
            Tensor& max_filter, Tensor& min_output, Tensor& max_output,
-           Tensor& expected, const bool is_filter_const) {
+           Tensor& expected, const bool is_filter_const, const bool old_api) {
     const int stride = 1;
+    if (old_api) {
+      TF_EXPECT_OK(
+          NodeDefBuilder("quantized_conv2d_bias_cache",
+                         "_MklQuantizedConv2DWithBiasAndReluAndRequantize")
+              .Input(FakeInput(dtype))     // Input
+              .Input(FakeInput(DT_QINT8))  // Filter
+              .Input(FakeInput(DT_FLOAT))  // Bias
+              .Input(FakeInput(DT_FLOAT))  // Min-input
+              .Input(FakeInput(DT_FLOAT))  // Max-input
+              .Input(FakeInput(DT_FLOAT))  // Min-filter
+              .Input(FakeInput(DT_FLOAT))  // Max-filter
+              .Input(FakeInput(DT_FLOAT))  // Min-output
+              .Input(FakeInput(DT_FLOAT))  // Max-output
+              .Attr("Tinput", DT_QUINT8)
+              .Attr("Tfilter", DT_QINT8)
+              .Attr("Tbias", DT_FLOAT)
+              .Attr("out_type", DT_QUINT8)
+              .Attr("data_format", "NHWC")
+              .Attr("strides", {1, stride, stride, 1})
+              .Attr("is_filter_const", is_filter_const)
+              .Attr("is_bias_const", true)
+              .Attr("padding", "VALID")
+              .Attr("_kernel", "QuantizedMklOp")
+              .Finalize(node_def()));
 
-    TF_EXPECT_OK(
-        NodeDefBuilder("quantized_conv2d_bias_cache",
-                       "_MklQuantizedConv2DWithBiasAndReluAndRequantize")
-            .Input(FakeInput(dtype))     // Input
-            .Input(FakeInput(DT_QINT8))  // Filter
-            .Input(FakeInput(DT_FLOAT))  // Bias
-            .Input(FakeInput(DT_FLOAT))  // Min-input
-            .Input(FakeInput(DT_FLOAT))  // Max-input
-            .Input(FakeInput(DT_FLOAT))  // Min-filter
-            .Input(FakeInput(DT_FLOAT))  // Max-filter
-            .Input(FakeInput(DT_FLOAT))  // Min-output
-            .Input(FakeInput(DT_FLOAT))  // Max-output
-            .Attr("Tinput", DT_QUINT8)
-            .Attr("Tfilter", DT_QINT8)
-            .Attr("Tbias", DT_FLOAT)
-            .Attr("out_type", DT_QUINT8)
-            .Attr("data_format", "NHWC")
-            .Attr("strides", {1, stride, stride, 1})
-            .Attr("is_filter_const", is_filter_const)
-            .Attr("is_bias_const", true)
-            .Attr("padding", "VALID")
-            .Attr("_kernel", "QuantizedMklOp")
-            .Finalize(node_def()));
+    } else {
+      TF_EXPECT_OK(
+          NodeDefBuilder("quantized_conv2d_bias_cache", "_FusedQuantizedConv2D")
+              .Attr("Thost_inputs",
+                    {dtype, DT_QINT8, DT_FLOAT, DT_FLOAT, DT_FLOAT, DT_FLOAT,
+                     DT_FLOAT, DT_FLOAT, DT_FLOAT})
+              .Attr("Thost_outputs", {DT_QUINT8, DT_FLOAT, DT_FLOAT})
+              .Attr("Tdevice_inputs", std::vector<DataType>())
+              .Attr("Tdevice_outputs", std::vector<DataType>())
+              .Attr("Tinput", dtype)
+              .Attr("Tfilter", DT_QINT8)
+              .Attr("Tbias", DT_FLOAT)
+              .Attr("Tsummand", DT_QUINT8)
+              .Attr("out_type", DT_QUINT8)
+              .Attr("data_format", "NHWC")
+              .Attr("strides", {1, stride, stride, 1})
+              .Attr("is_filter_const", is_filter_const)
+              .Attr("is_bias_const", true)
+              .Attr("padding", "VALID")
+              .Attr("fused_ops", {"BiasAdd", "Relu", "Requantize"})
+              .Input(FakeInput())
+              .Input(FakeInput())
+              .Finalize(node_def()));
+    }
     TF_EXPECT_OK(InitOp());
 
     // Setting up inputs and execute
@@ -1219,50 +1213,60 @@ class BiasCacheTest : public OpsTestBase {
     const Tensor& output_new = *GetOutput(0);
     test::ExpectTensorEqual<quint8>(expected, output_new);
   }
+
+  void TestConv2DBiasCacheTest(const bool old_api) {
+    const int depth = 1;
+    const int image_width = 4;
+    const int image_height = 3;
+    const int image_batch_count = 1;
+
+    Tensor image(DT_QUINT8,
+                 {image_batch_count, image_height, image_width, depth});
+    test::FillValues<quint8>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+
+    const int kFilterSize = 3;
+    const int kFilterCount = 1;
+    Tensor filter(DT_QINT8, {kFilterSize, kFilterSize, depth, kFilterCount});
+    test::FillValues<qint8>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
+
+    Tensor bias(DT_FLOAT, {kFilterCount});
+    test::FillValues<float>(&bias, {1});
+
+    Tensor min_input(DT_FLOAT, {1});
+    test::FillValues<float>(&min_input, {1});
+
+    Tensor max_input(DT_FLOAT, {1});
+    test::FillValues<float>(&max_input, {1});
+
+    Tensor min_filter(DT_FLOAT, {1});
+    test::FillValues<float>(&min_filter, {1});
+
+    Tensor max_filter(DT_FLOAT, {1});
+    test::FillValues<float>(&max_filter, {1});
+
+    Tensor min_output(DT_FLOAT, {1});
+    test::FillValues<float>(&min_output, {1});
+
+    Tensor max_output(DT_FLOAT, {1});
+    test::FillValues<float>(&max_output, {1});
+
+    Tensor expected(DT_QUINT8, TensorShape({1, 1, 2, 1}));
+    test::FillValues<quint8>(&expected, {255, 255});
+
+    Run<float>(DT_QUINT8, image, filter, bias, min_input, max_input, min_filter,
+               max_filter, min_output, max_output, expected, true, old_api);
+  }
 };
 
-TEST_F(BiasCacheTest, Conv2DBiasCacheTest) {
-  const int depth = 1;
-  const int image_width = 4;
-  const int image_height = 3;
-  const int image_batch_count = 1;
-
-  Tensor image(DT_QUINT8,
-               {image_batch_count, image_height, image_width, depth});
-  test::FillValues<quint8>(&image, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
-
-  const int kFilterSize = 3;
-  const int kFilterCount = 1;
-  Tensor filter(DT_QINT8, {kFilterSize, kFilterSize, depth, kFilterCount});
-  test::FillValues<qint8>(&filter, {1, 4, 7, 2, 5, 8, 3, 6, 9});
-
-  Tensor bias(DT_FLOAT, {kFilterCount});
-  test::FillValues<float>(&bias, {1});
-
-  Tensor min_input(DT_FLOAT, {1});
-  test::FillValues<float>(&min_input, {1});
-
-  Tensor max_input(DT_FLOAT, {1});
-  test::FillValues<float>(&max_input, {1});
-
-  Tensor min_filter(DT_FLOAT, {1});
-  test::FillValues<float>(&min_filter, {1});
-
-  Tensor max_filter(DT_FLOAT, {1});
-  test::FillValues<float>(&max_filter, {1});
-
-  Tensor min_output(DT_FLOAT, {1});
-  test::FillValues<float>(&min_output, {1});
-
-  Tensor max_output(DT_FLOAT, {1});
-  test::FillValues<float>(&max_output, {1});
-
-  Tensor expected(DT_QUINT8, TensorShape({1, 1, 2, 1}));
-  test::FillValues<quint8>(&expected, {255, 255});
-
-  Run<float>(DT_QUINT8, image, filter, bias, min_input, max_input, min_filter,
-             max_filter, min_output, max_output, expected, true);
+#ifndef ENABLE_ONEDNN_V3
+TEST_F(BiasCacheTest, Conv2DBiasCacheTestOldAPI) {
+  TestConv2DBiasCacheTest(true);
 }
+
+TEST_F(BiasCacheTest, Conv2DBiasCacheTestNewAPI) {
+  TestConv2DBiasCacheTest(false);
+}
+#endif  // !ENABLE_ONEDNN_V3
 
 // Testing fusion of pad and fusedconv2d
 template <typename T>

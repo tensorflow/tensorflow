@@ -168,7 +168,7 @@ TEST_F(QuantizedMatMulTest, VerySmall_BadRange) {
   // see an error when we run.
   AddInputFromArray<float>(TensorShape({}), {1.0f});
   AddInputFromArray<float>(TensorShape({}), {1.0f});
-  EXPECT_EQ(::tensorflow::error::INVALID_ARGUMENT, RunOpKernel().code());
+  EXPECT_EQ(::absl::StatusCode::kInvalidArgument, RunOpKernel().code());
 }
 
 // This test multiplies two 1x1 8bit matrices, but sets invalid quantized min
@@ -206,7 +206,7 @@ TEST_F(QuantizedMatMulTest, VerySmall_BadMinMax) {
   AddInputFromArray<float>(TensorShape({}), {243.0f});
   AddInputFromArray<float>(TensorShape({}), {1.0f});
   AddInputFromArray<float>(TensorShape({}), {256.0f});
-  EXPECT_EQ(::tensorflow::error::INVALID_ARGUMENT, RunOpKernel().code());
+  EXPECT_EQ(::absl::StatusCode::kInvalidArgument, RunOpKernel().code());
 }
 
 // This test multiplies a couple of small 8-bit matrices, and compares the

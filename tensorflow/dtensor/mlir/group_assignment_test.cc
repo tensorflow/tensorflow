@@ -24,7 +24,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/stream_executor/lib/statusor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
@@ -99,7 +98,7 @@ TEST(DTensorGroupAssignmentTest, InputOutput) {
   EXPECT_EQ(group_assignment_attr_out, group_assignment_attr_in);
 
   group_assignment_attr_out =
-      group_assignment.SliceToMLIR(context, /*slice_id=*/0).ValueOrDie();
+      group_assignment.SliceToMLIR(context, /*slice_id=*/0).value();
   EXPECT_EQ(group_assignment_attr_out, group_assignment_attr_in);
 }
 

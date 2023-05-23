@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_
 
+#include <optional>
 #include <utility>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
@@ -36,10 +37,10 @@ using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
 
+using ::tfrt::jitrt::HostContextAsyncTaskRunner;
 using ::tfrt::jitrt::RemainingResultsConverter;
 
 using ::xla::runtime::Executable;
-using ::xla::runtime::HostContextAsyncTaskRunner;
 using ::xla::runtime::JitExecutable;
 using ::xla::runtime::MemrefDesc;
 
@@ -99,7 +100,7 @@ MlirBenchmark<T, rank> PrepareUnaryMlirBenchmark(
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << executable->GetError().message();
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   return {std::move(host), &executable->get(), exec_ctx, std::move(ctx),
@@ -197,7 +198,7 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
 
   Eigen::DefaultDevice singleThreadedDevice;
   Eigen::ThreadPool thread_pool(num_threads);
-  llvm::Optional<Eigen::ThreadPoolDevice> multiThreadedDevice;
+  std::optional<Eigen::ThreadPoolDevice> multiThreadedDevice;
   if (num_threads > 0) multiThreadedDevice.emplace(&thread_pool, num_threads);
 
   Eigen::DSizes<ssize_t, rank> dsizes;
@@ -291,4 +292,4 @@ void RunUnaryEigenBenchmark(::testing::benchmark::State& state,
   }                                                                          \
   BENCHMARK(BM_eigen_v_##NAME##_##TYPE##_##NUM_THREADS)->MeasureProcessCPUTime()
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_UNARY_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_CWISE_OP_UNARY_BENCHMARK_H_

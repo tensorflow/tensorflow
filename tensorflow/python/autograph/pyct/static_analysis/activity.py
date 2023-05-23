@@ -634,6 +634,8 @@ class ActivityAnalyzer(transformer.Base):
       lambda_scope = self.scope
       self._exit_and_record_scope(node, NodeAnno.ARGS_AND_BODY_SCOPE)
 
+      # TODO(bhack:) https://github.com/tensorflow/tensorflow/issues/56089
+      # remove after deprecation
       # Exception: lambdas are assumed to be used in the place where
       # they are defined. Therefore, their activity is passed on to the
       # calling statement.

@@ -20,6 +20,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/compiler/xla/stream_executor/dnn.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
+#include "tensorflow/tsl/protobuf/dnn.pb.h"
 
 namespace Eigen {
 struct bfloat16;
@@ -35,6 +37,14 @@ struct ToDataType;
 
 // Note: If you add a new specialization below, make sure to add the
 // corresponding definition in stream_executor/dnn.cc.
+template <>
+struct ToDataType<tsl::float8_e4m3fn> {
+  static constexpr DataType value = DataType::kF8E4M3FN;
+};
+template <>
+struct ToDataType<tsl::float8_e5m2> {
+  static constexpr DataType value = DataType::kF8E5M2;
+};
 template <>
 struct ToDataType<float> {
   static constexpr DataType value = DataType::kFloat;

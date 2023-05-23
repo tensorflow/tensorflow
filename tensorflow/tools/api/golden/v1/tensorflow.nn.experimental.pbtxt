@@ -1,6 +1,10 @@
 path: "tensorflow.nn.experimental"
 tf_module {
   member_method {
+    name: "general_dropout"
+    argspec: "args=[\'x\', \'rate\', \'uniform_sampler\', \'noise_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
     name: "stateless_dropout"
     argspec: "args=[\'x\', \'rate\', \'seed\', \'rng_alg\', \'noise_shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }

@@ -22,7 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/synchronization/mutex.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 
@@ -31,7 +31,7 @@ namespace xla {
 class WorkerThread {
  public:
   // 'name' is a name for the thread for debugging purposes.
-  WorkerThread(tensorflow::Env* env, const std::string& name);
+  WorkerThread(tsl::Env* env, const std::string& name);
 
   // Blocks until all enqueued closures have completed.
   ~WorkerThread();
@@ -46,7 +46,7 @@ class WorkerThread {
   absl::Mutex mu_;
   std::queue<std::function<void()>> work_queue_ ABSL_GUARDED_BY(mu_);
 
-  std::unique_ptr<tensorflow::Thread> thread_;
+  std::unique_ptr<tsl::Thread> thread_;
 };
 
 }  // namespace xla

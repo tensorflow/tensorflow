@@ -55,7 +55,7 @@ class DepthToSpaceOpModel : public SingleOpModel {
   int output_;
 };
 
-#ifdef GTEST_HAS_DEATH_TEST
+#if GTEST_HAS_DEATH_TEST
 TEST(DepthToSpaceOpModel, BadBlockSize) {
   EXPECT_DEATH(DepthToSpaceOpModel({TensorType_FLOAT32, {1, 1, 1, 4}}, 4),
                "Cannot allocate tensors");

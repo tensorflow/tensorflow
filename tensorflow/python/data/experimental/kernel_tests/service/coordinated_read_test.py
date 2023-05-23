@@ -37,7 +37,7 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
   def testBasic(self, num_workers, num_consumers):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
-    get_next = self.getNext(ds, requires_initialization=False)
+    get_next = self.getNext(ds, requires_initialization=True)
     results = [self.evaluate(get_next()) for _ in range(100)]
     self.checkCoordinatedReadGroups(results, num_consumers)
     cluster.stop_workers()
@@ -48,13 +48,13 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
     cluster = data_service_test_base.TestCluster(num_workers=1)
     num_consumers = 3
     ds = self.make_coordinated_read_dataset(cluster, num_consumers)
-    get_next = self.getNext(ds, requires_initialization=False)
+    get_next = self.getNext(ds, requires_initialization=True)
     _ = [self.evaluate(get_next()) for _ in range(20)]
 
     ds2 = self.make_coordinated_read_dataset(cluster, num_consumers)
     with self.assertRaisesRegex(errors.FailedPreconditionError,
                                 "current round has already reached"):
-      get_next_ds2 = self.getNext(ds2, requires_initialization=False)
+      get_next_ds2 = self.getNext(ds2, requires_initialization=True)
       _ = [self.evaluate(get_next_ds2()) for _ in range(20)]
     cluster.stop_workers()
 
@@ -122,7 +122,7 @@ class CoordinatedReadTest(data_service_test_base.TestBase,
         deterministic=True)
 
     num_rounds = 4
-    get_next = self.getNext(ds)
+    get_next = self.getNext(ds, requires_initialization=True)
     results = []
     for i in range(num_rounds * num_consumers):
       results.append(self.evaluate(get_next()))

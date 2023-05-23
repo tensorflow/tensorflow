@@ -20,7 +20,7 @@
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
@@ -107,15 +107,14 @@ func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>, %arg2: tensor<1xf32>
 })";
   const std::string kExpectedFB = CreateRuntimeMetadata();
   mlir::DialectRegistry registry;
-  registry.insert<mlir::TFL::TensorFlowLiteDialect,
-                  mlir::arith::ArithmeticDialect, mlir::func::FuncDialect>();
+  registry.insert<mlir::TFL::TensorFlowLiteDialect, mlir::arith::ArithDialect,
+                  mlir::func::FuncDialect>();
   mlir::MLIRContext context(registry);
   auto module = mlir::OwningOpRef<mlir::ModuleOp>(
       mlir::parseSourceString<mlir::ModuleOp>(kMLIR, &context));
   auto module_op = module.get();
   auto serialized_result_fb = ExportRuntimeMetadata(module_op);
-  const auto* result =
-      GetRuntimeMetadata(serialized_result_fb.getValue().c_str());
+  const auto* result = GetRuntimeMetadata(serialized_result_fb.value().c_str());
   const auto* expected = GetRuntimeMetadata(kExpectedFB.c_str());
   ASSERT_TRUE(result != nullptr);
   ASSERT_TRUE(result->subgraph_metadata() != nullptr);

@@ -49,6 +49,7 @@ bool filter_string(string msg) {
       // Myelin Performance Warning in dynamic shape mode
       "Myelin graph with multiple dynamic values may have poor performance",
       "(# 0 (SHAPE",
+      "CUDA lazy loading is not enabled. Enabling it can significantly reduce",
   };
 
   for (int i = 0; i < substr_patterns.size(); i++) {

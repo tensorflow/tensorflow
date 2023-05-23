@@ -203,6 +203,7 @@ class RestoreV2 : public OpKernel {
 
     const string& prefix_string = prefix.scalar<tstring>()();
 
+    VLOG(2) << "Started Restore at prefix: " << prefix_string;
     // Intention: we plan to use the RestoreV2 op as a backward-compatible
     // reader as we upgrade to the V2 format.  This allows transparent upgrade.
     // We here attempt to read a V1 checkpoint, if "prefix_string" does not
@@ -211,6 +212,7 @@ class RestoreV2 : public OpKernel {
     std::vector<string> paths;
     if (!env->GetMatchingPaths(MetaFilename(prefix_string), &paths).ok() ||
         paths.empty()) {
+      VLOG(2) << "Fallback to V1 Restore at prefix: " << prefix_string;
       // Cannot find V2's metadata file, so "prefix_string" does not point to a
       // V2 checkpoint.  Invokes the V1 read path instead.
       for (size_t i = 0; i < tensor_names.NumElements(); ++i) {
@@ -245,6 +247,7 @@ class RestoreV2 : public OpKernel {
       checkpoint_callback_manager->Restore(prefix_string);
       checkpoint_callback_manager->Unref();
     }
+    VLOG(2) << "Finished Restore at prefix: " << prefix_string;
   }
 
  private:

@@ -350,8 +350,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-class Status;
-
 // Retrieves the platform strings from the file at the given path and appends
 // them to the given vector. If the returned int is non-zero, an error occurred
 // reading the file and vector may or may not be modified. The returned error

@@ -21,10 +21,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -42,6 +42,7 @@ enum class TargetIntrinsicID {
   kBlockDimx,
   kBlockDimy,
   kBlockDimz,
+  kGroupBarrierId,
 };
 
 // Enumeration to get target specific device math function.
@@ -60,6 +61,7 @@ enum class TargetDeviceFunctionID {
   kRsqrt,
   kSin,
   kSqrt,
+  kTan,
   kTanh,
 };
 
@@ -68,8 +70,8 @@ enum class TargetDeviceFunctionID {
 llvm::CallInst* EmitDeviceFunctionCall(
     const std::string& callee_name, absl::Span<llvm::Value* const> operands,
     absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
-    absl::Span<const llvm::Attribute::AttrKind> attributes,
-    llvm::IRBuilder<>* b, absl::string_view name = "");
+    const llvm::AttrBuilder& attributes, llvm::IRBuilder<>* b,
+    absl::string_view name = "");
 
 // Emits a call to the specified target intrinsic with the given operands.
 // Overloaded intrinsics (for example, "minnum") must include a type

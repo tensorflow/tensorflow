@@ -16,12 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <memory>
 #include <numeric>
 #include <string>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -50,8 +53,8 @@ namespace mlir {
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_interface.cc.inc"
 
 namespace quant {
-
 namespace {
+
 constexpr double kSmallestHalfRange = kNearZeroTolerance / 2;
 using QType = quant::QuantizedType;
 
@@ -187,27 +190,26 @@ quant::UniformQuantizedPerAxisType ResetAxisAndBroadcast(
 
 }  // namespace
 
-bool IsOpNotQuantizable(Operation* op) {
-  // If it is terminator or not quantizable or any ops form the mlir quant
-  // ops dialect, we shouldn't rewrite.
-  bool attr_enforced_quantizable =
+bool IsOpQuantizable(Operation* op) {
+  if (isa<func::ConstantOp, arith::ConstantOp, quantfork::StatisticsOp>(op)) {
+    // Constant ops do not have QuantizableResult attribute but they can deal
+    // with quantized tensors.
+    return true;
+  } else if (op->hasTrait<OpTrait::IsTerminator>() ||
+             isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(op)) {
+    // Terminators, qcast and decast are not quantizable.
+    return false;
+  }
+
+  const bool attr_enforced_quantizable =
       op->hasAttrOfType<StringAttr>(kQuantTraitAttrName) &&
       op->getAttrOfType<StringAttr>(kQuantTraitAttrName).getValue().str() ==
           QuantTraitValues[QuantizationTrait::FullyQuantizable];
 
-  // Constant ops do not have QuantizableResult attribute but they can deal with
-  // quantized tensors.
-  if (llvm::isa<func::ConstantOp, arith::ConstantOp, quantfork::StatisticsOp>(
-          op))
-    return false;
-
-  bool prop_enforced_quantizable =
+  const bool trait_enforced_quantizable =
       op->hasTrait<OpTrait::quant::QuantizableResult>();
 
-  return op->hasTrait<OpTrait::IsTerminator>() ||
-         llvm::isa<quantfork::QuantizeCastOp, quantfork::DequantizeCastOp>(
-             op) ||
-         (!attr_enforced_quantizable && !prop_enforced_quantizable);
+  return attr_enforced_quantizable || trait_enforced_quantizable;
 }
 
 // Returns the quantized type for the
@@ -932,10 +934,10 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
   if (!result_type.getElementType().isa<FloatType>()) return {};
   Builder builder(result_type.getContext());
 
-  // Only support 8-bits
-  if (bit_width != 8) return {};
+  // Only support 8-bits and 16-bits
+  if (bit_width != 8 && bit_width != 16) return {};
   IntegerType storage_type = builder.getIntegerType(bit_width);
-  if (!is_signed) {
+  if (!is_signed && bit_width == 8) {
     zero_point += 128;
     storage_min += 128;
     storage_max += 128;
@@ -944,6 +946,15 @@ quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
       builder.getUnknownLoc(), is_signed, storage_type,
       result_type.getElementType(), scale, zero_point, storage_min,
       storage_max);
+}
+
+quant::UniformQuantizedType GetFixedOutputRange(bool is_signed, int bit_width,
+                                                Type tensor_type, double scale,
+                                                int64_t zero_point) {
+  return GetFixedOutputRange(is_signed, bit_width, tensor_type, scale,
+                             zero_point,
+                             /*storage_min=*/-(1 << (bit_width - 1)),
+                             /*storage_max=*/(1 << (bit_width - 1)) - 1);
 }
 
 Type ConvertSignedQuantizedToUnsigned(Type signed_tensor_type, Location loc) {

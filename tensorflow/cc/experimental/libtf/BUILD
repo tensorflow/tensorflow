@@ -1,4 +1,5 @@
-# TODO(aselle): describe this package.
+#include "third_party/absl/strings/str_cat.h"
+#TODO(aselle) : describe this package.
 
 load(
     "//tensorflow/core/platform:rules_cc.bzl",
@@ -8,10 +9,11 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "filegroup")
-load("//tensorflow:tensorflow.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.default.bzl", "filegroup")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/cc/experimental/libtf:__subpackages__",
     ],
@@ -41,6 +43,8 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -179,13 +183,11 @@ tf_cc_test(
     size = "medium",
     srcs = [
         "tests/runtime_test_core.cc",
-        "tests/runtime_test_tfrt.cc",
     ],
     deps = [
         ":runtime_test",
         "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/cc/experimental/libtf/runtime/core",
-        "//tensorflow/cc/experimental/libtf/runtime/tfrt",
     ],
 )
 

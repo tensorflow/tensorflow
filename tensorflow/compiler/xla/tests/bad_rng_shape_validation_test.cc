@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace {
@@ -43,7 +43,7 @@ TEST_F(BadRngShapeValidationTest, DefaultConstructedShapeCreatesError) {
   StatusOr<XlaComputation> computation = builder.Build();
   EXPECT_FALSE(computation.ok());
   LOG(INFO) << "status received: " << computation.status();
-  EXPECT_THAT(computation.status().error_message(),
+  EXPECT_THAT(computation.status().message(),
               ::testing::HasSubstr("shape has invalid"));
 }
 

@@ -102,7 +102,7 @@ class ConvertUnaryImpl {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status ConvertImpl(const OpConverterParams& params) {
@@ -121,7 +121,7 @@ class ConvertUnaryImpl {
       converter->SetLayerName(layer, node_def, "recip");
     }
     params.outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-    return Status::OK();
+    return OkStatus();
   }
   static constexpr std::array<InputArgSpec, 1> InputSpec() {
     return std::array<InputArgSpec, 1>{
@@ -204,7 +204,7 @@ class ConvertActivation : public OpConverterBase<ConvertActivation>,
       return GetNodeAttr(AttrSlice(node_def), "alpha", &alpha_);
     }
     alpha_ = 1.0f;
-    return Status::OK();
+    return OkStatus();
   }
   Status Convert() {
     auto* converter = params_->converter;
@@ -230,7 +230,7 @@ class ConvertActivation : public OpConverterBase<ConvertActivation>,
     }
     layer->setAlpha(alpha_);
     params_->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 
  private:

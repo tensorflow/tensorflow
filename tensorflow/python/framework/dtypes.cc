@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/detail/common.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/detail/common.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 

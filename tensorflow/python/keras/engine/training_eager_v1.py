@@ -18,7 +18,7 @@
 import numpy as np
 
 from tensorflow.python.eager.backprop import GradientTape
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.engine import training_utils_v1
@@ -118,7 +118,9 @@ def _model_loss(model,
   if any(
       isinstance(input_t, (np.ndarray, float, int))
       for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch, inputs)
+    inputs = nest.map_structure(
+        tensor_conversion.convert_to_tensor_v2_with_dispatch, inputs
+    )
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
@@ -128,11 +130,14 @@ def _model_loss(model,
         targets, outs)
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
-    sample_weights = [
-        training_utils_v1.cast_if_floating_dtype(
-            ops.convert_to_tensor_v2_with_dispatch(val))
-        if val is not None else None for val in sample_weights
-    ]
+    new_sample_weights = []
+    for val in sample_weights:
+      if val is not None:
+        new_sample_weights.append(training_utils_v1.cast_if_floating_dtype(
+            tensor_conversion.convert_to_tensor_v2_with_dispatch(val)))
+      else:
+        new_sample_weights.append(None)
+    sample_weights = new_sample_weights
 
   masks = [getattr(t, '_keras_mask', None) for t in outs]
   targets = nest.flatten(targets)

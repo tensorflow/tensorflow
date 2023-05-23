@@ -21,7 +21,7 @@ limitations under the License.
 #include "tfrt/init_tfrt_dialects.h"  // from @tf_runtime
 
 static mlir::TranslateFromMLIRRegistration mlir_to_bef_registration(
-    "mlir-to-bef", tfrt::MLIRToBEFTranslate,
+    "mlir-to-bef", "translate MLIR to BEF", tfrt::MLIRToBEFTranslate,
     [](mlir::DialectRegistry &registry) {
       tfrt::RegisterTFRTDialects(registry);
       tfrt::RegisterTFRTCompiledDialects(registry);
@@ -29,7 +29,8 @@ static mlir::TranslateFromMLIRRegistration mlir_to_bef_registration(
     });
 
 static mlir::TranslateToMLIRRegistration bef_to_mlir_registration(
-    "bef-to-mlir", [](llvm::SourceMgr &source_mgr, mlir::MLIRContext *context) {
+    "bef-to-mlir", "translate BEF to MLIR",
+    [](llvm::SourceMgr &source_mgr, mlir::MLIRContext *context) {
       mlir::DialectRegistry registry;
       tensorflow::RegisterTfJitRtDialect(registry);
       context->appendDialectRegistry(registry);

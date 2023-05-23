@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
 #include "llvm/IR/BasicBlock.h"
@@ -23,14 +23,14 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 // Convenient function to cast the provided llvm::Value* using IRBuilder
 // to default address space. This is useful in particular for generating
@@ -682,6 +682,16 @@ void IrEmitter::BindFusionArguments(const HloInstruction* fusion,
           return GetIrArray(*operand, *fusion)
               .EmitReadArrayElement(index, &b_, operand->name());
         });
+  }
+}
+
+void IrEmitter::MaybeEmitFenceForAMDGPU(llvm::AtomicOrdering atomic_ordering,
+                                        const char* sync_scope_id) {
+  if (IsEmittingForAMDGPU() &&
+      ir_emitter_context_->rocm_compute_capability().gcn_arch_name().substr(
+          0, 6) == "gfx90a") {
+    b_.CreateFence(atomic_ordering,
+                   b_.getContext().getOrInsertSyncScopeID(sync_scope_id));
   }
 }
 

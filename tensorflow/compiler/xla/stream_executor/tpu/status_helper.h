@@ -16,36 +16,38 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_STATUS_HELPER_H_
 
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/tpu_api.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 class StatusHelper {
  public:
   StatusHelper()
-      : c_status(tensorflow::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
+      : c_status(stream_executor::tpu::ExecutorApiFn()->TpuStatus_NewFn()) {}
 
   ~StatusHelper() {
-    tensorflow::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
+    stream_executor::tpu::ExecutorApiFn()->TpuStatus_FreeFn(c_status);
   }
 
-  static tensorflow::Status FromC(  // TENSORFLOW_STATUS_OK
+  static tsl::Status FromC(  // TENSORFLOW_STATUS_OK
       TF_Status* const c_status) {
-    if (tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
-      return ::tensorflow::OkStatus();
+    if (stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status)) {
+      return ::tsl::OkStatus();
     } else {
-      return tensorflow::Status(  // TENSORFLOW_STATUS_OK
-          tensorflow::error::Code(
-              tensorflow::tpu::ExecutorApiFn()->TpuStatus_CodeFn(c_status)),
-          tensorflow::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
+      return tsl::Status(  // TENSORFLOW_STATUS_OK
+          absl::StatusCode(
+              stream_executor::tpu::ExecutorApiFn()->TpuStatus_CodeFn(
+                  c_status)),
+          stream_executor::tpu::ExecutorApiFn()->TpuStatus_MessageFn(c_status));
     }
   }
 
   bool ok() const {
-    return tensorflow::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
+    return stream_executor::tpu::ExecutorApiFn()->TpuStatus_OkFn(c_status);
   }
 
-  tensorflow::Status status() const {  // TENSORFLOW_STATUS_OK
+  tsl::Status status() const {  // TENSORFLOW_STATUS_OK
     return FromC(c_status);
   }
 

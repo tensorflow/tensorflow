@@ -25,6 +25,9 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+#define GEN_PASS_DECL_GRAPHTOFUNC
+#include "tensorflow/core/transforms/passes.h.inc"
+
 // Returns a pass that runs on a Module and expects to find a single GraphOp
 // to transform into a function. The provided feeds and fetches are used to form
 // the function arguments and returned values.

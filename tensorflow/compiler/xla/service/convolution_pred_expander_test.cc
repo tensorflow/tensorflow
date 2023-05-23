@@ -40,7 +40,7 @@ ENTRY convolution_computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   ConvolutionPredExpander expander_pass;
-  ASSERT_TRUE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_TRUE(expander_pass.Run(module.get()).value());
 
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Convert(m::Convolution(m::Op().WithElementType(F16),
@@ -61,7 +61,7 @@ ENTRY convolution_computation {
                           ParseAndReturnVerifiedModule(hlo_string));
 
   ConvolutionPredExpander expander_pass;
-  ASSERT_FALSE(expander_pass.Run(module.get()).ValueOrDie());
+  ASSERT_FALSE(expander_pass.Run(module.get()).value());
 }
 
 }  // namespace

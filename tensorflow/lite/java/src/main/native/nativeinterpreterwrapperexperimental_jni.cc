@@ -23,12 +23,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/core/shims/cc/interpreter.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 
+using tflite::Interpreter;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::ThrowException;
-using tflite_shims::Interpreter;
 
 namespace {
 

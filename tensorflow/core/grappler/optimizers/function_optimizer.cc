@@ -21,6 +21,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/compiler/jit/defs.h"
@@ -594,7 +596,7 @@ Status UpdateSpecializedFunctionCallSite(const FunctionDef& func,
     (*attr)[kFuncAttr].mutable_func()->set_name(specialized_func_name);
 
   } else {
-    return errors::InvalidArgument("Unknown function call site");
+    return absl::InvalidArgumentError("Unknown function call site");
   }
 
   return OkStatus();
@@ -753,7 +755,7 @@ Status SpecializeFunction(const NodeDef& func_node, const FunctionDef& func,
   if (flib.Contains(specialized_func_name)) {
     // NOTE(ezhulenev): This should never happen. If it happens, it's a sign of
     // a serious internal error, that must be investigated.
-    return errors::Internal("Created duplicate function specialization");
+    return absl::InternalError("Created duplicate function specialization");
   }
 
   specialized_func.mutable_signature()->set_name(specialized_func_name);
@@ -857,17 +859,16 @@ const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
        "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
        "EnqueueTPUEmbeddingSparseTensorBatch",
        "EnqueueTPUEmbeddingRaggedTensorBatch",
-       "EnqueueTPUEmbeddingArbitraryTensorBatch"
+       "EnqueueTPUEmbeddingArbitraryTensorBatch",
+       "DynamicEnqueueTPUEmbeddingArbitraryTensorBatch",
 
        // SaveV2 and RestoreV2 should be allowed to operate in parallel on
        // multiple hosts.
-       "SaveV2",
-       "RestoreV2"
+       "SaveV2", "RestoreV2",
 
        // InfeedEnqueue are stateful but should not be serialized for the
        // input pipeline
-       "InfeedEnqueue",
-       "InfeedEnqueueTuple"});
+       "InfeedEnqueue", "InfeedEnqueueTuple"});
   // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
   return exemption->contains(op);
 }
@@ -901,7 +902,7 @@ Status ValidateSideEffectsExecution(
         "Can't guarantee execution of function side-effects after inlining. "
         "Function call node has no outgoing control edges.";
     if (validate_outgoing_control_edge) {
-      return errors::Internal(error_message);
+      return absl::InternalError(error_message);
     } else {
       VLOG(3) << error_message;
     }
@@ -934,10 +935,10 @@ Status ValidateSideEffectsExecution(
             /*leave=*/{}, NodeComparatorName{});
 
     if (!will_execute) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Can't guarantee execution of a side-effectful node, that is not "
           "reachable from function control source. Function body node: ",
-          SummarizeNode(*side_effect));
+          SummarizeNode(*side_effect)));
     }
   }
 
@@ -1000,9 +1001,9 @@ Status ValidateNoDeadOutputs(const FunctionLibraryDefinition& flib_def,
             /*edge_filter=*/stop_traversal);
 
     if (has_dead_output) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Can't inline a function with dead outputs. Dead tensor source: ",
-          SummarizeNode(*dead_tensor_source));
+          SummarizeNode(*dead_tensor_source)));
     }
   }
 
@@ -1020,9 +1021,9 @@ Status MakeFunctionBodyForInlining(const Node& node,
                              const string& name,
                              const FunctionDef** fdef) -> Status {
     if ((*fdef = flib_def.Find(name)) == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Was not able to find a function definition (name=", name,
-          ") for a function call: ", SummarizeNode(node));
+          ") for a function call: ", SummarizeNode(node)));
     }
     return OkStatus();
   };
@@ -1050,8 +1051,8 @@ Status MakeFunctionBodyForInlining(const Node& node,
       gradient::Creator creator;
       TF_RETURN_IF_ERROR(gradient::GetOpGradientCreator(func.name(), &creator));
       if (creator == nullptr) {
-        return errors::InvalidArgument("No gradient is defined for ",
-                                       func.name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("No gradient is defined for ", func.name()));
       }
       FunctionDef grad_fdef;
       TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
@@ -1230,6 +1231,12 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     fetch_nodes.insert(ParseTensorName(fetch).node());
   }
   NodeNames keep_nodes(item.keep_ops.begin(), item.keep_ops.end());
+  if (item.save_op.size() > 0) {
+    keep_nodes.insert(item.save_op);
+  }
+  if (item.restore_op.size() > 0) {
+    keep_nodes.insert(item.restore_op);
+  }
 
   std::vector<string> inlined_function_names;
 
@@ -1277,6 +1284,8 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     if (MarkedForXlaCompilation(n->def())) continue;
     // Skip nodes in a feed set.
     if (feed_nodes.contains(n->name())) continue;
+    // Skip save and restore nodes.
+    if (n->name() == item.restore_op || n->name() == item.save_op) continue;
 
     // Function body that we will inline into the main graph. It can be a
     // function instantiation, or a gradient function instantiated from
@@ -1336,7 +1345,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
       if (!can_inline_function_call.ok() &&
           (is_aggressive || force_inline_as_multi_device)) {
-        VLOG(2) << "Ignore error: " << can_inline_function_call.error_message();
+        VLOG(2) << "Ignore error: " << can_inline_function_call.message();
         can_inline_function_call = OkStatus();
       }
     }
@@ -1355,7 +1364,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
 
     } else {
       VLOG(2) << "Failed to inline function call node: "
-              << can_inline_function_call.error_message();
+              << can_inline_function_call.message();
     }
   }
 
@@ -1491,7 +1500,7 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
       if (!status.ok() && is_graph_modified()) {
         return status;
       } else if (!status.ok() && !is_graph_modified()) {
-        VLOG(3) << "Skip specialization error: " << status.error_message();
+        VLOG(3) << "Skip specialization error: " << status.message();
         copy_node();
       }
       continue;
@@ -1516,7 +1525,7 @@ Status FunctionOptimizer::Optimize(Cluster*, const GrapplerItem& item,
                                    GraphDef* optimized_graph) {
   // Nothing to do here.
   if (item.graph.library().function_size() == 0) {
-    return errors::Aborted("Nothing to do.");
+    return absl::AbortedError("Nothing to do.");
   }
 
   TF_RETURN_IF_ERROR(RunFunctionOptimizerPass(item, optimized_graph));

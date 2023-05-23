@@ -3,9 +3,10 @@ load(
     "tf_cc_test",
     "tf_gen_options_header",
 )
-load("//tensorflow:tensorflow.bzl", "tf_selective_registration_deps")
+load("//tensorflow:tensorflow.default.bzl", "tf_selective_registration_deps")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/core:__subpackages__",
     ],

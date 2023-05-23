@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/platform/types.h"
 
 #ifdef XLA_CPU_USE_ACL
 #include "arm_compute/runtime/NEON/NEFunctions.h"
@@ -63,7 +63,7 @@ extern void __xla_cpu_runtime_ACLBatchMatMulF32(
 }  // extern "C"
 #else
 extern "C" {
-extern void __xla_cpu_runtime_ACLMatMulF32(
+inline extern void __xla_cpu_runtime_ACLMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k,
     int32_t transpose_lhs, int32_t transpose_rhs) {
@@ -73,7 +73,7 @@ extern void __xla_cpu_runtime_ACLMatMulF32(
   exit(1);
 }
 
-extern void __xla_cpu_runtime_ACLBatchMatMulF32(
+inline extern void __xla_cpu_runtime_ACLBatchMatMulF32(
     const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
     float* lhs, float* rhs, int64_t m, int64_t n, int64_t k, int64_t batch_size,
     int32_t transpose_lhs, int32_t transpose_rhs) {

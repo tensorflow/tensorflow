@@ -379,17 +379,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
               // `interleave_indices_`.
               interleave_indices_[index] = staging_indices_.front();
               staging_indices_.pop_front();
-              {
-                mutex_lock ckpt_l(ckpt_mu_);
-                if (worker_thread_states_[interleave_indices_[index]]
-                        .iterator != nullptr) {
-                  // TODO(wilsin): Write a unit test where we iterate through a
-                  // dataset, pause, and check the model proto autotune value.
-                  EnableAutotune(
-                      ctx, worker_thread_states_[interleave_indices_[index]]
-                               .iterator.get());
-                }
-              }
               next_index_ = (index + 1) % interleave_indices_.size();
               block_count_ = 0;
               // Restart the inner [for] loop
@@ -748,6 +737,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             worker_thread_states_[thread_index].iterator == nullptr &&
             worker_thread_states_[thread_index].iterator_creation_status.ok();
       }
+
+      bool thread_potentially_in_staging = true;
+
       // Even though `make_new_iterator` has cached values from
       // `worker_thread_states_[thread_index]` which is guarded by ckpt_mu_,
       // it is safe to *read* `make_new_iterator`outside of a lock without
@@ -789,11 +781,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             // CHECKPOINT_MARKER_A
             // We have the input tensors but have not built the iterator yet.
           }
-          bool thread_in_staging = false;
           {
             mutex_lock l(mu_);
-            thread_in_staging = absl::c_find(staging_indices_, thread_index) !=
-                                staging_indices_.end();
+            thread_potentially_in_staging =
+                absl::c_find(staging_indices_, thread_index) !=
+                staging_indices_.end();
           }
           // 1b. Run the user defined function to produce a new iterator.
           {
@@ -808,7 +800,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 worker_thread_states_[thread_index].iterator_creation_status;
             if (!iterator_creation_status.ok()) {
               worker_thread_states_[thread_index].input.clear();
-            } else if (thread_in_staging) {
+            } else if (thread_potentially_in_staging) {
+              // Disable auto tune modeling while we are paused.
               // TODO(wilsin): Write a unit test where we iterate through a
               // dataset, pause, and check the model proto autotune value.
               DisableAutotune(
@@ -856,6 +849,21 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         } else {
           bool end_of_sequence = false;
           while (!end_of_sequence) {
+            if (thread_potentially_in_staging) {
+              // Check whether we have left the staging state and reenable
+              // auto tune modeling.
+              mutex_lock l(mu_);
+              thread_potentially_in_staging =
+                  absl::c_find(staging_indices_, thread_index) !=
+                  staging_indices_.end();
+              if (!thread_potentially_in_staging) {
+                tf_shared_lock l(ckpt_mu_);
+                EnableAutotune(
+                    ctx.get(),
+                    worker_thread_states_[thread_index].iterator.get());
+              }
+            }
+
             // 3.a Produce an element!
             {
               tf_shared_lock ckpt_l(ckpt_mu_);
@@ -1120,7 +1128,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (!status.ok()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             iterator_name, strings::StrCat(prefix, "_", KMessage),
-            status.error_message()));
+            std::string(status.message())));
       }
       return OkStatus();
     }
@@ -1131,9 +1139,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       int64_t code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           iterator_name, strings::StrCat(prefix, "_", kCode), &code_int));
-      error::Code code = static_cast<error::Code>(code_int);
+      absl::StatusCode code = static_cast<absl::StatusCode>(code_int);
 
-      if (code != error::Code::OK) {
+      if (code != absl::StatusCode::kOk) {
         tstring error_message;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
             iterator_name, strings::StrCat(prefix, "_", KMessage),

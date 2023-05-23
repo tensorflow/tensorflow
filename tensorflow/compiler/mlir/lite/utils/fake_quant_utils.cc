@@ -30,7 +30,7 @@ namespace TFL {
 LogicalResult UnwrapTFCustomOps(func::FuncOp fn, OpBuilder& builder) {
   llvm::SmallVector<Operation*, 4> wrapped_ops;
   fn.walk([&](TFL::CustomTfOp custom_op) {
-    auto* real_op = &custom_op.body().front().front();
+    auto* real_op = &custom_op.getBody().front().front();
     wrapped_ops.push_back(real_op);
   });
 

@@ -392,6 +392,13 @@ TEST_F(BinaryOpsTest, DivComplex128SpecialCases) {
 
 /// Test `tf.TruncatedDiv`
 
+template <typename T>
+T baseline_truncate_div(T lhs, T rhs) {
+  T res = lhs / rhs;
+  if (res < 0) return ceil(res);
+  return floor(res);
+}
+
 // These kernels are JIT-compiled.
 #if defined(MLIR_GENERATED_GPU_KERNELS_ENABLED)
 GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
@@ -406,6 +413,18 @@ GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
     TruncateDiv, /*test_name=*/Uint64, uint64_t, uint64_t,
     test::DefaultInput<uint64_t>(), test::DefaultInputNonZero<uint64_t>(),
     baseline_div, test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv, /*test_name=*/Half, Eigen::half, Eigen::half,
+    test::DefaultInput<Eigen::half>(), test::DefaultInputNonZero<Eigen::half>(),
+    baseline_truncate_div, test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv, /*test_name=*/Float, float, float, test::DefaultInput<float>(),
+    test::DefaultInputNonZero<float>(), baseline_truncate_div,
+    test::OpsTestConfig().ExpectStrictlyEqual())
+GENERATE_DEFAULT_TESTS_WITH_SPECIFIC_INPUT_VALUES(
+    TruncateDiv, /*test_name=*/Double, double, double,
+    test::DefaultInput<double>(), test::DefaultInputNonZero<double>(),
+    baseline_truncate_div, test::OpsTestConfig().ExpectStrictlyEqual())
 #endif
 
 /// Test `tf.DivNoNan`.

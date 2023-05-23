@@ -18,49 +18,20 @@ limitations under the License.
 
 #include <stddef.h>
 
-// NOLINTNEXTLINE
-#include "tensorflow/core/platform/platform.h"
-// NOLINTNEXTLINE
 #include "tensorflow/core/platform/cord.h"
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/hash/crc32c.h"
 
 namespace tensorflow {
 namespace crc32c {
-
-// Return the crc32c of concat(A, buf[0,size-1]) where init_crc is the
-// crc32c of some string A.  Extend() is often used to maintain the
-// crc32c of a stream of data.
-extern uint32 Extend(uint32 init_crc, const char* buf, size_t size);
-
-#if defined(TF_CORD_SUPPORT)
-extern uint32 Extend(uint32 init_crc, const absl::Cord& cord);
-#endif
-
-// Return the crc32c of data[0,n-1]
-inline uint32 Value(const char* data, size_t n) { return Extend(0, data, n); }
-
-#if defined(TF_CORD_SUPPORT)
-inline uint32 Value(const absl::Cord& cord) { return Extend(0, cord); }
-#endif
-
-static const uint32 kMaskDelta = 0xa282ead8ul;
-
-// Return a masked representation of crc.
-//
-// Motivation: it is problematic to compute the CRC of a string that
-// contains embedded CRCs.  Therefore we recommend that CRCs stored
-// somewhere (e.g., in files) should be masked before being stored.
-inline uint32 Mask(uint32 crc) {
-  // Rotate right by 15 bits and add a constant.
-  return ((crc >> 15) | (crc << 17)) + kMaskDelta;
-}
-
-// Return the crc whose masked representation is masked_crc.
-inline uint32 Unmask(uint32 masked_crc) {
-  uint32 rot = masked_crc - kMaskDelta;
-  return ((rot >> 17) | (rot << 15));
-}
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::crc32c::Extend;
+using tsl::crc32c::kMaskDelta;
+using tsl::crc32c::Mask;
+using tsl::crc32c::Unmask;
+using tsl::crc32c::Value;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace crc32c
 }  // namespace tensorflow
 

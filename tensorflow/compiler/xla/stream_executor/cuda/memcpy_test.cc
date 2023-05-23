@@ -19,14 +19,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace stream_executor {
 
 TEST(MemcpyTest, PinnedHostMemory) {
-  Platform* platform =
-      MultiPlatformManager::PlatformWithName("CUDA").ValueOrDie();
-  StreamExecutor* executor = platform->ExecutorForDevice(0).ValueOrDie();
+  Platform* platform = MultiPlatformManager::PlatformWithName("CUDA").value();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
   Stream stream(executor);
   stream.Init();
   ASSERT_TRUE(stream.ok());

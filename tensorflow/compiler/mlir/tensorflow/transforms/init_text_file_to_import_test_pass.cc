@@ -18,7 +18,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/OperationSupport.h"  // from @llvm-project
@@ -28,7 +28,6 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes_detail.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
 
@@ -36,10 +35,13 @@ namespace mlir {
 namespace TF {
 namespace {
 
+#define GEN_PASS_DEF_INITTEXTFILETOIMPORTTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 // InitTextFileToImportTestPass generates a temporary file and run the
 // InitTextFileToImportPass for testing purpose.
 class InitTextFileToImportTestPass
-    : public tf_test::InitTextFileToImportTestPassBase<
+    : public impl::InitTextFileToImportTestPassBase<
           InitTextFileToImportTestPass> {
  public:
   explicit InitTextFileToImportTestPass() {}
@@ -102,10 +104,13 @@ void InitTextFileToImportTestPass::runOnOperation() {
   if (failed(pm.run(module))) return signalPassFailure();
 }
 
+#define GEN_PASS_DEF_INITTEXTFILETOIMPORTSAVEDMODELTESTPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/test_passes.h.inc"
+
 // InitTextFileToImportSavedModelTestPass mimicks a temporary saved model and
 // run the InitTextFileToImportPass for testing purpose.
 class InitTextFileToImportSavedModelTestPass
-    : public tf_test::InitTextFileToImportSavedModelTestPassBase<
+    : public impl::InitTextFileToImportSavedModelTestPassBase<
           InitTextFileToImportSavedModelTestPass> {
  public:
   explicit InitTextFileToImportSavedModelTestPass() {}

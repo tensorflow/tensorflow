@@ -158,7 +158,7 @@ class ExtractImagePatchesOp : public XlaOpKernel {
     // Feature group convolution, will end up with the kernel_size change more
     // rapidly than the depth. Reshape, transpose and reshape to reorder them.
     std::vector<int64_t> conv_dims =
-        xla::SpanToVector(builder->GetShape(conv).ValueOrDie().dimensions());
+        xla::SpanToVector(builder->GetShape(conv).value().dimensions());
     conv_dims.back() = depth;
     conv_dims.push_back(kernel_size);
     conv = xla::TransposeInMinorDims(xla::Reshape(conv, conv_dims));
@@ -178,11 +178,9 @@ class ExtractImagePatchesOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ExtractImagePatchesOp);
 };
 
-// We don't support integers for the convolution used in the implementation of
-// this op, so we limit the supported types.
-REGISTER_XLA_OP(
-    Name("ExtractImagePatches").TypeConstraint("T", GetXlaConvTypes()),
-    ExtractImagePatchesOp);
+// We don't support integers for the convolution for GPU used in the
+// implementation of this op, so we limit the supported types.
+REGISTER_XLA_CONV_OP(Name("ExtractImagePatches"), ExtractImagePatchesOp);
 
 }  // namespace
 }  // namespace tensorflow

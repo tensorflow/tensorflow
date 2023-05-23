@@ -4,6 +4,7 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -19,10 +20,11 @@ cc_test(
     ],
     deps = [
         ":cl_test",
+        # TODO(b/279977471) Once b/279347631 is resolved, check for heap again
+        "@com_google_googletest//:gtest_main_no_heapcheck",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:add_test_util",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -40,7 +42,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cast_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -74,7 +76,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:concat_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -110,7 +112,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_generic_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -128,7 +130,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:conv_weights_converter_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -138,6 +140,7 @@ cc_library(
     hdrs = ["converter.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu:spi",
+        "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:cl_arguments",
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:cl_errors",
@@ -145,12 +148,14 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type_util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
-        "//tensorflow/lite/delegates/gpu/common:precision",
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/task:arguments",
+        "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/task:tensor_desc",
         "//tensorflow/lite/delegates/gpu/common/task:util",
         "//tensorflow/lite/delegates/gpu/common/task:work_group_picking",
+        "//tensorflow/lite/delegates/gpu/common/tasks:conversion",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -168,7 +173,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -186,7 +191,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_3x3_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -222,7 +227,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:convolution_transposed_4x4_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -258,7 +263,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:cumsum_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -276,7 +281,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -295,7 +300,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_stride_h2_test_util",
         "//tensorflow/lite/delegates/gpu/common/tasks:depthwise_conv_3x3_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -313,7 +318,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:elementwise_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -336,7 +341,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common/task:gpu_operation",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected",
         "//tensorflow/lite/delegates/gpu/common/tasks:fully_connected_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -354,7 +359,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:gather_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -372,7 +377,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:lstm_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -409,7 +414,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:max_unpooling_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -427,7 +432,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:mean_stddev_normalization_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -445,7 +450,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:one_hot_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -463,7 +468,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:padding_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -481,7 +486,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:pooling_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -499,7 +504,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:prelu_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -517,7 +522,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:quantize_and_dequantize_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -535,7 +540,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:reduce_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -553,7 +558,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:relu_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -571,7 +576,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:resampler_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -589,7 +594,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -607,7 +612,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:reshape_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -625,7 +630,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:select_v2_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -643,7 +648,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -661,7 +666,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:softmax_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -679,7 +684,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:space_to_depth_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -697,7 +702,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:split_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -715,7 +720,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:strided_slice_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -733,7 +738,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:tile_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -751,7 +756,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:transpose_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -769,7 +774,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:resize_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 
@@ -787,7 +792,7 @@ cc_test(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "//tensorflow/lite/delegates/gpu/common/tasks:winograd_test_util",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_main_no_heapcheck",
     ],
 )
 

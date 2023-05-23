@@ -17,7 +17,7 @@ limitations under the License.
 
 // This file uses oneDNN InnerProduct for acceleration of TF Matrix-Matrix
 // Multiplication (MatMul) with bias (BiasAdd) operations.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
@@ -63,6 +63,10 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
     const Tensor& src_tensor = ctx->input(this->kInputIndexSrc);
     const Tensor& weight_tensor = ctx->input(this->kInputIndexWeight);
     const Tensor& bias_tensor = MklGetInput(ctx, this->kInputIndexBias);
+
+    if (std::is_same<T, float>::value) {
+      (void)SetFPMathMode();
+    }
 
     MklDnnShape src_mkl_shape;
     MklDnnShape weight_mkl_shape;
@@ -129,14 +133,8 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         memory::format_tag::nc, this->is_weight_const_);
     // Extend the basic parameters for data types and fusions.
     ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
-#ifdef DNNL_AARCH64_USE_ACL
-    // TODO(milpuz01): Remove once Arm Compute Library provides support for
-    // in-place updates
-    matmul_params.weight_hash =
-        Hash64(weight_tensor.tensor_data().data(),
-               std::min(kWeightTensorHashLength,
-                        static_cast<int>(weight_tensor.tensor_data().size())));
-#endif
+    auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
+    MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -263,8 +261,7 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
         }
       }
       std::shared_ptr<stream> cpu_stream;
-      auto st = ExecuteSingleThreadedGemm(batch, channel, k, sizeof(T));
-      MklDnnThreadPool eigen_tp(ctx, st ? 1 : -1);
+
       cpu_stream.reset(CreateStream(&eigen_tp, matmul_prim->GetEngine()));
 
       UserScratchPad<unsigned char> scratch_pad;
@@ -322,9 +319,6 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T, T> {
   std::vector<string> fused_ops_;
   const int kInputIndex_Add = 3;
   const int kOutputIndex_Dst = 0;
-#ifdef DNNL_AARCH64_USE_ACL
-  const int kWeightTensorHashLength = 1024;
-#endif
 };  // namespace tensorflow
 
 // Register mkl kernels for supported operations and types.
@@ -345,4 +339,4 @@ TF_CALL_bfloat16(REGISTER_FUSEDMATMUL_MKL_SUPPORTED_KERNELS_TYPES);
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

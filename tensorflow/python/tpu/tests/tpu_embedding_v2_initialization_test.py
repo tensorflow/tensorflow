@@ -16,6 +16,7 @@
 import numpy as np
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import init_ops_v2
@@ -75,12 +76,18 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
     def tpu_embedding_config():
       feature_configs = []
       for dim, vocab, name in table_data:
+        optimizer = None
+        if dim % 2 == 0:
+          optimizer = tpu_embedding_v2_utils.Adagrad(
+              learning_rate=lambda: constant_op.constant(1.0))
+
         feature_configs.append(
             tpu_embedding_v2_utils.FeatureConfig(
                 table=tpu_embedding_v2_utils.TableConfig(
                     vocabulary_size=int(vocab),
                     dim=int(dim),
                     initializer=init_ops_v2.Zeros(),
+                    optimizer=optimizer,
                     name=name)))
       optimizer = tpu_embedding_v2_utils.Adagrad(learning_rate=0.1)
       with strategy.scope():
@@ -90,6 +97,31 @@ class TPUEmbeddingTest(tpu_embedding_base_test.TPUEmbeddingBaseTest):
       return mid_level_api._create_config_proto()
 
     self.assertProtoEquals(tpu_embedding_config(), tpu_embedding_config())
+
+  def test_learning_rate_tag_order(self):
+    num_tables = 30
+    strategy = self._get_strategy()
+
+    feature_configs = []
+    for i in range(num_tables):
+      optimizer = tpu_embedding_v2_utils.Adagrad(
+          learning_rate=lambda: constant_op.constant(1.0))
+
+    feature_configs.append(
+        tpu_embedding_v2_utils.FeatureConfig(
+            table=tpu_embedding_v2_utils.TableConfig(
+                vocabulary_size=100,
+                dim=128,
+                initializer=init_ops_v2.Zeros(),
+                optimizer=optimizer)))
+    with strategy.scope():
+      mid_level_api = tpu_embedding_v2.TPUEmbedding(
+          feature_config=feature_configs, optimizer=optimizer)
+    mid_level_api._output_shapes = [TensorShape(128)] * len(feature_configs)
+    result = mid_level_api._create_config_proto()
+    for i, table in enumerate(result.table_descriptor):
+      self.assertEqual(i,
+                       table.optimization_parameters.learning_rate.dynamic.tag)
 
 
 if __name__ == '__main__':

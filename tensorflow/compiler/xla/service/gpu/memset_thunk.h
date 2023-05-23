@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MEMSET_THUNK_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_MEMSET_THUNK_H_
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
@@ -39,6 +39,11 @@ class MemzeroThunk : public Thunk {
         dest_value_(dest_value) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    dest_value_ = nullptr;
+  }
 
   const BufferAllocation::Slice& destination() const { return dest_; }
   mlir::Value dest_value() const { return dest_value_; }
@@ -61,6 +66,11 @@ class Memset32BitValueThunk : public Thunk {
         dest_value_(dest_value) {}
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  void ClearCompileTimeInfo() override {
+    Thunk::ClearCompileTimeInfo();
+    dest_value_ = nullptr;
+  }
 
   const BufferAllocation::Slice& destination() const { return dest_; }
   uint32_t value() const { return value_; }

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Arithmetic/IR/Arithmetic.h"  // from @llvm-project
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
@@ -35,7 +35,7 @@ int main(int argc, char **argv) {
 
   mlir::DialectRegistry registry;
   registry.insert<mlir::scf::SCFDialect, mlir::TF::TensorFlowDialect,
-                  mlir::arith::ArithmeticDialect, mlir::func::FuncDialect,
+                  mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::shape::ShapeDialect, mlir::quant::QuantizationDialect,
                   mlir::quantfork::QuantizationForkDialect,
                   mlir::TFR::TFRDialect>();

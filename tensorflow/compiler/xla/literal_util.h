@@ -29,6 +29,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
@@ -43,10 +44,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/lib/core/bitmap.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/protobuf.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 
@@ -77,7 +78,7 @@ class LiteralUtil {
   static Literal CreateR0(NativeT value);
   template <typename NativeT>
   static Literal CreateR1(absl::Span<const NativeT> values);
-  static Literal CreateR1(const tensorflow::core::Bitmap& values);
+  static Literal CreateR1(const tsl::core::Bitmap& values);
   template <typename NativeT>
   static Literal CreateR2(
       std::initializer_list<std::initializer_list<NativeT>> values);
@@ -112,10 +113,10 @@ class LiteralUtil {
   // Creates a scalar literal value one of the given primitive type.
   static Literal One(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the minimum value of the given
-  // primitive type. For floating-point types, returns -inf.
+  // primitive type. For floating-point types supporting inf, returns -inf.
   static Literal MinValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the maximum value of the given
-  // primitive type. For floating-point types, returns inf.
+  // primitive type. For floating-point types supporting inf, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
   // Creates a scalar literal value containing the NaN value of the given
   // primitive type. Fail for non-inexact types. For complex types, returns a
@@ -226,6 +227,7 @@ class LiteralUtil {
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
   static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
+  static Literal ConvertF32ToS8(const LiteralSlice& f32_literal);
   static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
   static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
@@ -246,20 +248,17 @@ class LiteralUtil {
   // Creates a literal with the supplied shape, and uses the provided value
   // generator to populate the literal's values.
   // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
-      const std::function<T(absl::Span<const int64_t>)>& generator);
+      absl::FunctionRef<T(absl::Span<const int64_t>)> generator);
 
   // Creates a literal with the supplied shape, and initializes the literal
   // values using a normal distribution with given mean and stddev standard
   // deviation, and using the engine as entropy generator.
   // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type, typename E,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  template <PrimitiveType type, typename E,
+            typename T = primitive_util::NativeTypeOf<type>>
   static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, E* engine,
                                                T mean, T stddev);
 
@@ -267,9 +266,7 @@ class LiteralUtil {
   // values using a normal distribution with given mean and stddev standard
   // deviation.
   // Returns the new literal object, or an error Status if failed.
-  template <
-      PrimitiveType type,
-      typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
+  template <PrimitiveType type, typename T = primitive_util::NativeTypeOf<type>>
   static StatusOr<Literal> CreateRandomLiteral(const Shape& shape, T mean,
                                                T stddev);
 
@@ -305,7 +302,7 @@ template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateR2WithLayout(
     std::initializer_list<std::initializer_list<NativeT>> values,
     const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(),
       {static_cast<int64_t>(values.size()),
        static_cast<int64_t>(values.begin()->size())},
@@ -394,7 +391,7 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ Literal LiteralUtil::CreateFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  Literal literal(ShapeUtil::MakeShapeWithLayout(
+  Literal literal(ShapeUtil::MakeShapeWithDenseLayout(
       primitive_util::NativeToPrimitiveType<NativeT>(), values.dimensions(),
       layout.minor_to_major()));
   literal.PopulateFromArray(values);
@@ -519,19 +516,19 @@ template <typename NativeT>
 template <PrimitiveType type, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
-    const std::function<T(absl::Span<const int64_t>)>& generator) {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
+    absl::FunctionRef<T(absl::Span<const int64_t>)> generator) {
+  using NativeT = primitive_util::NativeTypeOf<type>;
   TF_RET_CHECK(shape.element_type() == type);
   Literal literal(shape);
   TF_RETURN_IF_ERROR(literal.Populate<NativeT>(
-      [&](absl::Span<const int64_t> indexes) { return generator(indexes); }));
+      [=](absl::Span<const int64_t> indexes) { return generator(indexes); }));
   return std::move(literal);
 }
 
 template <PrimitiveType type, typename E, typename T>
 /* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
     const Shape& shape, E* engine, T mean, T stddev) {
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
+  using NativeT = primitive_util::NativeTypeOf<type>;
   std::normal_distribution<NativeT> generator(mean, stddev);
   return CreateLiteralWithGenerator<type, NativeT>(
       shape, [&](absl::Span<const int64_t> /*indexes*/) {

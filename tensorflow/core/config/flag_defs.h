@@ -32,13 +32,20 @@ class Flags {
   TF_DECLARE_FLAG(enable_nested_function_shape_inference, false,
                   "Allow ops such as tf.cond to invoke the ShapeRefiner on "
                   "their nested functions.");
+  TF_DECLARE_FLAG(enable_quantized_dtypes_training, false,
+                  "Set quantized dtypes, like tf.qint8, to be trainable.");
   TF_DECLARE_FLAG(graph_building_optimization, false,
                   "Optimize graph building for faster tf.function tracing.");
   TF_DECLARE_FLAG(
       op_building_optimization, true,
       "Optimize tf.Operation building for faster tf.function tracing.");
-  TF_DECLARE_FLAG(saved_model_fingerprinting, false,
+  TF_DECLARE_FLAG(saved_model_fingerprinting, true,
                   "Add fingerprint to SavedModels.");
+  TF_DECLARE_FLAG(
+      tf_shape_default_int64, false,
+      "The default output of tf.shape (i.e. when out_type is not specified) is "
+      "int64 when this flag is true and int32 otherwise. Setting this to true "
+      "is an unsupported, experimental setting that causes known breakages.");
   // LINT.ThenChange(//tensorflow/core/config/flags_api_wrapper.cc)
 };
 

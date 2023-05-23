@@ -2,12 +2,14 @@
 #   Contains the Keras OptimizerV2 API (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
     default_visibility = [
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
-        "//tensorflow/python/training/tracking:__pkg__",
+        "//tensorflow/python/tpu/tests:__pkg__",
+        "//tensorflow/python/trackable:__pkg__",
     ],
     licenses = ["notice"],
 )
@@ -48,6 +50,7 @@ py_library(
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras/engine:base_layer_utils",
@@ -65,10 +68,12 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:cond",
+        "//tensorflow/python:control_flow_case",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras/utils:generic_utils",
     ],
 )
@@ -83,6 +88,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/util:tf_export",
     ],
 )

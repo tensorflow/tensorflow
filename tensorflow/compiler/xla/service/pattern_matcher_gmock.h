@@ -17,9 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_PATTERN_MATCHER_GMOCK_H_
 
 #include <ostream>
+
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 
@@ -82,7 +83,8 @@ class GmockMatcher {
   template <typename T>
   bool MatchAndExplainImpl(T* t,
                            ::testing::MatchResultListener* listener) const {
-    MatchOption options{/*.capture=*/true, /*.explain_os=*/listener->stream()};
+    MatchOption options{/*.capture=*/true, /*.single_user_only=*/false,
+                        /*.explain_os=*/listener->stream()};
     return Match(t, pattern_, options);
   }
 

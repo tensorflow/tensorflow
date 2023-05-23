@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: mlir-hlo-opt %s -split-input-file -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // Folding this case would explode the IR
 func.func @scatter_fold_explosion() ->  tensor<512x1x6400x6400xf32> {
@@ -66,6 +66,30 @@ func.func @scatter_full_overwrite_non_const(
 
   // CHECK: return %arg1
   func.return %scatter :  tensor<512x1x6400x6400xf32>
+}
+
+// -----
+
+// CHECK-LABEL: func @scatter_full_overwrite_add(
+//  CHECK-SAME: %[[ARG0:[A-Za-z0-9]+]]: tensor<1xbf16>,
+//  CHECK-SAME: %[[ARG1:[A-Za-z0-9]+]]: tensor<0xi32>,
+//  CHECK-SAME: %[[ARG2:[A-Za-z0-9]+]]: tensor<1xbf16>
+func.func @scatter_full_overwrite_add(
+        %base : tensor<1xbf16>,
+        %index : tensor<0xi32>,
+        %update : tensor<1xbf16>) ->  tensor<1xbf16> {
+  %scatter = "mhlo.scatter"(%base, %index, %update) ({
+    ^bb0(%arg3: tensor<bf16>, %arg4: tensor<bf16>):
+      %2 = mhlo.add %arg3, %arg4 : tensor<bf16>
+      mhlo.return %2 : tensor<bf16>
+    }) {indices_are_sorted = true, scatter_dimension_numbers = #mhlo.scatter<update_window_dims = [0]>, unique_indices = true} : (tensor<1xbf16>, tensor<0xi32>, tensor<1xbf16>) -> tensor<1xbf16>
+
+  // CHECK: "mhlo.map"(%[[ARG0]], %[[ARG2]]) ({
+  // CHECK:  ^bb0(%[[ARG3:.*]]: tensor<bf16>, %[[ARG4:.*]]: tensor<bf16>):
+  // CHECK:    %[[ADD:.*]] = mhlo.add %[[ARG3]], %[[ARG4]] : tensor<bf16>
+  // CHECK:    mhlo.return %[[ADD]] : tensor<bf16>
+  // CHECK:  }) {dimensions = dense<0> : tensor<1xi64>} : (tensor<1xbf16>, tensor<1xbf16>) -> tensor<1xbf16>
+  func.return %scatter : tensor<1xbf16>
 }
 
 // -----

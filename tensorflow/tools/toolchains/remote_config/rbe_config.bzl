@@ -43,7 +43,7 @@ def _tensorflow_rbe_config(name, compiler, python_versions, os, rocm_version = N
             "TF_CUDA_VERSION": cuda_version,
             "CUDNN_INSTALL_PATH": cudnn_install_path if cudnn_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "TF_NEED_TENSORRT": "1",
-            "TF_TENSORRT_VERSION": tensorrt_version,
+            "TF_TENSORRT_VERSION": tensorrt_version if tensorrt_version != None else "",
             "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if not compiler.endswith("clang") else "",
             "GCC_HOST_COMPILER_PREFIX": compiler_prefix if compiler_prefix != None else "/usr/bin",

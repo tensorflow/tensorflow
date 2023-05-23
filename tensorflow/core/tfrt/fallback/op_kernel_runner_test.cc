@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 
 #include <string>
@@ -26,8 +25,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/fallback/op_kernel_runner_cache.h"
 
 namespace tensorflow {
+namespace tfrt_stub {
 namespace {
 
 using ::testing::IsNull;
@@ -38,6 +40,85 @@ constexpr const char* kDeviceType = "GPU";
 #else
 constexpr const char* kDeviceType = "CPU";
 #endif
+
+class TestOpKernel : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  ~TestOpKernel() override = default;
+
+  void Compute(OpKernelContext* context) override {
+    context->set_output(0, context->input(0));
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("TestOp").Device(DEVICE_CPU), TestOpKernel);
+
+// Identical to BatchFunction except it has 2 extra TFRT attributes and it does
+// not have `f` attribute. Users will not invoke this op directly.
+REGISTER_OP("TestOp").Input("x: int32").Output("y: int32");
+
+TEST(OpKernelRunnerTest, Create) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          FallbackState::Create(session_options, fdef_lib));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto runner,
+      OpKernelRunner::Create(
+          /*op_name=*/"TestOp", /*node_name=*/"TestOp_node_name",
+          /*device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0",
+          /*num_args=*/1,
+          /*attr_builder=*/[](tensorflow::AttrValueMap*) { return OkStatus(); },
+          fallback_state->device_manager(),
+          fallback_state->process_function_library_runtime()));
+
+  ASSERT_TRUE(runner);
+
+  EXPECT_EQ(runner.op_kernel()->name(), "TestOp_node_name");
+}
+
+TEST(OpKernelRunnerTest, OpKernelRunnerCache) {
+  tensorflow::SessionOptions session_options;
+  tensorflow::FunctionDefLibrary fdef_lib;
+  TF_ASSERT_OK_AND_ASSIGN(auto fallback_state,
+                          FallbackState::Create(session_options, fdef_lib));
+
+  OpKernelRunnerCache cache;
+
+  tfrt::Location loc(/*handler=*/nullptr, /*data=*/100);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* runner,
+      cache.GetOrCreate(
+          loc,
+          /*op_name=*/"TestOp",
+          /*device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0",
+          /*num_args=*/1,
+          /*attr_builder=*/[](tensorflow::AttrValueMap*) { return OkStatus(); },
+          fallback_state->device_manager(),
+          fallback_state->process_function_library_runtime()));
+
+  ASSERT_TRUE(runner);
+
+  EXPECT_EQ(runner->op_kernel()->name(), "TestOp_100_0");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      runner,
+      cache.GetOrCreate(
+          loc,
+          /*op_name=*/"TestOp",
+          /*device_name=*/"/job:localhost/replica:0/task:0/device:CPU:0",
+          /*num_args=*/1,
+          /*attr_builder=*/[](tensorflow::AttrValueMap*) { return OkStatus(); },
+          fallback_state->device_manager(),
+          fallback_state->process_function_library_runtime()));
+
+  ASSERT_TRUE(runner);
+
+  EXPECT_EQ(runner->op_kernel()->name(), "TestOp_100_0");
+}
 
 TEST(OpKernelRunnerTest, OpKernelRunState) {
   SessionOptions options;
@@ -65,7 +146,7 @@ TEST(OpKernelRunnerTest, OpKernelRunState) {
   Tensor c(DT_UINT8, TensorShape({}));
   gtl::InlinedVector<TensorValue, 4> new_inputs{TensorValue(&c)};
 
-  tfrt_stub::OpKernelRunState run_state(new_inputs, params);
+  OpKernelRunState run_state(new_inputs, params);
 
   EXPECT_THAT(run_state.input_tf_tensors, SizeIs(1));
   EXPECT_THAT(run_state.input_tf_tensor_values, SizeIs(1));
@@ -75,4 +156,5 @@ TEST(OpKernelRunnerTest, OpKernelRunState) {
 }
 
 }  // namespace
+}  // namespace tfrt_stub
 }  // namespace tensorflow

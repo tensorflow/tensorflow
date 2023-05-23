@@ -24,10 +24,10 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "tensorflow/compiler/xla/stream_executor/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/device/device_id.h"
 #include "tensorflow/core/common_runtime/device/device_id_manager.h"
-#include "tensorflow/core/common_runtime/device/device_id_utils.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_context.h"
@@ -164,13 +164,13 @@ PluggableDevice::~PluggableDevice() {
 
 Status PluggableDevice::Init(const SessionOptions& options) {
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
-  auto executor_status = DeviceIdUtil::ExecutorForTfDeviceId(
+  auto executor_status = se::DeviceIdUtil::ExecutorForTfDeviceId(
       DeviceType(device_type()), platform, tf_device_id_);
   if (!executor_status.status().ok()) {
     return errors::Internal("Failed to get StreamExecutor for device",
                             tf_device_id_.value());
   }
-  executor_ = executor_status.ValueOrDie();
+  executor_ = executor_status.value();
 
   em_ = EventMgrFactory::Singleton()->GetEventMgr(executor_,
                                                   options.config.gpu_options());

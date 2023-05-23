@@ -10,8 +10,9 @@ These docker containers are for building and testing TensorFlow in CI
 environments (and for users replicating those CI builds). They are openly
 developed in TF SIG Build, verified by Google developers, and published to
 tensorflow/build on [Docker Hub](https://hub.docker.com/r/tensorflow/build/).
-The TensorFlow OSS DevInfra team is evaluating these containers for building
-`tf-nightly`.
+The TensorFlow OSS DevInfra team uses these containers for most of our
+Linux-based CI, including `tf-nightly` tests and Pip packages and TF release
+packages for TensorFlow 2.9 onwards.
 
 ## Tags
 
@@ -97,10 +98,10 @@ Now let's build `tf-nightly`.
    Hub](https://hub.docker.com/r/tensorflow/build/tags). The options for the
    `master` branch are:
 
+    - `tensorflow/build:latest-python3.11`
     - `tensorflow/build:latest-python3.10`
     - `tensorflow/build:latest-python3.9`
     - `tensorflow/build:latest-python3.8`
-    - `tensorflow/build:latest-python3.7`
 
     For this example we'll use `tensorflow/build:latest-python3.9`.
 

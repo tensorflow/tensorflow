@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -51,6 +51,7 @@ TfLiteDelegate* tflite_plugin_create_delegate(char** options_keys,
   }
 
   TfLiteDelegate* ptr = new TfLiteDelegate;
+  *ptr = TfLiteDelegateCreate();
   ptr->Prepare = [](TfLiteContext* context, TfLiteDelegate* delegate) {
     num_delegates_invoked++;
     return kTfLiteOk;

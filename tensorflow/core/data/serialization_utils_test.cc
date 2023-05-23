@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace data {
@@ -211,6 +213,77 @@ TEST(SerializationUtilsTest, VariantTensorDataWriteAfterFlushing) {
   EXPECT_EQ(error::FAILED_PRECONDITION,
             writer.WriteTensor(full_name("Tensor"), input_tensor).code());
 }
+
+class ParameterizedIteratorStateVariantTest
+    : public DatasetOpsTestBase,
+      public ::testing::WithParamInterface<std::vector<Tensor>> {
+ protected:
+  VariantTensorData GetVariantTensorData() const {
+    std::vector<Tensor> tensors = GetParam();
+    VariantTensorData data;
+    data.set_type_name(IteratorStateVariant::TypeName());
+    for (Tensor& tensor : tensors) {
+      *data.add_tensors() = std::move(tensor);
+    }
+    return data;
+  }
+
+  StatusOr<VariantTensorData> EncodeAndDecode(
+      const VariantTensorData& data) const {
+    IteratorStateVariant encoder;
+    TF_RETURN_IF_ERROR(encoder.InitializeFromVariantData(
+        std::make_unique<VariantTensorData>(data)));
+    VariantTensorData encoded_data;
+    encoder.Encode(&encoded_data);
+
+    IteratorStateVariant decoder;
+    decoder.Decode(encoded_data);
+    return *decoder.GetData();
+  }
+
+  StatusOr<VariantTensorData> DecodeUncompressed(
+      const VariantTensorData& data) const {
+    IteratorStateVariant decoder;
+    decoder.Decode(data);
+    return *decoder.GetData();
+  }
+};
+
+std::vector<std::vector<Tensor>> TestCases() {
+  return {
+      CreateTensors<int64_t>(TensorShape{1}, {{1}}),           // int64
+      CreateTensors<int64_t>(TensorShape{1}, {{1}, {2}}),      // multiple int64
+      CreateTensors<tstring>(TensorShape{1}, {{"a"}, {"b"}}),  // tstring
+      {CreateTensor<tstring>(TensorShape{1}, {"a"}),
+       CreateTensor<int64_t>(TensorShape{1}, {1})},  // mixed tstring/int64
+      {},                                            // empty
+      {CreateTensor<int64_t>(TensorShape{128, 128}),
+       CreateTensor<int64_t>(TensorShape{64, 2})},  // larger components
+  };
+}
+
+TEST_P(ParameterizedIteratorStateVariantTest, EncodeAndDecode) {
+  VariantTensorData data = GetVariantTensorData();
+  TF_ASSERT_OK_AND_ASSIGN(VariantTensorData result, EncodeAndDecode(data));
+
+  EXPECT_EQ(result.type_name(), data.type_name());
+  for (int i = 0; i < result.tensors_size(); ++i) {
+    test::ExpectEqual(result.tensors(i), data.tensors(i));
+  }
+}
+
+TEST_P(ParameterizedIteratorStateVariantTest, DecodeUncompressed) {
+  VariantTensorData data = GetVariantTensorData();
+  TF_ASSERT_OK_AND_ASSIGN(VariantTensorData result, DecodeUncompressed(data));
+
+  EXPECT_EQ(result.type_name(), data.type_name());
+  for (int i = 0; i < result.tensors_size(); ++i) {
+    test::ExpectEqual(result.tensors(i), data.tensors(i));
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(Instantiation, ParameterizedIteratorStateVariantTest,
+                         ::testing::ValuesIn(TestCases()));
 
 }  // namespace
 }  // namespace data

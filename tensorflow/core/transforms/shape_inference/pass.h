@@ -23,6 +23,9 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+#define GEN_PASS_DECL_SHAPEINFERENCE
+#include "tensorflow/core/transforms/passes.h.inc"
+
 // Pass that infers the output shape of operations.
 std::unique_ptr<Pass> CreateShapeInferencePass();
 

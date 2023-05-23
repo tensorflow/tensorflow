@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/map_by_type.h"
 
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tensorflow/tsl/platform/test_benchmark.h"
 
 namespace xla {
 namespace runtime {

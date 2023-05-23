@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/eager/abstract_operation.h"
@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -39,7 +40,7 @@ limitations under the License.
 #include "tensorflow/python/eager/pywrap_tensor.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/lib/core/pybind11_status.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace py = pybind11;
 
@@ -257,6 +258,7 @@ PYBIND11_MODULE(_unified_api, m) {
     return t;
   });
 
-  py::class_<AbstractFunction, RefCountPtr<AbstractFunction>> AbstractFunction(
-      m, "AbstractFunction");
+  py::class_<AbstractFunction,
+             std::unique_ptr<AbstractFunction, tsl::core::RefCountDeleter>>
+      AbstractFunction(m, "AbstractFunction");
 }

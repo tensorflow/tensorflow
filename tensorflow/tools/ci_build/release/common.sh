@@ -15,13 +15,14 @@
 # ==============================================================================
 # External `common.sh`
 
-# Keep in sync with tensorflow_estimator and configure.py.
+# Keeps Bazel versions of the build scripts.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=5.1.1
+LATEST_BAZEL_VERSION=5.3.0
 # LINT.ThenChange(
-#   //tensorflow_estimator/google/kokoro/common.sh,
+#   //tensorflow/opensource_only/.bazelversion,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
-#   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
+#   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh,
+#   //tensorflow_estimator/google/kokoro/common.sh)
 
 # Run flaky functions with retries.
 # run_with_retry cmd

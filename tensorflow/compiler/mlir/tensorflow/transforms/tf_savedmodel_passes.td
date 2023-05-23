@@ -111,3 +111,54 @@ def LowerVariableOpsToMlProgramPass: Pass<"tf-saved-model-lower-variable-ops-to-
 
   let constructor = "::mlir::tf_saved_model::CreateLowerVariableOpsToMlProgramPass()";
 }
+
+def StripSavedModuleMetadataPass : Pass<"tf-strip-saved-module-metadata", "ModuleOp"> {
+  let summary = "Removes saved_model attributes.";
+  let description = [{
+      Removes all saved_model attributes from a module and its functions.
+      This only removes attributes, saved_model ops will stay in place.
+
+      This pass is useful for pass pipelines that have already consumed
+      all the tf_saved_model information, and now want to do further
+      transformations without tf_saved_model's verifiers kicking in.
+
+      For example, this would remove the semantics attribute from module:
+
+        module attributes {tf_saved_model.semantics} [...]
+
+      so the result becomes just
+
+        module [...]
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateStripSavedModuleMetadataPass()";
+}
+
+def ConvertSessionInitializerToFunctionPass : Pass<"tf-saved-model-convert-session-initializer-to-function", "ModuleOp"> {
+  let summary = "Converts the session initializer to a function.";
+  let description = [{
+      This converts
+        "tf_saved_model.session_initializer"() {initializers = [@a, @b, @c]} : () -> ()
+      to
+	func.func @session_initializer() {
+	  call @a() : () -> ()
+	  call @b() : () -> ()
+	  call @c() : () -> ()
+	  return
+	}
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateConvertSessionInitializerToFunctionPass()";
+}
+
+def AddFunctionsForExportedNamesPass : Pass<"tf-saved-model-add-functions-for-exported-names", "ModuleOp"> {
+  let summary = "Create a trampoline function for each exported name.";
+  let description = [{
+      This converts
+        func.func @foo() attributes {tf_saved_model.exported_names = ["a", "b", "c"]}
+      to
+        func.func @a() {return @foo_internal()}
+        func.func @b() {return @foo_internal()}
+        func.func @c() {return @foo_internal()}
+        func.func private @foo_internal()
+  }];
+  let constructor = "::mlir::tf_saved_model::CreateAddFunctionsForExportedNamesPass()";
+}

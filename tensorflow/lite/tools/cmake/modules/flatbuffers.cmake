@@ -17,13 +17,13 @@ if(TARGET flatbuffers OR flatbuffers_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   flatbuffers
   GIT_REPOSITORY https://github.com/google/flatbuffers
   # Sync with tensorflow/third_party/flatbuffers/workspace.bzl
-  GIT_TAG v2.0.6
+  GIT_TAG v23.1.21
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   SOURCE_DIR "${CMAKE_BINARY_DIR}/flatbuffers"

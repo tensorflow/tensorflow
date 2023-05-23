@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -88,7 +88,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       c = constant_op.constant(2)
       with ops.device("/cpu:0"):
-        a = control_flow_ops.cond(math_ops.equal(c, 2), fn, fn)
+        a = cond.cond(math_ops.equal(c, 2), fn, fn)
         iterator = iter(a)
         nxt = next(iterator)
       return nxt
@@ -108,7 +108,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       c = constant_op.constant(2)
       with ops.colocate_with(dataset._variant_tensor):  # pylint:disable=protected-access
-        a = control_flow_ops.cond(math_ops.equal(c, 2), fn, fn)
+        a = cond.cond(math_ops.equal(c, 2), fn, fn)
         iterator = iter(a)
         nxt = next(iterator)
       return nxt
@@ -122,7 +122,7 @@ class PlacementTest(test_base.DatasetTestBase, parameterized.TestCase):
     def f():
       dataset = dataset_ops.Dataset.range(8)
       c = constant_op.constant(2)
-      a = control_flow_ops.cond(
+      a = cond.cond(
           math_ops.equal(c, 2),
           lambda: dataset.map(lambda x: x + 1),
           lambda: dataset.map(lambda x: x + 2),

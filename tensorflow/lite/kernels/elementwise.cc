@@ -21,13 +21,19 @@ limitations under the License.
 #include <functional>
 #include <limits>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+#include "xnnpack.h"  // from @XNNPACK
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/minimal_logging.h"
+#endif  // TFLITE_KERNEL_USE_XNNPACK
 
 namespace tflite {
 namespace ops {
@@ -55,7 +61,8 @@ bool IsLogicalSupportedType(const TfLiteType type) {
 }
 
 bool IsAbsSupportedType(const TfLiteType type) {
-  return type == kTfLiteFloat32 || type == kTfLiteInt8 || type == kTfLiteInt16;
+  return type == kTfLiteFloat32 || type == kTfLiteInt8 ||
+         type == kTfLiteInt16 || type == kTfLiteInt32;
 }
 
 bool IsRsqrtSupportedType(const TfLiteType type) {
@@ -73,6 +80,14 @@ inline void SetRsqrtOutputMultiplier(const float input_scale,
                                      int32_t* multiplier, int32_t* shift) {
   const double scale = 1. / (std::sqrt(input_scale) * output_scale);
   QuantizeMultiplier(scale, multiplier, shift);
+}
+
+size_t MultiplyNonChannelDims(TfLiteIntArray* shape) {
+  size_t batch_size = 1;
+  for (int i = 0; i < shape->size - 1; ++i) {
+    batch_size *= shape->data[i];
+  }
+  return batch_size;
 }
 
 typedef bool (*IsSupportedType)(TfLiteType);
@@ -234,6 +249,8 @@ TfLiteStatus AbsEval(TfLiteContext* context, TfLiteNode* node) {
       return input->quantization.type == kTfLiteNoQuantization
                  ? AbsInt16EvalImpl(context, node, type)
                  : AbsEvalQuantized<int16_t>(context, node, type);
+    case kTfLiteInt32:
+      return EvalImpl<int32_t>(context, node, std::abs<int32_t>, type);
     default:
       TF_LITE_KERNEL_LOG(context, "Current data type %s is not supported.",
                          TfLiteTypeGetName(type));
@@ -254,6 +271,33 @@ TfLiteStatus LogEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus SqrtEval(TfLiteContext* context, TfLiteNode* node) {
+#ifdef TFLITE_KERNEL_USE_XNNPACK
+  const TfLiteTensor* input;
+  TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, 0, &input));
+  if (input->type == kTfLiteFloat32) {
+    xnn_status status;
+    const size_t num_input_dims = input->dims->size;
+    const size_t channel_dim =
+        num_input_dims == 0 ? 1 : input->dims->data[num_input_dims - 1];
+    const size_t batch_size = MultiplyNonChannelDims(input->dims);
+    TfLiteTensor* output;
+    TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
+    CpuBackendContext* cpu_backend_context =
+        CpuBackendContext::GetFromContext(context);
+    pthreadpool_t threadpool = cpu_backend_context->get_xnnpack_threadpool();
+    threadpool = nullptr;
+    status = xnn_run_square_root_nc_f32(
+        channel_dim, channel_dim, channel_dim, batch_size,
+        GetTensorData<float>(input), GetTensorData<float>(output),
+        /*flags*/ XNN_FLAG_YIELD_WORKERS, threadpool);
+    if (status == xnn_status_success) {
+      return kTfLiteOk;
+    }
+    TFLITE_LOG(TFLITE_LOG_INFO,
+               "Failed to run xnnpack xnn_run_sqrt_nd_x32. Error code: %d",
+               status);
+  }
+#endif  // TFLITE_KERNEL_USE_XNNPACK
   return EvalNumeric(context, node, std::sqrt);
 }
 

@@ -25,7 +25,7 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
   // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[C2:.*]] = arith.constant 2 : index
   // ALLOC-DAG: %[[MEM:.*]] = memref.alloc() {{.*}} : memref<3xf32>
-  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca() : memref<3xf32>
+  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca() {{.*}} : memref<3xf32>
   // CHECK: store %[[A]], %[[MEM]][%[[C0]]] : memref<3xf32>
   // CHECK: store %[[B]], %[[MEM]][%[[C1]]] : memref<3xf32>
   // CHECK: store %[[C]], %[[MEM]][%[[C2]]] : memref<3xf32>
@@ -40,15 +40,14 @@ func.func @tensor.from_elements(%a : f32) -> f32 {
 // CHECK-LABEL: @tensor.generate
 // CHECK-SAME: (%[[ARG:.*]]: memref<*xf32>) -> index
 func.func @tensor.generate(%arg : tensor<*xf32>) -> index {
-  // CHECK-DAG: %[[C0:.*]] = arith.constant 0 : index
-  // CHECK-DAG: %[[C1:.*]] = arith.constant 1 : index
   // CHECK-DAG: %[[SIZE:.*]] = memref.rank %[[ARG]] : memref<*xf32>
   // ALLOC-DAG: %[[MEM:.*]] = memref.alloc(%[[SIZE]]) {{.*}} : memref<?xindex>
-  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) : memref<?xindex>
-  // CHECK: scf.parallel (%[[I:.*]]) = (%[[C0]]) to (%[[SIZE]]) step (%[[C1]]) {
-  // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[I]] : memref<*xf32>
-  // CHECK:   memref.store %[[ELEM]], %[[MEM]][%[[I]]] : memref<?xindex>
-  // CHECK:   scf.yield
+  // ALLOCA-DAG: %[[MEM:.*]] = memref.alloca(%[[SIZE]]) {{.*}} : memref<?xindex>
+  // CHECK: linalg.map
+  // CHECK: outs(%[[MEM]] : memref<?xindex>)
+  // CHECK:   %[[INDEX:.*]] = linalg.index 0
+  // CHECK:   %[[ELEM:.*]] = memref.dim %[[ARG]], %[[INDEX]] : memref<*xf32>
+  // CHECK:   linalg.yield %[[ELEM]]
   // CHECK: }
   %size = tensor.rank %arg : tensor<*xf32>
   %tfe = tensor.generate %size {
@@ -251,7 +250,7 @@ func.func @tensor_reshape(%t : tensor<1x2x2xf32>) -> tensor<4xf32> {
 // CHECK-LABEL: @slice
 // CHECK-SAME: (%[[T:.*]]: memref<3xi32>)
 func.func @slice(%t : tensor<3xi32>) -> tensor<1xi32> {
-  // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32>
+  // CHECK: memref.subview %[[T]][0] [1] [1] : memref<3xi32> to memref<1xi32, strided<[1]>>
   %result = tensor.extract_slice %t[0] [1] [1] : tensor<3xi32> to tensor<1xi32>
   func.return %result : tensor<1xi32>
 }

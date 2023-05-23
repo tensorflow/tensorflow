@@ -17,8 +17,10 @@
 #include <utility>
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -79,26 +81,30 @@ static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
   opts.specialization = JitExecutable::Specialization::kEnabled;
 
   // Register dialects and interfaces required for the compilation pipeline.
-  opts.compiler.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    RegisterDefaultJitRtDialects(registry);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        RegisterDefaultJitRtDialects(dialects);
+      };
 
   // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-  opts.compiler.create_compilation_pipeline = [&](mlir::PassManager& pm) {
-    TfJitRtPipelineOptions opts;
+  opts.compiler.create_compilation_pipeline =
+      [&](xla::runtime::PassManager& passes) {
+        TfJitRtPipelineOptions opts;
+        opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
 
-    // Lower from Tensorflow to Linalg on buffers.
-    CreateTfJitRtPipeline(pm, opts);
+        // Lower from Tensorflow to Linalg on buffers.
+        CreateTfJitRtPipeline(*passes, opts);
 
-    // Use default JitRt compilation pipeline to lower to LLVM.
-    CreateDefaultJitRtCompilationPipeline(pm, copts);
-  };
+        // Use default JitRt compilation pipeline to lower to LLVM.
+        CreateDefaultJitRtCompilationPipeline(passes, copts);
+      };
 
   // Register a custom pipeline to propagate specialization information.
-  opts.compiler.create_specialization_pipeline = [&](mlir::PassManager& pm) {
-    CreateJitRtSpecializationPipeline(pm);
-  };
+  opts.compiler.create_specialization_pipeline =
+      [&](xla::runtime::PassManager& passes) {
+        CreateJitRtSpecializationPipeline(passes);
+      };
 
   // When lowering Tensorflow functions to JitRt we convert all input and
   // result tensors to memrefs, and add a kernel context input.

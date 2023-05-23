@@ -215,6 +215,10 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                         /*peak_tera_flops_per_second=*/0,
                                         /*peak_hbm_bw_gigabytes_per_second=*/0);
   XPlaneBuilder device_plane(xplane);
+  device_plane.AddStatValue(
+      *device_plane.GetOrCreateStatMetadata(
+          GetStatTypeStr(StatType::kTotalProfileDurationPs)),
+      1000);
   XLineBuilder stream1 = device_plane.GetOrCreateLine(/*line_id=*/10);
   AddTensorFlowTpuOpEvent("MatMul", "while:MatMul", 0, 10, "MatMul", 34, 45, 2,
                           5, 1, 1, &device_plane, &stream1);
@@ -232,6 +236,8 @@ TEST(ConvertXPlaneToOpMetricsDb, TpuDeviceOpMetricsDb) {
                                  min_time_ps: 10000
                                }
                                metrics_db { name: "IDLE" category: "IDLE" }
+                               total_time_ps: 10000
+                               total_op_time_ps: 10000
               )pb"));
 #endif
 }

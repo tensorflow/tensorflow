@@ -49,6 +49,8 @@ inline void TransposeConv(
   const int filter_width = filter_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
   const int output_width = output_shape.Dims(2);
+  const float output_activation_min = params.float_activation_min;
+  const float output_activation_max = params.float_activation_max;
   if (bias_data) {
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
   }
@@ -99,14 +101,18 @@ inline void TransposeConv(
       }
     }
   }
-  if (bias_data) {
-    for (int batch = 0; batch < batches; ++batch) {
-      for (int out_y = 0; out_y < output_height; ++out_y) {
-        for (int out_x = 0; out_x < output_width; ++out_x) {
-          for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
-            output_data[Offset(output_shape, batch, out_y, out_x,
-                               out_channel)] += bias_data[out_channel];
-          }
+
+  for (int batch = 0; batch < batches; ++batch) {
+    for (int out_y = 0; out_y < output_height; ++out_y) {
+      for (int out_x = 0; out_x < output_width; ++out_x) {
+        for (int out_channel = 0; out_channel < output_depth; ++out_channel) {
+          float acc = output_data[Offset(output_shape, batch, out_y, out_x,
+                                         out_channel)];
+          if (bias_data) acc += bias_data[out_channel];
+
+          output_data[Offset(output_shape, batch, out_y, out_x, out_channel)] =
+              ActivationFunctionWithMinMax(acc, output_activation_min,
+                                           output_activation_max);
         }
       }
     }

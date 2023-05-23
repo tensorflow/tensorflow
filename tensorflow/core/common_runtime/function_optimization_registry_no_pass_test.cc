@@ -29,7 +29,10 @@ TEST(FunctionOptimizationPassRegistry, NoPassSet) {
   DeviceSet device_set;
   ConfigProto config_proto;
   Status status = FunctionOptimizationPassRegistry::Global().Run(
-      device_set, config_proto, /*graph=*/nullptr, /*flib_def=*/nullptr,
+      "test_func", device_set, config_proto,
+      /*xla_compile_device_type=*/"",
+      /*graph=*/nullptr,
+      /*flib_def=*/nullptr,
       /*control_ret_node_names=*/nullptr, /*control_rets_updated=*/nullptr);
 
   EXPECT_EQ(status, OkStatus());

@@ -20,9 +20,9 @@ limitations under the License.
 #include <limits>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_types.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/mean.h"
@@ -30,8 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/reduce.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reduce_common.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/mean.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -43,6 +41,7 @@ namespace ops {
 namespace builtin {
 namespace reduce {
 
+const int kMaxConstantOutputTensorSize = 8;
 // This file has reference implementation of reduce_* operators.
 enum KernelType {
   kReference,
@@ -54,6 +53,8 @@ struct OpData {
   int shift;
   // The index of the temporary tensor where the quantized inputs are cached.
   int scratch_tensor_index;
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
 };
 
 struct OpContext {
@@ -81,6 +82,9 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
+template <KernelType kernel_type>
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node);
+
 // Resizes the temp tensor that stores resolved axis.
 TfLiteStatus ResizeTempAxis(TfLiteContext* context, OpContext* op_context,
                             TfLiteTensor* resolved_axis) {
@@ -97,14 +101,15 @@ TfLiteStatus ResizeTempAccum(TfLiteContext* context, OpContext* op_context,
   return context->ResizeTensor(context, temp_accum, size);
 }
 
-// Resizes output array based on the input size and resolved axis.
-TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
+// Returns the output shape.
+TfLiteStatus GetOutputShape(TfLiteContext* context, OpContext* op_context,
+                            TfLiteIntArray** output_shape) {
   size_t num_axis = NumElements(op_context->axis);
   const TfLiteIntArray* input_dims = op_context->input->dims;
   int input_num_dims = NumDimensions(op_context->input);
   if (input_num_dims == 0) {
-    return context->ResizeTensor(context, op_context->output,
-                                 TfLiteIntArrayCreate(0));
+    *output_shape = TfLiteIntArrayCreate(0);
+    return kTfLiteOk;
   }
   const int* axis = GetTensorData<int>(op_context->axis);
   if (op_context->params->keep_dims) {
@@ -123,7 +128,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
         output_dims->data[idx] = input_dims->data[idx];
       }
     }
-    return context->ResizeTensor(context, op_context->output, output_dims);
+    *output_shape = output_dims;
+    return kTfLiteOk;
   } else {
     // Calculates size of reducing axis.
     int num_reduce_axis = num_axis;
@@ -161,8 +167,16 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
         output_dims->data[idx - num_skip_axis] = input_dims->data[idx];
       }
     }
-    return context->ResizeTensor(context, op_context->output, output_dims);
+    *output_shape = output_dims;
+    return kTfLiteOk;
   }
+}
+
+// Resizes output array based on the input size and resolved axis.
+TfLiteStatus ResizeOutputTensor(TfLiteContext* context, OpContext* op_context) {
+  TfLiteIntArray* output_dims;
+  TF_LITE_ENSURE_OK(context, GetOutputShape(context, op_context, &output_dims));
+  return context->ResizeTensor(context, op_context->output, output_dims);
 }
 
 // Resizes the temp tensor that stores normalized dims.
@@ -240,6 +254,24 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.axis->type, kTfLiteInt32);
   TF_LITE_ENSURE_OK(context, InitializeTemporaries(context, node, &op_context));
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  data->noop = IsConstantOrPersistentTensor(op_context.input) &&
+               IsConstantOrPersistentTensor(op_context.axis);
+  if (data->noop) {
+    // Constant reductions should only be used for small outputs, typically
+    // coming from Shape tensors. Constant reductions on larger tensors could
+    // increase memory usage due to the output not being stored in the Arena.
+    TfLiteIntArray* output_shape;
+    TF_LITE_ENSURE_OK(context,
+                      GetOutputShape(context, &op_context, &output_shape));
+    int output_num_elements = 1;
+    for (int i = 0; i < output_shape->size; ++i) {
+      output_num_elements *= output_shape->data[i];
+    }
+    data->noop &= output_num_elements <= kMaxConstantOutputTensorSize;
+    TfLiteIntArrayFree(output_shape);
+  }
 
   if (op_context.input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, op_context.input->params.zero_point, 0);
@@ -253,19 +285,21 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(
       context, GetTemporarySafe(context, node, /*index=*/3, &normalized_dims));
 
-  if (!IsConstantTensor(op_context.input)) {
+  if (!IsConstantOrPersistentTensor(op_context.input)) {
     SetTensorToDynamic(normalized_dims);
   } else {
+    TfLiteTensorDataFree(normalized_dims);
     normalized_dims->allocation_type = kTfLiteArenaRw;
     TF_LITE_ENSURE_OK(context,
                       ResizeTempDims(context, &op_context, normalized_dims));
   }
   // Leaves work to Eval if axis is not constant; else resizes output.
-  if (!IsConstantTensor(op_context.axis)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis)) {
     SetTensorToDynamic(op_context.output);
     SetTensorToDynamic(resolved_axis);
     return kTfLiteOk;
   }
+  TfLiteTensorDataFree(resolved_axis);
   resolved_axis->allocation_type = kTfLiteArenaRw;
   TF_LITE_ENSURE_OK(context,
                     ResizeTempAxis(context, &op_context, resolved_axis));
@@ -306,7 +340,7 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* temp_sum;
   TF_LITE_ENSURE_OK(context,
                     GetTemporarySafe(context, node, /*index=*/2, &temp_sum));
-  if (!IsConstantTensor(op_context.axis)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis)) {
     SetTensorToDynamic(temp_sum);
     return kTfLiteOk;
   }
@@ -338,7 +372,7 @@ TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, op_context.output->params.zero_point, 0);
   }
 
-  if (!IsConstantTensor(op_context.axis)) {
+  if (!IsConstantOrPersistentTensor(op_context.axis)) {
     SetTensorToDynamic(temp_prod);
     return kTfLiteOk;
   }
@@ -358,8 +392,30 @@ TfLiteStatus PrepareProd(TfLiteContext* context, TfLiteNode* node) {
     QuantizeMultiplier(scaling, &data->multiplier, &data->shift);
   }
 
-  temp_prod->allocation_type = kTfLiteArenaRw;
-  return ResizeTempAccum(context, &op_context, temp_prod);
+  if (data->noop) {
+    SetTensorToDynamic(temp_prod);
+    SetTensorToPersistentRo(op_context.output);
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempAccum(context, &op_context, temp_prod));
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+
+    TfLiteTensor* resolved_axis;
+    TF_LITE_ENSURE_OK(
+        context, GetTemporarySafe(context, node, /*index=*/1, &resolved_axis));
+    SetTensorToDynamic(resolved_axis);
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempAxis(context, &op_context, resolved_axis));
+    TfLiteTensor* normalized_dims;
+    TF_LITE_ENSURE_OK(context, GetTemporarySafe(context, node, /*index=*/3,
+                                                &normalized_dims));
+    SetTensorToDynamic(normalized_dims);
+    TF_LITE_ENSURE_OK(context,
+                      ResizeTempDims(context, &op_context, normalized_dims));
+    return EvalImpl<kGenericOptimized>(context, node);
+  } else {
+    temp_prod->allocation_type = kTfLiteArenaRw;
+    return ResizeTempAccum(context, &op_context, temp_prod);
+  }
 }
 
 void ResolveAxis(const int* axis_data, int axis_count,
@@ -420,30 +476,26 @@ TfLiteStatus QuantizedMeanOrSum(TfLiteContext* context,
 }
 
 template <typename integer_type>
-TfLiteStatus EvalIntegerMean(TfLiteContext* context,
-                             const OpContext& op_context, int num_axis,
-                             OpData* data, TfLiteTensor* temp_index,
-                             TfLiteTensor* resolved_axis,
-                             TfLiteTensor* temp_sum,
-                             TfLiteTensor* normalized_dims,
-                             KernelType kernel_type) {
-  tflite::MeanParams op_params;
-  op_params.axis_count = num_axis;
-  ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+TfLiteStatus EvalQuantizedMean(TfLiteContext* context,
+                               const OpContext& op_context, int num_axis,
+                               OpData* data, TfLiteTensor* temp_index,
+                               TfLiteTensor* resolved_axis,
+                               TfLiteTensor* temp_sum) {
   const TfLiteTensor* input = op_context.input;
+  TfLiteTensor* output = op_context.output;
 
-  if (input->params.zero_point == op_context.output->params.zero_point &&
-      input->params.scale == op_context.output->params.scale) {
-    Mean<integer_type, int>(context, &op_context,
-                            GetTensorData<int>(temp_index),
-                            GetTensorData<int>(resolved_axis),
-                            GetTensorData<int>(temp_sum), kernel_type);
-  } else {
-    QuantizedMeanOrSum<integer_type>(
-        context, &op_context, GetTensorData<int>(temp_index),
-        GetTensorData<int>(resolved_axis), GetTensorData<int32_t>(temp_sum),
-        kernel_type, /*compute_sum=*/false);
-  }
+  TF_LITE_ENSURE(
+      context,
+      reference_ops::QuantizedMeanOrSum(
+          GetTensorData<integer_type>(input), input->params.zero_point,
+          input->dims->data, input->dims->size,
+          GetTensorData<integer_type>(output), data->multiplier, data->shift,
+          output->params.zero_point, output->dims->data, output->dims->size,
+          GetTensorData<int>(op_context.axis), num_axis,
+          op_context.params->keep_dims, GetTensorData<int>(temp_index),
+          GetTensorData<int>(resolved_axis), GetTensorData<int32_t>(temp_sum),
+          /*compute_sum=*/false));
+
   return kTfLiteOk;
 }
 
@@ -586,22 +638,19 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
                              GetTensorData<int64_t>(temp_sum), kernel_type);
       break;
     case kTfLiteInt8: {
-      TF_LITE_ENSURE_OK(
-          context, EvalIntegerMean<int8_t>(context, op_context, num_axis, data,
-                                           temp_index, resolved_axis, temp_sum,
-                                           normalized_dims, kernel_type));
+      TF_LITE_ENSURE_OK(context, EvalQuantizedMean<int8_t>(
+                                     context, op_context, num_axis, data,
+                                     temp_index, resolved_axis, temp_sum));
     } break;
     case kTfLiteInt16: {
-      TF_LITE_ENSURE_OK(
-          context, EvalIntegerMean<int16_t>(context, op_context, num_axis, data,
-                                            temp_index, resolved_axis, temp_sum,
-                                            normalized_dims, kernel_type));
+      TF_LITE_ENSURE_OK(context, EvalQuantizedMean<int16_t>(
+                                     context, op_context, num_axis, data,
+                                     temp_index, resolved_axis, temp_sum));
     } break;
     case kTfLiteUInt8: {
-      TF_LITE_ENSURE_OK(
-          context, EvalIntegerMean<uint8_t>(context, op_context, num_axis, data,
-                                            temp_index, resolved_axis, temp_sum,
-                                            normalized_dims, kernel_type));
+      TF_LITE_ENSURE_OK(context, EvalQuantizedMean<uint8_t>(
+                                     context, op_context, num_axis, data,
+                                     temp_index, resolved_axis, temp_sum));
     } break;
     default:
       return kTfLiteError;
@@ -850,6 +899,7 @@ TfLiteStatus EvalGeneric(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
+  const OpData* op_data = reinterpret_cast<const OpData*>(node->user_data);
   ruy::profiler::ScopeLabel label("Sum");
   const auto& input = op_context.input;
   const auto& output = op_context.output;
@@ -861,6 +911,7 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
   const bool need_rescale = (eight_bit_quantized && !same_scale);
   if (need_rescale) {
     // Rescaling 8bit reduce sum.
+    int num_axis = static_cast<int>(NumElements(op_context.axis));
     TfLiteTensor* temp_index;
     TF_LITE_ENSURE_OK(
         context, GetTemporarySafe(context, node, /*index=*/0, &temp_index));
@@ -880,17 +931,36 @@ TfLiteStatus EvalSum(TfLiteContext* context, TfLiteNode* node) {
     }
 
     if (input->type == kTfLiteUInt8) {
-      QuantizedMeanOrSum<uint8_t>(context, &op_context,
-                                  GetTensorData<int>(temp_index),
-                                  GetTensorData<int>(resolved_axis),
-                                  GetTensorData<int32_t>(temp_sum), kernel_type,
-                                  /*compute_sum=*/true);
-    } else {
-      QuantizedMeanOrSum<int8_t>(context, &op_context,
-                                 GetTensorData<int>(temp_index),
-                                 GetTensorData<int>(resolved_axis),
-                                 GetTensorData<int32_t>(temp_sum), kernel_type,
-                                 /*compute_sum=*/true);
+      TF_LITE_ENSURE(
+          context,
+          reference_ops::QuantizedMeanOrSum(
+              GetTensorData<uint8_t>(op_context.input),
+              op_context.input->params.zero_point, op_context.input->dims->data,
+              op_context.input->dims->size,
+              GetTensorData<uint8_t>(op_context.output), op_data->multiplier,
+              op_data->shift, op_context.output->params.zero_point,
+              op_context.output->dims->data, op_context.output->dims->size,
+              GetTensorData<int>(op_context.axis), num_axis,
+              op_context.params->keep_dims, GetTensorData<int>(temp_index),
+              GetTensorData<int>(resolved_axis),
+              GetTensorData<int32_t>(temp_sum),
+              /*compute_sum=*/true));
+    }
+    if (input->type == kTfLiteInt8) {
+      TF_LITE_ENSURE(
+          context,
+          reference_ops::QuantizedMeanOrSum(
+              GetTensorData<int8_t>(op_context.input),
+              op_context.input->params.zero_point, op_context.input->dims->data,
+              op_context.input->dims->size,
+              GetTensorData<int8_t>(op_context.output), op_data->multiplier,
+              op_data->shift, op_context.output->params.zero_point,
+              op_context.output->dims->data, op_context.output->dims->size,
+              GetTensorData<int>(op_context.axis), num_axis,
+              op_context.params->keep_dims, GetTensorData<int>(temp_index),
+              GetTensorData<int>(resolved_axis),
+              GetTensorData<int32_t>(temp_sum),
+              /*compute_sum=*/true));
     }
   } else {
     return EvalGeneric<kernel_type, kSum>(context, node);
@@ -977,6 +1047,14 @@ TfLiteStatus EvalQuantizedProd(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 TfLiteStatus EvalProd(TfLiteContext* context, TfLiteNode* node) {
+  if (reinterpret_cast<const OpData*>(node->user_data)->noop) {
+    return kTfLiteOk;
+  }
+  return EvalImpl<kernel_type>(context, node);
+}
+
+template <KernelType kernel_type>
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
   // As we need to support both quantized and non-quantized int8/int16 inputs,
   // we separate the evaluation between EvalQuantizedProd for quantized

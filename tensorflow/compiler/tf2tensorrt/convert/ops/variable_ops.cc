@@ -140,7 +140,7 @@ Status ReadVariableHelper(const OpConverterParams* params,
   TF_RETURN_IF_ERROR(
       TfTensorToTrtWeights(tensor, params->weight_store, weights));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 class ConvertVariableV2 : public OpConverterBase<ConvertVariableV2> {
@@ -201,7 +201,7 @@ class ConvertVariableV2 : public OpConverterBase<ConvertVariableV2> {
     if (params_->validation_only && params_->outputs != nullptr) {
       AddOutput(TRT_TensorOrWeights(weights));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Validate() {
@@ -229,7 +229,7 @@ class ConvertVariableV2 : public OpConverterBase<ConvertVariableV2> {
     TRT_ShapedWeights weights;
     TF_RETURN_IF_ERROR(ReadVariableHelper<T, false>(params_, attrs_, &weights));
     AddOutput(TRT_TensorOrWeights(weights));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -295,7 +295,7 @@ class ConvertReadVariableOp : public OpConverterBase<ConvertReadVariableOp> {
     if (params_->validation_only && params_->outputs != nullptr) {
       AddOutput(TRT_TensorOrWeights(weights));
     }
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Validate() {
@@ -328,7 +328,7 @@ class ConvertReadVariableOp : public OpConverterBase<ConvertReadVariableOp> {
     TRT_ShapedWeights weights;
     TF_RETURN_IF_ERROR(ReadVariableHelper<T, true>(params_, attrs_, &weights));
     AddOutput(TRT_TensorOrWeights(weights));
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {

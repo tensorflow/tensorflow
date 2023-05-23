@@ -88,10 +88,12 @@ class PropagatorState {
     TaggedNodeReadyQueue() : front_index_(0) {}
 
     void push_back(const TaggedNode& node) { ready_.push_back(node); }
+
     TaggedNode front() const {
       DCHECK_LT(front_index_, ready_.size());
       return ready_[front_index_];
     }
+
     void pop_front() {
       DCHECK_LT(front_index_, ready_.size());
       front_index_++;
@@ -423,48 +425,36 @@ class PropagatorState {
     // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
     // This variant does not use atomic operations to modify the pending counts
     // and thus must hold the exclusive lock.
-    int ActivateNodesFastPathLocked(const NodeItem* item, const bool is_dead,
+    int ActivateNodesFastPathLocked(const NodeItem* item, bool is_dead,
                                     IterationState* iter_state,
                                     EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      return ActivateNodesFastPathInternal<false>(item, is_dead, iter_state,
-                                                  outputs, ready);
-    }
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
     // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
     // This variant uses atomic operations to modify the pending counts.
-    int ActivateNodesFastPathShared(const NodeItem* item, const bool is_dead,
+    int ActivateNodesFastPathShared(const NodeItem* item, bool is_dead,
                                     IterationState* iter_state,
                                     EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_SHARED_LOCKS_REQUIRED(mu) {
-      return ActivateNodesFastPathInternal<true>(item, is_dead, iter_state,
-                                                 outputs, ready);
-    }
+        TF_SHARED_LOCKS_REQUIRED(mu);
 
+    int ActivateNodesSlowPathLocked(const NodeItem* item, bool is_dead,
+                                    IterationState* iter_state,
+                                    EntryVector* outputs, TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    int ActivateNodesSlowPathShared(const NodeItem* item, bool is_dead,
+                                    IterationState* iter_state,
+                                    EntryVector* outputs, TaggedNodeSeq* ready)
+        TF_SHARED_LOCKS_REQUIRED(mu);
+
+    // Implementation templates. Not for public use.
     template <bool atomic>
-    int ActivateNodesFastPathInternal(const NodeItem* item, const bool is_dead,
+    int ActivateNodesFastPathInternal(const NodeItem* item, bool is_dead,
                                       IterationState* iter_state,
                                       EntryVector* outputs,
                                       TaggedNodeSeq* ready);
-
-    int ActivateNodesSlowPathLocked(const NodeItem* item, const bool is_dead,
-                                    IterationState* iter_state,
-                                    EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
-      return ActivateNodesSlowPathInternal<false>(item, is_dead, iter_state,
-                                                  outputs, ready);
-    }
-
-    int ActivateNodesSlowPathShared(const NodeItem* item, const bool is_dead,
-                                    IterationState* iter_state,
-                                    EntryVector* outputs, TaggedNodeSeq* ready)
-        TF_SHARED_LOCKS_REQUIRED(mu) {
-      return ActivateNodesSlowPathInternal<true>(item, is_dead, iter_state,
-                                                 outputs, ready);
-    }
-
     template <bool atomic>
-    int ActivateNodesSlowPathInternal(const NodeItem* item, const bool is_dead,
+    int ActivateNodesSlowPathInternal(const NodeItem* item, bool is_dead,
                                       IterationState* iter_state,
                                       EntryVector* outputs,
                                       TaggedNodeSeq* ready);

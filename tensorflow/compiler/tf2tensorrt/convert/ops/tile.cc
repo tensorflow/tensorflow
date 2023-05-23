@@ -108,7 +108,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
       }
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 
   Status Convert() {
@@ -195,7 +195,7 @@ class ConvertTile : public OpConverterBase<ConvertTile> {
     }
 
     AddOutput(TRT_TensorOrWeights(output_tensor));
-    return Status::OK();
+    return OkStatus();
   }
 };
 

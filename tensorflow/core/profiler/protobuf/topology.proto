@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+message TopologyDimension {
+  int32 x = 1;
+  int32 y = 2;
+  int32 z = 3;
+}
+
+// Topology of the system.
+// Describes the number of chips and hosts and their connectivity.
+message Topology {
+  // Topology of chips per host.
+  TopologyDimension chips_per_host_bounds = 1;
+  // Topology of hosts.
+  TopologyDimension host_bounds = 2;
+}

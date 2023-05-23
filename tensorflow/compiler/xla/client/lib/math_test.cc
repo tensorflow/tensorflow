@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -143,7 +144,7 @@ class MathTypedTest : public MathTest {
     ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
   }
 
-  void TestErfEdgeCases() {
+  void TestErfInvEdgeCases() {
     SetFastMathDisabled(true);
 
     XlaBuilder b(TestName());
@@ -152,6 +153,23 @@ class MathTypedTest : public MathTest {
 
     const T inf(std::numeric_limits<float>::infinity());
     std::vector<T> expected = {-inf, inf, T{0}};
+
+    ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
+  }
+
+  void TestErfEdgeCases() {
+    SetFastMathDisabled(true);
+    const T kErfInvOneMinusHalfULP = T(3.832506856900711);
+    const T inf(std::numeric_limits<float>::infinity());
+
+    XlaBuilder b(TestName());
+    auto x = AddParam(LiteralUtil::CreateR1<T>({T{-inf}, T{inf}, T{-0}, T{0},
+                                                T{-kErfInvOneMinusHalfULP},
+                                                T{kErfInvOneMinusHalfULP}}),
+                      &b);
+    Erf(x);
+
+    std::vector<T> expected = {T(-1), T(1), T(-0), T(0), T(-1), T(1)};
 
     ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
   }
@@ -178,7 +196,8 @@ XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
 XLA_TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
   this->TestSqrtPowInequivalence();
 }
-XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfInvEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, ErfEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
 //
@@ -188,6 +207,10 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     auto ty = static_cast<PrimitiveType>(i);
     SCOPED_TRACE(PrimitiveType_Name(ty));
     Shape shape;
+    if (ty == U4 || ty == S4) {
+      // TODO(b/259306620): breaking MakeShape()
+      continue;
+    }
     if (primitive_util::IsArrayType(ty)) {
       shape = ShapeUtil::MakeShape(ty, {42});
     } else if (ty == PrimitiveType::TUPLE) {
@@ -218,7 +241,11 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
       XlaOp p = Parameter(&b, 0, shape, "p0");
       test.first(p);
 
-      EXPECT_EQ(b.first_error().ok(), primitive_util::IsFloatingPointType(ty));
+      if (primitive_util::IsFloatingPointType(ty)) {
+        TF_EXPECT_OK(b.first_error());
+      } else {
+        EXPECT_FALSE(b.first_error().ok());
+      }
     }
   }
 }

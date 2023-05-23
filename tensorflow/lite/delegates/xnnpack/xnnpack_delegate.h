@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_XNNPACK_DELEGATE_H_
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,6 +29,9 @@ extern "C" {
 #define TFLITE_XNNPACK_DELEGATE_FLAG_QU8 0x00000002
 // Force FP16 inference for FP32 operators.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16 0x00000004
+// Enable XNNPACK acceleration for FULLY_CONNECTED operator with dynamic
+// weights.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED 0x00000008
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -40,10 +43,14 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QS8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_QU8
   // - TFLITE_XNNPACK_DELEGATE_FLAG_FORCE_FP16
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DYNAMIC_FULLY_CONNECTED
   uint32_t flags;
   // Cache for packed weights, can be shared between multiple instances of
   // delegates.
   struct TfLiteXNNPackDelegateWeightsCache* weights_cache;
+  // Whether READ_VARIABLE, ASSIGN_VARIABLE, and VARIABLE_HANDLE operations
+  // should be handled by XNNPACK.
+  bool handle_variable_ops;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns a structure with the default XNNPack delegate options.
@@ -57,6 +64,12 @@ TfLiteXNNPackDelegateOptionsDefault();
 // details).
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteXNNPackDelegateCreate(
     const TfLiteXNNPackDelegateOptions* options);
+
+// Performs the same task as TfLiteXNNPackDelegateCreate, with one exception.
+// If the context passed contains a non-null xnnpack_threadpool field,
+// we will use it as the threadpool for the delegate created.
+TfLiteDelegate* TfLiteXNNPackDelegateCreateWithThreadpool(
+    const TfLiteXNNPackDelegateOptions* options, TfLiteContext* context);
 
 // Returns the pthreadpool_t object used for parallelization in XNNPACK.
 // Can return NULL if the XNNPack delegate is single-threaded.

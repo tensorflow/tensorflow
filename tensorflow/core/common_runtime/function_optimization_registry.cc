@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function_optimization_registry.h"
 
+#include <string>
+
 #include "tensorflow/core/framework/metrics.h"
 
 namespace tensorflow {
@@ -26,7 +28,8 @@ void FunctionOptimizationPassRegistry::Init(
 }
 
 Status FunctionOptimizationPassRegistry::Run(
-    const DeviceSet& device_set, const ConfigProto& config_proto,
+    const std::string& function_name, const DeviceSet& device_set,
+    const ConfigProto& config_proto, absl::string_view xla_compile_device_type,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
@@ -36,7 +39,8 @@ Status FunctionOptimizationPassRegistry::Run(
       tensorflow::metrics::GetGraphOptimizationCounter(),
       {"GraphOptimizationPass", "FunctionOptimizationPassRegistry"});
 
-  return pass_->Run(device_set, config_proto, graph, flib_def,
+  return pass_->Run(function_name, device_set, config_proto,
+                    xla_compile_device_type, graph, flib_def,
                     control_ret_node_names, control_rets_updated);
 }
 

@@ -73,6 +73,22 @@ class ComputationPrinting(absltest.TestCase):
     hlo_text = computation.as_hlo_module().to_string()
     self.assertTrue(hlo_text.startswith("HloModule acomputation"))
 
+  def testHloModuleFromText(self):
+    hlo_module_text = """HloModule test
+        add {
+          x = f32[] parameter(0)
+          y = f32[] parameter(1)
+          ROOT add = f32[] add(x, y)
+        }
+        ENTRY entry {
+          p0 = f32[2,3] parameter(0)
+          start = f32[2,3] all-reduce-start(p0), to_apply=add
+          ROOT done = f32[2,3] all-reduce-done(start)
+        }"""
+    hlo_module = xla_client._xla.hlo_module_from_text(hlo_module_text)
+    hlo_text = hlo_module.to_string()
+    self.assertTrue(hlo_text.startswith("HloModule test"))
+
   def testHloModuleToHloGraph(self):
     computation = self.ExampleComputation()
     hlo_dot_graph = xla_client._xla.hlo_module_to_dot_graph(
@@ -136,6 +152,43 @@ class ProfilerTest(absltest.TestCase):
     port = portpicker.pick_unused_port()
     server = xla_client.profiler.start_server(port)
     del server
+
+
+class HloModuleGroupTest(absltest.TestCase):
+
+  def testHloModuleGroup(self):
+    builder0 = xla_client.XlaBuilder("computation0")
+    p0 = ops.Parameter(builder0, 0, xla_client.shape_from_pyval(np.float32(0)))
+    p1 = ops.Parameter(builder0, 1,
+                       xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
+    root = ops.Mul(p0, p1)
+    computation0 = builder0.build(root)
+
+    m = computation0.get_hlo_module()
+    mg_name = "test_module_group"
+    mg = xla_client._xla.HloModuleGroup(mg_name, [m])
+    self.assertEqual(mg.name, mg_name)
+
+    modules = mg.to_modules()
+    self.assertLen(modules, 1)
+    self.assertEqual(m.to_string(), modules[0].to_string())
+
+
+class RunHloPassTest(absltest.TestCase):
+
+  def testHloDCE(self):
+    b = xla_client.XlaBuilder("acomputation")
+    p0 = ops.Parameter(b, 0, xla_client.shape_from_pyval(np.float32(0)))
+    p1 = ops.Parameter(b, 1,
+                       xla_client.shape_from_pyval(np.zeros((4,), np.float32)))
+    root = ops.Mul(p0, p1)
+
+    # Dead instructions
+    p2 = ops.Parameter(b, 2, xla_client.shape_from_pyval(np.float32(0)))
+    ops.Add(p2, p2)
+
+    hlo_module = b.build(root).get_hlo_module()
+    self.assertTrue(xla_client._xla.HloDCE().run(hlo_module))
 
 
 if __name__ == "__main__":

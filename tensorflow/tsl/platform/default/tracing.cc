@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/tsl/platform/tracing.h"
 
 #include <stdlib.h>
 
@@ -21,7 +21,7 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-namespace tensorflow {
+namespace tsl {
 namespace tracing {
 namespace {
 bool TryGetEnv(const char* name, const char** value) {
@@ -44,4 +44,4 @@ const char* GetLogDir() {
   return ".";  // Default to current directory.
 }
 }  // namespace tracing
-}  // namespace tensorflow
+}  // namespace tsl

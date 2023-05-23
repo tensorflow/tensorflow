@@ -410,13 +410,13 @@ ITERATOR_SAVE_AND_RESTORE_TEST_P(MapAndBatchDatasetOpTest,
 TEST_F(MapAndBatchDatasetOpTest, InvalidBatchSize) {
   auto dataset_params = InvalidBatchSizeMapAndBatchDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 TEST_F(MapAndBatchDatasetOpTest, InvalidNumParallel) {
   auto dataset_params = InvalidNumParallelCallsMapAndBatchDatasetParams();
   EXPECT_EQ(Initialize(dataset_params).code(),
-            tensorflow::error::INVALID_ARGUMENT);
+            absl::StatusCode::kInvalidArgument);
 }
 
 }  // namespace

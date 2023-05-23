@@ -7,8 +7,8 @@ def repo():
 
     # Attention: tools parse and update these lines.
     # LINT.IfChange
-    EIGEN_COMMIT = "34780d8bd13d0af0cf17a22789ef286e8512594d"
-    EIGEN_SHA256 = "e5da7faf0f603dac718fca8d6f564cd8ed57cfe79aa40d165b2393fe31b5f6f4"
+    EIGEN_COMMIT = "b0f877f8e01e90a5b0f3a79d46ea234899f8b499"
+    EIGEN_SHA256 = "bdb1353ba33a5a7a5caadf822057ac1f0254ba2c5e70512dd1ec20cbb64e2f6c"
     # LINT.ThenChange(//tensorflow/lite/tools/cmake/modules/eigen.cmake)
 
     tf_http_archive(

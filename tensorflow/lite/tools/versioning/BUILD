@@ -2,9 +2,10 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
 )
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -25,7 +26,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
@@ -45,7 +46,8 @@ tf_cc_test(
     deps = [
         ":versioning",
         "//tensorflow/lite:builtin_op_data",
-        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "@com_google_googletest//:gtest_main",
@@ -63,9 +65,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/lite:stderr_reporter",
-        "//tensorflow/lite/c:c_api_types",
-        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/schema:schema_fbs",
@@ -86,7 +88,7 @@ tf_cc_test(
         ":op_signature",
         "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite:builtin_ops",
-        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/core:model_builder",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -105,7 +107,7 @@ cc_library(
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/schema:schema_fbs_with_mutable",
         "//tensorflow/lite/schema:schema_utils",
@@ -127,8 +129,11 @@ tf_cc_test(
     ],
     deps = [
         ":gpu_compatibility",
+        ":op_signature",
         "//tensorflow/core/platform:resource_loader",
-        "//tensorflow/lite:model_builder",
+        "//tensorflow/lite/core:model_builder",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels/internal:types",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
     ],

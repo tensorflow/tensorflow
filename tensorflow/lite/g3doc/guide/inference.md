@@ -232,7 +232,8 @@ primitive types. In particular, the shape of a string Tensor dictates the number
 and arrangement of strings in the Tensor, with each element itself being a
 variable length string. In this sense, the (byte) size of the Tensor cannot be
 computed from the shape and type alone, and consequently strings cannot be
-provided as a single, flat `ByteBuffer` argument.
+provided as a single, flat `ByteBuffer` argument. You can see some examples in
+this [page](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/Interpreter).
 
 If other data types, including boxed types like `Integer` and `Float`, are used,
 an `IllegalArgumentException` will be thrown.
@@ -602,6 +603,44 @@ For more Python sample code, see
 
 Tip: Run `help(tf.lite.Interpreter)` in the Python terminal to get detailed
 documentation about the interpreter.
+
+## Run inference with dynamic shape model
+
+If you want to run a model with dynamic input shape,
+*resize the input shape* before running inference.
+Otherwise, the `None` shape in Tensorflow models will be replaced by a
+placeholder of `1` in TFLite models.
+
+The following examples show how to resize the input shape before
+running inference in different languages.
+All the examples assume that the input shape is defined as `[1/None, 10]`, and
+need to be resized to `[3, 10]`.
+
+<section class="tabs">
+
+###### C++ {.new-tab}
+
+```c++
+// Resize input tensors before allocate tensors
+interpreter->ResizeInputTensor(/*tensor_index=*/0, std::vector<int>{3,10});
+interpreter->AllocateTensors();
+```
+###### Python {.new-tab}
+
+```python
+# Load the TFLite model in TFLite Interpreter
+interpreter = tf.lite.Interpreter(model_path=TFLITE_FILE_PATH)
+  
+# Resize input shape for dynamic shape model and allocate tensor
+interpreter.resize_tensor_input(interpreter.get_input_details()[0]['index'], [3, 10])
+interpreter.allocate_tensors()
+  
+# Get input and output tensors.
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+```
+
+</section>
 
 ## Supported operations
 

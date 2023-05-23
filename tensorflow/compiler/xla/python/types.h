@@ -16,24 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TYPES_H_
 
+#include <algorithm>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -51,15 +52,20 @@ StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
+  std::optional<pybind11::object> np_int4;
   pybind11::object np_int8;
   pybind11::object np_int16;
   pybind11::object np_int32;
   pybind11::object np_int64;
+  std::optional<pybind11::object> np_uint4;
   pybind11::object np_uint8;
   pybind11::object np_uint16;
   pybind11::object np_uint32;
   pybind11::object np_uint64;
   pybind11::object np_bfloat16;
+  pybind11::object np_float8_e4m3fn;
+  std::optional<pybind11::object> np_float8_e4m3b11fnuz;
+  pybind11::object np_float8_e5m2;
   pybind11::object np_float16;
   pybind11::object np_float32;
   pybind11::object np_float64;
@@ -247,17 +253,17 @@ struct type_caster<xla::ConvolutionDimensionNumbers> {
     dims = getattr(handle, "input_spatial_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_input_spatial_dimensions()));
     dims = getattr(handle, "kernel_spatial_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_kernel_spatial_dimensions()));
     dims = getattr(handle, "output_spatial_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_output_spatial_dimensions()));
     return true;
   }
@@ -274,20 +280,20 @@ struct type_caster<xla::DotDimensionNumbers> {
     dims = getattr(handle, "lhs_contracting_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_lhs_contracting_dimensions()));
     dims = getattr(handle, "rhs_contracting_dimensions")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_rhs_contracting_dimensions()));
     dims = getattr(handle, "lhs_batch_dimensions").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_lhs_batch_dimensions()));
     dims = getattr(handle, "rhs_batch_dimensions").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_rhs_batch_dimensions()));
     return true;
   }
@@ -303,16 +309,16 @@ struct type_caster<xla::GatherDimensionNumbers> {
   bool load(handle handle, bool) {
     std::vector<int64_t> dims;
     dims = getattr(handle, "offset_dims").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_offset_dims()));
+    std::copy(
+        dims.begin(), dims.end(),
+        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_offset_dims()));
     dims = getattr(handle, "collapsed_slice_dims").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_collapsed_slice_dims()));
     dims = getattr(handle, "start_index_map").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_start_index_map()));
     value.set_index_vector_dim(
         getattr(handle, "index_vector_dim").cast<int64_t>());
@@ -331,16 +337,16 @@ struct type_caster<xla::ScatterDimensionNumbers> {
     std::vector<int64_t> dims;
     dims = getattr(handle, "update_window_dims").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_update_window_dims()));
     dims = getattr(handle, "inserted_window_dims").cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_inserted_window_dims()));
     dims = getattr(handle, "scatter_dims_to_operand_dims")
                .cast<std::vector<int64_t>>();
     std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
+              tsl::protobuf::RepeatedFieldBackInserter(
                   value.mutable_scatter_dims_to_operand_dims()));
     value.set_index_vector_dim(
         getattr(handle, "index_vector_dim").cast<int64_t>());
@@ -357,9 +363,9 @@ struct type_caster<xla::ReplicaGroup> {
   bool load(handle handle, bool) {
     std::vector<int64_t> dims;
     dims = getattr(handle, "replica_ids").cast<std::vector<int64_t>>();
-    std::copy(dims.begin(), dims.end(),
-              tensorflow::protobuf::RepeatedFieldBackInserter(
-                  value.mutable_replica_ids()));
+    std::copy(
+        dims.begin(), dims.end(),
+        tsl::protobuf::RepeatedFieldBackInserter(value.mutable_replica_ids()));
     return true;
   }
 };

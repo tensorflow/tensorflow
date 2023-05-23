@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 namespace xla {
 namespace {
@@ -85,8 +85,8 @@ void SlowOperationAlarm::ScheduleAlarm(SlowOperationAlarm* alarm) {
   absl::call_once(init_flag, [] {
     ready = new absl::CondVar();
     outstanding_alarms = new std::list<SlowOperationAlarm*>();
-    (void)!tensorflow::Env::Default()->StartThread(
-        tensorflow::ThreadOptions(), "SlowOperationAlarm", [] { AlarmLoop(); });
+    [[maybe_unused]] static tsl::Thread* t = tsl::Env::Default()->StartThread(
+        tsl::ThreadOptions(), "SlowOperationAlarm", [] { AlarmLoop(); });
   });
 
   absl::MutexLock lock(&mu);
@@ -159,7 +159,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
       absl::Duration(absl::Minutes(2)),
       absl::StrCat(
           separator, "\n", context_msg,
-          "Very slow compile?  If you want to file a bug, run with envvar "
+          "Very slow compile? If you want to file a bug, run with envvar "
           "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
           separator),
       counter);
@@ -168,8 +168,8 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
       absl::Duration(absl::Seconds(10)),
       absl::StrCat(
           separator, "\n", context_msg,
-          "Slow compile?  XLA was built without compiler optimizations, "
-          "which can be slow.  Try rebuilding with -c opt.",
+          "Slow compile? XLA was built without compiler optimizations, which "
+          "can be slow. Try rebuilding with -c opt.",
           separator),
       counter);
 #endif

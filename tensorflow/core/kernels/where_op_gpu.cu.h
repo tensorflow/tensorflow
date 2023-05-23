@@ -178,7 +178,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
           temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 
@@ -261,7 +261,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       typename TTypes<int64_t>::Matrix output, TIndex* found_true_host) {
     if (output.dimension(0) == 0) {
       // Nothing to do.
-      return Status::OK();
+      return OkStatus();
     }
 
     const auto& cu_stream = GetGpuStream(ctx);
@@ -328,7 +328,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                 d.stream(), output_rows, strides,
                                 output.data()));
 
-    return Status::OK();
+    return OkStatus();
   }
 };
 

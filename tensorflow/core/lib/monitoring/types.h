@@ -20,37 +20,16 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/monitoring/types.h"
 
+// NOLINTBEGIN(misc-unused-using-decls)
 namespace tensorflow {
 namespace monitoring {
-
-enum class UnitOfMeasure {
-  kNumber,
-  kTime,
-  kBytes,
-};
-
-struct PercentilePoint {
-  // In the [0, 100] range.
-  double percentile = 0.0;
-  double value = 0.0;
-};
-
-struct Percentiles {
-  UnitOfMeasure unit_of_measure = UnitOfMeasure::kNumber;
-  uint64 start_nstime = 0;
-  uint64 end_nstime = 0;
-  double min_value = NAN;
-  double max_value = NAN;
-  double mean = NAN;
-  double stddev = NAN;
-  size_t num_samples = 0;
-  size_t total_samples = 0;
-  long double accumulator = NAN;
-  std::vector<PercentilePoint> points;
-};
+using tsl::monitoring::PercentilePoint;
+using tsl::monitoring::Percentiles;
+using tsl::monitoring::UnitOfMeasure;
 
 }  // namespace monitoring
 }  // namespace tensorflow
-
+// NOLINTEND(misc-unused-using-decls)
 #endif  // TENSORFLOW_CORE_LIB_MONITORING_TYPES_H_

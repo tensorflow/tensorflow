@@ -26,17 +26,17 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -68,7 +68,17 @@ struct ConstantKey {
 // similar treatment.
 template <bool kIsLayoutSensitive>
 StatusOr<bool> CombineConstants(HloComputation* computation) {
-  TF_ASSIGN_OR_RETURN(auto domain_map, HloDomainMap::Create(computation, ""));
+  // Populating the domain map is somewhat expensive -- only do it if there are
+  // kDomain ops in the computation.  If there are no kDomain ops, the domain
+  // map is trivial, every op gets mapped to the same domain.
+  std::unique_ptr<HloDomainMap> domain_map;
+  if (absl::c_any_of(computation->instructions(),
+                     [&](const HloInstruction* instr) {
+                       return instr->opcode() == HloOpcode::kDomain;
+                     })) {
+    TF_ASSIGN_OR_RETURN(domain_map, HloDomainMap::Create(computation, ""));
+  }
+
   // Map from the literal hash of a constant or the shape hash of an iota all
   // equivalent instructions. This avoids extreme quadratic behavior with many
   // scalar constants.
@@ -85,7 +95,8 @@ StatusOr<bool> CombineConstants(HloComputation* computation) {
     HloInstruction* match = nullptr;
     if (auto* constant_inst = DynCast<HloConstantInstruction>(instruction)) {
       auto insert_result = constants.insert(ConstantKey<kIsLayoutSensitive>{
-          constant_inst, domain_map->GetDomainId(instruction)});
+          constant_inst,
+          (domain_map != nullptr ? domain_map->GetDomainId(instruction) : 0)});
       if (!insert_result.second) {
         match = insert_result.first->hlo;
       }
@@ -225,13 +236,15 @@ StatusOr<bool> HloCSE::Run(
                 ? ShapeUtil::Equal(a->shape(), b->shape())
                 : ShapeUtil::Compatible(a->shape(), b->shape()));
   };
-  const std::function<bool(const HloComputation*, const HloComputation*)>
-      eq_computations = [](const HloComputation* lhs,
-                           const HloComputation* rhs) { return *lhs == *rhs; };
+  const auto eq_computations = [](const HloComputation* lhs,
+                                  const HloComputation* rhs) {
+    return *lhs == *rhs;
+  };
 
   auto cse_equal = [&](const CseKey& lhs, const CseKey& rhs) {
     return lhs.hlo->IdenticalIgnoringCommutativeOperandOrder(
-        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_);
+        *rhs.hlo, eq_instructions, eq_computations, is_layout_sensitive_,
+        /*sharding_sensitive=*/true);
   };
 
   for (auto* computation : module->computations(execution_threads)) {

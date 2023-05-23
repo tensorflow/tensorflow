@@ -152,7 +152,7 @@ class HostComputeOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
 
@@ -357,25 +357,24 @@ class HostComputeOp : public XlaOpKernel {
           return errors::InvalidArgument(
               "Shape inference for HostCompute ", ctx->op_kernel().name(),
               " failed: inference graph has multiple send from host nodes");
-        } else {
-          got_output_shapes = true;
-          // The last input is the dynamic key so don't record its shape.
-          output_shapes->resize(node->num_inputs() - 1);
-          shape_inference::InferenceContext* shape_ctx =
-              shape_refiner.GetContext(node);
-          for (int i = 0; i < node->num_inputs() - 1; ++i) {
-            shape_inference::ShapeHandle handle = shape_ctx->input(i);
-            if (!shape_ctx->FullyDefined(handle)) {
-              return errors::InvalidArgument(
-                  "Shape inference for HostCompute ", ctx->op_kernel().name(),
-                  " failed: send from host node ", node->name(),
-                  " has non-fully defined shape of input index ", i);
-            }
-            TensorShapeProto shape_proto;
-            shape_ctx->ShapeHandleToProto(handle, &shape_proto);
-            (*output_shapes)[i] = TensorShape(shape_proto);
-            VLOG(2) << "Inferred shape " << shape_proto.DebugString();
+        }
+        got_output_shapes = true;
+        // The last input is the dynamic key so don't record its shape.
+        output_shapes->resize(node->num_inputs() - 1);
+        shape_inference::InferenceContext* shape_ctx =
+            shape_refiner.GetContext(node);
+        for (int i = 0; i < node->num_inputs() - 1; ++i) {
+          shape_inference::ShapeHandle handle = shape_ctx->input(i);
+          if (!shape_ctx->FullyDefined(handle)) {
+            return errors::InvalidArgument(
+                "Shape inference for HostCompute ", ctx->op_kernel().name(),
+                " failed: send from host node ", node->name(),
+                " has non-fully defined shape of input index ", i);
           }
+          TensorShapeProto shape_proto;
+          shape_ctx->ShapeHandleToProto(handle, &shape_proto);
+          (*output_shapes)[i] = TensorShape(shape_proto);
+          VLOG(2) << "Inferred shape " << shape_proto.DebugString();
         }
       }
     }
@@ -433,7 +432,7 @@ class SendToHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;
@@ -491,7 +490,7 @@ class RecvFromHostOp : public XlaOpKernel {
     for (auto& token_input_node : token_input_nodes_) {
       auto token_or = compiler->GetNodeToken(token_input_node);
       OP_REQUIRES_OK(ctx, token_or.status());
-      input_tokens.push_back(token_or.ValueOrDie());
+      input_tokens.push_back(token_or.value());
     }
     xla::XlaOp token = xla::AfterAll(b, input_tokens);
     xla::Shape xla_shape;

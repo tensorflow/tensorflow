@@ -153,6 +153,7 @@ class OpsTestBase : public ::testing::Test {
   const DataTypeVector& output_types() const;
 
  protected:
+  void CreateContext();
   Tensor* AddInput(DataType dtype, const TensorShape& shape);
   void AddResourceInputInternal(const std::string& container_name,
                                 const std::string& name,
@@ -179,6 +180,10 @@ class OpsTestBase : public ::testing::Test {
   // Copies of the outputs in unified memory (host and device accessible).
   std::vector<Tensor*> managed_outputs_;
 
+  // AllocatorAttributes for the allocators of the outputs.
+  std::vector<AllocatorAttributes> out_alloc_attrs_;
+  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper_;
+  CancellationManager default_cancellation_manager_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> context_;
   // Unified memory allocator, only used when running on GPU.

@@ -13,18 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/rocm_rocdl_path.h"
+#include "tensorflow/tsl/platform/rocm_rocdl_path.h"
 
 #include <stdlib.h>
 
-#include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/platform/path.h"
 
 #if !defined(PLATFORM_GOOGLE) && TENSORFLOW_USE_ROCM
 #include "rocm/rocm_config.h"
 #endif
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
-namespace tensorflow {
+namespace tsl {
 
 string RocmRoot() {
 #if TENSORFLOW_USE_ROCM
@@ -35,8 +35,6 @@ string RocmRoot() {
 #endif
 }
 
-string RocdlRoot() {
-  return tensorflow::io::JoinPath(tensorflow::RocmRoot(), "amdgcn/bitcode");
-}
+string RocdlRoot() { return io::JoinPath(RocmRoot(), "amdgcn/bitcode"); }
 
-}  // namespace tensorflow
+}  // namespace tsl

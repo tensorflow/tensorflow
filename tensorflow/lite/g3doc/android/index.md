@@ -26,8 +26,8 @@ including options for hardware acceleration.
     <div class="devsite-landing-row-item-description">
     <div class="devsite-landing-row-item-body">
     <div class="devsite-landing-row-item-description-content">
-      <a href="/tutorials/keras/classification">
-      <h3 class="no-link hide-from-toc" id="coding-quickstart" data-text="Coding Quickstart">Coding Quickstart</h3></a>
+      <a href="./quickstart">
+      <h3 class="no-link hide-from-toc" id="coding-quickstart" data-text="Coding Quickstart">Code Quickstart</h3></a>
       Start coding an Android app with TensorFlow Lite right away with the
       <a href="./quickstart">Quickstart</a>.
     </div>
@@ -108,23 +108,29 @@ paths](#adv_development) section.
 There are several ways you can enable a runtime environment for executing models
 in your Android app. These are the preferred options:
 
--   **Standard TensorFlow Lite runtime environment (recommended)**
--   [Google Play services runtime environment](./play_services)
-    for TensorFlow Lite (Beta)
+- **TensorFlow Lite in
+  [Google Play services runtime environment](./play_services) (recommended)**
+- Stand-alone TensorFlow Lite runtime environment
 
-In general, you should use the standard TensorFlow Lite runtime environment,
-since this is the most versatile environment for running models on Android. The
-runtime environment provided by Google Play services is more convenient and
-space-efficient than the standard environment, since it is loaded from Google
-Play resources and not bundled into your app. Some advanced use cases require
-customization of model runtime environment, which are described in the
-[Advanced runtime environments](#adv_runtime) section.
+In general, you should use the runtime environment provided by Google Play
+services because it is more space-efficient than the standard environment since
+it loads dynamically, keeping your app size smaller. Google Play services also
+automatically uses the most recent, stable release of the TensorFlow Lite
+runtime, giving you additional features and improved performance over time. If
+you offer your app on devices that do not include Google Play services or you
+need to closely manage your ML runtime environment, then you should use the
+standard TensorFlow Lite runtime. This option bundles additional code into your
+app, allowing you to have more control over the ML runtime in your app at the
+cost of increasing your app's download size.
 
 You access these runtime environments in your Android app by adding TensorFlow
 Lite development libraries to your app development environment. For information
-about how to use the standard runtime environment in your app, see the next
-section. For information about other runtime environments, see
-[Advanced runtime environments](#adv_runtime).
+about how to use the standard runtime environments in your app, see the next
+section.
+
+Note: Some advanced use cases may require customization of model runtime
+environment, which are described in the
+[Advanced runtime environments](#adv_runtime) section.
 
 ### Development APIs and libraries {:#apis}
 
@@ -146,23 +152,14 @@ your specific use case.
 
 #### Libraries
 
-You can access the Task API by including the [TensorFlow Lite Task Library](../inference_with_metadata/task_library/overview)
-in your Android app. The Task library also includes the Interpreter API classes
-and methods if you need them.
-
-If just want to use the Interpreter API, you can include the [TensorFlow Lite
-library](./development#lite_lib). Alternatively, you can include [Google Play
-services library](./play_services#1_add_project_dependencies)
-for TensorFlow Lite, and access the Interpreter API through Play services,
-without bundling a separate library into your app.
-
-The [TensorFlow Lite Support library](./development#support_lib) is also
-available to provide additional functionality for managing data for models,
-model metadata, and model inference results.
-
+You can access the Task APIs or the Interpreter API using the
+[Google Play services](./play_services#add_tensorflow_lite_to_your_app).
+You can also use the stand-alone libraries for
+[TensorFlow Lite Tasks](../inference_with_metadata/task_library/overview) or the
+TensorFlow Lite [core](./development#lite_lib) and
+[support](./development#support_lib) libraries in your Android app.
 For programming details about using TensorFlow Lite libraries and runtime
-environments, see
-[Development tools for Android](./development).
+environments, see [Development tools for Android](./development).
 
 ### Obtain models {:#models}
 

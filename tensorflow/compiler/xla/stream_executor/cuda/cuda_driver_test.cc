@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace stream_executor {
 namespace gpu {

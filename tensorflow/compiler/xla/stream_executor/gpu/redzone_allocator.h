@@ -22,8 +22,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
-#include "tensorflow/core/lib/math/math_util.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
+#include "tensorflow/tsl/lib/math/math_util.h"
 
 namespace stream_executor {
 
@@ -56,7 +57,7 @@ class RedzoneAllocator : public ScratchAllocator {
     return allocated_bytes_excluding_redzones_;
   }
 
-  port::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
+  tsl::StatusOr<DeviceMemory<uint8>> AllocateBytes(int64_t byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
   // redzone, with a string communicating the location of the write.
@@ -96,7 +97,7 @@ class RedzoneAllocator : public ScratchAllocator {
   //  - RedzoneCheckStatus with a non-empty error message iff a write into a
   //    redzone has been detected.
   //  - A stream error, if loading or launching the kernel has failed.
-  port::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
+  tsl::StatusOr<RedzoneCheckStatus> CheckRedzones() const;
 
   Stream* stream() const { return stream_; }
 

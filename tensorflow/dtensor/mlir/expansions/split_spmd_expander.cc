@@ -84,10 +84,10 @@ StatusOr<int64_t> GetAdjustedSplitDim(mlir::Value split_dim_value,
 StatusOr<mlir::Operation*> SplitSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto split_op = mlir::cast<mlir::TF::SplitOp>(op);
   TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(split_op.value()));
+                      ExtractRequiredLayoutFromOperand(split_op.getValue()));
   TF_ASSIGN_OR_RETURN(
       const int64_t split_dim,
-      GetAdjustedSplitDim(split_op.split_dim(), split_op.value()));
+      GetAdjustedSplitDim(split_op.getSplitDim(), split_op.getValue()));
 
   if (Layout::IsShardedDimension(input_layout.dim(split_dim).sharding_spec())) {
     return errors::InvalidArgument(
@@ -124,7 +124,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SplitSPMDExpander::ComputeLayoutBackward(
     // we can use for passing backwards.
     TF_ASSIGN_OR_RETURN(
         const int64_t split_dim,
-        GetAdjustedSplitDim(split_op.split_dim(), split_op.value()));
+        GetAdjustedSplitDim(split_op.getSplitDim(), split_op.getValue()));
     TF_ASSIGN_OR_RETURN(const Layout common_output_layout,
                         MergeLayoutsForSplitOutput(split_dim, output_layouts));
     // value
@@ -137,10 +137,10 @@ StatusOr<llvm::DenseMap<int, Layout>> SplitSPMDExpander::ComputeLayoutBackward(
 StatusOr<mlir::Operation*> SplitVSPMDExpander::ExpandOp(mlir::Operation* op) {
   auto split_v_op = mlir::cast<mlir::TF::SplitVOp>(op);
   TF_ASSIGN_OR_RETURN(const Layout input_layout,
-                      ExtractRequiredLayoutFromOperand(split_v_op.value()));
+                      ExtractRequiredLayoutFromOperand(split_v_op.getValue()));
   TF_ASSIGN_OR_RETURN(
       const int64_t split_dim,
-      GetAdjustedSplitDim(split_v_op.split_dim(), split_v_op.value()));
+      GetAdjustedSplitDim(split_v_op.getSplitDim(), split_v_op.getValue()));
 
   if (Layout::IsShardedDimension(input_layout.dim(split_dim).sharding_spec())) {
     return errors::InvalidArgument(
@@ -179,7 +179,7 @@ StatusOr<llvm::DenseMap<int, Layout>> SplitVSPMDExpander::ComputeLayoutBackward(
     // we can use for passing backwards.
     TF_ASSIGN_OR_RETURN(
         const int64_t split_dim,
-        GetAdjustedSplitDim(split_v_op.split_dim(), split_v_op.value()));
+        GetAdjustedSplitDim(split_v_op.getSplitDim(), split_v_op.getValue()));
     TF_ASSIGN_OR_RETURN(const Layout common_output_layout,
                         MergeLayoutsForSplitOutput(split_dim, output_layouts));
     // value

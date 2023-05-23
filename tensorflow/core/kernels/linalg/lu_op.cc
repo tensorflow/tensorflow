@@ -79,7 +79,8 @@ class LuOp : public OpKernel {
     TensorShape input_matrix_shape;
     TensorShape batch_shape;
     for (int dim = 0; dim < input_rank - 2; ++dim) {
-      batch_shape.AddDim(input.dim_size(dim));
+      OP_REQUIRES_OK(context,
+                     batch_shape.AddDimWithStatus(input.dim_size(dim)));
     }
     const int64_t num_rows = input.dim_size(input_rank - 2);
     const int64_t num_cols = input.dim_size(input_rank - 1);
@@ -91,7 +92,7 @@ class LuOp : public OpKernel {
     // packed_triangular_factors is a matrix with the same shape as the input;
     // permutation is a vector.
     TensorShape permutation_shape = batch_shape;
-    permutation_shape.AddDim(num_rows);
+    OP_REQUIRES_OK(context, permutation_shape.AddDimWithStatus(num_rows));
 
     TensorShapes output_matrix_shapes({input.shape(), permutation_shape});
 

@@ -6,7 +6,7 @@ import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 
 // A serialization of xla::ExecutableBuildOptions.
-// Next id: 13.
+// Next id: 14.
 message ExecutableBuildOptionsProto {
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
@@ -21,6 +21,10 @@ message ExecutableBuildOptionsProto {
   // store the layout to accommodate tuple result shapes. A value of nullptr
   // indicates the option has not been set.
   xla.ShapeProto result_layout = 2;
+
+  // Expose access to the XLA compilation environments, which will be passed to
+  // the compilation process.
+  xla.CompilationEnvironmentsProto comp_envs = 13;
 
   // Expose access to the XLA debug options which will be passed to the
   // compilation process.
@@ -67,7 +71,20 @@ message ExecutableBuildOptionsProto {
   // which can be used by higher level framework as a way to query intermediate
   // sharding of operations when multiple computation would be chained and
   // merged together.
-  bool allow_spmd_sharding_propagation_to_output = 12;
+  // This is a vector of bool, because the user can control (if the output of
+  // the computation is a tuple) which elements of the tuple can have the
+  // sharding substituted and which don't. If only one boolean value is passed
+  // in the vector that's interpreted as the value to be applied for every
+  // single element of the output tuple. One value per element of the tuple
+  // means that each value is attached to one of the output elements.
+  repeated bool allow_spmd_sharding_propagation_to_output = 12;
+}
+
+message OptionOverrideProto {
+  oneof value {
+    string string_field = 1;
+    bool bool_field = 2;
+  }
 }
 
 message CompileOptionsProto {
@@ -78,4 +95,11 @@ message CompileOptionsProto {
   bool compile_portable_executable = 4;
   int64 profile_version = 5;
   bytes serialized_multi_slice_config = 6;
+  map<string, OptionOverrideProto> env_option_overrides = 7;
+}
+
+// Helper for serializing opaque executables alongside CompileOptions.
+message ExecutableAndOptionsProto {
+  bytes serialized_executable = 1;
+  CompileOptionsProto compile_options = 2;
 }

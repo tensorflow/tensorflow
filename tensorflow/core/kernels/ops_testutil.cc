@@ -151,7 +151,7 @@ Status OpsTestBase::InitOpWithGraphVersion(int graph_def_version) {
   return OkStatus();
 }
 
-Status OpsTestBase::RunOpKernel() {
+void OpsTestBase::CreateContext() {
   // Make sure the old OpKernelContext is deleted before the Params
   // it was using.
   context_.reset(nullptr);
@@ -170,14 +170,17 @@ Status OpsTestBase::RunOpKernel() {
   params_->op_kernel = kernel_.get();
   step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
   params_->step_container = step_container_.get();
-  std::vector<AllocatorAttributes> attrs;
-  test::SetOutputAttrs(params_.get(), &attrs);
-  checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
-  params_->slice_reader_cache = &slice_reader_cache_wrapper;
+  test::SetOutputAttrs(params_.get(), &out_alloc_attrs_);
+  params_->slice_reader_cache = &slice_reader_cache_wrapper_;
+  params_->cancellation_manager = &default_cancellation_manager_;
   params_->resource_manager = device_->resource_manager();
   params_->function_library = pflr_->GetFLR(device_->name());
 
   context_.reset(new OpKernelContext(params_.get()));
+}
+
+Status OpsTestBase::RunOpKernel() {
+  CreateContext();
   device_->Compute(kernel_.get(), context_.get());
   return context_->status();
 }

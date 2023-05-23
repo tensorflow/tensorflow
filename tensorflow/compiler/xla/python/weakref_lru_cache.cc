@@ -15,15 +15,55 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/weakref_lru_cache.h"
 
+#include <iterator>
 #include <memory>
+#include <string>
+#include <thread>  // NOLINT
 #include <utility>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/synchronization/notification.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/lru_cache.h"
 
 namespace jax {
+namespace {
+
+// Minimal wrapper to expose a pybind11::dict_iterator's value as something
+// hashable with Abseil.
+class HashablePyDictValue {
+ protected:
+  using Iter = pybind11::detail::dict_iterator;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const HashablePyDictValue& value) {
+    return H::combine(std::move(h), pybind11::hash(value.iter_->first),
+                      pybind11::hash(value.iter_->second));
+  }
+
+  explicit HashablePyDictValue(const Iter& iter) : iter_(iter) {}
+
+  Iter iter_;
+};
+
+// Similarly, a minimalist adaptor around the pybind11::detail::dict_iterator
+// itself. Note that the iterator "is" also a Value. Does not meet the full
+// standard iterator requirements, only enough to support H::combine_unordered.
+class HashablePyDictIter : protected HashablePyDictValue {
+ public:
+  using iterator_category = std::input_iterator_tag;
+
+  explicit HashablePyDictIter(const Iter& iter) : HashablePyDictValue(iter) {}
+
+  // Minimal set of iterator operations.
+  const HashablePyDictValue& operator*() const { return *this; }
+  bool operator!=(const HashablePyDictIter& rhs) const {
+    return iter_ != rhs.iter_;
+  }
+  void operator++() { ++iter_; }
+};
+
+}  // namespace
 
 class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
  public:
@@ -33,21 +73,18 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     pybind11::kwargs kwargs;
 
     bool operator==(const Key& other) const {
-      if (!context.equal(other.context)) return false;
-      if (!args.equal(other.args)) return false;
-      if (!kwargs.equal(other.kwargs)) return false;
-      return true;
+      return context.equal(other.context) && args.equal(other.args) &&
+             kwargs.equal(other.kwargs);
     }
 
     template <typename H>
     friend H AbslHashValue(H h, const Key& key) {
-      h = H::combine(std::move(h), pybind11::hash(key.context));
-      h = H::combine(std::move(h), pybind11::hash(key.args));
+      h = H::combine(std::move(h), pybind11::hash(key.context),
+                     pybind11::hash(key.args));
+      h = H::combine_unordered(std::move(h),
+                               HashablePyDictIter(key.kwargs.begin()),
+                               HashablePyDictIter(key.kwargs.end()));
       h = H::combine(std::move(h), key.kwargs.size());
-      for (auto& kv : key.kwargs) {
-        h = H::combine(std::move(h), pybind11::hash(kv.first));
-        h = H::combine(std::move(h), pybind11::hash(kv.second));
-      }
       return h;
     }
   };
@@ -56,6 +93,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     bool has_result = false;
     pybind11::object result;
     absl::Notification completed;
+    std::thread::id thread_id = std::this_thread::get_id();
   };
 
   struct CacheInfo {
@@ -141,11 +179,20 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
     ++total_queries_;
 
     bool inserted = false;
+    {
+      // Because the gil can be released during cache insertion, this forces
+      // the lock order to be mu_ then gil so we must release the gil first.
+      pybind11::gil_scoped_release release;
+      // Acquire a mutex to avoid problems where the gil is released during
+      // cache insertion and then a second thread invalidates the cache order.
+      mu_.Lock();
+    }
     Key key{context, args, kwargs};
     auto entry = cache.GetOrCreateIfAbsent(key, [&inserted](const Key& key) {
       inserted = true;
       return std::make_shared<CacheEntry>();
     });
+    mu_.Unlock();
     if (!entry->completed.HasBeenNotified()) {
       if (inserted) {
         ++misses_;
@@ -153,6 +200,14 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
         entry->result = fn_(weakref_key, *args, **kwargs);
         entry->has_result = true;
       } else {
+        if (entry->thread_id == std::this_thread::get_id()) {
+          auto error_string = absl::StrCat(
+              "Recursively calling ",
+              pybind11::cast<std::string>(pybind11::repr(weakref_key)),
+              pybind11::cast<std::string>(pybind11::repr(args)));
+          PyErr_SetString(PyExc_RecursionError, error_string.c_str());
+          throw pybind11::error_already_set();
+        }
         pybind11::gil_scoped_release release;
         entry->completed.WaitForNotification();
       }
@@ -186,6 +241,7 @@ class WeakrefLRUCache : public std::enable_shared_from_this<WeakrefLRUCache> {
       entries_;
   int64_t misses_ = 0;
   int64_t total_queries_ = 0;
+  absl::Mutex mu_;
 };
 
 namespace {

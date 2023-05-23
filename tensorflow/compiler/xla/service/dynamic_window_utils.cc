@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 
 namespace xla {
@@ -51,7 +51,7 @@ HloOp BinaryOp(HloOp x, HloOp y, HloOpcode opcode,
                const std::string& name = "") {
   CHECK_EQ(x.get()->parent(), y.get()->parent());
   Shape binary_op_shape =
-      ShapeInference::InferBinaryOpShape(opcode, x.get(), y.get()).ValueOrDie();
+      ShapeInference::InferBinaryOpShape(opcode, x.get(), y.get()).value();
   return HloOp(x.get()->parent()->AddInstruction(
       HloInstruction::CreateBinary(binary_op_shape, opcode, x.get(), y.get()),
       name));

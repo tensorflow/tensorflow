@@ -26,10 +26,12 @@ func.func @useRangeGap(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2xf32>)
 ^bb3:
   func.return
 }
-//      CHECK:  Value: %0 {{ *}}
+//      CHECK:  Value: %[[A0:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(7, 7), (13, 13)}
-//      CHECK:  Value: %1 {{ *}}
+//      CHECK:  Value: %[[A1:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(9, 9), (15, 15)}
+//      CHECK:  %[[A0]] = memref.alloc
+//      CHECK:  %[[A1]] = memref.alloc
 
 // -----
 
@@ -57,16 +59,21 @@ func.func @loopWithNestedRegion(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2
   "lmhlo.negate"(%arg1, %3) : (memref<2xf32>, memref<2xf32>) -> ()
   func.return
 }
-//      CHECK:  Value: %0 {{ *}}
+//      CHECK:  Value: %[[A0:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(11, 23)}
-//      CHECK:  Value: %1 {{ *}}
+//      CHECK:  Value: %[[A1:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(11, 23)}
-//      CHECK:  Value: %2 {{ *}}
+//      CHECK:  Value: %[[A2:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(11, 25)}
-//      CHECK:  Value: %3 {{ *}}
+//      CHECK:  Value: %[[A3:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(27, 27)}
-//      CHECK:  Value: %4 {{ *}}
+//      CHECK:  Value: %[[A4:.*]] = scf.if
 //      CHECK:  Userange: {(19, 19)}
+//      CHECK:  %[[A0]] = memref.alloc
+//      CHECK:  %[[A1]] = memref.alloc
+//      CHECK:  %[[A2]] = memref.alloc
+//      CHECK:  %[[A3]] = memref.alloc
+//      CHECK:  %[[A4]] = scf.if
 
 // -----
 
@@ -93,15 +100,19 @@ func.func @condBranchWithAlias(%arg0: i1, %arg1: memref<2xf32>, %arg2: memref<2x
   "lmhlo.copy"(%5, %arg2) : (memref<2xf32>, memref<2xf32>) -> ()
   func.return
 }
-//      CHECK:  Value: %0 {{ *}}
+//      CHECK:  Value: %[[A0:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(5, 7), (15, 27)}
-//      CHECK:  Value: %1 {{ *}}
+//      CHECK:  Value: %[[A1:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(11, 17)}
-//      CHECK:  Value: %3 {{ *}}
+//      CHECK:  Value: %[[A2:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(19, 19)}
-//      CHECK:  Value: %4 {{ *}}
+//      CHECK:  Value: %[[A3:.*]] = memref.alloc
 // CHECK-NEXT:  Userange: {(23, 23)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
 // CHECK-SAME:  Userange: {(15, 17)}
 //      CHECK:  Value: <block argument> of type 'memref<2xf32>' at index: 0
 // CHECK-SAME:  Userange: {(27, 27)}
+//      CHECK:  %[[A0]] = memref.alloc
+//      CHECK:  %[[A1]] = memref.alloc
+//      CHECK:  %[[A2]] = memref.alloc
+//      CHECK:  %[[A3]] = memref.alloc

@@ -277,6 +277,15 @@ void LogFusedConvForwardAutotuneResults(
     double side_value_scale, se::dnn::ActivationMode activation_mode,
     se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
 
+// Logs fused matmul results to customized back-storage.
+void LogFusedMatmulAutotuneResults(
+    se::dnn::DataType ab_dtype, se::dnn::DataType c_dtype,
+    se::DeviceMemoryBase a_buffer, se::DeviceMemoryBase b_buffer,
+    se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
+    bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
+    int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
+    se::StreamExecutor* stream_exec, absl::Span<const AutotuneResult> results);
+
 // Autotuning map entry for cuDNN-frontend-capable APIs.
 //
 // The longer-term intent is to remove the AlgorithmConfig variant and make this

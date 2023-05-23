@@ -145,6 +145,8 @@ REGISTER(GPU, float, int32)
 REGISTER(GPU, float, int64_t)
 REGISTER(GPU, Eigen::half, int32)
 REGISTER(GPU, Eigen::half, int64_t)
+REGISTER(GPU, Eigen::bfloat16, int32)
+REGISTER(GPU, Eigen::bfloat16, int64_t)
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER

@@ -20,20 +20,115 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/core/platform/status_matchers.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-using ::tensorflow::testing::IsOkAndHolds;
 using ::testing::ElementsAre;
+using ::tsl::testing::IsOkAndHolds;
 
 TEST(GetNonContractingDimsTest, Valid) {
-  Shape shape = ParseShape("f32[1,2,3,4,5,6]").ValueOrDie();
+  Shape shape = ParseShape("f32[1,2,3,4,5,6]").value();
   EXPECT_THAT(GetNonContractingDims(shape, /*batch_dims=*/{4},
                                     /*contracting_dims=*/{1, 5}),
               IsOkAndHolds(ElementsAre(0, 2, 3)));
+}
+
+using CanFoldTransposeOperandIntoDotTest = HloTestBase;
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, ArgTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule ArgTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[3,2] parameter(0)
+  y = f32[3,4] parameter(1)
+  x_transposed = f32[2,3] transpose(x), dimensions={1, 0}
+  ROOT dot_a = f32[2,4] dot(x_transposed, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, BatchedArgRowColTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule BatchedArgRowColTransposeFoldGemm
+
+ENTRY AddDotsFunc {
+  x = f32[5,3,2] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={0, 2, 1}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest, BatchRowTransposeFoldGemm) {
+  const char* hlo_text = R"(
+HloModule BatchRowTransposeFoldCheck
+
+ENTRY AddDotsFunc {
+  x = f32[2,5,3] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={1, 0, 2}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(true));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest,
+       BatchFromMinorDimTransposeDoesntFold) {
+  const char* hlo_text = R"(
+HloModule BatchFromMinorDimTransposeDoesntFold
+
+ENTRY AddDotsFunc {
+  x = f32[3,2,5] parameter(0)
+  y = f32[5,3,4] parameter(1)
+  x_transposed = f32[5,2,3] transpose(x), dimensions={2, 1, 0}
+  ROOT dot_a = f32[5,2,4] dot(x_transposed, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 0), IsOkAndHolds(false));
+}
+
+TEST_F(CanFoldTransposeOperandIntoDotTest,
+       TransposedNonContractingDimsDontFold) {
+  const char* hlo_text = R"(
+HloModule TransposedNonContractingDimsDontFold
+
+ENTRY AddDotsFunc {
+  x = f32[5,3,4]{2,1,0} parameter(1)
+  y = f32[5,2,6,3]{3,1,2,0} parameter(0)
+  y_transposed = f32[5,6,2,3]{3,2,1,0} transpose(y), dimensions={0, 2, 1, 3}
+  ROOT dot_a = f32[5,4,6,2]{3,2,1,0} dot(x, y_transposed), lhs_contracting_dims={1}, rhs_contracting_dims={3}, lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  auto dot = module->entry_computation()->root_instruction();
+  EXPECT_THAT(CanFoldTransposeOperandIntoDot(*dot, 1), IsOkAndHolds(false));
 }
 
 struct GetBatchRowColumnShapeTestParams {
@@ -50,10 +145,10 @@ using GetBatchRowColumnShapeTest =
 TEST_P(GetBatchRowColumnShapeTest, ValidShape) {
   const GetBatchRowColumnShapeTestParams& params = GetParam();
 
-  Shape shape = ParseShape(params.shape).ValueOrDie();
+  Shape shape = ParseShape(params.shape).value();
   EXPECT_THAT(GetBatchRowColumnShape(shape, params.batch_dims, params.row_dims,
                                      params.col_dims),
-              IsOkAndHolds(ParseShape(params.expected_shape).ValueOrDie()));
+              IsOkAndHolds(ParseShape(params.expected_shape).value()));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -73,7 +168,7 @@ INSTANTIATE_TEST_SUITE_P(
     }));
 
 TEST(GetBatchRowColumnShapeTest, BatchRowsColsInterleaved) {
-  Shape shape = ParseShape("f32[3,4,5,6,7,8]{5,4,3,2,1,0}").ValueOrDie();
+  Shape shape = ParseShape("f32[3,4,5,6,7,8]{5,4,3,2,1,0}").value();
   auto result =
       GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 3},
                              /*row_dims=*/{1, 4}, /*col_dims=*/{2, 5});
@@ -81,7 +176,7 @@ TEST(GetBatchRowColumnShapeTest, BatchRowsColsInterleaved) {
 }
 
 TEST(GetBatchRowColumnShapeTest, WrongPhysicalOrder) {
-  Shape shape = ParseShape("f32[3,4,5,6]{3,2,0,1}").ValueOrDie();
+  Shape shape = ParseShape("f32[3,4,5,6]{3,2,0,1}").value();
   auto result = GetBatchRowColumnShape(shape, /*batch_dims=*/{0, 1},
                                        /*row_dims=*/{2}, /*col_dims=*/{3});
   EXPECT_FALSE(result.ok());
@@ -104,8 +199,8 @@ using GetMatrixLayoutTest = ::testing::TestWithParam<GetMatrixLayoutTestParams>;
 TEST_P(GetMatrixLayoutTest, ValidShape) {
   const GetMatrixLayoutTestParams& params = GetParam();
 
-  Shape shape = ParseShape(params.shape).ValueOrDie();
-  MatrixLayout result = MatrixLayout::For(shape).ValueOrDie();
+  Shape shape = ParseShape(params.shape).value();
+  MatrixLayout result = MatrixLayout::For(shape).value();
   EXPECT_EQ(result.batch_size, params.batch_size);
   EXPECT_EQ(result.num_rows, params.num_rows);
   EXPECT_EQ(result.num_cols, params.num_cols);
@@ -126,7 +221,7 @@ INSTANTIATE_TEST_SUITE_P(
     }));
 
 TEST(GetMatrixLayoutTest, BatchInMostMinorPhysicalDimension) {
-  Shape shape = ParseShape("f32[3,4,5]{0,2,1}").ValueOrDie();
+  Shape shape = ParseShape("f32[3,4,5]{0,2,1}").value();
   EXPECT_FALSE(MatrixLayout::For(shape).ok());
 }
 

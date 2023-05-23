@@ -52,6 +52,12 @@ limitations under the License.
 #define PLATFORM_POSIX
 #define PLATFORM_CHROMIUMOS
 
+#elif defined(__Fuchsia__)
+#define PLATFORM_FUCHSIA
+// PLATFORM_GOOGLE needs to be defined by default to get the right header
+// files.
+#define PLATFORM_GOOGLE
+
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX

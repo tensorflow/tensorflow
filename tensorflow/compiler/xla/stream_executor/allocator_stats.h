@@ -24,7 +24,7 @@ limitations under the License.
 namespace stream_executor {
 
 // Runtime statistics collected by an allocator. Exactly the same as
-// tensorflow::AllocatorStats, but independently defined to preserve the mutual
+// tsl::AllocatorStats, but independently defined to preserve the mutual
 // independence of StreamExecutor and TensorFlow.
 struct AllocatorStats {
   int64_t num_allocs;          // Number of allocations.

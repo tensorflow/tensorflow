@@ -23,19 +23,23 @@ limitations under the License.
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
-#include "tensorflow/compiler/xla/mlir_hlo/include/mlir-hlo/Dialect/lhlo/IR/lhlo_ops.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
 
-// The amount of shared memory a CUDA kernel can use.
-//
-// Stay on the conservative side, this is smaller than full 64kB, but allows
-// some extra space for cache.
-inline constexpr int64_t kSharedMemoryBudgetInBytes = 48 * 1024;
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
+// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
+// and the product of the dimensions to be swapped is larger than
+// 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
+inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
 //
@@ -51,6 +55,10 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
+
+// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
+// this string. TritonAutotuner replaces it with TritonGemmKey proto.
+inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -84,7 +92,7 @@ struct ReductionDimensions {
   //
   // For row reduction, we do: [D, H, W] -> [D, H].
   // For column reduction, we do: [D, H, W] -> [D, W].
-  std::array<int64_t, 3> dimensions;
+  Vector3 dimensions;
 };
 
 // Given the input shape and dimensions to reduce for a reduction, returns
@@ -97,9 +105,7 @@ ReductionDimensions GetReductionKindAndContiguousComponents(
     const HloInstruction& reduce);
 
 // Get tiling per thread for the given reduction in dimensions [D, H, W].
-std::array<int64_t, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions,
-    se::CudaComputeCapability cuda_compute_capability);
+Vector3 GetReductionTiling(const ReductionDimensions& reduction_dimensions);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,
@@ -123,39 +129,9 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
-// Returns whether the output of a fusion with reduction are consistent with
-// `first_reduce`.
-bool IsFusedReductionOutputConsistent(const HloInstruction* inst,
-                                      const HloInstruction* first_reduce);
-inline bool AreFusedReductionOutputsConsistent(
-    absl::Span<const HloInstruction* const> output_instructions,
-    const HloInstruction* first_reduce) {
-  return absl::c_all_of(output_instructions, [=](const HloInstruction* inst) {
-    return IsFusedReductionOutputConsistent(inst, first_reduce);
-  });
-}
-
-inline std::string MlirToString(mlir::Operation* op) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    op->print(os);
-  }
-  return s;
-}
-
-inline std::string MlirToString(const mlir::Location& loc) {
-  std::string s;
-  {
-    llvm::raw_string_ostream os(s);
-    loc.print(os);
-  }
-  return s;
-}
-
 int PartitionLmhloOperandsAndOutputs(mlir::Operation* op);
-std::vector<mlir::Value> GetHloOperands(mlir::Operation* op);
-std::vector<mlir::Value> GetHloOutputs(mlir::Operation* op);
+llvm::SmallVector<mlir::Value> GetHloOperands(mlir::Operation* op);
+llvm::SmallVector<mlir::Value> GetHloOutputs(mlir::Operation* op);
 
 bool WritesMlirBuffer(mlir::Operation* op, mlir::Value operand);
 
@@ -176,8 +152,7 @@ Shape GetShape(mlir::Value value);
 
 // Returns whether the given reduction can be safely generated without atomics:
 // that is, at most one block will write to every output element.
-bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions,
-                         const std::array<int64_t, 3>& reduction_tiling);
+bool ReductionIsRaceFree(const ReductionDimensions& reduction_dimensions);
 
 // Description of how to emit a given transposition.
 //
@@ -207,12 +182,45 @@ struct TransposeDimsAndParams {
   }
 };
 
-// Attempts to match 021 transpose on the given fusion and return a
-// transposition description.
+// Returns instructions which are roots of the fusion, following the operands of
+// GTE instructions in the root tuple. Groups multiple subsequent instructions
+// with the same root. CHECKs that the fusion never outputs the same instruction
+// twice, as well as that there are no explicitly created tuples or nested gtes
+// in fusion output.
 //
-// Precondition: input is a fused computation, with kCopy as a root.
-std::optional<TransposeDimsAndParams> Match021Transpose(
-    const HloComputation* fused_computation);
+// For input: (tuple (gte R1) (gte R1) O2)
+// Expected output: [R1, O2]
+//
+// For input: (tuple R1 R2 O2)
+// Expected output: [R1, R2, O2]
+//
+// For input: (tuple (gte R1) (gte R1) R2 O3)
+// Expected output: [R1, R2, O3]
+//
+// For input: R1
+// Expected output: [R1]
+std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation);
+
+// Returns whether the computation has at least one root triggering unnested
+// reduction emitter.
+bool HasAnyUnnestedReductionRoot(HloComputation* computation);
+
+const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
+
+// Whether there is a fusion root triggering transposition emitter.
+bool HasAnyTiledTransposeRoot(HloComputation* computation);
+
+std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
+                                          Vector3& permutation);
+
+std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
+                                                 Vector3& permutation);
+
+std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+    const HloInstruction& instr);
+
+// Log and verify an LLVM module.
+void LogAndVerify(const llvm::Module* m);
 
 }  // namespace gpu
 }  // namespace xla

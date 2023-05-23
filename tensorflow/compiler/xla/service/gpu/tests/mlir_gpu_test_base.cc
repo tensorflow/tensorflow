@@ -24,15 +24,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_compiler.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 
 namespace xla {
 namespace gpu {
 
 MlirGpuTestBase::MlirGpuTestBase() {
   se::Platform* platform =
-      se::MultiPlatformManager::PlatformWithName(tensorflow::GpuPlatformName())
-          .value();
+      se::MultiPlatformManager::PlatformWithName(se::GpuPlatformName()).value();
   BackendOptions options;
   options.set_platform(platform);
   backend_ = xla::Backend::CreateBackend(options).value();
@@ -64,7 +63,7 @@ StatusOr<std::unique_ptr<Executable>> MlirGpuTestBase::CompileMlirModule(
       /*mlir_context=*/nullptr, llvm_module.get());
 
   HloModuleConfig module_config;
-  module_config.set_debug_options(GetDebugOptionsFromFlags());
+  module_config.set_debug_options(debug_options_);
   return CompileLmhloToExecutable(
       static_cast<GpuCompiler*>(backend_->compiler()), module, "TestModule",
       module_config, Compiler::CompileOptions(), "main", stream_exec,

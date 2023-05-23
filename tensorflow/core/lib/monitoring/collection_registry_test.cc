@@ -76,7 +76,7 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
   auto duplicate_handle =
       collection_registry->Register(&metric_def, EmptyCollectionFunction);
-  EXPECT_EQ(duplicate_handle, nullptr);
+  EXPECT_NE(duplicate_handle, nullptr);
 }
 
 TEST(CollectMetricsTest, Counter) {

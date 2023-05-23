@@ -17,15 +17,15 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/test_target_triple_helper.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace cpu {
@@ -47,8 +47,7 @@ ENTRY entry {
 
   HloModuleConfig config;
   config.set_use_spmd_partitioning(true);
-  auto hlo_module =
-      ParseAndReturnVerifiedModule(hlo_string, config).ValueOrDie();
+  auto hlo_module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   // Verify that compilation succeeded.
   StatusOr<std::unique_ptr<Executable>> executable =
@@ -73,7 +72,7 @@ ENTRY main {
   config.set_replica_count(4);
   config.set_num_partitions(4);
   config.set_debug_options(GetDebugOptionsFromFlags());
-  auto module = ParseAndReturnVerifiedModule(hlo_string, config).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(hlo_string, config).value();
 
   CpuAotCompilationOptions options{
       /*triple=*/kTargetTripleForHost, /*cpu_name=*/kTargetCpuForHost,

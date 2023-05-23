@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
-#include "tensorflow/compiler/xla/stream_executor/lib/status.h"
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"

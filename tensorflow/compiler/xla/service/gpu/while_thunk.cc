@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -64,7 +64,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s", &stream,
-          block_status.error_message());
+          block_status.message());
     }
 
     if (!condition_result) {

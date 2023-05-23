@@ -15,24 +15,16 @@
 """Core DTensor Python API."""
 
 import contextlib
-import os
 import threading
-from typing import Any, Callable, List, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence
 
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import gen_dtensor_ops
 from tensorflow.dtensor.python import layout as layout_lib
 from tensorflow.python.eager import context
-from tensorflow.python.framework import config as tf_config
-from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
-
-_DT_CLIENT_ID = "DTENSOR_CLIENT_ID"
-_DT_NUM_CLIENTS = "DTENSOR_NUM_CLIENTS"
-_DT_JOB_NAME = "DTENSOR_JOB_NAME"
-_DT_JOBS = "DTENSOR_JOBS"
-_DT_HEARTBEAT_ENABLED = "DTENSOR_ENABLE_HEARTBEAT"
 
 _dtensor_singleton = None
 _dtensor_singleton_lock = threading.Lock()
@@ -62,26 +54,17 @@ def call_with_layout(fn: Callable[...,
     The return value of `fn` transformed to a DTensor if requested.
   """
   if layout is not None:
-    if not context.executing_eagerly():
-      # This is a workaround for b/199324097, where functions such as tf.ones
-      # could attach an incorrect layout to the tf.const generated under the
-      # hood. The op runs successfully in eager mode, but in graph mode, MLIR
-      # passes sometimes attach the default layout to a scalar constant.
-      # %cst = tf.Const([1])  -- With the given layout
-      # %0 = "tf.DTensorLayout"(%cst). -- Fails in MLIR pass since shape for
-      #                                -- layout could be different than
-      #                                -- shape[0] for %cst.
-      # %1 = tf.Fill(%0, 1)
-      result = fn(*args, **kwargs)
-      return relayout(result, layout)
-    else:
-      with run_on(layout.mesh):
+    if context.executing_eagerly():
+      with default_mesh(layout.mesh):
         with _dtensor_device()._default_layout(layout):  # pylint: disable=protected-access
           return fn(*args, **kwargs)
+    else:
+      return relayout(fn(*args, **kwargs), layout)
   return fn(*args, **kwargs)
 
 
 @tf_export("experimental.dtensor.run_on", v1=[])
+@deprecation.deprecated(None, "Use `dtensor.default_mesh` scope instead.")
 @contextlib.contextmanager
 def run_on(mesh: layout_lib.Mesh):
   """Runs enclosed functions in the DTensor device scope.
@@ -97,6 +80,28 @@ def run_on(mesh: layout_lib.Mesh):
 
   Yields:
     A context in which all ops and tf.functions will run on the DTensor device.
+  """
+  with default_mesh(mesh):
+    yield
+
+
+@tf_export("experimental.dtensor.default_mesh", v1=[])
+@contextlib.contextmanager
+def default_mesh(mesh: layout_lib.Mesh):
+  """Sets the default DTensor device mesh to use for enclosed functions.
+
+  This function returns a scope. All the ops and tf.functions in this scope will
+  default to this DTensor mesh if a mesh cannot be inferred from any of the
+  inputs
+  This is useful for wrapping any tf.function that doesn't take a DTensor as
+  input but would like to produce DTensor as result. The scope will also make
+  sure all small constants are replicated as DTensors.
+
+  Args:
+    mesh: A Mesh instance to extract a default mesh from.
+
+  Yields:
+    A context in which all ops and tf.functions will run on the given mesh.
   """
   if not isinstance(mesh, layout_lib.Mesh):
     raise ValueError(f"Expect `mesh` to be `Mesh`, got {type(mesh)}")
@@ -122,6 +127,22 @@ def device_name() -> str:
   return _dtensor_device().name
 
 
+@tf_export("experimental.dtensor.is_dtensor", v1=[])
+def is_dtensor(tensor) -> bool:
+  """Check whether the input tensor is a DTensor.
+
+  In Python, a DTensor has the same type as a `tf.Tensor`. This method will
+  let you check and handle the tensor differently if a tf.Tensor is a DTensor.
+
+  Args:
+    tensor: an object to be checked.
+
+  Returns:
+    bool, True if the given tensor is a DTensor.
+  """
+  return _dtensor_device().is_dtensor(tensor)
+
+
 # -----------------------------------------------------------------------------
 # Data transfer methods.
 
@@ -135,18 +156,20 @@ def copy_to_mesh(
 
   Copies a regular tf.Tensor onto the DTensor device. Use the mesh attached to
   `layout` as target mesh. This method currently only supports replicated
-  layouts. To get a DTensor with a sharded layout, use the `pack` method.
+  layouts, or one-to-one copies for sharded layouts.
 
   Args:
     tensor: A regular tf.Tensor to be copied as a DTensor.
     layout: Target layout (and mesh) for the result DTensor.
-    source_layout: Source layout of the tensor before copy, used for backward
-      passes.
+    source_layout: Source layout of the tensor before copy. This argument
+      is deprecated.
 
   Returns:
     A DTensor on the DTensor device with the given layout.
   """
-  return _dtensor_device().copy_to_mesh(tensor, layout, source_layout)
+  del source_layout
+  with default_mesh(layout.mesh):
+    return gen_dtensor_ops.copy_to_mesh(tensor, layout.to_string())
 
 
 @tf_export("experimental.dtensor.pack", v1=[])
@@ -370,7 +393,9 @@ def check_layout(tensor: ops.Tensor, layout: layout_lib.Layout) -> None:
 
 
 @tf_export("experimental.dtensor.relayout", v1=[])
-def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
+def relayout(
+    tensor: ops.Tensor, layout: layout_lib.Layout, name: Optional[str] = None
+) -> ops.Tensor:
   """Changes the layout of `tensor`.
 
   Changes the layout of `tensor` to `layout`. This is used to fine-tune the
@@ -396,163 +421,65 @@ def relayout(tensor: ops.Tensor, layout: layout_lib.Layout) -> ops.Tensor:
   Args:
     tensor: A DTensor to specify a new layout for.
     layout: A Layout object specifying a new sharding spec.
+    name: name of the Op.
 
   Returns:
     A DTensor output from the Relayout op.
   """
   layout_str = layout.to_string()
-  return gen_dtensor_ops.relayout(tensor, layout_str)
+  with default_mesh(layout.mesh):
+    return gen_dtensor_ops.relayout(tensor, layout_str, name=name)
 
 
-# -----------------------------------------------------------------------------
-# Distributed training-related methods.
-#
-# Most users should use DTensor utility methods to create a mesh. The methods
-# here are only for advanced users who want to fully customize their meshes.
-# Note that local_devices and num_local_devices return the actual number of
-# locally attached devices. The others are set through environment variables.
+@tf_export("experimental.dtensor.relayout_like", v1=[])
+def relayout_like(
+    tensor: ops.Tensor, layout_tensor: ops.Tensor, name: Optional[str] = None
+) -> ops.Tensor:
+  """Changes the layout of `tensor` to the same as `layout_tensor`.
 
+  `relayout_like` is often used inside a `tf.function`, to ensure a tensor is
+  placed to the same mesh and with the same layout as another tensor.
 
-@tf_export("experimental.dtensor.client_id", v1=[])
-def client_id() -> int:
-  """Returns this client's ID."""
-  # If missing, assume running with a single client with client_id of 0.
-  client_id_value = int(os.environ.get(_DT_CLIENT_ID, "0"))
-  if client_id_value < 0:
-    raise ValueError(f"Environment variable {_DT_CLIENT_ID} "
-                     f"must be >= 0, got {client_id_value}. ")
-  if client_id_value >= num_clients():
-    raise ValueError(f"Environment variable {_DT_CLIENT_ID} "
-                     f"must be < {num_clients()}, got {client_id_value}")
-  return client_id_value
+  The backward gradient of a `relayout` is a `relayout_like` operation, to
+  ensure the backward tensor has the same layout as the forward input tensor:
 
+  ```
+  @ops.RegisterGradient("Relayout")
+  def _relayout_gradient(op, grad):
+    return relayout_like(grad, layout_input=op.inputs[0])
+  ```
 
-@tf_export("experimental.dtensor.num_clients", v1=[])
-def num_clients() -> int:
-  """Returns the number of clients in this DTensor cluster."""
-  # If missing, assume running with a single client with num_clients of 1.
-  num_clients_value = int(os.environ.get(_DT_NUM_CLIENTS, "1"))
-  if num_clients_value <= 0:
-    raise ValueError(f"Environment variable {_DT_NUM_CLIENTS} "
-                     f"must be > 0, got {num_clients_value}.")
+  Here is another illustrative example:
 
-  return num_clients_value
+  ```
+  @tf.function
+  def func(x):
+    z = tf.ones(x.shape)
+    z = dtensor.relayout_like(z, x)
+    return x + z
 
+  with dtensor.default_mesh(cpu_mesh):
+    x = tf.ones((4, 4))
 
-@tf_export("experimental.dtensor.local_devices", v1=[])
-def local_devices(
-    device_type: str,
-    for_client_id: Optional[int] = None) -> List[tf_device.DeviceSpec]:
-  """Returns a list of device specs of device_type attached to this client."""
-  if device_type.upper() not in ["CPU", "GPU", "TPU"]:
-    raise ValueError(f"Device type {device_type} is not CPU, GPU, or TPU.")
-  if for_client_id is None:
-    for_client_id = client_id()
+  with dtensor.default_mesh(gpu_mesh):
+    y = func(x)
 
-  logical_devices = [
-      tf_device.DeviceSpec.from_string(d.name)
-      for d in tf_config.list_logical_devices(device_type)
-  ]
-
-  # Get the number of local devices.
-  device_count = 0
-  for d in logical_devices:
-    # d might have a partial name, e.g. /device:TPU:0.
-    if (d.job is None or d.job == job_name()) and (d.task is None or
-                                                   d.task == for_client_id):
-      device_count = device_count + 1
-
-  # Return fully qualified device specs, sorted by increasing device index.
-  return [
-      tf_device.DeviceSpec(  # pylint: disable=g-complex-comprehension
-          job=job_name(),
-          replica=0,  # replica is deprecated and mostly hard-coded now.
-          task=for_client_id,
-          device_type=device_type,
-          device_index=i) for i in range(device_count)
-  ]
-
-
-@tf_export("experimental.dtensor.num_local_devices", v1=[])
-def num_local_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type attached to this client."""
-  return len(local_devices(device_type))
-
-
-@tf_export("experimental.dtensor.num_global_devices", v1=[])
-def num_global_devices(device_type: str) -> int:
-  """Returns the number of devices of device_type in this DTensor cluster."""
-  return num_local_devices(device_type) * num_clients()
-
-
-@tf_export("experimental.dtensor.job_name", v1=[])
-def job_name() -> str:
-  """Returns the job name used by all clients in this DTensor cluster."""
-  # If missing, assumes the program runs locally and use localhost as job name
-  # per TensorFlow convention.
-  return os.environ.get(_DT_JOB_NAME,
-                        "localhost" if num_clients() == 1 else "worker")
-
-
-@tf_export("experimental.dtensor.full_job_name", v1=[])
-def full_job_name(task_id: Optional[int] = None) -> str:
-  """Returns the fully qualified TF job name for this or another task."""
-  # If task_id is None, use this client's ID, which is equal to its task ID.
-  if task_id is None:
-    task_id = client_id()
-  # In local runs and unit tests, there should be exactly one client running
-  # on one TF task.
-  if num_clients() == 1 and task_id != 0:
-    raise ValueError(f"Unexpected task ID {task_id} in local runs")
-  return f"{job_name()}/replica:0/task:{task_id}"
-
-
-def _bns_task_id(job: str) -> Union[int, str]:
-  """Tries to extract an integer task ID from a job name.
-
-  For example, for `job` = '/.../tpu_worker/0:port_name', return 0.
+  # y would be on the cpu mesh, following the mesh of x.
+  ```
 
   Args:
-    job: A job name to extract task ID from.
+    tensor: A DTensor to specify a new layout for.
+    layout_tensor: A Tensor object whose layout will be used for the layout of
+      result. The shape and type of layout_tensor are irrelevant.
+    name: name of the Op.
 
   Returns:
-    The task ID on success, or the original job name on failure.
+    A DTensor output from the RelayoutLike op.
   """
-  maybe_task_id = job.rsplit("/")[-1].rsplit(":")[0]
-  try:
-    return int(maybe_task_id)
-  except ValueError:
-    return job
 
-
-@tf_export("experimental.dtensor.jobs", v1=[])
-def jobs() -> List[str]:
-  """Returns a list of job names of all clients in this DTensor cluster."""
-  d_jobs = os.environ.get(_DT_JOBS)
-  if d_jobs is None:
-    return []
-  d_jobs_list = d_jobs.split(",")
-
-  # Validate ordering for BNS style job names.
-  # For definition of BNS, refer to https://research.google/pubs/pub43438/.
-  if any([name.startswith("/bns/") for name in d_jobs_list]):
-    if d_jobs_list != sorted(d_jobs_list, key=_bns_task_id):
-      raise ValueError(
-          f"Unexpected DTENSOR_JOBS content {d_jobs}. Sort entries "
-          "in DTENSOR_JOBS because cluster construction relies on "
-          "the order.")
-
-  return d_jobs_list
-
-
-@tf_export("experimental.dtensor.heartbeat_enabled", v1=[])
-def heartbeat_enabled() -> bool:
-  """Returns true if DTensor heartbeat service is enabled."""
-  return os.environ.get(_DT_HEARTBEAT_ENABLED, "true").lower() in ("true", "1")
-
-
-# -----------------------------------------------------------------------------
-# Private methods.
+  return gen_dtensor_ops.relayout_like(
+      input=tensor, layout_input=layout_tensor, name=name
+  )
 
 
 def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
@@ -563,7 +490,8 @@ def _set_dtensor_device(device: dtensor_device.DTensorDevice) -> None:
 def _dtensor_device() -> dtensor_device.DTensorDevice:
   with _dtensor_singleton_lock:
     if _dtensor_singleton is None:
-      _set_dtensor_device(dtensor_device.DTensorDevice(meshes=[]))
+      _set_dtensor_device(
+          dtensor_device.DTensorDevice(meshes=[], is_async=True))
   return _dtensor_singleton
 
 
@@ -573,3 +501,42 @@ def _reset() -> None:
     _dtensor_singleton.clear_tpu_core_ids()
   with _dtensor_singleton_lock:
     _dtensor_singleton = None
+
+
+# ----------------------------------------------------------------------------
+# Gradients
+
+
+@ops.RegisterGradient("Relayout")
+def _relayout_gradient(op, grad):
+  grad = gen_dtensor_ops.relayout_like(grad, layout_input=op.inputs[0])
+  return grad
+
+
+@ops.RegisterGradient("RelayoutLike")
+def _relayout_grad_gradient(op, grad):
+  # Gradient of RelayoutGrad is relayout to the original Relayout's output.
+  grad = gen_dtensor_ops.relayout_like(grad, layout_input=op.inputs[0])
+  # Return None for forward_input's partial gradient since it is not connected
+  # to the target's gradient.
+  return grad, None
+
+
+@ops.RegisterGradient("CopyToMesh")
+def _copy_to_mesh_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
+      grad,
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("layout"),
+  )
+  return grad
+
+
+@ops.RegisterGradient("CopyToMeshGrad")
+def _copy_to_mesh_grad_gradient(op, grad):
+  grad = gen_dtensor_ops.copy_to_mesh_grad(
+      grad,
+      forward_input=op.inputs[0],
+      reference_layout=op.get_attr("reference_layout"),
+  )
+  return grad, None

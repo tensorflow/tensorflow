@@ -18,7 +18,6 @@ from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import trackable_utils
-from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.util import object_identity
 
 
@@ -27,11 +26,10 @@ def serialize_slot_variables(trackable_objects, node_ids, object_names):
   non_slot_objects = list(trackable_objects)
   slot_variables = object_identity.ObjectIdentityDictionary()
   for trackable in non_slot_objects:
-    if (isinstance(trackable, optimizer_v1.Optimizer)
         # TODO(b/110718070): Fix Keras imports.
         # Note: dir() is used rather than hasattr() here to avoid triggering
         # custom __getattr__ code, see b/152031870 for context.
-        or "get_slot_names" in dir(trackable)):
+    if "get_slot_names" in dir(trackable):
       slot_names = trackable.get_slot_names()
       for slot_name in slot_names:
         for original_variable_node_id, original_variable in enumerate(

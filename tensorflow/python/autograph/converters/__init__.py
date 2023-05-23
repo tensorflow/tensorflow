@@ -26,3 +26,5 @@
 #
 #   lists.py
 #     class ListTransformer(converter.Base)
+
+from tensorflow.python.autograph.converters import list_comprehensions

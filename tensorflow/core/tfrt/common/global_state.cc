@@ -60,5 +60,10 @@ tfrt::HostContext* GetStaticHostContext() {
   return GetStaticHostContext();
 }
 
+ResourceMgr* GetTFGlobalResourceMgr() {
+  static ResourceMgr* const rmgr = new ResourceMgr();
+  return rmgr;
+}
+
 }  // namespace tfrt_global
 }  // namespace tensorflow

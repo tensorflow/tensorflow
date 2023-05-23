@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
-#define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
+#ifndef TENSORFLOW_CORE_TPU_TPU_EMBEDDING_ERRORS_H_
+#define TENSORFLOW_CORE_TPU_TPU_EMBEDDING_ERRORS_H_
 
 #include <string>
 
@@ -46,11 +46,12 @@ StatusOr<T> AppendTpuEmbeddingErrorPayload(StatusOr<T> obj) {
   if (obj.ok()) {
     return std::move(obj.value());
   } else {
-    const std::string error_message = absl::StrCat(
-        kTpuEmbeddingErrorMessage, ". ", obj.status().error_message());
+    const std::string error_message =
+        absl::StrCat(kTpuEmbeddingErrorMessage, ". ", obj.status().message());
     Status status(obj.status().code(), error_message);
     TPUEmbeddingError error_payload;
-    status.SetPayload(kTpuEmbeddingErrorUrl, error_payload.SerializeAsString());
+    status.SetPayload(kTpuEmbeddingErrorUrl,
+                      absl::Cord(error_payload.SerializeAsString()));
     return status;
   }
 }
@@ -65,4 +66,4 @@ bool HasTpuEmbeddingErrorMessage(const Status& status);
 
 }  // namespace tensorflow::tpu
 
-#endif  // TENSORFLOW_CORE_TPU_TPU_EMBEDDING_CONFIGURATION_ERRORS_H_
+#endif  // TENSORFLOW_CORE_TPU_TPU_EMBEDDING_ERRORS_H_

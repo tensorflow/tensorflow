@@ -65,7 +65,7 @@ hardware acceleration of TensorFlow Lite models by leveraging on-device
 accelerators such as the [GPU](https://www.tensorflow.org/lite/performance/gpu)
 and [Coral Edge TPU](https://coral.ai/). Utilizing them for neural network
 operations provides huge benefits in terms of latency and power efficiency. For
-example, GPUs can provide upto a
+example, GPUs can provide up to a
 [5x speedup](https://blog.tensorflow.org/2020/08/faster-mobile-gpu-inference-with-opencl.html)
 in latency on mobile devices, and Coral Edge TPUs inference
 [10x faster](https://coral.ai/docs/edgetpu/benchmarks/) than desktop CPUs.
@@ -106,7 +106,7 @@ default.
 
 Step 2. Configure GPU delegate in the task options through
 [BaseOptions](https://www.tensorflow.org/lite/api_docs/java/org/tensorflow/lite/task/core/BaseOptions.Builder).
-For example, you can set up GPU in `ObjectDetecor` as follows:
+For example, you can set up GPU in `ObjectDetector` as follows:
 
 ```java
 // Turn on GPU delegation.
@@ -171,7 +171,7 @@ std::vector<QaAnswer> results = answerer->Answer(context_of_question, question_t
 ```
 
 Explore more advanced accelerator settings
-[here](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto).
+[here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/acceleration/configuration/configuration.proto).
 
 ### Example usage of Coral Edge TPU in Python
 
@@ -254,7 +254,7 @@ Try out the
 [Task Library CLI demo tool](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/examples/task/vision/desktop)
 with your Coral Edge TPU devices. Explore more on the
 [pretrained Edge TPU models](https://coral.ai/models/) and
-[advanced Edge TPU settings](https://github.com/tensorflow/tensorflow/blob/1a8e885b864c818198a5b2c0cbbeca5a1e833bc8/tensorflow/lite/experimental/acceleration/configuration/configuration.proto#L275).
+[advanced Edge TPU settings](https://github.com/tensorflow/tensorflow/blob/4d999fda8d68adfdfacd4d0098124f1b2ea57927/tensorflow/lite/acceleration/configuration/configuration.proto#L594).
 
 ### Example usage of Core ML Delegate in C++
 

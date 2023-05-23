@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/env.h"
+#include "tensorflow/tsl/platform/env.h"
 
 #include <Shlwapi.h>
 #include <Windows.h>
@@ -28,20 +28,20 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/platform/load_library.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/ram_file_system.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/tsl/platform/load_library.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/ram_file_system.h"
 #include "tensorflow/tsl/platform/windows/wide_char.h"
 #include "tensorflow/tsl/platform/windows/windows_file_system.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
-namespace tensorflow {
+namespace tsl {
 
 namespace {
 
-mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+mutex name_mutex(tsl::LINKER_INITIALIZED);
 
 std::map<std::thread::id, string>& GetThreadNameRegistry()
     TF_EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
@@ -53,8 +53,8 @@ class StdThread : public Thread {
  public:
   // thread_options is ignored.
   StdThread(const ThreadOptions& thread_options, const string& name,
-            std::function<void()> fn)
-      : thread_(fn) {
+            absl::AnyInvocable<void()> fn)
+      : thread_(std::move(fn)) {
     mutex_lock l(name_mutex);
     GetThreadNameRegistry().emplace(thread_.get_id(), name);
   }
@@ -98,8 +98,8 @@ class WindowsEnv : public Env {
   void SleepForMicroseconds(int64 micros) override { Sleep(micros / 1000); }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
-                      std::function<void()> fn) override {
-    return new StdThread(thread_options, name, fn);
+                      absl::AnyInvocable<void()> fn) override {
+    return new StdThread(thread_options, name, std::move(fn));
   }
 
   int32 GetCurrentThreadId() override {
@@ -120,14 +120,14 @@ class WindowsEnv : public Env {
   static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,
                                             PVOID Context, PTP_WORK Work) {
     CloseThreadpoolWork(Work);
-    std::function<void()>* f = (std::function<void()>*)Context;
+    absl::AnyInvocable<void()>* f = (absl::AnyInvocable<void()>*)Context;
     (*f)();
     delete f;
   }
-  void SchedClosure(std::function<void()> closure) override {
+  void SchedClosure(absl::AnyInvocable<void()> closure) override {
     PTP_WORK work = CreateThreadpoolWork(
-        SchedClosureCallback, new std::function<void()>(std::move(closure)),
-        nullptr);
+        SchedClosureCallback,
+        new absl::AnyInvocable<void()>(std::move(closure)), nullptr);
     SubmitThreadpoolWork(work);
   }
 
@@ -135,15 +135,16 @@ class WindowsEnv : public Env {
                                                  PVOID Context,
                                                  PTP_TIMER Timer) {
     CloseThreadpoolTimer(Timer);
-    std::function<void()>* f = (std::function<void()>*)Context;
+    absl::AnyInvocable<void()>* f = (absl::AnyInvocable<void()>*)Context;
     (*f)();
     delete f;
   }
 
-  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64 micros,
+                         absl::AnyInvocable<void()> closure) override {
     PTP_TIMER timer = CreateThreadpoolTimer(
         SchedClosureAfterCallback,
-        new std::function<void()>(std::move(closure)), nullptr);
+        new absl::AnyInvocable<void()>(std::move(closure)), nullptr);
     // in 100 nanosecond units
     FILETIME FileDueTime;
     ULARGE_INTEGER ulDueTime;
@@ -157,18 +158,17 @@ class WindowsEnv : public Env {
 
   Status LoadDynamicLibrary(const char* library_filename,
                             void** handle) override {
-    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
+    return internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
-    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
-                                                      symbol);
+    return internal::GetSymbolFromLibrary(handle, symbol_name, symbol);
   }
 
   string FormatLibraryFileName(const string& name,
                                const string& version) override {
-    return tensorflow::internal::FormatLibraryFileName(name, version);
+    return internal::FormatLibraryFileName(name, version);
   }
 
   string GetRunfilesDir() override {
@@ -229,4 +229,4 @@ int setenv(const char* name, const char* value, int overwrite) {
 
 int unsetenv(const char* name) { return _putenv_s(name, ""); }
 
-}  // namespace tensorflow
+}  // namespace tsl

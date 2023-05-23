@@ -166,7 +166,8 @@ class UnaryOpsTestBase : public OpsTestBase {
       absl::InlinedVector<T, 10> input,
       const BaselineCallback& baseline_callback) {
     absl::InlinedVector<OutT, 10> expected_output;
-    for (int i = 0; i < input.size(); i++) {
+    expected_output.reserve(input.size());
+    for (int64_t i = 0; i < input.size(); i++) {
       auto arg = static_cast<BaselineT>(input[i]);
       auto result = static_cast<OutT>(baseline_callback(arg));
       expected_output.push_back(result);
