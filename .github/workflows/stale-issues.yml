@@ -78,3 +78,9 @@ jobs:
           close-issue-message: >
             This issue was closed because it has been inactive for 1 year.
           repo-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/github-script@v6
+        with:
+          script: |
+            const script = require('./\.github/workflows/scripts/stale-close-when-update.js')
+            script({github, context})    
+      
