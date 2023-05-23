@@ -1,3 +1,17 @@
+diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
+--- stablehlo/BUILD.bazel
++++ stablehlo/BUILD.bazel
+@@ -813,7 +813,9 @@
+         "@llvm-project//mlir:AllPassesAndDialects",
+         "@llvm-project//mlir:FuncDialect",
+         "@llvm-project//mlir:IR",
+-        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:Pass",
++        "@llvm-project//mlir:Support",
++        "@llvm-project//mlir:Transforms",
+         "@llvm-project//mlir:TranslateLib",
+     ],
+ )
 diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 --- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
 +++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
@@ -14,4 +28,17 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py 
 +  # TODO(b/282232437): Delete this TensorFlow-only API, now that we have an OSS
 +  # equivalent that does the same thing.
 +  return get_minimum_version()
+diff --ruN a/stablehlo/stablehlo/tools/CMakeLists.txt b/stablehlo/stablehlo/tools/CMakeLists.txt
+--- stablehlo/stablehlo/tools/CMakeLists.txt
++++ stablehlo/stablehlo/tools/CMakeLists.txt
+@@ -44,7 +44,9 @@
+   ${dialect_libs}
+   MLIRFuncDialect
+   MLIRIR
++  MLIRPass
+   MLIRSupport
++  MLIRTransforms
+   MLIRTranslateLib
+   CheckOps
+   StablehloOps
 
