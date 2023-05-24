@@ -67,12 +67,14 @@ constexpr int VERSION_START_STABLE_HLO = 2;
 // Version 3 supports platform checking and multiple platforms. From 02/2023.
 constexpr int VERSION_START_PLATFORMS = 3;
 // Version 4 supports StableHLO with compatibility guarantees.
-// Used from 03/2023.
+// Used in jax2tf from March 15, 2023 (cl/516885716). Starting with
+// March 28th, 2023 we stopped using dim_args_spec (cl/520033493).
 constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
 // Version 5 add support to stablehlo.custom_call for host call tf graph.
-// Used from 04/2023.
+// Used in jax2tf from May 3rd, 2023 (cl/529106145).
 constexpr int VERSION_SUPPORT_CUSTOM_CALL = 5;
-constexpr int VERSION_MINIMUM_SUPPORTED = VERSION_START_STABLE_HLO;
+constexpr int VERSION_MINIMUM_SUPPORTED =
+    VERSION_START_STABLE_HLO_COMPATIBILITY;
 constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
 
 // Pretty-prints a module, optionally with debug information.
