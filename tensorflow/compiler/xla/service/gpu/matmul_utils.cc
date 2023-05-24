@@ -264,7 +264,8 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     std::optional<int64_t> algorithm, int64_t compute_precision) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
-                         output_shape, output_shape, alpha_real, alpha_imag,
+                         /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
+                         output_shape, alpha_real, alpha_imag,
                          beta, algorithm, compute_precision);
 }
 
@@ -273,9 +274,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
-    const Shape& output_shape, double alpha_real, double alpha_imag,
-    double beta, std::optional<int64_t> algorithm, int64_t compute_precision,
-    const Shape* bias_shape_ptr) {
+    const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
+    double alpha_imag, double beta, std::optional<int64_t> algorithm,
+    int64_t compute_precision) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -314,25 +315,16 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
   Shape c_matrix_shape = c_shape;
-  if (lhs_shape.element_type() == F8E4M3FN ||
-      lhs_shape.element_type() == F8E5M2) {
-    if (beta == 0.0) {
-      c_matrix_shape = output_shape;
-      if (output_shape.element_type() == F32) {
-        c_matrix_shape.set_element_type(F32);
-      } else if (output_shape.element_type() == BF16) {
-        c_matrix_shape.set_element_type(BF16);
-      } else if (output_shape.element_type() == F16) {
-        c_matrix_shape.set_element_type(F16);
-      } else {
-        // The C type has to be compatible with bias type. See
-        // https://docs.nvidia.com/cuda/cublas/index.html#id10 for details.
-        c_matrix_shape.set_element_type(
-            bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
-      }
-    } else {
-      c_matrix_shape.set_element_type(c_shape.element_type());
-    }
+  if (primitive_util::IsF8Type(lhs_shape.element_type())
+      && primitive_util::IsF8Type(output_shape.element_type()) && beta == 0.0) {
+    // By default, if c is not present (i.e., beta is 0), c_shape will be the
+    // output shape. cublasLT requires a valid c_shape to be passed, even if c
+    // is not present, and normally setting it to the output shape is fine. But
+    // for matmuls with FP8 inputs and outputs, C must instead have the same
+    // dtype as the vector bias if present, and either BF16 or F16 otherwise. So
+    // we set the dtype of C here.
+    c_matrix_shape.set_element_type(
+        bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
   }
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
@@ -1033,12 +1025,6 @@ MatmulPlan::GetAlgorithms(se::Stream* stream) const {
                       se::cuda::BlasLt::MatmulPreference::Create(
                           /*max_workspace_size=*/1ll << 32));  // 4GB
   return blas_lt->GetMatmulAlgorithms(plan_, preference);
-}
-
-bool MatmulPlan::IsF8MatmulTrivialMatrixBias() const {
-  return (plan_.a_desc.type() == CUDA_R_8F_E4M3 ||
-          plan_.a_desc.type() == CUDA_R_8F_E5M2) &&
-         (beta_ == 0.0);
 }
 
 }  // namespace cublas_lt

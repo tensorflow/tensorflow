@@ -1164,12 +1164,8 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
                       GetAllocationSlice(matmul.getA()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice b,
                       GetAllocationSlice(matmul.getB()));
-  BufferAllocation::Slice c;
-
-  if (matmul.getBetaAttr().getValueAsDouble() != 0.0) {
-    TF_ASSIGN_OR_RETURN(c, GetAllocationSlice(matmul.getC()));
-  }
-
+  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice c,
+                      GetAllocationSlice(matmul.getC()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice d,
                       GetAllocationSlice(matmul.getD()));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice a_scale,
@@ -1189,6 +1185,7 @@ Status IrEmitterUnnested::EmitCublasLtMatmulThunkF8(mlir::Operation* op) {
   }
 
   BufferAllocation::Slice aux;  // Not used.
+
   TF_ASSIGN_OR_RETURN(cublas_lt::MatmulPlan plan,
                       cublas_lt::MatmulPlan::For(matmul));
 

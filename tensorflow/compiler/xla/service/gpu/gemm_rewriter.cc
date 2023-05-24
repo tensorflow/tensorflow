@@ -726,6 +726,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr, *add = nullptr;
+
     if (instr->user_count() == 1 &&
         instr->users()[0]->opcode() == HloOpcode::kAdd) {
       HloInstruction *bias = instr->users()[0]->mutable_operand(
@@ -831,34 +832,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
 
-    // Pad the non-batch dimensions of the operands to multiples of 16 as
-    // required by cuBLASLt.
-    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = x->shape();
-      for (int i = 0; i < x->shape().rank(); ++i) {
-        auto dimension = padding_config.add_dimensions();
-        if (!absl::c_linear_search(batch_dims, i)) {
-          int64_t padded_dimension =
-              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
-          dimension->set_edge_padding_low(0);
-          dimension->set_edge_padding_high(padded_dimension -
-                                           x->shape().dimensions(i));
-          dimension->set_interior_padding(0);
-          padded_shape.set_dimensions(i, padded_dimension);
-        }
-      }
-      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
-        HloInstruction *zero =
-            instr->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(x->shape().element_type())));
-        x = instr->AddInstruction(
-            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
-      }
-      return;
-    };
-
-    // Get the possible padded shape.
+    // Get the padded shape.
     auto pad_shape = [&batch_dims](const Shape old_shape) {
       Shape padded_shape = old_shape;
       for (int i = 0; i < old_shape.rank(); ++i) {
@@ -871,15 +845,34 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return padded_shape;
     };
 
+    // Pad the non-batch dimensions of the operands to multiples of 16 as
+    // required by cuBLASLt.
+    auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = pad_shape(x->shape());
+      for (int i = 0; i < x->shape().rank(); ++i) {
+        auto dimension = padding_config.add_dimensions();
+        dimension->set_edge_padding_low(0);
+        dimension->set_edge_padding_high(padded_shape.dimensions(i) -
+                                         x->shape().dimensions(i));
+        dimension->set_interior_padding(0);
+      }
+      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
+        HloInstruction *zero =
+            instr->AddInstruction(HloInstruction::CreateConstant(
+                LiteralUtil::Zero(x->shape().element_type())));
+        x = instr->AddInstruction(
+            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
+      }
+      return;
+    };
+
     pad_operand(a);
     pad_operand(b);
-    Shape new_output_shape;
-    if (c == nullptr) {
-      new_output_shape = pad_shape(instr->shape());
-    } else {
+    if (c != nullptr) {
       pad_operand(c);
-      new_output_shape = c->shape();
     }
+    Shape new_output_shape = pad_shape(instr->shape());
 
     std::vector<HloInstruction *> operands_list = {
         a, b, scales_f32[0], scales_f32[1], one, one};
@@ -987,7 +980,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
                         existing_gemm->backend_config<GemmBackendConfig>());
-    if (gemm_backend_config.beta() == 1.0 &&
+    if (gemm_backend_config.beta() != 0.0 &&
         existing_gemm->operand(2)->shape().element_type() != BF16 &&
         existing_gemm->operand(2)->shape().element_type() != F16) {
       VLOG(1) << "The scaling and conversion of the result of "
@@ -1010,7 +1003,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       d_scale = instr->AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::MakeScalarShape(F32), d_scale));
     }
-
     TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
         gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
 
