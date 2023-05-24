@@ -30,24 +30,27 @@ namespace {
 #define GEN_PASS_DEF_ANNOTATEDEALLOCATIONPASS
 #include "deallocation/transforms/passes.h.inc"
 
-std::string getDebugString(AsmState& state, Value value) {
+std::string getDebugString(AsmState& state, DeallocationAnalysis& analysis,
+                           Value value) {
   std::string out;
   llvm::raw_string_ostream os(out);
-  llvm::interleaveComma(getBackingMemory(value), os,
+  llvm::interleaveComma(analysis.getBackingMemory(value), os,
                         [&](Value v) { v.printAsOperand(os, state); });
   return out;
 }
 
-Attribute getDebugAttribute(AsmState& state, Region& region) {
+Attribute getDebugAttribute(AsmState& state, DeallocationAnalysis& analysis,
+                            Region& region) {
   mlir::OpBuilder b(region.getContext());
   return b.getArrayAttr(llvm::to_vector(
       llvm::map_range(region.getArguments(), [&](Value arg) -> Attribute {
-        return b.getStringAttr(getDebugString(state, arg));
+        return b.getStringAttr(getDebugString(state, analysis, arg));
       })));
 }
 
 struct AnnotatePass : public impl::AnnotateDeallocationPassBase<AnnotatePass> {
   void runOnOperation() override {
+    DeallocationAnalysis analysis;
     AsmState state(getOperation());
     mlir::OpBuilder b(getOperation());
     getOperation().walk([&](Operation* op) {
@@ -57,7 +60,7 @@ struct AnnotatePass : public impl::AnnotateDeallocationPassBase<AnnotatePass> {
         op->setAttr("deallocation.region_args_backing_memory",
                     b.getArrayAttr(llvm::to_vector(
                         llvm::map_range(op->getRegions(), [&](Region& region) {
-                          return getDebugAttribute(state, region);
+                          return getDebugAttribute(state, analysis, region);
                         }))));
       }
 
@@ -65,7 +68,8 @@ struct AnnotatePass : public impl::AnnotateDeallocationPassBase<AnnotatePass> {
         op->setAttr("deallocation.result_backing_memory",
                     b.getArrayAttr(llvm::to_vector(llvm::map_range(
                         op->getResults(), [&](Value result) -> Attribute {
-                          return b.getStringAttr(getDebugString(state, result));
+                          return b.getStringAttr(
+                              getDebugString(state, analysis, result));
                         }))));
       }
     });
