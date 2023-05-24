@@ -2590,7 +2590,6 @@ distribute_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
