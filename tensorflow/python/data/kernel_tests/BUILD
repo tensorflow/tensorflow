@@ -368,6 +368,7 @@ tf_py_strict_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
