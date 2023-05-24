@@ -180,18 +180,3 @@ from tensorflow.python.ops.numpy_ops.np_utils import promote_types
 from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
 
-# pylint: disable=redefined-builtin,undefined-variable
-@np_utils.np_doc("max", link=np_utils.AliasOf("amax"))
-def max(a, axis=None, keepdims=None):
-  return amax(a, axis=axis, keepdims=keepdims)
-
-
-@np_utils.np_doc("min", link=np_utils.AliasOf("amin"))
-def min(a, axis=None, keepdims=None):
-  return amin(a, axis=axis, keepdims=keepdims)
-
-
-@np_utils.np_doc("round", link=np_utils.AliasOf("around"))
-def round(a, decimals=0):
-  return around(a, decimals=decimals)
-# pylint: enable=redefined-builtin,undefined-variable
