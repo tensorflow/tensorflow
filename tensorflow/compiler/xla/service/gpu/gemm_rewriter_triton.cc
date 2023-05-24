@@ -769,8 +769,20 @@ bool IsTritonHandledGEMM(const HloInstruction& dot,
     return false;
   }
 
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+
   // TODO(b/269580541): support multiple batch dimensions.
-  if (dot.dot_dimension_numbers().lhs_batch_dimensions().size() > 1) {
+  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
+    return false;
+  }
+
+  // Cases where lhs or rhs have no non-contracting dims are not handled.
+  if (dim_numbers.lhs_batch_dimensions().size() +
+              dim_numbers.lhs_contracting_dimensions().size() ==
+          dot.operand(0)->shape().rank() ||
+      dim_numbers.rhs_batch_dimensions().size() +
+              dim_numbers.rhs_contracting_dimensions().size() ==
+          dot.operand(1)->shape().rank()) {
     return false;
   }
 
