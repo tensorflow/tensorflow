@@ -253,6 +253,8 @@ Status RunGpuFMHA(
     se::DeviceMemoryBase mask_buffer, se::DeviceMemoryBase bias_buffer,
     se::Stream* stream, RunFusedMHAOptions = {});
 
+std::string ToString(const GpufMHAConfig& config);
+
 }  // namespace gpu
 }  // namespace xla
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSED_MHA_RUNNER_H_

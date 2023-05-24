@@ -334,7 +334,8 @@ Status CheckAndAssignBias(const GpufMHADescriptor & desc, GpufMHAConfig& config)
   }
 }
 
-void assignScale(GpufMHAConfig& config, const CudnnfMHABackendConfig& backend_config) {
+void AssignScale(GpufMHAConfig &config,
+                 const CudnnfMHABackendConfig &backend_config) {
   double fmha_scale = 0.0;
 
   switch (config.kind) {
@@ -448,7 +449,7 @@ void AssignSeed(GpufMHAConfig& config, const CudnnfMHABackendConfig& backend_con
 
   TF_RETURN_IF_ERROR(CheckAndAssignMask(desc, config));
   TF_RETURN_IF_ERROR(CheckAndAssignBias(desc, config));
-  assignScale(config, backend_config);
+  AssignScale(config, backend_config);
   AssignDropoutRate(config, backend_config);
   AssignSeed(config, backend_config);
   return config;
@@ -523,9 +524,46 @@ Status RunGpuFMHA(
       return RunGpuFMHAImpl<Eigen::bfloat16, Eigen::bfloat16, Eigen::bfloat16>(
           params, stream, scratch_buffer, options);
     default:
-      return Unimplemented("Unimplemented fused MHA");
+      return tsl::errors::Unimplemented(absl::StrFormat(
+          "Unimplemented fused MHA with %s", ToString(fmha_config)));
   }
   return OkStatus();
+}
+
+std::string ToString(const GpufMHAConfig &config) {
+  std::string result = "GpufMHAConfig:\n";
+  absl::StrAppend(&result,
+                  "input_type: ", PrimitiveType_Name(config.input_type), ", ");
+  absl::StrAppend(
+      &result, "output_type: ", PrimitiveType_Name(config.output_type), ", ");
+  absl::StrAppend(&result, "Kind: ", CudnnfMHAKindToString(config.kind), ", ");
+  if (config.fmha_scale) {
+    absl::StrAppend(&result, "fmha_scale: ", *config.fmha_scale, ", ");
+  }
+  if (config.dropout_rate) {
+    absl::StrAppend(&result, "dropout_rate: ", *config.dropout_rate, ", ");
+  }
+  if (config.seed) {
+    absl::StrAppend(&result, "seed: ", *config.seed, ", ");
+  }
+  absl::StrAppend(&result, "Algorithm Desc: ", config.algorithm.ToString(),
+                  "\n");
+  absl::StrAppend(&result, "lhs_bmm1: ", config.lhs_bmm1.ToString(), "\n");
+  absl::StrAppend(&result, "rhs_bmm1: ", config.rhs_bmm1.ToString(), "\n");
+  absl::StrAppend(&result, "rhs_bmm2: ", config.rhs_bmm2.ToString(), "\n");
+  absl::StrAppend(&result, "intermediate_lhs_bmm2: ",
+                  config.intermediate_lhs_bmm2.ToString(), "\n");
+  absl::StrAppend(&result, "output: ", config.output.ToString(), "\n");
+
+  if (config.mask) {
+    absl::StrAppend(&result, "mask: ", (*config.mask).ToString(), "\n");
+  }
+
+  if (config.bias) {
+    absl::StrAppend(&result, "bias: ", (*config.bias).ToString(), "\n");
+  }
+
+  return result;
 }
 
 }  // namespace gpu
