@@ -295,21 +295,18 @@ class TracingCompiler:
     if self.input_signature is not None:
       args = (*self.input_signature, *args[len(self.input_signature) :])
 
-    # Get runtime values of captures
-    captures = self._func_captures.get_by_ref_snapshot()
-
     current_func_context = function_context.make_function_context()
-
-    # cache_key_deletion_observer is useless here. It's based on all captures.
-    # A new cache key will be built later when saving ConcreteFunction because
-    # only active captures should be saved.
     lookup_func_type, lookup_func_context = (
         function_type_utils.make_canonicalized_monomorphic_type(
-            args, kwargs, captures, self._function_type, self._default_values
+            args,
+            kwargs,
+            self._func_captures.capture_types,
+            self._function_type,
+            self._default_values,
         )
     )
     concrete_function = self._function_cache.lookup(
-        current_func_context, lookup_func_type
+        lookup_func_type, current_func_context
     )
     if concrete_function is not None:
       return concrete_function, filtered_flat_args
@@ -347,9 +344,7 @@ class TracingCompiler:
               target_func_type, lookup_func_context, func_graph
           )
 
-          self._function_cache.add(
-              current_func_context, target_func_type, concrete_function
-          )
+          self._function_cache.add(concrete_function, current_func_context)
 
           return concrete_function, filtered_flat_args
 

@@ -668,8 +668,8 @@ class CapturesTest(test.TestCase):
     self.type_d1 = gen_type_fn({"d": trace_type.from_value(1)})
 
   def testCapturesSubtype(self):
-    self.assertFalse(self.type_a1_b1.is_supertype_of(self.type_a1_b1_c1))
-    self.assertTrue(self.type_a1_b1_c1.is_supertype_of(self.type_a1_b1))
+    self.assertTrue(self.type_a1_b1.is_supertype_of(self.type_a1_b1_c1))
+    self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a1_b1))
     self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a2_b2_c2))
     self.assertFalse(self.type_a1_b1_c1.is_supertype_of(self.type_a2_b2_c2))
     self.assertFalse(self.type_d1.is_supertype_of(self.type_a1_b1))
@@ -685,7 +685,7 @@ class CapturesTest(test.TestCase):
 
     supertype_3 = self.type_a1_b1.most_specific_common_subtype(
         [self.type_a1_b1_c2])
-    self.assertLen(supertype_3.captures, 2)
+    self.assertLen(supertype_3.captures, 3)
 
     supertype_4 = self.type_a1_b1_c1.most_specific_common_subtype(
         [self.type_a1_b1_c2])
@@ -693,7 +693,7 @@ class CapturesTest(test.TestCase):
 
     supertype_5 = self.type_a1_b1_c1.most_specific_common_subtype(
         [self.type_d1])
-    self.assertEmpty(supertype_5.captures)
+    self.assertLen(supertype_5.captures, 4)
 
 
 class SanitizationTest(test.TestCase):
