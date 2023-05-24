@@ -54,17 +54,12 @@ auto OptionalBroadcast(Pattern pattern) {
   return m::AnyOf<HloInstruction>(m::Broadcast(pattern), std::move(pattern));
 }
 
-StatusOr<bool> IsBatchedDot(const HloInstruction* gemm) {
-  GemmBackendConfig config;
-  TF_ASSIGN_OR_RETURN(config, gemm->backend_config<GemmBackendConfig>());
-  const DotDimensionNumbers& dot_dims = config.dot_dimension_numbers();
+bool IsBatchedMatmul(const HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kDot) return false;
+  const DotDimensionNumbers& dot_dims = instr->dot_dimension_numbers();
   bool is_batch_dot = !dot_dims.lhs_batch_dimensions().empty() ||
                       !dot_dims.rhs_batch_dimensions().empty();
   return is_batch_dot;
-}
-
-bool IsBatchedMatmul(const HloInstruction* gemm) {
-  return IsCublasGemm(*gemm) && IsBatchedDot(gemm).value();
 }
 
 bool IsScalar(const HloInstruction* instr) {
@@ -281,11 +276,8 @@ std::vector<int64_t> GetDimensionVector(absl::Span<const int64_t> dimensions,
 
 StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
   if (!IsRankSupported(bmm_1)) return false;
-  GemmBackendConfig config_bmm1;
-  TF_ASSIGN_OR_RETURN(config_bmm1, bmm_1->backend_config<GemmBackendConfig>());
-  const DotDimensionNumbers& dot_dims_bmm1 =
-      config_bmm1.dot_dimension_numbers();
-  if (IsBatchDimSizeSupported(dot_dims_bmm1)) return false;
+  const DotDimensionNumbers& dot_dims_bmm1 = bmm_1->dot_dimension_numbers();
+  if (!IsBatchDimSizeSupported(dot_dims_bmm1)) return false;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_non_contracting_dim_nums_bmm1,
       GetNonContractingDims(bmm_1->operand(0)->shape(),
@@ -342,11 +334,8 @@ StatusOr<bool> IsSupportedBMM1(const HloInstruction* bmm_1) {
 StatusOr<bool> IsSupportedBMM2(const HloInstruction* bmm_2,
                                bool need_canonicalization) {
   if (!IsRankSupported(bmm_2)) return false;
-  GemmBackendConfig config_bmm2;
-  TF_ASSIGN_OR_RETURN(config_bmm2, bmm_2->backend_config<GemmBackendConfig>());
-  const DotDimensionNumbers& dot_dims_bmm2 =
-      config_bmm2.dot_dimension_numbers();
-  if (IsBatchDimSizeSupported(dot_dims_bmm2)) return false;
+  const DotDimensionNumbers& dot_dims_bmm2 = bmm_2->dot_dimension_numbers();
+  if (!IsBatchDimSizeSupported(dot_dims_bmm2)) return false;
   // need swap lhs and rhs for bmm2 if canonicalization is needed
   int operand_index = need_canonicalization ? 0 : 1;
   auto batch_dim = need_canonicalization ? dot_dims_bmm2.lhs_batch_dimensions()
@@ -396,10 +385,12 @@ bool MatchDefaultBmmBmm(int64_t bmm2_operand_position, HloInstruction* instr,
 }
 
 bool MatchSoftmaxDropoutBmm(int64_t bmm2_operand_position,
-                            HloInstruction* instr, HloInstruction** bmm_2,
+                            HloInstruction* instr, HloInstruction** bmm_1,
+                            HloInstruction** bmm_2,
                             HloInstruction** softmax_input,
-                            HloInstruction** dropout) {
-  // Matches the dropout-softmax subpattern.
+                            double& dropout_rate, HloInstruction** dropout,
+                            std::string& custom_call_name) {
+  // Matches the softmax-dropout subpattern.
   // Softmax_output can be coming from either a divide or a custom_call
   auto dropout_softmax_pattern =
       m::Select(
@@ -429,36 +420,14 @@ bool MatchSoftmaxDropoutBmm(int64_t bmm2_operand_position,
       !IsSupportedPrimitiveType((*bmm_2))) {
     return false;
   }
-  return true;
-}
-
-bool MatchBmm1FusedBiasSoftmaxBmm2(HloInstruction* softmax_input,
-                                   HloInstruction** bmm_1,
-                                   HloInstruction** bias,
-                                   HloInstruction** scale, bool has_dropout,
-                                   HloInstruction* dropout,
-                                   double& dropout_rate,
-                                   std::string& custom_call_name) {
-  if (softmax_input && IsBatchedMatmul(softmax_input)) {
-    *bmm_1 = softmax_input;
-    // When bias is fused with gemm
-    if ((*bmm_1)->operands().size() > 2) {
-      *bias = GetBiasFromBmm((*bmm_1));
-      custom_call_name = has_dropout
-                             ? kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget
-                             : kCudnnfMHAScaleBiasSoftmaxCallTarget;
-      // Gemm has no bias operand. It must be a bmm-softmax-bmm at this point.
-    } else {
-      custom_call_name = has_dropout ? kCudnnfMHASoftmaxDropoutCallTarget
-                                     : kCudnnfMHASoftmaxCallTarget;
-    }
-    if (dropout) {
-      dropout_rate = GetDropoutRateFromHlo(dropout);
-    }
-    return true;
+  *bmm_1 = *softmax_input;
+  if (*dropout != nullptr) {
+    dropout_rate = GetDropoutRateFromHlo(*dropout);
+    custom_call_name = kCudnnfMHASoftmaxDropoutCallTarget;
+  } else {
+    custom_call_name = kCudnnfMHASoftmaxCallTarget;
   }
-  // Unsupported patterns
-  return false;
+  return true;
 }
 
 bool MatchBmm1UnfusedBiasSoftmaxBmm2(HloInstruction* softmax_input,
@@ -468,11 +437,18 @@ bool MatchBmm1UnfusedBiasSoftmaxBmm2(HloInstruction* softmax_input,
                                      HloInstruction* dropout,
                                      double& dropout_rate,
                                      std::string& custom_call_name) {
-  if (Match(softmax_input,
-            m::AddAnyOrder(
-                OptionalConvert(
-                    m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse()),
-                m::Op(bias)))) {
+  auto first_bmm_pattern =
+      m::Op(bmm_1).WithPredicate(IsBatchedMatmul).WithOneUse();
+  auto unfused_scaled_bmm_subpattern = m::MultiplyAnyOrder(
+      OptionalConvert(first_bmm_pattern),
+      OptionalConvert(
+          m::Broadcast(m::Constant(scale).WithPredicate(IsScalar))));
+
+  if (Match(
+          softmax_input,
+          m::AddAnyOrder(OptionalConvert(m::AnyOf<HloInstruction>(
+                             unfused_scaled_bmm_subpattern, first_bmm_pattern)),
+                         m::Op(bias)))) {
     custom_call_name = has_dropout ? kCudnnfMHAScaleBiasSoftmaxDropoutCallTarget
                                    : kCudnnfMHAScaleBiasSoftmaxCallTarget;
     if (has_dropout) {
@@ -537,6 +513,7 @@ bool MatchBmm1ScaleBiasMaskSoftmaxDropoutBmm2(
     }
     return true;
   }
+  return false;
 }
 
 // We will try to match all the patterns below:
@@ -580,17 +557,12 @@ bool MatchMHAPatternsForCanonicalization(
     bool has_dropout = false;
     // We first check if bmm2 is connect to a softmax or dropout.
     // If so, we set softmax input and dropout nodes to their corresponding ops.
-    if (!MatchSoftmaxDropoutBmm(bmm2_operand_pos, instr, bmm_2, &softmax_input,
-                                &dropout)) {
+    if (!MatchSoftmaxDropoutBmm(bmm2_operand_pos, instr, bmm_1, bmm_2,
+                                &softmax_input, dropout_rate, &dropout,
+                                custom_call_name)) {
       continue;
     }
     has_dropout = dropout != nullptr;
-    if (MatchBmm1FusedBiasSoftmaxBmm2(softmax_input, bmm_1, bias, scale,
-                                      has_dropout, dropout, dropout_rate,
-                                      custom_call_name)) {
-      return true;
-    }
-
     if (MatchBmm1UnfusedBiasSoftmaxBmm2(softmax_input, bmm_1, bias, scale,
                                         has_dropout, dropout, dropout_rate,
                                         custom_call_name)) {
@@ -602,7 +574,11 @@ bool MatchMHAPatternsForCanonicalization(
             dropout_rate, custom_call_name)) {
       return true;
     }
-    continue;
+
+    // If the execution has reached this point, it means that BMMSoftmaxBMM or
+    // BMMSoftmaxDropoutBMM pattern has been matched. Hence, returning true.
+    return true;
+    // continue;
   }
   // Didn't find any match
   need_canonicalization = false;
@@ -639,10 +615,7 @@ StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
 
   HloInstruction* lhs_bmm2 = bmm_2->mutable_operand(0);
   HloInstruction* rhs_bmm2 = bmm_2->mutable_operand(1);
-  TF_ASSIGN_OR_RETURN(auto config_bmm2,
-                      bmm_2->backend_config<GemmBackendConfig>());
-  const DotDimensionNumbers& dnums = config_bmm2.dot_dimension_numbers();
-
+  const DotDimensionNumbers& dnums = bmm_2->dot_dimension_numbers();
   int64_t rank = bmm_2->shape().dimensions_size();
   std::vector<int64_t> perm(rank);
   std::iota(perm.begin(), perm.end(), 0);
@@ -656,30 +629,21 @@ StatusOr<HloInstruction*> CanonicalizeBatchedGemmForcuDNNFMHA(
   std::swap(*new_dnums.mutable_lhs_batch_dimensions(),
             *new_dnums.mutable_rhs_batch_dimensions());
   auto original_bmm2_shape = bmm_2->shape();
-  GemmBackendConfig new_gemm_config;
-  new_gemm_config.set_alpha_real(config_bmm2.alpha_real());
-  new_gemm_config.set_alpha_imag(config_bmm2.alpha_imag());
-  new_gemm_config.set_beta(config_bmm2.beta());
-  *new_gemm_config.mutable_dot_dimension_numbers() = new_dnums;
-  *new_gemm_config.mutable_precision_config() = bmm_2->precision_config();
-
-  HloInstruction* new_gem_custom_call =
-      comp->AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(original_bmm2_shape.element_type(),
-                               Permute(original_bmm2_shape.dimensions(), perm)),
-          {/*lhs=*/rhs_bmm2, /*rhs=*/lhs_bmm2}, bmm_2->custom_call_target()));
-
-  TF_RETURN_IF_ERROR(new_gem_custom_call->set_backend_config(new_gemm_config));
-  new_gem_custom_call->set_metadata(bmm_2->metadata());
+  HloInstruction* new_dot = comp->AddInstruction(HloInstruction::CreateDot(
+      ShapeUtil::MakeShape(original_bmm2_shape.element_type(),
+                           Permute(original_bmm2_shape.dimensions(), perm)),
+      /* lhs */ rhs_bmm2, /* rhs */ lhs_bmm2, new_dnums,
+      bmm_2->precision_config()));
+  new_dot->set_metadata(bmm_2->metadata());
 
   TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-      bmm_2, HloInstruction::CreateTranspose(original_bmm2_shape,
-                                             new_gem_custom_call, perm)));
+      bmm_2,
+      HloInstruction::CreateTranspose(original_bmm2_shape, new_dot, perm)));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "After FMHA Dot Cannonicalization: \n"
             << comp->parent()->ToString();
   }
-  return new_gem_custom_call;
+  return new_dot;
 }
 
 StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstruction* bmm_1,
@@ -688,20 +652,17 @@ StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstructio
                                   double dropout_rate,
                                   std::string& custom_call_name,
                                   stream_executor::CudaComputeCapability cc) {
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Before CudnnFusedMHARewriter: \n" << comp->parent()->ToString();
+  }
   bool changed = false;
   double scale_value = 1.0;
-
-  TF_ASSIGN_OR_RETURN(auto config_bmm1,
-                      bmm_1->backend_config<GemmBackendConfig>());
-  TF_ASSIGN_OR_RETURN(auto config_bmm2,
-                      bmm_2->backend_config<GemmBackendConfig>());
 
   // Introduce a transpose to make sure rhs contracting dimension is the
   // fastest moving one.
   absl::Span<const int64_t> rhs_minor_to_major_bmm1 =
       bmm_1->operand(1)->shape().layout().minor_to_major();
-  const DotDimensionNumbers& dot_dims_bmm1 =
-      config_bmm1.dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims_bmm1 = bmm_1->dot_dimension_numbers();
   absl::Span<const int64_t> rhs_contracting_dims_bmm1 =
       dot_dims_bmm1.rhs_contracting_dimensions();
   CHECK_EQ(rhs_contracting_dims_bmm1.size(), 1);
@@ -773,8 +734,7 @@ StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstructio
   // BMM2 is the fastest moving one.
   absl::Span<const int64_t> rhs_minor_to_major_bmm2 =
       bmm_2->operand(1)->shape().layout().minor_to_major();
-  const DotDimensionNumbers& dot_dims_bmm2 =
-      config_bmm2.dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims_bmm2 = bmm_2->dot_dimension_numbers();
   absl::Span<const int64_t> rhs_contracting_dims_bmm2 =
       dot_dims_bmm2.rhs_contracting_dimensions();
   CHECK_EQ(rhs_contracting_dims_bmm2.size(), 1);
@@ -820,8 +780,6 @@ StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstructio
     value = GetConstantValue(scale);
     TF_RET_CHECK(value.has_value());
     scale_value = (double)*value;
-  } else if (config_bmm1.alpha_real() != scale_value) {
-    scale_value = config_bmm1.alpha_real();
   }
 
   fmha_config.set_fmha_scale(scale_value);
@@ -856,10 +814,12 @@ StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstructio
   }
   if (bias != nullptr) {
     HloInstruction* original_bias;
+    HloInstruction* original_broadcast;
     // There will be cases where the bias is up-casted to wider float type,
     // we need to take the original bias node and broadcast it without
     // converting.
     if (Match(bias, m::Broadcast(
+                        &original_broadcast,
                         m::Convert(
                             m::Op(&original_bias)
                                 .WithPredicate([](const HloInstruction* instr) {
@@ -870,24 +830,11 @@ StatusOr<bool> FuseMultiHeadedAttentionBlock(HloComputation* comp, HloInstructio
                               return instr->shape().element_type() == F32 ||
                                      instr->shape().element_type() == F64;
                             })))) {
-      std::vector<int64_t> broadcast_dims;
-      switch (original_bias->shape().rank()) {
-        case 1:
-          broadcast_dims = {3};
-          break;
-        case 2:
-          broadcast_dims = {0, 3};
-          break;
-        case 3:
-          broadcast_dims = {0, 2, 3};
-          break;
-        default:
-          broadcast_dims = {};
-          break;
-      }
       Shape bcast_shape = bmm_1->shape();
       bias = comp->AddInstruction(HloInstruction::CreateBroadcast(
-          bcast_shape, original_bias, broadcast_dims));
+          bcast_shape, original_bias,
+          (DynCast<HloBroadcastInstruction>(original_broadcast))
+              ->dimensions()));
     }
     operands.push_back(bias);
   }
@@ -957,9 +904,9 @@ StatusOr<bool> CudnnFusedMHARewriter::Run(
       // Fuse the bmms and intermediate nodes into fMHA call, the fused call
       // will replace bmm_2.
       TF_ASSIGN_OR_RETURN(
-          changed, FuseMultiHeadedAttentionBlock(comp, bmm_1, bmm_2, bias, mask, scale,
-                                      dropout_rate, custom_call_name,
-                                      compute_capability_));
+          changed, FuseMultiHeadedAttentionBlock(
+                       comp, bmm_1, bmm_2, bias, mask, scale, dropout_rate,
+                       custom_call_name, compute_capability_));
       any_changed |= changed;
     }
   }

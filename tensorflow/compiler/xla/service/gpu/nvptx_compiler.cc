@@ -183,6 +183,25 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   // OptimizeHloPostLayoutAssignment().
   auto cuda_compute_capability =
       std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
+
+  HloPassPipeline mha_fusion_pipeline(
+      "nvptx cudnn multi-headed attention fusion");
+  // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
+  if (stream_exec) {
+    mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(cuda_compute_capability,
+                                                       stream_exec);
+  } else {
+    mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
+        cuda_compute_capability, gpu_target_config.dnn_version_info);
+  }
+  AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
+  mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
+      algebraic_simplifier_options);
+  // mha_fusion_pipeline.AddPass<CudnnFusedMHATransposeFusion>();
+  mha_fusion_pipeline.AddPass<HloDCE>();
+
+  TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
+
   if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     pre_pipeline.AddPass<CublasPadForGemms>(cuda_compute_capability,
                                             PrimitiveType::BF16,
@@ -206,22 +225,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, options, gpu_target_config, autotune_results));
-
-  HloPassPipeline mha_fusion_pipeline(
-      "nvptx cudnn multi-headed attention fusion");
-  // Rewrite Multi-Headed Attention modules to Fused MHA custom-calls.
-  if (stream_exec) {
-    mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(cuda_compute_capability,
-                                                       stream_exec);
-  } else {
-    mha_fusion_pipeline.AddPass<CudnnFusedMHARewriter>(
-        cuda_compute_capability, gpu_target_config.dnn_version_info);
-  }
-  AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
-  mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(algebraic_simplifier_options);
-  mha_fusion_pipeline.AddPass<HloDCE>();
-
-  TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
