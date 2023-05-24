@@ -556,6 +556,24 @@ def _get_variable_specs(args):
   return variable_specs
 
 
+def derive_from_graph(func_graph):
+  """Derives a FunctionType from FuncGraph."""
+  # TODO(fmuham): Include structure info from structured_inputs
+  input_signature = (
+      tuple(trace_type.from_value(i) for i in func_graph.inputs),
+      {},
+  )
+
+  # TODO(fmuham): Include output structure info from structured_outputs
+  output_signature = tuple(trace_type.from_value(o) for o in func_graph.outputs)
+
+  return function_type_lib.from_structured_signature(
+      input_signature,
+      output_signature,
+      func_graph.function_captures.capture_types,
+  )
+
+
 # TODO(fmuham): Replace usages with TraceType and remove.
 def is_same_structure(structure1, structure2, check_values=False):
   """Check two structures for equality, optionally of types and of values."""

@@ -297,7 +297,10 @@ class FunctionCaptures(object):
 
   @property
   def capture_types(self):
-    return {**self._by_val_tracetype, **self._by_ref_tracetype}
+    return py_collections.OrderedDict(
+        list(self._by_val_tracetype.items())
+        + list(self._by_ref_tracetype.items())
+    )
 
   @property
   def by_val_capture_tuples(self):

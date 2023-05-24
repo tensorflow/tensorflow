@@ -27,6 +27,7 @@ import weakref
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
@@ -1513,6 +1514,35 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return t
 
       self.assertEqual(1, int(self.evaluate(read())))
+
+  def testConcreteFunctionType(self):
+    y = constant_op.constant(1)
+
+    @polymorphic_function.function
+    def foo(x):
+      return {'input': x, 'capture': y}
+
+    cf = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+    x = constant_op.constant(2)
+    output = cf(x)
+    self.assertEqual(set(output.keys()), {'input', 'capture'})
+    self.assertEqual(output['input'].numpy(), 2)
+    self.assertEqual(output['capture'].numpy(), 1)
+
+    parameters = list(cf.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, 'x')
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32),
+    )
+
+    captures = cf.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(captures[id(y)], tensor_spec.TensorSpec([], dtypes.int32))
+
+    output = cf.function_type.output
+    self.assertEqual(output, trace_type.from_value({'input': x, 'capture': y}))
 
   def testSequenceInputs(self):
     clip_by_global_norm = polymorphic_function.function(

@@ -40,9 +40,9 @@ py_strict_library(
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
+        ":function_type_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
-        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:handle_data_util",
         "//tensorflow/python/client:pywrap_tf_session",
         "//tensorflow/python/eager:context",
@@ -214,16 +214,14 @@ cuda_py_strict_test(
     # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":attributes",
-        ":concrete_function",
         ":polymorphic_function",
-        ":tracing_compiler",
         "//tensorflow/core/function/capture:capture_container",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
-        "//tensorflow/python:cond",
         "//tensorflow/python:cond_v2",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_assert",
