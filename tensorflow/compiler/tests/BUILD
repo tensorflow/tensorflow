@@ -477,6 +477,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/platform:sysconfig",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
