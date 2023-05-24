@@ -22,7 +22,7 @@ module {
 
   // CHECK-NOT: @_stablehlo_main_0
   func.func private @_stablehlo_main_0(%arg0: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %arg1: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) attributes {_from_xla_call_module} {
-    stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {caller_name = "__tf_host_callback"}} : (tensor<?xi32>, tensor<*xi32>) -> ()
+    stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {caller_name = @__tf_host_callback}} : (tensor<?xi32>, tensor<*xi32>) -> ()
     %arg2 = func.call @_stablehlo_f(%arg0) : (tensor<?xi32>) -> (tensor<?xi32>)
     return %arg2 : tensor<?xi32>
   }

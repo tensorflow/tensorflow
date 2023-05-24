@@ -76,7 +76,7 @@ FailureOr<StringAttr> GetTfHostCallbackName(stablehlo::CustomCallOp op) {
   return failure();
 }
 
-void SetTfHostCallbackName(stablehlo::CustomCallOp op, FlatSymbolRefAttr f) {
+void SetTfHostCallbackName(stablehlo::CustomCallOp op, Attribute f) {
   llvm::SmallVector<NamedAttribute> new_config;
   if (auto config = GetTfBackendConfig(op)) {
     // Copy the attributes in the current config except `caller_name`.

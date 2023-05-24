@@ -32,10 +32,10 @@ bool IsTfHostCallback(stablehlo::CustomCallOp op);
 // Otherwise, if the op does not have `caller_name`, returns failure.
 FailureOr<StringAttr> GetTfHostCallbackName(stablehlo::CustomCallOp op);
 
-// Sets the `caller_name` string attribute to `name` in the `tf.backend_config`
+// Sets the `caller_name` attribute to `f` in the `tf.backend_config`
 // dictionary attribute.
 // Creates `tf.backend_config` attribute if it does not already exist.
-void SetTfHostCallbackName(stablehlo::CustomCallOp op, FlatSymbolRefAttr f);
+void SetTfHostCallbackName(stablehlo::CustomCallOp op, Attribute f);
 
 }  // namespace TF
 }  // namespace mlir

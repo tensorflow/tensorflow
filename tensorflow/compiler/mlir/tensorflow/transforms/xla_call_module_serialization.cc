@@ -30,6 +30,7 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/stablehlo_custom_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/visitor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
@@ -39,6 +40,20 @@ namespace {
 
 #define GEN_PASS_DEF_XLACALLMODULESERIALIZATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"  // IWYU pragma: keep
+
+LogicalResult StringifyCustomCallCallerName(ModuleOp module) {
+  auto result = module.walk([&](stablehlo::CustomCallOp op) {
+    auto name = GetTfHostCallbackName(op);
+    if (failed(name)) {
+      return WalkResult::interrupt();
+    }
+    if (*name != nullptr) {
+      SetTfHostCallbackName(op, *name);
+    }
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted() ? failure() : success();
+}
 
 // Creates a pruned module containing the XlaCallModule's entry function and
 // other functions transitively called by the entry function.
@@ -51,6 +66,14 @@ FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(ModuleOp module,
                             << kStablehloEntryFunctionAttrName << " attribute";
   }
   auto entry_func_name = entry_func_symbol.getValue();
+
+  // Update `custom_call`'s `caller_name` attribute to `StringAttr` before
+  // CreatePrunedModule, otherwise, CreatePrunedModule will include the TF host
+  // callback functions referenced by the `FlatSymbolRefAttr` `caller_name`
+  // into the pruned module.
+  if (failed(StringifyCustomCallCallerName(module))) {
+    return failure();
+  }
 
   OwningOpRef<ModuleOp> stablehlo_module;
 
