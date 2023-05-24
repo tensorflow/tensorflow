@@ -1184,7 +1184,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "take_test",
-    size = "small",
+    size = "medium",
     srcs = ["take_test.py"],
     shard_count = 4,
     deps = [
