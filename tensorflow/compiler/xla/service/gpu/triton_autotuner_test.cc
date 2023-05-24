@@ -84,6 +84,10 @@ ENTRY entry {
 
 class TritonAutotunerTest : public HloTestBase {
  public:
+  TritonAutotunerTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);

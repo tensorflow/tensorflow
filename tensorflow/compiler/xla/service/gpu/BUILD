@@ -557,6 +557,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
