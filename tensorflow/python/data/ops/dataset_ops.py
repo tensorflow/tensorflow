@@ -35,6 +35,8 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.data.util import traverse
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd_utils
 from tensorflow.python.framework import composite_tensor
@@ -76,18 +78,6 @@ from tensorflow.python.util.tf_export import tf_export
 # symbols can be removed once all internal uses are updated.
 StructuredFunctionWrapper = structured_function.StructuredFunctionWrapper
 
-# Loaded lazily due to a circular dependency (roughly
-# tf.function->wrap_function->dataset->autograph->tf.function).
-# TODO(b/133251390): Use a regular import.
-wrap_function = lazy_loader.LazyLoader(
-    "wrap_function", globals(),
-    "tensorflow.python.eager.wrap_function")
-# Loaded lazily due to a circular dependency
-# dataset_ops->def_function->func_graph->autograph->dataset_ops
-# TODO(kathywu): Use a regular import.
-def_function = lazy_loader.LazyLoader(
-    "def_function", globals(),
-    "tensorflow.python.eager.def_function")
 # TODO(b/240947712): Clean up the circular dependencies.
 # Loaded lazily due to a circular dependency (dataset_ops ->
 # prefetch_op -> dataset_ops).
