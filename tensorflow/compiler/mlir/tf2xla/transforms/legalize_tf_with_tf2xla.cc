@@ -180,6 +180,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::MatrixSolveOp>(),
             TypeID::get<TF::MatrixTriangularSolveOp>(),
             TypeID::get<TF::MaxPool3DGradGradOp>(),
+            TypeID::get<TF::MaxPoolGradOp>(),
             TypeID::get<TF::MaxPoolGradGradOp>(),
             TypeID::get<TF::MirrorPadOp>(),
             TypeID::get<TF::MirrorPadGradOp>(),
