@@ -652,15 +652,17 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     absl::c_copy(
         std::vector<AutotuneResult::TritonGemmKey>{
-            GemmKey(128, 256, 32, 1, 3, 8), GemmKey(256, 128, 32, 1, 3, 8),
-            GemmKey(256, 64, 32, 1, 4, 4), GemmKey(64, 256, 32, 1, 4, 4),
-            GemmKey(128, 64, 32, 1, 4, 4), GemmKey(64, 128, 32, 1, 4, 4),
-            GemmKey(128, 256, 32, 1, 3, 8), GemmKey(256, 128, 128, 1, 3, 8),
-            GemmKey(256, 64, 128, 1, 4, 4), GemmKey(64, 256, 128, 1, 4, 4),
+            GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 32, 1, 3, 8),
+            GemmKey(256, 64, 32, 1, 4, 4),   GemmKey(64, 256, 32, 1, 4, 4),
+            GemmKey(128, 64, 32, 1, 4, 4),   GemmKey(64, 128, 32, 1, 4, 4),
+            GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 128, 1, 3, 8),
+            GemmKey(256, 64, 128, 1, 4, 4),  GemmKey(64, 256, 128, 1, 4, 4),
             GemmKey(128, 128, 128, 1, 4, 4), GemmKey(128, 64, 64, 1, 4, 4),
-            GemmKey(64, 128, 64, 1, 4, 4), GemmKey(128, 32, 64, 1, 4, 4),
-            GemmKey(64, 32, 64, 1, 4, 4), GemmKey(32, 128, 32, 1, 4, 4),
-            GemmKey(128, 128, 32, 1, 4, 4), GemmKey(16, 16, 256, 1, 3, 4)},
+            GemmKey(64, 128, 64, 1, 4, 4),   GemmKey(128, 32, 64, 1, 4, 4),
+            GemmKey(64, 32, 64, 1, 4, 4),    GemmKey(32, 128, 32, 1, 4, 4),
+            GemmKey(128, 128, 32, 1, 4, 4),  GemmKey(16, 16, 256, 1, 3, 4),
+            GemmKey(128, 128, 64, 2, 1, 8),  GemmKey(64, 64, 64, 1, 2, 4),
+            GemmKey(16, 64, 256, 8, 1, 4),   GemmKey(256, 256, 128, 1, 3, 8)},
         std::back_inserter(configs));
   }
   return configs;
