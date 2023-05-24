@@ -44,7 +44,7 @@ module {
     // CHECK-SAME: {
     // CHECK-SAME:  api_version = 2 : i32,
     // CHECK-SAME:  has_side_effect = true,
-    // CHECK-SAME:  tf.backend_config = {caller_name = "__tf_host_callback"}
+    // CHECK-SAME:  tf.backend_config = {caller_name = @__tf_host_callback}
     // CHECK-SAME: }
     stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {caller_name = "__tf_host_callback"}} : (tensor<?xi32>, tensor<*xi32>) -> ()
     // CHECK: call @_stablehlo__stablehlo_f_0

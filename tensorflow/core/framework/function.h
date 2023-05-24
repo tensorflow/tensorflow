@@ -890,6 +890,11 @@ class FunctionLibraryRuntime {
     // Instantiates the function for XLA compilation on device_type. If empty,
     // function is not compiled.
     std::string xla_compile_device_type;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function enabling soft placement or outside compilation.
+    bool allow_soft_placement = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,

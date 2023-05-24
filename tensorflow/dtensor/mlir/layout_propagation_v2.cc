@@ -477,50 +477,16 @@ mlir::LogicalResult MergeAndGetUpdatedLayouts(
 }
 
 // Finds the most sharded merged layout given `layouts`.
-mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
-                                         mlir::Location location,
-                                         absl::optional<Layout>* out) {
+mlir::LogicalResult GetMostShardedLayoutHelper(llvm::ArrayRef<Layout> layouts,
+                                               mlir::Location location,
+                                               std::optional<Layout>* out) {
   // If there are no layouts to merge, leave the output empty.
-  if (layouts.empty()) return mlir::success();
-
-  absl::optional<Layout> layout;
-  std::map<std::string, std::set<int>> layout_map;
-  for (const Layout& layout : layouts) {
-    for (int i = 0; i < layout.rank(); ++i) {
-      const std::string& mesh_dim = layout.dim(i).sharding_spec();
-      if (mesh_dim == Layout::kUnshardedDim) continue;
-
-      layout_map[mesh_dim].insert(i);
-    }
+  if (layouts.empty()) {
+    return mlir::success();
   }
-
-  for (auto& it : layout_map)
-    if (it.second.size() > 1) it.second.clear();
-
-  std::map<int, std::set<std::string>> dim_to_layout_map;
-  for (const auto& it : layout_map) {
-    assert(it.second.size() <= 1);
-    if (it.second.empty()) continue;
-
-    const int tensor_dim_index = *it.second.begin();
-    dim_to_layout_map[tensor_dim_index].insert(it.first);
-  }
-
-  for (auto& it : dim_to_layout_map)
-    if (it.second.size() > 1) it.second.clear();
-
-  std::vector<std::string> merged_spec;
-  assert(!layouts.empty());
-  for (int i = 0; i < layouts[0].rank(); ++i) {
-    const auto it = dim_to_layout_map.find(i);
-    if (it != dim_to_layout_map.end() && !it->second.empty()) {
-      assert(it->second.size() == 1);
-      merged_spec.emplace_back(*it->second.begin());
-    } else {
-      merged_spec.emplace_back(Layout::kUnshardedDim);
-    }
-  }
-  const auto new_layout = Layout::GetLayout(merged_spec, layouts[0].mesh());
+  // FIXME(feyu): This shall use a reference, not copying the layout.
+  std::vector<Layout> layouts_vector = {layouts.begin(), layouts.end()};
+  const auto new_layout = GetMostShardedLayout(layouts_vector);
   if (!new_layout.ok()) {
     return mlir::emitError(
         location, llvm::formatv("error in layout propagation while merging "
@@ -546,7 +512,7 @@ mlir::LogicalResult GetMostShardedLayout(llvm::ArrayRef<Layout> layouts,
 mlir::LogicalResult MergeProducerLayouts(
     const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
     const std::vector<mlir::Value>& producer_values, mlir::Location location,
-    absl::optional<Layout>* layout_out) {
+    std::optional<Layout>* layout_out) {
   // If there is a single producer for mlir::Value, then return the layout
   // from the producer.
   absl::optional<Layout> layout;
@@ -565,7 +531,8 @@ mlir::LogicalResult MergeProducerLayouts(
     candidate_layouts.emplace_back(it->second);
   }
 
-  if (mlir::failed(GetMostShardedLayout(candidate_layouts, location, &layout)))
+  if (mlir::failed(
+          GetMostShardedLayoutHelper(candidate_layouts, location, &layout)))
     return mlir::failure();
 
   if (layout) *layout_out = *layout;
@@ -680,7 +647,8 @@ mlir::LogicalResult UpdateLayoutsForOp(
             return op->emitOpError()
                    << "Rank for input " << i << " layout is "
                    << input_layout->second.rank() << " but actual rank is "
-                   << ValueRank(value);
+                   << ValueRank(value) << " input layout is "
+                   << input_layout->second.ToString();
 
           // If there was a layout returned and either no previous request or
           // the request changed, insert and mark as updated.
@@ -712,9 +680,11 @@ mlir::LogicalResult UpdateLayoutsForOp(
     const auto& result = op->getOpResult(i);
     if (producer_request[result] != output_layout->second) {
       if (output_layout->second.rank() != ValueRank(result))
-        return op->emitOpError() << "Rank for output " << i << " layout is "
-                                 << output_layout->second.rank()
-                                 << " but actual rank is " << ValueRank(result);
+        return op->emitOpError()
+               << "Rank for output " << i << " layout is "
+               << output_layout->second.rank() << " but actual rank is "
+               << ValueRank(result) << " output layout is "
+               << output_layout->second.ToString();
       producer_request[result] = output_layout->second;
 
       is_updated.insert(result);
@@ -1113,8 +1083,8 @@ mlir::LogicalResult InsertDTensorLayoutForIfRegionOp(
       if (layouts_set.size() == 1) continue;
 
       absl::optional<Layout> merged_layout;
-      if (mlir::failed(
-              GetMostShardedLayout(layouts, if_op.getLoc(), &merged_layout)))
+      if (mlir::failed(GetMostShardedLayoutHelper(layouts, if_op.getLoc(),
+                                                  &merged_layout)))
         return mlir::failure();
       assert(merged_layout);
 

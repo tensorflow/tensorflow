@@ -387,6 +387,8 @@ class TritonGemmTestAny : public TritonGemmTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
+    // Disable algebraic rewrites of dots
+    debug_options.set_xla_gpu_enable_dot_strength_reduction(false);
     return debug_options;
   }
 };
@@ -449,6 +451,37 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonGemmTestAny,
+       ShouldNotLowerDotWithLhsWithoutNonContractingDimThroughTriton) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  parameter_0 = f32[32,40] parameter(0)
+  parameter_1 = f32[32,40,64] parameter(1)
+  ROOT dot = f32[32,64] dot(f32[32,40] parameter_0, f32[32,40,64] parameter_1), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: triton");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTestAny,
+       ShouldNotLowerDotWithRhsWithoutNonContractingDimThroughTriton) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  parameter_0 = f32[32,40,64] parameter(0)
+  parameter_1 = f32[32,40] parameter(1)
+  ROOT dot = f32[32,64] dot(f32[32,40,64] parameter_0, f32[32,40] parameter_1), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: triton");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
 
 // This group of tests compares GPU results of dots already rewritten
 // into Triton fusions.

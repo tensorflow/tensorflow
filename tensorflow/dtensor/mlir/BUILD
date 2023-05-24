@@ -256,7 +256,6 @@ cc_library(
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/mlir/dtensor_dialect:ir/dtensor_attributes",
         "//tensorflow/dtensor/mlir/utils:dtensor_mlir_passes_internal",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -469,10 +468,12 @@ cc_library(
     ] + glob([
         "*spmd_expander.cc",
         "expansions/*spmd_expander.cc",
+        "expansions/*spmd_expander_v2.cc",
     ]),
     hdrs = glob([
         "*spmd_expander.h",
         "expansions/*spmd_expander.h",
+        "expansions/*spmd_expander_v2.h",
     ]),
     deps = [
         ":collectives",
@@ -498,6 +499,7 @@ cc_library(
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/dtensor/cc:dtensor_utils",
         "//tensorflow/dtensor/cc:save_restore_util",
+        "//tensorflow/dtensor/cc:slice_util",
         "//tensorflow/dtensor/cc:tensor_layout",
         "//tensorflow/dtensor/proto:layout_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",

@@ -3057,11 +3057,12 @@ TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {
   HloInstruction* copy = builder.AddInstruction(
       HloInstruction::CreateUnary(param0->shape(), HloOpcode::kCopy, param0));
 
-  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
-
   // Set to different layouts.
   *param0->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
   *copy->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
+
+  HloComputation* computation =
+      m->AddEntryComputationWithLayouts(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
@@ -3087,11 +3088,12 @@ TEST_F(AlgebraicSimplifierTest, CopyWithSameLayout) {
   HloInstruction* copy = builder.AddInstruction(
       HloInstruction::CreateUnary(param0->shape(), HloOpcode::kCopy, param0));
 
-  auto computation = m->AddEntryComputationWithLayouts(builder.Build());
-
   // Set to same layouts.
   *param0->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
   *copy->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+
+  HloComputation* computation =
+      m->AddEntryComputationWithLayouts(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
               GmockMatch(m::Copy(m::Parameter(0))));
@@ -5643,12 +5645,14 @@ TEST_F(AlgebraicSimplifierTest, TransposeOfBatchDot) {
     HloModule module
 
     ENTRY test {
-      lhs = f32[10,20,30,40] parameter(0)
-      rhs = f32[10,20,50,30] parameter(1)
-      dot = dot(lhs,rhs), lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
-                          lhs_contracting_dims={2}, rhs_contracting_dims={3},
-                          operand_precision={high, default}
-      ROOT transpose = transpose(dot), dimensions={0,1,3,2}
+      lhs = f32[10,20,30,40]{3,2,1,0} parameter(0)
+      rhs = f32[10,20,50,30]{3,2,1,0} parameter(1)
+      dot = f32[10,20,40,50]{3,2,1,0} dot(lhs,rhs),
+              lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
+              lhs_contracting_dims={2}, rhs_contracting_dims={3},
+              operand_precision={high, default}
+      ROOT transpose = f32[10,20,50,40]{2,3,1,0} transpose(dot),
+              dimensions={0,1,3,2}
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -7102,6 +7106,10 @@ TEST_F(AlgebraicSimplifierTest, ZeroSizedReshapeWithoutLayout) {
 }
 
 TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
+  // This test is without layouts so we have to set the verifier to be layout
+  // insensitive.
+  verifier_layout_sensitive_ = false;
+
   Shape shape = ShapeUtil::MakeShape(F32, {});
   shape.clear_layout();
   auto builder = HloComputation::Builder(TestName());

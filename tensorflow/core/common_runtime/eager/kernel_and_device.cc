@@ -237,6 +237,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
     options.xla_compile_device_type = xla_compile_device_type_.value();
   }
 
+  options.allow_soft_placement = allow_soft_placement_;
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);

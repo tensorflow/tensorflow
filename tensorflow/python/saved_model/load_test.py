@@ -799,6 +799,54 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(5, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
 
+  def testConcreteFunctionType(self, cycles, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    y = constant_op.constant(1)
+
+    @def_function.function
+    def foo(x):
+      return {"input": x, "capture": y}
+
+    root = autotrackable.AutoTrackable()
+    root.f = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    x = constant_op.constant(2)
+    output = imported.f(x)
+    self.assertEqual(set(output.keys()), {"input", "capture"})
+    self.assertEqual(output["input"].numpy(), 2)
+    self.assertEqual(output["capture"].numpy(), 1)
+
+    parameters = list(imported.f.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, "x")
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32, name="x"),
+    )
+
+    captures = imported.f.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(
+        list(captures.values())[0], tensor_spec.TensorSpec([], dtypes.int32)
+    )
+
+    output = imported.f.function_type.output
+    self.assertEqual(
+        output.mapping,
+        {
+            "input": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="input"
+            ),
+            "capture": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="capture"
+            ),
+        },
+    )
+
   def test_pretty_print_signature(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:

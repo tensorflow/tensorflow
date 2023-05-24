@@ -1,5 +1,5 @@
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_cloud", "tf_python_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_cloud", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 package(
@@ -8,17 +8,18 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "flops_registry",
     srcs = ["flops_registry.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:graph_util",
+        "//third_party/py/numpy",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "flops_registry_test",
     srcs = ["flops_registry_test.py"],
     python_version = "PY3",
@@ -34,7 +35,7 @@ py_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
     srcs_version = "PY3",
@@ -51,28 +52,28 @@ py_library(
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/profiler:model_analyzer",
+        "//tensorflow/python/util:_pywrap_tfprof",
+        "//tensorflow/python/util:compat",
     ],
 )
 
-py_test(
+py_strict_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn_ops",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:variable_scope",
     ],
 )
 
-cuda_py_test(
+cuda_py_strict_test(
     name = "run_metadata_test",
     srcs = ["run_metadata_test.py"],
     python_version = "PY3",
@@ -83,12 +84,16 @@ cuda_py_test(
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
     deps = [
         ":model_analyzer_testlib",
-        "//tensorflow/core/profiler:protos_all_py",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/profiler:model_analyzer",
+        "//tensorflow/python/profiler:option_builder",
     ],
 )
 
@@ -139,13 +144,8 @@ cc_library(
         "//tensorflow/compiler/xla/python/profiler/internal:python_hooks",
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/core/profiler/utils:time_utils",
-        "//tensorflow/core/profiler/utils:xplane_builder",
-        "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
     alwayslink = True,

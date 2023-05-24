@@ -489,7 +489,7 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
   TF_RETURN_IF_ERROR(source.split_provider->GetNext(&split, &end_of_splits));
   if (end_of_splits) {
     response.set_end_of_splits(true);
-    return ResetSource(source, request.source_index());
+    return OkStatus();
   }
 
   std::string split_path = SplitPath(

@@ -257,6 +257,36 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     # TODO(b/250921378): Verify the number of elements.
 
   @combinations.generate(test_base.default_test_combinations())
+  def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(self):
+    num_workers = 5
+    num_sources = 3
+    cluster, _ = self.setup(
+        num_workers=num_workers,
+        ds_size=1000,
+        num_sources=num_sources,
+    )
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, num_workers)
+    cluster.stop_worker(0)
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+    for stream_idx in range(num_workers):
+      for source_idx in range(num_sources):
+        self.assertFalse(
+            os.path.exists(
+                os.path.join(
+                    self._path,
+                    "streams",
+                    f"stream_{stream_idx}",
+                    "splits",
+                    f"source_{source_idx}",
+                    "repetition_1",
+                )
+            )
+        )
+
+  @combinations.generate(test_base.default_test_combinations())
   def testMultipleDatasetRecoversAndCompletes(self):
     cluster = data_service_test_base.TestCluster(num_workers=3)
     dataset1 = dataset_ops.Dataset.range(1000)

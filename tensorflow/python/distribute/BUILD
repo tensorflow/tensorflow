@@ -1004,7 +1004,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -2591,7 +2590,6 @@ distribute_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",

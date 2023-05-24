@@ -922,3 +922,25 @@ cc_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+cc_library(
+    name = "dcn_utils",
+    srcs = ["dcn_utils.cc"],
+    hdrs = ["dcn_utils.h"],
+    deps = [
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+    ],
+)
+
+tf_cc_test(
+    name = "dcn_utils_test",
+    srcs = ["dcn_utils_test.cc"],
+    deps = [
+        ":dcn_utils",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_builder",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

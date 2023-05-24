@@ -14,11 +14,16 @@
 # ==============================================================================
 """BUILD target helpers."""
 
-def reference_test(name, tags = [], shard_count = 1):
-    native.py_test(
+load("//tensorflow:strict.default.bzl", "py_strict_test")
+
+def reference_test(name, additional_deps = [], tags = [], shard_count = 1):
+    py_strict_test(
         name = name,
         srcs = [name + ".py"],
-        deps = [":reference_tests"],
+        deps = [
+            ":reference_tests",
+            "//tensorflow:tensorflow_py_no_contrib",
+        ] + additional_deps,
         python_version = "PY3",
         shard_count = shard_count,
         tags = tags + ["no_windows", "no_pip"],

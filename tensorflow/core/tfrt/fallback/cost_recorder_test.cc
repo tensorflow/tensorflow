@@ -34,12 +34,14 @@ constexpr uint64_t kTestNormalizedCost = 18;
 
 struct TestParams {
   uint64_t normalize_ratio = 1;
+  bool record_in_cpu_cycles = false;
 };
 
 class CostRecorderTest : public ::testing::TestWithParam<TestParams> {};
 
 TEST_P(CostRecorderTest, RecordCostTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+  CostRecorder recorder(GetParam().normalize_ratio,
+                        GetParam().record_in_cpu_cycles);
 
   recorder.RecordCost(kTestOpKey, kTestCost);
   recorder.RecordCost(kTestOpKey, kTestCost);
@@ -48,7 +50,8 @@ TEST_P(CostRecorderTest, RecordCostTest) {
 }
 
 TEST_P(CostRecorderTest, GetCostTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+  CostRecorder recorder(GetParam().normalize_ratio,
+                        GetParam().record_in_cpu_cycles);
 
   recorder.RecordCost(kTestOpKey, kTestCost);
   recorder.RecordCost(kTestOpKey, 2 * kTestCost);
@@ -60,14 +63,16 @@ TEST_P(CostRecorderTest, GetCostTest) {
 }
 
 TEST_P(CostRecorderTest, GetCostDefaultValueTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+  CostRecorder recorder(GetParam().normalize_ratio,
+                        GetParam().record_in_cpu_cycles);
   ASSERT_EQ(recorder.size(), 0);
 
   EXPECT_EQ(recorder.GetCost(kTestOpKey), std::numeric_limits<uint32_t>::max());
 }
 
 TEST_P(CostRecorderTest, WriteToFileTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+  CostRecorder recorder(GetParam().normalize_ratio,
+                        GetParam().record_in_cpu_cycles);
   ASSERT_EQ(recorder.size(), 0);
 
   std::string measured_cost_path;
@@ -84,7 +89,8 @@ TEST_P(CostRecorderTest, WriteToFileTest) {
 }
 
 TEST_P(CostRecorderTest, ProtoRecordsTest) {
-  CostRecorder recorder(GetParam().normalize_ratio);
+  CostRecorder recorder(GetParam().normalize_ratio,
+                        GetParam().record_in_cpu_cycles);
 
   // Records the cost of op.
   recorder.RecordCost(kTestOpKey, kTestCost);
@@ -109,7 +115,10 @@ TEST_P(CostRecorderTest, ProtoRecordsTest) {
 }
 
 INSTANTIATE_TEST_SUITE_P(CostRecorderTests, CostRecorderTest,
-                         ::testing::Values(TestParams{1}, TestParams{100}));
+                         ::testing::Values(TestParams{1, false},
+                                           TestParams{1, true},
+                                           TestParams{100, false},
+                                           TestParams{100, true}));
 
 }  // namespace
 }  // namespace tfrt_stub

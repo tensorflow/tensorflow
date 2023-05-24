@@ -6699,6 +6699,8 @@ Status AlgebraicSimplifierVisitor::HandleTranspose(HloInstruction* transpose) {
                      SwapOperandsInDotPrecisionConfig(dot->precision_config()),
                      dot->shape().element_type())
               .value();
+      *new_dot->mutable_shape()->mutable_layout() = transpose->shape().layout();
+
       dot->SetupDerivedInstruction(new_dot);
       TF_CHECK_OK(ReplaceInstruction(transpose, new_dot));
       return true;

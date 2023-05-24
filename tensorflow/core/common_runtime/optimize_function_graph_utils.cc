@@ -500,10 +500,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
+    FunctionOptimizationPass::FunctionOptions function_options{
+        options.xla_compile_device_type, options.allow_soft_placement};
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        function_name, dev_set, options.config_proto,
-        options.xla_compile_device_type, &graph, &reachable_lib_def,
-        &control_ret_node_names, &control_rets_updated));
+        function_name, dev_set, options.config_proto, function_options, &graph,
+        &reachable_lib_def, &control_ret_node_names, &control_rets_updated));
   }
 
   if (control_rets_updated) {

@@ -152,7 +152,7 @@ LogicalResult rewriteExtractSliceOfTileableOp(Operation* op,
 
   // Support only ops with a single result for now.
   if (op->getNumResults() != 1) return failure();
-  Value result = op->getResult(0);
+  auto result = op->getResult(0);
 
   // If the op has several uses, then it is not always beneficial to rewrite.
   if (!result.hasOneUse()) return failure();
@@ -161,9 +161,10 @@ LogicalResult rewriteExtractSliceOfTileableOp(Operation* op,
   // Cases when they are not are covered by fusion.
   if (!sliceOp || sliceOp->getBlock() != op->getBlock()) return failure();
 
-  FailureOr<TilingResult> tilingResult = tileableOp.generateResultTileValue(
-      rewriter, /*resultNumber=*/0, sliceOp.getMixedOffsets(),
-      sliceOp.getMixedSizes());
+  rewriter.setInsertionPointAfter(sliceOp);
+  FailureOr<TilingResult> tilingResult =
+      tensor::replaceExtractSliceWithTiledProducer(rewriter, sliceOp, result);
+
   if (failed(tilingResult)) return failure();
   rewriter.replaceOp(sliceOp, tilingResult->tiledValues);
 

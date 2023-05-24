@@ -49,6 +49,7 @@ absl::flat_hash_map<int64_t, uint64_t> GetOpCostMap(mlir::ModuleOp op) {
 
 struct TestParams {
   uint32_t normalize_ratio = 1;
+  bool record_in_cpu_cycles = false;
 };
 
 class CostUpdateTest : public ::testing::TestWithParam<TestParams> {};
@@ -73,7 +74,8 @@ TEST_P(CostUpdateTest, Basic) {
   for (auto& [op_key, cost] : fake_recorded_op_cost_map) {
     cost = rand_r(&seed) % 1000;
   }
-  tensorflow::tfrt_stub::CostRecorder cost_recorder(GetParam().normalize_ratio);
+  tensorflow::tfrt_stub::CostRecorder cost_recorder(
+      GetParam().normalize_ratio, GetParam().record_in_cpu_cycles);
   absl::flat_hash_map<int64_t, uint64_t> expected_op_cost_map;
   for (const auto& [op_key, cost] : fake_recorded_op_cost_map) {
     cost_recorder.RecordCost(op_key, cost);
@@ -89,7 +91,10 @@ TEST_P(CostUpdateTest, Basic) {
 }
 
 INSTANTIATE_TEST_SUITE_P(CostUpdateTests, CostUpdateTest,
-                         ::testing::Values(TestParams{1}, TestParams{100}));
+                         ::testing::Values(TestParams{1, false},
+                                           TestParams{1, true},
+                                           TestParams{100, false},
+                                           TestParams{100, true}));
 
 }  // namespace
 }  // namespace tensorflow

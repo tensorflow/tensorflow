@@ -214,7 +214,8 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_always_defer_compilation = false;
   ops_flags->tf_xla_async_compilation = false;
   ops_flags->tf_xla_use_device_api.enabled_for_xla_launch_ = true;
-  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = false;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_ = true;
+  ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = false;
 
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
@@ -277,6 +278,10 @@ void AllocateAndParseFlags() {
             &ops_flags->tf_xla_use_device_api.enabled_for_compile_on_demand_,
             "If true, uses Device API (PjRt) for compiling and executing ops "
             "one by one in 'on-demand' mode. Defaults to false."),
+       Flag("tf_xla_use_device_api_for_auto_jit",
+            &ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_,
+            "If true, uses Device API (PjRt) for compilation and execution "
+            "when auto-clustering is enabled. Defaults to false."),
 
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",

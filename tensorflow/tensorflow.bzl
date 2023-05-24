@@ -417,7 +417,6 @@ def tf_copts(
     android_copts = [
         "-DTF_LEAN_BINARY",
         "-Wno-narrowing",
-        "-fomit-frame-pointer",
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
@@ -451,7 +450,7 @@ def tf_copts(
         if_llvm_powerpc_available(["-DTF_LLVM_POWERPC_AVAILABLE=1"]) +
         if_llvm_system_z_available(["-DTF_LLVM_S390X_AVAILABLE=1"]) +
         if_llvm_x86_available(["-DTF_LLVM_X86_AVAILABLE=1"]) +
-        if_android_arm(["-mfpu=neon"]) +
+        if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +

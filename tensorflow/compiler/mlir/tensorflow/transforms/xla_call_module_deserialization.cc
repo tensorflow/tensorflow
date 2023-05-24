@@ -27,11 +27,13 @@ limitations under the License.
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/stablehlo_custom_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"  // IWYU pragma: keep
@@ -130,6 +132,21 @@ void CopyStablehloModuleAttrs(ModuleOp stablehlo_module, XlaCallModuleOp op) {
               stablehlo_module->getAttrDictionary());
 }
 
+// Update `caller_name` from `StringAttr` to `FlatSymbolRefAttr`.
+LogicalResult SymbolizeCustomCallCallerName(ModuleOp module) {
+  auto result = module.walk([&](stablehlo::CustomCallOp op) {
+    auto name = GetTfHostCallbackName(op);
+    if (failed(name)) {
+      return WalkResult::interrupt();
+    }
+    if (*name != nullptr) {
+      SetTfHostCallbackName(op, FlatSymbolRefAttr::get(op.getContext(), *name));
+    }
+    return WalkResult::advance();
+  });
+  return result.wasInterrupted() ? failure() : success();
+}
+
 LogicalResult DeserializeXlaCallModule(MLIRContext *context,
                                        SymbolTableCollection &symbol_tables,
                                        ModuleOp module, XlaCallModuleOp op) {
@@ -148,6 +165,10 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
   }
 
   CopyFunctions(symbol_tables, stablehlo_module.get(), module);
+
+  if (failed(SymbolizeCustomCallCallerName(module))) {
+    return failure();
+  }
 
   // Module is deserialized, we set an empty string to it instead removing
   // it because it's a required attribute.

@@ -427,6 +427,9 @@ class Layout {
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
                                     const Layout& layout_b);
 
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts);
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

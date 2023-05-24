@@ -34,7 +34,7 @@ module {
 
   // CHECK-LABEL: func private @_stablehlo_main_0
   // CHECK-SAME:    (%[[ARG0:.*]]: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %[[ARG1:.*]]: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) attributes {_from_xla_call_module} {
-  // CHECK:         stablehlo.custom_call @tf.call_tf_function(%[[ARG0]], %[[ARG1]]) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {caller_name = "__tf_host_callback"}} : (tensor<?xi32>, tensor<*xi32>) -> ()
+  // CHECK:         stablehlo.custom_call @tf.call_tf_function(%[[ARG0]], %[[ARG1]]) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {caller_name = @__tf_host_callback}} : (tensor<?xi32>, tensor<*xi32>) -> ()
   // CHECK:         return %arg0 : tensor<?xi32>
   // CHECK:       }
 }

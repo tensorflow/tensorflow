@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
@@ -51,10 +53,10 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dim_args_spec", &dim_args_spec));
     OP_REQUIRES(ctx,
                 expected_output_shapes.size() == expected_output_dtypes.size(),
-                errors::InvalidArgument("The size of Sout (",
-                                        expected_output_shapes.size(),
-                                        ") must match the size of Tout (",
-                                        expected_output_dtypes.size(), ")"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "The size of Sout (", expected_output_shapes.size(),
+                    ") must match the size of Tout (",
+                    expected_output_dtypes.size(), ")")));
     std::vector<string> platforms;
     // Index in platforms of the current platform, or -1 if module does not take
     // a platform index arg.
@@ -73,23 +75,23 @@ class XlaCallModuleOp : public XlaOpKernel {
           current_platform = "ROCM";
 #else
           OP_REQUIRES(ctx, false,
-                      errors::Unimplemented("CUDA or ROCM build required"));
+                      absl::UnimplementedError("CUDA or ROCM build required"));
 #endif
         } else if (current_device_type == DEVICE_TPU_XLA_JIT) {
           current_platform = "TPU";
         } else {
           OP_REQUIRES(ctx, false,
-                      errors::Unimplemented("Unexpected device type ",
-                                            current_device_type));
+                      absl::UnimplementedError(absl::StrCat(
+                          "Unexpected device type ", current_device_type)));
         }
         VLOG(3) << "Initialized XlaCallModuleOp on " << current_platform;
         auto found_platform =
             std::find(platforms.begin(), platforms.end(), current_platform);
         OP_REQUIRES(ctx, found_platform != platforms.end(),
-                    errors::NotFound(
+                    absl::NotFoundError(absl::StrCat(
                         "The current platform ", current_platform,
                         " is not among the platforms required by the module: [",
-                        absl::StrJoin(platforms, ", "), "]"));
+                        absl::StrJoin(platforms, ", "), "]")));
         // We only use a platform index arguments if we support at least 2
         // platforms.
         if (platforms.size() > 1) {

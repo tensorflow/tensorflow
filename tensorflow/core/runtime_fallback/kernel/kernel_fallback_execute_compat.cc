@@ -510,7 +510,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   uint64_t run_start_time = 0;
   tfrt::AsyncValueRef<tfrt::Chain> cost_chain;
   if (cost_recorder != nullptr) {
-    run_start_time = cost_recorder->RecordInCpuCycles()
+    run_start_time = cost_recorder->record_in_cpu_cycles()
                          ? tfrt::GetCpuClockCycle()
                          : Env::Default()->NowNanos();
     if (op_chain == nullptr) op_chain = &cost_chain;
@@ -539,7 +539,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   if (cost_recorder != nullptr) {
     op_chain->AndThen(
         [cost_recorder, run_start_time, op_key = frame.op_key().GetValue()] {
-          const uint64_t run_finish_time = cost_recorder->RecordInCpuCycles()
+          const uint64_t run_finish_time = cost_recorder->record_in_cpu_cycles()
                                                ? tfrt::GetCpuClockCycle()
                                                : Env::Default()->NowNanos();
           cost_recorder->RecordCost(op_key, run_finish_time - run_start_time);
