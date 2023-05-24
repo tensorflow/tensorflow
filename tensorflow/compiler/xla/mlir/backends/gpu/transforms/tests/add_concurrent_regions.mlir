@@ -125,3 +125,35 @@ module attributes {gpu.container_module} {
     return
   }
 }
+
+// -----
+// Check that constant input buffer does not create dependency.
+
+module attributes {gpu.container_module} {
+
+  gpu.module @gpu_module attributes {binary = "kernel binary"} {
+    gpu.func @fn0(%arg0: memref<3x3xi64>) kernel { gpu.return }
+    gpu.func @fn1(%arg0: memref<3x3xi64>) kernel { gpu.return }
+  }
+
+
+  // CHECK: func @xla.gpu.cuda.graph.capture
+  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<144xi8> {lmhlo.constant_name = "cst0"}) {
+    %c0 = arith.constant 0 : index
+    %c36 = arith.constant 36 : index
+    %c1 = arith.constant 1 : index
+    %view = memref.view %arg0[%c0][] : memref<144xi8> to memref<3x3xi64>
+    %view_0 = memref.view %arg0[%c36][] : memref<144xi8> to memref<3x3xi64>
+
+    // CHECK: call @xla.gpu.concurrent_region.begin()
+    // CHECK-NEXT: gpu.launch_func
+    // CHECK-NEXT: gpu.launch_func
+    // CHECK-NEXT: call @xla.gpu.concurrent_region.end()
+    // CHECK-NEXT: return
+    gpu.launch_func  @gpu_module::@fn0 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%view : memref<3x3xi64>)
+    gpu.launch_func  @gpu_module::@fn1 blocks in (%c1, %c1, %c1)
+      threads in (%c1, %c1, %c1) args(%view_0 : memref<3x3xi64>)
+    return
+  }
+}
