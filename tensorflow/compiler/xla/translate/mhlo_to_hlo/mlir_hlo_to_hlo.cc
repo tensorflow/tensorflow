@@ -2643,6 +2643,11 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
+  // TODO(b/284077883): Implement HLO roundtrip for mhlo::TopKOp.
+  return failure();
+}
+
 }  // namespace
 }  // namespace mhlo
 }  // namespace mlir
