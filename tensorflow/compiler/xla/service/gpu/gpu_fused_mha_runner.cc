@@ -284,6 +284,105 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
 
   return OkStatus();
 }
+
+Status CheckAndAssignMask(const GpufMHADescriptor & desc, GpufMHAConfig& config) {
+  switch (config.kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleMaskSoftmax:
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+      if (desc.mask_shape) {
+        const Shape& mask_shape = *desc.mask_shape;
+
+        TF_ASSIGN_OR_RETURN(DataType mask_type, GetDNNDataTypeFromPrimitiveType(
+                                                    mask_shape.element_type()));
+        config.mask = TensorDescriptor::For(mask_type, mask_shape.dimensions(),
+                                            mask_shape.layout().minor_to_major());
+        return OkStatus();
+      } else {
+        return InternalError(
+            "GpufMHADescriptor should have non-null mask shape but found null "
+            "mask shape");
+      }
+    default:
+      return OkStatus();
+  }
+}
+
+Status CheckAndAssignBias(const GpufMHADescriptor & desc, GpufMHAConfig& config) {
+  switch (config.kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
+    case CudnnfMHAKind::kScaleBiasSoftmax:
+      if (desc.bias_shape) {
+        const Shape& bias_shape = *desc.bias_shape;
+
+        TF_ASSIGN_OR_RETURN(DataType bias_type, GetDNNDataTypeFromPrimitiveType(
+                                                    bias_shape.element_type()));
+
+        config.bias = TensorDescriptor::For(bias_type, bias_shape.dimensions(),
+                                            bias_shape.layout().minor_to_major());
+        return OkStatus();
+      } else {
+        return InternalError(
+            "GpufMHADescriptor should have non-null bias shape but found null "
+            "bias shape");
+      }
+    default:
+      return OkStatus();
+  }
+}
+
+void assignScale(GpufMHAConfig& config, const CudnnfMHABackendConfig& backend_config) {
+  double fmha_scale = 0.0;
+
+  switch (config.kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleMaskSoftmax:
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
+    case CudnnfMHAKind::kScaleBiasSoftmax:
+      fmha_scale = backend_config.fmha_scale();
+      config.fmha_scale.emplace(fmha_scale);
+      break;
+    default:
+      break;
+  }
+}
+
+void AssignDropoutRate(GpufMHAConfig& config, const CudnnfMHABackendConfig& backend_config) {
+  double dropout_rate = 0.0; 
+  switch (config.kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kSoftmaxDropout:
+    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
+      dropout_rate = backend_config.dropout_rate();
+      config.dropout_rate.emplace(dropout_rate); 
+      break;
+    default:
+      break;
+  }
+}
+
+void AssignSeed(GpufMHAConfig& config, const CudnnfMHABackendConfig& backend_config) {
+  int64_t seed_value = 0;
+
+  switch (config.kind) {
+    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
+    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
+    case CudnnfMHAKind::kSoftmaxDropout:
+    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
+      seed_value = backend_config.seed(); 
+      config.seed.emplace(seed_value);
+      break;
+    default:
+      break;
+  }
+}
+
 }  // namespace
 
 /*static*/ StatusOr<GpufMHAConfig> GpufMHAConfig::For(
@@ -347,98 +446,11 @@ Status RunGpuFMHAImpl(const GpufMHAParams &params, se::Stream *stream,
   const CudnnfMHABackendConfig &backend_config = desc.backend_config;
   config.algorithm = se::dnn::AlgorithmDesc(backend_config.algorithm());
 
-  auto check_and_assign_mask = [&]() -> Status {
-    if (desc.mask_shape) {
-      const Shape &mask_shape = *desc.mask_shape;
-
-      TF_ASSIGN_OR_RETURN(DataType mask_type, GetDNNDataTypeFromPrimitiveType(
-                                                  mask_shape.element_type()));
-      config.mask = TensorDescriptor::For(mask_type, mask_shape.dimensions(),
-                                          mask_shape.layout().minor_to_major());
-      return OkStatus();
-    } else {
-      return InternalError(
-          "GpufMHADescriptor should have non-nul mask shape but found null "
-          "mask shape");
-    }
-  };
-
-  auto check_and_assign_bias = [&]() -> Status {
-    if (desc.bias_shape) {
-      const Shape &bias_shape = *desc.bias_shape;
-
-      TF_ASSIGN_OR_RETURN(DataType bias_type, GetDNNDataTypeFromPrimitiveType(
-                                                  bias_shape.element_type()));
-
-      config.bias = TensorDescriptor::For(bias_type, bias_shape.dimensions(),
-                                          bias_shape.layout().minor_to_major());
-      return OkStatus();
-    } else {
-      return InternalError(
-          "GpufMHADescriptor should have non-nul bias shape but found null "
-          "bias shape");
-    }
-  };
-
-  auto assign_scale = [&]() {
-    config.fmha_scale.emplace();
-    double &fmha_scale = *config.fmha_scale;
-    fmha_scale = backend_config.fmha_scale();
-  };
-
-  auto assign_dropout_rate = [&]() {
-    config.dropout_rate.emplace();
-    double &dropout_rate = *config.dropout_rate;
-    dropout_rate = backend_config.dropout_rate();
-  };
-
-  auto assign_seed = [&]() {
-    config.seed.emplace();
-    int64_t &seed = *config.seed;
-    seed = backend_config.seed();
-  };
-
-  switch (config.kind) {
-    case CudnnfMHAKind::kScaleBiasMaskSoftmax:
-      TF_RETURN_IF_ERROR(check_and_assign_mask());
-      TF_RETURN_IF_ERROR(check_and_assign_bias());
-      assign_scale();
-      break;
-    case CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout:
-      TF_RETURN_IF_ERROR(check_and_assign_mask());
-      TF_RETURN_IF_ERROR(check_and_assign_bias());
-      assign_scale();
-      assign_dropout_rate();
-      assign_seed();
-      break;
-    case CudnnfMHAKind::kScaleMaskSoftmax:
-      TF_RETURN_IF_ERROR(check_and_assign_mask());
-      assign_scale();
-      break;
-    case CudnnfMHAKind::kScaleMaskSoftmaxDropout:
-      TF_RETURN_IF_ERROR(check_and_assign_mask());
-      assign_scale();
-      assign_dropout_rate();
-      assign_seed();
-      break;
-    case CudnnfMHAKind::kBmmBmm:
-    case CudnnfMHAKind::kSoftmax:
-      break;
-    case CudnnfMHAKind::kSoftmaxDropout:
-      assign_dropout_rate();
-      assign_seed();
-      break;
-    case CudnnfMHAKind::kScaleBiasSoftmaxDropout:
-      TF_RETURN_IF_ERROR(check_and_assign_bias());
-      assign_dropout_rate();
-      assign_seed();
-      break;
-    case CudnnfMHAKind::kScaleBiasSoftmax:
-      TF_RETURN_IF_ERROR(check_and_assign_bias());
-      break;
-    default:
-      return InternalError("Unknown fmha kind");
-  }
+  TF_RETURN_IF_ERROR(CheckAndAssignMask(desc, config));
+  TF_RETURN_IF_ERROR(CheckAndAssignBias(desc, config));
+  assignScale(config, backend_config);
+  AssignDropoutRate(config, backend_config);
+  AssignSeed(config, backend_config);
   return config;
 }
 
