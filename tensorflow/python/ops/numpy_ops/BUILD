@@ -243,7 +243,6 @@ cuda_py_strict_test(
         ":np_dtypes",
         ":np_math_ops",
         ":np_random",
-        ":numpy",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
@@ -267,7 +266,6 @@ cuda_py_strict_test(
     srcs = ["np_interop_test.py"],
     deps = [
         ":np_math_ops",
-        ":numpy",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
