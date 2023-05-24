@@ -3954,11 +3954,7 @@ AutoShardingImplementation::AutoShardingImplementation(
 StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  if (!option_.enable) {
-    return false;
-  }
   bool module_is_changed = false;
-  VLOG(1) << "Start auto sharding pass";
 
   bool set_to_memory_lower_bound = (option_.memory_budget_per_device == 0);
   // ----- Set options for this pass -----
@@ -4045,9 +4041,6 @@ StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
     }
   }
 
-  XLA_VLOG_LINES(6,
-                 absl::StrCat("Before auto sharding:\n", module->ToString()));
-  DumpHloModuleIfEnabled(*module, "before_auto_spmd_sharding");
   // ----- Get a sequential schedule and do liveness analysis -----
   auto size_fn = [](const BufferValue& buffer) {
     return spmd::GetBytes(buffer.shape());
@@ -4242,7 +4235,9 @@ StatusOr<bool> AutoShardingImplementation::RunAutoSharding(
 
   // ----- Canonicalize layouts based on LayoutCanonicalizationCallback. -----
   TF_RETURN_IF_ERROR(CanonicalizeLayouts(module));
-  XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
+  XLA_VLOG_LINES(7, absl::StrCat("After auto sharding for mesh ",
+                                 spmd::ToString(option_.device_mesh_shape),
+                                 ":\n", module->ToString()));
   DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
 
   return module_is_changed;
@@ -4254,7 +4249,14 @@ AutoSharding::AutoSharding(const AutoShardingOption& option)
 StatusOr<bool> AutoSharding::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  VLOG(1) << "Running auto-sharding pass";
+  if (!option_.enable) {
+    return false;
+  }
+  VLOG(1) << "Start auto sharding pass";
+
+  XLA_VLOG_LINES(6,
+                 absl::StrCat("Before auto sharding:\n", module->ToString()));
+  DumpHloModuleIfEnabled(*module, "before_auto_spmd_sharding");
 
 #if !defined(__APPLE__)
   // Streamz metrics.
@@ -4373,6 +4375,10 @@ StatusOr<bool> AutoSharding::Run(
   metrics::RecordAutoShardingCompilationTime(
       absl::ToInt64Microseconds(duration));
 #endif
+
+  XLA_VLOG_LINES(6, absl::StrCat("After auto sharding:\n", module->ToString()));
+  DumpHloModuleIfEnabled(*module, "after_auto_spmd_sharding");
+
   return module_is_changed;
 }
 
