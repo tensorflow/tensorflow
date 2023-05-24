@@ -2967,9 +2967,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_fused_mha_rewriter_test",
     srcs = ["cudnn_fused_mha_rewriter_test.cc"],
-    tags = [
-        "gpu",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
