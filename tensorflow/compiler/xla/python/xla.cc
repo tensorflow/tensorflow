@@ -298,10 +298,6 @@ PYBIND11_MODULE(xla_extension, m) {
            xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment1D))
       .def("create_channel_handle",
            xla::ValueOrThrowWrapper(&PyClient::CreateChannelHandle))
-      .def("create_device_to_host_channel_handle",
-           xla::ValueOrThrowWrapper(&PyClient::CreateDeviceToHostChannelHandle))
-      .def("create_host_to_device_channel_handle",
-           xla::ValueOrThrowWrapper(&PyClient::CreateHostToDeviceChannelHandle))
       .def(
           "buffer_from_pyval",
           [](py::handle py_client, py::handle argument, py::handle py_device,

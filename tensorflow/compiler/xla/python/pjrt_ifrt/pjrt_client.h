@@ -137,15 +137,6 @@ class PjRtClient final
     return pjrt_client_->LookupDevice(device_id);
   }
 
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    DCHECK(this);
-    return pjrt_client_->CreateDeviceToHostChannelHandle();
-  }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    DCHECK(this);
-    return pjrt_client_->CreateHostToDeviceChannelHandle();
-  }
-
   Compiler* GetDefaultCompiler() override {
     DCHECK(this);
     return &default_compiler_;
