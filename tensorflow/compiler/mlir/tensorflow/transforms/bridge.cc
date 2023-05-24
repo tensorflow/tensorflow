@@ -150,6 +150,11 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
   pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(CreateTPUClusterFormationPass());
+  // CreateEmbeddingPipeliningPass may have created more functions, but
+  // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
+  // only called from one cluster. Here, we choose to fix the all-funcs-one-use
+  // invariant right before it's needed, not after it's been broken.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
