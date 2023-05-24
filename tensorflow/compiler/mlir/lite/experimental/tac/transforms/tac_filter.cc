@@ -15,13 +15,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <memory>
+#include <string>
 
 #include "google/protobuf/text_format.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Regex.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -87,7 +92,7 @@ void ApplyFunctionTacFilter(func::FuncOp func,
 }
 
 void ApplyTacFilter(ModuleOp module, const TacFilter& tac_filter,
-                    OpBuilder& builder) {
+                    SmallVector<Operation*>& filtered_ops, OpBuilder& builder) {
   if (tac_filter.has_function_filter()) {
     llvm::Regex func_regex(
         tac_filter.function_filter().function_name_pattern());
@@ -98,6 +103,7 @@ void ApplyTacFilter(ModuleOp module, const TacFilter& tac_filter,
 
       ApplyFunctionTacFilter(func, tac_filter.function_filter().filter_type(),
                              builder);
+      filtered_ops.push_back(func);
     }
     return;
   }
@@ -113,7 +119,64 @@ void ApplyTacFilter(ModuleOp module, const TacFilter& tac_filter,
     }
 
     op->setAttr(kSkipTargetAnnotation, builder.getUnitAttr());
+    filtered_ops.push_back(op);
   });
+}
+
+// A custom string for tac filter.
+std::string TacFilterToString(const TacFilter& tac_filter) {
+  std::string tac_filter_type_str;
+  std::string tac_filter_name_pattern_str;
+  if (tac_filter.has_function_filter()) {
+    tac_filter_type_str = (llvm::Twine("function filter ") +
+                           FunctionFilter::FunctionFilterType_Name(
+                               tac_filter.function_filter().filter_type()))
+                              .str();
+    tac_filter_name_pattern_str =
+        tac_filter.function_filter().function_name_pattern();
+  } else {
+    tac_filter_type_str = "op filter";
+    tac_filter_name_pattern_str = tac_filter.op_filter().op_name_pattern();
+  }
+  return (llvm::Twine("filter type: ") + tac_filter_type_str +
+          ", filter_pattern: \"" + tac_filter_name_pattern_str + "\"")
+      .str();
+}
+
+void PrintTacFilterResult(Location module_loc, const TacFilter& tac_filter,
+                          int count,
+                          const SmallVector<Operation*>& filtered_ops) {
+  emitRemark(module_loc) << llvm::formatv("Tac filter ({0}): {1}", count,
+                                          TacFilterToString(tac_filter));
+  if (filtered_ops.empty()) {
+    emitRemark(module_loc) << llvm::formatv(
+        "Tac filter ({0}) specified but not applied to any op", count);
+    return;
+  }
+
+  if (tac_filter.has_function_filter()) {
+    for (Operation* op : filtered_ops) {
+      auto func = cast<func::FuncOp>(op);
+      func.emitRemark() << llvm::formatv("filtered by tac filter ({0})", count);
+    }
+    return;
+  }
+
+  DenseMap<func::FuncOp, SmallVector<Operation*>> func_to_filtered_ops_map;
+  for (Operation* op : filtered_ops) {
+    auto func = op->getParentOfType<func::FuncOp>();
+    func_to_filtered_ops_map[func].push_back(op);
+  }
+  for (auto& [func, ops] : func_to_filtered_ops_map) {
+    std::string interleaved_op_name;
+    llvm::raw_string_ostream os(interleaved_op_name);
+    llvm::interleaveComma(
+        ops, os, [&](Operation* op) { os << "\"" << op->getName() << "\""; });
+    os.flush();
+    func.emitRemark() << llvm::formatv(
+        "all ops filtered by tac filter ({0}): {1}", count,
+        interleaved_op_name);
+  }
 }
 
 void TacFilterPass::runOnOperation() {
@@ -173,8 +236,12 @@ void TacFilterPass::runOnOperation() {
               // filter.
               return a_is_function_exclude > b_is_function_exclude;
             });
-  for (const TacFilter& tac_filter : tac_filters_->tac_filters()) {
-    ApplyTacFilter(module, tac_filter, builder);
+
+  for (const auto& tac_filter : llvm::enumerate(tac_filters_->tac_filters())) {
+    SmallVector<Operation*> filtered_ops;
+    ApplyTacFilter(module, tac_filter.value(), filtered_ops, builder);
+    PrintTacFilterResult(module.getLoc(), tac_filter.value(),
+                         tac_filter.index(), filtered_ops);
   }
 }
 
