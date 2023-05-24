@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_SLICE_SPMD_EXPANDER_H_
-#define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_SLICE_SPMD_EXPANDER_H_
+#ifndef TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_STRIDED_SLICE_SPMD_EXPANDER_H_
+#define TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_STRIDED_SLICE_SPMD_EXPANDER_H_
 
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/mlir/spmd_expander.h"
@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace dtensor {
 
-class SliceSPMDExpander : public SPMDExpanderBase {
+class StridedSliceSPMDExpander : public SPMDExpanderBase {
  public:
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
 
@@ -35,8 +35,33 @@ class SliceSPMDExpander : public SPMDExpanderBase {
       const llvm::DenseMap<int, Layout>& output_layouts) override;
 };
 
+class TensorStridedSliceUpdateSPMDExpander : public SPMDExpanderBase {
+ public:
+  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
+
+  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
+      mlir::Operation* op,
+      const llvm::DenseMap<int, Layout>& input_layouts) override;
+
+  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
+      mlir::Operation* op,
+      const llvm::DenseMap<int, Layout>& output_layouts) override;
+};
+
+class StridedSliceGradSPMDExpander : public SPMDExpanderBase {
+ public:
+  StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
+
+  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
+      mlir::Operation* op,
+      const llvm::DenseMap<int, Layout>& input_layouts) override;
+
+  StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
+      mlir::Operation* op,
+      const llvm::DenseMap<int, Layout>& output_layouts) override;
+};
 
 }  // namespace dtensor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_SLICE_SPMD_EXPANDER_H_
+#endif  // TENSORFLOW_DTENSOR_MLIR_EXPANSIONS_STRIDED_SLICE_SPMD_EXPANDER_H_

@@ -386,3 +386,14 @@ cc_library(
         "//tensorflow/c:conversion_macros",
     ],
 )
+
+cc_library(
+    name = "slice_util",
+    srcs = ["slice_util.cc"],
+    hdrs = ["slice_util.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:IR",
+    ],
+)
