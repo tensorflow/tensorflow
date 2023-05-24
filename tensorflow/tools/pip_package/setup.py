@@ -97,7 +97,7 @@ REQUIRED_PACKAGES = [
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
-    'typing_extensions >= 3.6.6',
+    'typing_extensions>=3.6.6,<4.6.0',
     'wrapt >= 1.11.0',
     'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
     'platform_system!="Darwin"',
