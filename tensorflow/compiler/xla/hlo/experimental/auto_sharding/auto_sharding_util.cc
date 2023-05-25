@@ -1138,7 +1138,7 @@ void RemoveCustomCallMarker(HloModule* module) {
 StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
                                                     int dim) {
   if (dim >= array.num_dimensions()) {
-    return tsl::errors::OutOfRange(absl::StrCat(
+    return absl::OutOfRangeError(absl::StrCat(
         "Input dim (", dim,
         ") should be smaller than the number of dimensions of array (",
         array.num_dimensions(), ")."));
@@ -1155,13 +1155,13 @@ StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
 // Check whether a sequence is an arithmetic sequence.
 StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence) {
   if (sequence.size() < 2) {
-    return tsl::errors::OutOfRange(
+    return absl::OutOfRangeError(
         "Invalid device id assignment: sequence.size() < 2");
   }
   int64_t delta = sequence[1] - sequence[0];
   for (int i = 2; i < sequence.size(); ++i) {
     if (sequence[i] - sequence[i - 1] != delta) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           "Invalid device id assignment: sequence[i] - sequence[i - 1] != "
           "delta");
     }
@@ -1913,7 +1913,7 @@ AdjustShardingWithPartialMeshShapePerElement(
           LOG(FATAL) << err_msg;
         } else {
           LOG(WARNING) << err_msg;
-          return std::make_pair(tsl::errors::Internal(err_msg), std::nullopt);
+          return std::make_pair(absl::InternalError(err_msg), std::nullopt);
         }
       }
     }

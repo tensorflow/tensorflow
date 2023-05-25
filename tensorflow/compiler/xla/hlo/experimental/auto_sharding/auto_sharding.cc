@@ -2277,7 +2277,7 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
         LOG(FATAL) << err_msg;
       } else {
         LOG(WARNING) << err_msg;
-        return tsl::errors::Internal(err_msg);
+        return absl::InternalError(err_msg);
       }
     }
   }
@@ -2421,11 +2421,12 @@ CallORToolsSolver(int64_t N, int64_t M, const std::vector<int>& s_len,
     }
 #endif
 
-    return tsl::errors::Internal(
+    return absl::InternalError(
         "MPSolver could not find any feasible solution.");
   }
   if (status != operations_research::MPSolver::OPTIMAL) {
-    return tsl::errors::Internal("Solver errors.");
+    return absl::InternalError(
+        absl::StrCat("Solver crashed with the status ", status, "."));
   }
 
   LOG(INFO) << "Solver Status: " << status
@@ -3686,7 +3687,7 @@ Status FilterStrategy(const HloInstruction* ins, const Shape& shape,
   const Array<int64_t>& device_mesh = cluster_env.device_mesh_;
 
   if (shape.dimensions(batch_dim) % device_mesh.dim(mesh_dim) != 0) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The length of batch dimension is "
         "not divisible by the number of devices");
   }
