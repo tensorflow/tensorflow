@@ -274,7 +274,8 @@ Status SnapshotStreamWriter::Save() {
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
       checkpoint_path, serialized_iterator, params_.compression, params_.env));
   absl::Time end_time = absl::FromUnixMicros(params_.env->NowMicros());
-  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer took "
+  LOG(INFO) << "Wrote checkpoint file " << checkpoint_path << ". "
+            << "Checkpointing distributed tf.data snapshot writer took "
             << (end_time - start_time);
   return DeleteOutdatedCheckpoints();
 }
