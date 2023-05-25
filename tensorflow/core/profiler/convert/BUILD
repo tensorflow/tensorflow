@@ -944,3 +944,30 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_library(
+    name = "dcn_analysis",
+    srcs = ["dcn_analysis.cc"],
+    hdrs = ["dcn_analysis.h"],
+    deps = [
+        ":dcn_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:math_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "dcn_analysis_test",
+    srcs = ["dcn_analysis_test.cc"],
+    deps = [
+        ":dcn_analysis",
+        ":dcn_utils",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
