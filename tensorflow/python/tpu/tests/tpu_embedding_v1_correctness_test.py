@@ -13,19 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for TPU Embeddings mid level API on TPU."""
+
 import itertools
 
 from absl.testing import parameterized
+from keras import optimizers
 import numpy as np
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.keras.optimizer_v2 import adagrad
-from tensorflow.python.keras.optimizer_v2 import adam
-from tensorflow.python.keras.optimizer_v2 import ftrl
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
 from tensorflow.python.tpu import tpu_embedding_v1
 from tensorflow.python.tpu import tpu_embedding_v2_utils
@@ -35,9 +33,9 @@ from tensorflow.python.tpu.tests import tpu_embedding_base_test
 _SLOT_NAME_MAPPING = {
     # Slot names in Keras optimizer v2 are different compared to the slot names
     # in our API.
-    adagrad.Adagrad: {'accumulators': 'accumulator'},
-    adam.Adam: {'momenta': 'm', 'velocities': 'v'},
-    ftrl.Ftrl: {'accumulators': 'accumulator', 'linears': 'linear'},
+    optimizers.Adagrad: {'accumulators': 'accumulator'},
+    optimizers.Adam: {'momenta': 'm', 'velocities': 'v'},
+    optimizers.Ftrl: {'accumulators': 'accumulator', 'linears': 'linear'},
 }
 
 
@@ -77,22 +75,22 @@ class TPUEmbeddingV0CorrectnessTest(tpu_embedding_base_test.TPUEmbeddingBaseTest
     # variable creation fn properly populated.
     with strategy.scope():
       if optimizer_name == 'sgd':
-        optimizer = gradient_descent.SGD(learning_rate=0.1)
+        optimizer = optimizers.SGD(learning_rate=0.1)
         embedding_optimizer = tpu_embedding_v2_utils.SGD(learning_rate=0.1)
       elif optimizer_name == 'adagrad':
-        optimizer = adagrad.Adagrad(learning_rate=0.1)
+        optimizer = optimizers.Adagrad(learning_rate=0.1)
         embedding_optimizer = tpu_embedding_v2_utils.Adagrad(
             learning_rate=0.1,
             slot_variable_creation_fn=self._get_slot_variable_creation_fn(
                 optimizer))
       elif optimizer_name == 'adam':
-        optimizer = adam.Adam(learning_rate=0.1)
+        optimizer = optimizers.Adam(learning_rate=0.1)
         embedding_optimizer = tpu_embedding_v2_utils.Adam(
             learning_rate=0.1,
             slot_variable_creation_fn=self._get_slot_variable_creation_fn(
                 optimizer))
       elif optimizer_name == 'ftrl':
-        optimizer = ftrl.Ftrl(learning_rate=0.1)
+        optimizer = optimizers.Ftrl(learning_rate=0.1)
         embedding_optimizer = tpu_embedding_v2_utils.FTRL(
             learning_rate=0.1,
             slot_variable_creation_fn=self._get_slot_variable_creation_fn(
@@ -173,13 +171,13 @@ class TPUEmbeddingV0CorrectnessTest(tpu_embedding_base_test.TPUEmbeddingBaseTest
                                           embedding_table_video_before,
                                           gradients_wrt_video, optimizer,
                                           table_to_variable):
-    if isinstance(optimizer, gradient_descent.SGD):
+    if isinstance(optimizer, optimizers.SGD):
       check_fn = self._check_embedding_and_slot_variables_for_sgd
-    elif isinstance(optimizer, adagrad.Adagrad):
+    elif isinstance(optimizer, optimizers.Adagrad):
       check_fn = self._check_embedding_and_slot_variables_for_adagrad
-    elif isinstance(optimizer, adam.Adam):
+    elif isinstance(optimizer, optimizers.Adam):
       check_fn = self._check_embedding_and_slot_variables_for_adam
-    elif isinstance(optimizer, ftrl.Ftrl):
+    elif isinstance(optimizer, optimizers.Ftrl):
       check_fn = self._check_embedding_and_slot_variables_for_ftrl
     else:
       raise ValueError('optimizer is not recognized: ', type(optimizer))
