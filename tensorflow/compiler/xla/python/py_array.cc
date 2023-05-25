@@ -747,7 +747,6 @@ struct ExtraBufferInfo {
       : buffer(std::move(buffer)),
         external_reference_hold(std::move(external_reference_hold)) {}
 
-  std::string format;
   std::vector<Py_ssize_t> strides;
   // We keep an external reference hold to the PjRtBuffer. This prevents a
   // use-after-free in the event that Delete() is called on a buffer with an
@@ -791,6 +790,19 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     }
 
     const xla::Shape& shape = buffer.on_device_shape();
+
+    const char* format =
+        PEP3118FormatDescriptorForPrimitiveType(shape.element_type());
+    // It isn't an option for us to export unknown types as, say, bytes. When
+    // converting an object to an ndarray, NumPy tries the buffer protocol
+    // first. We very much want NumPy to fail and fall back to using
+    // __array__, which allows us to handle custom dtypes correctly.
+    if (!format) {
+      return InvalidArgument(
+          "Buffers of type %s are not supported by the Python buffer protocol.",
+          PrimitiveType_Name(shape.element_type()));
+    }
+
     // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
     // Additionally we call BlockHostUntilReady() below, which may block.
     py::gil_scoped_release gil_release;
@@ -798,24 +810,6 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     if (!shape.IsArray()) {
       return InvalidArgument(
           "Python buffer protocol is only defined for array buffers.");
-    }
-    // If we allowed exports of formatted BF16 buffers, consumers would get
-    // confused about the type because there is no way to describe BF16 to
-    // Python.
-    if (shape.element_type() == BF16 &&
-        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
-      return InvalidArgument(
-          "bfloat16 buffer format not supported by Python buffer protocol.");
-    }
-    if (shape.element_type() == F8E4M3FN &&
-        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
-      return InvalidArgument(
-          "F8E4M3FN buffer format not supported by Python buffer protocol.");
-    }
-    if (shape.element_type() == F8E5M2 &&
-        ((flags & PyBUF_FORMAT) == PyBUF_FORMAT)) {
-      return InvalidArgument(
-          "F8E5M2 buffer format not supported by Python buffer protocol.");
     }
     if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
       return InvalidArgument("XLA buffers are read-only.");
@@ -849,9 +843,7 @@ int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
     view->len = ShapeUtil::ByteSizeOf(shape);
     view->readonly = 1;
     if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
-      TF_ASSIGN_OR_RETURN(extra->format, FormatDescriptorForPrimitiveType(
-                                             shape.element_type()));
-      view->format = const_cast<char*>(extra->format.c_str());
+      view->format = const_cast<char*>(format);
     }
     if ((flags & PyBUF_ND) == PyBUF_ND) {
       view->ndim = shape.dimensions_size();
