@@ -4,7 +4,7 @@
 md C:\tf
 md C:\tf\tmp
 cd C:\tf
-git clone https://github.com/Bobarshad/tensorflow.git
+ git clone https://github.com/tensorflow/tensorflow.git
 cd C:\tf\tensorflow\tensorflow\tools\tf_windows_build_dockerfiles\
 docker build  --no-cache --build-arg PYTHON_VERSION=<?.?.?> -t win-docker .
 
