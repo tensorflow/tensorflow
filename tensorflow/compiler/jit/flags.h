@@ -137,8 +137,9 @@ struct XlaOpsCommonFlags {
     }
 
     bool IsEnabledInXlaLaunchForDevice(const DeviceType& device_type) const {
-      return enabled_for_xla_launch_ &&
-             xla_launch_allowed_devices_.contains(device_type.type_string());
+      return enabled_for_all_ ||
+             (enabled_for_xla_launch_ &&
+              xla_launch_allowed_devices_.contains(device_type.type_string()));
     }
 
     // Allow using Device API (PjRt) for `device_type` in the XlaCompileOnDemand
@@ -152,9 +153,10 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileOnDemandForDevice(
         const DeviceType& device_type) const {
-      return enabled_for_compile_on_demand_ &&
-             xla_compile_on_demand_allowed_devices_.contains(
-                 device_type.type_string());
+      return enabled_for_all_ ||
+             (enabled_for_compile_on_demand_ &&
+              xla_compile_on_demand_allowed_devices_.contains(
+                  device_type.type_string()));
     }
 
     // Allow using Device API (PjRt) for `device_type` in the XlaCompile and
@@ -168,9 +170,9 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileAndRunForDevice(
         const DeviceType& device_type) const {
-      return enabled_for_compile_and_run_ &&
-             xla_compile_and_run_allowed_devices_.contains(
-                 device_type.type_string());
+      return enabled_for_all_ || (enabled_for_compile_and_run_ &&
+                                  xla_compile_and_run_allowed_devices_.contains(
+                                      device_type.type_string()));
     }
 
     // If true, uses Device API (PjRt) for single device compilation and
@@ -185,6 +187,12 @@ struct XlaOpsCommonFlags {
     // If true, uses Device API (PjRt) for compilation and execution when
     // auto-clustering is enabled. Defaults to false.
     bool enabled_for_compile_and_run_;
+
+    // If true, uses Device API (PjRt) for compilation and execution everywhere
+    // i.e. for functions marked for JIT compilation, for ops in "on-demand"
+    // mode and autoclustering, no matter whether other flags are enabled or
+    // not, and whether devices have been allowed or not. Defaults to false.
+    bool enabled_for_all_;
 
    private:
     // Devices for which using Device API (PjRt) is allowed in the XlaLaunch op.
