@@ -1094,22 +1094,6 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
 
-  py::enum_<ChannelHandle::ChannelType>(m, "ChannelHandle_ChannelType")
-      .value("CHANNEL_TYPE_INVALID", ChannelHandle::CHANNEL_TYPE_INVALID)
-      .value("DEVICE_TO_DEVICE", ChannelHandle::DEVICE_TO_DEVICE)
-      .value("DEVICE_TO_HOST", ChannelHandle::DEVICE_TO_HOST)
-      .value("HOST_TO_DEVICE", ChannelHandle::HOST_TO_DEVICE);
-
-  py::class_<ChannelHandle>(m, "ChannelHandle")
-      .def_property("type", &ChannelHandle::type,
-                    [](ChannelHandle* h, ChannelHandle::ChannelType type) {
-                      h->set_type(type);
-                    })
-      .def_property(
-          "handle", &ChannelHandle::handle,
-          [](ChannelHandle* h, int64_t handle) { h->set_handle(handle); })
-      .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
-
   py::enum_<FftType>(m, "FftType")
       .value("FFT", FftType::FFT)
       .value("IFFT", FftType::IFFT)

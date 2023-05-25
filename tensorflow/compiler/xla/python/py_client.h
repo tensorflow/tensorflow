@@ -175,7 +175,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::vector<ClientAndPtr<PjRtDevice>>> GetDefaultDeviceAssignment1D(
       int num_replicas);
 
-  StatusOr<ChannelHandle> CreateChannelHandle() { return ChannelHandle(); }
   StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device);

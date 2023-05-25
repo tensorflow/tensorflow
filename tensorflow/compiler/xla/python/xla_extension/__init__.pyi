@@ -330,17 +330,6 @@ class HloSharding:
   def replicate_on_last_tile_dim(self) -> bool: ...
   def to_proto(self) -> OpSharding: ...
 
-class ChannelHandle_ChannelType(enum.IntEnum):
-  CHANNEL_TYPE_INVALID: int
-  DEVICE_TO_DEVICE: int
-  DEVICE_TO_HOST: int
-  HOST_TO_DEVICE: int
-
-class ChannelHandle:
-  type: ChannelHandle_ChannelType
-  handle: int
-  def __repr__(self) -> str: ...
-
 class FftType(enum.IntEnum):
   FFT: int
   IFFT: int
@@ -406,7 +395,6 @@ class Client:
   def get_default_device_assignment(
       self,
       num_replicas: int) -> List[Device]: ...
-  def create_channel_handle(self) -> ChannelHandle: ...
   def buffer_from_pyval(
       self,
       argument: Any,

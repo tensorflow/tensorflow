@@ -34,7 +34,6 @@ namespace xla {
 namespace ifrt {
 
 using PlatformId = ::xla::PjRtPlatformId;
-using ChannelHandle = ::xla::ChannelHandle;
 
 // TODO(hyeontaek): Generalize DeviceAssignment or hide it from the top-level
 // API.

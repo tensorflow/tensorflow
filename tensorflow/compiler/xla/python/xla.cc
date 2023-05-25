@@ -296,8 +296,6 @@ PYBIND11_MODULE(xla_extension, m) {
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
            xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment1D))
-      .def("create_channel_handle",
-           xla::ValueOrThrowWrapper(&PyClient::CreateChannelHandle))
       .def(
           "buffer_from_pyval",
           [](py::handle py_client, py::handle argument, py::handle py_device,
