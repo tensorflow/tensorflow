@@ -109,7 +109,6 @@ AbstractTfrtCpuBuffer::AbstractTfrtCpuBuffer(
 
 AbstractTfrtCpuBuffer::~AbstractTfrtCpuBuffer() {
   AbstractTfrtCpuBuffer::Delete();
-  CHECK_EQ(external_reference_counter_, 0);
 }
 
 StatusOr<Shape> AbstractTfrtCpuBuffer::logical_on_device_shape() {
@@ -176,6 +175,15 @@ AbstractTfrtCpuBuffer::AcquireExternalReference() {
       this, tracked_device_buffer_->Buffers()[0])};
 }
 
+void AbstractTfrtCpuBuffer::DropExternalReference() {
+  absl::MutexLock lock(&mu_);
+  CHECK_GT(external_reference_counter_, 0);
+  --external_reference_counter_;
+  if (external_reference_counter_ == 0 && external_references_dropped_event_) {
+    external_references_dropped_event_->SetStateConcrete();
+  }
+}
+
 class TrackedCpuDeviceBufferExternalReference
     : public PjRtBuffer::ExternalReference {
  public:
@@ -227,8 +235,19 @@ void AbstractTfrtCpuBuffer::AbortDonation(
 }
 
 void AbstractTfrtCpuBuffer::Delete() {
-  auto device_buffer = ReleaseBufferLocked();
-  if (device_buffer == nullptr) return;
+  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
+  std::optional<tfrt::AsyncValueRef<CpuEvent>>
+      external_references_dropped_event;
+  {
+    absl::MutexLock lock(&mu_);
+    device_buffer = ReleaseBufferLocked();
+    if (device_buffer == nullptr) return;
+
+    if (external_reference_counter_ > 0) {
+      external_references_dropped_event = external_references_dropped_event_ =
+          tfrt::MakeConstructedAsyncValueRef<CpuEvent>();
+    }
+  }
 
   // Now that all holds have completed and no more can be added, we can get
   // the final set of usage events.
@@ -243,6 +262,9 @@ void AbstractTfrtCpuBuffer::Delete() {
 
   // We should also wait for the definition event.
   event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
+  if (external_references_dropped_event) {
+    event_avs.push_back(external_references_dropped_event->GetAsyncValue());
+  }
 
   RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
     device_buffer.reset();
@@ -256,7 +278,6 @@ bool AbstractTfrtCpuBuffer::IsDeleted() {
 
 std::unique_ptr<TrackedTfrtCpuDeviceBuffer>
 AbstractTfrtCpuBuffer::ReleaseBufferLocked() {
-  absl::MutexLock lock(&mu_);
   auto condition = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
     return !pending_donation_;
   };
@@ -266,8 +287,11 @@ AbstractTfrtCpuBuffer::ReleaseBufferLocked() {
 
 StatusOr<std::unique_ptr<TrackedTfrtCpuDeviceBuffer>>
 AbstractTfrtCpuBuffer::Release(bool wait_for_operations_to_complete) {
-  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer =
-      ReleaseBufferLocked();
+  std::unique_ptr<TrackedTfrtCpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(&mu_);
+    device_buffer = ReleaseBufferLocked();
+  }
   if (device_buffer == nullptr) return {nullptr};
 
   absl::InlinedVector<tfrt::AsyncValueRef<CpuEvent>, 4> events;
