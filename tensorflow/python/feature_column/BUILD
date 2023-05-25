@@ -67,6 +67,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":feature_column",
+        ":feature_column_v2_types",
         ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
@@ -267,4 +268,10 @@ tf_py_strict_test(
         ":feature_column_v2",
         "//tensorflow/python:client_testlib",
     ],
+)
+
+py_strict_library(
+    name = "feature_column_v2_types",
+    srcs = ["feature_column_v2_types.py"],
+    deps = ["//tensorflow/python/util:tf_export"],
 )
