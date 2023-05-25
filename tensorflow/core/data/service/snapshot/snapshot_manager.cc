@@ -49,10 +49,6 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
-// The time for which an UNKNOWN stream should transition to ORPHAN if no worker
-// claims ownership of it via heartbeat.
-const absl::Duration kUnknownStreamTimeout = absl::Seconds(45);
-
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
   SnapshotManager* snapshot_manager = new SnapshotManager(request.path(), env);
