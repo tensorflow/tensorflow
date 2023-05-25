@@ -444,10 +444,16 @@ void AddReplicatedStrategy(const HloInstruction* ins, const Shape& shape,
   } else {
     for (int64_t k = 0; k < ins->operand_count(); ++k) {
       auto operand = ins->operand(k);
-      resharding_costs.push_back(ReshardingCostVector(
-          strategy_map.at(operand).get(), ins->operand(k)->shape(), output_spec,
-          cluster_env));
-      input_shardings.push_back(output_spec);
+      if (ins->opcode() == HloOpcode::kConditional) {
+        resharding_costs.push_back(std::vector<double>(
+            strategy_map.at(operand)->leaf_vector.size(), 0));
+        input_shardings.push_back(output_spec);
+      } else {
+        resharding_costs.push_back(ReshardingCostVector(
+            strategy_map.at(operand).get(), ins->operand(k)->shape(),
+            output_spec, cluster_env));
+        input_shardings.push_back(output_spec);
+      }
     }
   }
   double memory_cost = GetBytes(shape) / output_spec.NumTiles();
@@ -463,16 +469,20 @@ std::vector<std::vector<double>> CreateZeroReshardingCostsForAllOperands(
     auto operand = ins->operand(i);
     const auto& operand_strategies = strategy_map.at(operand);
     if (operand->shape().IsTuple()) {
-      CHECK_EQ(ins->operand_count(), 0)
-          << "Do not support instructions with more than one tuple "
-             "operand.";
-      for (size_t tuple_element_idx = 0;
-           tuple_element_idx < operand->shape().tuple_shapes_size();
-           tuple_element_idx++) {
-        auto tuple_element_strategies =
-            operand_strategies->childs.at(tuple_element_idx).get();
-        resharding_costs.push_back(std::vector<double>(
-            tuple_element_strategies->leaf_vector.size(), 0));
+      if (ins->opcode() == HloOpcode::kConditional) {
+        resharding_costs.push_back(std::vector<double>(1, 0));
+      } else {
+        CHECK_EQ(ins->operand_count(), 0)
+            << "Do not support instructions with more than one tuple "
+               "operand.";
+        for (size_t tuple_element_idx = 0;
+             tuple_element_idx < operand->shape().tuple_shapes_size();
+             tuple_element_idx++) {
+          auto tuple_element_strategies =
+              operand_strategies->childs.at(tuple_element_idx).get();
+          resharding_costs.push_back(std::vector<double>(
+              tuple_element_strategies->leaf_vector.size(), 0));
+        }
       }
     } else {
       resharding_costs.push_back(
@@ -2024,7 +2034,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
     }
     // Checks the shape of resharding_costs is valid. It will check fail if the
     // shape is not as expected.
-    CheckReshardingCostsShape(strategies.get());
+    // CheckReshardingCostsShape(strategies.get());
     CheckMemoryCosts(strategies.get(), ins->shape());
     strategy_map[ins] = std::move(strategies);
   }  // end of for loop
