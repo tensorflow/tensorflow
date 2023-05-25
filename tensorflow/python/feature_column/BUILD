@@ -14,6 +14,8 @@ py_strict_library(
     deps = [
         ":feature_column",
         ":feature_column_v2",
+        ":sequence_feature_column",
+        ":serialization",
     ],
 )
 
@@ -61,13 +63,14 @@ py_strict_library(
     name = "feature_column_v2",
     srcs = [
         "feature_column_v2.py",
-        "sequence_feature_column.py",
-        "serialization.py",
+        "sequence_feature_column.py",  # TODO(b/283983575): Remove this once references are updated.
+        "serialization.py",  # TODO(b/283983575): Remove this once references are updated.
     ],
     srcs_version = "PY3",
     deps = [
         ":feature_column",
         ":feature_column_v2_types",
+        ":serialization",
         ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
@@ -103,6 +106,44 @@ py_strict_library(
         "//tensorflow/tools/docs:doc_controls",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_strict_library(
+    name = "serialization",
+    srcs = [
+        "serialization.py",
+    ],
+    srcs_version = "PY3",
+    deps = [
+        ":feature_column_v2_types",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
+        "@six_archive//:six",
+    ],
+)
+
+py_strict_library(
+    name = "sequence_feature_column",
+    srcs = ["sequence_feature_column.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":feature_column_v2",
+        ":serialization",
+        ":utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+        "//tensorflow/tools/docs:doc_controls",
     ],
 )
 
@@ -188,6 +229,7 @@ py_strict_library(
     deps = [
         ":feature_column",
         ":feature_column_v2",
+        ":serialization",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -230,6 +272,8 @@ tf_py_strict_test(
     tags = ["no_oss"],  # Due to the usage of keras component.
     deps = [
         ":feature_column_v2",
+        ":sequence_feature_column",
+        ":serialization",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -254,6 +298,7 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":feature_column_v2",
+        ":sequence_feature_column",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:parsing_ops",
@@ -266,6 +311,7 @@ tf_py_strict_test(
     srcs = ["serialization_test.py"],
     deps = [
         ":feature_column_v2",
+        ":serialization",
         "//tensorflow/python:client_testlib",
     ],
 )

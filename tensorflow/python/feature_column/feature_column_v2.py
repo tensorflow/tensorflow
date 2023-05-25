@@ -136,6 +136,7 @@ from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2_types as fc_types
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -2147,6 +2148,7 @@ def _create_categorical_column_weighted_sum(column, transformation_cache,
 
 # TODO(b/181853833): Add a tf.type for instance type checking.
 @tf_export('__internal__.feature_column.SequenceDenseColumn', v1=[])
+@serialization.register_feature_column
 class SequenceDenseColumn(fc_types.FeatureColumn):
   """Represents dense sequence data."""
 
@@ -2409,6 +2411,7 @@ def _normalize_feature_columns(feature_columns):
   return sorted(feature_columns, key=lambda x: x.name)
 
 
+@serialization.register_feature_column
 class NumericColumn(
     DenseColumn,
     fc_old._DenseColumn,  # pylint: disable=protected-access
@@ -2517,7 +2520,6 @@ class NumericColumn(
   def get_config(self):
     """See 'FeatureColumn` base class."""
     config = dict(zip(self._fields, self))
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     config['normalizer_fn'] = serialization._serialize_keras_object(  # pylint: disable=protected-access
         self.normalizer_fn)
     config['dtype'] = self.dtype.name
@@ -2527,7 +2529,6 @@ class NumericColumn(
   def from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     kwargs = _standardize_and_copy_config(config)
     kwargs['normalizer_fn'] = serialization._deserialize_keras_object(  # pylint: disable=protected-access
         config['normalizer_fn'],
@@ -2537,6 +2538,7 @@ class NumericColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class BucketizedColumn(
     DenseColumn,
     CategoricalColumn,
@@ -2693,6 +2695,7 @@ class BucketizedColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class EmbeddingColumn(
     DenseColumn,
     SequenceDenseColumn,
@@ -2940,7 +2943,6 @@ class EmbeddingColumn(
 
   def get_config(self):
     """See 'FeatureColumn` base class."""
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     config = dict(zip(self._fields, self))
     config['categorical_column'] = serialization.serialize_feature_column(
         self.categorical_column)
@@ -2953,7 +2955,6 @@ class EmbeddingColumn(
     """See 'FeatureColumn` base class."""
     if 'use_safe_embedding_lookup' not in config:
       config['use_safe_embedding_lookup'] = True
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
     kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = serialization.deserialize_feature_column(
@@ -3025,6 +3026,7 @@ class SharedEmbeddingColumnCreator(autotrackable.AutoTrackable):
     return self._dimension
 
 
+@serialization.register_feature_column
 class SharedEmbeddingColumn(
     DenseColumn,
     SequenceDenseColumn,
@@ -3178,6 +3180,7 @@ def _check_shape(shape, key):
   return shape
 
 
+@serialization.register_feature_column
 class HashedCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3289,6 +3292,7 @@ class HashedCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class VocabularyFileCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3450,6 +3454,7 @@ class VocabularyFileCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class VocabularyListCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3571,6 +3576,7 @@ class VocabularyListCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class IdentityCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3680,6 +3686,7 @@ class IdentityCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class WeightedCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3808,6 +3815,7 @@ class WeightedCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class CrossedColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3993,6 +4001,7 @@ def _prune_invalid_weights(sparse_ids, sparse_weights):
   return sparse_ids, sparse_weights
 
 
+@serialization.register_feature_column
 class IndicatorColumn(
     DenseColumn,
     SequenceDenseColumn,
@@ -4248,6 +4257,7 @@ def _verify_static_batch_size_equality(tensors, columns):
                 expected_batch_size, batch_size))
 
 
+@serialization.register_feature_column
 class SequenceCategoricalColumn(
     CategoricalColumn,
     fc_old._SequenceCategoricalColumn,  # pylint: disable=protected-access
