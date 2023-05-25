@@ -832,7 +832,7 @@ module @jit_fun_flat_jax {
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
     %0 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {
-      tf.backend_config = {caller_name = "foo"}
+      tf.backend_config = {called_index = 0}
     } : (tensor<i32>, tensor<i32>) -> tensor<i32>
     return %0 : tensor<i32>
   }
@@ -865,7 +865,7 @@ module @jit_fun_flat_jax {
   func.func public @main(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
     %0 = stablehlo.get_dimension_size %arg0, dim = 0 : (tensor<?xi32>) -> tensor<i32>
     %1 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %0) {
-      tf.backend_config = {caller_name = "foo"},
+      tf.backend_config = {called_index = 0},
       indices_of_shape_operands = dense<[2]> : tensor<1xi64>
     } : (tensor<?xi32>, tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
     return %1 : tensor<?xi32>
@@ -898,7 +898,7 @@ module @jit_fun_flat_jax {
 module @jit_fun_flat_jax {
   func.func public @main(%arg0: !stablehlo.token, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (!stablehlo.token, tensor<i32>) {
     %0:2 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %arg2) {
-      tf.backend_config = {caller_name = "foo", has_token_input_output = true}
+      tf.backend_config = {called_index = 0, has_token_input_output = true}
     } : (!stablehlo.token, tensor<i32>, tensor<i32>) -> (!stablehlo.token, tensor<i32>)
     return %0#0, %0#1 : !stablehlo.token, tensor<i32>
   }

@@ -185,11 +185,8 @@ class XlaCallModuleOp : public XlaOpKernel {
     }
     OP_REQUIRES_OK(ctx, loader_->ValidateDialect());
 
-    if (std::vector<NameAttrList> function_list;
-        ctx->GetAttr("function_list", &function_list).ok()) {
-      has_tf_functions_ = !function_list.empty();
-    } else {
-      has_tf_functions_ = false;
+    if (!ctx->GetAttr("function_list", &function_list_).ok()) {
+      function_list_.clear();
     }
 
     if (!ctx->GetAttr("has_token_input_output", &module_has_token_input_output_)
@@ -225,7 +222,7 @@ class XlaCallModuleOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
     OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
     OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
-    if (has_tf_functions_) {
+    if (!function_list_.empty()) {
       OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));
     }
 
@@ -339,16 +336,21 @@ class XlaCallModuleOp : public XlaOpKernel {
               "attribute");
         }
 
-        auto caller_name =
-            backend_config.getAs<mlir::StringAttr>("caller_name");
-        if (!caller_name) {
+        auto called_index =
+            backend_config.getAs<mlir::IntegerAttr>("called_index");
+        if (!called_index) {
           return absl::InternalError(
-              "TF function custom call must have 'caller_name' in the "
+              "TF function custom call must have 'called_index' in the "
               "'tf.backend_config' attribute");
         }
 
-        // Parse the corresponding TF function name from the attributes.
-        f.set_name(caller_name.getValue().str());
+        int index = called_index.getInt();
+        if (index < 0 || index >= function_list_.size()) {
+          return absl::OutOfRangeError(absl::StrCat(
+              "XlaCallModule has function_list of size ", function_list_.size(),
+              " but TF function custom call references function #", index));
+        }
+        f = function_list_[index];
 
         // Whether the custom call takes a token argument and returns another
         // token. Used to model side effects.
@@ -489,7 +491,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
   std::unique_ptr<XlaCallModuleLoader> loader_;
-  bool has_tf_functions_;
+  std::vector<NameAttrList> function_list_;
 
   // Whether the StableHLO module's main function has token input/output.
   bool module_has_token_input_output_;
