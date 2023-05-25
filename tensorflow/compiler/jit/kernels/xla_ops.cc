@@ -454,8 +454,9 @@ Status CompileToPjRtLoadedExecutable(
 
   *client = pjrt_device_compiler->client();
 
-  XlaCompiler::Options options = GenerateCompilerOptionsForPjRt(
-      *ctx.function_library(), ctx.device(), platform_info);
+  XlaCompiler::Options options =
+      GenerateCompilerOptionsForPjRt(*ctx.function_library(), ctx.device(),
+                                     platform_info, pjrt_device_compiler);
 
   XlaCompiler::CompileOptions compile_options =
       GenerateCompileOptions(has_ref_vars, may_alias_resource_update);
