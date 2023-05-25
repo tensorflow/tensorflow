@@ -356,6 +356,9 @@ tf_py_strict_test(
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
+    tags = [
+        "nomac",  # b/284304023
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
