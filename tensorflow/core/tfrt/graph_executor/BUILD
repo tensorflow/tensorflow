@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -11,6 +11,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//learning/brain/tfrt/support/...",
         "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/...",
     ],
@@ -38,6 +39,7 @@ cc_library(
     hdrs = ["graph_executor.h"],
     tags = ["no_oss"],
     deps = [
+        ":export_mlir",
         ":graph_execution_options",
         ":sync_resource_state",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:import_model",
@@ -91,7 +93,11 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
-    ],
+    ] + if_google(
+        [
+            "//learning/brain/tfrt/support:export_mlir",
+        ],
+    ),
 )
 
 tf_cc_test(
@@ -205,5 +211,14 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@tf_runtime//:tensor",
+    ],
+)
+
+cc_library(
+    name = "export_mlir",
+    hdrs = ["export_mlir.h"],
+    deps = [
+        "//tensorflow/core/platform:statusor",
+        "@llvm-project//mlir:IR",
     ],
 )
