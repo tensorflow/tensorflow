@@ -1144,10 +1144,7 @@ cuda_py_test(
 
 py_library(
     name = "array_ops",
-    srcs = [
-        "ops/array_ops.py",
-        "ops/inplace_ops.py",
-    ],
+    srcs = ["ops/array_ops.py"],
     srcs_version = "PY3",
     visibility = visibility,
     deps = [
@@ -1186,6 +1183,20 @@ py_library(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_library(
+    name = "inplace_ops",
+    srcs = ["ops/inplace_ops.py"],
+    srcs_version = "PY3",
+    deps = [
+        ":array_ops",
+        ":array_ops_gen",
+        ":math_ops",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/util:deprecation",
     ],
 )
 
@@ -1785,6 +1796,7 @@ py_library(
         ":array_ops",
         ":ctc_ops_gen",
         ":functional_ops",
+        ":inplace_ops",
         ":nn_grad",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",

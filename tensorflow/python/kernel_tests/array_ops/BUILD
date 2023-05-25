@@ -445,6 +445,7 @@ cuda_py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:inplace_ops",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//third_party/py/numpy",
