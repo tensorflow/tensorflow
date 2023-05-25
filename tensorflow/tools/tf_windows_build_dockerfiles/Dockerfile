@@ -1,7 +1,7 @@
 # This Dockerfile creates an image that:
 # - Has the correct MTU setting for networking from inside the container to work.
 # - Has Visual Studio 2019 Build Tools installed.
-# - Has MSVC 14.29 and clang 16.0.4 installed
+# - Has MSVC 14.29 and clang 14.0 installed
 # - Has msys2 + git, curl, zip, unzip installed.
 # - Has Python 3.11 installed.
 # - Has Bazelisk v1.16.0 installed.
@@ -47,32 +47,31 @@ RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.msys -Value 'SigLe
 # Install pacman packages.
 RUN C:\tools\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -Syy git curl zip unzip patch'
 
-# Install Python 3.11.1
-ENV PYTHON_VERSION 3.11.1
+# Install Python (specified by ARG PYTHON_VERSION)
+ARG PYTHON_VERSION
+ENV PYTHON_DIR=C:\\python
+
+SHELL ["powershell", "-Command", "$env:PYTHON_VERSION_SHORT = $env:PYTHON_VERSION.Replace('.', '');"];
+RUN $TargetDirPython = $Env:PYTHON_DIR + $Env:PYTHON_VERSION_SHORT; \
+    Write-Host $TargetDirPython
+
 RUN $url = ('https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe' -f $env:PYTHON_VERSION); \
-	Write-Host ('Downloading {0} ...' -f $url); \
-	[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
+    Write-Host ('Downloading {0} ...' -f $url); \
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
 	(New-Object Net.WebClient).DownloadFile($url, 'C:\tmp\pyinstall.exe'); \
-	\
-	Write-Host 'Installing...'; \
-        Start-Process -FilePath \"C:\tmp\pyinstall.exe\" -ArgumentList '/quiet InstallAllUsers=1 PrependPath=1 TargetDir=C:\Python311' -Wait; \
-	\
-	Write-Host 'Verifying install ...'; \
-	Write-Host '  python --version'; C:\Python311\python.exe --version; \
-	\
-	Write-Host 'Verifying pip install ...'; \
-	C:\Python311\python.exe -m pip --version; \
-	\
-	Write-Host 'Removing ...'; \
-	Remove-Item C:\tmp\pyinstall.exe -Force; \
-	\
-	Write-Host 'Complete.';
+    \
+    Write-Host 'Installing...'; \
+	Start-Process -FilePath "C:\tmp\pyinstall.exe" -ArgumentList "/quiet", "InstallAllUsers=1", "PrependPath=1", "TargetDir=$TargetDirPython" -Wait; \
+    \
+    Write-Host 'Removing ...'; \
+    Remove-Item C:\tmp\pyinstall.exe -Force; \
+    Write-Host 'Complete.';
+	
+RUN Write-Host '  python --version';& "python.exe" --version;
+
 # Install the pip packages
-RUN C:\Python311\python.exe -m pip install --ignore-installed --force-reinstall --upgrade \
-    setuptools packaging\
-    pyreadline tf-estimator-nightly tb-nightly backports.weakref==1.0rc1 \
-    protobuf absl-py portpicker gast termcolor astor h5py numpy \
-    scipy keras-nightly
+COPY devel.requirements.txt C:\\tmp\\devel.requirements.txt
+RUN & "python.exe" -m pip install --ignore-installed --force-reinstall --upgrade -r 'C:\tmp\devel.requirements.txt'
 	
 RUN \
   Add-Type -AssemblyName \"System.IO.Compression.FileSystem\"; \
