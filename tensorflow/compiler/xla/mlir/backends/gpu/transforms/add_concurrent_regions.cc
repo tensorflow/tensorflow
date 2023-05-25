@@ -163,7 +163,6 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
     buffer_uses.clear();
   };
 
-  auto launch_func_ops = llvm::to_vector(capture_func.getOps<LaunchFuncOp>());
   auto operations = capture_func.getOps();
   for (auto& operation : operations) {
     // TODO(anlunx): Support other ops.
@@ -238,7 +237,6 @@ void AddConcurrentRegionsPass::runOnOperation() {
     // Find the cuda graph capture function.
     if (absl::StrContains(func_op.getSymNameAttr().str(),
                           "xla.gpu.cuda.graph.capture")) {
-      auto region_start_and_end = GetRegionStartAndEnd(func_op);
       InsertConcurrentRegions(func_op, custom_calls);
     }
   }
