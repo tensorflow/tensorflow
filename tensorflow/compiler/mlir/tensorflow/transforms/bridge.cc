@@ -430,6 +430,12 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   // Decompose resource ops.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
+  // TODO(b/267193636): Remove this flag when outside compilation
+  // for generic pipeline is landed.
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  }
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
   // from While/WhileRegion ops within cluster would lead to more precise
