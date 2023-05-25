@@ -21204,7 +21204,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     TF_ShapeAttrArray:$Sout,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
-    DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list
+    DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output
   );
 
   let results = (outs

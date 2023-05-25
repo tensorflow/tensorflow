@@ -1326,6 +1326,7 @@ REGISTER_OP("XlaCallModule")
     .Attr("dim_args_spec: list(string) = []")
     .Attr("platforms: list(string) = []")
     .Attr("function_list: list(func) = []")
+    .Attr("has_token_input_output: bool = false")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
@@ -1392,6 +1393,10 @@ function_list: This list contains the TensorFlow FunctionDefs that are used by
   operations, they can call TensorFlow graph functions outside of the
   XLACallModule. This `function_list` attribute registers the dependency of the
   XLACallModule on those functions. This attribute was added in version 5.
+has_token_input_output: If true, the embedded StableHLO module's main function
+  must take a `!stablehlo.token` as its first argument and returns a token as
+  its first result. This can be used in conjunction with the TF2XLA's side
+  effect mechanism in order to model side effects.
 )doc");
 
 }  // namespace

@@ -88,6 +88,31 @@ module @jit_f.0 {
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
 
+  def test_basic_with_token(self):
+    x = np.array([1.0, 2.0, 3.0], dtype=np.float32)
+
+    def f(x):
+      # sin(cos(x))
+      module, version = serialize("""
+module @jit_f.0 {
+  func.func public @main(%arg0: !stablehlo.token, %arg1: tensor<3xf32>) -> (!stablehlo.token, tensor<3xf32>) {
+    %0 = stablehlo.cosine %arg1 : tensor<3xf32>
+    %1 = stablehlo.sine %0 : tensor<3xf32>
+    return %arg0, %1 : !stablehlo.token, tensor<3xf32>
+  }
+}
+""")
+      return xla.call_module(
+          [x],
+          version=version,
+          module=module,
+          Tout=[x.dtype],
+          Sout=[x.shape],
+          has_token_input_output=True,
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
+
   def test_compare(self):
     x = np.uint32(2)
     res = np.bool_(True)
@@ -854,6 +879,39 @@ module @jit_fun_flat_jax {
           Tout=[res.dtype],
           Sout=[res.shape],
           function_list=(foo,),
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x, y), (res,))
+
+  def test_tf_call_function_with_token(self):
+    """A TensorFlow function call inside StableHLO."""
+    x = np.int32(2)
+    y = np.int32(3)
+    res = x + y
+
+    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    def foo(x, y):
+      return x + y
+
+    def f(x, y):
+      module, version = serialize("""
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: !stablehlo.token, %arg1: tensor<i32>, %arg2: tensor<i32>) -> (!stablehlo.token, tensor<i32>) {
+    %0:2 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %arg2) {
+      tf.backend_config = {caller_name = "foo", has_token_input_output = true}
+    } : (!stablehlo.token, tensor<i32>, tensor<i32>) -> (!stablehlo.token, tensor<i32>)
+    return %0#0, %0#1 : !stablehlo.token, tensor<i32>
+  }
+}
+""")
+      return xla.call_module(
+          [x, y],
+          version=version,
+          module=module,
+          Tout=[res.dtype],
+          Sout=[res.shape],
+          function_list=(foo,),
+          has_token_input_output=True,
       )
 
     self._assertOpOutputMatchesExpected(f, (x, y), (res,))

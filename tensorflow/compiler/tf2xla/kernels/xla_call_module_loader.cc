@@ -316,44 +316,48 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   std::vector<mlir::Type> static_array_input_types(non_dimension_arguments);
   for (int i = 0, end = non_dimension_arguments; i < end; ++i) {
     const xla::Shape &xla_shape = input_shapes[i];
-    std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
-                                        xla_shape.dimensions().end());
-    TF_ASSIGN_OR_RETURN(
-        mlir::Type element_type,
-        ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
-    mlir::RankedTensorType type =
-        mlir::RankedTensorType::get(xla_dimensions, element_type);
-    // TODO(burmako): This fails with an obscure compilation error.
-    // TF_ASSIGN_OR_RETURN(
-    //     mlir::Type type,
-    //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
-    VLOG(3) << "XlaCallModule static array input type #" << i << ": "
-            << mlir::debugString(type);
-    mlir::TensorType arg_type =
-        main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
-    if (arg_type == nullptr) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Argument ", i, " passed to XlaCallModule is not a tensor"));
-    }
-
-    if (arg_type.getElementType() != type.getElementType()) {
-      return absl::InvalidArgumentError(absl::StrCat(
-          "Element type mismatch for argument ", i,
-          " passed to XlaCallModule: ", "expecting ",
-          mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
-    }
-
-    if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
-      if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
-                                                   type.getShape()))) {
+    if (xla_shape.IsToken()) {
+      static_array_input_types[i] = mlir::stablehlo::TokenType::get(context_);
+    } else {
+      std::vector<int64_t> xla_dimensions(xla_shape.dimensions().begin(),
+                                          xla_shape.dimensions().end());
+      TF_ASSIGN_OR_RETURN(
+          mlir::Type element_type,
+          ConvertPrimitiveTypeToMLIRType(xla_shape.element_type(), builder));
+      mlir::RankedTensorType type =
+          mlir::RankedTensorType::get(xla_dimensions, element_type);
+      // TODO(burmako): This fails with an obscure compilation error.
+      // TF_ASSIGN_OR_RETURN(
+      //     mlir::Type type,
+      //     ConvertShapeToType<mlir::RankedTensorType>(xla_shape, builder));
+      VLOG(3) << "XlaCallModule static array input type #" << i << ": "
+              << mlir::debugString(type);
+      mlir::TensorType arg_type =
+          main_body.getArgument(i).getType().dyn_cast<mlir::TensorType>();
+      if (arg_type == nullptr) {
         return absl::InvalidArgumentError(absl::StrCat(
-            "Shape mismatch for argument ", i,
+            "Argument ", i, " passed to XlaCallModule is not a tensor"));
+      }
+
+      if (arg_type.getElementType() != type.getElementType()) {
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Element type mismatch for argument ", i,
             " passed to XlaCallModule: ", "expecting ",
             mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
       }
-    }
 
-    static_array_input_types[i] = type;
+      if (auto ranked_arg_type = arg_type.dyn_cast<mlir::RankedTensorType>()) {
+        if (mlir::failed(mlir::verifyCompatibleShape(ranked_arg_type.getShape(),
+                                                     type.getShape()))) {
+          return absl::InvalidArgumentError(absl::StrCat(
+              "Shape mismatch for argument ", i,
+              " passed to XlaCallModule: ", "expecting ",
+              mlir::debugString(arg_type), ", got ", mlir::debugString(type)));
+        }
+      }
+
+      static_array_input_types[i] = type;
+    }
   }
 
   // Refine 'main' argument types to use static input types instead.
