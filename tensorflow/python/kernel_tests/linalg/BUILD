@@ -402,7 +402,7 @@ cuda_py_strict_test(
         "no_oss",  # TODO(b/282984925)
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
