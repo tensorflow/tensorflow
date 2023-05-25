@@ -994,27 +994,40 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   int ops_num = custom_call->operand_count();
-  TF_RET_CHECK(ops_num == 7 || ops_num == 8);
-
+  TF_RET_CHECK(ops_num == 6 || ops_num == 7 || ops_num == 8);
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
       xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   bool has_damax = custom_call->shape().IsTuple();
+  bool has_matrix_bias = config.beta() != 0.;
   xla::ShapeIndex output_index =
       has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
   llvm::SmallVector<Value, 10> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(3), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+
+  int a_scale_index = has_matrix_bias ? 3 : 2;
+  if (has_matrix_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  } else {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  }
+
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index), &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index + 1), &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index + 2), &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index + 3), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+
   if (has_vector_bias) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(7), &operands));
+    TF_RETURN_IF_ERROR(
+        GetOrCreateView(custom_call->operand(a_scale_index + 4), &operands));
   }
   if (has_damax) {
     TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));
