@@ -1358,6 +1358,7 @@ StatusOr<bool> ProcessShardingInstruction(
       }
       TF_RET_CHECK(instruction->has_sharding())
           << "Sharding instruction must have a sharding attribute";
+      VLOG(3) << "ProcessShardingInstruction: " << instruction->ToString();
       const HloSharding& sharding = instruction->sharding();
 
       std::vector<int64_t> unspec_dims;
