@@ -14,22 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/logging.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
@@ -57,7 +57,6 @@ limitations under the License.
 #include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
-#include "tfrt/support/pointer_util.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
@@ -75,11 +74,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
 using ::tfrt::RCReference;
 using ::tfrt::string_view;
-
-constexpr char kOpKernelRunnerTableResourceName[] =
-    "OpKernelRunnerTableResourceName";
-
-constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
 
 void KernelFallbackEmitError(
     const tfrt::ExecutionContext& exec_ctx,
@@ -259,14 +253,6 @@ static void KernelFallbackExecuteCompatSyncInternal(
   }
 
   if (op_chain) *op_chain = tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
-}
-
-static std::string PrintTfrtOpAttrsToString(const tfrt::OpAttrsRef& attrs) {
-  std::string str;
-  llvm::raw_string_ostream ss(str);
-  attrs.Print(ss);
-  ss.flush();
-  return str;
 }
 
 tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
