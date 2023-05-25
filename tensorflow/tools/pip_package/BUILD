@@ -194,6 +194,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
     "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
+    "//tensorflow/python/util:pywrap_xla_ops",
     "//tensorflow:tensorflow_py",
 ]
 
