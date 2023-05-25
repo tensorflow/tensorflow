@@ -190,11 +190,11 @@ StatusOr<Shape> MakeShapeWithDenseLayout(
 //      .transpose(transpose_perm).reshape(math.prod(dims))
 // where:
 // `dims`: is the dimensions of the tile assignment array, which corresponds to
-// OpSharding.tile_assignment_dimensions.
+//   OpSharding.tile_assignment_dimensions.
 // `reshape_dims`: is the dimensions the 1D iota array is reshaped to.
 // `transpose_perm`: is the dimension permutation to transpose `reshape_dims`.
-// `replicate_last_dim`: indicates whether the last dimension in `dims` is a
-//     replicated dimension.
+// `subgroup_types`: indicates the subgroups of the last `subgroup_types.size()`
+//   dimensions in `dims`.
 //
 // In practice, `reshape_dims` often maps to the axises of user defined device
 // mesh, and `transpose_perm` often maps to the user specification of how a
@@ -204,10 +204,10 @@ StatusOr<Shape> MakeShapeWithDenseLayout(
 // transpose_perm=[0,1,2] (no transpose)
 // PartitionSpec('B', 'A', 'C') corresponds to reshape_dims=[4,2,2],
 // transpose_perm=[1,0,2] (swap A and B)
-StatusOr<HloSharding> IotaTileHelper(absl::Span<const int64_t> dims,
-                                     absl::Span<const int64_t> reshape_dims,
-                                     absl::Span<const int> transpose_perm,
-                                     bool replicate_last_dim) {
+StatusOr<HloSharding> IotaTileHelper(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm,
+    absl::Span<const OpSharding::Type> subgroup_types) {
   if (dims.empty()) {
     return InvalidArgument("`dims` should not be empty.");
   }
@@ -222,6 +222,12 @@ StatusOr<HloSharding> IotaTileHelper(absl::Span<const int64_t> dims,
         "Cannot reshape from `dims` [%s] to `reshape_dims` [%s].",
         absl::StrJoin(dims, ","), absl::StrJoin(reshape_dims, ","));
   }
+  if (subgroup_types.size() > dims.size()) {
+    return InvalidArgument(
+        "`subgroup_types`(%lld) should not have more dimensions than "
+        "`dims`(%lld).",
+        subgroup_types.size(), dims.size());
+  }
   auto make_assignment = [&] {
     if (reshape_dims.empty() && transpose_perm.empty()) {
       Array<int64_t> assignment(dims);
@@ -234,8 +240,9 @@ StatusOr<HloSharding> IotaTileHelper(absl::Span<const int64_t> dims,
     assignment.Reshape(dims);
     return assignment;
   };
-  return replicate_last_dim ? HloSharding::PartialTile(make_assignment())
-                            : HloSharding::Tile(make_assignment());
+  return subgroup_types.empty()
+             ? HloSharding::Tile(make_assignment())
+             : HloSharding::Subgroup(make_assignment(), subgroup_types);
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.
@@ -1032,11 +1039,12 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             return HloSharding::Tuple(shape, shardings);
           },
           "Constructs a tuple sharding.")
-      .def_static("iota_tile", xla::ValueOrThrowWrapper(IotaTileHelper),
-                  py::arg("dims"),
-                  py::arg("reshape_dims") = absl::Span<const int64_t>(),
-                  py::arg("transpose_perm") = absl::Span<const int>(),
-                  py::arg("replicate_last_dim") = false)
+      .def_static(
+          "iota_tile", xla::ValueOrThrowWrapper(IotaTileHelper),
+          py::arg("dims"),
+          py::arg("reshape_dims") = absl::Span<const int64_t>(),
+          py::arg("transpose_perm") = absl::Span<const int>(),
+          py::arg("subgroup_types") = absl::Span<const xla::OpSharding::Type>())
       .def_static("manual", [] { return HloSharding::Manual(); })
       .def_static("replicate", [] { return HloSharding::Replicate(); })
       .def("__eq__", [](const xla::HloSharding& a,
@@ -1045,10 +1053,31 @@ void BuildXlaCompilerSubmodule(py::module& m) {
            [](const xla::HloSharding& self) { return absl::HashOf(self); })
       .def("is_replicated", &xla::HloSharding::IsReplicated)
       .def("is_manual", &xla::HloSharding::IsManual)
+      .def("is_tiled", &xla::HloSharding::IsTiled)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
       .def("tuple_elements",
            [](const xla::HloSharding& self) { return self.tuple_elements(); })
+      .def("num_devices",
+           [](const xla::HloSharding& self) {
+             return self.tile_assignment().num_elements();
+           })
+      .def("num_dimensions",
+           [](const xla::HloSharding& self) {
+             return self.tile_assignment().num_dimensions();
+           })
+      .def("tile_assignment_dimensions",
+           [](const xla::HloSharding& self) {
+             return self.tile_assignment().dimensions();
+           })
+      .def("tile_assignment_devices",
+           [](const xla::HloSharding& self) {
+             return absl::MakeConstSpan(self.tile_assignment().data(),
+                                        self.tile_assignment().num_elements());
+           })
+      .def("replicate_on_last_tile_dim",
+           &xla::HloSharding::ReplicateOnLastTileDim)
+      .def("subgroup_types", &xla::HloSharding::subgroup_types)
       .def("__repr__",
            [](const xla::HloSharding& self) { return self.ToString(); })
       .def("to_proto", &xla::HloSharding::ToProto);
