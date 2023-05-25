@@ -246,6 +246,8 @@ py_library(
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/linalg/sparse:sparse_py",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/numpy_ops:np_config",
+        "//tensorflow/python/ops/numpy_ops:np_random",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",
@@ -2746,6 +2748,7 @@ py_library(
     deps = [
         ":array_ops",
         ":script_ops_gen",
+        ":sort_ops",
         "//tensorflow/python/autograph/operators:py_builtins",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:backprop_util",
