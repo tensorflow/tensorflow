@@ -135,22 +135,6 @@ diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/d
  LogicalResult inferTransposeOp(std::optional<Location> loc, Value operand,
                                 DenseIntElementsAttr permutation,
                                 SmallVectorImpl<Type>& inferredReturnTypes);
-diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
---- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-+++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-@@ -17,3 +17,12 @@
- # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
- from ._stablehlo_ops_gen import *
- from .._mlir_libs._stablehlo import *
-+
-+
-+def get_earliest_forward_compatible_version():
-+  """Return the earliest StableHLO version that the current StableHLO version
-+    is still forward compatible with.
-+  """
-+  # TODO(b/282232437): Delete this TensorFlow-only API, now that we have an OSS
-+  # equivalent that does the same thing.
-+  return get_minimum_version()
 diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
 --- stablehlo/stablehlo/tests/ops_chlo.mlir
 +++ stablehlo/stablehlo/tests/ops_chlo.mlir
