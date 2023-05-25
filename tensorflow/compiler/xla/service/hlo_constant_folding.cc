@@ -107,14 +107,15 @@ StatusOr<bool> HloConstantFolding::Run(
       //  - So the only remaining case is where some but not all operands are
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
-      if (!absl::c_any_of(instruction->operands(),
-                          HloPredicateIsOp<HloOpcode::kConstant>) ||
-          !absl::c_all_of(
-              instruction->operands(), [](const HloInstruction* operand) {
-                return operand->opcode() == HloOpcode::kConstant ||
-                       (operand->opcode() == HloOpcode::kBroadcast &&
-                        operand->operand(0)->opcode() == HloOpcode::kConstant);
-              })) {
+      if (!instruction->operands().empty() &&
+          (!absl::c_any_of(instruction->operands(),
+                           HloPredicateIsOp<HloOpcode::kConstant>) ||
+           !absl::c_all_of(
+               instruction->operands(), [](const HloInstruction* operand) {
+                 return operand->opcode() == HloOpcode::kConstant ||
+                        (operand->opcode() == HloOpcode::kBroadcast &&
+                         operand->operand(0)->opcode() == HloOpcode::kConstant);
+               }))) {
         continue;
       }
 
@@ -138,28 +139,36 @@ StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
-      // Don't fold across async execution thread if it's not supposed to be
-      // changed by this pass.
-      if (instruction->IsAsynchronous() &&
-          instruction->async_execution_thread() !=
-              instruction->parent()->execution_thread()) {
-        continue;
-      }
+      auto is_ok_to_fold = [](const HloInstruction* instruction) {
+        // Don't fold across async execution thread if it's not supposed to be
+        // changed by this pass.
+        if (instruction->IsAsynchronous() &&
+            instruction->async_execution_thread() !=
+                instruction->parent()->execution_thread()) {
+          return false;
+        }
 
-      // Do not fold FFT. Evaluating it may significantly increase compile time.
-      if (instruction->opcode() == HloOpcode::kFft) {
-        continue;
-      }
+        // Do not fold FFT. Evaluating it may significantly increase compile
+        // time.
+        if (instruction->opcode() == HloOpcode::kFft) {
+          return false;
+        }
 
-      // Check for instructions that we can't fold even if they appear inside of
-      // a subcomputation (e.g. a kCall).
-      if (IsOrContainsIllegalInstr(instruction)) {
-        continue;
-      }
+        // Check for instructions that we can't fold even if they appear inside
+        // of a subcomputation (e.g. a kCall).
+        if (IsOrContainsIllegalInstr(instruction)) {
+          return false;
+        }
 
-      // Don't constant-fold side-effecting instructions or instructions which
-      // contain side-effecting instructions.
-      if (instruction->HasSideEffect()) {
+        // Don't constant-fold side-effecting instructions or instructions which
+        // contain side-effecting instructions.
+        if (instruction->HasSideEffect()) {
+          return false;
+        }
+        return true;
+      };
+
+      if (!is_ok_to_fold(instruction)) {
         continue;
       }
 
@@ -180,6 +189,17 @@ StatusOr<bool> HloConstantFolding::Run(
             kMaximumConstantSizeElements) {
           continue;
         }
+      }
+
+      // We do not constant-fold iotas or broadcasts, so therefore we can get
+      // fusions that have no input elements so, they can be constant-folded.
+      // Before folding fusions we need to check that all instructions pass
+      // instruction_check.
+      if (instruction->opcode() == HloOpcode::kFusion &&
+          !absl::c_all_of(
+              instruction->fused_instructions_computation()->instructions(),
+              is_ok_to_fold)) {
+        continue;
       }
 
       VLOG(5) << "Constant folding: " << instruction->ToString();
