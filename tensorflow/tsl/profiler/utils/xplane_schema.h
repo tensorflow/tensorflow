@@ -244,6 +244,7 @@ enum StatType {
   kTfFunctionTracingCount,
   kFlops,
   kBytesAccessed,
+  kMemoryAccessBreakdown,
   kSourceInfo,
   kModelName,
   kModelVersion,
