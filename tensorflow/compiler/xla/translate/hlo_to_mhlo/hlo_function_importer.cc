@@ -161,6 +161,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   function.setPrivate();
   auto async_builder = mlir::OpBuilder(function.getBody());
 
+  llvm::SmallVector<mlir::NamedAttribute> async_attributes;
+  async_attributes.push_back(builder_->getNamedAttr(
+      "called_computation", mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                                         function.getName())));
+  async_attributes.push_back(builder_->getNamedAttr(
+      "execution_thread", builder_->getStringAttr("main")));
+
+  // Attach the frontend_attributes and sharding attributes to the async op
+  // instead of the sync op. First, semantically sharding attributes cannot be
+  // attached to the sync op since the sync op may not produce the same number
+  // of results as the sharding's tuple element count, e.g., `mhlo.send` vs. HLO
+  // `send`. Second, `mlir_hlo_to_hlo.cc` imports these attributes from the
+  // `mhlo.async_start` ops, so attaching them to the sync op will make them
+  // disappear during MHLO to HLO lowering.
+  for (auto it = attributes.begin(); it != attributes.end();) {
+    if (it->getName() == kShardingAttr ||
+        it->getName() == kFrontendAttributesAttr) {
+      async_attributes.push_back(*it);
+      it = attributes.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   llvm::SmallVector<mlir::Location, 1> locs(Untuple(result_types[0]).size(),
                                             loc);
   auto sync_operand =
@@ -172,12 +196,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
-  llvm::SmallVector<mlir::NamedAttribute> async_attributes;
-  async_attributes.push_back(builder_->getNamedAttr(
-      "called_computation", mlir::FlatSymbolRefAttr::get(builder_->getContext(),
-                                                         function.getName())));
-  async_attributes.push_back(builder_->getNamedAttr(
-      "execution_thread", builder_->getStringAttr("main")));
   function->setAttr("execution_thread", builder_->getStringAttr("main"));
 
   auto bundle_result_type =
