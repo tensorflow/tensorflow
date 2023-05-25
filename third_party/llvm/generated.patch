@@ -1,1 +1,23 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/BUILD.bazel
+@@ -36,7 +36,6 @@
+         "#cmakedefine01 MLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS": "#define MLIR_ENABLE_EXPENSIVE_PATTERN_API_CHECKS 0"
+         },
+     template = "include/mlir/Config/mlir-config.h.cmake",
+-    visibility = ["//visibility:private"],
+ )
+ 
+ cc_library(
+diff -ruN --strip-trailing-cr a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+--- a/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
++++ b/utils/bazel/llvm-project-overlay/mlir/python/BUILD.bazel
+@@ -953,6 +953,7 @@
+         "mlir/dialects/_loop_transform_ops_ext.py",
+         "mlir/dialects/_structured_transform_ops_ext.py",
+         "mlir/dialects/_transform_ops_ext.py",
++        "mlir/dialects/_transform_pdl_extension_ops_ext.py",
+         ":LoopTransformOpsPyGen",
+         ":PDLTransformOpsPyGen",
+         ":StructuredTransformOpsPyGen",
