@@ -3450,11 +3450,41 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
         loc, permutation_and_shape.shape, operands[0],
         permutation_and_shape.permutation);
 
+    Value new_indices = indices;
+    int64_t index_depth =
+        permutation_and_shape.shape.getRank() - inserted_window_dims.size();
+    int64_t num_updates = indices_type.getDimSize(0);
+    // For TF::TensorScatterUpdateOp, `indices` must have at least 2 axes:
+    // `(num_updates, index_depth)`. Reshape indices and updates if necessary.
+    if (std::is_same<TfOp, TF::TensorScatterUpdateOp>::value &&
+        indices_type.getRank() == 1 && updates_type.getRank() == 1 &&
+        index_depth == 1 && num_updates == 1) {
+      ImplicitLocOpBuilder builder(loc, rewriter);
+      auto indices_shape = BuildIntArrayConstOp(
+          builder, rewriter,
+          llvm::SmallVector<int64_t>({num_updates, index_depth}),
+          rewriter.getI32Type());
+      new_indices = rewriter.create<ReshapeOp>(
+          loc,
+          RankedTensorType::get({num_updates, index_depth},
+                                indices_type.getElementType()),
+          indices, indices_shape);
+      auto updates_shape = BuildIntArrayConstOp(
+          builder, rewriter,
+          llvm::SmallVector<int64_t>({num_updates, updates_type.getDimSize(0)}),
+          rewriter.getI32Type());
+      new_updates = rewriter.create<ReshapeOp>(
+          loc,
+          RankedTensorType::get({1, updates_type.getDimSize(0)},
+                                updates_type.getElementType()),
+          new_updates, updates_shape);
+    }
+
     // Apply TF scatter to update the trailing dimensions of the
     // transposed operand.
     auto tf_scatter_op =
         rewriter.create<TfOp>(loc, permutation_and_shape.shape,
-                              transposed_operand, indices, new_updates);
+                              transposed_operand, new_indices, new_updates);
 
     // Reverse the earlier transpose.
     auto inverse_permutation =

@@ -2878,6 +2878,39 @@ func.func @convert_scatter_update_to_non_trailing_operand_dimensions(
   func.return %0 : tensor<5x4x3x7xf32>
 }
 
+// CHECK-LABEL:   func @convert_scatter_update_reshape_indices_and_updates(
+// CHECK-SAME:                                                            %[[ARG_0:.*]]: tensor<16x1504xf32>,
+// CHECK-SAME:                                                            %[[ARG_1:.*]]: tensor<1xi32>,
+// CHECK-SAME:                                                            %[[ARG_2:.*]]: tensor<16xf32>) -> tensor<16x1504xf32> {
+// CHECK:           %[[CST:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_0:.*]] = "tf.Transpose"(%[[ARG_0]], %[[CST]]) : (tensor<16x1504xf32>, tensor<2xi64>) -> tensor<1504x16xf32>
+// CHECK:           %[[CST_0:.*]] = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK:           %[[VAL_1:.*]] = "tf.Reshape"(%[[ARG_1]], %[[CST_0]]) : (tensor<1xi32>, tensor<2xi32>) -> tensor<1x1xi32>
+// CHECK:           %[[CST_1:.*]] = "tf.Const"() {value = dense<[1, 16]> : tensor<2xi32>} : () -> tensor<2xi32>
+// CHECK:           %[[VAL_2:.*]] = "tf.Reshape"(%[[ARG_2]], %[[CST_1]]) : (tensor<16xf32>, tensor<2xi32>) -> tensor<1x16xf32>
+// CHECK:           %[[VAL_3:.*]] = "tf.TensorScatterUpdate"(%[[VAL_0]], %[[VAL_1]], %[[VAL_2]]) : (tensor<1504x16xf32>, tensor<1x1xi32>, tensor<1x16xf32>) -> tensor<1504x16xf32>
+// CHECK:           %[[CST_2:.*]] = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi64>} : () -> tensor<2xi64>
+// CHECK:           %[[VAL_4:.*]] = "tf.Transpose"(%[[VAL_3]], %[[CST_2]]) : (tensor<1504x16xf32>, tensor<2xi64>) -> tensor<16x1504xf32>
+// CHECK:           return %[[VAL_4]]
+// CHECK:         }
+func.func @convert_scatter_update_reshape_indices_and_updates(
+  %arg0: tensor<16x1504xf32>,
+  %arg1: tensor<1xi32>,
+  %arg2: tensor<16xf32>) -> tensor<16x1504xf32>
+{
+  %0 = "mhlo.scatter"(%arg0, %arg1, %arg2) ({
+^bb0(%arg3: tensor<f32>, %arg4: tensor<f32>):
+  "mhlo.return"(%arg4) : (tensor<f32>) -> ()
+}) {
+  indices_are_sorted = true,
+  scatter_dimension_numbers = #mhlo.scatter<
+    update_window_dims = [0],
+    inserted_window_dims = [1],
+    scatter_dims_to_operand_dims = [1]>,
+    unique_indices = true} : (tensor<16x1504xf32>, tensor<1xi32>, tensor<16xf32>) -> tensor<16x1504xf32>
+  func.return %0 : tensor<16x1504xf32>
+}
+
 // CHECK-LABEL:   func @convert_scatter_add(
 // CHECK-SAME:                              %[[VAL_0:.*]]: tensor<20x6xf32>,
 // CHECK-SAME:                              %[[VAL_1:.*]]: tensor<4x1xi32>,
