@@ -1233,62 +1233,14 @@ class ConvertDynamicUpdateSliceOp
 
     Type idx_type = start_indices_type.getElementType();
     int64_t shape_dim = operand_type.getRank();
-    auto operand_shape = operand_type.getShape();
-    auto update_shape = update_type.getShape();
-
-    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
-    Value zero_cst = BuildIntConstOp(builder, rewriter, 0, idx_type);
-    Value one_cst = BuildIntConstOp(builder, rewriter, 1, idx_type);
-    // Clamp start indices in [0, operand_size - update_size].
     llvm::SmallVector<Value> start_indices_vector;
     Append(start_indices_vector, op.getStartIndices());
     auto shape_tensor_type = RankedTensorType::get({shape_dim}, idx_type);
-    Value start_indices_tensor =
-        builder.create<PackOp>(shape_tensor_type, start_indices_vector);
-    Value operand_shape_cst =
-        BuildIntArrayConstOp(builder, rewriter, operand_shape, idx_type);
-    Value update_shape_cst =
-        BuildIntArrayConstOp(builder, rewriter, update_shape, idx_type);
-    Value max_start_indices =
-        builder.create<SubOp>(operand_shape_cst, update_shape_cst);
-    Value start_indices_clip_max =
-        builder.create<MinimumOp>(start_indices_tensor, max_start_indices);
-    Value clamped_start_indices =
-        builder.create<MaximumOp>(start_indices_clip_max, zero_cst);
-
-    // Do dynamic_upate_slice on flattened operand and update with the aid of
-    // tf.TensorScatterUpdate op. It takes in 3 parameters: flat_operand,
-    // indices and flat_update. The indices are computed as follows:
-    // 1. Construct a range (0, n_operand). It arranges a id number to each
-    //    element position in operand.
-    // 2. Reshape the range to the shape of operand.
-    // 3. Compute the id numbers of update positions by choose a slice form
-    //    clamped_start_indices to clamped_start_indices + update_size.
-    // 4. Flatten the update id numbers and the indices is obtained.
-    int64_t n_operand = operand_type.getNumElements();
-    Value n_operand_cst =
-        BuildIntConstOp(builder, rewriter, n_operand, idx_type);
-    Value range_flat =
-        builder.create<RangeOp>(zero_cst, n_operand_cst, one_cst);
-    Value range = BuildReshapeOp(builder, rewriter, range_flat, operand_shape,
-                                 idx_type, idx_type);
-    Value update_indices_raw =
-        BuildSliceOp(builder, rewriter, range, clamped_start_indices,
-                     update_shape, idx_type, idx_type);
-    int64_t n_update = update_type.getNumElements();
-    Type element_type = operand_type.getElementType();
-    Value update_indices = BuildReshapeOp(builder, rewriter, update_indices_raw,
-                                          {n_update, 1}, idx_type, idx_type);
-    Value operand_flat = BuildReshapeOp(builder, rewriter, op.getOperand(),
-                                        {n_operand}, idx_type, element_type);
-    Value update_flat = BuildReshapeOp(builder, rewriter, op.getUpdate(),
-                                       {n_update}, idx_type, element_type);
-    Value flat_result = builder.create<TensorScatterUpdateOp>(
-        operand_flat, update_indices, update_flat);
-
-    // Reshape back before return.
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, operand_type, flat_result,
-                                           operand_shape_cst);
+    Value start_indices_tensor = rewriter.create<PackOp>(
+        op.getLoc(), shape_tensor_type, start_indices_vector);
+    rewriter.replaceOpWithNewOp<TF::XlaDynamicUpdateSliceOp>(
+        op, op.getType(), op.getOperand(), op.getUpdate(),
+        start_indices_tensor);
     return success();
   };
 };
