@@ -116,8 +116,7 @@ Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
     absl::string_view path, Env* env) {
-  SnapshotManager* snapshot_manager =
-      new SnapshotManager(path, env, absl::Microseconds(env->NowMicros()));
+  SnapshotManager* snapshot_manager = new SnapshotManager(path, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Resume());
   return absl::WrapUnique(snapshot_manager);
 }

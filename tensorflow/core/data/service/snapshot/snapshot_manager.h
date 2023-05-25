@@ -84,10 +84,7 @@ class SnapshotManager {
   tsl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
 
  private:
-  SnapshotManager(
-      absl::string_view path, Env* env,
-      std::optional<absl::Duration> resume_time_micros = std::nullopt)
-      : path_(path), env_(env), resume_time_micros_(resume_time_micros) {}
+  SnapshotManager(absl::string_view path, Env* env) : path_(path), env_(env) {}
 
   // Helpers for `Start` above. These update the on-disk state.
   tsl::Status Start(const SnapshotRequest& request);
@@ -131,8 +128,6 @@ class SnapshotManager {
   tsl::Env* const env_;
   // Distributed snapshot metadata.
   experimental::DistributedSnapshotMetadata metadata_;
-  // If `Resume`d, the timestamp of the resumption of the snapshot.
-  std::optional<absl::Duration> resume_time_micros_;
 
   // The addresses of all workers considered to be dead based on heartbeat
   // timeout.
