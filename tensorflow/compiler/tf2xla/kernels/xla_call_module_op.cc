@@ -23,20 +23,94 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeRange.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
+#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_to_mlir_hlo.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/type_to_shape.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
+
+// Imports the given `XlaComputation` into StableHLO functions the MLIR module.
+// Returns the MLIR function in the imported module that represents the entry
+// function of the imported computation.
+absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
+    mlir::SymbolTableCollection &symbol_table_collection, mlir::ModuleOp module,
+    const xla::XlaComputation &computation) {
+  mlir::MLIRContext *context = module.getContext();
+  mlir::SymbolTable &symbol_table =
+      symbol_table_collection.getSymbolTable(module);
+
+  mlir::OwningOpRef<mlir::ModuleOp> imported =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  context->loadDialect<mlir::func::FuncDialect>();
+  context->loadDialect<mlir::mhlo::MhloDialect>();
+  TF_RETURN_IF_ERROR(
+      xla::ConvertHloToMlirHlo(*imported, &computation.proto(),
+                               /*import_all_computations=*/true));
+
+  // Rename all functions beforehand in order to avoid conflicts.
+  mlir::SymbolUserMap symbol_users(symbol_table_collection, *imported);
+  mlir::StringAttr main_func_name;
+  for (auto func : imported->getOps<mlir::func::FuncOp>()) {
+    mlir::StringAttr name = func.getSymNameAttr();
+    mlir::StringAttr new_name = name;
+    for (int i = 0; symbol_table.lookup(new_name) != nullptr; ++i) {
+      new_name = mlir::StringAttr::get(
+          context, absl::StrCat(absl::string_view(name.getValue()), i));
+    }
+    if (new_name != name) {
+      symbol_users.replaceAllUsesWith(func, new_name);
+      func.setSymNameAttr(new_name);
+    }
+    if (name.getValue() == "main") {
+      main_func_name = new_name;
+    }
+  }
+  if (!main_func_name) {
+    return absl::InternalError(
+        "HLO module lowered from TF function is missing a main function");
+  }
+
+  mlir::func::FuncOp main_func;
+  for (auto func : imported->getOps<mlir::func::FuncOp>()) {
+    auto cloned = func.clone();
+    cloned.setPrivate();
+    symbol_table.insert(cloned);
+    if (func.getSymNameAttr() == main_func_name) {
+      main_func = cloned;
+    }
+  }
+
+  return main_func;
+}
 
 class XlaCallModuleOp : public XlaOpKernel {
  public:
@@ -100,11 +174,21 @@ class XlaCallModuleOp : public XlaOpKernel {
       }
     }
 
-    auto loader =
-        XlaCallModuleLoader::Create(&context_, version, std::move(module_str),
-                                    std::move(dim_args_spec), platform_index);
-    OP_REQUIRES_OK(ctx, loader.status());
-    loader_ = *std::move(loader);
+    {
+      auto loader =
+          XlaCallModuleLoader::Create(&context_, version, std::move(module_str),
+                                      std::move(dim_args_spec), platform_index);
+      OP_REQUIRES_OK(ctx, loader.status());
+      loader_ = *std::move(loader);
+    }
+    OP_REQUIRES_OK(ctx, loader_->ValidateDialect());
+
+    if (std::vector<NameAttrList> function_list;
+        ctx->GetAttr("function_list", &function_list).ok()) {
+      has_tf_functions_ = !function_list.empty();
+    } else {
+      has_tf_functions_ = false;
+    }
   }
 
   void Compile(XlaOpKernelContext *ctx) override {
@@ -115,7 +199,11 @@ class XlaCallModuleOp : public XlaOpKernel {
       input_shapes.push_back(*std::move(shape));
     }
     OP_REQUIRES_OK(ctx, loader_->RefineDynamicShapes(input_shapes));
-    OP_REQUIRES_OK(ctx, loader_->ValidateModule());
+    OP_REQUIRES_OK(ctx, loader_->ValidateStaticShapes());
+    OP_REQUIRES_OK(ctx, loader_->LowerModuleToMhlo());
+    if (has_tf_functions_) {
+      OP_REQUIRES_OK(ctx, LowerTfFunctionCalls(ctx));
+    }
 
     std::vector<xla::XlaOp> inputs(ctx->num_inputs());
     for (int i = 0, end = ctx->num_inputs(); i < end; ++i) {
@@ -157,8 +245,127 @@ class XlaCallModuleOp : public XlaOpKernel {
   }
 
  private:
+  // Lowers `mhlo.CustomCall` ops representing TF function calls into nested XLA
+  // computation. The called TF functions are lowered into MHLO and inserted as
+  // function calls in the main module.
+  //
+  // This is implemented here instead of in xla_call_module_loader.cc in order
+  // to prevent cyclic dependency with TF MLIR passes.
+  absl::Status LowerTfFunctionCalls(XlaOpKernelContext *ctx) {
+    mlir::ModuleOp module = loader_->module();
+    mlir::SymbolTableCollection symbol_table_collection;
+
+    llvm::SmallDenseSet<mlir::func::FuncOp> updated_funcs;
+
+    auto lower = [&](mlir::mhlo::CustomCallOp custom_call) -> absl::Status {
+      if (custom_call.getCallTargetName() != "tf.call_tf_function") {
+        return absl::OkStatus();
+      }
+
+      NameAttrList f;
+      {
+        auto backend_config = custom_call->getAttrOfType<mlir::DictionaryAttr>(
+            "tf.backend_config");
+        if (!backend_config) {
+          return absl::InternalError(
+              "TF function custom call must have 'tf.backend_config' "
+              "attribute");
+        }
+
+        auto caller_name =
+            backend_config.getAs<mlir::StringAttr>("caller_name");
+        if (!caller_name) {
+          return absl::InternalError(
+              "TF function custom call must have 'caller_name' in the "
+              "'tf.backend_config' attribute");
+        }
+
+        // Parse the corresponding TF function name from the attributes.
+        f.set_name(caller_name.getValue().str());
+      }
+
+      // Lower the called TF function into an HLO module.
+
+      std::vector<XlaCompiler::Argument> arguments(
+          custom_call->getNumOperands());
+      for (const auto &it : llvm::enumerate(custom_call->getOperandTypes())) {
+        XlaCompiler::Argument &argument = arguments[it.index()];
+        argument.kind = XlaCompiler::Argument::kParameter;
+        TF_RETURN_IF_ERROR(ConvertToDataType(it.value(), &argument.type));
+        argument.shape = xla::TypeToShape(it.value());
+      }
+
+      XlaCompiler::CompileOptions options;
+      options.use_tuple_arg = true;
+      options.always_return_tuple = true;
+      options.is_entry_computation = false;
+
+      XlaCompiler::CompilationResult result;
+      TF_RETURN_IF_ERROR(
+          ctx->compiler()->CompileFunction(options, f, arguments, &result));
+
+      // Import the lowered HLO module into StableHLO functions in `module`. The
+      // main function accepts tupled arguments and returns tupled results.
+      TF_ASSIGN_OR_RETURN(mlir::func::FuncOp main_func,
+                          ImportXlaComputation(symbol_table_collection, module,
+                                               *result.computation));
+
+      // Replace the custom call with ops that call the imported main function.
+      mlir::OpBuilder builder(custom_call);
+      auto loc = custom_call.getLoc();
+
+      // Pack all arguments into a tuple (`options.use_tuple_arg` is true).
+      llvm::SmallVector<mlir::Value> args;
+      args.reserve(result.input_mapping.size());
+      for (int index : result.input_mapping) {
+        args.push_back(custom_call.getOperand(index));
+      }
+      auto arg_tuple = builder.create<mlir::mhlo::TupleOp>(loc, args);
+
+      // Call the lowered function.
+      auto call = builder.create<mlir::func::CallOp>(
+          loc, main_func, mlir::ValueRange(arg_tuple.getResult()));
+
+      // Unpack the result tuple (`options.always_return_tuple` is true).
+      for (mlir::OpResult result : custom_call->getOpResults()) {
+        auto get_tuple_element = builder.create<mlir::mhlo::GetTupleElementOp>(
+            loc, call.getResults().front(), result.getResultNumber());
+        result.replaceAllUsesWith(get_tuple_element.getResult());
+      }
+
+      updated_funcs.insert(call->getParentOfType<mlir::func::FuncOp>());
+      custom_call->erase();
+
+      return absl::OkStatus();
+    };
+
+    absl::Status status;
+    mlir::WalkResult result = module->walk([&](mlir::mhlo::CustomCallOp op) {
+      status.Update(lower(op));
+      if (!status.ok()) {
+        return mlir::WalkResult::interrupt();
+      }
+      return mlir::WalkResult::advance();
+    });
+    if (result.wasInterrupted()) {
+      return status;
+    }
+
+    // If the call results are used by `func.return`, then we may need to update
+    // function result types.
+    for (auto func : updated_funcs) {
+      auto ret = llvm::cast<mlir::func::ReturnOp>(
+          func.getFunctionBody().front().getTerminator());
+      func.setFunctionType(mlir::FunctionType::get(
+          &context_, func.getArgumentTypes(), ret.getOperandTypes()));
+    }
+
+    return absl::OkStatus();
+  }
+
   mlir::MLIRContext context_{mlir::MLIRContext::Threading::DISABLED};
   std::unique_ptr<XlaCallModuleLoader> loader_;
+  bool has_tf_functions_;
 };
 
 REGISTER_XLA_OP(Name("XlaCallModule"), XlaCallModuleOp);

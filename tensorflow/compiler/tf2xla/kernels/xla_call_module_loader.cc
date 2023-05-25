@@ -47,9 +47,11 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
@@ -368,10 +370,6 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
                                 ModuleToString(*module_, VLOG_IS_ON(4))));
     return absl::InvalidArgumentError("Module inlining failed");
   }
-  XLA_VLOG_LINES(
-      5, absl::StrCat(
-             "XlaCallModule module after setting input types and inlining: ",
-             ModuleToString(*module_, VLOG_IS_ON(4))));
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
   for (auto i = 0; i < main_body.getNumArguments(); ++i) {
@@ -391,6 +389,10 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   }
   main_.setType(builder.getFunctionType(static_array_input_types,
                                         static_array_output_types));
+  XLA_VLOG_LINES(
+      5, absl::StrCat(
+             "XlaCallModule module after setting input types and inlining: ",
+             ModuleToString(*module_, VLOG_IS_ON(4))));
 
   // Verify the module before running passes on it.
   // If the module doesn't pass verification, all sorts of weirdness might
@@ -401,6 +403,7 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
                         ModuleToString(*module_, VLOG_IS_ON(4))));
     return absl::InvalidArgumentError("Module verification failed");
   }
+
   mlir::PassManager pm(module_->getContext());
   if (VLOG_IS_ON(5)) {
     auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
@@ -474,9 +477,8 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   return tsl::OkStatus();
 }
 
-tsl::Status XlaCallModuleLoader::ValidateModule() {
+tsl::Status XlaCallModuleLoader::ValidateDialect() {
   bool moduleHasUnsupportedDialects = false;
-  bool moduleHasDynamicShapes = false;
 
   module_->walk([&](mlir::Operation *op) {
     // StableHLO programs created by jax2tf only contain operations
@@ -488,7 +490,17 @@ tsl::Status XlaCallModuleLoader::ValidateModule() {
       VLOG(3) << "Operation has unsupported dialects: "
               << mlir::debugString(*op);
     }
+  });
 
+  if (moduleHasUnsupportedDialects)
+    return absl::InvalidArgumentError("Module has unsupported dialects");
+  return tsl::OkStatus();
+}
+
+tsl::Status XlaCallModuleLoader::ValidateStaticShapes() {
+  bool moduleHasDynamicShapes = false;
+
+  module_->walk([&](mlir::Operation *op) {
     // It's sufficient to only check results because operands either come from
     // results or from block arguments which are checked below.
     auto hasDynamicShape = [](mlir::Value value) {
@@ -507,18 +519,45 @@ tsl::Status XlaCallModuleLoader::ValidateModule() {
     }
   });
 
-  if (moduleHasUnsupportedDialects)
-    return absl::InvalidArgumentError("Module has unsupported dialects");
   if (moduleHasDynamicShapes)
     return absl::InvalidArgumentError("Module has dynamic shapes");
   return tsl::OkStatus();
 }
 
+absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
+  mlir::BaseScopedDiagnosticHandler diagnostic_handler(module_->getContext());
+
+  mlir::PassManager pm(module_->getContext());
+  pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createLegalizeSparseChloToLinalgPass());
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createChloLegalizeToHloPass(
+      /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
+  // In order to export to XLA, we must sink constants to control flow
+  // regions, since XLA uses functional control flow.
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::mhlo::createSinkConstantsToControlFlowPass());
+  if (failed(pm.run(*module_))) {
+    VLOG(1) << "MHLO->HLO lowering passes failed.";
+    return diagnostic_handler.ConsumeStatus();
+  }
+
+  VLOG(5) << "MHLO module after lowering, before HLO import ";
+  if (VLOG_IS_ON(5)) {
+    module_->dump();
+  }
+
+  return absl::OkStatus();
+}
+
 tsl::StatusOr<xla::XlaComputation> XlaCallModuleLoader::ToXlaComputation() {
-  xla::XlaComputation xla_computation;
+  xla::HloProto proto;
+  mlir::MlirToHloConversionOptions options;
   TF_RETURN_IF_ERROR(
-      MlirToXlaComputation(*module_, xla_computation, false, false));
-  return xla_computation;
+      mlir::ConvertMlirHloToHlo(*module_, &proto, /*use_tuple_args=*/false,
+                                /*return_tuple=false*/ false, options));
+  return xla::XlaComputation(std::move(*proto.mutable_hlo_module()));
 }
 
 }  // namespace tensorflow

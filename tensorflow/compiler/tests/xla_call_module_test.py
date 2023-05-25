@@ -22,10 +22,10 @@ from tensorflow.compiler.mlir.stablehlo import stablehlo
 from tensorflow.compiler.tests import xla_test
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
 from tensorflow.compiler.tf2xla.python import xla
-
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
@@ -791,6 +791,72 @@ module @jit_fun_flat_jax {
                              dim_args_spec=['0.0'])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res0, res1))
+
+  def test_tf_call_function(self):
+    """A TensorFlow function call inside StableHLO."""
+    x = np.int32(2)
+    y = np.int32(3)
+    res = x + y
+
+    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    def foo(x, y):
+      return x + y
+
+    def f(x, y):
+      module, version = serialize("""
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+    %0 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {
+      tf.backend_config = {caller_name = "foo"}
+    } : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    return %0 : tensor<i32>
+  }
+}
+""")
+      return xla.call_module(
+          [x, y],
+          version=version,
+          module=module,
+          Tout=[res.dtype],
+          Sout=[res.shape],
+          function_list=(foo,),
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x, y), (res,))
+
+  def test_shape_polymorphic_tf_call_function(self):
+    """A TensorFlow function call inside StableHLO."""
+    x = np.full((2,), 2, dtype=np.int32)
+    y = np.full((2,), 3, dtype=np.int32)
+    res = x + y
+
+    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    def foo(x, y):
+      return x + y
+
+    def f(x, y):
+      module, version = serialize("""
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi32> {
+    %0 = stablehlo.get_dimension_size %arg0, dim = 0 : (tensor<?xi32>) -> tensor<i32>
+    %1 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1, %0) {
+      tf.backend_config = {caller_name = "foo"},
+      indices_of_shape_operands = dense<[2]> : tensor<1xi64>
+    } : (tensor<?xi32>, tensor<?xi32>, tensor<i32>) -> tensor<?xi32>
+    return %1 : tensor<?xi32>
+  }
+}
+""")
+      return xla.call_module(
+          [x, y],
+          version=version,
+          module=module,
+          Tout=[res.dtype],
+          Sout=[res.shape],
+          function_list=(foo,),
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x, y), (res,))
 
   def test_op_backward_compatibility(self):
     """Test for ensuring XlaCallModuleOp backward compatiblity."""
