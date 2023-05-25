@@ -384,7 +384,15 @@ struct DTensorMultiDeviceExpansion
     mlir::func::FuncOp translated_func =
         mlir::func::FuncOp::create(main_func.getLoc(), translated_func_name,
                                    builder.getFunctionType({}, {}));
-    mlir::Block* entry_block = translated_func.addEntryBlock();
+
+    // build the entry block and return op of the translated function
+    builder.setInsertionPointToEnd(translated_func.addEntryBlock());
+    auto translated_terminator_op =
+        builder.create<mlir::func::ReturnOp>(main_func.getLoc());
+
+    // so the function has a "terminator" and we can insert it into the module
+    translated_func.setVisibility(mlir::SymbolTable::Visibility::Private);
+    symbol_table.insert(translated_func);
 
     ExpandedArgumentMap expanded_arguments_map;
     for (unsigned i = 1; i < main_func.getNumArguments(); ++i) {
@@ -443,15 +451,12 @@ struct DTensorMultiDeviceExpansion
       }
     }
 
-    builder.setInsertionPointToEnd(entry_block);
-    builder.create<mlir::func::ReturnOp>(return_op.getLoc(), results);
-
+    // update the operands of the translated return op
+    translated_terminator_op->setOperands(results);
+    // and, update the function's type accordingly
     translated_func.setFunctionType(GetFunctionType(
         builder, translated_func, absl::Span<mlir::Value>(results)));
     UpdateEntryFuncAttr(builder, translated_func);
-
-    translated_func.setVisibility(mlir::SymbolTable::Visibility::Private);
-    symbol_table.insert(translated_func);
 
     mlir::LogicalResult status = BuildOuterMainFunc(
         module, main_func, translated_func, return_op,
