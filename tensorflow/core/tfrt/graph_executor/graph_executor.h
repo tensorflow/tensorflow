@@ -168,7 +168,7 @@ class GraphExecutor {
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
     std::unique_ptr<CostRecorder> MaybeCreateCostRecorder(
-        uint64_t normalize_ratio = 1, bool record_in_cpu_cycle = false) const;
+        uint64_t normalize_ratio = 1) const;
 
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.

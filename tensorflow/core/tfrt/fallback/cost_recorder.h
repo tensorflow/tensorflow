@@ -36,10 +36,8 @@ namespace tfrt_stub {
 // unique within a model.
 class CostRecorder {
  public:
-  explicit CostRecorder(uint64_t normalize_ratio = 1,
-                        bool record_in_cpu_cycle = false)
-      : normalize_ratio_(normalize_ratio),
-        record_in_cpu_cycle_(record_in_cpu_cycle) {}
+  explicit CostRecorder(uint64_t normalize_ratio = 1)
+      : normalize_ratio_(normalize_ratio) {}
 
   // Records an execution duration for the op keyed by `op_key`.
   void RecordCost(int64_t op_key, uint64_t execution_time);
@@ -56,8 +54,6 @@ class CostRecorder {
   // TODO(b/263837451): Fix the op_key unstableness during serialization.
   Status WriteToFile() const;
 
-  bool record_in_cpu_cycles() const { return record_in_cpu_cycle_; }
-
   size_t size() const;
 
   static const char* MesuredCostPathEnvVarName() {
@@ -67,7 +63,6 @@ class CostRecorder {
  private:
   // Normalize the cost values by dividing by this.
   uint64_t normalize_ratio_;
-  bool record_in_cpu_cycle_;
 
   mutable tensorflow::mutex op_cost_map_mutex_;
   // Map op key to {sum of op execution duration in nanoseconds, #occurences of

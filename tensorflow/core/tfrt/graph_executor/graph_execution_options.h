@@ -68,10 +68,6 @@ struct GraphExecutionOptions {
   // TODO(b/278298965): Maybe remove normalization.
   uint64_t online_cost_analysis_normalize_ratio = 1;
 
-  // If true, record in CPU cycles (vs. wall time).
-  // TODO(b/278298965): Record in CPU cycles by default.
-  bool online_cost_analysis_record_in_cpu_cycle = false;
-
   // If true, the MLRT interpreter will be used instead of the BEF executor.
   // This option is experimental.
   bool enable_mlrt = false;
