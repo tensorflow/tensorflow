@@ -116,6 +116,10 @@ static constexpr char kSkipXlaCompilation[] = "_skip_xla_compilation";
 // to uniquely name functions.
 static constexpr char kCacheKey[] = "dtensor.cache_key";
 
+// An attribute on Const nodes to record which argument it was originally
+// from.
+static constexpr char kFromArgIndex[] = "dtensor.from_arg_index";
+
 // An attribute that determines whether a tensor is a sparse tensor. If this
 // attribute exists in a tensor, then this tensor is a sparse tensor.
 static constexpr char kSparseValue[] = "tf._sparse";
