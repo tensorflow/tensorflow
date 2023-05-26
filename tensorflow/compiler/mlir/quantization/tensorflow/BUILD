@@ -79,6 +79,23 @@ cc_library(
 )
 
 cc_library(
+    name = "manipulate_model_attr",
+    srcs = [
+        "passes/manipulate_model_attr.cc",
+    ],
+    hdrs = [
+        "passes/manipulate_model_attr.h",
+    ],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "remove_identity_op_pattern",
     srcs = [
         "passes/remove_identity_op_pattern.cc",
@@ -409,6 +426,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":constants",
+        ":manipulate_model_attr",
         ":pass_utils",
         ":quantization_options_proto_cc",
         ":remove_identity_op_pattern",
