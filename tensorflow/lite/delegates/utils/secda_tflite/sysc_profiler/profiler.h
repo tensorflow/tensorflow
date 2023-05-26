@@ -35,14 +35,12 @@ public:
   bool resetOnSave;
 };
 
-
 class DataCountArray : public Metric {
 public:
-  DataCountArray(string _name,int size);
-  int* array;
+  DataCountArray(string _name, int size);
+  int *array;
   bool resetOnSave;
 };
-
 
 class BufferSpace : public Metric {
 
@@ -76,7 +74,7 @@ private:
 };
 
 template <typename T>
-void saveMatrixCSV(string filename, T *matrix, int rows, int cols){
+void saveMatrixCSV(string filename, T *matrix, int rows, int cols) {
   ofstream file;
   file.open(filename);
   int index = 0;
@@ -88,6 +86,18 @@ void saveMatrixCSV(string filename, T *matrix, int rows, int cols){
     }
   }
   file.close();
+};
+
+template <typename T>
+void printMatrixCSV(T *matrix, int rows, int cols) {
+  int index = 0;
+  for (int c = 0; c < rows; c++) {
+    cerr << endl;
+    for (int r = 0; r < cols; r++) {
+      cerr << (int)matrix[index] << ",";
+      index++;
+    }
+  }
 };
 
 #endif // PROFILER_HEADER

@@ -213,7 +213,7 @@ class ToyDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     if (dparams.delegated_nodes == 0) {
-      profile->saveCSVRecords("toyadd_sim");
+      profile->saveCSVRecords(".data/toyadd_sim");
     }
     return kTfLiteOk;
   }

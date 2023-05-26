@@ -509,7 +509,7 @@ class VMSimDelegateKernel : public SimpleDelegateKernelInterface {
 
     // Saves profilier records once all delegated nodes are executed
     if (dparams.delegated_nodes == 0) {
-      profile->saveCSVRecords("vm_sim");
+      profile->saveCSVRecords(".data/vm_sim");
     }
     return kTfLiteOk;
   }

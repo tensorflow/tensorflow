@@ -298,7 +298,7 @@ public:
 
     // Saves profilier records once all delegated nodes are executed
     if (dparams.delegated_nodes == 0) {
-      profile->saveCSVRecords("bert_sim");
+      profile->saveCSVRecords(".data/bert_sim");
     }
     return kTfLiteOk;
   }

@@ -28,6 +28,7 @@ void ACCNAME::VM_PE(ACC_DTYPE<32> *l1, ACC_DTYPE<32> *l2, ACC_DTYPE<32> *l3,
 
   DWAIT(4);
   for (int rin = 0; rin < d; rin++) {
+#pragma HLS loop_tripcount min=64 max=64 avg=64
 #pragma HLS pipeline II = 1
     lhs_read[0] = l1[rin + l_pointer];
     lhs_read[1] = l2[rin + l_pointer];

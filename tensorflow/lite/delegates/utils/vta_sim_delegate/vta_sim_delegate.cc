@@ -479,7 +479,7 @@ class VtaSimDelegateKernel : public SimpleDelegateKernelInterface {
     }
 
     if (dparams.delegated_nodes == 0) {
-      profile->saveCSVRecords("z_VTA_Sim");
+      profile->saveCSVRecords(".data/z_VTA_Sim");
     }
     return kTfLiteOk;
   }
