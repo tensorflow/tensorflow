@@ -1595,6 +1595,9 @@ tf_cc_test(
 tf_cc_test(
     name = "device_compilation_profiler_test",
     srcs = ["device_compilation_profiler_test.cc"],
+    tags = [
+        "nomsan",  # TODO(b/284492454)
+    ],
     deps = [
         ":device_compilation_profiler",
         ":xla_activity_proto_cc",
