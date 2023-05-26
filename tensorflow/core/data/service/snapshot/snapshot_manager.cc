@@ -49,6 +49,8 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
+const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
+
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
   SnapshotManager* snapshot_manager = new SnapshotManager(request.path(), env);
@@ -315,6 +317,7 @@ Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
+  ++num_completed_streams_;
   if (absl::c_all_of(streams_, [](const Stream& stream) {
         return stream.state == Stream::State::kDone;
       })) {
@@ -416,10 +419,14 @@ Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
     return OkStatus();
   }
 
-  LOG_EVERY_N_SEC(INFO, 60)
-      << "tf.data snapshot progress [" << path_ << "]: " << num_assigned_splits_
-      << " of " << num_total_splits_
-      << " total splits have been assigned or completed.";
+  if (absl::Time now = absl::FromUnixMicros(env_->NowMicros());
+      now - last_progress_log_time_ > kProgressLoggingInterval) {
+    LOG(INFO) << "tf.data snapshot progress [" << path_
+              << "]: " << num_completed_streams_ << "/" << streams_.size()
+              << " streams completed; " << num_assigned_splits_ << "/"
+              << num_total_splits_ << " splits assigned or completed.";
+    last_progress_log_time_ = now;
+  }
 
   const SnapshotTaskProgress* snapshot_progress = nullptr;
   if (auto it = request.snapshot_task_progress().find(path_);
