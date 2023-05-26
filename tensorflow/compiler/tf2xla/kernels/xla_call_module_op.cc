@@ -77,9 +77,12 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
   TF_RETURN_IF_ERROR(
       xla::ConvertHloToMlirHlo(*imported, &computation.proto(),
                                /*import_all_computations=*/true));
+  XLA_VLOG_LINES(
+      5, absl::StrCat(
+             "MHLO module lowered from TF function called by XlaCallModule: ",
+             mlir::debugString(*imported)));
 
   // Rename all functions beforehand in order to avoid conflicts.
-  mlir::SymbolUserMap symbol_users(symbol_table_collection, *imported);
   mlir::StringAttr main_func_name;
   for (auto func : imported->getOps<mlir::func::FuncOp>()) {
     mlir::StringAttr name = func.getSymNameAttr();
@@ -89,8 +92,13 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
           context, absl::StrCat(absl::string_view(name.getValue()), i));
     }
     if (new_name != name) {
-      symbol_users.replaceAllUsesWith(func, new_name);
       func.setSymNameAttr(new_name);
+      if (failed(mlir::SymbolTable::replaceAllSymbolUses(func, new_name,
+                                                         *imported))) {
+        return absl::InternalError(
+            absl::StrCat("Failed to replace all symbol uses of function '",
+                         absl::string_view(func.getName()), "'"));
+      }
     }
     if (name.getValue() == "main") {
       main_func_name = new_name;
@@ -486,6 +494,10 @@ class XlaCallModuleOp : public XlaOpKernel {
           &context_, func.getArgumentTypes(), ret.getOperandTypes()));
     }
 
+    XLA_VLOG_LINES(
+        5, absl::StrCat(
+               "XlaCallModule MHLO module after TF function call import: ",
+               mlir::debugString(module)));
     return absl::OkStatus();
   }
 
