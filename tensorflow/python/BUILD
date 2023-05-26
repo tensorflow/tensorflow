@@ -250,6 +250,7 @@ py_library(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/numpy_ops:np_config",
         "//tensorflow/python/ops/numpy_ops:np_random",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
         "//tensorflow/python/ops/signal",

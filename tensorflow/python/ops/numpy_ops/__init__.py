@@ -162,21 +162,3 @@ Here is a non-exhaustive list of differences:
     supported.
 """
 # TODO(wangpeng): Append `np_export`ed symbols to the comments above.
-
-# pylint: disable=g-direct-tensorflow-import
-
-from tensorflow.python.ops.array_ops import newaxis
-from tensorflow.python.ops.numpy_ops import np_random as random
-from tensorflow.python.ops.numpy_ops import np_utils
-# pylint: disable=wildcard-import
-from tensorflow.python.ops.numpy_ops.np_array_ops import *  # pylint: disable=redefined-builtin
-from tensorflow.python.ops.numpy_ops.np_arrays import ndarray
-from tensorflow.python.ops.numpy_ops.np_config import *
-from tensorflow.python.ops.numpy_ops.np_dtypes import *
-from tensorflow.python.ops.numpy_ops.np_math_ops import *  # pylint: disable=redefined-builtin
-# pylint: enable=wildcard-import
-from tensorflow.python.ops.numpy_ops.np_utils import finfo
-from tensorflow.python.ops.numpy_ops.np_utils import promote_types
-from tensorflow.python.ops.numpy_ops.np_utils import result_type
-
-
