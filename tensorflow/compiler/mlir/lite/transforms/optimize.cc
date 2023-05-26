@@ -480,12 +480,8 @@ Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value) {
   // so we could cast safely here.
   auto type = value.getType().cast<ShapedType>();
   SmallVector<int> new_shape;
-  if (type.hasStaticShape()) {
-    for (int64_t dim : type.getShape().drop_back()) {
-      new_shape.push_back(dim);
-    }
-  } else {
-    new_shape.push_back(-1);
+  for (int64_t dim : type.getShape().drop_back()) {
+    new_shape.push_back(dim);
   }
   return builder.create<ReshapeOp>(
       value.getLoc(), value,

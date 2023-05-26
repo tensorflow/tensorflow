@@ -1027,15 +1027,8 @@ def ReshapeValueDroppingLastDim : NativeCodeCall<
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
-// Checks if the shape has static shape with last dimension equals 1.
+// Checks if the shape has shape with last dimension equals 1.
 def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
-
-// As above but if shape is not static and rank 2 with last dim 1.
-def IsLastDimensionEqualOneOrDynamicBatchDimRank2 : Constraint<
-  CPred<"IsLastDimensionEqualOne($0) || "
-        "(!$0.getType().cast<ShapedType>().hasStaticShape() && "
-        "  ($0.getType().cast<ShapedType>().getRank() == 2) && "
-        "  $0.getType().cast<ShapedType>().getShape()[1] == 1)">>;
 
 // Replace
 //   Equal(X, indices)
@@ -1051,7 +1044,7 @@ def ReshapeEqualOpToOneHotOp : Pat<
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastDimensionEqualOneOrDynamicBatchDimRank2 $x),
+  [(IsLastDimensionEqualOne $x),
    (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 
