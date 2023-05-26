@@ -242,6 +242,8 @@ py_library(
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/distributions:bijector_test_util",
+        "//tensorflow/python/ops/distributions:identity_bijector",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/linalg/sparse:sparse_py",
