@@ -3230,6 +3230,12 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
         // Found the start of the loop.
         loop_start_idx = i;
       }
+      if (inst->parent() != instruction_sequence[loop_start_idx]->parent()) {
+        VLOG(3) << "Mismatch (computation) at " << i << ": "
+                << inst->parent()->name() << " vs "
+                << instruction_sequence[loop_start_idx]->parent()->name();
+        break;
+      }
       operand_distances.push_back({});
       if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {
         continue;
