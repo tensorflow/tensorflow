@@ -646,7 +646,6 @@ tf_mkl_kernel_library(
     srcs = ["mkl_eager_op_rewrite.cc"],
     deps = [
         ":eager_op_rewrite_registry",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -665,6 +664,7 @@ tf_cc_test_mkl(
         ":core",
         ":eager_op_rewrite_registry",
         ":mkl_eager_op_rewrite",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
