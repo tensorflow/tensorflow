@@ -203,7 +203,6 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
            << deserialized.status().ToString();
   }
   OwningOpRef<ModuleOp> stablehlo_module = *std::move(deserialized);
-  stablehlo_module->dump();
 
   CopyStablehloModuleAttrs(*stablehlo_module, op);
 
