@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -66,8 +65,6 @@ class Iov {
 
 Status CompressElement(const std::vector<Tensor>& element,
                        CompressedElement* out) {
-  tsl::profiler::TraceMe activity("CompressElement",
-                                  tsl::profiler::TraceMeLevel::kInfo);
   // First pass: preprocess the non`memcpy`able tensors.
   size_t num_string_tensors = 0;
   size_t num_string_tensor_strings = 0;
