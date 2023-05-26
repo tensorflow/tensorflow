@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
 namespace xla {
 namespace gpu {
@@ -53,10 +54,16 @@ struct BufferUse {
   BlockArgument arg;
   size_t offset;
   size_t len;
+
+  // The accessed buffer is constant, which means that operation in the capture
+  // function cannot write to the buffer.
   bool is_constant;
+
+  // The buffer is only read by the operation.
+  bool read_only;
 };
 
-BufferUse GetBufferUse(Value operand) {
+BufferUse GetBufferUse(Value operand, bool read_only = false) {
   Operation* defining_op = operand.getDefiningOp();
   if (!defining_op) {
     auto block_argument = cast<mlir::BlockArgument>(operand);
@@ -71,7 +78,7 @@ BufferUse GetBufferUse(Value operand) {
     auto memref_type = cast<MemRefType>(block_argument.getType());
     size_t len = memref_type.getNumElements() *
                  (memref_type.getElementTypeBitWidth() / 8);
-    return {block_argument, 0, len, cst ? true : false};
+    return {block_argument, 0, len, cst ? true : false, read_only};
   }
 
   if (isa<memref::ViewOp>(defining_op)) {
@@ -93,11 +100,11 @@ BufferUse GetBufferUse(Value operand) {
                  (memref_type.getElementTypeBitWidth() / 8);
 
     return {buffer_use.arg, buffer_use.offset + offset, len,
-            buffer_use.is_constant};
+            buffer_use.is_constant, read_only};
   }
 
   if (auto cast = dyn_cast<mlir::memref::ReinterpretCastOp>(defining_op)) {
-    return GetBufferUse(cast.getSource());
+    return GetBufferUse(cast.getSource(), read_only);
   }
 
   return {};
@@ -114,6 +121,9 @@ bool HasDependency(llvm::ArrayRef<BufferUse> region_buffer_uses,
             buffer_use.arg.getArgNumber()) {
       continue;
     }
+
+    // Two read-only accesses to the same buffer does not create dependency.
+    if (buffer_use.read_only && buffer_use_in_region.read_only) continue;
 
     // Check if two buffer slices overlap.
     size_t start1 = buffer_use_in_region.offset;
@@ -151,13 +161,12 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
   // These two arrays stores the information about the current region that is
   // being processed. region contains the kernels, while buffer_uses stores the
   // buffer usage by the kernels in the region.
-  llvm::SmallVector<LaunchFuncOp> region;
+  llvm::SmallVector<Operation*> region;
   llvm::SmallVector<BufferUse> buffer_uses;
 
   auto store_region_and_start_new_region = [&]() {
     if (region.size() >= 2) {
-      region_start_and_end.push_back(
-          {region.front().getOperation(), region.back().getOperation()});
+      region_start_and_end.push_back({region.front(), region.back()});
     }
     region.clear();
     buffer_uses.clear();
@@ -166,18 +175,27 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
   auto operations = capture_func.getOps();
   for (auto& operation : operations) {
     // TODO(anlunx): Support other ops.
-    if (!isa<LaunchFuncOp>(operation)) {
+    llvm::SmallVector<BufferUse> operand_buffer_uses;
+    if (auto launch_func = dyn_cast<LaunchFuncOp>(operation)) {
+      auto kernel_operands = launch_func.getKernelOperands();
+      for (auto kernel_operand : kernel_operands) {
+        BufferUse buffer_use = GetBufferUse(kernel_operand);
+        operand_buffer_uses.push_back(buffer_use);
+      }
+    } else if (auto gemm = dyn_cast<lmhlo_gpu::GEMMOp>(operation)) {
+      BufferUse buffer_use_0 = GetBufferUse(gemm.getA(), /*read_only=*/true);
+      BufferUse buffer_use_1 = GetBufferUse(gemm.getB(), /*read_only=*/true);
+      BufferUse buffer_use_2 = GetBufferUse(gemm.getC(), /*read_only=*/false);
+      operand_buffer_uses.push_back(buffer_use_0);
+      operand_buffer_uses.push_back(buffer_use_1);
+      operand_buffer_uses.push_back(buffer_use_2);
+    } else {
       store_region_and_start_new_region();
       continue;
     }
 
-    LaunchFuncOp launch_func = cast<LaunchFuncOp>(operation);
-
     bool has_dependency = false;
-    llvm::SmallVector<BufferUse> operand_buffer_uses;
-    for (auto operand : launch_func.getKernelOperands()) {
-      BufferUse buffer_use = GetBufferUse(operand);
-      operand_buffer_uses.push_back(buffer_use);
+    for (BufferUse buffer_use : operand_buffer_uses) {
       if (HasDependency(buffer_uses, buffer_use)) {
         has_dependency = true;
       }
@@ -187,7 +205,7 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
       store_region_and_start_new_region();
     }
 
-    region.push_back(launch_func);
+    region.push_back(&operation);
     for (auto buffer_use : operand_buffer_uses) {
       buffer_uses.push_back(buffer_use);
     }
