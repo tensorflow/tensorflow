@@ -1304,7 +1304,6 @@ cc_library(
         "transforms/tpu_variable_runtime_reformatting.cc",
         "transforms/update_control_dependencies.cc",
         "transforms/verify_suitable_for_graph_export_pass.cc",
-        "transforms/xla_call_module_custom_call_tf_function_renaming.cc",
         "transforms/xla_call_module_deserialization.cc",
         "transforms/xla_call_module_serialization.cc",
         "transforms/xla_cluster_formation.cc",

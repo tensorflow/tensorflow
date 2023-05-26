@@ -46,6 +46,12 @@ namespace {
 #define GEN_PASS_DEF_XLACALLMODULEDESERIALIZATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 
+// `tf.backend_config` is a DictionaryAttr, JAX2TF sets the value of its
+// i64 attribute `called_index` to the TF function's name.
+constexpr llvm::StringRef kTfBackendConfigAttrName = "tf.backend_config";
+constexpr llvm::StringRef kCalledIndexAttrName = "called_index";
+constexpr llvm::StringRef kCalledFuncAttrName = "called_func";
+
 // The function name format for the deserialized stablehlo functions:
 //   _stablehlo_{original function name}_{index}.
 constexpr const char *kNewFuncNameFormat = "_stablehlo_%s_%d";
@@ -132,18 +138,58 @@ void CopyStablehloModuleAttrs(ModuleOp stablehlo_module, XlaCallModuleOp op) {
               stablehlo_module->getAttrDictionary());
 }
 
-// Update `caller_name` from `StringAttr` to `FlatSymbolRefAttr`.
-LogicalResult SymbolizeCustomCallCallerName(ModuleOp module) {
-  auto result = module.walk([&](stablehlo::CustomCallOp op) {
-    auto name = GetTfHostCallbackName(op);
-    if (failed(name)) {
-      return WalkResult::interrupt();
-    }
-    if (*name != nullptr) {
-      SetTfHostCallbackName(op, FlatSymbolRefAttr::get(op.getContext(), *name));
-    }
-    return WalkResult::advance();
-  });
+// Symbolizes `called_index` attributes in custom all ops to `called_func`.
+LogicalResult SymbolizeCustomCallCalledIndex(
+    ModuleOp module, llvm::ArrayRef<SymbolRefAttr> function_list) {
+  WalkResult result =
+      module.walk([&](stablehlo::CustomCallOp op) {
+        if (!IsTfFuncCustomCall(op)) {
+          return WalkResult::advance();
+        }
+
+        auto backend_config =
+            op->getAttrOfType<DictionaryAttr>(kTfBackendConfigAttrName);
+        if (!backend_config) {
+          op->emitOpError()
+              << "is missing attribute '" << kTfBackendConfigAttrName << "'";
+          return WalkResult::interrupt();
+        }
+
+        auto called_index_attr = backend_config.get(kCalledIndexAttrName)
+                                     .dyn_cast_or_null<IntegerAttr>();
+        if (!called_index_attr) {
+          op->emitOpError()
+              << "is missing attribute '" << kCalledIndexAttrName << "'";
+          return WalkResult::interrupt();
+        }
+        int called_index = called_index_attr.getInt();
+        if (called_index < 0 || called_index >= function_list.size()) {
+          op->emitOpError()
+              << "references function #" << called_index
+              << " but enclosing XlaCallModule has a function list of size "
+              << function_list.size();
+          return WalkResult::interrupt();
+        }
+
+        llvm::SmallVector<NamedAttribute> new_config;
+        // Copy the attributes in the current config except `called_index`.
+        for (auto attr : backend_config) {
+          if (attr.getName() != kCalledIndexAttrName) {
+            new_config.push_back(attr);
+          }
+        }
+
+        Builder builder(op.getContext());
+        // Sets the `called_index` attribute to the TF function's name.
+        new_config.push_back(builder.getNamedAttr(kCalledFuncAttrName,
+                                                  function_list[called_index]));
+
+        // Sets the `tf.backend_config` attribute to the `new_config`.
+        op->setAttr(kTfBackendConfigAttrName,
+                    builder.getDictionaryAttr(new_config));
+
+        return WalkResult::advance();
+      });
   return result.wasInterrupted() ? failure() : success();
 }
 
@@ -152,11 +198,14 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
                                        ModuleOp module, XlaCallModuleOp op) {
   auto deserialized = DeserializeStablehlo(context, op);
   if (!deserialized.ok()) {
-    return failure();
+    return op.emitOpError()
+           << "failed to deserialize StableHLO module from XlaCallModule: "
+           << deserialized.status().ToString();
   }
-  OwningOpRef<ModuleOp> stablehlo_module = std::move(deserialized.value());
+  OwningOpRef<ModuleOp> stablehlo_module = *std::move(deserialized);
+  stablehlo_module->dump();
 
-  CopyStablehloModuleAttrs(stablehlo_module.get(), op);
+  CopyStablehloModuleAttrs(*stablehlo_module, op);
 
   auto main_func = RenameStablehloFunctions(context, symbol_tables, module,
                                             stablehlo_module.get());
@@ -164,16 +213,21 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
     return failure();
   }
 
-  CopyFunctions(symbol_tables, stablehlo_module.get(), module);
+  CopyFunctions(symbol_tables, *stablehlo_module, module);
 
-  if (failed(SymbolizeCustomCallCallerName(module))) {
+  // Translate `called_index` in TF function custom calls into symbol
+  // references. `function_list` attribute is needed after that.
+  SmallVector<SymbolRefAttr> function_list(
+      op.getFunctionList().getAsRange<SymbolRefAttr>());
+  if (failed(SymbolizeCustomCallCalledIndex(module, function_list))) {
     return failure();
   }
+  op.removeFunctionListAttr();
 
   // Module is deserialized, we set an empty string to it instead removing
   // it because it's a required attribute.
   op.setModule("");
-  // Sets the stablehlo main function as a symbol attribute.
+  // Set the stablehlo main function as a symbol attribute.
   // This is required because we not only need this to look up the
   // stablehlo function called by XlaCallModule, but also need the symbol
   // reference to prevent DCE from removing the stablehlo functions from the

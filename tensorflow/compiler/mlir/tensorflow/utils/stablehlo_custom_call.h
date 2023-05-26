@@ -16,26 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_STABLEHLO_CUSTOM_CALL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_STABLEHLO_CUSTOM_CALL_H_
 
-#include "llvm/ADT/StringRef.h"
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 
 namespace mlir {
 namespace TF {
 
-// Returns whether the op calls a TF callback function.
-bool IsTfHostCallback(stablehlo::CustomCallOp op);
+// Returns whether the custom call op represents a TF function call.
+bool IsTfFuncCustomCall(stablehlo::CustomCallOp op);
 
-// Returns the `caller_name` string attribute in the `tf.backend_config`
+// Returns the `called_func` symbol ref attribute in the `tf.backend_config`
 // dictionary attribute.
 //
-// If the op does not call TF host callback, returns nullptr.
+// If the op does not represent a TF function call, returns nullptr.
 // Otherwise, if the op does not have `caller_name`, returns failure.
-FailureOr<StringAttr> GetTfHostCallbackName(stablehlo::CustomCallOp op);
-
-// Sets the `caller_name` attribute to `f` in the `tf.backend_config`
-// dictionary attribute.
-// Creates `tf.backend_config` attribute if it does not already exist.
-void SetTfHostCallbackName(stablehlo::CustomCallOp op, Attribute f);
+FailureOr<SymbolRefAttr> GetTfFuncCustomCallFuncName(
+    stablehlo::CustomCallOp op);
 
 }  // namespace TF
 }  // namespace mlir
