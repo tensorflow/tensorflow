@@ -766,7 +766,7 @@ module @jit_fun_flat_jax {
     y = np.int32(3)
     res = x + y
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def foo(x, y):
       return x + y
 
@@ -798,11 +798,11 @@ module @jit_fun_flat_jax {
     y = np.int32(3)
     res = (x + y) + (x + y)
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def foo(x, y):
       return x + y
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='bar')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def bar(x, y):
       return foo(x, y)
 
@@ -840,7 +840,7 @@ module @jit_fun_flat_jax {
     y = np.full((2,), 3, dtype=np.int32)
     res = x + y
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def foo(x, y):
       return x + y
 
@@ -874,7 +874,7 @@ module @jit_fun_flat_jax {
     y = np.int32(3)
     res = x + y
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='foo')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def foo(x, y):
       return x + y
 
@@ -907,11 +907,11 @@ module @jit_fun_flat_jax {
     y = np.int32(3)
     res = x + y
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='add')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def add(x, y):
       return x + y
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='xla_call')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def nested_xla_call(x, y):
       module, version = serialize("""
 module @jit_fun_flat_jax {
@@ -932,7 +932,7 @@ module @jit_fun_flat_jax {
           function_list=(add,),
       )
 
-    @function.Defun(dtypes.int32, dtypes.int32, func_name='call')
+    @function.Defun(dtypes.int32, dtypes.int32)
     def call(x, y):
       return nested_xla_call(x, y)
 
@@ -957,6 +957,90 @@ module @jit_fun_flat_jax {
       )
 
     self._assertOpOutputMatchesExpected(f, (x, y), (res,))
+
+  def test_tf_call_function_nested_func_renaming(self):
+    """Multiple custom calls with identically named private functions."""
+    x = np.int32(2)
+    y = np.int32(3)
+    res0 = x + y
+    res1 = x - y
+
+    # Verify that multiple inner TF function calls with the same private
+    # functions are properly renamed during MHLO import. This test case is
+    # carefully constructed such that one outer XlaCallModule op has two custom
+    # calls, each of which has the same private "@call" function with different
+    # body. This is to catch bugs in the func renaming logic.
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def add(x, y):
+      module, version = serialize("""
+module @jit_fun_flat_jax {
+  func.func private @call(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+    %0 = stablehlo.add %arg0, %arg1 : tensor<i32>
+    return %0 : tensor<i32>
+  }
+
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+    %0 = func.call @call(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    return %0 : tensor<i32>
+  }
+}
+""")
+      return xla.call_module(
+          [x, y],
+          version=version,
+          module=module,
+          Tout=[res0.dtype],
+          Sout=[res0.shape],
+      )
+
+    @function.Defun(dtypes.int32, dtypes.int32)
+    def subtract(x, y):
+      module, version = serialize("""
+module @jit_fun_flat_jax {
+  func.func private @call(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+    %0 = stablehlo.subtract %arg0, %arg1 : tensor<i32>
+    return %0 : tensor<i32>
+  }
+
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+    %0 = func.call @call(%arg0, %arg1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    return %0 : tensor<i32>
+  }
+}
+""")
+      return xla.call_module(
+          [x, y],
+          version=version,
+          module=module,
+          Tout=[res1.dtype],
+          Sout=[res1.shape],
+      )
+
+    def f(x, y):
+      module, version = serialize("""
+module @jit_fun_flat_jax {
+  func.func public @main(%arg0: tensor<i32>, %arg1: tensor<i32>) -> (tensor<i32>, tensor<i32>) {
+    %0 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {
+      tf.backend_config = {called_index = 0}
+    } : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    %1 = stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {
+      tf.backend_config = {called_index = 1}
+    } : (tensor<i32>, tensor<i32>) -> tensor<i32>
+    return %0, %1 : tensor<i32>, tensor<i32>
+  }
+}
+""")
+      return xla.call_module(
+          [x, y],
+          version=version,
+          module=module,
+          Tout=[res0.dtype, res1.dtype],
+          Sout=[res0.shape, res1.shape],
+          function_list=(add, subtract),
+      )
+
+    self._assertOpOutputMatchesExpected(f, (x, y), (res0, res1))
 
   def test_op_backward_compatibility(self):
     """Test for ensuring XlaCallModuleOp backward compatiblity."""
