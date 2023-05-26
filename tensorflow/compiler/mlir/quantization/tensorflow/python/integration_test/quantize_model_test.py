@@ -1184,8 +1184,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._output_saved_model_path, self._input_saved_model_path, 0.5
     )
 
-  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
-  @test_util.deprecated_graph_mode_only
   def test_qat_vocab_table_lookup_model(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -1258,8 +1256,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
 
-  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
-  @test_util.deprecated_graph_mode_only
   def test_qat_file_init_hash_table_lookup_model_tf1(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -2426,7 +2422,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
                 func.node_def, op_name='XlaDotV2', attr_name='', attr_val=None
             )
 
-  @test_util.deprecated_graph_mode_only
   def test_matmul_ptq_model_with_unfreeze_constants(self):
     # Uses large weight to exceed the constant size threshold of 64KiB
     # (specified by `kDefaultConstantSizeThresholdInBytes`) for unfreezing.
@@ -3177,7 +3172,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
-  @test_util.deprecated_graph_mode_only
   def test_ptq_model_with_variable_tf1_saved_model_unfreeze_constants(self):
     signature_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
     tags = {tag_constants.SERVING}
@@ -3517,8 +3511,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
           representative_dataset=data_gen,
       )
 
-  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
-  @test_util.deprecated_graph_mode_only
   def test_ptq_vocab_table_lookup_model(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -3591,7 +3583,6 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
 
-  @test_util.deprecated_graph_mode_only
   def test_ptq_file_init_hash_table_lookup_model(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -4603,8 +4594,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
-  # TODO(b/244276332): Allow table initialization in TF2 eager mode.
-  @test_util.deprecated_graph_mode_only
   def test_table_initialized_when_model_has_table_tf1(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
@@ -4662,7 +4651,6 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
 
       self.assertAllClose(lookup_val, [1.0, 2.0, 0.0])
 
-  @test_util.deprecated_graph_mode_only
   def test_file_init_hash_table_lookup_model(self):
     tags = {tag_constants.SERVING}
     signature_def_key = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
