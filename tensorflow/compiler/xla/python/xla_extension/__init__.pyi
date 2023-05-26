@@ -664,9 +664,10 @@ class PmapSharding(XLACompatibleSharding):
   sharding_spec: pmap_lib.ShardingSpec
 
 class GSPMDSharding(XLACompatibleSharding):
-  def __init__(self, devices: Sequence[Device], op_sharding: OpSharding): ...
+  def __init__(self, devices: Sequence[Device],
+               op_sharding: Union[OpSharding, HloSharding]): ...
   _devices: Tuple[Device, ...]
-  _op_sharding: OpSharding
+  _op_sharding: Union[OpSharding, HloSharding]
 
 class PjitFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
