@@ -167,116 +167,109 @@ ENTRY main.6 {
             2);
 }
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor) {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_lhs_contracting_dim_not_most_minor) {
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
-// ENTRY main.6 {
-//   Arg_0.1 = bf16[20,40,64]{1,2,0} parameter(0)
-//   Arg_1.2 = bf16[20,64,40]{2,1,0} parameter(1)
-//   dot = bf16[20,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0} Arg_2.3 = bf16[20,40,64]{2,1,0} parameter(2) ROOT dot.1
-//   = bf16[20,40,64]{2,1,0} dot(dot, Arg_2.3), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
+ENTRY main.6 {
+  Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,256,64]{2,3,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,64]{2,3,1,0} parameter(1)
+  dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+}
+)";
 
-// )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* fmha;
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter,
-//   m.get())); EXPECT_TRUE(result); const HloInstruction* fmha;
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+                     m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
+                     .WithShape(BF16, {16, 16, 256, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          fmha->backend_config<CudnnfMHABackendConfig>());
+  EXPECT_EQ(config.bmm1_dot_dimension_numbers().lhs_contracting_dimensions()[0],
+            2);
+  EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
+            2);
+}
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(
-//       m->entry_computation()->root_instruction(),
-//       GmockMatch(m::GetTupleElement(
-//                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
-//                      .WithShape(BF16, {20, 40, 64})));
-//   TF_ASSERT_OK_AND_ASSIGN(auto config,
-//                           fmha->backend_config<CudnnfMHABackendConfig>());
-//   EXPECT_EQ(config.bmm1_dot_dimension_numbers().lhs_contracting_dimensions()[0],
-//             1);
-//   EXPECT_EQ(config.bmm1_dot_dimension_numbers().rhs_contracting_dimensions()[0],
-//             2);
-// }
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor) {
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1Bmm2Pattern_bmm2_non_contracting_dim_not_most_minor) {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
+ENTRY main.6 {
+  Arg_2.3 = bf16[16,16,256,64]{2,3,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,256,64]{2,3,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,64]{2,3,1,0} parameter(1)
+  dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+}
+)";
 
-// ENTRY main.6 {
-//   Arg_0.1 = bf16[20,40,64]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[20,64,40]{1,2,0} parameter(1)
-//   dot = bf16[20,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0} Arg_2.3 = bf16[20,40,64]{1,2,0} parameter(2) ROOT dot.1
-//   = bf16[20,40,64]{2,1,0} dot(dot, Arg_2.3), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter, m.get()));
+  EXPECT_TRUE(result);
+  const HloInstruction* fmha;
 
-// )";
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+                     m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
+                     .WithShape(BF16, {16, 16, 256, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          fmha->backend_config<CudnnfMHABackendConfig>());
+  EXPECT_EQ(config.bmm2_dot_dimension_numbers().lhs_contracting_dimensions()[0],
+            3);
+  EXPECT_EQ(config.bmm2_dot_dimension_numbers().rhs_contracting_dimensions()[0],
+            3);
+}
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&fusedMhaRewriter,
-//   m.get())); EXPECT_TRUE(result); const HloInstruction* fmha;
+TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1Bmm2Pattern) {
+  stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
+ENTRY main.6 {
+  Arg_2.3 = f16[16,16,256,64]{3,2,1,0} parameter(2)
+  Arg_0.1 = f16[16,16,256,64]{3,2,1,0} parameter(0)
+  Arg_1.2 = f16[16,16,256,64]{3,2,1,0} parameter(1)
+  dot.0 = f16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = f16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+}
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(
-//       m->entry_computation()->root_instruction(),
-//       GmockMatch(m::GetTupleElement(
-//                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
-//                      .WithShape(BF16, {20, 40, 64})));
-//   TF_ASSERT_OK_AND_ASSIGN(auto config,
-//                           fmha->backend_config<CudnnfMHABackendConfig>());
-//   EXPECT_EQ(config.bmm2_dot_dimension_numbers().lhs_contracting_dimensions()[0],
-//             2);
-//   EXPECT_EQ(config.bmm2_dot_dimension_numbers().rhs_contracting_dimensions()[0],
-//             2);
-// }
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1Bmm2Pattern) {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(f16[20,40,64]{2,1,0},f16[20,64,40]{2,1,0},f16[20,40,64]{2,1,0})->f16[20,40,64]{2,1,0}}
+)";
 
-// ENTRY main.6 {
-//   Arg_0.1 = f16[20,40,64]{2,1,0} parameter(0)
-//   Arg_1.2 = f16[20,64,40]{1,2,0} parameter(1)
-//   dot = f16[20,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0} Arg_2.3 =
-//   f16[20,40,64]{2,1,0} parameter(2) ROOT dot.1 = f16[20,40,64]{2,1,0}
-//   dot(dot, Arg_2.3), lhs_contracting_dims={2}, rhs_contracting_dims={1},
-//   lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto m, ParseAndReturnVerifiedModule(module_str, GetModuleConfig()));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
 
-// )";
-
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* fmha;
-
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(
-//       m->entry_computation()->root_instruction(),
-//       GmockMatch(m::GetTupleElement(
-//                      m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
-//                      .WithShape(F16, {20, 40, 64})));
-//   TF_ASSERT_OK_AND_ASSIGN(auto config,
-//                           fmha->backend_config<CudnnfMHABackendConfig>());
-//   EXPECT_FLOAT_EQ(config.fmha_scale(), 1.0);
-//   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
-// }
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::GetTupleElement(
+                     m::CustomCall(&fmha, {kCudnnfMHABmmBmmCallTarget}), 0)
+                     .WithShape(F16, {16, 16, 256, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          fmha->backend_config<CudnnfMHABackendConfig>());
+  EXPECT_EQ(config.fmha_scale(), 1.0);
+  EXPECT_EQ(config.dropout_rate(), 0.0);
+}
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1ScaleMaskSoftmaxBmm2Pattern) {
   const char* module_str = R"(
@@ -415,201 +408,185 @@ ENTRY main.41 {
   EXPECT_EQ(fmha->operands().size(), 5);
 }
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern) {
-//   const char* module_str = R"(
-// HloModule jit_bmm_test,
-// entry_computation_layout={(bf16[2,40,64]{2,1,0},bf16[2,64,40]{2,1,0},bf16[2,40,64]{2,1,0})->bf16[2,40,64]{2,1,0}}
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1ScaleBiasNonConstantMaskSoftmaxBmm2Pattern) {
+  const char* module_str = R"(
+HloModule jit_bmm_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
-// region_0.17.clone {
-//   Arg_0.0 = f32[] parameter(0)
-//   Arg_1.0 = f32[] parameter(1)
-//   ROOT maximum.1 = f32[] maximum(Arg_0.0, Arg_1.0)
-// }
+region_0.17.clone {
+  Arg_0.0 = f32[] parameter(0)
+  Arg_1.0 = f32[] parameter(1)
+  ROOT maximum.1 = f32[] maximum(Arg_0.0, Arg_1.0)
+}
 
-// region_1.29 {
-//   Arg_0.30 = f32[] parameter(0)
-//   Arg_1.31 = f32[] parameter(1)
-//   ROOT add = f32[] add(Arg_0.30, Arg_1.31)
-// }
+region_1.29 {
+  Arg_0.30 = f32[] parameter(0)
+  Arg_1.31 = f32[] parameter(1)
+  ROOT add = f32[] add(Arg_0.30, Arg_1.31)
+}
 
-// ENTRY main.41 {
-//   constant.8 = pred[2,40,40]{2,1,0} constant({...})
-//   Arg_0.1 = bf16[2,40,64]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[2,64,40]{2,1,0} parameter(1)
-//   dot = bf16[2,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0} convert.37
-//   = f32[2,40,40]{2,1,0} convert(dot) constant.10 = f32[] constant(3.1)
-//   broadcast.7 = f32[2,40,40]{2,1,0} broadcast(constant.10), dimensions={}
-//   multiply = f32[2,40,40]{2,1,0} multiply(convert.37, broadcast.7)
-//   constant.13 = f32[] constant(1)
-//   broadcast.9 = f32[2,40,40]{2,1,0} broadcast(constant.13), dimensions={}
-//   add.1 = f32[2,40,40]{2,1,0} add(multiply, broadcast.9)
-//   convert.40 = bf16[2,40,40]{2,1,0} convert(add.1)
-//   constant.14 = bf16[] constant(0)
-//   broadcast.11 = bf16[2,40,40]{2,1,0} broadcast(constant.14), dimensions={}
-//   compare = pred[2,40,40]{2,1,0} compare(convert.40, broadcast.11),
-//   direction=GT select.16 = bf16[2,40,40]{2,1,0} select(compare, convert.40,
-//   broadcast.11) convert.42 = f32[2,40,40]{2,1,0} convert(select.16)
-//   constant.15 = f32[] constant(-inf)
-//   reduce.21 = f32[2,40]{1,0} reduce(convert.42, constant.15), dimensions={2},
-//   to_apply=region_0.17.clone broadcast.13 = f32[2,40,40]{2,1,0}
-//   broadcast(reduce.21), dimensions={0,1} subtract.1 = f32[2,40,40]{2,1,0}
-//   subtract(convert.42, broadcast.13) exponential.1 = f32[2,40,40]{2,1,0}
-//   exponential(subtract.1) constant.16 = f32[] constant(0) reduce.33 =
-//   f32[2,40]{1,0} reduce(exponential.1, constant.16), dimensions={2},
-//   to_apply=region_1.29 broadcast.14 = f32[2,40,40]{2,1,0}
-//   broadcast(reduce.33), dimensions={0,1} divide = f32[2,40,40]{2,1,0}
-//   divide(exponential.1, broadcast.14) convert.55 = bf16[2,40,40]{2,1,0}
-//   convert(divide) Arg_2.3 = bf16[2,40,64]{2,1,0} parameter(2) ROOT dot.1 =
-//   bf16[2,40,64]{2,1,0} dot(convert.55, Arg_2.3), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
+ENTRY main.41 {
+  constant.10 = pred[16,16,256,256]{3,2,1,0} constant({...})
+  Arg_0.1 = bf16[16,16,256,64]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
+  dot.11 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}
+  convert.33 = f32[16,16,256,256]{3,2,1,0} convert(dot.11)
+  constant.6 = f32[] constant(3.1)
+  constant.11 = f32[] constant(1)
+  broadcast.7 = f32[16,16,256,256]{3,2,1,0} broadcast(constant.6), dimensions={}
+  multiply.12 = f32[16,16,256,256]{3,2,1,0} multiply(convert.33, broadcast.7)
+  broadcast.11 = f32[16,16,256,256]{3,2,1,0} broadcast(constant.11), dimensions={}
+  add.15 = f32[16,16,256,256]{3,2,1,0} add(multiply.12, broadcast.11)
+  convert.40 = bf16[16,16,256,256]{3,2,1,0} convert(add.15)
+  constant.4 = bf16[] constant(0)
+  broadcast.5 = bf16[16,16,256,256]{3,2,1,0} broadcast(constant.4), dimensions={}
+  compare = pred[16,16,256,256]{3,2,1,0} compare(convert.40, broadcast.5), direction=GT 
+  select.13 = bf16[16,16,256,256]{3,2,1,0} select(compare, convert.40, broadcast.5)
+  convert.36 = f32[16,16,256,256]{3,2,1,0} convert(select.13)
+  constant.9 = f32[] constant(-inf)
+  reduce.18 = f32[16,16,256]{2,1,0} reduce(convert.36, constant.9), dimensions={3}, to_apply=region_0.17.clone
+  broadcast.22 = f32[16,16,256,256]{3,2,1,0} broadcast(reduce.18), dimensions={0,1,2}
+  subtract.23 = f32[16,16,256,256]{3,2,1,0} subtract(convert.36, broadcast.22)
+  exponential.24 = f32[16,16,256,256]{3,2,1,0} exponential(subtract.23)
+  constant.8 = f32[] constant(0)
+  reduce.30 = f32[16,16,256]{2,1,0} reduce(exponential.24, constant.8), dimensions={3}, to_apply=region_1.29
+  broadcast.35 = f32[16,16,256,256]{3,2,1,0} broadcast(reduce.30), dimensions={0,1,2}
+  divide.36 = f32[16,16,256,256]{3,2,1,0} divide(exponential.24, broadcast.35)
+  convert.49 = bf16[16,16,256,256]{3,2,1,0} convert(divide.36)
+  Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
+  ROOT dot.37 = bf16[16,16,256,64]{3,2,1,0} dot(convert.49, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+}
 
-// )";
+)";
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* fmha;
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(
-//       m->entry_computation()->root_instruction(),
-//       GmockMatch(
-//           m::GetTupleElement(
-//               m::CustomCall(&fmha,
-//               {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}), 0)
-//               .WithShape(BF16, {2, 40, 64})));
-//   TF_ASSERT_OK_AND_ASSIGN(auto config,
-//                           fmha->backend_config<CudnnfMHABackendConfig>());
-//   EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
-//   EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
-//   EXPECT_EQ(fmha->operands().size(), 5);
-// }
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::GetTupleElement(
+              m::CustomCall(&fmha, {kCudnnfMHAScaleBiasMaskSoftmaxCallTarget}),
+              0)
+              .WithShape(BF16, {16, 16, 256, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          fmha->backend_config<CudnnfMHABackendConfig>());
+  EXPECT_FLOAT_EQ(config.fmha_scale(), 3.1);
+  EXPECT_FLOAT_EQ(config.dropout_rate(), 0.0);
+  EXPECT_EQ(fmha->operands().size(), 5);
+}
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1ScaleBiasMaskSoftmaxDropoutBmm2) {
-//   const char* module_str = R"(
-// HloModule jit__unnamed_wrapped_function_,
-// entry_computation_layout={(bf16[2,40,64]{2,1,0},bf16[2,64,40]{2,1,0},bf16[2,40,64]{2,1,0})->bf16[2,40,64]{2,1,0}}
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       F16Bmm1ScaleBiasMaskSoftmaxDropoutBmm2) {
+  const char* module_str = R"(
+HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0})->f16[2,6,40,64]{3,2,1,0}}, allow_spmd_sharding_propagation_to_output={true}
 
-// region_0.34.clone {
-//   Arg_0.0 = f32[] parameter(0)
-//   Arg_1.0 = f32[] parameter(1)
-//   ROOT maximum.2 = f32[] maximum(Arg_0.0, Arg_1.0)
-// }
+region_0.34 {
+  Arg_0.35 = f16[] parameter(0)
+  Arg_1.36 = f16[] parameter(1)
+  ROOT maximum.1 = f16[] maximum(Arg_0.35, Arg_1.36)
+}
 
-// region_1.46 {
-//   Arg_0.47 = f32[] parameter(0)
-//   Arg_1.48 = f32[] parameter(1)
-//   ROOT add.2 = f32[] add(Arg_0.47, Arg_1.48)
-// }
+region_1.46 {
+  Arg_0.47 = f32[] parameter(0)
+  Arg_1.48 = f32[] parameter(1)
+  ROOT add.2 = f32[] add(Arg_0.47, Arg_1.48)
+}
 
-// ENTRY main.83 {
-//   constant.23 = u32[] constant(2718843009)
-//   bitcast.15 = u32[1]{0} bitcast(constant.23)
-//   constant.25 = u32[] constant(1272950319)
-//   bitcast.16 = u32[1]{0} bitcast(constant.25)
-//   constant.30 = u32[] constant(0)
-//   bitcast.17 = u32[1]{0} bitcast(constant.30)
-//   constant.31 = u32[] constant(2711844646)
-//   bitcast.18 = u32[1]{0} bitcast(constant.31)
-//   custom-call.59 = (u32[1]{0}, u32[1]{0}) custom-call(bitcast.15, bitcast.16,
-//   bitcast.17, bitcast.18), custom_call_target="cuda_threefry2x32",
-//   operand_layout_constraints={u32[1]{0}, u32[1]{0}, u32[1]{0}, u32[1]{0}},
-//   api_version=API_VERSION_STATUS_RETURNING,
-//   backend_config="\001\000\000\000\000\000\000\000" get-tuple-element.60 =
-//   u32[1]{0} get-tuple-element(custom-call.59), index=0 bitcast.21 = u32[]
-//   bitcast(get-tuple-element.60) broadcast.22 = u32[1600]{0}
-//   broadcast(bitcast.21), dimensions={} get-tuple-element.61 = u32[1]{0}
-//   get-tuple-element(custom-call.59), index=1 bitcast.26 = u32[]
-//   bitcast(get-tuple-element.61) broadcast.24 = u32[1600]{0}
-//   broadcast(bitcast.26), dimensions={} iota.62 = u32[3200]{0} iota(),
-//   iota_dimension=0 slice = u32[1600]{0} slice(iota.62), slice={[0:1600]}
-//   slice.1 = u32[1600]{0} slice(iota.62), slice={[1600:3200]}
-//   custom-call.69 = (u32[1600]{0}, u32[1600]{0}) custom-call(broadcast.22,
-//   broadcast.24, slice, slice.1), custom_call_target="cuda_threefry2x32",
-//   operand_layout_constraints={u32[1600]{0}, u32[1600]{0}, u32[1600]{0},
-//   u32[1600]{0}}, api_version=API_VERSION_STATUS_RETURNING,
-//   backend_config="@\006\000\000\000\000\000\000" get-tuple-element.70 =
-//   u32[1600]{0} get-tuple-element(custom-call.69), index=0
-//   get-tuple-element.71 = u32[1600]{0} get-tuple-element(custom-call.69),
-//   index=1 concatenate = u32[3200]{0} concatenate(get-tuple-element.70,
-//   get-tuple-element.71), dimensions={0} constant.32 = u32[] constant(9)
-//   broadcast.26 = u32[3200]{0} broadcast(constant.32), dimensions={}
-//   shift-right-logical.1 = u32[3200]{0} shift-right-logical(concatenate,
-//   broadcast.26) constant.33 = u32[] constant(1065353216) broadcast.27 =
-//   u32[3200]{0} broadcast(constant.33), dimensions={} or.1 = u32[3200]{0}
-//   or(shift-right-logical.1, broadcast.27) bitcast-convert.1 = f32[3200]{0}
-//   bitcast-convert(or.1) constant.34 = f32[] constant(-1) broadcast.28 =
-//   f32[3200]{0} broadcast(constant.34), dimensions={} add.3 = f32[3200]{0}
-//   add(bitcast-convert.1, broadcast.28) constant.42 = f32[] constant(0)
-//   broadcast.29 = f32[3200]{0} broadcast(constant.42), dimensions={}
-//   maximum.3 = f32[3200]{0} maximum(add.3, broadcast.29)
-//   constant.36 = f32[] constant(0.9)
-//   broadcast.30 = f32[3200]{0} broadcast(constant.36), dimensions={}
-//   compare.1 = pred[3200]{0} compare(maximum.3, broadcast.30), direction=LT
-//   bitcast.61 = pred[2,40,40]{2,1,0} bitcast(compare.1)
-//   constant.37 = pred[2,40,40]{2,1,0} constant({...})
-//   Arg_0.1 = bf16[2,40,64]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[2,64,40]{2,1,0} parameter(1)
-//   dot = bf16[2,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0} convert.39
-//   = f32[2,40,40]{2,1,0} convert(dot) constant.38 = f32[] constant(2)
-//   broadcast.31 = f32[2,40,40]{2,1,0} broadcast(constant.38), dimensions={}
-//   multiply.1 = f32[2,40,40]{2,1,0} multiply(convert.39, broadcast.31)
-//   constant.39 = f32[] constant(1)
-//   broadcast.32 = f32[2,40,40]{2,1,0} broadcast(constant.39), dimensions={}
-//   add.4 = f32[2,40,40]{2,1,0} add(multiply.1, broadcast.32)
-//   convert.42 = bf16[2,40,40]{2,1,0} convert(add.4)
-//   constant.40 = bf16[] constant(0)
-//   broadcast.33 = bf16[2,40,40]{2,1,0} broadcast(constant.40), dimensions={}
-//   select.33 = bf16[2,40,40]{2,1,0} select(constant.37, convert.42,
-//   broadcast.33) convert.44 = f32[2,40,40]{2,1,0} convert(select.33)
-//   constant.41 = f32[] constant(-inf)
-//   reduce.38 = f32[2,40]{1,0} reduce(convert.44, constant.41), dimensions={2},
-//   to_apply=region_0.34.clone broadcast.35 = f32[2,40,40]{2,1,0}
-//   broadcast(reduce.38), dimensions={0,1} subtract.1 = f32[2,40,40]{2,1,0}
-//   subtract(convert.44, broadcast.35) exponential.1 = f32[2,40,40]{2,1,0}
-//   exponential(subtract.1) reduce.50 = f32[2,40]{1,0} reduce(exponential.1,
-//   constant.42), dimensions={2}, to_apply=region_1.46 broadcast.36 =
-//   f32[2,40,40]{2,1,0} broadcast(reduce.50), dimensions={0,1} divide =
-//   f32[2,40,40]{2,1,0} divide(exponential.1, broadcast.36) constant.43 = f32[]
-//   constant(1.11304343) broadcast.37 = f32[2,40,40]{2,1,0}
-//   broadcast(constant.43), dimensions={} multiply.2 = f32[2,40,40]{2,1,0}
-//   multiply(divide, broadcast.37) convert.61 = bf16[2,40,40]{2,1,0}
-//   convert(multiply.2) select.81 = bf16[2,40,40]{2,1,0} select(bitcast.61,
-//   convert.61, broadcast.33) Arg_2.3 = bf16[2,40,64]{2,1,0} parameter(2) ROOT
-//   dot.1 = bf16[2,40,64]{2,1,0} dot(select.81, Arg_2.3),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0}
-// }
+ENTRY main.83 {
+  constant.5 = u32[1]{0} constant({2718843009})
+  constant.7 = u32[1]{0} constant({1272950319})
+  constant.9 = u32[1]{0} constant({0})
+  constant.11 = u32[1]{0} constant({2711844646})
+  custom-call.59 = (u32[1]{0}, u32[1]{0}) custom-call(constant.5, constant.7, constant.9, constant.11), custom_call_target="cu_threefry2x32", operand_layout_constraints={u32[1]{0}, u32[1]{0}, u32[1]{0}, u32[1]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config="\001\000\000\000\000\000\000\000"
+  get-tuple-element.60 = u32[1]{0} get-tuple-element(custom-call.59), index=0
+  bitcast.112 = u32[] bitcast(get-tuple-element.60)
+  broadcast.14 = u32[9600]{0} broadcast(bitcast.112), dimensions={}
+  get-tuple-element.61 = u32[1]{0} get-tuple-element(custom-call.59), index=1
+  bitcast.113 = u32[] bitcast(get-tuple-element.61)
+  broadcast.16 = u32[9600]{0} broadcast(bitcast.113), dimensions={}
+  iota.62 = u32[19200]{0} iota(), iota_dimension=0
+  slice = u32[9600]{0} slice(iota.62), slice={[0:9600]}
+  slice.1 = u32[9600]{0} slice(iota.62), slice={[9600:19200]}
+  custom-call.69 = (u32[9600]{0}, u32[9600]{0}) custom-call(broadcast.14, broadcast.16, slice, slice.1), custom_call_target="cu_threefry2x32", operand_layout_constraints={u32[9600]{0}, u32[9600]{0}, u32[9600]{0}, u32[9600]{0}}, api_version=API_VERSION_STATUS_RETURNING, backend_config="\200%\000\000\000\000\000\000"
+  get-tuple-element.70 = u32[9600]{0} get-tuple-element(custom-call.69), index=0
+  get-tuple-element.71 = u32[9600]{0} get-tuple-element(custom-call.69), index=1
+  concatenate = u32[19200]{0} concatenate(get-tuple-element.70, get-tuple-element.71), dimensions={0}
+  constant.13 = u32[] constant(9)
+  broadcast.18 = u32[19200]{0} broadcast(constant.13), dimensions={}
+  shift-right-logical.1 = u32[19200]{0} shift-right-logical(concatenate, broadcast.18)
+  constant.15 = u32[] constant(1065353216)
+  broadcast.19 = u32[19200]{0} broadcast(constant.15), dimensions={}
+  or.1 = u32[19200]{0} or(shift-right-logical.1, broadcast.19)
+  bitcast-convert.1 = f32[19200]{0} bitcast-convert(or.1)
+  constant.17 = f32[] constant(-1)
+  broadcast.20 = f32[19200]{0} broadcast(constant.17), dimensions={}
+  add.3 = f32[19200]{0} add(bitcast-convert.1, broadcast.20)
+  constant.39 = f32[] constant(0)
+  broadcast.21 = f32[19200]{0} broadcast(constant.39), dimensions={}
+  maximum.2 = f32[19200]{0} maximum(add.3, broadcast.21)
+  constant.28 = f32[] constant(0.8)
+  broadcast.23 = f32[19200]{0} broadcast(constant.28), dimensions={}
+  compare.1 = pred[19200]{0} compare(maximum.2, broadcast.23), direction=LT
+  bitcast.114 = pred[2,6,40,40]{3,2,1,0} bitcast(compare.1)
+  constant.34 = pred[2,6,40,40]{3,2,1,0} constant({...})
+  Arg_0.1 = f16[2,6,40,64]{3,2,1,0} parameter(0), sharding={replicated}
+  Arg_1.2 = f16[2,6,64,40]{3,2,1,0} parameter(1), sharding={replicated}
+  dot.30 = f16[2,6,40,40]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+  constant.35 = f16[] constant(2)
+  broadcast.27 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.35), dimensions={}
+  multiply.2 = f16[2,6,40,40]{3,2,1,0} multiply(dot.30, broadcast.27)
+  constant.36 = f16[] constant(1)
+  broadcast.29 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.36), dimensions={}
+  add.5 = f16[2,6,40,40]{3,2,1,0} add(multiply.2, broadcast.29)
+  constant.37 = f16[] constant(0)
+  broadcast.30 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.37), dimensions={}
+  select.1 = f16[2,6,40,40]{3,2,1,0} select(constant.34, add.5, broadcast.30)
+  constant.38 = f16[] constant(-inf)
+  reduce.38 = f16[2,6,40]{2,1,0} reduce(select.1, constant.38), dimensions={3}, to_apply=region_0.34
+  broadcast.32 = f16[2,6,40,40]{3,2,1,0} broadcast(reduce.38), dimensions={0,1,2}
+  subtract.1 = f16[2,6,40,40]{3,2,1,0} subtract(select.1, broadcast.32)
+  exponential.1 = f16[2,6,40,40]{3,2,1,0} exponential(subtract.1)
+  convert.1 = f32[2,6,40,40]{3,2,1,0} convert(exponential.1)
+  reduce.50 = f32[2,6,40]{2,1,0} reduce(convert.1, constant.39), dimensions={3}, to_apply=region_1.46
+  convert.2 = f16[2,6,40]{2,1,0} convert(reduce.50)
+  broadcast.33 = f16[2,6,40,40]{3,2,1,0} broadcast(convert.2), dimensions={0,1,2}
+  divide = f16[2,6,40,40]{3,2,1,0} divide(exponential.1, broadcast.33)
+  constant.40 = f16[] constant(1.25)
+  broadcast.34 = f16[2,6,40,40]{3,2,1,0} broadcast(constant.40), dimensions={}
+  multiply.3 = f16[2,6,40,40]{3,2,1,0} multiply(divide, broadcast.34)
+  select.2 = f16[2,6,40,40]{3,2,1,0} select(bitcast.114, multiply.3, broadcast.30)
+  Arg_2.3 = f16[2,6,40,64]{3,2,1,0} parameter(2), sharding={replicated}
+  ROOT dot.82 = f16[2,6,40,64]{3,2,1,0} dot(select.2, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}
+}
 
-// )";
+)";
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* fmha;
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(
-//       m->entry_computation()->root_instruction(),
-//       GmockMatch(
-//           m::GetTupleElement(
-//               m::CustomCall(&fmha,
-//                             {kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget}),
-//               0)
-//               .WithShape(BF16, {2, 40, 64})));
-//   TF_ASSERT_OK_AND_ASSIGN(auto config,
-//                           fmha->backend_config<CudnnfMHABackendConfig>());
-//   EXPECT_FLOAT_EQ(config.fmha_scale(), 2);
-//   EXPECT_NEAR(config.dropout_rate(), 0.1, 1e-2);
-//   EXPECT_EQ(fmha->operands().size(), 5);
-// }
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(
+          m::GetTupleElement(
+              m::CustomCall(&fmha,
+                            {kCudnnfMHAScaleBiasMaskSoftmaxDropoutCallTarget}),
+              0)
+              .WithShape(F16, {2, 6, 40, 64})));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          fmha->backend_config<CudnnfMHABackendConfig>());
+  EXPECT_FLOAT_EQ(config.fmha_scale(), 2);
+  EXPECT_NEAR(config.dropout_rate(), 0.2, 1e-2);
+  EXPECT_EQ(fmha->operands().size(), 5);
+}
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1UnfusedSoftmaxBmm2) {
   const char* module_str = R"(
@@ -892,132 +869,114 @@ ENTRY main.56 {
   EXPECT_EQ(fmha->operands().size(), 4);
 }
 
-// // negative test
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1Bmm2Pattern_bmm1_contracting_dim_not_equal_64) {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(bf16[20,40,16]{2,1,0},bf16[20,16,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,40,64]{2,1,0}}
+// negative test
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_contracting_dim_not_equal_64) {
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
+ENTRY main.6 {
+  Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,256,32]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,32]{3,2,1,0} parameter(1)
+  dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,256,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+}
 
-// ENTRY main.6 {
-//   Arg_0.1 = bf16[20,40,16]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[20,16,40]{1,2,0} parameter(1)
-//   dot = bf16[20,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0} Arg_2.3 = bf16[20,40,64]{2,1,0} parameter(2) ROOT dot.1
-//   = bf16[20,40,64]{2,1,0} dot(dot, Arg_2.3), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
+)";
 
-// )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* fmha;
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(&fmha, m::Dot(m::Parameter(0), m::Parameter(1)),
+                                m::Parameter(2))
+                             .WithShape(BF16, {16, 16, 256, 64})));
+}
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(m->entry_computation()->root_instruction(),
-//               GmockMatch(m::Dot(&fmha, m::Dot(m::Parameter(0),
-//               m::Parameter(1)),
-//                                 m::Parameter(2))
-//                              .WithShape(BF16, {20, 40, 64})));
-// }
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm1_non_contracting_dim_larger_than_512) {
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,1024,64]{3,2,1,0},bf16[16,16,1024,64]{3,2,1,0},bf16[16,16,1024,64]{3,2,1,0})->bf16[16,16,1024,64]{3,2,1,0}}
+ENTRY main.6 {
+  Arg_2.3 = bf16[16,16,1024,64]{3,2,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,1024,64]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,1024,64]{3,2,1,0} parameter(1)
+  dot.0 = bf16[16,16,1024,1024]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,1024,64]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+}
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1Bmm2Pattern_bmm1_non_contracting_dim_larger_than_512) {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(bf16[20,1024,64]{2,1,0},bf16[20,64,1024]{1,2,0},bf16[20,1024,64]{2,1,0})->bf16[20,1024,64]{2,1,0}}
+)";
 
-// ENTRY main.6 {
-//   Arg_0.1 = bf16[20,1024,64]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[20,64,1024]{1,2,0} parameter(1)
-//   dot = bf16[20,1024,1024]{2,1,0} dot(Arg_0.1, Arg_1.2),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0} Arg_2.3 = bf16[20,1024,64]{2,1,0} parameter(2) ROOT
-//   dot.1 = bf16[20,1024,64]{2,1,0} dot(dot, Arg_2.3),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0}
-// }
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* dot;
 
-// )";
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(&dot, m::Op(), m::Parameter(2))
+                             .WithShape(BF16, {16, 16, 1024, 64})));
+}
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* dot;
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2Pattern_bmm2_rhs_non_contracting_dim_not_equal_64) {
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,32]{3,2,1,0})->bf16[16,16,256,32]{3,2,1,0}}
+ENTRY main.6 {
+  Arg_2.3 = bf16[16,16,256,32]{3,2,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,256,64]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,64]{3,2,1,0} parameter(1)
+  dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,256,32]{3,2,1,0} dot(dot.0, Arg_2.3), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={2}, metadata={}
+}
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(m->entry_computation()->root_instruction(),
-//               GmockMatch(m::Dot(&dot, m::Op(), m::Parameter(2))
-//                              .WithShape(BF16, {20, 1024, 64})));
-// }
+)";
 
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1Bmm2Pattern_bmm2_rhs_non_contracting_dim_not_equal_64) {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(bf16[20,40,64]{2,1,0},bf16[20,64,40]{2,1,0},bf16[20,40,16]{2,1,0})->bf16[20,40,16]{2,1,0}}
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
 
-// ENTRY main.6 {
-//   Arg_0.1 = bf16[20,40,64]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[20,64,40]{1,2,0} parameter(1)
-//   dot = bf16[20,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0} Arg_2.3 = bf16[20,40,16]{2,1,0} parameter(2) ROOT dot.1
-//   = bf16[20,40,16]{2,1,0} dot(dot, Arg_2.3), lhs_contracting_dims={2},
-//   rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
-
-// )";
-
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* fmha;
-
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(m->entry_computation()->root_instruction(),
-//               GmockMatch(m::Dot(&fmha, m::Op(), m::Parameter(2))
-//                              .WithShape(BF16, {20, 40, 16})));
-// }
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(&fmha, m::Op(), m::Parameter(2))
+                             .WithShape(BF16, {16, 16, 256, 32})));
+}
 
 // // check if MHA is unsupported, canonicalization will not kick in
-// TEST_F(CudnnFusedMhaRewriterTestHloTest,
-//        BF16Bmm1Bmm2PatternUncanonicalized_bmm1_contracting_dim_not_equal_64)
-//        {
-//   const char* module_str = R"(
-// HloModule fmha_test,
-// entry_computation_layout={(bf16[20,40,16]{2,1,0},bf16[20,16,40]{2,1,0},bf16[20,40,64]{2,1,0})->bf16[20,64,40]{2,1,0}}
+TEST_F(CudnnFusedMhaRewriterTestHloTest,
+       BF16Bmm1Bmm2PatternUncanonicalized_bmm1_contracting_dim_not_equal_64) {
+  const char* module_str = R"(
+HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,32]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
-// ENTRY main.6 {
-//   Arg_0.1 = bf16[20,40,16]{2,1,0} parameter(0)
-//   Arg_1.2 = bf16[20,16,40]{1,2,0} parameter(1)
-//   dot = bf16[20,40,40]{2,1,0} dot(Arg_0.1, Arg_1.2),
-//   lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0},
-//   rhs_batch_dims={0} Arg_2.3 = bf16[20,40,64]{2,1,0} parameter(2) ROOT dot.1
-//   = bf16[20,64,40]{2,1,0} dot(Arg_2.3, dot), lhs_contracting_dims={1},
-//   rhs_contracting_dims={2}, lhs_batch_dims={0}, rhs_batch_dims={0}
-// }
+ENTRY main.6 {
+  Arg_2.3 = bf16[16,16,256,64]{3,2,1,0} parameter(2)
+  Arg_0.1 = bf16[16,16,256,32]{3,2,1,0} parameter(0)
+  Arg_1.2 = bf16[16,16,256,32]{3,2,1,0} parameter(1)
+  dot.0 = bf16[16,16,256,256]{3,2,1,0} dot(Arg_0.1, Arg_1.2), lhs_batch_dims={0,1}, lhs_contracting_dims={3}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+  ROOT dot.1 = bf16[16,16,64,256]{3,2,1,0} dot(Arg_2.3, dot.0), lhs_batch_dims={0,1}, lhs_contracting_dims={2}, rhs_batch_dims={0,1}, rhs_contracting_dims={3}, metadata={}
+}
 
-// )";
+)";
 
-//   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
-//   CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
-//                                          GetCudnnVersion()};
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
+  CudnnFusedMHARewriter fusedMhaRewriter{GetCudaComputeCapability(),
+                                         GetCudnnVersion()};
 
-//   TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
-//   const HloInstruction* fmha;
+  TF_ASSERT_OK(RunHloPass(&fusedMhaRewriter, m.get()).status());
+  const HloInstruction* fmha;
 
-//   SCOPED_TRACE(m->ToString());
-//   EXPECT_THAT(m->entry_computation()->root_instruction(),
-//               GmockMatch(m::Dot(&fmha, m::Parameter(2), m::Op())
-//                              .WithShape(BF16, {20, 64, 40})));
-// }
+  SCOPED_TRACE(m->ToString());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(&fmha, m::Parameter(2), m::Op())
+                             .WithShape(BF16, {16, 16, 64, 256})));
+}
 
 }  // anonymous namespace
 }  // namespace gpu
