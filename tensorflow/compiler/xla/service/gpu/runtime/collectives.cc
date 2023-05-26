@@ -83,7 +83,7 @@ absl::Status RunSyncOrAsync(
 StatusOr<NcclComm::Lock> GetNcclComm(
     const NcclExecuteParams& params, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_values, bool is_async) {
   // TODO(b/233930690): Pass the attribute below as a nested array.
   // Pass an array of arrays using two vectors; one specifying all the values
   // and another specifying the (ending) offsets of each array in the other
@@ -98,8 +98,10 @@ StatusOr<NcclComm::Lock> GetNcclComm(
     replica_groups.push_back(replica_group);
   }
 
+  const int64_t stream_id = is_async ? 1 : 0;
   return LockNcclComm(params, replica_groups,
-                      static_cast<CollectiveOpGroupMode>(group_mode), op_id);
+                      static_cast<CollectiveOpGroupMode>(group_mode), op_id,
+                      stream_id);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -156,11 +158,11 @@ absl::Status CollectivePermuteImplCommon(
     absl::Span<const int64_t> replica_group_offsets,
     absl::Span<const int64_t> replica_group_values,
     absl::Span<const int64_t> source_peers,
-    absl::Span<const int64_t> target_peers, int32_t repeat_count = 1) {
+    absl::Span<const int64_t> target_peers, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
+                          replica_group_values, is_async);
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
@@ -217,7 +219,8 @@ absl::Status CollectivePermuteImpl(
                           return CollectivePermuteImplCommon(
                               run_options, debug_options, stream, args,
                               group_mode, op_id, replica_group_offsets,
-                              replica_group_values, source_peers, target_peers);
+                              replica_group_values, source_peers, target_peers,
+                              is_async);
                         });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
@@ -251,11 +254,11 @@ absl::Status AllGatherImplCommon(
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_values, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
+                          replica_group_values, is_async);
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
@@ -282,7 +285,7 @@ absl::Status AllGatherImpl(const ServiceExecutableRunOptions* run_options,
                           return AllGatherImplCommon(
                               run_options, debug_options, stream, args,
                               group_mode, op_id, replica_group_offsets,
-                              replica_group_values);
+                              replica_group_values, is_async);
                         });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL diasbled");
@@ -314,11 +317,11 @@ absl::Status AllReduceImplCommon(
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_values, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
+                          replica_group_values, is_async);
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
@@ -348,7 +351,8 @@ absl::Status AllReduceImpl(const ServiceExecutableRunOptions* run_options,
                           return AllReduceImplCommon(
                               run_options, debug_options, stream, args,
                               group_mode, op_id, reduction_kind,
-                              replica_group_offsets, replica_group_values);
+                              replica_group_offsets, replica_group_values,
+                              is_async);
                         });
 #else   // XLA_ENABLE_XCCL
   // NCCL disabled.
@@ -377,17 +381,19 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
 //===----------------------------------------------------------------------===//
 
 #if XLA_ENABLE_XCCL
-absl::Status AllToAllImplCommon(
-    const ServiceExecutableRunOptions* run_options,
-    const DebugOptions* debug_options, se::Stream* stream,
-    CustomCall::RemainingArgs args, int64_t group_mode,
-    bool has_split_dimension, int64_t op_id,
-    absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
+                                const DebugOptions* debug_options,
+                                se::Stream* stream,
+                                CustomCall::RemainingArgs args,
+                                int64_t group_mode, bool has_split_dimension,
+                                int64_t op_id,
+                                absl::Span<const int64_t> replica_group_offsets,
+                                absl::Span<const int64_t> replica_group_values,
+                                bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
+                          replica_group_values, is_async);
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
@@ -417,7 +423,8 @@ absl::Status AllToAllImpl(const ServiceExecutableRunOptions* run_options,
                           return AllToAllImplCommon(
                               run_options, debug_options, stream, args,
                               group_mode, has_split_dimension, op_id,
-                              replica_group_offsets, replica_group_values);
+                              replica_group_offsets, replica_group_values,
+                              is_async);
                         });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
@@ -450,11 +457,11 @@ absl::Status ReduceScatterImplCommon(
     const DebugOptions* debug_options, se::Stream* stream,
     CustomCall::RemainingArgs args, int64_t group_mode, int64_t op_id,
     int64_t reduction_kind, absl::Span<const int64_t> replica_group_offsets,
-    absl::Span<const int64_t> replica_group_values) {
+    absl::Span<const int64_t> replica_group_values, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
   auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values);
+                          replica_group_values, is_async);
   if (!comm.ok()) return comm.status();
 
   auto device_buffers = GetDeviceBufferPairs(args);
@@ -484,7 +491,8 @@ absl::Status ReduceScatterImpl(const ServiceExecutableRunOptions* run_options,
                           return ReduceScatterImplCommon(
                               run_options, debug_options, stream, args,
                               group_mode, op_id, reduction_kind,
-                              replica_group_offsets, replica_group_values);
+                              replica_group_offsets, replica_group_values,
+                              is_async);
                         });
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");

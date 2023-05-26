@@ -149,7 +149,7 @@ bool NcclCollectiveConfig::IsDegenerate(int64_t replica_count,
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id) {
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id) {
   TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
                       params.GetGlobalDeviceId());
 
@@ -187,7 +187,8 @@ StatusOr<NcclComm::Lock> LockNcclComm(
   se::gpu::ScopedActivateExecutorContext scoped_context(params.stream_executor);
 
   return AcquireNcclComm(params.run_id, OpId(op_id), std::move(participants),
-                         num_local_participants, *unique_id_callback, rank);
+                         num_local_participants, *unique_id_callback, rank,
+                         stream_id);
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -214,9 +215,12 @@ StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
 Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
 #if XLA_ENABLE_XCCL
   VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
+  // TODO(b/284297899): [XLA:GPU] Correctly support unified sync/async
+  // collectives in thunks
   TF_ASSIGN_OR_RETURN(NcclComm::Lock comm,
                       LockNcclComm(params.nccl_params, config().replica_groups,
-                                   config().group_mode, config().op_id));
+                                   config().group_mode, config().op_id,
+                                   /*stream_id=*/1));
 
   TF_RETURN_IF_ERROR(RunNcclCollective(params, *comm));
 

@@ -184,7 +184,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id);
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id);
 #endif  // XLA_ENABLE_XCCL
 
 struct DeviceBufferPair {
