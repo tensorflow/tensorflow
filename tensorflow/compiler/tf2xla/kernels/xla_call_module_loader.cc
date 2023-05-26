@@ -71,13 +71,15 @@ constexpr int VERSION_START_PLATFORMS = 3;
 // Version 4 supports StableHLO with compatibility guarantees.
 // Used in jax2tf from March 15, 2023 (cl/516885716). Starting with
 // March 28th, 2023 we stopped using dim_args_spec (cl/520033493).
+// TODO(b/283439649): Remove support for dim_args_spec.
 constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
-// Version 5 add support to stablehlo.custom_call for host call tf graph.
+// Version 5 add support for call_tf_graph. This does not change the semantics
+// of the op, but it allows the `function_list` attribute.
 // Used in jax2tf from May 3rd, 2023 (cl/529106145).
-constexpr int VERSION_SUPPORT_CUSTOM_CALL = 5;
+constexpr int VERSION_START_SUPPORT_CALL_TF_GRAPH = 5;
 constexpr int VERSION_MINIMUM_SUPPORTED =
     VERSION_START_STABLE_HLO_COMPATIBILITY;
-constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_SUPPORT_CUSTOM_CALL;
+constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_CALL_TF_GRAPH;
 
 // Pretty-prints a module, optionally with debug information.
 std::string ModuleToString(mlir::ModuleOp mlir_module, bool with_debugging) {
@@ -93,6 +95,7 @@ std::string ModuleToString(mlir::ModuleOp mlir_module, bool with_debugging) {
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
+// TODO(b/283439649): Remove support for dim_args_spec.
 tsl::StatusOr<mlir::Value> ComputeDimensionValue(
     int version, std::string dim_arg_spec, std::vector<mlir::Value> arguments,
     mlir::OpBuilder op_builder, mlir::Type dim_arg_type) {
@@ -462,7 +465,11 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
                                  ", dim_args_spec = [",
                                  absl::StrJoin(dim_args_spec_, ", "), "])\n",
                                  ModuleToString(*module_, VLOG_IS_ON(4))));
-
+  if (version >= VERSION_START_SUPPORT_CALL_TF_GRAPH &&
+      !dim_args_spec_.empty()) {
+    return absl::InvalidArgumentError(
+        "dim_args_spec not supported in this version");
+  }
   if (failed(module_->verifyInvariants())) {
     XLA_VLOG_LINES(
         3, absl::StrCat("XlaCallModule module with verification failed: ",

@@ -1388,6 +1388,9 @@ dim_args_spec: in presence of dynamic shapes, this is the specification for the
   string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
   the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
   where "args" are the actual array arguments.
+  This attribute is not used anymore in modules serialized after March 28th,
+  2023 and JAX OSS versions higher than 0.4.6.
+  TODO(b/283439649): remove support for dim_args_spec.
 function_list: This list contains the TensorFlow FunctionDefs that are used by
   the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
   operations, they can call TensorFlow graph functions outside of the
