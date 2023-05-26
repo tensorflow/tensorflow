@@ -891,6 +891,10 @@ bool AllInfinityCosts(
     const std::vector<std::vector<double>>& resharding_costs) {
   for (const auto& costs : resharding_costs) {
     bool all_infinity = true;
+    if (costs.empty()) {
+      all_infinity = false;
+      continue;
+    }
     for (const auto& cost : costs) {
       if (cost < kInfinityCost) {
         all_infinity = false;
@@ -951,7 +955,6 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     strategies->leaf_vector = std::move(new_vector);
   }
 }
-
 
 bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
                  absl::Span<const int64_t> tensor_dims,

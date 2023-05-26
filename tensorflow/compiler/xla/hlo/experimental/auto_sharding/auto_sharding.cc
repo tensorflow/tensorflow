@@ -2852,6 +2852,7 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
       if (inst->shape().IsTuple()) {
         switch (inst->opcode()) {
           case HloOpcode::kReduce:
+          case HloOpcode::kCustomCall:
           case HloOpcode::kSort: {
             for (size_t i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
               const ShardingStrategy& stra = GetShardingStrategyForTuple(
