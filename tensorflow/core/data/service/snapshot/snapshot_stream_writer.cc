@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/utils.h"
@@ -87,6 +88,10 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
+  if (IsPreemptedError(status)) {
+    LOG(INFO) << "tf.data service snapshot writer is cancelled: " << status;
+    return;
+  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {

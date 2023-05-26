@@ -233,6 +233,10 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
     get_stream_assignments(cluster, n)  # Blocks until all workers have streams.
     cluster.stop_worker(0)
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(self._path, "streams", "stream_0", "checkpoints")))
+
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
     self._wait_for_snapshot()
