@@ -8,7 +8,7 @@
 
 ### Major Features and Improvements
 
-*   `tf.lite`:
+*   `tf.lite`
 
     *   Add 16-bit and 64-bit float type support for built-in op `cast`.
     *   The Python TF Lite Interpreter bindings now have an option `experimental_disable_delegate_clustering` to turn-off delegate clustering.
@@ -26,7 +26,7 @@
     *   `add_op` supports broadcasting up to 6 dimensions.
     *   Add 16-bit support for `top_k`.
     
-*   `tf.function`:
+*   `tf.function`
 
     *   ConcreteFunction (`tf.types.experimental.ConcreteFunction`) as generated through `get_concrete_function` now performs holistic input validation similar to calling `tf.function` directly. This can cause breakages where existing calls pass Tensors with the wrong shape or omit certain non-Tensor arguments (including default values).
 
@@ -59,19 +59,19 @@
 
     *   Opened an experimental API, `tf.distribute.experimental.coordinator.get_current_worker_index`, for retrieving the worker index from within a worker, when using parameter server training with a custom training loop.
 
-*   `tf.experimental.dtensor`:
+*   `tf.experimental.dtensor`
 
     *   Deprecated `dtensor.run_on` in favor of `dtensor.default_mesh` to correctly indicate that the context does not override the mesh that the ops and functions will run on, it only sets a fallback default mesh.
     *   List of members of dtensor.Layout and dtensor.Mesh have slightly changed as part of efforts to consolidate the C++ and Python source code with pybind11. Most notably, Layout.serialized_string is removed.
     *   Minor API changes to represent Single Device Layout for non-distributed Tensors inside DTensor functions. Runtime support will be added soon.
 
-*   `tf.experimental.ExtensionType`:
+*   `tf.experimental.ExtensionType`
 
     *   `tf.experimental.ExtensionType` now supports Python `tuple` as the type annotation of its fields.
 
-*    `tf.nest`:
-    *   Deprecated API `tf.nest.is_sequence` has now been deleted. Please use `tf.nest.is_nested` instead.
+*   `tf.nest`
 
+    *   Deprecated API `tf.nest.is_sequence` has now been deleted. Please use `tf.nest.is_nested` instead.
 
 ## Keras
 
@@ -79,12 +79,10 @@ Keras is a framework built on top of the TensorFlow. See more details on the [Ke
 
 ### Breaking Changes
 
- *  `tf.keras`
-
-    *  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and `KerasRegressor`), which had been deprecated in August 2021. We recommend using [SciKeras](https://github.com/adriangb/scikeras) instead.
-    *  The default Keras model saving format is now the Keras v3 format: calling `model.save("xyz.keras")` will no longer create a H5 file, it will create a native Keras model file. This will only be breaking for you if you were manually inspecting or modifying H5 files saved by Keras under a `.keras` extension. If this breaks you, simply add `save_format="h5"` to your `.save()` call to revert back to the prior behavior.
-    *  Added `keras.utils.TimedThread` utility to run a timed thread every x seconds. It can be used to run a threaded function alongside model training or any other snippet of code.
-    *  In the `keras` PyPI package, accessible symbols are now restricted to symbols that are intended to be public. This may affect your code if you were using `import keras` and you used `keras` functions that were not public APIs, but were accessible in earlier versions with direct imports. In those cases, please use the following guideline:
+*  Removed the Keras scikit-learn API wrappers (`KerasClassifier` and `KerasRegressor`), which had been deprecated in August 2021. We recommend using [SciKeras](https://github.com/adriangb/scikeras) instead.
+*  The default Keras model saving format is now the Keras v3 format: calling `model.save("xyz.keras")` will no longer create a H5 file, it will create a native Keras model file. This will only be breaking for you if you were manually inspecting or modifying H5 files saved by Keras under a `.keras` extension. If this breaks you, simply add `save_format="h5"` to your `.save()` call to revert back to the prior behavior.
+*  Added `keras.utils.TimedThread` utility to run a timed thread every x seconds. It can be used to run a threaded function alongside model training or any other snippet of code.
+*  In the `keras` PyPI package, accessible symbols are now restricted to symbols that are intended to be public. This may affect your code if you were using `import keras` and you used `keras` functions that were not public APIs, but were accessible in earlier versions with direct imports. In those cases, please use the following guideline:
         -  The API may be available in the public Keras API under a different name, so make sure to look for it on keras.io or TensorFlow docs and switch to the public version.
         -  It could also be a simple python or TF utility that you could easily copy over to your own codebase. In those case, just make it your own!
         -  If you believe it should definitely be a public Keras API, please open a feature request in keras GitHub repo.
@@ -92,21 +90,19 @@ Keras is a framework built on top of the TensorFlow. See more details on the [Ke
 
 ### Major Features and Improvements
 
-*   `tf.keras`
-
-    *   Added F-Score metrics `tf.keras.metrics.FBetaScore`, `tf.keras.metrics.F1Score`, and `tf.keras.metrics.R2Score`.
-    *   Added activation function `tf.keras.activations.mish`.
-    *   Added experimental `keras.metrics.experimental.PyMetric` API for metrics that run Python code on the host CPU (compiled outside of the TensorFlow graph). This can be used for integrating metrics from external Python libraries (like sklearn or pycocotools) into Keras as first-class Keras metrics.
-    *   Added `tf.keras.optimizers.Lion` optimizer.
-    *   Added `tf.keras.layers.SpectralNormalization` layer wrapper to perform spectral normalization on the weights of a target layer.
-    *   The `SidecarEvaluatorModelExport` callback has been added to Keras as `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for exporting the model the best-scoring model as evaluated by a `SidecarEvaluator` evaluator. The evaluator regularly evaluates the model and exports it if the user-defined comparison function determines that it is an improvement.
-    *   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay` learning rate scheduler. You can now specify an initial and target learning rate, and our scheduler will perform a linear interpolation between the two after which it will begin a decay phase.
-    *   Added experimental support for an exactly-once visitation guarantee for evaluating Keras models trained with `tf.distribute ParameterServerStrategy`, via the `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
-    *   Added `tf.keras.__internal__.KerasTensor`,`tf.keras.__internal__.SparseKerasTensor`, and `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these classes to do instance type checking and type annotations for layer/model inputs and outputs.
-    *   All the `tf.keras.dtensor.experimental.optimizers` classes have been merged with `tf.keras.optimizers`. You can migrate your code to use `tf.keras.optimizers` directly. The API namespace for `tf.keras.dtensor.experimental.optimizers` will be removed in future releases.
-    *   Added support for `class_weight` for 3+ dimensional targets (e.g. image segmentation masks) in `Model.fit`.
-    *   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
-    *   Remove the `tf.keras.dtensor.experimental.layout_map_scope()`. You can user the `tf.keras.dtensor.experimental.LayoutMap.scope()` instead.
+*   Added F-Score metrics `tf.keras.metrics.FBetaScore`, `tf.keras.metrics.F1Score`, and `tf.keras.metrics.R2Score`.
+*   Added activation function `tf.keras.activations.mish`.
+*   Added experimental `keras.metrics.experimental.PyMetric` API for metrics that run Python code on the host CPU (compiled outside of the TensorFlow graph). This can be used for integrating metrics from external Python libraries (like sklearn or pycocotools) into Keras as first-class Keras metrics.
+*   Added `tf.keras.optimizers.Lion` optimizer.
+*   Added `tf.keras.layers.SpectralNormalization` layer wrapper to perform spectral normalization on the weights of a target layer.
+*   The `SidecarEvaluatorModelExport` callback has been added to Keras as `keras.callbacks.SidecarEvaluatorModelExport`. This callback allows for exporting the model the best-scoring model as evaluated by a `SidecarEvaluator` evaluator. The evaluator regularly evaluates the model and exports it if the user-defined comparison function determines that it is an improvement.
+*   Added warmup capabilities to `tf.keras.optimizers.schedules.CosineDecay` learning rate scheduler. You can now specify an initial and target learning rate, and our scheduler will perform a linear interpolation between the two after which it will begin a decay phase.
+*   Added experimental support for an exactly-once visitation guarantee for evaluating Keras models trained with `tf.distribute ParameterServerStrategy`, via the `exact_evaluation_shards` argument in `Model.fit` and `Model.evaluate`.
+*   Added `tf.keras.__internal__.KerasTensor`,`tf.keras.__internal__.SparseKerasTensor`, and `tf.keras.__internal__.RaggedKerasTensor` classes. You can use these classes to do instance type checking and type annotations for layer/model inputs and outputs.
+*   All the `tf.keras.dtensor.experimental.optimizers` classes have been merged with `tf.keras.optimizers`. You can migrate your code to use `tf.keras.optimizers` directly. The API namespace for `tf.keras.dtensor.experimental.optimizers` will be removed in future releases.
+*   Added support for `class_weight` for 3+ dimensional targets (e.g. image segmentation masks) in `Model.fit`.
+*   Added a new loss, `keras.losses.CategoricalFocalCrossentropy`.
+*   Remove the `tf.keras.dtensor.experimental.layout_map_scope()`. You can user the `tf.keras.dtensor.experimental.LayoutMap.scope()` instead.
 
 ## Security
 
