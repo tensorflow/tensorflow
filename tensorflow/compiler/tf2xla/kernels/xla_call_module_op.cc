@@ -92,13 +92,13 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
           context, absl::StrCat(absl::string_view(name.getValue()), i));
     }
     if (new_name != name) {
-      func.setSymNameAttr(new_name);
       if (failed(mlir::SymbolTable::replaceAllSymbolUses(func, new_name,
                                                          *imported))) {
         return absl::InternalError(
             absl::StrCat("Failed to replace all symbol uses of function '",
                          absl::string_view(func.getName()), "'"));
       }
+      func.setSymNameAttr(new_name);
     }
     if (name.getValue() == "main") {
       main_func_name = new_name;
