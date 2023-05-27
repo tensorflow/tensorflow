@@ -221,7 +221,7 @@ filegroup(
         "@com_google_protobuf//:LICENSE",
         "@curl//:COPYING",
         "@dill_archive//:LICENSE",
-        "@flatbuffers//:LICENSE.txt",
+        "@flatbuffers//:LICENSE",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
