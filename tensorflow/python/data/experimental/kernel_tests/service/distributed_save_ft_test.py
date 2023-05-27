@@ -327,6 +327,29 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
       time.sleep(0.1)
     # TODO(b/250921378): Verify the number of elements.
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedDataset(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.from_tensor_slices(range(100))
+    def interleave_fn(x):
+      ds = dataset_ops.Dataset.from_tensor_slices(range(x))
+      def flat_map_fn(y):
+        return dataset_ops.Dataset.from_tensor_slices([y])
+      return ds.flat_map(flat_map_fn)
+    dataset = dataset.interleave(
+        interleave_fn, cycle_length=2, num_parallel_calls=2)
+
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._path, cluster.dispatcher_address()))
+    get_stream_assignments(cluster, 1)  # Blocks until all workers have streams.
+    time.sleep(1)
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+
   def _snapshot_is_done(self):
     return os.path.exists(os.path.join(self._path, "DONE"))
 
