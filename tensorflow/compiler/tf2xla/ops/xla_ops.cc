@@ -1326,6 +1326,7 @@ REGISTER_OP("XlaCallModule")
     .Attr("dim_args_spec: list(string) = []")
     .Attr("platforms: list(string) = []")
     .Attr("function_list: list(func) = []")
+    .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
       TF_RETURN_IF_ERROR(c->input("args", &args_shapes));

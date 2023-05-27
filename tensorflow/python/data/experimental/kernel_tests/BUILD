@@ -481,6 +481,19 @@ tf_py_strict_test(
 )
 
 tf_py_strict_test(
+    name = "pad_to_cardinality_test",
+    srcs = ["pad_to_cardinality_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:pad_to_cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_strict_test(
     name = "parallel_interleave_test",
     size = "medium",
     srcs = ["parallel_interleave_test.py"],

@@ -173,7 +173,8 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
       /*graph_as_function=*/false,
       specs.upgrade_legacy,
       /*enable_shape_inference=*/false,
-      /*unconditionally_use_set_output_shapes=*/true};
+      /*unconditionally_use_set_output_shapes=*/true,
+      /*enable_soft_placement=*/false};
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(

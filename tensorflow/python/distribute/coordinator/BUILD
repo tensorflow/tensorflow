@@ -107,6 +107,7 @@ distribute_py_strict_test(
         "//tensorflow/python:check_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:embedding_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
@@ -121,11 +122,14 @@ distribute_py_strict_test(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
+        "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/eager:cancellation",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework",
         "//tensorflow/python/framework:random_seed",
+        "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:tf_logging",
         "@absl_py//absl/testing:parameterized",
@@ -161,7 +165,6 @@ py_strict_library(
 tf_py_strict_test(
     name = "fault_tolerance_test",
     srcs = ["fault_tolerance_test.py"],
-    flaky = True,
     python_version = "PY3",
     shard_count = 40,  # = number of tests, so one shard = one test
     tags = [
@@ -180,7 +183,6 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "fault_tolerance_coordination_service_test",
     srcs = ["fault_tolerance_coordination_service_test.py"],
-    flaky = True,
     python_version = "PY3",
     shard_count = 41,
     tags = [
@@ -265,7 +267,6 @@ tf_py_strict_test(
 tf_py_strict_test(
     name = "get_task_states_test",
     srcs = ["get_task_states_test.py"],
-    flaky = True,
     python_version = "PY3",
     shard_count = 3,
     tags = [

@@ -3393,62 +3393,36 @@ bool HloParserImpl::ParseInstructionNames(
 bool HloParserImpl::SetValueInLiteral(LocTy loc, int64_t value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
-  switch (shape.element_type()) {
-    case S4:
-      return SetValueInLiteralHelper<s4>(loc, value, index, literal);
-    case S8:
-      return SetValueInLiteralHelper<int8_t>(loc, value, index, literal);
-    case S16:
-      return SetValueInLiteralHelper<int16_t>(loc, value, index, literal);
-    case S32:
-      return SetValueInLiteralHelper<int32_t>(loc, value, index, literal);
-    case S64:
-      return SetValueInLiteralHelper<int64_t>(loc, value, index, literal);
-    case U4:
-      return SetValueInLiteralHelper<u4>(loc, value, index, literal);
-    case U8:
-      return SetValueInLiteralHelper<uint8_t>(loc, value, index, literal);
-    case U16:
-      return SetValueInLiteralHelper<uint16_t>(loc, value, index, literal);
-    case U32:
-      return SetValueInLiteralHelper<uint32_t>(loc, value, index, literal);
-    case U64:
-      return SetValueInLiteralHelper<uint64_t>(loc, value, index, literal);
-    case PRED:
-      // Bool type literals with rank >= 1 are printed in 0s and 1s.
-      return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value), index,
-                                           literal);
-    default:
-      LOG(FATAL) << "unknown integral primitive type "
-                 << PrimitiveType_Name(shape.element_type());
-  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_type_constant == PRED) {
+          return SetValueInLiteralHelper<bool>(loc, static_cast<bool>(value),
+                                               index, literal);
+        }
+        if constexpr (primitive_util::IsIntegralType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
+        }
+        LOG(FATAL) << "unknown integral primitive type "
+                   << PrimitiveType_Name(shape.element_type());
+      },
+      shape.element_type());
 }
 
 bool HloParserImpl::SetValueInLiteral(LocTy loc, double value, int64_t index,
                                       Literal* literal) {
   const Shape& shape = literal->shape();
-  switch (shape.element_type()) {
-    case F8E5M2:
-      return SetValueInLiteralHelper<tsl::float8_e5m2>(loc, value, index,
-                                                       literal);
-    case F8E4M3FN:
-      return SetValueInLiteralHelper<tsl::float8_e4m3fn>(loc, value, index,
-                                                         literal);
-    case F8E4M3B11FNUZ:
-      return SetValueInLiteralHelper<tsl::float8_e4m3b11>(loc, value, index,
-                                                          literal);
-    case F16:
-      return SetValueInLiteralHelper<Eigen::half>(loc, value, index, literal);
-    case BF16:
-      return SetValueInLiteralHelper<tsl::bfloat16>(loc, value, index, literal);
-    case F32:
-      return SetValueInLiteralHelper<float>(loc, value, index, literal);
-    case F64:
-      return SetValueInLiteralHelper<double>(loc, value, index, literal);
-    default:
-      LOG(FATAL) << "unknown floating point primitive type "
-                 << PrimitiveType_Name(shape.element_type());
-  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsFloatingPointType(
+                          primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
+        }
+        LOG(FATAL) << "unknown floating point primitive type "
+                   << PrimitiveType_Name(shape.element_type());
+      },
+      shape.element_type());
 }
 
 bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64_t index,
@@ -3466,17 +3440,16 @@ bool HloParserImpl::SetValueInLiteral(LocTy loc, bool value, int64_t index,
 bool HloParserImpl::SetValueInLiteral(LocTy loc, std::complex<double> value,
                                       int64_t index, Literal* literal) {
   const Shape& shape = literal->shape();
-  switch (shape.element_type()) {
-    case C64:
-      return SetValueInLiteralHelper<std::complex<float>>(loc, value, index,
-                                                          literal);
-    case C128:
-      return SetValueInLiteralHelper<std::complex<double>>(loc, value, index,
-                                                           literal);
-    default:
-      LOG(FATAL) << PrimitiveType_Name(shape.element_type())
-                 << " is not a complex type";
-  }
+  return primitive_util::PrimitiveTypeSwitch<bool>(
+      [&](auto primitive_type_constant) -> bool {
+        if constexpr (primitive_util::IsComplexType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return SetValueInLiteralHelper<NativeT>(loc, value, index, literal);
+        }
+        LOG(FATAL) << PrimitiveType_Name(shape.element_type())
+                   << " is not a complex type";
+      },
+      shape.element_type());
 }
 
 template <typename T>
@@ -5341,10 +5314,14 @@ bool HloParserImpl::ParseLayoutIntAttribute(
 //   ::= '{' int64_list
 //       (':' dim_level_types
 //            tiles
+//            element_size_in_bits
 //            memory_space
 //            physical_shape
 //            dynamic_shape_metadata_prefix_bytes)?
 //       '}'
+// element_size_in_bits
+//   ::= /*empty*/
+//   ::= 'E' '(' int64_t ')'
 // memory_space
 //   ::= /*empty*/
 //   ::= 'S' '(' int64_t ')'
@@ -5356,6 +5333,7 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   std::vector<Tile> tiles;
   PrimitiveType index_primitive_type = PRIMITIVE_TYPE_INVALID;
   PrimitiveType pointer_primitive_type = PRIMITIVE_TYPE_INVALID;
+  int64_t element_size_in_bits = 0;
   int64_t memory_space = 0;
   std::optional<Shape> physical_shape;
   int64_t dynamic_shape_metadata_prefix_bytes = 0;
@@ -5421,6 +5399,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
                           TokKindToString(TokKind::kRparen)));
       }
 
+      if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "E") {
+        lexer_.Lex();
+        ParseLayoutIntAttribute(&element_size_in_bits, "element size in bits");
+      }
+
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "S") {
         lexer_.Lex();
         ParseLayoutIntAttribute(&memory_space, "memory space");
@@ -5449,10 +5432,11 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
   for (int i = 0; i < tiles.size(); i++) {
     vec_tiles[i] = Tile(tiles[i]);
   }
-  *layout = LayoutUtil::MakeLayout(
-      minor_to_major, dim_level_types, dim_unique, dim_ordered, vec_tiles,
-      index_primitive_type, pointer_primitive_type, memory_space,
-      std::move(physical_shape), dynamic_shape_metadata_prefix_bytes);
+  *layout = LayoutUtil::MakeLayout(minor_to_major, dim_level_types, dim_unique,
+                                   dim_ordered, vec_tiles, index_primitive_type,
+                                   pointer_primitive_type, element_size_in_bits,
+                                   memory_space, std::move(physical_shape),
+                                   dynamic_shape_metadata_prefix_bytes);
   return true;
 }
 

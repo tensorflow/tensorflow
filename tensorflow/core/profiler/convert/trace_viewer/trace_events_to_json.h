@@ -584,7 +584,7 @@ class IOBufferAdapter {
 
   // Support IOBufferAdapter as a sink object for absl::Format.
   friend void AbslFormatFlush(IOBufferAdapter* buffer, absl::string_view s) {
-    buffer->output_->append(s);
+    absl::StrAppend(buffer->output_, s);
   }
 
  private:

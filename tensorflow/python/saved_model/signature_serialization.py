@@ -214,7 +214,7 @@ def canonicalize_signatures(signatures):
     # pylint: enable=cell-var-from-loop
     if isinstance(function, core.GenericFunction):
       flattened_defaults = nest.flatten(
-          function._function_spec.fullargspec.defaults  # pylint: disable=protected-access
+          function.function_spec.fullargspec.defaults  # pylint: disable=protected-access
       )
       len_default = len(flattened_defaults or [])
       arg_names = list(tensor_spec_signature.keys())

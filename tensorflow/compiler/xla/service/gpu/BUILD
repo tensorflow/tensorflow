@@ -266,20 +266,20 @@ xla_cc_test(
     deps = [
         ":gpu_device_info",
         ":gpu_device_info_for_tests",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/tsl/platform:test",              
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor",
-        "//tensorflow/compiler/xla/stream_executor:device_description",        
-        ] + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ] + if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
-        ]) + if_rocm_is_configured([
+    ]) + if_rocm_is_configured([
         "@local_config_rocm//rocm:rocm_headers",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor_header",
-        ])
+    ]),
 )
 
 cc_library(
@@ -453,6 +453,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac",
 	    "no_rocm",
 	   ],
@@ -506,6 +507,7 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac"],
     deps = [
         "//tensorflow/compiler/xla:comparison_util",
@@ -1933,6 +1935,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service:reshape_mover",

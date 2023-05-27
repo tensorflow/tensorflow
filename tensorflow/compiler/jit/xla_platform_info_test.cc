@@ -81,7 +81,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerNonXlaDevice) {
   EXPECT_TRUE(xla_device_compiler->client() != nullptr);
 }
 
-TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestXlaDevice) {
+TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerXlaDevice) {
   DeviceType device_type = DeviceType(DEVICE_XLA_GPU);
   device_setup_.AddDevicesAndSetUp({device_type.type()});
 
@@ -91,23 +91,27 @@ TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestXlaDevice) {
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
 
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
-  TF_EXPECT_OK(BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
-                                       &pjrt_device_compiler));
+  DeviceCompilationProfiler* profiler = nullptr;
+  TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, device_setup_.flr(), &pjrt_device_compiler, &profiler));
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+  core::ScopedUnref profiler_ref(profiler);
 
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetOrCreatePjRtClient(device_type));
   EXPECT_EQ(pjrt_device_compiler->device_type(), metadata->jit_device_type());
   EXPECT_EQ(pjrt_device_compiler->client(), pjrt_client);
 }
 
-TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTestGpuDevice) {
+TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerGpuDevice) {
   device_setup_.AddDevicesAndSetUp({DEVICE_GPU});
   Device* device = device_setup_.GetDevice(DEVICE_GPU);
   XlaPlatformInfo platform_info = XlaPlatformInfoFromDevice(device);
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
-  TF_EXPECT_OK(BuildPjRtDeviceCompiler(platform_info, device_setup_.flr(),
-                                       &pjrt_device_compiler));
+  DeviceCompilationProfiler* profiler = nullptr;
+  TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, device_setup_.flr(), &pjrt_device_compiler, &profiler));
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+  core::ScopedUnref profiler_ref(profiler);
 }
 #endif
 
@@ -138,7 +142,7 @@ TEST_F(XlaPlatformInfoTest, BuildXlaDeviceCompilerTpuDevice) {
 
 // TODO(b/255826209): Look into using an actual TPU device for the unit test,
 // and move this out of OSS.
-TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTpuDevice) {
+TEST_F(XlaPlatformInfoTest, GetOrCreatePjRtDeviceCompilerAndProfilerTpuDevice) {
   DeviceType device_type = DeviceType(DEVICE_TPU);
   DeviceType compilation_device_type = DeviceType(DEVICE_TPU_XLA_JIT);
   // Use a CPU PjRtClient instead of a TPU one just for testing whether
@@ -158,9 +162,11 @@ TEST_F(XlaPlatformInfoTest, BuildPjRtDeviceCompilerTpuDevice) {
                                 /*device_allocator=*/nullptr);
 
   PjRtDeviceCompiler* pjrt_device_compiler = nullptr;
-  TF_EXPECT_OK(
-      BuildPjRtDeviceCompiler(platform_info, nullptr, &pjrt_device_compiler));
+  DeviceCompilationProfiler* profiler = nullptr;
+  TF_EXPECT_OK(GetOrCreatePjRtDeviceCompilerAndProfiler(
+      platform_info, nullptr, &pjrt_device_compiler, &profiler));
   core::ScopedUnref pjrt_device_compiler_ref(pjrt_device_compiler);
+  core::ScopedUnref profiler_ref(profiler);
 
   EXPECT_EQ(pjrt_device_compiler->device_type(), compilation_device_type);
   EXPECT_EQ(pjrt_device_compiler->client(), pjrt_client);

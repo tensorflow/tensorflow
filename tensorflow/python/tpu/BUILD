@@ -945,7 +945,11 @@ py_strict_library(
     name = "tpu_test_deps",
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:client_testlib"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:flags",
+        "//tensorflow/python/util:tf_inspect",
+    ],
 )
 
 tf_proto_library(

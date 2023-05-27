@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <vector>
 
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
@@ -35,6 +37,10 @@ limitations under the License.
 
 namespace tensorflow {
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::ElementsAreArray;
+using ::testing::Eq;
 
 // A helper class to make AttrSlice from initializer lists
 class Attrs {
@@ -1689,6 +1695,119 @@ TEST(InstantiateFunctionTest, ResourceInputDevice) {
   EXPECT_EQ(device1, "/device:CPU:0");
   EXPECT_EQ(composite_devices.size(), 1);
   EXPECT_EQ(composite_devices.at("/device:COMPOSITE:0").size(), 2);
+}
+
+TEST(FrozenStackTrace, ToFramesReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.ToFrames(), ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, GetUserFramesWithNegativeLimitReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.GetUserFrames(-1), ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, GetUserFramesWithLargeLimitReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.GetUserFrames(frames.size() + 1),
+              ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, GetUserFramesWithLowLimitSlicesFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.GetUserFrames(2),
+              ElementsAre(Eq(frames[0]), Eq(frames[1])));
+}
+
+TEST(FrozenStackTrace, ToUncachedFramesReturnsAllFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_THAT(frozen_stack_trace.ToUncachedFrames(), ElementsAreArray(frames));
+}
+
+TEST(FrozenStackTrace, LastUserFrameReturnsLastFrame) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/subdir/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_EQ(frozen_stack_trace.LastUserFrame(), frames[2]);
+}
+
+TEST(FrozenStackTrace, ToString) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/tensorflow/python/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+
+  EXPECT_EQ(frozen_stack_trace.ToString({}),
+            "File \"some/path/alpha.cc\", line 20, in bar\n"
+            "File \"some/path/beta.cc\", line 30, in fox\n"
+            "File \"some/path/tensorflow/python/gamma.cc\", line 40, in trot");
+}
+
+TEST(FrozenStackTrace, ToStringWithFilterCommonPrefix) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"<embedded something>", 10, "foo"},
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/tensorflow/python/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+  AbstractStackTrace::TracePrintingOptions options;
+  options.filter_common_prefix = true;
+  EXPECT_EQ(frozen_stack_trace.ToString(options),
+            "File \"<embedded something>\", line 10, in foo\n"
+            "File \"alpha.cc\", line 20, in bar\n"
+            "File \"beta.cc\", line 30, in fox\n"
+            "File \"tensorflow/python/gamma.cc\", line 40, in trot");
+}
+
+TEST(FrozenStackTrace, ToStringWithDropInternalFrames) {
+  std::vector<StackFrame> frames = std::vector<StackFrame>{
+      {"some/path/alpha.cc", 20, "bar"},
+      {"some/path/beta.cc", 30, "fox"},
+      {"some/path/tensorflow/python/gamma.cc", 40, "trot"},
+  };
+  FrozenStackTrace frozen_stack_trace(frames);
+  AbstractStackTrace::TracePrintingOptions options;
+  options.drop_internal_frames = true;
+  EXPECT_EQ(frozen_stack_trace.ToString(options),
+            "File \"some/path/alpha.cc\", line 20, in bar\n"
+            "File \"some/path/beta.cc\", line 30, in fox");
 }
 
 }  // end namespace

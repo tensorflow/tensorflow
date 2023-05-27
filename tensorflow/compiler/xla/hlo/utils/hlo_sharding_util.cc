@@ -597,6 +597,68 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                sharding.metadata());
 }
 
+HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
+                                            const Shape& target_shape,
+                                            const HloSharding& sharding) {
+  HloSharding result = HloSharding::Replicate();
+  if (sharding.IsTileMaximal() || sharding.IsManual()) {
+    return sharding;
+  }
+  if (sharding.IsManualSubgroup()) {
+    auto group =
+        GroupShardingOnDims(sharding, {sharding.SubgroupManualDim()}, true);
+    HloSharding inner_reshaped = PropagateShardingThroughReshape(
+        source_shape, target_shape, group.sharding);
+    group.sharding = std::move(inner_reshaped);
+    group.data_rank = target_shape.rank();
+    group.group_dims[0] += target_shape.rank() - source_shape.rank();
+    return UngroupSharding(group);
+  }
+  // Find intervals of consecutive dimensions that could use ReshapeSharding().
+  // then merge the results. We start with the longest interval (whole shape),
+  // and if it fails, we find a sub-interval of it or a disjoint interval.
+  int64_t start_dim = 0;
+  while (start_dim < source_shape.rank()) {
+    int64_t found_compatible = false;
+    // For each start_dim, try to use all dims after it. If that fails, reduce
+    // the range.
+    for (int64_t end_dim = source_shape.rank(); end_dim > start_dim;
+         --end_dim) {
+      std::vector<int64_t> preserved_dims(end_dim - start_dim);
+      absl::c_iota(preserved_dims, start_dim);
+      auto group = GroupShardingOnAllDimsExcept(sharding, preserved_dims);
+      if (auto reshaped =
+              ReshapeSharding(source_shape, target_shape, group.sharding)) {
+        group.sharding = std::move(*reshaped);
+        group.group_dims.clear();
+        // Replication dim.
+        group.group_dims.push_back(target_shape.rank());
+        group.data_rank = target_shape.rank();
+        int64_t group_size = Product(group.group_dim_sizes);
+        group.group_dim_sizes.clear();
+        group.group_dim_sizes.push_back(group_size);
+        if (MergeShardingIfCompatible(UngroupSharding(group),
+                                      result.NumTiles() + 1, &result)) {
+          // If the current interval works, we can skip all dimensions within
+          // or before it in future intervals, since they have been considered
+          // already. Set start_dim to end_dim to start with the next disjoint
+          // interval.
+          result.metadata() = sharding.metadata();
+          start_dim = end_dim;
+          found_compatible = true;
+          break;
+        }
+      }
+    }
+    if (!found_compatible) {
+      // All sub-intervals with the current start_dim failed. Try the next
+      // start_dim.
+      start_dim += 1;
+    }
+  }
+  return result;
+}
+
 HloSharding ReverseSharding(const HloSharding& sharding,
                             absl::Span<const int64_t> dimensions) {
   if (sharding.IsTileMaximal() || dimensions.empty()) {

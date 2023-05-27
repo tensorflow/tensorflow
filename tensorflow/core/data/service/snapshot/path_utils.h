@@ -43,11 +43,16 @@ std::string SplitsDirectory(absl::string_view snapshot_path,
 std::string SourceDirectory(absl::string_view snapshot_path,
                             int64_t stream_index, int64_t source_id);
 
+// Returns the directory path for one repetition of a split provider.
+std::string RepetitionDirectory(absl::string_view snapshot_path,
+                                int64_t stream_index, int64_t source_id,
+                                int64_t repetition_index);
+
 // Returns the file path for an assigned split for a worker writing one stream
 // of a snapshot.
 std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
-                      int64_t source_id, int64_t local_index,
-                      int64_t global_index);
+                      int64_t source_id, int64_t repetition_index,
+                      int64_t local_index, int64_t global_index);
 
 // Returns the index of the stream. The expected format of
 // `stream_directory_name` is:

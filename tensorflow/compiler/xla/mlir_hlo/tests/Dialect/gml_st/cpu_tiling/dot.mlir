@@ -147,7 +147,8 @@ func.func @matvec_addf(%lhs: tensor<33x17xf32>, %rhs: tensor<17xf32>,
 // CHECK-LABEL: @matvec_addf
 // CHECK-SAME:  (%{{.*}}: {{.*}}, %{{.*}}: {{.*}}, %[[ARG_INIT:.*]]: tensor<33xf32>)
 // CHECK:         scf.for {{.*}} iter_args(%[[ARG:.*]] = %[[ARG_INIT]]
-// CHECK:           %[[READ_INIT:.*]] = vector.transfer_read %[[ARG]]
+// CHECK:           %[[SLICE:.*]] = tensor.extract_slice %[[ARG]]
+// CHECK:           %[[READ_INIT:.*]] = vector.transfer_read %[[SLICE]]
 // CHECK:           %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG_FOR:.*]] = %[[READ_INIT]]
 // CHECK:             vector.contract {{.*}} %[[ARG_FOR]] :
 // CHECK-NEXT:        scf.yield
@@ -210,7 +211,8 @@ func.func @vecmat_addf(%lhs: tensor<17xf32>, %rhs: tensor<17x33xf32>,
 // CHECK-LABEL: @vecmat_addf
 // CHECK-SAME:  (%{{.*}}: {{.*}}, %{{.*}}: {{.*}}, %[[ARG_INIT:.*]]: tensor<33xf32>)
 // CHECK:         scf.for {{.*}} iter_args(%[[ARG:.*]] = %[[ARG_INIT]]
-// CHECK:           %[[READ_INIT:.*]] = vector.transfer_read %[[ARG]]
+// CHECK:           %[[SLICE:.*]] = tensor.extract_slice %[[ARG]]
+// CHECK:           %[[READ_INIT:.*]] = vector.transfer_read %[[SLICE]]
 // CHECK:           %[[FOR:.*]] = scf.for {{.*}} iter_args(%[[ARG_FOR:.*]] = %[[READ_INIT]]
 // CHECK:             vector.contract {{.*}} %[[ARG_FOR]] :
 // CHECK-NEXT:        scf.yield

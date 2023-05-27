@@ -104,6 +104,20 @@ struct CompileOptions {
   static StatusOr<CompileOptions> FromProto(const CompileOptionsProto& proto);
 };
 
+struct LoadOptions {
+  // Origin of the subslice of the target topology to run computation on.
+  struct ComputationOrigin {
+    int x = 0;
+    int y = 0;
+    int z = 0;
+  };
+  std::optional<ComputationOrigin> computation_origin;
+
+  // multi_slice_config to associate with the executable during load of a multi
+  // slice operation.
+  const MultiSliceConfig* multi_slice_config = nullptr;
+};
+
 // Static device memory usage for a compiled program.
 // The on-device memory needed to run an executable is at least
 //   generated_code_size_in_bytes

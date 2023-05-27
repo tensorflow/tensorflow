@@ -631,6 +631,9 @@ Status MakeDotComputationSplitKBatch(
       MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
                  dot->shape().element_type())
           .value();
+  // `new_dot` will have default output layout even if `dot` had a custom one.
+  // We will set the original output layout on the reduce operation.
+
   dot->SetupDerivedInstruction(new_dot);
   TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWithDifferentShape(new_dot));
   TF_RETURN_IF_ERROR(dot->parent()->RemoveInstruction(dot));
@@ -641,6 +644,9 @@ Status MakeDotSplitKBatch(
     HloInstruction* dot_fusion,
     const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
+
+  Layout old_dot_layout = dot_fusion->fused_expression_root()->shape().layout();
+
   TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
       dot_fusion->fused_instructions_computation(), tiling));
   const HloInstruction* dot = dot_fusion->fused_expression_root();
@@ -654,6 +660,10 @@ Status MakeDotSplitKBatch(
   HloInstruction* reduce =
       MakeReduceHlo(dot_fusion, zero, {new_batch_dim_idx}, HloOpcode::kAdd)
           .value();
+
+  // If the original dot had non-standard layout, this reduce should have that
+  // too.
+  *reduce->mutable_shape()->mutable_layout() = old_dot_layout;
 
   if (dot_fusion->IsRoot()) {
     dot_fusion->parent()->set_root_instruction(reduce, true);

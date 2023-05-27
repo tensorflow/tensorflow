@@ -168,7 +168,9 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
       if (expanded_shape != expected_shape) {
         return errors::Internal(
             "SPMD expansion resulted in op output inconsistent with the "
-            "provided layout.");
+            "provided layout. Expected shape: <",
+            absl::StrJoin(expected_global_shape, ","), "> got shape: <",
+            absl::StrJoin(global_output_shapes[index], ","), ">");
       }
     }
   }

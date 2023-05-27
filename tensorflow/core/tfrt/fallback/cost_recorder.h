@@ -40,7 +40,7 @@ class CostRecorder {
       : normalize_ratio_(normalize_ratio) {}
 
   // Records an execution duration for the op keyed by `op_key`.
-  void RecordCostNanosecond(int64_t op_key, uint64_t execution_time_ns);
+  void RecordCost(int64_t op_key, uint64_t execution_time);
 
   // Returns the normalized average execution duration of the op keyed by
   // `op_key`. If there is no record for `op_key`, returns the uint32_t::max to
@@ -53,6 +53,8 @@ class CostRecorder {
   // by the env var name `MesuredCostPathEnvVarName()`.
   // TODO(b/263837451): Fix the op_key unstableness during serialization.
   Status WriteToFile() const;
+
+  bool RecordInCpuCycles() const { return normalize_ratio_ > 1; }
 
   size_t size() const;
 

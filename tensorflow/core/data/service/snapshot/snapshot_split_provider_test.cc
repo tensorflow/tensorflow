@@ -59,7 +59,8 @@ class MockDispatcherClient : public DataServiceDispatcherClient {
 
   MOCK_METHOD(Status, GetSnapshotSplit,
               (const std::string& worker_address, const std::string& base_path,
-               int64_t stream_index, int64_t source_index, Tensor& split,
+               int64_t stream_index, int64_t source_index,
+               int64_t repetition_index, Tensor& split,
                int64_t& local_split_index, bool& end_of_splits),
               (override));
 };
@@ -74,8 +75,9 @@ SnapshotTaskDef TestSnapshotTask() {
 }
 
 Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
-  std::string source_dir = SourceDirectory(
-      snapshot_task.base_path(), snapshot_task.stream_index(), /*source_id=*/0);
+  std::string source_dir = RepetitionDirectory(
+      snapshot_task.base_path(), snapshot_task.stream_index(), /*source_id=*/0,
+      /*repetition_index=*/0);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(source_dir));
   for (int64_t i = 0; i < num_splits; ++i) {
     std::string split_filename = absl::StrCat("split_", i, "_", i);
@@ -93,10 +95,10 @@ TEST(SnapshotSplitProviderTest, GetSplitFromDispatcher) {
   auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends split 0 to the worker.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<4>(split),
-                      SetArgReferee<5>(0),      // local_split_index
-                      SetArgReferee<6>(false),  // end_of_splits
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(0),      // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
                       Return(OkStatus())));
 
   Tensor result;
@@ -117,10 +119,10 @@ TEST(SnapshotSplitProviderTest, GetSplitFromFile) {
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends split 9 to the worker. The worker should get previous
   // splits from the split files.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<4>(split),
-                      SetArgReferee<5>(9),      // local_split_index
-                      SetArgReferee<6>(false),  // end_of_splits
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(9),      // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
                       Return(OkStatus())));
   TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/10));
 
@@ -143,9 +145,9 @@ TEST(SnapshotSplitProviderTest, EndOfSplits) {
   auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends `end_of_splits` to the worker.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<5>(0),     // local_split_index
-                      SetArgReferee<6>(true),  // end_of_splits
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<6>(0),     // local_split_index
+                      SetArgReferee<7>(true),  // end_of_splits
                       Return(OkStatus())));
 
   SnapshotSplitProvider split_provider(
@@ -164,10 +166,10 @@ TEST(SnapshotSplitProviderTest, SplitNotFound) {
   auto mock_dispatcher_ptr = std::make_unique<MockDispatcherClient>();
   MockDispatcherClient* mock_dispatcher = mock_dispatcher_ptr.get();
   // The dispatcher sends split 10, but no splits are written.
-  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _))
-      .WillOnce(DoAll(SetArgReferee<4>(split),
-                      SetArgReferee<5>(10),     // local_split_index
-                      SetArgReferee<6>(false),  // end_of_splits
+  EXPECT_CALL(*mock_dispatcher, GetSnapshotSplit(_, _, _, _, _, _, _, _))
+      .WillOnce(DoAll(SetArgReferee<5>(split),
+                      SetArgReferee<6>(10),     // local_split_index
+                      SetArgReferee<7>(false),  // end_of_splits
                       Return(OkStatus())));
   TF_ASSERT_OK(WriteSplits(snapshot_task, /*num_splits=*/0));
 

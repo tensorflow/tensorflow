@@ -1083,7 +1083,7 @@ static Type InferSelectV2OpType(Value condition, Value e, Value t) {
   if (!cond_ranked_ty || !broadcasted_ranked_ty) return unranked_ty;
 
   // Explicitly get broadcasted output type as element types of condition may
-  // not be same as the broadcated type's element type.
+  // not be same as the broadcasted type's element type.
   SmallVector<int64_t, 4> result_shape;
   if (!OpTrait::util::getBroadcastedShape(cond_ranked_ty.getShape(),
                                           broadcasted_ranked_ty.getShape(),
@@ -2957,6 +2957,27 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
   results.add<ConvertFusedBatchNorm>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaCallModuleOp
+//===----------------------------------------------------------------------===//
+
+void XlaCallModuleOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  if (!getFunctionList().empty()) {
+    // The StableHLO module embedded in XlaCallModule contains
+    // `stablehlo.custom_call` calling TF host callback functions.
+    // `stablehlo.custom_call` will be lowered to `stablehlo.send` and
+    // `stablehlo.recv`.
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Send::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Recv::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::XlaHostCompute::get());
+  }
 }
 
 //===----------------------------------------------------------------------===//
