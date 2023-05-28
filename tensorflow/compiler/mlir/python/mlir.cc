@@ -388,6 +388,8 @@ void ExperimentalWriteBytecode(const std::string& filename,
   }
   mlir::FallbackAsmResourceMap fallback_resource_map;
   mlir::BytecodeWriterConfig writer_config(fallback_resource_map);
+  // TODO(jpienaar): Make this an option to the call.
+  writer_config.setDesiredBytecodeVersion(1);
   std::string error;
   std::unique_ptr<llvm::ToolOutputFile> outputFile =
       mlir::openOutputFile(filename, &error);
@@ -446,6 +448,8 @@ void ExperimentalTFLiteToTosaBytecode(
   }
   mlir::FallbackAsmResourceMap fallback_resource_map;
   mlir::BytecodeWriterConfig writer_config(fallback_resource_map);
+  // TODO(jpienaar): Make this an option to the call.
+  writer_config.setDesiredBytecodeVersion(1);
   std::string error;
   std::unique_ptr<llvm::ToolOutputFile> outputFile =
       mlir::openOutputFile(tosa_bytecode_file, &error);
