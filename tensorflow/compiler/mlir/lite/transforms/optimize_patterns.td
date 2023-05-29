@@ -714,6 +714,19 @@ def MinimumOfReluAnd6ToRelu6 :
       (TFL_Relu6Op $x),
       [(IsConstantValueOf<6> $y)]>;
 
+// For both relu1 and relu_0_to_1, the min/max operators commute,
+// so there are two possible orderings we need to rewrite.
+// Concretely, `m < n -> max(m, min(n, x)) = min(m, max(m, x))`.
+// Proof:
+// case (x <= m)
+//   max(m, min(n, x)) = max(m, m) = m and
+//   min(n, max(m, x)) = min(n, m) = m
+// case (m < x < n)
+//   max(m, min(n, x)) = max(m, x) = x and
+//   min(n, max(m, x)) = min(n, x) = x
+// case (n <= x)
+//   max(m, min(n, x)) = max(m, n) = n and
+//   min(n, max(m, x)) = min(n, x) = n
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (Arith_ConstantOp $NegOne)),
     (Arith_ConstantOp $One)),
@@ -725,6 +738,18 @@ def MatchRelu1Pattern2 : Pat<
     (Arith_ConstantOp $NegOne)),
   (TFL_Relu1Op $input),
   [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
+
+def MatchRelu0To1Pattern1: Pat<
+  (TFL_MinimumOp (TFL_MaximumOp $x, (Arith_ConstantOp $max_cst)),
+    (Arith_ConstantOp $min_cst)),
+    (TFL_Relu0To1Op $x),
+  [(FloatValueEquals<"0"> $max_cst), (FloatValueEquals<"1"> $min_cst)]>;
+
+def MatchRelu0To1Pattern2: Pat<
+  (TFL_MaximumOp (TFL_MinimumOp $x, (Arith_ConstantOp $min_cst)),
+    (Arith_ConstantOp $max_cst)),
+    (TFL_Relu0To1Op $x),
+  [(FloatValueEquals<"0"> $max_cst), (FloatValueEquals<"1"> $min_cst)]>;
 
 def MatchLeakyRelu : Pat<
   (TFL_MaximumOp

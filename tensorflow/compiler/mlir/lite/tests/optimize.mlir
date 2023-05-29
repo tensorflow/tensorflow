@@ -3118,3 +3118,47 @@ func.func @DontEliminateExtraSelect(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi1
   // CHECK-NEXT: %[[SELECT_1:.*]] = "tfl.select_v2"
   // CHECK-NEXT: return %[[SELECT_1]]
 }
+
+// CHECK-LABEL:   func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float1
+func.func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float1(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %cst0 = arith.constant dense<0.0> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %cst0) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  %cst1 = arith.constant dense<1.0> : tensor<f32>
+  %1 = "tfl.minimum"(%0, %cst1) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+
+  func.return %1 : tensor<2x2xf32>
+  // CHECK-NOT: "tfl.relu"
+  // CHECK-NOT: "tfl.minimum"
+  // CHECK-NOT: "tfl.pseudo_const"
+  // CHECK: "tfl.relu_0_to_1"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+}
+
+// CHECK-LABEL:   func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float2
+func.func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float2(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %cst0 = arith.constant dense<1.0> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %cst0) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  %cst1 = arith.constant dense<0.0> : tensor<f32>
+  %1 = "tfl.maximum"(%0, %cst1) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+
+  func.return %1 : tensor<2x2xf32>
+  // CHECK-NOT: "tfl.relu"
+  // CHECK-NOT: "tfl.minimum"
+  // CHECK-NOT: "tfl.pseudo_const"
+  // CHECK: "tfl.relu_0_to_1"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+}
+
+// CHECK-LABEL:   func @fuseReluToMin1_StaticShapeWithSameShapeCst_Float
+func.func @fuseReluToMin1_StaticShapeWithSameShapeCst_Float2(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %cst0 = arith.constant dense<1.0> : tensor<2x2xf32>
+  %0 = "tfl.minimum"(%arg0, %cst0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  %cst1 = arith.constant dense<0.0> : tensor<2x2xf32>
+  %1 = "tfl.maximum"(%0, %cst1) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+
+  func.return %1 : tensor<2x2xf32>
+  // CHECK-NOT: "tfl.relu"
+  // CHECK-NOT: "tfl.minimum"
+  // CHECK-NOT: "tfl.pseudo_const"
+  // CHECK: "tfl.relu_0_to_1"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+}
+
+
