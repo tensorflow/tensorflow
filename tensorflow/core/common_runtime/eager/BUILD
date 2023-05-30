@@ -12,6 +12,7 @@ load(
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl",
+    "mkl_deps",
 )
 
 package(
@@ -650,7 +651,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core/graph:mkl_graph_util",
-    ],
+    ] + mkl_deps(),
     alwayslink = 1,
 )
 
