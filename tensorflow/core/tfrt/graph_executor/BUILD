@@ -14,6 +14,7 @@ package_group(
         "//learning/brain/tfrt/support/...",
         "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/...",
+        "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
 
