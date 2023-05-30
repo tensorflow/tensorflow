@@ -90,6 +90,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
+  opts.set_xla_gpu_all_gather_combine_threshold_bytes(1024 * 1024 * 1024);
+  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(30 * 1024 * 1024);
   opts.set_xla_gpu_enable_async_all_reduce(true);
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -775,6 +777,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_all_reduce_combine_threshold_bytes),
       debug_options->xla_gpu_all_reduce_combine_threshold_bytes(),
       "Size threshold (in bytes) for the GPU all-reduce combiner."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_all_gather_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_all_gather_combine_threshold_bytes),
+      debug_options->xla_gpu_all_gather_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU all-gather combiner."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_reduce_scatter_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_reduce_scatter_combine_threshold_bytes),
+      debug_options->xla_gpu_reduce_scatter_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU reduce-scatter combiner."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_contiguous",
       bool_setter_for(&DebugOptions::set_xla_gpu_all_reduce_contiguous),
