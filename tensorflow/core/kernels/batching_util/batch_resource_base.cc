@@ -601,7 +601,7 @@ Status BatchResourceBase::ConcatInputTensors(
     if (!split_status.ok()) {
       return errors::Internal(
           "When splitting input, Tensor split operation failed: ",
-          split_status.error_message());
+          split_status.message());
     }
     if (split_tensors.size() != output_task_sizes.size()) {
       return errors::Internal(
@@ -669,7 +669,7 @@ Status BatchResourceBase::SplitOutputTensors(
     DCHECK(split_status.ok()) << split_status.ToString();
     if (!split_status.ok()) {
       return errors::Internal("Tensor split operation failed: ",
-                              split_status.error_message());
+                              split_status.message());
     }
     DCHECK_EQ(split_tensor.size(), task_sizes_plus_optional_padding.size());
     if (split_tensor.size() != task_sizes_plus_optional_padding.size()) {

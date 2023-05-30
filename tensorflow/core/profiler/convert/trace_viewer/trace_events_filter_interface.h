@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_FILTER_INTERFACE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_TRACE_VIEWER_TRACE_EVENTS_FILTER_INTERFACE_H_
 
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
+
 namespace tensorflow {
 namespace profiler {
 
 // Trace event filter interface.
-template <typename Trace, typename TraceEvent>
 class TraceEventsFilterInterface {
  public:
   virtual ~TraceEventsFilterInterface() = default;

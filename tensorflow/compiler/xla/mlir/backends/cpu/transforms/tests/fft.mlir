@@ -1,4 +1,4 @@
-// RUN: xla-cpu-opt %s -xla-legalize-collective-ops | FileCheck %s
+// RUN: xla-cpu-opt %s -xla-legalize-library-ops | FileCheck %s
 
 func.func @fft(%arg0: tensor<3x5x4x8x256xf32>) -> tensor<3x5x4x8x129xcomplex<f32>> {
   %0 = "mhlo.fft"(%arg0) {

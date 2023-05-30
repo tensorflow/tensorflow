@@ -71,6 +71,15 @@ tf_proto_library(
     visibility = set_external_visibility([":friends"]),
 )
 
+# copybara:uncomment_begin(google-only)
+# py_proto_library(
+#     name = "trace_events_py_pb2",
+#     api_version = 2,
+#     visibility = ["//visibility:public"],
+#     deps = [":trace_events_proto"],
+# )
+# copybara:uncomment_end
+
 # This is needed because of how tf_android_core_proto_sources parses proto paths.
 exports_files(
     srcs = ["xplane.proto"],

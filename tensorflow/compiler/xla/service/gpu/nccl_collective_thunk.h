@@ -174,7 +174,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
           "%s\n"
           "%s with replica_count: %d, partition_count: %d, group_mode: %s, "
           "operand_count: %d\n%s",
-          status.error_message(), NcclThunkType::GetHloOpName(), replica_count,
+          status.message(), NcclThunkType::GetHloOpName(), replica_count,
           partition_count, CollectiveOpGroupModeToString(group_mode),
           op->getNumOperands() / 2, llvm_ir::DumpToString(op.getOperation())));
 }
@@ -184,7 +184,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id);
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id);
 #endif  // XLA_ENABLE_XCCL
 
 struct DeviceBufferPair {

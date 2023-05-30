@@ -21,87 +21,61 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
 LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::GetLatencyBetween(
     const HloGraphNode& from, const HloGraphNode& target) const {
   static constexpr HloGraphNode::TimeCost kLowLatency = 1.0;
-  auto get_latency = [this, &from, &target]() {
-    auto from_it = instr_map_.find(from.GetInstr().name());
-    auto target_it = instr_map_.find(target.GetInstr().name());
-    if (from_it != instr_map_.end() && target_it != instr_map_.end()) {
-      const TimeCost from_ts = from_it->second.first;
-      const TimeCost from_dur = from_it->second.second;
-      const TimeCost target_ts = target_it->second.first;
-      const TimeCost target_dur = target_it->second.second;
-      CHECK_LE(from_ts, target_ts);
-      CHECK_GE(from_dur, 0.0);
-      CHECK_GE(target_dur, 0.0);
-      return target_ts + target_dur - from_ts - from_dur;
-    }
-    LOG(FATAL) << "PGLE failed to get latency between "
-               << from.GetInstr().name() << " and " << target.GetInstr().name();
-  };
-  switch (from.GetInstr().opcode()) {
-    case HloOpcode::kCollectivePermuteStart:
-      if (target.GetInstr().opcode() == HloOpcode::kCollectivePermuteDone) {
-        return get_latency();
-      }
-      break;
-    case HloOpcode::kAllGatherStart:
-      if (target.GetInstr().opcode() == HloOpcode::kAllGatherDone) {
-        return get_latency();
-      }
-      break;
-    case HloOpcode::kSend:
-      if (!config_.schedule_send_recvs) {
-        return kLowLatency;
-      }
-      if (target.GetInstr().opcode() == HloOpcode::kSendDone) {
-        return get_latency();
-      }
-      // Cross-slice communication case.
-      if (target.GetInstr().opcode() == HloOpcode::kRecvDone) {
-        return get_latency();
-      }
-      break;
-    case HloOpcode::kRecv:
-      if (!config_.schedule_send_recvs) {
-        return kLowLatency;
-      }
-      if (target.GetInstr().opcode() == HloOpcode::kRecvDone) {
-        return get_latency();
-      }
-      break;
-    default:
-      break;
+  const HloOpcode from_op = from.GetInstr().opcode();
+  if (!config_.schedule_send_recvs &&
+      (from_op == HloOpcode::kSend || from_op == HloOpcode::kRecv)) {
+    return kLowLatency;
   }
-  return kLowLatency;
+
+  auto it = instr_map_.find(from.GetInstr().name());
+  if (it == instr_map_.end()) {
+    return latency_estimator_->GetLatencyBetween(from, target);
+  }
+  auto it2 = it->second.latencies.find(target.GetInstr().name());
+  if (it2 != it->second.latencies.end()) {
+    VLOG(10) << "PGLE found latency between " << from.GetInstr().name()
+             << " and " << target.GetInstr().name() << " in latency info";
+    return it2->second * CyclesPerMicrosecond();
+  }
+
+  // For async-start/done instructions, if there is no entry in latencies, fall
+  // back to using instruction cost as the latency.
+  if (it->second.cost.has_value() && IsAsyncPair(from, target)) {
+    VLOG(10) << "PGLE found latency for async op " << from.GetInstr().name()
+             << " and (assumed)" << target.GetInstr().name()
+             << " in instruction costs";
+    return *it->second.cost * CyclesPerMicrosecond();
+  }
+
+  return latency_estimator_->GetLatencyBetween(from, target);
 }
 
 LatencyEstimator::TimeCost ProfileGuidedLatencyEstimator::NodeCost(
     const HloInstruction* instr) const {
-  static constexpr HloGraphNode::TimeCost kLowCost = 1.0;
-  if (instr->IsOutputFusion() || instr->IsLoopFusion() ||
-      instr->opcode() == HloOpcode::kConvolution ||
-      instr->opcode() == HloOpcode::kWhile) {
-    auto it = instr_map_.find(instr->name());
-    if (it != instr_map_.end()) {
-      VLOG(10) << "PGLE found cost for: " << instr->name();
-      return it->second.second;
-    }
-    VLOG(10) << "PGLE missed cost for: " << instr->name();
-    return latency_estimator_->NodeCost(instr);
+  const HloOpcode opcode = instr->opcode();
+  if (hlo_query::IsAsyncCollectiveStartOp(opcode) ||
+      hlo_query::IsAsyncCollectiveDoneOp(opcode) ||
+      opcode == HloOpcode::kSend || opcode == HloOpcode::kRecv ||
+      opcode == HloOpcode::kSendDone || opcode == HloOpcode::kRecvDone) {
+    static constexpr TimeCost kLowCost = 1.0;
+    return kLowCost;
   }
-  return kLowCost;
-}
-
-int ProfileGuidedLatencyEstimator::CyclesPerMicrosecond() const {
-  return latency_estimator_->CyclesPerMicrosecond();
+  if (auto it = instr_map_.find(instr->name());
+      it != instr_map_.end() && it->second.cost.has_value()) {
+    VLOG(10) << "PGLE found cost for: " << instr->name();
+    return *it->second.cost;
+  }
+  VLOG(10) << "PGLE missed cost for: " << instr->name();
+  return latency_estimator_->NodeCost(instr);
 }
 
 ProfileGuidedLatencyEstimator::ProfileGuidedLatencyEstimator(
@@ -110,10 +84,15 @@ ProfileGuidedLatencyEstimator::ProfileGuidedLatencyEstimator(
     const ProfiledInstructionsProto& proto)
     : config_(config), latency_estimator_(std::move(latency_estimator)) {
   const int cycles_per_microsecond = latency_estimator_->CyclesPerMicrosecond();
-  for (const auto& instr : proto.instructions()) {
-    instr_map_[instr.name()] =
-        std::make_pair(instr.timestamp_us() * cycles_per_microsecond,
-                       instr.duration_us() * cycles_per_microsecond);
+  for (const auto& instr_cost : proto.costs()) {
+    instr_map_[instr_cost.name()] =
+        ProfileInfo{instr_cost.cost_us() * cycles_per_microsecond};
+  }
+  for (const auto& latency : proto.latencies()) {
+    auto it = instr_map_.insert(std::make_pair(latency.source(), ProfileInfo{}))
+                  .first;
+    it->second.latencies[latency.target()] =
+        latency.latency_us() * cycles_per_microsecond;
   }
 }
 

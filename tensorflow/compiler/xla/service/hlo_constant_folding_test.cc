@@ -359,7 +359,8 @@ TEST_F(HloConstantFoldingTest, BigReduceWindow) {
     ENTRY accumulated_all_reduce {
       x = bf16[160,10,10,512]{3,2,1,0} broadcast(bf16[] constant(1.0))
       init = bf16[] constant(0)
-      ROOT reduce-window = reduce-window(x, init), window={size=1x2x2x1 stride=1x2x2x1}, to_apply=add_bf16
+      ROOT reduce-window = reduce-window(x, init), window={size=1x2x2x1
+      stride=1x2x2x1}, to_apply=add_bf16
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -389,6 +390,90 @@ TEST_F(HloConstantFoldingTest, TimingConsumingTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(mod_str));
   HloConstantFolding const_fold;
   TF_ASSERT_OK_AND_ASSIGN(bool result, RunHloPass(&const_fold, module.get()));
+  EXPECT_FALSE(result);
+}
+
+TEST_F(HloConstantFoldingTest, FoldFusionWithoutParameters) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  fused_computation.1 {
+    iota.1 = f32[2496]{0} iota(), iota_dimension=0
+    constant_1 = f32[] constant(-1)
+    broadcast.1 = f32[2496]{0} broadcast(constant_1), dimensions={}
+    add.1 = f32[2496]{0} add(iota.1, broadcast.1)
+
+    iota.2 = f32[2496]{0} iota(), iota_dimension=0
+    constant_2 = f32[] constant(0.5)
+    broadcast.2 = f32[2496]{0} broadcast(constant_2), dimensions={}
+    add.2 = f32[2496]{0} add(iota.2, broadcast.2)
+
+    subtract.1 = f32[2496]{0} subtract(add.1, add.2)
+    broadcast.3 = f32[2496,3]{1,0} broadcast(subtract.1), dimensions={0}
+    ROOT bitcast.1 = f32[7488]{0} bitcast(broadcast.3 )
+  }
+
+  fused_computation.2 {
+    constant_3 = f32[] constant(127)
+    broadcast.4 = f32[7488]{0} broadcast(constant_3), dimensions={}
+    param_1.1 = f32[7488]{0} parameter(0)
+    add.3 = f32[7488]{0} add(param_1.1, broadcast.4)
+    ROOT bitcast.2 = f32[3,2496]{1,0} bitcast(add.3)
+  }
+
+  ENTRY entry {
+    fusion.1 = f32[7488]{0} fusion(), kind=kLoop, calls=fused_computation.1
+    ROOT fusion.2 = f32[3,2496]{1,0} fusion(fusion.1), kind=kInput, calls=fused_computation.2
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Constant()));
+}
+
+TEST_F(HloConstantFoldingTest, DoNotFoldFusionsWithIllegalInstructions) {
+  const char* const kModuleStr = R"(
+  HloModule test
+
+  fused_computation.1 {
+    iota.1 = f32[2496]{0} iota(), iota_dimension=0
+    constant_1 = f32[] constant(-1)
+    broadcast.1 = f32[2496]{0} broadcast(constant_1), dimensions={}
+    add.1 = f32[2496]{0} add(iota.1, broadcast.1)
+
+    constant_2 = f32[] constant(0)
+    constant_3 = f32[] constant(1)
+    rng.1 = f32[2496] rng(constant_2, constant_3), distribution=rng_uniform
+    constant_4 = f32[] constant(0.5)
+    broadcast.2 = f32[2496]{0} broadcast(constant_4), dimensions={}
+    add.2 = f32[2496]{0} add(rng.1, broadcast.2)
+
+    subtract.1 = f32[2496]{0} subtract(add.1, add.2)
+    broadcast.3 = f32[2496,3]{1,0} broadcast(subtract.1), dimensions={0}
+    ROOT bitcast.1 = f32[7488]{0} bitcast(broadcast.3 )
+  }
+
+  fused_computation.2 {
+    constant_3 = f32[] constant(127)
+    broadcast.4 = f32[7488]{0} broadcast(constant_3), dimensions={}
+    param_1.1 = f32[7488]{0} parameter(0)
+    add.3 = f32[7488]{0} add(param_1.1, broadcast.4)
+    ROOT bitcast.2 = f32[3,2496]{1,0} bitcast(add.3)
+  }
+
+  ENTRY entry {
+    fusion.1 = f32[7488]{0} fusion(), kind=kLoop, calls=fused_computation.1
+    ROOT fusion.2 = f32[3,2496]{1,0} fusion(fusion.1), kind=kInput, calls=fused_computation.2
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
   EXPECT_FALSE(result);
 }
 

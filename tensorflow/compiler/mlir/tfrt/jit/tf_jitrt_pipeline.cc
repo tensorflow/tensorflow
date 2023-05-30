@@ -98,7 +98,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   pm.addPass(mlir::TF::CreateTFFunctionalControlFlowToRegions());
 
   // Transform TF operation to HLO.
-  pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeTFPass());
+  pm.addPass(mlir::mhlo::createLegalizeTFPass());
 
   if (options.legalize_i1_tensors) {
     // Convert 'i1' tensors into 'i8' tensors.
@@ -130,7 +130,7 @@ void CreateTfJitRtPipeline(OpPassManager& pm,
   // Transform HLO operations to Linalg and Standard.
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeControlFlowPass());
   pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeSortPass());
-  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeCollectiveOpsPass());
+  pm.addNestedPass<FuncOp>(xla::cpu::createLegalizeLibraryOpsPass());
 
   if (options.vectorize) {
     pm.addNestedPass<FuncOp>(mlir::mhlo::createLegalizeMHLOToTHLOPass());

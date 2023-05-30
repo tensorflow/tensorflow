@@ -230,6 +230,7 @@ StatusOr<core::RefCountPtr<DatasetBase>> MakeSnapshotReaderDataset(
     const SnapshotReaderParams& params,
     InstantiatedCapturedFunction& instantiated_captured_func,
     IteratorContext* ctx) {
+  TF_RETURN_IF_ERROR(ValidateSnapshot(params.snapshot_path, params.env));
   DatasetBase* dataset_of_snapshot_files;
   TF_RETURN_IF_ERROR(MakeNestedDataset(params, &dataset_of_snapshot_files));
 

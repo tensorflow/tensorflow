@@ -76,7 +76,7 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
       base_delegate_);
   if (!status.ok()) {
     TF_LITE_KERNEL_LOG(context, "Failed to initialize TensorFlow context: %s",
-                       status.error_message().c_str());
+                       tsl::NullTerminatedMessage(status));
     return kTfLiteError;
   }
 

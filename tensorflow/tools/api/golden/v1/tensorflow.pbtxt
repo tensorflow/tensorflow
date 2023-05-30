@@ -1549,6 +1549,10 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "is_symbolic_tensor"
+    argspec: "args=[\'tensor\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "is_tensor"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
@@ -2122,7 +2126,7 @@ tf_module {
   }
   member_method {
     name: "shape"
-    argspec: "args=[\'input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'int32\'>\"], "
+    argspec: "args=[\'input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "shape_n"

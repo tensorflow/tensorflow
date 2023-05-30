@@ -520,24 +520,27 @@ ENTRY AddDotsFunc {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK-LABEL: ENTRY %AddDotsFunc (x: f32[20000,4,3,2], y: f32[20000,4,3,4]) -> f32[20000,4,2,4] {
-; CHECK-NEXT:    [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
-; CHECK-NEXT:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[20000,4,2,4]{3,2,1,0} custom-call([[P0]], [[P1]]),
+; CHECK:    [[P0:%[^ ]+]] = f32[20000,4,3,2]{3,2,1,0} parameter(0)
+; CHECK:    [[BC0:%[^ ]+]] = f32[80000,3,2]{2,1,0} bitcast([[P0]])
+; CHECK:    [[P1:%[^ ]+]] = f32[20000,4,3,4]{3,2,1,0} parameter(1)
+; CHECK:    [[BC1:%[^ ]+]] = f32[80000,3,4]{2,1,0} bitcast([[P1]])
+; CHECK:    [[OUT:%[^ ]+]] = f32[80000,2,4]{2,1,0} custom-call([[BC0]], [[BC1]]),
 ; CHECK:           custom_call_target="__cublas$gemm",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
 ; CHECK-DAG:         \"alpha_imag\":0
 ; CHECK-DAG:         \"beta\":0
 ; CHECK-DAG:         \"dot_dimension_numbers\":{
-; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"2\"]
-; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\",\"1\"]
-; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\",\"1\"]
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[\"0\"]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[\"0\"]
 ; CHECK-DAG:         }
 ; CHECK-DAG:         \"precision_config\":{
 ; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
 ; CHECK-DAG:         }
 ; CHECK:           }"
+; CHECK:   ROOT {{[^ ]+}} = f32[20000,4,2,4]{3,2,1,0} bitcast([[OUT]])
 )");
 }
 
@@ -4233,6 +4236,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, DoNotRewriteToF8OnPreHopper) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // Test with types unsupported by cuBLAS LT when FP8 is used. cuBLAS LT with
   // FP8 requires one of the operands to be F8E4M3FN.
   const char* hlo_text = R"(
@@ -4275,6 +4281,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnsupportedTypesF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4295,10 +4304,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[C1:[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[C1]], [[C1]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C1]], [[C1]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4319,6 +4326,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, UnscaledABUnscaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4347,12 +4357,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4373,6 +4381,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4405,14 +4416,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[31,17]{1,0} transpose([[P1]]), dimensions={1,0}
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
 ; CHECK-NEXT:    [[P1_TRANSPOSE_PADDED:%[^ ]+]] = f8e4m3fn[32,32]{1,0} pad([[P1_TRANSPOSE]], [[C1]])
-; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C2_BCAST:%[^ ]+]] = f32[13,31]{1,0} broadcast([[C2]]), dimensions={}
-; CHECK-NEXT:    [[C3:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C2_BCAST_PADDED:%[^ ]+]] = f32[16,32]{1,0} pad([[C2_BCAST]], [[C3]]), padding=0_3x0_1
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C4:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,32]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[C2_BCAST_PADDED]], [[P2]], [[P3]], /*index=5*/[[C4]], [[C4]]),
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,32]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[P2]], [[P3]], [[C4]], /*index=5*/[[C4]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4434,6 +4441,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDPaddedF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4468,6 +4478,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDBitcastF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4507,12 +4520,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
 ; CHECK-NEXT:    [[P0_U3:%[^ ]+]] = f8e4m3fn[16,32]{1,0} reshape([[P0_U2]])
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C1_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_U3]], [[P1_TRANSPOSE]], [[C1_BCAST]], [[P2]], [[P3]], /*index=5*/[[C2]], [[C2]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_U3]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C2]], /*index=5*/[[C2]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4533,6 +4544,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDUnaryOpsF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4561,12 +4575,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[10,32,16]{2,1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[10,16,32]{2,1,0} transpose([[P1]]), dimensions={0,2,1}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[10,16,16]{2,1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[10,16,16]{2,1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[10,16,16]{2,1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4587,6 +4599,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, BatchedScaledABUnscaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4619,12 +4634,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":3
@@ -4645,6 +4658,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABAlphaDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4677,12 +4693,10 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = f32[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = f32[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[C1]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[C1]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4703,6 +4717,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDReluActivationF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4733,8 +4750,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, InvScaledABUnscaledDF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4790,7 +4807,76 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasF8) {
       )");
 }
 
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDMatrixBiasPaddedF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[14,31] parameter(0)
+      y = f8e4m3fn[31,14] parameter(1)
+      b = f32[14,14] parameter(2)
+      x_f32 = f32[14,31] convert(x)
+      y_f32 = f32[31,14] convert(y)
+      x_scale = f32[] parameter(3)
+      y_scale = f32[] parameter(4)
+      x_scale_bcast = f32[14,31] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[31,14] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[14,31] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[31,14] multiply(y_f32, y_scale_bcast)
+      dot_a = f32[14,14] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT out = add(dot_a, b)
+          }
+
+)";
+
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[14,31], y: f8e4m3fn[31,14], b: f32[14,14], x_scale: f32[], y_scale: f32[]) -> f32[14,14] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[14,31]{1,0} parameter(0)
+; CHECK-NEXT:    [[C0:%[^ ]+]] = f8e4m3fn[] constant(0)
+; CHECK-NEXT:    [[P0_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P0]], [[C0]]), padding=0_2x0_1
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[31,14]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[14,31]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f8e4m3fn[] constant(0)
+; CHECK-NEXT:    [[P1_TRANSPOSE_PADDED:%[^ ]+]] = f8e4m3fn[16,32]{1,0} pad([[P1_TRANSPOSE]], [[C1]])
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[14,14]{1,0} parameter(2)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(0)
+; CHECK-NEXT:    [[P2_PADDED:%[^ ]+]] = f32[16,16]{1,0} pad([[P2]], [[C2]]), padding=0_2x0_2
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[C3:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0_PADDED]], [[P1_TRANSPOSE_PADDED]], [[P2_PADDED]], [[P3]], [[P4]], /*index=5*/[[C3]], [[C3]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":1
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+; CHECK-NEXT: ROOT [[OUT:%[^ ]+]] = f32[14,14]{1,0} slice([[DOT]]), slice={[0:14], [0:14]}
+      )");
+}
+
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4828,15 +4914,13 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4857,6 +4941,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -4899,6 +4986,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABInvScaledDF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
     ENTRY test {
@@ -4937,15 +5027,13 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 ; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -4967,8 +5055,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDReluActivationF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5035,6 +5123,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDMatrixBiasF8) {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5076,8 +5167,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[BC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
 ; CHECK-NEXT:    [[CV:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
@@ -5088,7 +5177,69 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 ; CHECK-NEXT:    [[DV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
 ; CHECK-NEXT:    [[CV2:%[^ ]+]] = f32[] convert([[DV]])
 ; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
-; CHECK:         ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[CV]], [[CV1]], /*index=5*/[[C]], [[CV2]], [[VB]]),
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f8e4m3fn[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[C]], /*index=5*/[[CV2]], [[VB]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{ 
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[] 
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"BIAS\"
+; CHECK:           }"
+      )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF32VectorBiasF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      b = f32[16] parameter(2)
+      b_bf16 = bf16[16] convert(b)
+      b_f32 = f32[16] convert(b_bf16)
+      b_bcast = f32[16,16] broadcast(b_f32), dimensions={1}
+      x_scale = f32[] parameter(3)
+      y_scale = f32[] parameter(4)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      ROOT out = f32[16,16] add(dot_a, b_bcast)
+           }
+
+)";
+
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], b: f32[16], x_scale: f32[], y_scale: f32[]) -> f32[16,16] {
+; CHECK:         [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[VB:%[^ ]+]] = f32[16]{0} parameter(2)
+; CHECK-NEXT:    [[VBC:%[^ ]+]] = bf16[16]{0} convert([[VB]])
+; CHECK:         ROOT [[OUT:%[^ ]+]] = f32[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C]], /*index=5*/[[C]], [[VBC]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5110,6 +5261,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDVectorBiasF8) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDVectorBiasThenReluActivationF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5143,15 +5297,13 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]]), dimensions={1,0}
-; CHECK-NEXT:    [[C1:%[^ ]+]] = f16[] constant(0)
-; CHECK-NEXT:    [[BC:%[^ ]+]] = f16[16,16]{1,0} broadcast([[C1]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(3)
 ; CHECK-NEXT:    [[CV:%[^ ]+]] = f32[] convert([[P2]])
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(4)
 ; CHECK-NEXT:    [[CV1:%[^ ]+]] = f32[] convert([[P3]])
 ; CHECK-NEXT:    [[C:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[VB:%[^ ]+]] = f16[16]{0} parameter(2)
-; CHECK     :    ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[BC]], [[CV]], [[CV1]], /*index=5*/[[C]], [[C]], [[VB]]),
+; CHECK     :    ROOT [[OUT:%[^ ]+]] = f16[16,16]{1,0} custom-call([[P0]], [[P1_TRANSPOSE]], [[CV]], [[CV1]], [[C]], /*index=5*/[[C]], [[VB]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5174,8 +5326,8 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDMatrixBiasThenVectorBiasF8) {
 #if CUDA_VERSION < 12000
-  GTEST_SKIP() << "A matrix bias on a matmul is only supported in CUDA 12";
-#endif
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5238,6 +5390,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest,
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 
@@ -5285,15 +5440,13 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
 ; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
 ; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
 ; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
-; CHECK-NEXT:    [[C0:%[^ ]+]] = bf16[] constant(0)
-; CHECK-NEXT:    [[C0_BCAST:%[^ ]+]] = bf16[16,16]{1,0} broadcast([[C0]]), dimensions={}
 ; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
 ; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
 ; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
 ; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
 ; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
-; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[C0_BCAST]], [[P2]], [[P3]], /*index=5*/[[C1]], [[P4_INV]]),
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
 ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
 ; CHECK:           backend_config="{
 ; CHECK-DAG:         \"alpha_real\":1
@@ -5313,7 +5466,173 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABScaledDWithDAmaxF8) {
       )");
 }
 
+TEST_P(ParameterizedFp8GemmRewriteTest,
+       ScaledABScaledDWithDAmaxF8WithF16Intermediates) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  // This is the same as ScaledABScaledDWithDAmaxF8, but uses F16 intermediate
+  // values instead of F32 intermediate values.
+  const char* hlo_text = R"(
+    HloModule test
+
+    apply {
+      a = f16[] parameter(0)
+      b = f16[] parameter(1)
+      ROOT c = f16[] maximum(a, b)
+    }
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f16 = f16[16,32] convert(x)
+      y_f16 = f16[32,16] convert(y)
+      x_scale = f16[] parameter(2)
+      y_scale = f16[] parameter(3)
+      z_scale = f16[] parameter(4)
+      x_scale_bcast = f16[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f16[32,16] broadcast(y_scale), dimensions={}
+      z_scale_bcast = f16[16,16] broadcast(z_scale), dimensions={}
+      x_unscaled = f16[16,32] multiply(x_f16, x_scale_bcast)
+      y_unscaled = f16[32,16] multiply(y_f16, y_scale_bcast)
+      dot_a = f16[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      abs_dot_a = f16[16,16] abs(dot_a)
+      c0 = f16[] constant(-inf)
+      amax = f16[] reduce(abs_dot_a, c0), dimensions={0,1}, to_apply=apply
+      dot_a_scaled = f16[16,16] divide(dot_a, z_scale_bcast)
+      c1 = f16[] constant(-448.)
+      c1_bcast = f16[16,16] broadcast(c1), dimensions={}
+      c2 = f16[] constant(448.)
+      c2_bcast = f16[16,16] broadcast(c2), dimensions={}
+      dot_a_clamped = f16[16,16] clamp(c1_bcast, dot_a_scaled, c2_bcast)
+      dot_a_f8 = f8e4m3fn[16,16] convert(dot_a_clamped)
+      ROOT out = (f8e4m3fn[16,16], f16[]) tuple(dot_a_f8, amax)
+          }
+
+)";
+
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f16[], y_scale: f16[], z_scale: f16[]) -> (f8e4m3fn[16,16], f16[]) {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f16[] parameter(2)
+; CHECK-NEXT:    [[P2_CONVERT:%[^ ]+]] = f32[] convert([[P2]])
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f16[] parameter(3)
+; CHECK-NEXT:    [[P3_CONVERT:%[^ ]+]] = f32[] convert([[P3]])
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f16[] constant(1)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f16[] parameter(4)
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f16[] divide([[C2]], [[P4]])
+; CHECK-NEXT:    [[P4_INV_CONVERT:%[^ ]+]] = f32[] convert([[P4_INV]])
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2_CONVERT]], [[P3_CONVERT]], [[C1]], /*index=5*/[[P4_INV_CONVERT]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"DEFAULT\"
+; CHECK:           }"
+      )");
+}
+
+TEST_P(ParameterizedFp8GemmRewriteTest,
+       ScaledABScaledDReluActivationWithDAmaxF8) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
+  const char* hlo_text = R"(
+    HloModule test
+
+    apply {
+      a = f32[] parameter(0)
+      b = f32[] parameter(1)
+      ROOT c = f32[] maximum(a, b)
+    }
+
+    ENTRY test {
+      x = f8e4m3fn[16,32] parameter(0)
+      y = f8e4m3fn[32,16] parameter(1)
+      x_f32 = f32[16,32] convert(x)
+      y_f32 = f32[32,16] convert(y)
+      x_scale = f32[] parameter(2)
+      y_scale = f32[] parameter(3)
+      z_scale = f32[] parameter(4)
+      x_scale_bcast = f32[16,32] broadcast(x_scale), dimensions={}
+      y_scale_bcast = f32[32,16] broadcast(y_scale), dimensions={}
+      z_scale_bcast = f32[16,16] broadcast(z_scale), dimensions={}
+      x_unscaled = f32[16,32] multiply(x_f32, x_scale_bcast)
+      y_unscaled = f32[32,16] multiply(y_f32, y_scale_bcast)
+      dot_a = f32[16,16] dot(x_unscaled, y_unscaled), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      czero = f32[] constant(0)
+      czero_bcast = f32[16,16] broadcast(czero), dimensions={}
+      dot_a_relu = f32[16,16] maximum(dot_a, czero_bcast)
+      c0 = f32[] constant(-inf)
+      amax = f32[] reduce(dot_a_relu, c0), dimensions={0,1}, to_apply=apply
+      dot_a_scaled = f32[16,16] divide(dot_a_relu, z_scale_bcast)
+      c1 = f32[] constant(-448.)
+      c1_bcast = f32[16,16] broadcast(c1), dimensions={}
+      c2 = f32[] constant(448.)
+      c2_bcast = f32[16,16] broadcast(c2), dimensions={}
+      dot_a_clamped = f32[16,16] clamp(c1_bcast, dot_a_scaled, c2_bcast)
+      dot_a_f8 = f8e4m3fn[16,16] convert(dot_a_clamped)
+      ROOT out = (f8e4m3fn[16,16], f32[]) tuple(dot_a_f8, amax)
+          }
+
+)";
+
+  CheckFp8IfOnHopper(hlo_text);
+  RunAndFilecheckHloRewrite(hlo_text,
+                            GemmRewriter(se::CudaComputeCapability{
+                                se::CudaComputeCapability::HOPPER, 0}),
+                            R"(
+; CHECK-LABEL: ENTRY %test (x: f8e4m3fn[16,32], y: f8e4m3fn[32,16], x_scale: f32[], y_scale: f32[], z_scale: f32[]) -> (f8e4m3fn[16,16], f32[]) {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f8e4m3fn[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = f8e4m3fn[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P1_TRANSPOSE:%[^ ]+]] = f8e4m3fn[16,32]{1,0} transpose([[P1]])
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f32[] parameter(2)
+; CHECK-NEXT:    [[P3:%[^ ]+]] = f32[] parameter(3)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[C2:%[^ ]+]] = f32[] constant(1)
+; CHECK-NEXT:    [[P4:%[^ ]+]] = f32[] parameter(4)
+; CHECK-NEXT:    [[P4_INV:%[^ ]+]] = f32[] divide([[C2]], [[P4]])
+; CHECK-NEXT:    [[OUT:%[^ ]+]] = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call([[P0]], [[P1_TRANSPOSE]], [[P2]], [[P3]], [[C1]], /*index=5*/[[P4_INV]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
+; CHECK:           backend_config="{
+; CHECK-DAG:         \"alpha_real\":1
+; CHECK-DAG:         \"alpha_imag\":0
+; CHECK-DAG:         \"beta\":0
+; CHECK-DAG:         \"dot_dimension_numbers\":{
+; CHECK-DAG:           \"lhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"rhs_contracting_dimensions\":[\"1\"]
+; CHECK-DAG:           \"lhs_batch_dimensions\":[]
+; CHECK-DAG:           \"rhs_batch_dimensions\":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"precision_config\":{
+; CHECK-DAG:           \"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]
+; CHECK-DAG:         }
+; CHECK-DAG:         \"epilogue\":\"RELU\"
+; CHECK:           }"
+      )");
+}
+
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   std::array<std::array<absl::string_view, 7>, 32> combinations;
   int i = 0;
 
@@ -5381,6 +5700,9 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8Parameterized) {
 
 TEST_P(ParameterizedFp8GemmRewriteTest,
        ScaledABUnscaledDF8ParameterizedBatched) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   // TODO(wenscarl): For batched matmaul, not all combinations of A, B and
   // output layouts get pattern matched successfully to FP8 custom call. Only
   // a handful of cases are tested here.
@@ -5446,6 +5768,9 @@ ENTRY f {
 }
 
 TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
+#if CUDA_VERSION < 12000
+  GTEST_SKIP() << "F8 gemm rewrite is only supported in CUDA 12 and above.";
+#endif  // CUDA_VERSION < 12000
   const char* hlo_text = R"(
     HloModule test
 

@@ -22,7 +22,7 @@ pytype_strict_library(
         ":default_types",
         ":serialization",
         ":util",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
     ],
 )
 
@@ -61,7 +61,6 @@ py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -78,7 +77,7 @@ pytype_strict_library(
         ":serialization",
         ":util",
         "//tensorflow/core/function/trace_type:default_types_proto_py",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
     ],
 )
 
@@ -90,7 +89,7 @@ py_strict_test(
         ":default_types",
         ":serialization",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:trace",
         "@absl_py//absl/testing:parameterized",
     ],
 )

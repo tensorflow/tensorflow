@@ -42,7 +42,7 @@ class FuzzBincount : public FuzzSession<Tensor, int32, Tensor> {
     Status s = RunInputsWithStatus(
         {{"arr", arr}, {"size", size}, {"weights", weights}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };

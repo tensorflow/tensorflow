@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/MathToLibm/MathToLibm.h"  // from @llvm-project
 #include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/Passes.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Conversion/VectorToLLVM/ConvertVectorToLLVM.h"  // from @llvm-project
@@ -35,6 +36,7 @@ limitations under the License.
 #include "mlir/Dialect/Async/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Math/IR/Math.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -63,13 +65,14 @@ namespace runtime {
 
 void RegisterDefaultXlaCpuRuntimeDialects(DialectRegistry& dialects) {
   // Register MLIR dialects supported by the compiled executables.
-  dialects->insert<
-      mlir::AffineDialect, mlir::arith::ArithDialect, mlir::async::AsyncDialect,
-      mlir::cf::ControlFlowDialect, mlir::linalg::LinalgDialect,
-      mlir::math::MathDialect, mlir::memref::MemRefDialect,
-      mlir::scf::SCFDialect, mlir::func::FuncDialect,
-      mlir::sparse_tensor::SparseTensorDialect, mlir::tensor::TensorDialect,
-      mlir::vector::VectorDialect, RuntimeDialect>();
+  dialects->insert<mlir::affine::AffineDialect, mlir::arith::ArithDialect,
+                   mlir::async::AsyncDialect, mlir::cf::ControlFlowDialect,
+                   mlir::linalg::LinalgDialect, mlir::math::MathDialect,
+                   mlir::memref::MemRefDialect, mlir::scf::SCFDialect,
+                   mlir::func::FuncDialect,
+                   mlir::sparse_tensor::SparseTensorDialect,
+                   mlir::tensor::TensorDialect, mlir::vector::VectorDialect,
+                   RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
   mlir::registerArmNeonDialectTranslation(*dialects);
@@ -88,7 +91,7 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
 
     // Convert entry function to the XLA entrypoint.
     pm.addPass(CreateExportRuntimeFunctionsPass());
-    pm.addPass(cpu::createConvertLmhloToCpuRuntimePass());
+    pm.addPass(cpu::createConvertXlaCpuToCpuRuntimePass());
     pm.addPass(CreateConvertCustomCallsPass());
     pm.addPass(CreateConvertAssertsPass());
   }
@@ -147,6 +150,19 @@ static void CreateXlaCpuCompilationPipeline(mlir::OpPassManager& pm,
   // Convert everything else to LLVM dialect.
   mlir::GenericHostToLLVMPassOptions llvm_options;
   llvm_options.enableAvx2 = opts.math_avx2;
+
+  const bool gpuCodegen = opts.xla_cpu_sparse_cuda_threads > 0;
+  if (gpuCodegen) {
+#ifdef MLIR_GPU_TO_CUBIN_PASS_ENABLE
+    pm.addNestedPass<mlir::gpu::GPUModuleOp>(
+        mlir::createGpuSerializeToCubinPass(opts.cuda_triplet, opts.cuda_arch,
+                                            opts.cuda_features));
+#endif
+    pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertSCFToCFPass());
+    pm.addPass(mlir::createConvertFuncToLLVMPass());
+    pm.addPass(mlir::createGpuToLLVMConversionPass());
+  }
+
   pm.addPass(mlir::hlo::createGenericHostToLLVMPass(llvm_options));
 
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());

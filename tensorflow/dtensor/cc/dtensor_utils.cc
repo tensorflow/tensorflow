@@ -15,12 +15,16 @@ limitations under the License.
 
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
+#include <vector>
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/util/env_var.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -53,10 +57,15 @@ bool LogOnAllTasks() {
   return true;
 }
 
-bool LogOpByOp() {
-  char* dtensor_log_op_by_op_str = std::getenv("DTENSOR_LOG_OP_BY_OP");
-  if (dtensor_log_op_by_op_str == nullptr) return false;
-  return true;
+bool LogOpByOp(absl::string_view op_name) {
+  char* op_list_str = std::getenv("DTENSOR_LOG_OP_BY_OP");
+  if (op_list_str == nullptr) return false;
+  if (!strcmp(op_list_str, "*")) return true;
+  std::vector<absl::string_view> op_list = absl::StrSplit(op_list_str, ',');
+  if (std::find(op_list.begin(), op_list.end(), op_name) != op_list.end()) {
+    return true;
+  }
+  return false;
 }
 
 int LayoutPropagationMaxSteps() {
@@ -125,6 +134,17 @@ bool EnableReplicatedSpmdAsDefault(const std::string& op_name) {
   char* dtensor_enable_replicated_spmd_as_default =
       std::getenv(env_name.c_str());
   return dtensor_enable_replicated_spmd_as_default != nullptr;
+}
+
+bool EnableAllToAllForRelayout() {
+  // Whether to use all-to-all collective for relayout when possible.
+  static bool is_enabled = [] {
+    bool ret = true;
+    TF_CHECK_OK(tsl::ReadBoolFromEnvVar("DTENSOR_USE_ALL_TO_ALL_RELAYOUT",
+                                        /*default_val=*/true, &ret));
+    return ret;
+  }();
+  return is_enabled;
 }
 
 }  // namespace dtensor

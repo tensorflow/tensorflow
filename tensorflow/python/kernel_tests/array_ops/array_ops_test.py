@@ -894,6 +894,14 @@ class StridedSliceShapeTest(test_util.TensorFlowTestCase):
 
       _ = f.get_concrete_function(tensor_spec.TensorSpec(None, dtypes.float32))
 
+  def testScalarInput(self):
+    c = constant_op.constant(3)
+    with self.assertRaisesRegex(
+        (ValueError, errors.InvalidArgumentError),
+        "Attempting to slice scalar input.",
+    ):
+      array_ops.strided_slice(c, [0], [1])
+
   def tensorShapeEqual(self, x, y):
     self.assertTrue(x is not None and y is not None or x is None and y is None)
     self.assertEqual(x.as_list(), y.as_list())

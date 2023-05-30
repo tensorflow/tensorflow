@@ -15,7 +15,7 @@
 """Contains LossScale classes."""
 import abc
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -24,7 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.util import deprecation
@@ -134,7 +134,7 @@ class LossScale(trackable.Trackable, metaclass=abc.ABCMeta):
     Raises:
       RuntimeError: If a weight with `name` has already been added.
     """
-    variable = variable_scope.variable(
+    variable = variable_v1.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=dtype,
@@ -372,8 +372,8 @@ class DynamicLossScale(LossScale):
   def update(self, grads):
     """Updates loss scale based on if gradients are finite in current step."""
     grads = nest.flatten(grads)
-    if distribution_strategy_context.has_strategy():
-      distribution = distribution_strategy_context.get_cross_replica_context()
+    if distribute_lib.has_strategy():
+      distribution = distribute_lib.get_cross_replica_context()
 
       def get_is_finite(grads):
         is_finite = _is_all_finite(grads)

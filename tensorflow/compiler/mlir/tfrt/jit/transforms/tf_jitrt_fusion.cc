@@ -41,6 +41,7 @@ using mlir::Operation;
 using mlir::OpOperand;
 using mlir::RewritePatternSet;
 
+namespace affine = mlir::affine;
 namespace linalg = mlir::linalg;
 namespace tensor = mlir::tensor;
 
@@ -139,7 +140,7 @@ struct FusionPass : public impl::FusionBase<FusionPass> {
     linalg::populateConstantFoldLinalgOperations(patterns,
                                                  ControlElementwiseOpsFusion);
 
-    mlir::AffineApplyOp::getCanonicalizationPatterns(patterns, context);
+    affine::AffineApplyOp::getCanonicalizationPatterns(patterns, context);
     linalg::GenericOp::getCanonicalizationPatterns(patterns, context);
     tensor::ExpandShapeOp::getCanonicalizationPatterns(patterns, context);
     tensor::CollapseShapeOp::getCanonicalizationPatterns(patterns, context);

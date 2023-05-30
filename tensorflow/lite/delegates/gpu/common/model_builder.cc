@@ -1203,6 +1203,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::ELU:
       case OperationType::EXP:
       case OperationType::FLOOR:
+      case OperationType::GELU:
       case OperationType::LOG:
       case OperationType::NEG:
       case OperationType::RSQRT:
@@ -3073,6 +3074,7 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
     case kTfLiteBuiltinAbs:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ABS);
     case kTfLiteBuiltinAdd:
+    case kTfLiteBuiltinAddN:
       return std::make_unique<ElementwiseOperationParser>(OperationType::ADD);
     case kTfLiteBuiltinAveragePool2d:
       return std::make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
@@ -3119,6 +3121,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<FullyConnectedOperationParser>();
     case kTfLiteBuiltinGather:
       return std::make_unique<GatherOperationParser>();
+    case kTfLiteBuiltinGelu:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::GELU);
     case kTfLiteBuiltinGreater:
       return std::make_unique<ElementwiseOperationParser>(
           OperationType::GREATER);
@@ -3371,20 +3375,41 @@ TfLiteIntArray* GetOpsToReplace(
   return ConvertVectorToTfLiteIntArray(ops_to_replace);
 }
 
-// Creates inputs and outputs passed by io_tensors parameters in the resulting
+// Creates inputs passed by io_tensors parameters in the resulting
 // graph. We force it to make sure that delegated subgraph has same order of
 // inputs and outputs with the original one. When delegated model is built from
 // the tflite model representation tensors are created lazily, so there is no
 // guarantee that the order will match the source model tensors order.
-absl::Status PrecreateIOTensors(
-    TfLiteContext* context, GraphFloat32* graph, const std::vector<int>& io_ids,
+absl::Status PrecreateInputTensors(
+    TfLiteContext* context, GraphFloat32* graph,
+    const std::vector<int>& input_ids,
     absl::flat_hash_map<int, int>* quant_conversion_map,
     absl::flat_hash_map<int, Value*>* tensor_to_value) {
-  for (const auto& id : io_ids) {
+  for (const auto& id : input_ids) {
     const TfLiteTensor& tflite_tensor = context->tensors[id];
     if (tflite::IsConstantTensor(&tflite_tensor)) continue;
     RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
         context, tensor_to_value, quant_conversion_map, graph, id));
+  }
+  return absl::OkStatus();
+}
+
+// Similar to PrecreateInputTensors(), it creates outputs passed by io_tensors
+// parameters in the resulting graph. In addition to that, it calls
+// graph->AddKnownGraphOutput() to notify graph outputs from
+// delegate_params->output_tensors.
+absl::Status PrecreateOutputTensors(
+    TfLiteContext* context, GraphFloat32* graph,
+    const std::vector<int>& output_ids,
+    absl::flat_hash_map<int, int>* quant_conversion_map,
+    absl::flat_hash_map<int, Value*>* tensor_to_value) {
+  for (const auto& id : output_ids) {
+    const TfLiteTensor& tflite_tensor = context->tensors[id];
+    if (tflite::IsConstantTensor(&tflite_tensor)) continue;
+    Value* value;
+    RETURN_IF_ERROR(ObjectReader::ReadNonConstantTensor(
+        context, tensor_to_value, quant_conversion_map, graph, id, &value));
+    graph->AddKnownGraphOutput(value);
   }
   return absl::OkStatus();
 }
@@ -3478,10 +3503,10 @@ absl::Status BuildModelEnforceIO(
   absl::flat_hash_map<int, Value*> tensor_to_value;
   std::vector<ValueId> variable_inputs_to_value_id;
 
-  RETURN_IF_ERROR(PrecreateIOTensors(context, graph, input_ids,
-                                     quant_conversion_map, &tensor_to_value));
-  RETURN_IF_ERROR(PrecreateIOTensors(context, graph, output_ids,
-                                     quant_conversion_map, &tensor_to_value));
+  RETURN_IF_ERROR(PrecreateInputTensors(
+      context, graph, input_ids, quant_conversion_map, &tensor_to_value));
+  RETURN_IF_ERROR(PrecreateOutputTensors(
+      context, graph, output_ids, quant_conversion_map, &tensor_to_value));
   for (int i = 0; i < operations.size(); ++i) {
     TfLiteNode* tflite_node;
     TfLiteRegistration* registration;

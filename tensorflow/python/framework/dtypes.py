@@ -33,6 +33,7 @@ from tensorflow.python.types import trace
 from tensorflow.core.function import trace_type
 from tensorflow.tools.docs import doc_controls
 from tensorflow.tsl.python.lib.core import pywrap_bfloat16
+from tensorflow.python.framework import cpp_shape_inference_pb2
 
 _np_bfloat16 = pywrap_bfloat16.bfloat16_type()
 _np_float8_e4m3fn = _pywrap_float8.TF_float8_e4m3fn_type()
@@ -64,7 +65,20 @@ class DType(
 
   See `tf.dtypes` for a complete list of `DType`'s defined.
   """
-  __slots__ = ()
+  __slots__ = ["_handle_data"]
+
+  def __init__(self, type_enum, handle_data=None):
+    super().__init__(type_enum)
+
+    # Resource and Variant dtypes have additional handle data information that
+    # is necessary for manipulating those Tensors.
+    if handle_data is not None and not isinstance(
+        handle_data,
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData,
+    ):
+      raise TypeError("handle_data must be of the type HandleData proto.")
+
+    self._handle_data = handle_data
 
   @property
   def _is_ref_dtype(self):
@@ -81,7 +95,13 @@ class DType(
 
   @property
   def base_dtype(self):
-    """Returns a non-reference `DType` based on this `DType`."""
+    """Returns a non-reference `DType` based on this `DType` (for TF1).
+
+    Programs written for TensorFlow 2.x do not need this attribute.
+    It exists only for compatibility with TensorFlow 1.x, which used
+    reference `DType`s in the implementation of `tf.compat.v1.Variable`.
+    In TensorFlow 2.x, `tf.Variable` is implemented without reference types.
+    """
     if self._is_ref_dtype:
       return _INTERN_TABLE[self._type_enum - 100]
     else:
@@ -184,13 +204,15 @@ class DType(
     return min, max
 
   def is_compatible_with(self, other):
-    """Returns True if the `other` DType will be converted to this DType.
+    """Returns True if the `other` DType will be converted to this DType (TF1).
 
-    The conversion rules are as follows:
+    Programs written for TensorFlow 2.x do not need this function.
+    Instead, they can do equality comparison on `DType` objects directly:
+    `tf.as_dtype(this) == tf.as_dtype(other)`.
 
-    ```python
-    DType(T)       .is_compatible_with(DType(T))        == True
-    ```
+    This function exists only for compatibility with TensorFlow 1.x, where it
+    additionally allows conversion from a reference type (used by
+    `tf.compat.v1.Variable`) to its base type.
 
     Args:
       other: A `DType` (or object that may be converted to a `DType`).
@@ -803,7 +825,10 @@ def as_dtype(type_value):
     TypeError: If `type_value` cannot be converted to a `DType`.
   """
   if isinstance(type_value, DType):
-    return _INTERN_TABLE[type_value.as_datatype_enum]
+    if type_value._handle_data is None:  # pylint:disable=protected-access
+      return _INTERN_TABLE[type_value.as_datatype_enum]
+    else:
+      return type_value
 
   if isinstance(type_value, np.dtype):
     try:

@@ -245,6 +245,9 @@ class TypeSpec(
     return [arg for arg in nest.flatten(value, expand_composites=True)
             if isinstance(arg, core_types.Symbol)]
 
+  def _flatten(self):
+    return nest.flatten(self._component_specs, expand_composites=True)
+
   def _cast(self, value, casting_context):
     if casting_context.allow_specs and isinstance(value, TypeSpec):
       assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"

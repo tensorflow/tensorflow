@@ -96,7 +96,6 @@ py_library(
         "//tensorflow/python/keras/utils:tf_contextlib",
         "//tensorflow/python/keras/utils:tf_inspect",
         "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/summary",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
@@ -200,6 +199,7 @@ py_library(
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_v2",
+        "//tensorflow/python/summary:summary_py",
     ],
 )
 

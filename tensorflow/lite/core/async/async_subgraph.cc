@@ -159,6 +159,9 @@ bool AsyncSubgraph::ReconcileRestrictions(
       async_kernel() == nullptr) {
     return false;
   }
+  if (tensor_index < 0 || tensor_index >= subgraph_->tensors_size()) {
+    return false;
+  }
   return (*async_kernel_->reconcile_restrictions)(
       async_kernel_, opaque_context(), opaque_node_, tensor_index,
       user_provided_attributes, merged, conflict);
@@ -167,6 +170,9 @@ bool AsyncSubgraph::ReconcileRestrictions(
 TfLiteStatus AsyncSubgraph::SetAttributes(int tensor_index,
                                           const TfLiteAttributeMap* attrs) {
   if (attrs == nullptr || async_kernel() == nullptr) {
+    return kTfLiteError;
+  }
+  if (tensor_index < 0 || tensor_index >= subgraph_->tensors_size()) {
     return kTfLiteError;
   }
   return (*async_kernel_->set_attributes)(async_kernel_, opaque_context(),

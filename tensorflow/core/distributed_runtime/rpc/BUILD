@@ -172,13 +172,14 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "grpc_response_cache",
-    srcs = ["grpc_response_cache.cc"],
-    hdrs = ["grpc_response_cache.h"],
+    name = "rpc_response_cache",
+    srcs = ["rpc_response_cache.cc"],
+    hdrs = ["rpc_response_cache.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -189,10 +190,10 @@ tf_cuda_library(
     hdrs = ["grpc_worker_service.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        ":grpc_response_cache",
         ":grpc_tensor_coding",
         ":grpc_util",
         ":grpc_worker_service_impl",
+        ":rpc_response_cache",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -327,6 +328,7 @@ cc_library(
         "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/distributed_runtime/rpc:async_service_interface",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_profiler_service() + tf_grpc_dependencies() + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -391,6 +393,8 @@ cc_library(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "@com_google_absl//absl/flags:flag",
+        "@com_google_absl//absl/strings",
     ] + tf_grpc_cc_dependencies(),
     alwayslink = 1,
 )
@@ -420,6 +424,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
     alwayslink = 1,
 )

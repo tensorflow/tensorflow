@@ -296,7 +296,7 @@ class ExecutorState {
   struct AsyncState;
 
   // Process a ready node in current thread.
-  void Process(TaggedNode node, int64_t scheduled_nsec);
+  void Process(const TaggedNode& node, int64_t scheduled_nsec);
 
   void ProcessInline(TaggedNodeReadyQueue* inline_ready,
                      int64_t scheduled_nsec);
@@ -693,7 +693,7 @@ void ExecutorState<PropagatorStateType>::ProcessConstTensor(
 }
 
 template <class PropagatorStateType>
-void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
+void ExecutorState<PropagatorStateType>::Process(const TaggedNode& tagged_node,
                                                  int64_t scheduled_nsec) {
   profiler::TraceMe traceme("ExecutorState::Process Scheduled",
                             profiler::TraceMeLevel::kVerbose);
@@ -1060,15 +1060,15 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
     }
     if (s.code() == error::RESOURCE_EXHAUSTED) {
       if (stats_collector_) {
-        string err = stats_collector_->ReportAllocsOnResourceExhausted(
-            s.error_message());
-        s = errors::CreateWithUpdatedMessage(
-            s, strings::StrCat(s.error_message(), err));
+        string err =
+            stats_collector_->ReportAllocsOnResourceExhausted(s.message());
+        s = errors::CreateWithUpdatedMessage(s,
+                                             strings::StrCat(s.message(), err));
       } else {
         s = errors::CreateWithUpdatedMessage(
             s,
             strings::StrCat(
-                s.error_message(),
+                s.message(),
                 "\nHint: If you want to see a list of allocated tensors when "
                 "OOM happens, add report_tensor_allocations_upon_oom "
                 "to RunOptions for current allocation info. This isn't "
@@ -1201,20 +1201,11 @@ bool ExecutorState<PropagatorStateType>::NodeDone(
     if (abort_run) {
       TRACEPRINTF("StartAbort: %s", s.ToString().c_str());
       if (cancellation_manager_) {
-        // Only log when the abort happens during the actual run time.
-        // Use LOG(INFO) instead of LOG(WARNING) because error status is
-        // expected when the executor is run under the grappler optimization
-        // phase. Do not log OutOfRange erros because they are expected when
-        // iterating through a tf.data input pipeline.
-        if (!errors::IsOutOfRange(s)) {
-          LOG(INFO) << "[" << immutable_state_.params().device->name()
-                    << "] (DEBUG INFO) Executor start aborting (this does not "
-                       "indicate an error and you can ignore this message): "
-                    << s;
-        } else {
-          VLOG(1) << "[" << immutable_state_.params().device->name()
-                  << "] Executor start aborting: " << s;
-        }
+        // Use VLOG instead of LOG(warning) because error status is expected
+        // when the executor is run under the grappler optimization phase or
+        // when iterating through a tf.data input pipeline.
+        VLOG(1) << "[" << immutable_state_.params().device->name()
+                << "] Executor start aborting: " << s;
       }
 
       if (rendezvous_) {

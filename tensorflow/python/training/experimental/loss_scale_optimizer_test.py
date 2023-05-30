@@ -18,7 +18,7 @@ import os
 
 from absl.testing import parameterized
 from tensorflow.python.checkpoint import checkpoint as trackable_utils
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
@@ -37,7 +37,7 @@ from tensorflow.python.training.experimental import loss_scale_optimizer
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.
-default_strategy_fn = distribution_strategy_context.get_strategy
+default_strategy_fn = distribute_lib.get_strategy
 
 
 def create_mirrored_strategy():

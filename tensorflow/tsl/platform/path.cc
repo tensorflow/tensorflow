@@ -148,6 +148,10 @@ StringPiece Extension(StringPiece path) {
   return internal::SplitBasename(path).second;
 }
 
+StringPiece BasenamePrefix(StringPiece path) {
+  return internal::SplitBasename(path).first;
+}
+
 string CleanPath(StringPiece unclean_path) {
   string path(unclean_path);
   const char* src = path.c_str();

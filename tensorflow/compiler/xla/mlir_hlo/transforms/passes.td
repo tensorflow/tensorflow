@@ -68,7 +68,7 @@ def TileLoopsPass : Pass<"tile-loops", "func::FuncOp"> {
                "factor in each dimension, expressed as the number of elements "
                "in that dimension.", "llvm::cl::ZeroOrMore">,
   ];
-  let dependentDialects = ["AffineDialect"];
+  let dependentDialects = ["affine::AffineDialect"];
 }
 
 def MemoryCount : Pass<"memory-count", "func::FuncOp"> {

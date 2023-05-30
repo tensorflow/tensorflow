@@ -80,7 +80,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   Status block_status = stream()->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream(), block_status.error_message());
+                         stream(), block_status.message());
   }
 
   EnqueueDestination(std::move(buffer_tree));

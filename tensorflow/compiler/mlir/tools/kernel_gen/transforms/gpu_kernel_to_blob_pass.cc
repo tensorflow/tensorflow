@@ -70,7 +70,7 @@ class GpuKernelToBlobPass
       return;
     }
     // Forward the error by attaching the message to the gpu module.
-    gpu_module.emitError(blob_or.status().error_message());
+    gpu_module.emitError(blob_or.status().message());
     return signalPassFailure();
   }
 

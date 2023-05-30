@@ -18,6 +18,7 @@ limitations under the License.
 #include <fstream>
 #include <string>
 
+#include "absl/status/status.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/mem.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -371,7 +372,7 @@ TEST(CurlHttpRequestTest, GetRequest_Direct_ResponseTooLarge) {
       "Error executing an HTTP request: libcurl code 23 meaning "
       "'Failed writing received data to disk/application', error details: "
       "Received 12 response bytes for a 5-byte buffer",
-      status.error_message());
+      status.message());
 
   // As long as the request clearly fails, ok to leave truncated response here.
   EXPECT_EQ(5, http_request.GetResultBufferDirectBytesTransferred());
@@ -458,7 +459,7 @@ TEST(CurlHttpRequestTest, GetRequest_503) {
   EXPECT_EQ(
       "Error executing an HTTP request: HTTP response code 503 with body "
       "'get response'",
-      status.error_message());
+      status.message());
 }
 
 TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
@@ -476,7 +477,7 @@ TEST(CurlHttpRequestTest, GetRequest_HttpCode0) {
   EXPECT_EQ(
       "Error executing an HTTP request: libcurl code 28 meaning "
       "'Timeout was reached', error details: Operation timed out",
-      status.error_message());
+      status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
 
@@ -497,7 +498,7 @@ TEST(CurlHttpRequestTest, GetRequest_CouldntResolveHost) {
       "Error executing an HTTP request: libcurl code 6 meaning "
       "'Couldn't resolve host name', error details: Could not resolve host "
       "'metadata'",
-      status.error_message());
+      status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
 
@@ -518,7 +519,7 @@ TEST(CurlHttpRequestTest, GetRequest_SslBadCertfile) {
       "Error executing an HTTP request: libcurl code 77 meaning "
       "'Problem with the SSL CA cert (path? access rights?)', error details: "
       "error setting certificate verify locations:",
-      status.error_message());
+      status.message());
   EXPECT_EQ(0, http_request.GetResponseCode());
 }
 
@@ -752,7 +753,7 @@ TEST(CurlHttpRequestTest, ProgressIsStuck) {
   EXPECT_EQ(
       "Error executing an HTTP request: libcurl code 42 meaning 'Operation "
       "was aborted by an application callback', error details: (none)",
-      status.error_message());
+      status.message());
 }
 
 class TestStats : public HttpRequest::RequestStats {
@@ -875,7 +876,7 @@ TEST(CurlHttpRequestTest, StatsGetNotFound) {
   EXPECT_EQ(&http_request, stats.record_response_request_);
   EXPECT_EQ("http://www.testuri.com", stats.record_response_uri_);
   EXPECT_EQ(HttpRequest::RequestMethod::kGet, stats.record_response_method_);
-  EXPECT_TRUE(errors::IsNotFound(stats.record_response_result_));
+  EXPECT_TRUE(absl::IsNotFound(stats.record_response_result_));
   EXPECT_EQ(s, stats.record_response_result_);
 
   // Check interaction with libcurl.

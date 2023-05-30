@@ -17,7 +17,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -396,7 +396,7 @@ def _get_or_create_global_step_read(graph=None):
       # this run. This is needed for example Estimator makes all model_fn build
       # under global_step_read_tensor dependency.
       if isinstance(global_step_tensor, variables.Variable):
-        global_step_value = control_flow_ops.cond(
+        global_step_value = cond.cond(
             variable_v1.is_variable_initialized(global_step_tensor),
             global_step_tensor.read_value,
             lambda: global_step_tensor.initial_value)

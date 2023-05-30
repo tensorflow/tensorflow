@@ -71,8 +71,6 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
                                        absl::Span<const int64_t> row_dims,
                                        absl::Span<const int64_t> col_dims) {
   TF_RET_CHECK(shape.has_layout());
-  TF_RET_CHECK(!row_dims.empty());
-  TF_RET_CHECK(!col_dims.empty());
 
   std::vector<int64_t> minor_to_major;
   for (size_t i = 0; i < shape.rank();) {
@@ -83,16 +81,16 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
       for (auto it = dims.rbegin(); it != dims.rend(); ++it) {
         // NOTE: `i` is incremented as we check the dimensions.
         if (*it != shape.layout().minor_to_major()[i++])
-          return InvalidArgument("dims not physically sequential");
+          return InvalidArgument("dims not physically_sequential");
       }
       return OkStatus();
     };
 
     int64_t dim = shape.layout().minor_to_major()[i];
-    if (dim == row_dims.back()) {
+    if (!row_dims.empty() && dim == row_dims.back()) {
       minor_to_major.push_back(1);
       TF_RETURN_IF_ERROR(check_physically_sequential(row_dims));
-    } else if (dim == col_dims.back()) {
+    } else if (!col_dims.empty() && dim == col_dims.back()) {
       minor_to_major.push_back(2);
       TF_RETURN_IF_ERROR(check_physically_sequential(col_dims));
     } else if (!batch_dims.empty() && (dim == batch_dims.back())) {
@@ -103,6 +101,8 @@ StatusOr<Shape> GetBatchRowColumnShape(const Shape& shape,
     }
   }
 
+  if (col_dims.empty()) minor_to_major.push_back(2);
+  if (row_dims.empty()) minor_to_major.push_back(1);
   if (batch_dims.empty()) minor_to_major.push_back(0);
 
   auto dim_size = [&](absl::Span<const int64_t> dims) {
@@ -195,6 +195,21 @@ void MatrixLayout::Transpose() {
   order = (order == Order::kRowMajor) ? Order::kColumnMajor : Order::kRowMajor;
 }
 
+namespace {
+// Returns the relative order of 'dims' as indices from 0 to dims.size() - 1.
+// Let 'indices' be the returned vector, then it holds that
+// dims[indices[i - 1]] < dims[indices[i]] for 0 < i < dims.size()
+std::vector<int64_t> NormalizedRelativeOrder(absl::Span<const int64_t> dims) {
+  // Remap the dimensions to values between 0 and dims.size() - 1, keeping their
+  // relative order the same.
+  std::vector<int64_t> indices(dims.size());
+  absl::c_iota(indices, 0);
+  absl::c_sort(indices,
+               [&](int64_t a, int64_t b) { return dims[a] < dims[b]; });
+  return indices;
+}
+}  // namespace
+
 StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
                                               int64_t operand_idx) {
   TF_RET_CHECK(dot.opcode() == HloOpcode::kDot);
@@ -223,11 +238,20 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
       std::vector<int64_t> non_contracting_dims,
       GetNonContractingDims(transpose.shape(), batch_dims, contracting_dims));
 
+  // TransposeFolding assumes that folding the transpose into the dot operand
+  // doesn't change the dot shape. This means that the non-contracting
+  // dimensions of the dot operand need to keep their relative order.
+  auto transposed_non_contracting_dims = transposed(non_contracting_dims);
+  if (NormalizedRelativeOrder(non_contracting_dims) !=
+      NormalizedRelativeOrder(transposed_non_contracting_dims)) {
+    return false;
+  }
+
   // If we're able to construct a valid `MatrixLayout` for the transposed
   // dimensions, then GeMM can support folding the transpose.
   return MatrixLayout::For(transpose.operand(0)->shape(),
                            transposed(batch_dims), transposed(contracting_dims),
-                           transposed(non_contracting_dims))
+                           transposed_non_contracting_dims)
       .ok();
 }
 
@@ -240,8 +264,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     std::optional<int64_t> algorithm, int64_t compute_precision) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
-                         output_shape, output_shape, alpha_real, alpha_imag,
-                         beta, algorithm, compute_precision);
+                         /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
+                         output_shape, alpha_real, alpha_imag, beta, algorithm,
+                         compute_precision);
 }
 
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(
@@ -249,8 +274,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
-    const Shape& output_shape, double alpha_real, double alpha_imag,
-    double beta, std::optional<int64_t> algorithm, int64_t compute_precision) {
+    const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
+    double alpha_imag, double beta, std::optional<int64_t> algorithm,
+    int64_t compute_precision) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -288,9 +314,21 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
+  Shape c_matrix_shape = c_shape;
+  if (primitive_util::IsF8Type(lhs_shape.element_type()) &&
+      primitive_util::IsF8Type(output_shape.element_type()) && beta == 0.0) {
+    // By default, if c is not present (i.e., beta is 0), c_shape will be the
+    // output shape. cublasLT requires a valid c_shape to be passed, even if c
+    // is not present, and normally setting it to the output shape is fine. But
+    // for matmuls with FP8 inputs and outputs, C must instead have the same
+    // dtype as the vector bias if present, and either BF16 or F16 otherwise. So
+    // we set the dtype of C here.
+    c_matrix_shape.set_element_type(
+        bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
+  }
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::For(c_shape, output_batch_dims,
+                      MatrixLayout::For(c_matrix_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
 
   // TODO(cjfj): We should also check that the batch, contracting and

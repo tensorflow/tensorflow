@@ -94,7 +94,7 @@ int GetDepthwiseConvWeightsSize(const DepthwiseConvolution2DAttributes& attr,
 bool IsElementwiseOneInput(const OperationType& op_type) {
   return op_type == OperationType::ABS || op_type == OperationType::COPY ||
          op_type == OperationType::COS || op_type == OperationType::ELU ||
-         op_type == OperationType::EXP ||
+         op_type == OperationType::EXP || op_type == OperationType::GELU ||
          op_type == OperationType::HARD_SWISH ||
          op_type == OperationType::LOG || op_type == OperationType::NEG ||
          op_type == OperationType::RSQRT || op_type == OperationType::SIGMOID ||

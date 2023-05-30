@@ -129,9 +129,20 @@ class SPMDExpanderRegistry {
   // A singleton available at startup.
   static SPMDExpanderRegistry* Global();
 
+  // Returns true if the op name is supported.
+  // The name includes the "tf." prefix.
+  bool IsOpSupported(const std::string& full_op_name) {
+    return GetPropagateFnForFullOpName(full_op_name) != nullptr;
+  }
+
   // Returns the expansion for the given operation (or nullptr if no expansion
   // has been registered).
   SPMDExpanderBase* GetPropagateFnForOp(mlir::Operation* op);
+
+  // Returns the expansion for the given operation (or nullptr if no expansion
+  // has been registered). The name is the full name with "tf." prefix.
+  SPMDExpanderBase* GetPropagateFnForFullOpName(
+      const std::string& full_op_name);
 
   // Registers an expander for the provided opName.
   InitOnStartupMarker RegisterPropagateFn(

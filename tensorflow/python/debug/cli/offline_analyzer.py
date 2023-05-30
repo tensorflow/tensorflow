@@ -18,15 +18,11 @@ import sys
 
 from absl import app
 
-# Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
 from tensorflow.python.debug.lib import debug_data
 
 
 def main(_):
-  if FLAGS.log_usage:
-    pass  # No logging for open-source.
-
   if not FLAGS.dump_dir:
     print("ERROR: dump_dir flag is empty.", file=sys.stderr)
     sys.exit(1)

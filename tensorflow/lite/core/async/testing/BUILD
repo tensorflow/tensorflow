@@ -1,4 +1,5 @@
 # Test utilities for TFLite async execution.
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -23,13 +24,12 @@ cc_library(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "mock_async_kernel",
     testonly = 1,
     hdrs = ["mock_async_kernel.h"],
-    deps = [
-        "//tensorflow/lite/core/async:backend_async_kernel_interface",
-        "//tensorflow/lite/core/async/c:types",
-        "@com_google_googletest//:gtest",
+    deprecation = "Use //tensorflow/lite/async/testing:mock_async_kernel instead.",
+    tflite_deps = [
+        "//tensorflow/lite/async/testing:mock_async_kernel",
     ],
 )

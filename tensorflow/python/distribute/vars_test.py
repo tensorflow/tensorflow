@@ -22,7 +22,7 @@ from tensorflow.python.checkpoint import checkpoint as trackable_utils
 from tensorflow.python.checkpoint import checkpoint_management as ckpt_manager
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
@@ -40,6 +40,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.util import variable_utils
@@ -111,7 +112,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
           variables_lib.VariableAggregation.SUM):
         continue
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
@@ -125,9 +126,9 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
   def testAssignOnWriteVar(self, distribution, experimental_run_tf_function):
 
     with distribution.scope():
-      v_to_assign = variable_scope.variable(
+      v_to_assign = variable_v1.VariableV1(
           2., aggregation=variables_lib.VariableAggregation.MEAN)
-      v_to_assign_sub = variable_scope.variable(
+      v_to_assign_sub = variable_v1.VariableV1(
           -2., aggregation=variables_lib.VariableAggregation.MEAN)
 
     def assign(fn, v, update_value, cross_replica):
@@ -156,7 +157,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       if aggregation == variables_lib.VariableAggregation.SUM:
         continue
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
@@ -209,7 +210,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         # cross replica context
         continue
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
@@ -268,7 +269,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
     ]
     for aggregation in aggregations:
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
@@ -292,7 +293,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
     ]
     for aggregation in aggregations:
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             2.,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
@@ -344,7 +345,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
                   collective_all_reduce_strategy.CollectiveAllReduceExtended):
       self.skipTest("b/212945803")
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           15.,
           synchronization=variables_lib.VariableSynchronization.ON_WRITE,
           aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
@@ -352,7 +353,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def assign():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -400,7 +401,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       self.skipTest("b/212954197")
 
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           1, aggregation=variables_lib.VariableAggregation.SUM)
       self.evaluate(variables_lib.global_variables_initializer())
 
@@ -488,7 +489,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_sub():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops_stack.stack([
@@ -513,7 +514,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_add():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops_stack.stack([replica_id, replica_id + 1]),
@@ -534,7 +535,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_div():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops.reshape(replica_id + 2, [1]),
@@ -555,7 +556,7 @@ class OnWriteVariableSyncScatterTests(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def scatter_mul():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       value = indexed_slices.IndexedSlices(
           values=array_ops.reshape(
@@ -738,7 +739,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       ]:
         continue
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
@@ -753,9 +754,9 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   def testAssignOnReadVar(self, distribution, experimental_run_tf_function):
 
     with distribution.scope():
-      v_to_assign = variable_scope.variable(
+      v_to_assign = variable_v1.VariableV1(
           2., aggregation=variables_lib.VariableAggregation.MEAN)
-      v_to_assign_sub = variable_scope.variable(
+      v_to_assign_sub = variable_v1.VariableV1(
           -2., aggregation=variables_lib.VariableAggregation.MEAN)
 
     def assign(fn, v, update_value, cross_replica):
@@ -794,7 +795,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       if aggregation == variables_lib.VariableAggregation.SUM:
         continue
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
@@ -849,7 +850,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       # just do value * num replicas error is 1. is not a distributed value and
       # is unsupported for aggregation SUM
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
@@ -895,7 +896,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
       ]:
         continue
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
@@ -909,7 +910,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_with_var_policy())
   def testAssignWithAggregationSum(self, distribution):
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           0.,
           synchronization=variables_lib.VariableSynchronization.ON_READ,
           aggregation=variables_lib.VariableAggregation.SUM)
@@ -922,7 +923,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_with_var_policy())
   def testAssignAddSubWithAggregationSum(self, distribution):
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           0.,
           synchronization=variables_lib.VariableSynchronization.ON_READ,
           aggregation=variables_lib.VariableAggregation.SUM)
@@ -945,7 +946,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     ]
     for aggregation in aggregations:
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
@@ -972,14 +973,14 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         resolver = tpu_cluster_resolver.TPUClusterResolver("")
         tpu_strategy_util.initialize_tpu_system(resolver)
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
 
       def assign(v=v):
-        ctx = ds_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -1004,14 +1005,14 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testAllReduce(self, distribution, experimental_run_tf_function):
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           2.,
           synchronization=variables_lib.VariableSynchronization.ON_WRITE,
           aggregation=variables_lib.VariableAggregation.MEAN)
     self.evaluate(variables_lib.global_variables_initializer())
 
     def all_reduce():
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       replica_id = ctx.replica_id_in_sync_group
       return ctx.all_reduce("SUM", v) + math_ops.cast(replica_id,
                                                       dtypes.float32)
@@ -1037,14 +1038,14 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
     ]
     for aggregation in aggregations:
       with distribution.scope():
-        v = variable_scope.variable(
+        v = variable_v1.VariableV1(
             0.,
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
 
       def assign(var=v):
-        ctx = ds_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return var.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -1061,7 +1062,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(strategy_with_var_policy())
   def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           0.,
           synchronization=variables_lib.VariableSynchronization.ON_READ,
           aggregation=variables_lib.VariableAggregation.NONE)
@@ -1097,7 +1098,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
   def testOperatorOverride(self, distribution):
 
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           0.0,
           synchronization=variables_lib.VariableSynchronization.ON_READ,
           aggregation=variables_lib.VariableAggregation.MEAN)
@@ -1105,7 +1106,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       def assign():
-        ctx = ds_context.get_replica_context()
+        ctx = distribute_lib.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return v.assign(math_ops.cast(replica_id, dtypes.float32))
 
@@ -1147,7 +1148,7 @@ class OnReadVariableSyncTest(test.TestCase, parameterized.TestCase):
         @def_function.function
         def assign_fn():
           cluster_resolver = strategy.cluster_resolver
-          replica_ctx = ds_context.get_replica_context()
+          replica_ctx = distribute_lib.get_replica_context()
           if ((cluster_resolver and cluster_resolver.task_type == "worker") or
               math_ops.equal(replica_ctx.replica_id_in_sync_group,
                              constant_op.constant(1))):

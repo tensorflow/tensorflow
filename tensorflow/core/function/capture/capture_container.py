@@ -15,9 +15,8 @@
 """FuncGraph and related functionality."""
 
 import collections as py_collections
-import dataclasses
 import functools
-from typing import Any, Callable, Hashable, Mapping, Union, Optional
+from typing import Any, Callable, Hashable, Mapping, Optional
 
 from tensorflow.core.function import trace_type
 from tensorflow.python import pywrap_tfe
@@ -29,99 +28,65 @@ from tensorflow.python.util import object_identity
 _EAGER_CONST_THRESHOLD = 128
 
 
-# TODO(panzf): Remove idf and is_by_ref when splitting the container.
-@dataclasses.dataclass(frozen=True)
-class CaptureContainer():
-  """A container for both by-reference and by-value captures.
-
-  external: Used to record the tensor external to the func_graph.
-     For by-value captures, it would be the original tensor.
-     For by-reference captures, it would be the lambda function, which will be
-     called later to get the capture's runtime value.
-  internal: An internal placeholder for the capture, or a constant tensor.
-    The external value of the capture will be fed to this internal placeholder
-    when executing the func_graph as a side input.
-  idf: A Hashable identifier for the capture.
-  is_by_ref: A bool indicates if the capture is call by reference or value.
-    This flag will determine how `CaptureContainer.internal` is used.
-  """
-  external: Any
-  internal: core.Tensor
-  idf: Hashable
-  is_by_ref: bool = False
-
-
-class CachedCaptureDict(py_collections.OrderedDict):
-  """A dict like container for captures with cached tuples."""
+class MutationAwareDict(py_collections.OrderedDict):
+  """A dict with a mutation flag."""
 
   def __init__(self, *args, **kwargs):
-    self._tuple_cache = []
     super().__init__(*args, **kwargs)
-
-  def _recompute_tuple_cache(self):
-    self._tuple_cache = [(
-        c.external, c.internal) for c in self.values()]
+    self._mutated = True
 
   def pop(self, key, default=None):
-    if key in self.keys():
-      ret = super().pop(key, default)
-      self._recompute_tuple_cache()
-      return ret
-    else:
-      return default
+    self._mutated = True
+    return super().pop(key, default)
 
   def __setitem__(self, key, value):
-    assert isinstance(value, CaptureContainer)
-    if key in self.keys():
-      super().__setitem__(key, value)
-      self._recompute_tuple_cache()
-    else:
-      super().__setitem__(key, value)
-      self._tuple_cache.append((value.external, value.internal))
+    self._mutated = True
+    return super().__setitem__(key, value)
 
   def __delitem__(self, key):
-    super().__delitem__(key)
-    self._recompute_tuple_cache()
+    self._mutated = True
+    return super().__delitem__(key)
 
   def clear(self):
-    self._tuple_cache = []
-    super().clear()
+    self._mutated = True
+    return super().clear()
 
   @property
-  def tuple_cache(self):
-    return self._tuple_cache
+  def mutated(self):
+    return self._mutated
 
-
-# TODO(panzf): Move lambda_fn to polymorphic function level
-@dataclasses.dataclass(frozen=False)
-class ByRefCaptureContainer():
-  """A container for by-value captures.
-
-  tracetype: TraceType of the capture
-  internal: Nested structure that contains both placeholder and Python
-    primitives.
-  lambda_fn: lambda function that returns the nested structure of the captures.
-  """
-  tracetype: Any
-  internal: Any
-  lambda_fn: Callable[[], Any]
+  @mutated.setter
+  def mutated(self, value):
+    self._mutated = value
 
 
 class FunctionCaptures(object):
   """A container for all capture usages within FuncGraph."""
 
   def __init__(self):
-    # Dict that maps capture identifier -> CaptureContainer
-    self._by_ref = py_collections.OrderedDict()
-    self._by_val = CachedCaptureDict()
+    self._by_ref_internal = py_collections.OrderedDict()
+    self._by_ref_external = py_collections.OrderedDict()
+    self._by_ref_tracetype = py_collections.OrderedDict()
+    self._by_val_internal = MutationAwareDict()
+    self._by_val_external = MutationAwareDict()
+    self._by_val_tracetype = py_collections.OrderedDict()
+
     # Set of external ops on which the graph has a control dependency
     self.control = object_identity.ObjectIdentitySet()
 
+    # Cached properties derived from the above.
+    self._cached_by_val_capture_tuples = []
+    self._cached_capture_types = py_collections.OrderedDict()
+
+  def clear(self):
+    self._by_ref_internal.clear()
+    self._by_ref_external.clear()
+    self._by_ref_tracetype.clear()
+    self._by_val_internal.clear()
+    self._by_val_external.clear()
+
   def capture_by_value(
-      self,
-      graph: Any,
-      tensor: core.Tensor,
-      name: Optional[str] = None
+      self, graph: Any, tensor: core.Tensor, name: Optional[str] = None
   ) -> core.Tensor:
     """Captures `tensor` if it's external to this graph.
 
@@ -150,20 +115,25 @@ class FunctionCaptures(object):
         name = str(pywrap_tfe.TFE_Py_UID())
 
       # Small EagerTensors are captured with Const ops
-      if (tensor.dtype in dtypes.TF_VALUE_DTYPES and
-          functools.reduce(lambda a, b: a*b, tensor.shape, 1) <=
-          _EAGER_CONST_THRESHOLD):
-        capture = self.by_val_captures.get(id(tensor))
-        if capture is None:
+      if (
+          tensor.dtype in dtypes.TF_VALUE_DTYPES
+          and functools.reduce(lambda a, b: a * b, tensor.shape, 1)
+          <= _EAGER_CONST_THRESHOLD
+      ):
+        graph_const = self.by_val_internal.get(id(tensor))
+        if graph_const is None:
           graph_const = tensor._capture_as_const(name)  # pylint: disable=protected-access
           if graph_const is None:
             # Some eager tensors, e.g. parallel tensors, are not convertible to
             # a single constant. We'll use a placeholder for this case.
             graph_const = self._create_placeholder_helper(graph, tensor, name)
-          self.add_or_replace(tensor, graph_const, id(tensor), False)
+          self.add_or_replace(
+              key=id(tensor),
+              external=tensor,
+              internal=graph_const,
+              is_by_ref=False,
+          )
           graph.inputs.append(graph_const)
-        else:
-          graph_const = capture.internal
         graph_const._record_tape(tensor)  # pylint: disable=protected-access
         return graph_const
 
@@ -186,60 +156,74 @@ class FunctionCaptures(object):
 
   def add_or_replace(
       self,
-      value: Any,
-      placeholder: core.Tensor,
-      idf: Hashable,
-      is_by_ref: bool = False):
+      key: Hashable,
+      external: Any,
+      internal: core.Tensor,
+      tracetype: Any = None,
+      is_by_ref: bool = False,
+  ) -> None:
     """Replace a already exsiting capture, otherwise add it."""
-    capture = CaptureContainer(value, placeholder, idf, is_by_ref)
     if is_by_ref:
-      self._by_ref[idf] = capture
+      self._by_ref_external[key] = external
+      self._by_ref_internal[key] = internal
+      self._by_ref_tracetype[key] = tracetype
     else:
-      self._by_val[idf] = capture
-    return capture
+      self._by_val_internal[key] = internal
+      self._by_val_external[key] = external
+      if tracetype is not None:
+        self._by_val_tracetype[key] = tracetype
+      else:
+        self._by_val_tracetype[key] = trace_type.from_value(external)
 
-  def pop(self,
-          idf: Hashable,
-          is_by_ref: bool = False) -> Union[core.Tensor, None]:
+  def pop(self, key: Hashable, is_by_ref: bool = False) -> Any:
     if is_by_ref:
-      return self._by_ref.pop(idf, None)
+      return (
+          self._by_ref_external.pop(key, None),
+          self._by_ref_internal.pop(key, None),
+          self._by_ref_tracetype.pop(key, None),
+      )
     else:
-      return self._by_val.pop(idf, None)
+      return (
+          self._by_val_external.pop(key, None),
+          self._by_val_internal.pop(key, None),
+          self._by_val_tracetype.pop(key, None),
+      )
 
   def reset_captures(self, tensors, placeholders):
     """Set the captures with the provided list of captures & placeholder."""
-    self._by_val = CachedCaptureDict()
+    self._by_val_external = MutationAwareDict()
+    self._by_val_internal = MutationAwareDict()
+    self._by_val_tracetype = MutationAwareDict()
     for external, internal in zip(tensors, placeholders):
-      idf = id(external)
-      c = CaptureContainer(external, internal, idf)
-      self._by_val[idf] = c
+      key = id(external)
+      self._by_val_external[key] = external
+      self._by_val_internal[key] = internal
+      self._by_val_tracetype[key] = trace_type.from_value(external)
 
   # TODO(panzf): make the method public after supporting lam() returns
   # non-tensor values. Currently, this method is only used by
   # FuncGraph._experimental_capture_side_input_by_ref(), which contains the
   # logics for converting non-tensor values to tensor.
-  def _capture_by_ref(self,
-                      graph: Any,
-                      lam: Callable[[], Any],
-                      idf: Hashable = None) -> Any:
+  def _capture_by_ref(
+      self, graph: Any, lam: Callable[[], Any], key: Hashable = None
+  ) -> Any:
     """Used during tracing process to create/retrive by-ref captures.
 
     Args:
       graph: The FuncGraph that captures this tensor.
       lam: A callable that takes no arguments and returns tensor captures.
-      idf: A hashable identifier.
+      key: A hashable identifier.
 
     Returns:
       Tensor from this FuncGraph.
     """
     # Check if the capture exists in self._by_ref
-    if idf is not None and idf in self._by_ref:
-      capture = self._by_ref[idf]
-      return capture.internal
-    if idf is None:
-      idf = len(self._by_ref)
-      while idf in self._by_ref:
-        idf += 1
+    if key is not None and key in self._by_ref_internal:
+      return self._by_ref_internal[key]
+    if key is None:
+      key = len(self._by_ref_internal)
+      while key in self._by_ref_internal:
+        key += 1
 
     value_nested = lam()
     capture_trace_type = trace_type.from_value(value_nested)
@@ -252,39 +236,40 @@ class FunctionCaptures(object):
       return capture_trace_type._to_tensors(value)  # pylint: disable=protected-access
       # pytype: enable=attribute-error
 
-    capture = ByRefCaptureContainer(capture_trace_type, internal, lam_fn)
-    self._by_ref[idf] = capture
-    return self._by_ref[idf].internal
+    self._by_ref_external[key] = lam_fn
+    self._by_ref_internal[key] = internal
+    self._by_ref_tracetype[key] = capture_trace_type
+    return self._by_ref_internal[key]
 
   def merge_by_ref_with(self, other: "FunctionCaptures") -> None:
     """Add by-ref captures from `other` to `self` if not exist."""
     assert isinstance(other, FunctionCaptures)
-    for key, capture in other.by_ref_captures.items():
-      if key not in self._by_ref:
-        self._by_ref[key] = capture
+    for key in other.by_ref_external:
+      if key not in self._by_ref_external:
+        self._by_ref_external[key] = other.by_ref_external[key]
+        self._by_ref_tracetype[key] = other.by_ref_tracetype[key]
 
+  # TODO(panzf): Return structured values instead of flat tensors.
   def get_by_ref_snapshot(self) -> Mapping[Hashable, Any]:
     """Get a snapshot of current values of by-ref captures."""
     snapshot = {}
-    for key, capture in self._by_ref.items():
-      func = capture.lambda_fn  # pytype: disable=attribute-error
+    for key in self._by_ref_external:
+      func = self._by_ref_external[key]
       try:
         value = func()
       except (AttributeError, RuntimeError):
         # b/269680071 In case of by-ref captures are unavailable at dispatch
         # time, use the predefined trace_type instead.
-        value = capture.tracetype  # pytype: disable=attribute-error
+        value = self._by_ref_tracetype[key]
       snapshot[key] = value
     return snapshot
 
   def _create_placeholder_helper(
-      self,
-      graph: Any,
-      tensor: core.Tensor,
-      name: str):
+      self, graph: Any, tensor: core.Tensor, name: str
+  ):
     """A helper function to create capture placeholder."""
-    capture = self._by_val.get(id(tensor))
-    if capture is None:
+    placeholder = self._by_val_internal.get(id(tensor))
+    if placeholder is None:
       tracing_ctx = trace_type.InternalTracingContext()
       spec = trace_type.from_value(tensor, tracing_ctx)
       spec._name = name  # pylint: disable=protected-access
@@ -295,26 +280,66 @@ class FunctionCaptures(object):
       placeholder_ctx = trace_type.InternalPlaceholderContext(
           graph,
           with_none_control_dependencies=True,
-          composite_device_name=composite_device_name)
-      placeholder_ctx._spec_id_to_handledata = (  # pylint: disable=protected-access
-          tracing_ctx.get_handledata_mapping()
+          composite_device_name=composite_device_name,
       )
       placeholder = spec.placeholder_value(placeholder_ctx)
-      self.add_or_replace(tensor, placeholder, id(tensor), False)
+      self.add_or_replace(
+          key=id(tensor), external=tensor, internal=placeholder, is_by_ref=False
+      )
       graph.inputs.append(placeholder)
-    else:
-      placeholder = capture.internal
     placeholder._record_tape(tensor)  # pylint: disable=protected-access
     return placeholder
 
-  @property
-  def by_ref_captures(self):
-    return self._by_ref
+  def _maybe_recompute_cached_properties(self):
+    """Regenerates cached properties if there have been mutations."""
+    if not self._by_val_internal.mutated and not self._by_val_external.mutated:
+      return
+
+    self._by_val_internal.mutated = False
+    self._by_val_external.mutated = False
+    assert len(self._by_val_internal) == len(self._by_val_external)
+    self._cached_by_val_capture_tuples = []
+    for key in self._by_val_internal:
+      assert key in self._by_val_external
+      internal = self._by_val_internal[key]
+      external = self._by_val_external[key]
+      self._cached_by_val_capture_tuples.append((external, internal))
+
+    self._cached_capture_types = py_collections.OrderedDict(
+        list(self._by_val_tracetype.items())
+        + list(self._by_ref_tracetype.items())
+    )
 
   @property
-  def by_val_captures(self):
-    return self._by_val
+  def capture_types(self):
+    self._maybe_recompute_cached_properties()
+    return self._cached_capture_types
 
   @property
   def by_val_capture_tuples(self):
-    return self._by_val.tuple_cache
+    self._maybe_recompute_cached_properties()
+    return self._cached_by_val_capture_tuples
+
+  @property
+  def by_ref_internal(self):
+    return self._by_ref_internal
+
+  @property
+  def by_ref_external(self):
+    return self._by_ref_external
+
+  @property
+  def by_ref_tracetype(self):
+    return self._by_ref_tracetype
+
+  @property
+  def by_val_internal(self):
+    return self._by_val_internal
+
+  @property
+  def by_val_external(self):
+    return self._by_val_external
+
+  @property
+  def by_val_tracetype(self):
+    return self._by_val_tracetype

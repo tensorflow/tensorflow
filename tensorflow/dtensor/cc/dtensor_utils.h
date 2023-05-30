@@ -17,6 +17,9 @@ limitations under the License.
 #define TENSORFLOW_DTENSOR_CC_DTENSOR_UTILS_H_
 
 #include <string>
+
+#include "absl/strings/string_view.h"
+
 namespace tensorflow {
 namespace dtensor {
 
@@ -33,7 +36,7 @@ bool LogOnAllTasks();
 
 // Returns whether to log op-by-op execution in addition to function execution
 // when logging is enabled.
-bool LogOpByOp();
+bool LogOpByOp(absl::string_view op_name);
 
 // Returns the maximum number of steps to run layout propagation. If the number
 // of steps exceeds this amount, layout propagation will fail.
@@ -59,6 +62,9 @@ bool LowerCollectiveGatherToCollectiveGatherV2();
 // Returns whether to enable defaulting TF ops that do not have SPMD
 // implementation to default to the ReplicatedOpSpmdExpander.
 bool EnableReplicatedSpmdAsDefault(const std::string& op_name);
+
+// Returns whether to use all-to-all collective for relayout when possible.
+bool EnableAllToAllForRelayout();
 
 }  // namespace dtensor
 }  // namespace tensorflow

@@ -204,6 +204,15 @@ void SetOpMetadataFromHloEventMetadata(
         case StatType::kBytesAccessed:
           op_metrics->set_bytes_accessed(stat.IntOrUintValue());
           break;
+        case StatType::kMemoryAccessBreakdown: {
+          tensorflow::profiler::MemoryAccessBreakdown breakdown;
+          const auto& value = stat.BytesValue();
+          if (breakdown.ParseFromArray(value.data(), value.size())) {
+            *op_metrics->mutable_memory_accessed_breakdown() =
+                breakdown.memory_accessed();
+          }
+          break;
+        }
         default:
           break;
       }
@@ -261,6 +270,10 @@ void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
   op_metrics.set_flops(op_metrics.flops() * op_metrics.occurrences());
   op_metrics.set_bytes_accessed(op_metrics.bytes_accessed() *
                                 op_metrics.occurrences());
+  for (auto& memory_access : *op_metrics.mutable_memory_accessed_breakdown()) {
+    memory_access.set_bytes_accessed(memory_access.bytes_accessed() *
+                                     op_metrics.occurrences());
+  }
 }
 
 }  // namespace

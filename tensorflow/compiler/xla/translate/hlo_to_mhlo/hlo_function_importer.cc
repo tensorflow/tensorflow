@@ -85,12 +85,16 @@ std::string SanitizeFunctionName(llvm::StringRef name) {
 }
 
 // Returns whether the instruction is a default dot operation.
+// Supports vector.vector, vector.matrix, matrix.vector, and matrix.matrix.
+// Default operations have lhs_contracting dimension is 1 (or zero for vector)
+// and the rhs_contracting dimension is zero, and there are no batch dimensions.
 bool DotIsDefault(const HloInstruction* instruction) {
+  // If LHS/RHS has rank greater than 2, not default dot
   const auto& operands = instruction->operands();
-  // eg. vector[3] dot matrix[3, 2] => [2] not default dot
-  if (operands[0]->shape().rank() < operands[1]->shape().rank()) {
+  if (operands[0]->shape().rank() > 2 || operands[1]->shape().rank() > 2) {
     return false;
   }
+
   auto dnums = instruction->dot_dimension_numbers();
   DotDimensionNumbers default_dimension_numbers;
   default_dimension_numbers.add_lhs_contracting_dimensions(
@@ -157,6 +161,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   function.setPrivate();
   auto async_builder = mlir::OpBuilder(function.getBody());
 
+  llvm::SmallVector<mlir::NamedAttribute> async_attributes;
+  async_attributes.push_back(builder_->getNamedAttr(
+      "called_computation", mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                                         function.getName())));
+  async_attributes.push_back(builder_->getNamedAttr(
+      "execution_thread", builder_->getStringAttr("main")));
+
+  // Attach the frontend_attributes and sharding attributes to the async op
+  // instead of the sync op. First, semantically sharding attributes cannot be
+  // attached to the sync op since the sync op may not produce the same number
+  // of results as the sharding's tuple element count, e.g., `mhlo.send` vs. HLO
+  // `send`. Second, `mlir_hlo_to_hlo.cc` imports these attributes from the
+  // `mhlo.async_start` ops, so attaching them to the sync op will make them
+  // disappear during MHLO to HLO lowering.
+  for (auto it = attributes.begin(); it != attributes.end();) {
+    if (it->getName() == kShardingAttr ||
+        it->getName() == kFrontendAttributesAttr) {
+      async_attributes.push_back(*it);
+      it = attributes.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   llvm::SmallVector<mlir::Location, 1> locs(Untuple(result_types[0]).size(),
                                             loc);
   auto sync_operand =
@@ -168,12 +196,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
-  llvm::SmallVector<mlir::NamedAttribute> async_attributes;
-  async_attributes.push_back(builder_->getNamedAttr(
-      "called_computation", mlir::FlatSymbolRefAttr::get(builder_->getContext(),
-                                                         function.getName())));
-  async_attributes.push_back(builder_->getNamedAttr(
-      "execution_thread", builder_->getStringAttr("main")));
   function->setAttr("execution_thread", builder_->getStringAttr("main"));
 
   auto bundle_result_type =
@@ -298,11 +320,6 @@ static mlir::Attribute GetLayoutAttribute(mlir::Builder& b,
   return b.getIndexTensorAttr(layout);
 }
 
-mlir::Attribute GetShardingAttribute(mlir::Builder& b,
-                                     const xla::HloSharding& sharding) {
-  return b.getStringAttr(sharding.ToString(/*include_metadata=*/true));
-}
-
 mlir::Attribute GetFrontendAttributes(
     mlir::Builder& b, const xla::FrontendAttributes& attributes) {
   llvm::SmallVector<mlir::NamedAttribute> attrs;
@@ -410,9 +427,8 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
     HloParameterInstruction* parameter =
         Cast<HloParameterInstruction>(entry.value());
     if (parameter->has_sharding()) {
-      function.setArgAttr(
-          entry.index(), kShardingAttr,
-          GetShardingAttribute(*builder_, parameter->sharding()));
+      function.setArgAttr(entry.index(), kShardingAttr,
+                          ConvertSharding(parameter->sharding(), builder_));
     }
     if (parameter->frontend_attributes().map_size() > 0) {
       function.setArgAttr(
@@ -440,7 +456,7 @@ StatusOr<FuncOp> HloFunctionImporter::ImportAsFunc(
                       function.getNumResults());
     }
     function.setResultAttr(0, kShardingAttr,
-                           GetShardingAttribute(*builder_, result->sharding()));
+                           ConvertSharding(result->sharding(), builder_));
   }
   if (computation.execution_thread() != "main") {
     function->setAttr("execution_thread",
@@ -664,8 +680,7 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
   llvm::SmallVector<NamedAttribute, 10> attributes;
   if (instruction->has_sharding()) {
     attributes.push_back(builder_->getNamedAttr(
-        kShardingAttr,
-        GetShardingAttribute(*builder_, instruction->sharding())));
+        kShardingAttr, ConvertSharding(instruction->sharding(), builder_)));
   }
 
   llvm::SmallVector<NamedAttribute, 4> frontend_attributes;
@@ -1841,12 +1856,10 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           &instruction->user_side_metadata());
       attributes.push_back(builder_->getNamedAttr(
           "exit_metadata",
-          builder_->getStringAttr(
-              (*exit_metadata)->sharding()->ToProto().SerializeAsString())));
+          ConvertSharding(*(*exit_metadata)->sharding(), builder_)));
       attributes.push_back(builder_->getNamedAttr(
           "entry_metadata",
-          builder_->getStringAttr(
-              (*entry_metadata)->sharding()->ToProto().SerializeAsString())));
+          ConvertSharding(*(*entry_metadata)->sharding(), builder_)));
 
       return func_builder
           ->create<mlir::mhlo::DomainOp>(loc, result_type, operands, attributes)
@@ -2029,7 +2042,7 @@ StatusOr<llvm::SmallVector<mlir::Value, 4>> HloFunctionImporter::GetOperands(
 }
 
 Status HloFunctionImporter::GetMlirTypes(
-    const std::vector<HloInstruction*>& instructions,
+    absl::Span<const HloInstruction* const> instructions,
     llvm::SmallVectorImpl<mlir::Type>* types) {
   for (auto instruction : instructions) {
     TF_ASSIGN_OR_RETURN(auto ret_type, ConvertShapeToType<RankedTensorType>(

@@ -37,7 +37,7 @@ void GpuStream::Destroy() {
     tsl::Status status =
         GpuDriver::DestroyEvent(parent_->gpu_context(), &completed_event_);
     if (!status.ok()) {
-      LOG(ERROR) << status.error_message();
+      LOG(ERROR) << status.message();
     }
   }
 

@@ -15,11 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/core/subgraph.h"
 
-#include <stdarg.h>
-#include <stddef.h>
-
 #include <algorithm>
 #include <atomic>
+#include <cstdarg>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -39,8 +38,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/macros.h"
-#include "tensorflow/lite/experimental/remat/metadata_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
@@ -503,6 +500,12 @@ TfLiteStatus Subgraph::PartitionGraph(const TfLiteIntArray* nodes_to_replace,
 TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace,
     TfLiteDelegate* delegate) {
+  // Annotate the registration as DELEGATE op.
+  registration.builtin_code = BuiltinOperator_DELEGATE;
+  if (registration.registration_external) {
+    registration.registration_external->builtin_code = BuiltinOperator_DELEGATE;
+  }
+
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
   if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
@@ -515,9 +518,6 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
     return kTfLiteOk;
   }
 
-  // Annotate the registration as DELEGATE op.
-  registration.builtin_code = BuiltinOperator_DELEGATE;
-
   // Analyze the graph to find all independent node_subsets that are either
   // fully not-this-delegate or this-delegate computation.
   std::vector<NodeSubset> node_subsets;
@@ -528,12 +528,12 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
   // On Android the log message below is used for diagnosing delegation success
   // also in production builds. Use VERBOSE here so that the logging is turned
   // off in production builds on other platforms.
-  TFLITE_LOG_PROD(
-      tflite::TFLITE_LOG_VERBOSE,
-      "Replacing %d node(s) with delegate (%s) node, yielding %zu partitions "
-      "for the whole graph.",
-      nodes_to_replace->size, GetDelegateKernalName(registration),
-      node_subsets.size());
+  TFLITE_LOG_PROD(tflite::TFLITE_LOG_VERBOSE,
+                  "Replacing %d out of %d node(s) with delegate (%s) node, "
+                  "yielding %zu partitions "
+                  "for the whole graph.",
+                  nodes_to_replace->size, execution_plan_.size(),
+                  GetDelegateKernalName(registration), node_subsets.size());
 
   execution_plan_.clear();
 
@@ -665,20 +665,28 @@ TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
       ->GetModelMetadata(name, ptr, bytes);
 }
 
-TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
-  TF_LITE_ENSURE(&context_, subgraph_index > 0);
-  TF_LITE_ENSURE(&context_,
-                 static_cast<size_t>(subgraph_index) <= subgraphs_->size());
-  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
-  return kTfLiteOk;
-}
-
 TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) {
   if (subgraph_index < 0 ||
       static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
     return nullptr;
   }
   return subgraphs_->at(subgraph_index)->context();
+}
+
+const TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) const {
+  if (subgraph_index < 0 ||
+      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
+    return nullptr;
+  }
+  return subgraphs_->at(subgraph_index)->context();
+}
+
+TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
+  TF_LITE_ENSURE(&context_, subgraph_index > 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) < subgraphs_->size());
+  subgraphs_->at(subgraph_index)->MarkAsDelegationSkippable();
+  return kTfLiteOk;
 }
 
 TfLiteStatus Subgraph::PreviewDelegatePartitioning(
@@ -1373,17 +1381,6 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
 }
 
 TfLiteStatus Subgraph::PrepareOpsAndTensors() {
-  if (!memory_planner_) {
-#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
-    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
-#else
-    memory_planner_ = std::make_unique<ArenaPlanner>(
-        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
-        kDefaultTensorAlignment, subgraph_index_);
-#endif
-    memory_planner_->PlanAllocations();
-  }
-
   // Prepare original execution plan if any applied delegate wants it.
   // If any of the delegates is immutable, this won't be triggered
   // post-delegation (since we undo/redo delegation). For all other cases, other
@@ -1412,6 +1409,17 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
       PrepareOpsStartingAt(next_execution_plan_index_to_prepare_,
                            execution_plan_, &last_exec_plan_index_prepared));
   next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
+
+  if (!memory_planner_) {
+#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
+    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
+#else
+    memory_planner_ = std::make_unique<ArenaPlanner>(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        kDefaultTensorAlignment, subgraph_index_);
+#endif
+    memory_planner_->PlanAllocations();
+  }
 
   // Execute arena allocations.
   TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
@@ -1645,8 +1653,10 @@ TfLiteStatus Subgraph::ResizeTensor(TfLiteContext* context,
                                   new_size->data)) {
     // A number of clients assume |new_size| remains valid upon success, so
     // swap it in as the new (but logically identical) tensor dims.
-    TfLiteIntArrayFree(tensor->dims);
-    tensor->dims = new_size;
+    if (new_size != tensor->dims) {
+      TfLiteIntArrayFree(tensor->dims);
+      tensor->dims = new_size;
+    }
     return kTfLiteOk;
   }
 
@@ -1751,7 +1761,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     size_t required_bytes;
     TF_LITE_ENSURE_OK(
         &context_,
-        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
     TF_LITE_ENSURE_EQ(&context_, required_bytes, bytes);
   }
 
@@ -1806,7 +1816,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     // they will require.
     TF_LITE_ENSURE_OK(
         &context_,
-        tflite::BytesRequired(type, dims, ndims, &required_bytes, context_));
+        tflite::BytesRequired(type, dims, ndims, &required_bytes, &context_));
   }
 
   TfLiteAllocationType allocation_type = kTfLiteArenaRw;
@@ -1858,7 +1868,7 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       size_t bytesRequired;
       TfLiteStatus status =
           tflite::BytesRequired(tensor->type, new_size->data, new_size->size,
-                                &bytesRequired, context_);
+                                &bytesRequired, &context_);
       if (status != kTfLiteOk) {
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
@@ -1868,7 +1878,9 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
       TfLiteTensorResizeMaybeCopy(bytesRequired, tensor, false);
       tensor->bytes = bytesRequired;
     }
-    if (tensor->dims) TfLiteIntArrayFree(tensor->dims);
+    if (tensor->dims && tensor->dims != new_size) {
+      TfLiteIntArrayFree(tensor->dims);
+    }
     tensor->dims = new_size;
 
     // Reset arena-allocated tensors; they will be allocated later.

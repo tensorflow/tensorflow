@@ -288,6 +288,9 @@ class Layout {
   // the layout for the given dimension.
   static constexpr const char* kMatch = "match";
 
+  Layout() = default;
+  Layout(const Layout& other) = default;
+
   inline bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
   // Returns empty layout.
@@ -352,10 +355,14 @@ class Layout {
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
   // end = true returns the layout from the split point.
-  StatusOr<Layout> Truncate(int64 split_point, bool end = false) const;
+  Layout Truncate(int64 split_point, bool end = false) const;
 
   // Left or right pad the layout to a max rank.
   Layout LeftPad(int64 rank) const;
+
+  // Minimally pads replicated axes on the left, or removes axes on the right,
+  // such that the result layout has the provided rank.
+  StatusOr<Layout> EnsureRank(int64_t rank) const;
 
   bool IsFullyReplicated() const;
   bool IsLastDimReplicated() const;
@@ -419,6 +426,9 @@ class Layout {
 // dimension returns an error rather than a layout.
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
                                     const Layout& layout_b);
+
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts);
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts);
 
 }  // namespace dtensor
 }  // namespace tensorflow

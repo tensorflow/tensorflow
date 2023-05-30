@@ -172,13 +172,27 @@ TEST(ImageOpsTest, DecodeAndCropJpeg_InvalidCropWindow) {
 }
 
 TEST(ImageOpsTest, EncodeImage_ShapeFn) {
-  for (const char* op_name : {"EncodeJpeg", "EncodePng"}) {
+  for (const char* op_name : {"EncodeJpeg"}) {
     ShapeInferenceTestOp op(op_name);
 
     // Rank check.
     INFER_ERROR("Shape must be rank 3 but is rank 2", op, "[1,2]");
 
-    INFER_OK(op, "[1,?,3]", "[]");  // output is always scalar.
+    INFER_OK(op, "[1,?,3]", "[]");  // Output is always scalar.
+  }
+}
+
+TEST(ImageOpsTest, BatchedEncodeImage_ShapeFn) {
+  for (const char* op_name : {"EncodePng"}) {
+    ShapeInferenceTestOp op(op_name);
+
+    // Rank check.
+    INFER_ERROR("Shape must be at least rank 3 but is rank 2", op, "[1,2]");
+
+    // Batch dimensions are forwarded.
+    INFER_OK(op, "[1,?,3]", "[]");
+    INFER_OK(op, "[?,1,?,3]", "[d0_0]");
+    INFER_OK(op, "[4,5,1,?,3]", "[d0_0,d0_1]");
   }
 }
 

@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/array_ops.cc.
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
 #include <math.h>

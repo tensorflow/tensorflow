@@ -419,7 +419,7 @@ TEST_F(HloComputationTest, CycleDetection) {
       [](HloInstruction* instruction) { return OkStatus(); });
   auto visit_status = computation->Accept(&visitor);
   ASSERT_FALSE(visit_status.ok());
-  ASSERT_THAT(visit_status.error_message(),
+  ASSERT_THAT(visit_status.message(),
               ::testing::ContainsRegex("cycle is detecte"));
 }
 

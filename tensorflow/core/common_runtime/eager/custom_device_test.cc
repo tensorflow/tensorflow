@@ -116,14 +116,14 @@ TEST(CustomDevice, TestTensorHandle) {
                                        /*length=*/3));
   Status s;
   std::string device_type = tensor->DeviceType(&s);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ("CUSTOM", device_type);
   int device_index = tensor->DeviceId(&s);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ(15, device_index);
   int64_t num_elements = 0;
   s = tensor->NumElements(&num_elements);
-  ASSERT_TRUE(s.ok()) << s.error_message();
+  ASSERT_TRUE(s.ok()) << s.message();
   EXPECT_EQ(3, num_elements);
   EXPECT_THAT(
       tensor->DebugString(),
@@ -149,7 +149,7 @@ TEST(CustomDevice, TestTensorHandleUnknownDimNumElements) {
   int64_t num_elements;
   Status s = tensor->NumElements(&num_elements);
   EXPECT_FALSE(s.ok());
-  EXPECT_THAT(s.error_message(), HasSubstr("representing varying shapes"));
+  EXPECT_THAT(s.message(), HasSubstr("representing varying shapes"));
 }
 
 TEST(CustomDevice, TestResourcePlacement) {

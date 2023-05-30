@@ -20,12 +20,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
+
+namespace m = ::xla::match;
 
 using ::testing::NotNull;
 using ::testing::SizeIs;
@@ -232,6 +236,43 @@ TEST_F(AsyncAllReduceCreatorTest, SplitsSingleReduceScatter) {
   EXPECT_EQ(start->opcode(), HloOpcode::kAsyncStart);
   ASSERT_THAT(start->async_wrapped_instruction(), NotNull());
   EXPECT_THAT(start->async_wrapped_opcode(), HloOpcode::kReduceScatter);
+}
+
+TEST_F(AsyncAllReduceCreatorTest, ControlPredecessor) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[1] parameter(0)
+    ag = f32[8] all-gather(p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}, control-predecessors={p0}
+    p1 = f32[1] parameter(1), control-predecessors={ag}
+    ROOT sum = add(ag, ag)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
+  TF_ASSERT_OK(
+      RunHloPass(AsyncCollectiveCreator(config), hlo_module.get()).status());
+  SCOPED_TRACE(hlo_module->ToString());
+
+  HloInstruction* start;
+  HloInstruction* done;
+  ASSERT_THAT(
+      hlo_module->entry_computation()->root_instruction(),
+      GmockMatch(m::Add(m::Op(),
+                        m::Op(&done)
+                            .WithOpcode(HloOpcode::kAllGatherDone)
+                            .WithOperand(0, m::Op(&start).WithOpcode(
+                                                HloOpcode::kAllGatherStart)))));
+  EXPECT_EQ(start->control_successors().size(), 0);
+  ASSERT_EQ(start->control_predecessors().size(), 1);
+  EXPECT_THAT(start->control_predecessors()[0], GmockMatch(m::Parameter(0)));
+
+  EXPECT_EQ(done->control_predecessors().size(), 0);
+  ASSERT_EQ(done->control_successors().size(), 1);
+  EXPECT_THAT(done->control_successors()[0], GmockMatch(m::Parameter(1)));
 }
 }  // namespace
 }  // namespace xla

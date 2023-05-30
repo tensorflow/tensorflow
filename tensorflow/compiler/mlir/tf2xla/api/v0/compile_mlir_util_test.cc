@@ -77,8 +77,7 @@ TEST(LegalizeMlirTest, FailsLegalizesModule) {
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_FALSE(status.ok());
-  // Once for LegalizeTF and once for LegalizeTFModule
-  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 2);
+  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 1);
 }
 
 TEST(CompileMlirUtil, CreatesPipeline) {
@@ -95,10 +94,7 @@ TEST(CompileMlirUtil, CreatesPipeline) {
 TEST(CompileMlirUtil, HasLegalizationPass) {
   OpPassManager pass_manager;
   llvm::StringRef device_type = "XLA_CPU_JIT";
-  absl::string_view kLegalizeTfPass =
-      "xla-legalize-tf{allow-partial-conversion=false device-type=XLA_CPU_JIT "
-      "legalize-chlo=true prefer-tf2xla=true use-tf2xla-fallback=true "
-      "use-tf2xla-hlo-importer=false})";
+  absl::string_view kLegalizeTfPass = "xla-legalize-tf";
 
   CreateConvertMlirToXlaHloPipeline(pass_manager, device_type,
                                     /*enable_op_fallback=*/true,

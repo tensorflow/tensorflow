@@ -21,8 +21,8 @@ import sys
 from absl import logging
 
 import flatbuffers
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.lite.python import conversion_metadata_schema_py_generated as conversion_metadata_fb
 from tensorflow.lite.python import schema_py_generated as schema_fb

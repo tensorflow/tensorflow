@@ -226,9 +226,15 @@ void InferenceContext::ExecutionHints::Init(const GpuInfo& gpu_info) {
 
     flush_periodically = true;
     flush_period = 24;
-  }
-  if (gpu_info.IsPowerVR()) {
+  } else if (gpu_info.IsPowerVR()) {
     need_flush = true;
+    flush_periodically = true;
+    // Some Ge8xxx devices are slower without frequent periodic flushing.
+    flush_period =
+        gpu_info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx) ? 16 : 4;
+  } else if (gpu_info.IsAdreno() &&
+             !gpu_info.adreno_info.IsBetterThan(AdrenoGpu::kAdreno630)) {
+    // Adreno620 or lower devices has smaller GPU buffer.
     flush_periodically = true;
     flush_period = 16;
   }
@@ -554,10 +560,20 @@ absl::Status InferenceContext::AllocateBufferBasedTensors(
 
   std::vector<bool> created_tensors(buffer_usage_records.size(), false);
   shared_buffer_tensors_.resize(buffer_usage_records.size());
+  bool create_model_output_tensors = false;
   for (auto& node : gpu_model.nodes) {
+    // Handle node input tensors.
     std::vector<ValueId> node_tensor_ids = node.inputs;
+    // Handle node output tensors.
     node_tensor_ids.insert(node_tensor_ids.end(), node.outputs.begin(),
                            node.outputs.end());
+    if (!create_model_output_tensors) {
+      // Handle graph output tensors.
+      for (const auto& output : gpu_model.output_ids_and_refs) {
+        node_tensor_ids.push_back(output.first);
+      }
+      create_model_output_tensors = true;
+    }
     for (auto& tensor_id : node_tensor_ids) {
       if (GetTensorType(gpu_model, create_info, gpu_info, tensor_id) !=
           TensorType::kRuntime) {

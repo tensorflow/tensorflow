@@ -65,7 +65,7 @@ pytype_strict_library(
         "//tensorflow/core/function/trace_type",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/types",
+        "//tensorflow/python/types:core",
         "//tensorflow/python/util:object_identity",
     ],
 )
@@ -76,10 +76,7 @@ py_strict_test(
     python_version = "PY3",
     deps = [
         ":capture_container",
-        "//tensorflow/python/compat:v2_compat",
-        "//tensorflow/python/framework:combinations",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/core/function/trace_type",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

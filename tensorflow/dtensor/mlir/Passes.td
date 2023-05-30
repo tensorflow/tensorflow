@@ -167,6 +167,7 @@ def DTensorAllReduceLowering
   let summary = "Converts logical AllReduce ops into physical AllReduce ops.";
   let constructor = "CreateDTensorAllReduceLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -175,6 +176,7 @@ def DTensorReduceScatterLowering
   let summary = "Converts logical ReduceScatter ops into physical ReduceScatter ops.";
   let constructor = "CreateDTensorReduceScatterLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -183,6 +185,7 @@ def DTensorAllGatherLowering
   let summary = "Converts logical AllGather ops into physical AllGather ops.";
   let constructor = "CreateDTensorAllGatherLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -191,6 +194,16 @@ def DTensorAllScatterLowering
   let summary = "Converts logical AllScatter ops into physical Split ops.";
   let constructor = "CreateDTensorAllScatterLoweringPass()";
   let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
+  ];
+}
+
+def DTensorAllToAllLowering
+    : Pass<"dtensor-all-to-all-lowering", "mlir::ModuleOp"> {
+  let summary = "Converts logical AllToAll ops into physical AllToAll ops.";
+  let constructor = "CreateDTensorAllToAllLoweringPass()";
+  let dependentDialects = [
+    "::mlir::dtensor::DTensorDialect"
   ];
 }
 
@@ -270,6 +283,14 @@ def DTensorFunctionRenaming
     : Pass<"dtensor-function-renaming", "mlir::ModuleOp"> {
   let summary = "Renames private functions by appending an id to each name. This is used to make private function names unique across modules.";
   let constructor = "CreateFunctionRenamingPass()";
+  let dependentDialects = [
+  ];
+}
+
+def DTensorMultiDeviceExpansion
+    : Pass<"dtensor-multi-device-expansion", "mlir::ModuleOp"> {
+  let summary = "Expands a per-device, post-SPMD graph for multiple devices.";
+  let constructor = "CreateDTensorMultiDeviceExpansionPass()";
   let dependentDialects = [
   ];
 }

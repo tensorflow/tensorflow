@@ -117,7 +117,8 @@ public abstract class ModelBenchmarkReport implements ModelBenchmarkReportInterf
             testTarget.delegateIdentifier(),
             metrics,
             BenchmarkResultType.NOT_APPLICABLE,
-            testTarget.isTestTarget()));
+            testTarget.isTestTarget(),
+            /* isStrictCriteria= */ false));
 
     // Processes the reference delegate results. Compute the performance regressions by comparing
     // them with the results from the test target delegate.
@@ -149,7 +150,8 @@ public abstract class ModelBenchmarkReport implements ModelBenchmarkReportInterf
               entry.delegateIdentifier(),
               referenceMetrics,
               referenceDelegateResult,
-              entry.isTestTarget()));
+              entry.isTestTarget(),
+              sameDelegateType));
     }
     result = DelegatePerformanceBenchmark.aggregateResults(/* strict= */ true, referenceResults);
   }

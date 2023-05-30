@@ -1,6 +1,6 @@
 # Description: OSS only cluster resolvers
-
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
@@ -14,19 +14,24 @@ package(
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "tpu_cluster_resolver_py",
     srcs = ["tpu_cluster_resolver.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:tpu_system_metadata",
         "//tensorflow/python/tpu/client",
+        "//tensorflow/python/util:compat",
     ] + tf_additional_rpc_deps(),
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "tpu_cluster_resolver_py_test",
     size = "small",
     srcs = ["tpu_cluster_resolver_test.py"],
@@ -35,11 +40,16 @@ tf_py_test(
     python_version = "PY3",
     deps = [
         ":tpu_cluster_resolver_py",
+        "//tensorflow/core/protobuf/tpu:topology_proto_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu/client",
+        "//tensorflow/python/util:compat",
     ],
 )

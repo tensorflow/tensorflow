@@ -122,6 +122,7 @@ exports_files(
         "full_type.proto",
         "function.proto",
         "graph.proto",
+        "graph_debug_info.proto",
         "graph_transfer_info.proto",
         "kernel_def.proto",
         "log_memory.proto",
@@ -1257,6 +1258,7 @@ cc_library(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:direct_session_internal",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1350,6 +1352,7 @@ tf_cc_tests(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
@@ -1504,6 +1507,7 @@ tf_proto_library(
     protodeps = [
         ":attr_value_proto",
         ":function_proto",
+        ":graph_debug_info_proto",
         ":node_def_proto",
         ":op_def_proto",
         ":resource_handle_proto",
@@ -1526,6 +1530,15 @@ tf_proto_library(
         ":tensor_proto",
         ":tensor_shape_proto",
         ":types_proto",
+    ],
+)
+
+tf_proto_library(
+    name = "graph_debug_info_proto",
+    srcs = ["graph_debug_info.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    protodeps = [
     ],
 )
 
@@ -1825,6 +1838,7 @@ tf_proto_library(
         ":device_attributes_proto",
         ":full_type_proto",
         ":function_proto",
+        ":graph_debug_info_proto",
         ":graph_proto",
         ":graph_transfer_info_proto",
         ":kernel_def_proto",

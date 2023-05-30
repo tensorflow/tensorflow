@@ -48,7 +48,7 @@ class FuzzConcat : public FuzzSession<Tensor, Tensor, int32> {
     Status s = RunInputsWithStatus(
         {{"value1", value1}, {"value2", value2}, {"axis", axis_tensor}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };

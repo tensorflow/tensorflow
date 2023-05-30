@@ -1,4 +1,5 @@
-load("//tensorflow/core/platform:distribute.bzl", "distribute_py_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow/core/platform:distribute.bzl", "distribute_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -11,7 +12,7 @@ exports_files(
     visibility = ["//tensorflow/python:__pkg__"],
 )
 
-py_library(
+py_strict_library(
     name = "parallel_device",
     srcs = ["parallel_device.py"],
     srcs_version = "PY3",
@@ -21,12 +22,20 @@ py_library(
     ],
     deps = [
         "//tensorflow/python:_pywrap_parallel_device",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:variables",
         "//tensorflow/python/distribute:device_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/tpu/ops",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:variable_utils",
     ],
 )
 
-distribute_py_test(
+distribute_py_strict_test(
     name = "parallel_device_test",
     srcs = ["parallel_device_test.py"],
     # We don't only use TPU Runtime on parallel device, we use c_api_tfrt instead.
@@ -39,10 +48,29 @@ distribute_py_test(
     ],
     deps = [
         ":parallel_device",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:collective_ops",
+        "//tensorflow/python:control_flow_switch_case",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/checkpoint",
+        "//tensorflow/python/checkpoint:checkpoint_management",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/module",
-        "//tensorflow/python/tpu",
+        "//tensorflow/python/saved_model:load",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/tpu:tpu_strategy_util",
+        "//tensorflow/python/util:nest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

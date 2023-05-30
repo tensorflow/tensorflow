@@ -56,7 +56,7 @@ bool IsOpValid(Operation* op) {
   auto launch_op = llvm::dyn_cast<tf_device::LaunchOp>(op->getParentOp());
   if (!launch_op) return false;
   std::string device_str = launch_op.getDeviceAttr().getValue().str();
-  return device_str == tensorflow::kTPUReplicatedHost ||
+  return device_str == tensorflow::GetDeviceAliasForHostOfLogicalCore(0) ||
          device_str == "/job:localhost/replica:0/task:0/device:CPU:0";
 }
 
@@ -166,7 +166,7 @@ void ExtractTPUCopyWithDynamicShapeOpPass::runOnOperation() {
     auto old_launch_op = llvm::dyn_cast<tf_device::LaunchOp>(op->getParentOp());
 
     bool replicated = old_launch_op.getDeviceAttr().getValue().str() ==
-                      tensorflow::kTPUReplicatedHost;
+                      tensorflow::GetDeviceAliasForHostOfLogicalCore(0);
 
     for (auto result :
          llvm::zip(old_launch_op->getResults(),

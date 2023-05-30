@@ -22,7 +22,7 @@ from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import cluster_resolver
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy as mirrored_lib
 from tensorflow.python.distribute import multi_process_runner
 from tensorflow.python.distribute import multi_worker_test_base
@@ -351,7 +351,7 @@ _four_worker_pool = _deferred_pool_runner(
 # pylint: disable=g-long-lambda
 default_strategy = combinations.NamedDistribution(
     "Default",
-    distribution_strategy_context._get_default_strategy,  # pylint: disable=protected-access
+    distribute_lib._get_default_strategy,  # pylint: disable=protected-access
     required_gpus=None)
 one_device_strategy = combinations.NamedDistribution(
     "OneDeviceCPU", lambda: OneDeviceStrategy("/cpu:0"), required_gpus=None)

@@ -146,11 +146,13 @@ INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
 
 TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
   GraphExecutor::LoadedClientGraph loaded_client_graph_0(
-      "name0", /*graph_executor=*/nullptr, /*mlir_context=*/nullptr,
+      "name0", /*symbol_uid=*/"", /*graph_executor=*/nullptr,
+      /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
       /*executable_context=*/nullptr);
   GraphExecutor::LoadedClientGraph loaded_client_graph_1(
-      "name1", /*graph_executor=*/nullptr, /*mlir_context=*/nullptr,
+      "name1", /*symbol_uid=*/"", /*graph_executor=*/nullptr,
+      /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
       /*executable_context=*/nullptr);
 

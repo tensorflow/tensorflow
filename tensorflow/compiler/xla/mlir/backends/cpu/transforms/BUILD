@@ -29,13 +29,13 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "legalize_collective_ops.cc",
         "legalize_i1_vector_transfers.cc",
-        "lmhlo_to_cpu_runtime.cc",
+        "legalize_library_ops.cc",
         "remove_copies_to_out_params.cc",
         "sparse_rewrite_passes.cc",
         "xla_abi_legalization.cc",
         "xla_cpu_memref_element_cast_to_llvm.cc",
+        "xla_cpu_to_cpu_runtime.cc",
         "xla_rewrite_realloc_to_alloc.cc",
     ],
     hdrs = ["passes.h"],

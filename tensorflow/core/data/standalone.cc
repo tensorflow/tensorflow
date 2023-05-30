@@ -132,11 +132,12 @@ Status Dataset::FromGraph(Params params, const GraphDef& graph_def,
       TF_GRAPH_DEF_VERSION, flib_def.get(), OptimizerOptions{},
       /*thread_pool=*/nullptr, /*parent=*/nullptr,
       /*session_metadata=*/nullptr,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return OkStatus();
-          }});
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }});
 
   string fetch_node = "";
   for (const auto& node : graph_def.node()) {

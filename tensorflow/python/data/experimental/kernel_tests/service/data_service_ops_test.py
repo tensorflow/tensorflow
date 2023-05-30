@@ -538,6 +538,69 @@ class DataServiceOpsTest(
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
+  def testDontGcJobsWithVisitationGuarantees(self):
+    cluster = self.make_test_cluster(
+        num_workers=1,
+        job_gc_check_interval_ms=50,
+        job_gc_timeout_ms=20,
+    )
+    num_elements = 1000
+    it1 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test1",
+        )
+    )
+    it2 = iter(
+        self.make_distributed_range_dataset(
+            num_elements,
+            cluster,
+            job_name="test2",
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+        )
+    )
+    self.assertEqual(cluster.workers[0].num_tasks(), 2)
+    del it1
+    del it2
+    # Check that only the first job is gced. The second job will not be gced
+    # because it has a sharding policy with visitation guarantees.
+    while cluster.workers[0].num_tasks() > 1:
+      time.sleep(0.1)
+    self.assertEqual(cluster.workers[0].num_tasks(), 1)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testGcDynamicShardingJobIfRequested(self):
+    dispatcher = server_lib.DispatchServer(
+        service_config_pb2.DispatcherConfig(
+            protocol="grpc",
+            job_gc_check_interval_ms=50,
+            job_gc_timeout_ms=20,
+            gc_dynamic_sharding_jobs=True,
+        )
+    )
+    dispatcher_address = dispatcher.target.split("://")[1]
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(
+            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100
+        )
+    )
+
+    num_elements = 1000
+    dataset = dataset_ops.Dataset.range(num_elements)
+    dataset = dataset.apply(
+        data_service_ops._distribute(
+            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
+            service=dispatcher.target,
+        )
+    )
+    it = iter(dataset)
+    self.assertEqual(worker._num_tasks(), 1)
+    del it
+    while worker._num_tasks() > 0:
+      time.sleep(0.1)
+
+  @combinations.generate(test_base.eager_only_combinations())
   def testGcAndRecreate(self):
     cluster = self.make_test_cluster(
         num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20

@@ -28,9 +28,11 @@ limitations under the License.
 #include "dnnl_threadpool.hpp"
 #include "dnnl.hpp"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/util/onednn_env_vars.h"
+
 #define EIGEN_USE_THREADS
 
 namespace tensorflow {
@@ -80,8 +82,14 @@ struct MklDnnThreadPool : public threadpool_iface {
     eigen_interface_ = ctx->device()
                            ->tensorflow_cpu_worker_threads()
                            ->workers->AsEigenThreadPool();
-    num_threads_ =
-        (num_threads == -1) ? eigen_interface_->NumThreads() : num_threads;
+    if (num_threads == -1) {
+      dnnl_threadpool_interop_set_max_concurrency(
+          eigen_interface_->NumThreads());
+      num_threads_ = eigen_interface_->NumThreads();
+    } else {
+      dnnl_threadpool_interop_set_max_concurrency(num_threads);
+      num_threads_ = num_threads;
+    }
   }
   virtual int get_num_threads() const override { return num_threads_; }
   virtual bool get_in_parallel() const override {
@@ -108,15 +116,35 @@ struct MklDnnThreadPool : public threadpool_iface {
     const bool use_caller_thread =
         ThreadPoolUseCallerThread() && nthr == port::NumSchedulableCPUs();
     const int njobs_to_schedule = use_caller_thread ? njobs - 1 : njobs;
-    for (int i = 0; i < njobs_to_schedule; i++) {
-      eigen_interface_->ScheduleWithHint(
-          [balance, i, n, njobs, fn]() { run_jobs(balance, i, n, njobs, fn); },
-          i, i + 1);
-    }
+
+    BlockingCounter counter(njobs_to_schedule);
+    std::function<void(int, int)> handle_range = [=, &handle_range, &counter](
+                                                     int first, int last) {
+      while (last - first > 1) {
+        const auto mid = first + (last - first) / 2;
+        // Find something near the midpoint which is a multiple of block size.
+        eigen_interface_->ScheduleWithHint([=]() { handle_range(mid, last); },
+                                           mid, mid + 1);
+        last = mid;
+      }
+      counter.DecrementCount();
+      run_jobs(balance, first, n, njobs, fn);
+    };
+
+    // Eigen avoids a thread hop by running the root of the tree on the main
+    // thread. We have disabled this because it actually slows things down
+    // relative to base because base cheats and uses n threads while letting
+    // main continue doing other work
+    eigen_interface_->ScheduleWithHint(
+        [=]() { handle_range(0, njobs_to_schedule); }, 0, 1);
+
     if (use_caller_thread) {
       run_jobs(balance, njobs - 1, n, njobs, fn);
     }
+
+    counter.Wait();
   }
+
   ~MklDnnThreadPool() {}
 
  private:

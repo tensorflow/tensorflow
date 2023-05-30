@@ -4,12 +4,13 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//tensorflow/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/tsl:internal",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -128,6 +129,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:strcat",
         "//tensorflow/tsl/util:env_var",
+        "@com_google_absl//absl/status",
     ] + tsl_grpc_cc_dependencies(),
 )
 

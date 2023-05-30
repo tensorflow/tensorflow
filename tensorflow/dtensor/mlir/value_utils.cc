@@ -141,6 +141,18 @@ mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
   return builder.create<mlir::TF::ConstOp>(loc, const_attr).getResult();
 }
 
+mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
+                                     mlir::Location loc,
+                                     llvm::ArrayRef<int64_t> values,
+                                     mlir::Type type) {
+  if (type.cast<mlir::RankedTensorType>().getElementType().isInteger(64)) {
+    return Int64Const(builder, loc, values);
+  } else {
+    llvm::SmallVector<int32, 4> values32(values.begin(), values.end());
+    return IntConst(builder, loc, values32);
+  }
+}
+
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
   value = GetForwardedInput(value);
   if (value.isa<mlir::BlockArgument>())

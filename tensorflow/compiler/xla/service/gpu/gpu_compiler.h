@@ -174,14 +174,17 @@ class GpuCompiler : public LLVMCompiler {
   StatusOr<std::unique_ptr<AotCompilationResult>> Export(
       Executable* executable) const override;
 
+  static std::optional<bool> FusionCanShareBufferHint(
+      const HloInstruction* user, const HloInstruction* operand,
+      const ShapeIndex& user_index);
+
  protected:
   // During compilation with device, stream_exec != null and autotune_results
   // == null. During deviceless AOT compilation, stream_exec == null and
   // autotune_results != null.
   virtual Status OptimizeHloPostLayoutAssignment(
       HloModule* hlo_module, se::StreamExecutor* stream_exec,
-      se::DeviceMemoryAllocator* device_allocator,
-      const GpuTargetConfig& gpu_target_config,
+      const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
       const AutotuneResults* autotune_results);
 
  private:
@@ -190,7 +193,7 @@ class GpuCompiler : public LLVMCompiler {
   // autotune_results != null.
   Status OptimizeHloModule(HloModule* hlo_module,
                            se::StreamExecutor* stream_exec,
-                           se::DeviceMemoryAllocator* device_allocator,
+                           const CompileOptions& options,
                            const GpuTargetConfig& gpu_target_config,
                            const AutotuneResults* autotune_results);
 
@@ -200,9 +203,7 @@ class GpuCompiler : public LLVMCompiler {
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   virtual HloDataflowAnalysis::CanShareBuffer GetCanShareBuffer() {
-    return
-        [](const HloInstruction*, const HloInstruction*,
-           const ShapeIndex&) -> std::optional<bool> { return std::nullopt; };
+    return &FusionCanShareBufferHint;
   }
 
   // TODO(timshen): Replace `debug_module` with some portable debug information

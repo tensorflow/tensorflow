@@ -1520,11 +1520,13 @@ REGISTER_OP("TopK")
 // This is the same as `TopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("TopKV2")
     .Input("input: T")
-    .Input("k: int32")
+    .Input("k: Tk")
     .Output("values: T")
-    .Output("indices: int32")
+    .Output("indices: index_type")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
+    .Attr("Tk: {int16, int32, int64} = DT_INT32")
+    .Attr("index_type: {int16, int32, int64} = DT_INT32")
     .SetShapeFn(TopKShapeFn);
 
 REGISTER_OP("ApproxTopK")

@@ -60,7 +60,7 @@ std::map<std::thread::id, string>& GetThreadNameRegistry()
 class PThread : public Thread {
  public:
   PThread(const ThreadOptions& thread_options, const std::string& name,
-          std::function<void()> fn) {
+          absl::AnyInvocable<void()> fn) {
     ThreadParams* params = new ThreadParams;
     params->name = name;
     params->fn = std::move(fn);
@@ -81,7 +81,7 @@ class PThread : public Thread {
  private:
   struct ThreadParams {
     std::string name;
-    std::function<void()> fn;
+    absl::AnyInvocable<void()> fn;
   };
   static void* ThreadFn(void* params_arg) {
     std::unique_ptr<ThreadParams> params(
@@ -133,8 +133,8 @@ class PosixEnv : public Env {
   }
 
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
-                      std::function<void()> fn) override {
-    return new PThread(thread_options, name, fn);
+                      absl::AnyInvocable<void()> fn) override {
+    return new PThread(thread_options, name, std::move(fn));
   }
 
   int32 GetCurrentThreadId() override {
@@ -170,19 +170,20 @@ class PosixEnv : public Env {
 #endif
   }
 
-  void SchedClosure(std::function<void()> closure) override {
+  void SchedClosure(absl::AnyInvocable<void()> closure) override {
     // TODO(b/27290852): Spawning a new thread here is wasteful, but
     // needed to deal with the fact that many `closure` functions are
     // blocking in the current codebase.
-    std::thread closure_thread(closure);
+    std::thread closure_thread(std::move(closure));
     closure_thread.detach();
   }
 
-  void SchedClosureAfter(int64 micros, std::function<void()> closure) override {
+  void SchedClosureAfter(int64 micros,
+                         absl::AnyInvocable<void()> closure) override {
     // TODO(b/27290852): Consuming a thread here is wasteful, but this
     // code is (currently) only used in the case where a step fails
     // (AbortStep). This could be replaced by a timer thread
-    SchedClosure([this, micros, closure]() {
+    SchedClosure([this, micros, closure = std::move(closure)]() mutable {
       SleepForMicroseconds(micros);
       closure();
     });

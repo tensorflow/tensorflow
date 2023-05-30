@@ -56,6 +56,11 @@ tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
 tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
                                                     tsl::Env* env);
 
+// Validates a snapshot before reading it by `load`. If the snapshot does not
+// exist, is not finished, or is in an error state, returns an error. If the
+// snapshot is ready to be loaded, returns an OK status.
+Status ValidateSnapshot(const std::string& snapshot_path, tsl::Env* env);
+
 // Returns true if `filename` is a temporary file and should be ignored in
 // normal data processing.
 bool IsTemporaryFile(absl::string_view filename);

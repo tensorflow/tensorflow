@@ -24,7 +24,7 @@ cc_library(
     # specialization there causing build breakages.  This must be added here
     # as "defines" so that the header is excluded in all dependent targets.
     # TODO(b/238649163): remove this once no longer necessary.
-    defines = ["GEMM_KERNEL_H"],
+    defines = ["EIGEN_USE_AVX512_GEMM_KERNELS=0"],
     deps = [
         "//tensorflow/tsl/framework/convolution:eigen_convolution_helpers",
     ],

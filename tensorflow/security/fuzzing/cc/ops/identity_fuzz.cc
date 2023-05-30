@@ -36,7 +36,7 @@ class FuzzIdentity : public FuzzSession<Tensor> {
   void FuzzImpl(const Tensor& input_tensor) final {
     Status s = RunInputsWithStatus({{"input", input_tensor}});
     if (!s.ok()) {
-      LOG(ERROR) << "Execution failed: " << s.error_message();
+      LOG(ERROR) << "Execution failed: " << s.message();
     }
   }
 };

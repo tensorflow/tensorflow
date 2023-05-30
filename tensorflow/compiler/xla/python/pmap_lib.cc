@@ -191,11 +191,14 @@ xla::StatusOr<ShardArgResult> ShardArg(
     for (size_t i = 0; i < n_devices; ++i) {
       auto to_device =
           py::cast<xla::ClientAndPtr<xla::PjRtDevice>>(py_devices_list[i]);
+      if (to_device.get_client() == nullptr) {
+        return xla::InvalidArgument("Cannot copy to unattached devices.");
+      }
 
       TF_ASSIGN_OR_RETURN(
           xla::DevicePutResult on_device,
-          DevicePut(arg[indices[i]], to_device.client->ifrt_client(),
-                    to_device.contents, options));
+          DevicePut(arg[indices[i]], to_device.get_client()->ifrt_client(),
+                    to_device.get(), options));
 
       per_device_arrays.push_back(std::move(on_device.ifrt_array));
       devices.push_back(per_device_arrays.back()->sharding().devices().front());
@@ -274,7 +277,7 @@ class PmapFunction {
         python_shard_arg_fallback_(std::move(python_shard_arg_fallback)) {
     std::sort(static_argnums_.begin(), static_argnums_.end());
 
-    function_name_ = py::str(py::getattr(fun_, "__name__", fun));
+    function_name_ = py::str(py::getattr(fun_, "__name__", fun_));
   }
   PmapFunction(const PmapFunction&) = delete;
   PmapFunction& operator=(const PmapFunction& other) = delete;
@@ -296,6 +299,7 @@ class PmapFunction {
   }
 
   int cache_size() const { return executables_.size(); }
+  void cache_clear() { return executables_.clear(); }
   const py::function& fun() const { return fun_; }
   const py::function& cache_miss() const { return cache_miss_; }
   const std::string& function_name() const { return function_name_; }
@@ -1073,6 +1077,13 @@ void BuildPmapSubmodule(py::module& m) {
         PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
         return py::cast<int>(fun->cache_size());
       });
+
+  cfun.attr("_cache_clear") = py::cpp_function(
+      [](py::handle self) {
+        PmapFunction* fun = xla::ValueOrThrow(AsPmapFunction(self));
+        fun->cache_clear();
+      },
+      py::is_method(cfun));
 
   cfun.attr("_debug_cache_keys") = py::cpp_function(
       [](py::handle self) -> std::string {

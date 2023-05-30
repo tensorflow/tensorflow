@@ -42,12 +42,6 @@ class PjRtCompileOnDemandOp : public OpKernel {
                         const std::vector<XlaCompiler::Argument>& args,
                         XlaCompiler::CompilationResult* result,
                         std::unique_ptr<xla::PjRtLoadedExecutable>* executable);
-
-  static Status Run(OpKernelContext* ctx, xla::PjRtClient* pjrt_client,
-                    const std::vector<const Tensor*>& inputs,
-                    const std::vector<VariableInfo>& variables,
-                    const XlaCompiler::CompilationResult& result,
-                    std::unique_ptr<xla::PjRtLoadedExecutable> executable);
 };
 
 void RegisterPjRtCompileOnDemand(const char* device, const char* jit_device);

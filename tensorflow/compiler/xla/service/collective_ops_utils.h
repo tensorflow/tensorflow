@@ -43,6 +43,11 @@ std::optional<ReductionKind> MatchReductionInstruction(
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
 
+// Returns the reduction identity value for a certain ReductionKind and
+// PrimitiveType.
+std::optional<Literal> GetReductionIdentity(ReductionKind kind,
+                                            PrimitiveType type);
+
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
 // are participating. Note that for CollectiveOpGroupMode::kFlattenedID,
@@ -116,6 +121,19 @@ StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
+
+// Same as above, except that it returns the flattened id in the replica groups
+// instead of device id.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const DeviceAssignment& device_assignment,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+// Same as above, but take replica/partition count instead of device assignment.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode replica_group_mode, int replica_count,
+    int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(

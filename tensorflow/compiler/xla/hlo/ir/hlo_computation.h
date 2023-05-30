@@ -239,7 +239,7 @@ class HloComputation {
     return param_instructions_[param_no];
   }
 
-  const std::vector<HloInstruction*>& parameter_instructions() const {
+  const HloInstruction::InstructionVector& parameter_instructions() const {
     return param_instructions_;
   }
 
@@ -804,7 +804,7 @@ class HloComputation {
   // deallocated when Cleanup is called.
   std::vector<std::unique_ptr<HloInstruction>> to_be_deleted_;
 
-  std::vector<HloInstruction*> param_instructions_;
+  HloInstruction::InstructionVector param_instructions_;
 
   HloComputation(const HloComputation&) = delete;
   HloComputation& operator=(const HloComputation&) = delete;

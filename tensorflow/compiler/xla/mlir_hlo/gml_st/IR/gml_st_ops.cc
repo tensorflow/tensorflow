@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "gml_st/IR/gml_st_ops.h"
 
+#include <tuple>
 #include <utility>
 
 #include "llvm/ADT/SetVector.h"
@@ -79,18 +80,35 @@ YieldOp FusionOp::getTerminator() {
 }
 
 void FusionOp::print(OpAsmPrinter &p) {
-  p << " (";
-  llvm::interleaveComma(
-      llvm::zip(getBody()->getArguments(), getInputs()), p, [&](auto it) {
-        Value inputRegionArg, input;
-        std::tie(inputRegionArg, input) = it;
-        p << inputRegionArg << " = " << input << ": " << input.getType();
-      });
-  p << ") ";
+  p << " ";
+  if (!getInputs().empty()) {
+    p << "ins(";
+    llvm::interleaveComma(
+        llvm::zip(getBody()->getArguments(), getInputs()), p, [&](auto it) {
+          Value inputRegionArg, input;
+          std::tie(inputRegionArg, input) = it;
+          p << inputRegionArg << " = " << input << ": " << input.getType();
+        });
+    p << ") ";
+  }
+
+  if (!getInits().empty()) {
+    p << "inits(";
+    llvm::interleaveComma(
+        llvm::zip(getBody()->getArguments().drop_front(getInputs().size()),
+                  getInits()),
+        p, [&](auto it) {
+          Value inputRegionArg, input;
+          std::tie(inputRegionArg, input) = it;
+          p << inputRegionArg << " = " << input << ": " << input.getType();
+        });
+    p << ") ";
+  }
 
   p.printRegion(getRegion(), /*printEntryBlockArgs=*/false);
 
-  p.printOptionalAttrDict(getOperation()->getAttrs());
+  p.printOptionalAttrDict(getOperation()->getAttrs(),
+                          {getOperandSegmentSizesAttrName()});
 
   if (!getResultTypes().empty()) {
     p << " : ";
@@ -115,9 +133,18 @@ ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
     return success();
   };
 
-  // Parse argument list.
-  if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
-    return failure();
+  size_t numInputs = 0, numInits = 0;
+  if (succeeded(parser.parseOptionalKeyword("ins"))) {
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+      return failure();
+  }
+  numInputs = operands.size();
+
+  if (succeeded(parser.parseOptionalKeyword("inits"))) {
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseElt))
+      return failure();
+  }
+  numInits = operands.size() - numInputs;
 
   SMLoc loc = parser.getCurrentLocation();
   if (parser.resolveOperands(operands, operandTypes, loc, result.operands))
@@ -137,6 +164,11 @@ ParseResult FusionOp::parse(OpAsmParser &parser, OperationState &result) {
 
   // Parser result types.
   if (parser.parseOptionalColonTypeList(result.types)) return failure();
+
+  result.addAttribute(
+      "operand_segment_sizes",
+      parser.getBuilder().getDenseI32ArrayAttr(
+          {static_cast<int32_t>(numInputs), static_cast<int32_t>(numInits)}));
 
   return success();
 }

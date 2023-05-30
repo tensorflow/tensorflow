@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/tsl/platform/types.h"
 #include "tensorflow/tsl/profiler/convert/trace_container.h"
-#include "tensorflow/tsl/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {

@@ -27,7 +27,7 @@ namespace tensorflow {
 namespace eager {
 
 GrpcEagerServiceImpl::GrpcEagerServiceImpl(
-    const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
+    WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
     : env_(env),
       local_impl_(env),
       enqueue_streaming_thread_(env_->env, "enqueue_streaming_thread", 1) {

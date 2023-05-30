@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/worker.h"
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -116,13 +118,13 @@ void Worker::AbortStep(int64_t step_id) {
       env_->rendezvous_mgr->Find(step_id);
   // Do not abort if it's a context global instance for eager op-by-op execution
   if (rendez->IsRemoteEagerContextDefault()) return;
-  SchedNonBlockingClosureAfter(1000000, [rendez = rendez.release(), step_id]() {
+  SchedNonBlockingClosureAfter(1000000, [rendez = std::move(rendez),
+                                         step_id]() {
     // Delay a bit before aborting the step. This way, the root
     // cause may return first back to the client instead of this
     // cancellation generated abort error.
     rendez->StartAbort(errors::Aborted("Step ", step_id,
                                        " cancelled.  Cancelling rendezvous."));
-    rendez->Unref();
   });
 }
 
@@ -363,7 +365,7 @@ void Worker::CleanupGraphAsync(const CleanupGraphRequest* request,
   if (env_->collective_executor_mgr) {
     env_->collective_executor_mgr->Cleanup(step_id);
   }
-  for (Device* d : env_->local_devices) {
+  for (Device* d : env_->device_mgr->ListDevices()) {
     ScopedAllocatorMgr* sam = d->GetScopedAllocatorMgr();
     if (sam) {
       sam->Cleanup(step_id);

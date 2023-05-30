@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_SMALL_CONSTANTS_OPTIMIZER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_SMALL_CONSTANTS_OPTIMIZER_H_
 
+#include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 
 namespace tensorflow::small_constants_optimizer {
@@ -27,7 +30,12 @@ bool IsSmallConstantOptimizationEnabled(const FunctionDef& fdef);
 
 // Generates new FunctionDefs with the boolean input tensors folded as
 // constants into the FunctionDef.
-std::vector<FunctionDef> FoldInputTensors(const FunctionDef& fdef);
+std::vector<FunctionDef> FoldInputTensors(
+    const FunctionDef& fdef, const FunctionLibraryDefinition& flib);
+
+// Generates the FunctionDef name for the folded function.
+std::string FoldedFunctionName(absl::string_view fname,
+                               absl::string_view input_name, bool input_value);
 
 }  // namespace tensorflow::small_constants_optimizer
 

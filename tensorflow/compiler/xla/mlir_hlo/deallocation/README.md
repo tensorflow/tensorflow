@@ -268,11 +268,11 @@ is returned at most once. Alloc that are not returned are freed.
 Some retain ops can be simplified to a no op (e.g. if there's only one alloc
 and one memref, and they're the same). Others can be rewritten to memref.dealloc
 (if we know that the alloc is non-null and there is no memref). This is done by
-the `deallocation-simplification` pass. In the general case, we lower `retain`
-to a sequence of `scf.if` ops. This lowering has a code size of
-`O(|allocs| * |memrefs|)`. In practice, we haven't yet observed any large retain
-ops where this becomes a problem, but we expect that a better lowering will be
-necessary eventually, for example by emitting a library call. For details, see
+the `deallocation-simplification` pass.
+
+There are two lowerings of `retain`: retains with a single memref or a single
+ownership indicator are lowered to a sequence of `scf.if` ops. Lowerings with
+more than one of either are instead lowered to a library call. For details, see
 the section on the deallocation-to-scf pass.
 
 ### The `get_buffer` op
@@ -437,9 +437,8 @@ As described previously, most `deallocation.retain` ops are eliminated either by
 canonicalization or by `buffer-reuse`. `deallocation-to-scf` lowers the ones
 that remain to sequences of `scf.if` ops.
 
-Note: the size of the emitted code is in `O(|allocs| * |memrefs|)`. In pratice,
-there may be pathological cases where the code gets too large. While we haven't
-observed this yet, an alternative lowering may therefore be desirable.
+Because the size of the emitted code is in `O(|allocs| * |memrefs|)`, we only
+use this lowering when at least one of `|allocs|` or `|memrefs|` is 1.
 
 [^1]: `memref.dealloc` happens to tolerate null inputs as well, but at this
     point of the pipeline, we assume that the argument is always non-null,

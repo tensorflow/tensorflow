@@ -77,6 +77,10 @@ struct SpmdPartitionerOptions {
   // Whether doing bidirectional communication when decomposing independent
   // all-gathers.
   bool bidirectional_decomposed_all_gather = false;
+
+  // Whether to skip checking the numbers and shardings of windowed einsum's
+  // users.
+  bool skip_checking_windowed_einsum_users = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD

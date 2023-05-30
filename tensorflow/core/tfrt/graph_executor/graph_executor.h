@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -22,20 +23,20 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
 #include "learning/infra/mira/mlrt/bytecode/bytecode.h"
-#include "learning/infra/mira/mlrt/bytecode/executable.h"
 #include "learning/infra/mira/mlrt/interpreter/context.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
+#include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
@@ -71,8 +72,8 @@ struct RequestInfo {
 // `client_graph_resource_context` is per-loaded-client-graph. See the comment
 // above `GraphExecutor::resource_context_` about the todo to merge these two.
 StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
+    const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    const SessionMetadata& model_metadata, const Runtime& runtime,
     tensorflow::tfrt_stub::WorkQueueInterface* work_queue,
     tfrt::ResourceContext* resource_context,
     tfrt::ResourceContext* client_graph_resource_context,
@@ -87,8 +88,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, const tfrt::Function* func,
-    const mlrt::LoadedExecutable* loaded_executable,
+    absl::string_view signature_name, absl::string_view symbol_uid,
+    const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context,
@@ -99,12 +100,6 @@ tensorflow::Status GraphExecutionRunOnFunction(
     tfrt::RequestDeadlineTracker* req_deadline_tracker,
     CostRecorder* cost_recorder = nullptr);
 
-// Compiles MLIR in TF executor dialect to MLRT bytecode executable.
-StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module,
-    const CostRecorder* cost_recorder = nullptr,
-    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
-
 // Runs a MLRT function for executing tensorflow graphs.
 tensorflow::Status RunMlrtFunction(
     mlrt::bc::Function function,
@@ -112,7 +107,8 @@ tensorflow::Status RunMlrtFunction(
     const tsl::RCReference<tfrt::RequestContext>& request_context,
     tfrt::ConcurrentWorkQueue& work_queue,
     absl::Span<const tensorflow::Tensor> inputs,
-    std::vector<tensorflow::Tensor>* outputs);
+    std::vector<tensorflow::Tensor>* outputs,
+    SyncResourceState* sync_resource_state);
 
 // Loads (if not yet) and runs a subgraph in a graph as per each request.
 class GraphExecutor {
@@ -155,12 +151,14 @@ class GraphExecutor {
   // The loading result of a `ClientGraph`.
   class LoadedClientGraph {
    public:
-    LoadedClientGraph(std::string name, GraphExecutor* graph_executor,
+    LoadedClientGraph(std::string name, std::string symbol_uid,
+                      GraphExecutor* graph_executor,
                       std::unique_ptr<mlir::MLIRContext> mlir_context,
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context)
         : name_(std::move(name)),
+          symbol_uid_(std::move(symbol_uid)),
           graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
           tf_mlir_with_op_keys_(std::move(tf_mlir_with_op_keys)),
@@ -169,7 +167,8 @@ class GraphExecutor {
 
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
-    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder() const;
+    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder(
+        uint64_t normalize_ratio = 1) const;
 
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.
@@ -182,12 +181,15 @@ class GraphExecutor {
       return executable_context_;
     }
     absl::string_view name() const { return name_; }
+    absl::string_view symbol_uid() const { return symbol_uid_; }
 
     OpKernelRunnerTable& runner_table() { return runner_table_; }
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
+    SyncResourceState& sync_resource_state() { return sync_resource_state_; }
 
    private:
     std::string name_;
+    std::string symbol_uid_;
     GraphExecutor* graph_executor_ = nullptr;
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;
@@ -201,6 +203,7 @@ class GraphExecutor {
     std::shared_ptr<ExecutableContext> executable_context_
         TF_GUARDED_BY(executable_context_mu_);
     mutable absl::once_flag create_cost_recorder_once_;
+    SyncResourceState sync_resource_state_;
   };
 
   // A subgraph constructed by specifying input/output tensors.
@@ -266,6 +269,16 @@ class GraphExecutor {
 
   tfrt::ResourceContext& resource_context() { return resource_context_; }
 
+  const Options& options() const { return options_; }
+
+  // Compiles graph for `graph_name` and runs any initializers.
+  tensorflow::Status CompileGraph(
+      const std::string& graph_name,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names);
+
  private:
   // A set of methods to load a client graph.
   StatusOr<std::unique_ptr<GraphExecutor::LoadedClientGraph>> LoadClientGraph(
@@ -277,6 +290,11 @@ class GraphExecutor {
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
+  StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
+      mlir::ModuleOp module,
+      mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) const;
+  StatusOr<mlrt::bc::Buffer> CompileMlirModuleWithOpKeysToByteCode(
+      mlir::ModuleOp module, const CostRecorder& cost_recorder) const;
 
   tensorflow::Status InitBef(
       LoadedClientGraph* loaded_client_graph,

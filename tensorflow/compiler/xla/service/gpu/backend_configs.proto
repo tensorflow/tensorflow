@@ -88,3 +88,11 @@ message BitcastBackendConfig {
   LayoutProto source_layout = 1;
   LayoutProto result_layout = 2;
 }
+
+// Backend config for async collective operations. Note that for is_sync will
+// be false by default, so even if a backend config is not explicitly attached
+// to the HLOInstruction, getting the backend_config will yield a default valued
+// proto which will have is_sync = false.
+message CollectiveBackendConfig {
+  bool is_sync = 1;
+}

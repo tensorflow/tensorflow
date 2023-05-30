@@ -501,8 +501,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                GpuStreamHandle stream,
                                                StreamCallback callback,
                                                void* data) {
-  hipError_t res = wrap::hipStreamAddCallback(
-      stream, (hipStreamCallback_t)callback, data, 0 /* = flags */);
+  hipError_t res = wrap::hipLaunchHostFunc(stream, (hipHostFn_t)callback, data);
   if (res != hipSuccess) {
     LOG(ERROR) << "unable to add host callback: " << ToString(res);
     return false;

@@ -21,7 +21,7 @@ import sys
 from google.protobuf import message
 from google.protobuf import text_format
 
-from tensorflow.core.protobuf import graph_debug_info_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops
@@ -380,6 +380,7 @@ class SavedModelLoader(object):
       RuntimeError: if no metagraphs were found with the associated tags.
     """
     found_match = False
+    meta_graph_def_to_load = None
     available_tags = []
     for meta_graph_def in self._saved_model.meta_graphs:
       available_tags.append(set(meta_graph_def.meta_info_def.tags))

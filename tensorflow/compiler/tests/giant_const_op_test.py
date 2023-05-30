@@ -56,16 +56,6 @@ def get_tpu_strategy():
 # tensors.
 class GiantConstOp(test.TestCase):
 
-  def setUp(self):
-    super(GiantConstOp, self).setUp()
-    # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
-    # value silently.
-    assert "TF_XLA_FLAGS" not in os.environ
-
-    # Disable tfxla constant folding that always creates full Tensors and will
-    # fail for giant tensors.
-    os.environ["TF_XLA_FLAGS"] = "--tf_xla_disable_constant_folding=true"
-
   # Verifies that graphs containing giant const tensors that won't fit in memory
   # are compiled correctly to HLO.
   def testGiantConst(self):
@@ -106,4 +96,12 @@ class GiantConstOp(test.TestCase):
         self.assertAllEqual(output, expected)
 
 if __name__ == "__main__":
+  # Make sure TF_XLA_FLAGS is not already set to avoid dropping the existing
+  # value silently.
+  assert "TF_XLA_FLAGS" not in os.environ
+
+  # Disable tfxla constant folding that always creates full Tensors and will
+  # fail for giant tensors.
+  os.environ["TF_XLA_FLAGS"] = "--tf_xla_disable_constant_folding=true"
+
   test.main()

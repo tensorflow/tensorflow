@@ -49,7 +49,7 @@ TEST(ToStringTest, MatchesAbslStatus) {
                                        "payload_value %c%c%c", 1, 2, 3)));
 
   absl::Status absl_status =
-      absl::Status(absl::StatusCode::kAborted, status.error_message());
+      absl::Status(absl::StatusCode::kAborted, status.message());
   absl_status.SetPayload("payload_key", absl::Cord(absl::StrFormat(
                                             "payload_value %c%c%c", 1, 2, 3)));
 

@@ -879,7 +879,7 @@ TEST(CustomCallTest, ArgTypeCheck) {
   EXPECT_FALSE(status.ok());
   EXPECT_EQ(status.message(),
             "run time error: custom call 'test.custom_call' failed: Failed to "
-            "decode all custom call operands");
+            "decode all custom call operands (bad operads at: 0)");
 }
 
 // Register custom call attribute decoding for `testlib.enum_type`.
@@ -1199,6 +1199,7 @@ TEST(CustomCallTest, DictionaryAttr) {
   std::string foo;
   int32_t bar = 0;
   std::vector<int32_t> baz;
+  std::vector<std::string> dictionary_keys;
 
   auto handler = [&](Dictionary dict) -> LogicalResult {
     if (dict.size() != 3) return failure();
@@ -1207,6 +1208,12 @@ TEST(CustomCallTest, DictionaryAttr) {
     bar = *dict.get<int32_t>("bar");
     auto span = dict.get<absl::Span<const int32_t>>("baz");
     baz = std::vector<int32_t>(span->begin(), span->end());
+
+    // Need to copy to vector of strings since strings string_view points to
+    // will no longer exist once this runs.
+    for (auto key : dict.keys()) {
+      dictionary_keys.push_back(std::string(key));
+    }
 
     return success();
   };
@@ -1221,6 +1228,7 @@ TEST(CustomCallTest, DictionaryAttr) {
   EXPECT_EQ(foo, "Uh oh");
   EXPECT_EQ(bar, 42);
   EXPECT_EQ(baz, std::vector<int32_t>({1, 2}));
+  EXPECT_EQ(dictionary_keys, std::vector<std::string>({"bar", "baz", "foo"}));
 }
 
 TEST(CustomCallTest, MemrefF8Arg) {

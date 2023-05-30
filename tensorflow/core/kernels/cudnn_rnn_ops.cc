@@ -325,7 +325,7 @@ DeviceMemoryBase SliceDeviceMemory(const DeviceMemoryBase& device_memory,
 }
 
 inline Status FromExecutorStatus(const tsl::Status& s) {
-  return s.ok() ? OkStatus() : Status(s.code(), s.error_message());
+  return s.ok() ? OkStatus() : Status(s.code(), s.message());
 }
 
 template <typename T>
@@ -334,7 +334,7 @@ inline Status FromExecutorStatus(const tsl::StatusOr<T>& s) {
 }
 
 inline tsl::Status ToExecutorStatus(const Status& s) {
-  return s.ok() ? OkStatus() : Status(s.code(), s.error_message());
+  return s.ok() ? OkStatus() : Status(s.code(), s.message());
 }
 
 template <typename>

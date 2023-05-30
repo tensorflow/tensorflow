@@ -417,15 +417,20 @@ gentbl_cc_library(
 cc_library(
     name = "deallocation_passes",
     srcs = [
+        "deallocation/transforms/analysis.cc",
         "deallocation/transforms/buffer_reuse.cc",
         "deallocation/transforms/convert_deallocation_ops_to_llvm.cc",
         "deallocation/transforms/deallocate.cc",
         "deallocation/transforms/deallocation_simplification.cc",
         "deallocation/transforms/deallocation_to_scf.cc",
+        "deallocation/transforms/debug_passes.cc",
         "deallocation/transforms/split_alloc_tensors.cc",
         "deallocation/transforms/xla_buffer_arg_rewrite.cc",
     ],
-    hdrs = ["deallocation/transforms/passes.h"],
+    hdrs = [
+        "deallocation/transforms/analysis.h",
+        "deallocation/transforms/passes.h",
+    ],
     strip_include_prefix = ".",
     deps = [
         ":deallocation",
@@ -814,6 +819,7 @@ cc_library(
         "@llvm-project//mlir:TensorDialect",
         "@llvm-project//mlir:TensorUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:base",
         "@stablehlo//:chlo_ops",
         "@stablehlo//:stablehlo_ops",
     ],
@@ -1253,6 +1259,7 @@ cc_library(
         ":deallocation",
         ":deallocation_passes",
         ":gml_st",
+        ":gml_st_bufferizable_op_interface",
         ":gml_st_passes",
         ":lhlo",
         ":mhlo_passes",
@@ -1491,6 +1498,7 @@ cc_library(
     name = "gml_st_passes",
     srcs = [
         "gml_st/transforms/add_debug_info/add_debug_info.cc",
+        "gml_st/transforms/canonicalization/optimize_linalg_ops.cc",
         "gml_st/transforms/collapse_shape/collapse_shape.cc",
         "gml_st/transforms/collect_stats/collect_stats.cc",
         "gml_st/transforms/compose_extract_insert_slice/compose_extract_insert_slice.cc",
@@ -1500,9 +1508,6 @@ cc_library(
         "gml_st/transforms/cpu_tiling/fusion_planning_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/pack_matmul.cc",
         "gml_st/transforms/cpu_tiling/remove_label.cc",
-        "gml_st/transforms/cpu_tiling/rewrite_dot_as_reduce.cc",
-        "gml_st/transforms/cpu_tiling/transform_batch_matmul_for_cpu.cc",
-        "gml_st/transforms/cpu_tiling/transform_conv_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_dot_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_elementwise_for_cpu.cc",
         "gml_st/transforms/cpu_tiling/transform_mmt4d_for_cpu.cc",
@@ -1769,6 +1774,20 @@ cc_library(
         "@llvm-project//mlir:Transforms",
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:ViewLikeInterface",
+    ],
+)
+
+cc_library(
+    name = "gml_st_bufferizable_op_interface",
+    srcs = ["gml_st/interfaces/bufferizable_op_interface_impl.cc"],
+    hdrs = ["gml_st/interfaces/bufferizable_op_interface_impl.h"],
+    strip_include_prefix = ".",
+    deps = [
+        ":gml_st",
+        "@llvm-project//mlir:BufferizationDialect",
+        "@llvm-project//mlir:DialectUtils",
+        "@llvm-project//mlir:MemRefDialect",
+        "@llvm-project//mlir:Support",
     ],
 )
 

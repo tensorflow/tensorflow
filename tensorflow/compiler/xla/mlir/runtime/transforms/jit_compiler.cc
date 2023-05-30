@@ -102,6 +102,12 @@ static void SetupPassDebugging(MLIRContext* context, mlir::PassManager& pm) {
   }
 }
 
+static void PrintPassPipeline(const mlir::PassManager& pm) {
+  llvm::errs() << "MLIR Pass Pipeline:\n";
+  pm.printAsTextualPipeline(llvm::errs());
+  llvm::errs() << "\n";
+}
+
 static LogicalResult RunPipeline(
     ModuleOp module, const std::function<void(PassManager&)>& create_pipeline) {
   if (!create_pipeline) return success();
@@ -120,6 +126,10 @@ static LogicalResult RunPipeline(
   }
   PassManager passes(&pm);
   create_pipeline(passes);
+
+  if (DebugJitCompiler()) {
+    PrintPassPipeline(pm);
+  }
 
   return pm.run(module);
 }
@@ -211,6 +221,21 @@ absl::Status JitCompiler::ComputeOrdinalsForExportedFunctions(
   return absl::OkStatus();
 }
 
+absl::Status ExportMainWithOrdinal0(mlir::ModuleOp module,
+                                    mlir::MLIRContext& mlir_context) {
+  SymbolTable sym_table(module);
+
+  // Add `rt.export` operations for all explicitly exported functions.
+  if (auto func = sym_table.lookup<FunctionOpInterface>("main")) {
+    OpBuilder(func).create<ExportOp>(func.getLoc(), func, 0);
+  }
+  mlir::PassManager pm(&mlir_context);
+  pm.addPass(CreateOrdinalAssignmentPass());
+  if (failed(pm.run(module)))
+    return absl::InternalError("failed to run ordinal assignment pass");
+  return absl::OkStatus();
+}
+
 /*static*/ absl::StatusOr<std::unique_ptr<JitCompiler>>
 JitCompiler::Instantiate(JitCompiler::Options opts,
                          std::string_view mlir_module,
@@ -254,7 +279,13 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
     llvm::CGSCCAnalysisManager cgam;
     llvm::ModuleAnalysisManager mam;
 
-    llvm::PassBuilder pb(targetMachine);
+    llvm::PipelineTuningOptions tuningOptions;
+    // LLVM's loop unrolling isn't well tuned for the loops we emit. Turn it off
+    // as it consumes compile time with little benefit.
+    tuningOptions.LoopUnrolling = false;
+    // Vectorization happens at the MLIR level.
+    tuningOptions.LoopVectorization = false;
+    llvm::PassBuilder pb(targetMachine, tuningOptions);
 
     pb.registerModuleAnalyses(mam);
     pb.registerCGSCCAnalyses(cgam);
@@ -315,13 +346,18 @@ MakeOptimizingTransformerForJit(llvm::TargetMachine* targetMachine) {
         Executable::GetResultsMemoryLayout(*runtime_signature);
     if (!results_memory_layout.ok()) return results_memory_layout.status();
 
+    bool requires_blas = false;
+    if (Attribute requires_blas_attr = func->getAttr("xla.requires_blas")) {
+      requires_blas = cast<BoolAttr>(requires_blas_attr).getValue();
+    }
+
     // Add function with an unresolved function pointer; it will be updated once
     // we compile the input module to the native executable.
     functions.push_back(Executable::Function(
         name,
         /*fptr=*/nullptr, std::move(*signature), std::move(*runtime_signature),
-        std::move(*arguments_memory_layout),
-        std::move(*results_memory_layout)));
+        std::move(*arguments_memory_layout), std::move(*results_memory_layout),
+        requires_blas));
   }
 
   // Run the compilation pipeline to lower the module to LLVM dialect.

@@ -20,7 +20,8 @@ from absl.testing import parameterized
 
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.checkpoint import checkpoint_management
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.compiler.xla.experimental import xla_sharding
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import tpu_replicated_variable
@@ -160,7 +161,7 @@ class TPUStrategyModelParallelismTest(
 
     @def_function.function
     def f(x):
-      replica_ctx = distribution_strategy_context.get_replica_context()
+      replica_ctx = distribute_lib.get_replica_context()
       with replica_ctx.experimental_logical_device(0):
         y = v * x
       with replica_ctx.experimental_logical_device(1):
@@ -186,8 +187,8 @@ class TPUStrategyModelParallelismTest(
       def __init__(self, v, w):
         super(PartitionedModel, self).__init__()
 
-        assert distribution_strategy_context.has_strategy()
-        strategy = distribution_strategy_context.get_strategy()
+        assert distribute_lib.has_strategy()
+        strategy = distribute_lib.get_strategy()
 
         with strategy.extended.experimental_logical_device(0):
           self.v = variables.Variable(v)
@@ -195,7 +196,7 @@ class TPUStrategyModelParallelismTest(
           self.w = variables.Variable(w)
 
       def __call__(self, x):
-        replica_ctx = distribution_strategy_context.get_replica_context()
+        replica_ctx = distribute_lib.get_replica_context()
         with replica_ctx.experimental_logical_device(0):
           y = self.v * x
         with replica_ctx.experimental_logical_device(1):
@@ -488,6 +489,55 @@ class TPUStrategyModelParallelismTest(
     self.assertAllEqual(
         (arg + 3) * num_replicas,
         self.evaluate(strategy.reduce("SUM", result, axis=None)))
+
+  # Tests auto_to_manual_spmd_partition and manual_to_auto_spmd_partition.
+  # The internal versions of these ops are XlaSpmdFullToShardShape and
+  # XlaSpmdShardToFullShape.
+  def test_manual_sharding_ops(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    @def_function.function
+    def fn(x):
+      x_split = strategy.experimental_split_to_logical_devices(x, [1, 2])
+      split_sharding = xla_sharding.get_op_sharding(x_split.op)
+      x_manual = xla_sharding.auto_to_manual_spmd_partition(
+          x_split, split_sharding
+      )
+      y_manual = x_manual + 1
+      y_split = xla_sharding.manual_to_auto_spmd_partition(
+          y_manual, split_sharding, (2, 2)
+      )
+      return y_split
+
+    arg = constant_op.constant(0, shape=(2, 2), dtype=dtypes.int64)
+    result = strategy.run(fn, args=(arg,))
+    self.assertAllEqual(
+        (arg + 1) * num_replicas,
+        self.evaluate(strategy.reduce("SUM", result, axis=None)),
+    )
+
+  def test_spmd_with_map_outside_comp(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    def host_inc(x):
+      return x + 1
+
+    @def_function.function
+    def fn(a):
+      b = strategy.experimental_split_to_logical_devices(a, [2, 1])
+      c = tpu_replication.experimental_map_outside_compilation(host_inc, b)
+      d = strategy.experimental_split_to_logical_devices(c, [2, 1])
+      return d
+
+    arg = constant_op.constant(
+        [[0, 1], [2, 3]], shape=(2, 2), dtype=dtypes.int64
+    )
+    result = strategy.run(fn, args=(arg,))
+    expected = (arg + 1) * num_replicas
+    self.assertAllEqual(
+        expected, self.evaluate(strategy.reduce("SUM", result, axis=None))
+    )
+
 
 if __name__ == "__main__":
   test.main()

@@ -1171,7 +1171,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     if hasattr(dataset, "map_with_legacy_function"):
       # NOTE: In the legacy function, resource is captured by value.
       with self.assertRaisesWithPredicateMatch(
-          AttributeError, "'Tensor' object has no attribute 'assign_add'"):
+          AttributeError, ".*Tensor.* object has no attribute 'assign_add'"
+      ):
         dataset.map_with_legacy_function(func)
 
     dataset = dataset.map(func)
