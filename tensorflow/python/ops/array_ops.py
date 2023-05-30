@@ -3378,12 +3378,17 @@ def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
                                     #  [2, 1, 1, 2, 3, 3, 2],
                                     #  [5, 4, 4, 5, 6, 6, 5],
                                     #  [5, 4, 4, 5, 6, 6, 5]]
+                
+  tf.pad(t, paddings, "WRAP")       # [[2, 3, 1, 2, 3, 1, 2],
+                                    #  [2, 3, 1, 2, 3, 1, 2],
+                                    #  [5, 6, 4, 5, 6, 4, 5],
+                                    #  [5, 6, 4, 5, 6, 4, 5]] 
   ```
 
   Args:
     tensor: A `Tensor`.
     paddings: A `Tensor` of type `int32`.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    mode: One of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC" (case-insensitive)
     constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
       same type as `tensor`.
     name: A name for the operation (optional).
@@ -3392,7 +3397,7 @@ def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC".
   """
   return pad(tensor, paddings, mode, name, constant_values)
 
@@ -3437,12 +3442,17 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
                                     #  [2, 1, 1, 2, 3, 3, 2],
                                     #  [5, 4, 4, 5, 6, 6, 5],
                                     #  [5, 4, 4, 5, 6, 6, 5]]
+
+  tf.pad(t, paddings, "WRAP")       # [[2, 3, 1, 2, 3, 1, 2],
+                                    #  [2, 3, 1, 2, 3, 1, 2],
+                                    #  [5, 6, 4, 5, 6, 4, 5],
+                                    #  [5, 6, 4, 5, 6, 4, 5]] 
   ```
 
   Args:
     tensor: A `Tensor`.
     paddings: A `Tensor` of type `int32`.
-    mode: One of "CONSTANT", "REFLECT", or "SYMMETRIC" (case-insensitive)
+    mode: One of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC" (case-insensitive)
     name: A name for the operation (optional).
     constant_values: In "CONSTANT" mode, the scalar pad value to use. Must be
       same type as `tensor`.
@@ -3451,7 +3461,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC".
   """
 
   # Convert lower/mixed case to upper for NumPy compatibility
@@ -3473,6 +3483,10 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   elif mode == "SYMMETRIC":
     result = gen_array_ops.mirror_pad(
         tensor, paddings, mode="SYMMETRIC", name=name)
+  elif mode == "WRAP":
+    result = _wrap_pad(
+      tensor, paddings, name=name
+    )
   else:
     raise ValueError("Value of argument `mode` expected to be "
                      """one of "CONSTANT", "REFLECT", or "SYMMETRIC". """
@@ -3517,7 +3531,190 @@ def _get_paddings_constant(paddings):
     return [_get_paddings_constant(x) for x in paddings]
   else:
     return paddings
+  
+def _wrap_pad(tensor, paddings, name=None):
+  """Helper to create wrap pad option with ops already built.
 
+  See `pad` for more info on how this function works.
+  """
+  # use constant padding to create a tensor with final shape and original values.
+  padded = gen_array_ops.pad(tensor, paddings, name=name)
+  original_area_slice = []
+  for index, dim in enumerate(padded.TensorShape):
+    original_area_slice += dim - paddings[index,1] - tensor.dim_size(index)
+  pad_width = _as_pairs(pad_width, tensor.ndim)
+  axes = range(padded.ndims)
+  for axis, (left_index, right_index) in zip(axes, pad_width):
+            roi = _view_roi(padded, original_area_slice, axis)
+            while left_index > 0 or right_index > 0:
+                # Iteratively pad until dimension is filled with wrapped
+                # values. This is necessary if the pad area is larger than
+                # the length of the original values in the current dimension.
+                left_index, right_index = _set_wrap_both(
+                    roi, axis, (left_index, right_index))
+                
+  return padded
+
+def _view_roi(tensor, original_area_slice, axis):
+    """
+    Get a view of the current region of interest during iterative padding.
+
+    When padding multiple dimensions iteratively corner values are
+    unnecessarily overwritten multiple times. This function reduces the
+    working area for the first dimensions so that corners are excluded.
+
+    Parameters
+    ----------
+    tensor : ndtensor
+        The tensor with the region of interest.
+    original_area_slice : tuple of slices
+        Denotes the area with original values of the unpadded tensor.
+    axis : int
+        The currently padded dimension assuming that `axis` is padded before
+        `axis` + 1.
+
+    Returns
+    -------
+    roi : ndtensor
+        The region of interest of the original `array`.
+    """
+    axis += 1
+    sl = (slice(None),) * axis + original_area_slice[axis:]
+    return tensor[sl]
+
+def _set_wrap_both(padded, axis, width_pair):
+    """
+    Pad `axis` of `tensor` with wrapped values.
+
+    Parameters
+    ----------
+    padded : ndtenxor
+        Input tensor of arbitrary shape.
+    axis : int
+        Axis along which to pad `tensor`.
+    width_pair : (int, int)
+        Pair of widths that mark the pad area on both sides in the given
+        dimension.
+
+    Returns
+    -------
+    pad_amt : tuple of ints, length 2
+        New index positions of padding to do along the `axis`. If these are
+        both 0, padding is done in this dimension.
+    """
+    left_pad, right_pad = width_pair
+    period = padded.shape[axis] - right_pad - left_pad
+
+    # If the current dimension of `arr` doesn't contain enough valid values
+    # (not part of the undefined pad area) we need to pad multiple times.
+    # Each time the pad area shrinks on both sides which is communicated with
+    # these variables.
+    new_left_pad = 0
+    new_right_pad = 0
+
+    if left_pad > 0:
+        # Pad with wrapped values on left side
+        # First slice chunk from right side of the non-pad area.
+        # Use min(period, left_pad) to ensure that chunk is not larger than
+        # pad area
+        right_slice = _slice_at_axis(
+            slice(-right_pad - min(period, left_pad),
+                  -right_pad if right_pad != 0 else None),
+            axis
+        )
+        right_chunk = padded[right_slice]
+
+        if left_pad > period:
+            # Chunk is smaller than pad area
+            pad_area = _slice_at_axis(slice(left_pad - period, left_pad), axis)
+            new_left_pad = left_pad - period
+        else:
+            # Chunk matches pad area
+            pad_area = _slice_at_axis(slice(None, left_pad), axis)
+        padded[pad_area] = right_chunk
+
+    if right_pad > 0:
+        # Pad with wrapped values on right side
+        # First slice chunk from left side of the non-pad area.
+        # Use min(period, right_pad) to ensure that chunk is not larger than
+        # pad area
+        left_slice = _slice_at_axis(
+            slice(left_pad, left_pad + min(period, right_pad),), axis)
+        left_chunk = padded[left_slice]
+
+        if right_pad > period:
+            # Chunk is smaller than pad area
+            pad_area = _slice_at_axis(
+                slice(-right_pad, -right_pad + period), axis)
+            new_right_pad = right_pad - period
+        else:
+            # Chunk matches pad area
+            pad_area = _slice_at_axis(slice(-right_pad, None), axis)
+        padded[pad_area] = left_chunk
+
+    return new_left_pad, new_right_pad
+
+def _slice_at_axis(sl, axis):
+    """
+    Construct tuple of slices to slice an array in the given dimension.
+
+    Parameters
+    ----------
+    sl : slice
+        The slice for the given dimension.
+    axis : int
+        The axis to which `sl` is applied. All other dimensions are left
+        "unsliced".
+
+    Returns
+    -------
+    sl : tuple of slices
+        A tuple with slices matching `shape` in length.
+
+    Examples
+    --------
+    >>> _slice_at_axis(slice(None, 3, -1), 1)
+    (slice(None, None, None), slice(None, 3, -1), (...,))
+    """
+    return (slice(None),) * axis + (sl,) + (...,)
+
+def _as_pairs(x, ndim):
+    """
+    Broadcast `x` to a tensor with the shape (`ndim`, 2).
+
+    A helper function for `_wrap_pad` that prepares and validates arguments like
+    `pad_width` for iteration in pairs.
+
+    Parameters
+    ----------
+    x : {None, scalar, tensor-like}
+        The object to broadcast to the shape (`ndim`, 2).
+    ndim : int
+        Number of pairs the broadcasted `x` will have.
+
+    Returns
+    -------
+    pairs : nested iterables, shape (`ndim`, 2)
+        The broadcasted version of `x`.
+    """
+    if x.ndim < 3:
+        # Optimization: Possibly use faster paths for cases where `x` has
+        # only 1 or 2 elements.
+
+        if x.size == 1:
+            # x was supplied as a single value
+            return ((x[0], x[0]),) * ndim
+
+        if x.size == 2 and x.shape != (2, 1):
+            # x was supplied with a single value for each side
+            # but except case when each dimension has a single value
+            # which should be broadcasted to a pair,
+            # e.g. [[1], [2]] -> [[1, 1], [2, 2]] not [[1, 2], [1, 2]]
+            return ((x[0], x[1]),) * ndim
+
+    # Converting the array with `tolist` seems to improve performance
+    # when iterating and indexing the result (see usage in `pad`)
+    return broadcast_to(x, (ndim, 2)).tolist()
 
 @tf_export("meshgrid")
 @dispatch.add_dispatch_support

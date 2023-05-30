@@ -142,6 +142,16 @@ class ArrayOpTest(test.TestCase):
     ):
       gen_array_ops.lower_bound(arg0, arg1)
 
+  def testWrapPadOp(self):
+    # Op implemented in Python so test is found here.
+    t = array_ops.constant([[1, 2, 3], [4, 5, 6]])
+    paddings = array_ops.constant([[1, 1,], [2, 2]])
+    self.assertAllEqual(
+      array_ops._wrap_pad(t, paddings), array_ops.constant([[2, 3, 1, 2, 3, 1, 2],
+                                    [2, 3, 1, 2, 3, 1, 2],
+                                    [5, 6, 4, 5, 6, 4, 5],
+                                    [5, 6, 4, 5, 6, 4, 5]] )
+    )
 
 if __name__ == "__main__":
   test.main()
