@@ -626,7 +626,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Scenario (2): File cache exists for this function; restore from the cache.
   if (env->FileExists(file_name).ok()) {
-    VLOG(3) << "Cache existed; reading from cache; file_name: " << file_name;
+    LOG(INFO)
+        << "TensorFlow graph cache existed; reading from cache; function name: "
+        << function_name << ", full cache file path: " << file_name;
 
     StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
         ReadFromCache(file_name, env);
@@ -673,8 +675,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Step 2: Write the optimized function graph into the cache if eligible.
   if (graph_optimization_duration >= caching_threshold_duration) {
-    VLOG(3) << "Writing optimized graph into cache: function name: "
-            << function_name << ", full cache file path: " << file_name;
+    LOG(INFO)
+        << "Writing optimized TensorFlow graph into cache: function name: "
+        << function_name << ", full cache file path: " << file_name;
     Status s = WriteToCache(dir_name, file_name,
                             optimized_function_graph_info.value(), env);
     // If writing to cache failed, log the error message and move on without
