@@ -409,7 +409,8 @@ class XlaCallModuleOp : public XlaOpKernel {
       options.use_tuple_arg = true;
       options.always_return_tuple = true;
       options.is_entry_computation = false;
-      options.add_token_input_output = custom_call_has_token_input_output;
+      // Propagate tokens from XlaCallModule to inner computation.
+      options.add_token_input_output = op_has_token_input_output_;
 
       XlaCompiler::CompilationResult result;
       TF_RETURN_IF_ERROR(
@@ -427,44 +428,63 @@ class XlaCallModuleOp : public XlaOpKernel {
 
       // Pack all arguments into a tuple (`options.use_tuple_arg` is true). If
       // `has_tuple_input_output` is true, the first argument is a token type.
-      llvm::SmallVector<mlir::Value> args;
-      args.reserve(result.input_mapping.size());
-      for (int index : result.input_mapping) {
-        if (options.add_token_input_output) {
+      mlir::Value arg_tuple;
+      {
+        llvm::SmallVector<mlir::Value> args(custom_call->getOperands());
+        if (custom_call_has_token_input_output) {
           // Adjust the indexes since custom calls with `has_token_input_output`
           // takes a token as the first argument, but TF2XLA'ed computation
           // expects the token to be the last argument.
-          if (index == custom_call->getNumOperands() - 1) {
-            index = 0;
-          } else {
-            ++index;
-          }
+          std::rotate(args.begin(), args.begin() + 1, args.end());
+        } else if (options.add_token_input_output) {
+          // Add a dummy token if the inner computation takes a token but the
+          // custom call doesn't have a token argument.
+          args.push_back(builder.create<mlir::mhlo::CreateTokenOp>(loc));
         }
-        args.push_back(custom_call->getOperand(index));
+
+        llvm::SmallVector<mlir::Value> elements;
+        elements.reserve(result.input_mapping.size());
+        for (int index : result.input_mapping) {
+          elements.push_back(args[index]);
+        }
+        arg_tuple =
+            builder.create<mlir::mhlo::TupleOp>(loc, elements).getResult();
       }
-      auto arg_tuple = builder.create<mlir::mhlo::TupleOp>(loc, args);
 
       // Call the lowered function.
       auto call = builder.create<mlir::func::CallOp>(
-          loc, main_func, mlir::ValueRange(arg_tuple.getResult()));
+          loc, main_func, mlir::ValueRange(arg_tuple));
 
       // Unpack the result tuple (`options.always_return_tuple` is true). If
       // `has_tuple_input_output` is true, the first result is a token type.
-      for (mlir::OpResult result : custom_call->getOpResults()) {
-        int index = result.getResultNumber();
-        if (options.add_token_input_output) {
+      {
+        llvm::SmallVector<mlir::Value> results(custom_call->getResults());
+        if (custom_call_has_token_input_output) {
           // Adjust the indexes since custom calls with `has_token_input_output`
           // returns a token as the first result, but TF2XLA'ed computation
           // returns the token as the last result.
-          if (index == 0) {
-            index = custom_call->getNumResults() - 1;
-          } else {
-            --index;
+          std::rotate(results.begin(), results.begin() + 1, results.end());
+
+          if (!options.add_token_input_output) {
+            // If the custom call returns a token but the inner computation
+            // doesn't, replace the token result with a dummy token.
+            mlir::Value token = results.back();
+            if (!token.use_empty()) {
+              token.replaceAllUsesWith(
+                  builder.create<mlir::mhlo::CreateTokenOp>(loc));
+            }
+            results.pop_back();
           }
         }
-        auto get_tuple_element = builder.create<mlir::mhlo::GetTupleElementOp>(
-            loc, call.getResults().front(), index);
-        result.replaceAllUsesWith(get_tuple_element.getResult());
+
+        for (const auto &it : llvm::enumerate(results)) {
+          if (!it.value().use_empty()) {
+            auto get_tuple_element =
+                builder.create<mlir::mhlo::GetTupleElementOp>(
+                    loc, call.getResults().front(), it.index());
+            it.value().replaceAllUsesWith(get_tuple_element.getResult());
+          }
+        }
       }
 
       updated_funcs.insert(call->getParentOfType<mlir::func::FuncOp>());
