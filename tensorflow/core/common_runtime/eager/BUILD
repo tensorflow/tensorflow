@@ -465,6 +465,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "summary_optimizer",
+    srcs = ["summary_optimizer.cc"],
+    hdrs = ["summary_optimizer.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "summary_optimizer_test",
+    srcs = ["summary_optimizer_test.cc"],
+    deps = [
+        ":summary_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:core_cpu_lib",
     "//tensorflow/core:framework",
