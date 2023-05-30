@@ -643,6 +643,20 @@ func.func @RetainRedundantReshapeUseInNonBinaryOp(%arg0: tensor<128xf32>, %arg1:
   // CHECK: return %1, %2
 }
 
+// CHECK-LABEL: @FuseTransposeReshapeTranspose
+func.func @FuseTransposeReshapeTranspose(%arg0: tensor<1x16x256xf32>) -> tensor<16x256xf32> {
+  %cst_10 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
+  %cst_3 = arith.constant dense<[256, 16]> : tensor<2xi32>
+  %cst_6 = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %2057 = "tfl.transpose"(%arg0, %cst_10) : (tensor<1x16x256xf32>, tensor<3xi32>) -> tensor<1x256x16xf32>
+  %2058 = "tfl.reshape"(%2057, %cst_3) : (tensor<1x256x16xf32>, tensor<2xi32>) -> tensor<256x16xf32>
+  %2059 = "tfl.transpose"(%2058, %cst_6) : (tensor<256x16xf32>, tensor<2xi32>) -> tensor<16x256xf32>
+  return %2059: tensor<16x256xf32>
+  // CHECK-DAG: %cst = arith.constant dense<[16, 256]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x16x256xf32>, tensor<2xi32>) -> tensor<16x256xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 // FOLD-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 func.func @FuseFullyConnectedReshapeAddConstWithOptionalAttribute(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {

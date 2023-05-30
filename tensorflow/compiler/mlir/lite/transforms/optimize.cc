@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -344,15 +344,25 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 
 // Returns shape of a ranked tensor.
 // Precondition: output_val's is ranked tensor.
-DenseElementsAttr GetShape(Value output_val) {
+// Returns a truncated shape when `truncate` is set to true.
+DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
 
   SmallVector<int32_t> shape;
   shape.reserve(output_type.getRank());
-  for (int64_t dim : output_type.getShape()) {
+
+  bool needs_truncation = true;
+  for (size_t dim_idx = 0; dim_idx < output_type.getRank(); ++dim_idx) {
+    int64_t dim = output_type.getShape()[dim_idx];
+    if (truncate && needs_truncation && dim == 1) {
+      continue;
+    } else if (needs_truncation && dim != 1) {
+      needs_truncation = false;
+    }
     shape.push_back(ShapedType::isDynamic(dim) ? -1
                                                : static_cast<int32_t>(dim));
   }
+
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
