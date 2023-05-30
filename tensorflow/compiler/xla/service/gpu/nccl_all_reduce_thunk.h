@@ -50,20 +50,10 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 };
 
 // -----------------------------------------------------------------------------
-// AllReduce thunks
+// AllReduce thunk.
 // -----------------------------------------------------------------------------
 
-class NcclAllReduceThunkBase : public NcclAllReduceReduceScatterThunkBase {
- public:
-  using NcclAllReduceReduceScatterThunkBase::
-      NcclAllReduceReduceScatterThunkBase;
-
- protected:
-  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-};
-
-class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
+class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclAllReduceStartThunk(ThunkInfo thunk_info,
                           mlir::lmhlo_gpu::AllReduceStartOp op,
@@ -87,6 +77,9 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
                            ncclComm_t comm) override;
 
  private:
+  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
+                      ncclComm_t comm);
+
   AsyncExecutor async_;
 };
 
@@ -98,20 +91,9 @@ class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
 };
 
 // -----------------------------------------------------------------------------
-// ReduceScatter thunks
+// ReduceScatter thunk
 // -----------------------------------------------------------------------------
-
-class NcclReduceScatterThunkBase : public NcclAllReduceReduceScatterThunkBase {
- public:
-  using NcclAllReduceReduceScatterThunkBase::
-      NcclAllReduceReduceScatterThunkBase;
-
- protected:
-  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
-                          ncclComm_t comm);
-};
-
-class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
+class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterStartThunk(ThunkInfo thunk_info,
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
@@ -134,6 +116,9 @@ class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
                            ncclComm_t comm) override;
 
  private:
+  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
+                          ncclComm_t comm);
+
   AsyncExecutor async_;
 };
 

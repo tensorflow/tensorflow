@@ -31,9 +31,10 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+using mlir::lmhlo_gpu::AllToAllStartOp;
+
 namespace impl {
-template <typename OpT>
-NcclAllToAllConfig GetNcclAllToAllConfig(OpT op) {
+NcclAllToAllConfig GetNcclAllToAllConfig(AllToAllStartOp op) {
   NcclAllToAllConfig config;
   // FIXME(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
   // attribute and it should be removed.
@@ -42,8 +43,7 @@ NcclAllToAllConfig GetNcclAllToAllConfig(OpT op) {
   return config;
 }
 
-template <typename OpT>
-Status CheckImplementable(OpT op) {
+Status CheckImplementable(AllToAllStartOp op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   std::optional<uint64_t> split_dim = op.getSplitDimension();
   for (mlir::Value operand : op.getInputs()) {
@@ -60,48 +60,30 @@ Status CheckImplementable(OpT op) {
 }
 }  // namespace impl
 
-NcclAllToAllThunkBase::NcclAllToAllThunkBase(Kind kind, ThunkInfo thunk_info,
-                                             NcclAllToAllConfig config,
-                                             std::vector<Buffer> buffers)
-    : NcclCollectiveThunk(kind, thunk_info),
-      config_(std::move(config)),
+NcclAllToAllStartThunk::NcclAllToAllStartThunk(
+    ThunkInfo thunk_info, AllToAllStartOp op,
+    std::vector<NcclCollectiveThunk::Buffer> buffers)
+    : NcclCollectiveThunk(Thunk::kNcclAllToAllStart, thunk_info),
+      config_(impl::GetNcclAllToAllConfig(op)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
 }
 
-Status NcclAllToAllThunkBase::RunAllToAll(const ExecuteParams& params,
-                                          se::Stream& stream, ncclComm_t comm) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, buffers_,
-                             config_.config.operand_element_type));
-  return xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers,
-                               stream, comm);
-}
-
-NcclAllToAllStartThunk::NcclAllToAllStartThunk(
-    ThunkInfo thunk_info, mlir::lmhlo_gpu::AllToAllStartOp op,
-    std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclAllToAllThunkBase(Thunk::kNcclAllToAllStart, thunk_info,
-                            impl::GetNcclAllToAllConfig(op),
-                            std::move(buffers)) {}
-
 /*static*/ Status NcclAllToAllStartThunk::CheckImplementable(
-    mlir::lmhlo_gpu::AllToAllStartOp op, int64_t replica_count,
-    int64_t partition_count) {
+    AllToAllStartOp op, int64_t replica_count, int64_t partition_count) {
   return AddOpDescription<NcclAllToAllStartThunk>(
       impl::CheckImplementable(op), op, replica_count, partition_count);
 }
 
-/*static*/ bool NcclAllToAllStartThunk::IsDegenerate(
-    mlir::lmhlo_gpu::AllToAllStartOp op, int64_t replica_count,
-    int64_t partition_count) {
+/*static*/ bool NcclAllToAllStartThunk::IsDegenerate(AllToAllStartOp op,
+                                                     int64_t replica_count,
+                                                     int64_t partition_count) {
   return impl::GetNcclAllToAllConfig(op).config.IsDegenerate(replica_count,
                                                              partition_count);
 }
 
 /*static*/ CollectiveOpGroupMode NcclAllToAllStartThunk::GetGroupMode(
-    mlir::lmhlo_gpu::AllToAllStartOp op) {
+    AllToAllStartOp op) {
   return impl::GetNcclAllToAllConfig(op).config.group_mode;
 }
 
@@ -112,6 +94,17 @@ Status NcclAllToAllStartThunk::RunNcclCollective(const ExecuteParams& params,
         return RunAllToAll(params, stream, comm);
       },
       params, comm);
+}
+
+Status NcclAllToAllStartThunk::RunAllToAll(const ExecuteParams& params,
+                                           se::Stream& stream,
+                                           ncclComm_t comm) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DeviceBufferPair> device_buffers,
+      ConvertToDeviceBuffers(params, buffers_,
+                             config_.config.operand_element_type));
+  return xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers,
+                               stream, comm);
 }
 
 NcclAllToAllDoneThunk::NcclAllToAllDoneThunk(

@@ -28,25 +28,8 @@ struct NcclAllGatherConfig {
   NcclCollectiveConfig config;
 };
 
-// Base class for thunk that performs a NCCL-based All-Gather among CUDA
-// GPU-based replicas.
-class NcclAllGatherThunkBase : public NcclCollectiveThunk {
- public:
-  NcclAllGatherThunkBase(Kind kind, ThunkInfo thunk_info,
-                         NcclAllGatherConfig config,
-                         std::vector<Buffer> buffers);
-
- protected:
-  Status RunAllGather(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-
- private:
-  const NcclAllGatherConfig config_;
-  const std::vector<Buffer> buffers_;
-};
-
-class NcclAllGatherStartThunk : public NcclAllGatherThunkBase {
+// Thunk that performs a NCCL-based All-Gather among CUDA GPU-based replicas.
+class NcclAllGatherStartThunk : public NcclCollectiveThunk {
  public:
   NcclAllGatherStartThunk(ThunkInfo thunk_info,
                           mlir::lmhlo_gpu::AllGatherStartOp op,
@@ -66,10 +49,16 @@ class NcclAllGatherStartThunk : public NcclAllGatherThunkBase {
   AsyncExecutor& async_executor() { return async_; }
 
  protected:
+  const NcclCollectiveConfig& config() const override { return config_.config; }
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
  private:
+  Status RunAllGather(const ExecuteParams& params, se::Stream& stream,
+                      ncclComm_t comm);
+
+  const NcclAllGatherConfig config_;
+  const std::vector<Buffer> buffers_;
   AsyncExecutor async_;
 };
 
