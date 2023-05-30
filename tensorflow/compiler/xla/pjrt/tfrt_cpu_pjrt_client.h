@@ -89,7 +89,7 @@ class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
 
 class TfrtCpuDevice final : public PjRtDevice {
  public:
-  TfrtCpuDevice(int id, bool asynchronous);
+  explicit TfrtCpuDevice(int id, int max_inflight_computations = 32);
 
   const TfrtCpuDeviceDescription& description() const override {
     return description_;
@@ -490,10 +490,11 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 // the XLA_FLAGS environment variable.
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
 
-// Similar to the function above, but you can set the number of devices
-// explicitly.
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
-                                                       int cpu_device_count);
+// Similar to the function above, but you can set the number of devices and max
+// number of inflight computations per device explicitly.
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+    bool asynchronous, int cpu_device_count,
+    int max_inflight_computations_per_device = 32);
 
 }  // namespace xla
 
