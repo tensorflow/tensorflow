@@ -104,7 +104,7 @@ like this:
     [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification).
 *   *Tweak the number of threads.* Many TensorFlow Lite operators support
     multi-threaded kernels. You can use `SetNumThreads()` in the
-    [C++ API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/interpreter.h#L345)
+    [C++ API](https://github.com/tensorflow/tensorflow/blob/1374a1c61ead0935553cc65ede03a988f9c8cb9f/tensorflow/lite/core/interpreter_builder.h#L110)
     to do this. However, increasing threads results in performance variability
     depending on the environment.
 *   *Use Hardware Accelerators.* TensorFlow Lite supports model acceleration for
