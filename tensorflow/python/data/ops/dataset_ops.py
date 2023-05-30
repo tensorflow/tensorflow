@@ -620,7 +620,7 @@ class DatasetV2(
             f"`tf.data.Dataset.as_numpy_iterator()` is not supported for "
             f"datasets that produce values of type {component_spec.value_type}")
 
-    return _NumpyIterator(self)
+    return NumpyIterator(self)
 
   @property
   def _flat_shapes(self):
@@ -4666,7 +4666,8 @@ nested_structure_coder.register_codec(
 )
 
 
-class _NumpyIterator(tracking_base.Trackable):
+@tf_export("data.NumpyIterator")
+class NumpyIterator(tracking_base.Trackable):
   """Iterator over a dataset with elements converted to numpy."""
 
   __slots__ = ["_iterator"]
@@ -4702,13 +4703,26 @@ class _NumpyIterator(tracking_base.Trackable):
     # pylint: disable=protected-access
     return self._iterator._restore_from_tensors(restored_tensors)
 
+  # TODO(b/284309865): Remove once `_save` is no longer used anywhere.
   def _save(self):
+    # pylint: disable=protected-access
+    return self.save()
+
+  def save(self):
     # pylint: disable=protected-access
     return self._iterator._save()
 
+  # TODO(b/284309865): Remove once `_restore` is no longer used anywhere.
   def _restore(self, state):
+    return self.restore(state)
+
+  def restore(self, state):
     # pylint: disable=protected-access
     return self._iterator._restore(state)
+
+
+# TODO(b/284309865): Remove once `_NumpyIterator` is no longer used anywhere.
+_NumpyIterator = NumpyIterator
 
 
 class _VariantTracker(resource_lib.CapturableResource):
