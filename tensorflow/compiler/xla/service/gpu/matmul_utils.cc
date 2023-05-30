@@ -585,11 +585,13 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Input> output_data(output.data);
 
+#if GOOGLE_CUDA
   if (algorithm) {
     return DoGemmWithAlgorithm<Input, Input>(
         batch_size, m, n, k, lhs, rhs, output, alpha, beta, stream, *algorithm,
         compute_precision, profile_result);
   }
+#endif
 
   if (batch_size != 1) {
     return stream->ThenBlasGemmStridedBatched(
