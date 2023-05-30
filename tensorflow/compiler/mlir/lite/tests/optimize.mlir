@@ -657,6 +657,32 @@ func.func @FuseTransposeReshapeTranspose(%arg0: tensor<1x16x256xf32>) -> tensor<
   // CHECK: return %0
 }
 
+// CHECK-LABEL: @FoldDoubleTranspose
+func.func @FoldDoubleTranspose(%arg0: tensor<1x4x1440x256xf32>) -> tensor<1x1440x256x4xf32> {
+    %cst_12 = arith.constant dense<[0, 1, 3, 2]> : tensor<4xi32>
+    %cst_18 = arith.constant dense<[0, 2, 1, 3]> : tensor<4xi32>
+    %2112 = "tfl.transpose"(%arg0, %cst_18) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x1440x4x256xf32>
+    %2114 = "tfl.transpose"(%2112, %cst_12) : (tensor<1x1440x4x256xf32>, tensor<4xi32>) -> tensor<1x1440x256x4xf32>
+    return %2114 : tensor<1x1440x256x4xf32>
+  // CHECK-DAG: %cst = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+  // CHECK: %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x1440x256x4xf32>
+  // CHECK: return %0
+}
+
+// CHECK-LABEL: @FoldMultpleTranspose
+func.func @FoldMultpleTranspose(%arg0: tensor<1x4x1440x256xf32>) -> tensor<1x256x4x1440xf32> {
+    %cst_11 = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+    %cst_12 = arith.constant dense<[0, 1, 3, 2]> : tensor<4xi32>
+    %cst_18 = arith.constant dense<[0, 2, 1, 3]> : tensor<4xi32>
+    %2112 = "tfl.transpose"(%arg0, %cst_11) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x1440x256x4xf32>
+    %2113 = "tfl.transpose"(%2112, %cst_18) : (tensor<1x1440x256x4xf32>, tensor<4xi32>) -> tensor<1x256x1440x4xf32>
+    %2114 = "tfl.transpose"(%2113, %cst_12) : (tensor<1x256x1440x4xf32>, tensor<4xi32>) -> tensor<1x256x4x1440xf32>
+    return %2114 : tensor<1x256x4x1440xf32>
+  // CHECK-DAG: %cst = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  // CHECK: %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x256x4x1440xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 // FOLD-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 func.func @FuseFullyConnectedReshapeAddConstWithOptionalAttribute(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {

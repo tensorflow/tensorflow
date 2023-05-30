@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -368,6 +369,34 @@ DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::ArrayRef(shape));
+}
+
+// Utility function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+DenseElementsAttr RemapPermutation(Value permutation1, Value permutation2) {
+  SmallVector<int32_t> initial_permutation;
+  DenseElementsAttr perm1_const;
+  DenseElementsAttr perm2_const;
+
+  SmallVector<int32_t> new_permutation;
+  if (matchPattern(permutation1, m_Constant(&perm1_const)) &&
+      matchPattern(permutation2, m_Constant(&perm2_const))) {
+    for (int32_t idx = 0; idx < perm1_const.getNumElements(); ++idx) {
+      initial_permutation.push_back(idx);
+    }
+    for (auto perm : perm2_const.getValues<APInt>()) {
+      new_permutation.push_back(
+          initial_permutation[perm1_const
+                                  .getValues<APInt>()[perm.getSExtValue()]
+                                  .getSExtValue()]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(new_permutation.size())},
+          mlir::IntegerType::get(permutation1.getContext(), 32)),
+      llvm::ArrayRef(new_permutation));
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in

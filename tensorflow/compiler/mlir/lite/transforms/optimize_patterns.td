@@ -716,6 +716,19 @@ def ConvertTrasposeReshapeTransposeToReshape : Pat<
   [(IsTruncatedShapeEqualTo $first_transpose, $middle_reshape),
    (IsTruncatedShapeEqualTo $input, $second_transpose)]>;
 
+// Function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
+
+// Pattern to fuse redundant tanspose op
+def FoldDoubleTranspose : Pat<
+  (TFL_TransposeOp
+    (TFL_TransposeOp:$transpose_out1 $input, (Arith_ConstantOp:$permutation1 $p1)),
+    (Arith_ConstantOp:$permutation2 $p2)),
+  (TFL_TransposeOp $input,
+    (Arith_ConstantOp (RemapPermutation $permutation1, $permutation2))),
+  [(HasOneUse $transpose_out1)]>;
+
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
   (TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
