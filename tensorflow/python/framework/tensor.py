@@ -323,6 +323,10 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     if not context.executing_eagerly():
       self._disallow_iteration()
 
+    first_dim = self._get_first_dim()
+    return _TensorIterator(self, first_dim)
+
+  def _get_first_dim(self):
     shape = self._shape_tuple()
     if shape is None:
       raise TypeError("Cannot iterate over a tensor with unknown shape.")
@@ -331,7 +335,7 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
     if shape[0] is None:
       raise TypeError(
           "Cannot iterate over a tensor with unknown first dimension.")
-    return _TensorIterator(self, shape[0])
+    return shape[0]
 
   def _shape_as_list(self):
     if self.shape.ndims is not None:
