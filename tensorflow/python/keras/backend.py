@@ -4888,6 +4888,15 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
 
+  # assert that the class probabilities aren't too far off from summing to 1
+  threshold = 1e-5
+  assert math_ops.less(
+    math_ops.sub(
+      math_ops.reduce_sum(output, axis, True),
+      1
+    ),
+    threshold
+  ), f"Class probabilities must sum to 1, but sum to {math_ops.reduce_sum(output, axis, True)}"
   # scale preds so that the class probas of each sample sum to 1
   output = output / math_ops.reduce_sum(output, axis, True)
   # Compute cross entropy from probabilities.
