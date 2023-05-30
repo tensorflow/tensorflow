@@ -1066,6 +1066,10 @@ def stack(arrays, axis=0):  # pylint: disable=missing-function-docstring
     arrays = asarray(arrays)
     if axis == 0:
       return arrays
+    elif axis < -array_ops.rank(arrays) or axis >= array_ops.rank(arrays):
+      raise ValueError(
+          f"Argument `axis` = {axis} not in range of "
+          f"[{-array_ops.rank(arrays)}, {array_ops.rank(arrays)})")
     else:
       return swapaxes(arrays, 0, axis)
   arrays = _promote_dtype(*arrays)  # pylint: disable=protected-access
