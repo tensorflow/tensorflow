@@ -1121,6 +1121,7 @@ py_strict_library(
         ":c_api_util",
         ":composite_tensor",
         ":device",
+        ":device_spec",
         ":dtypes",
         ":errors",
         ":op_callbacks",
