@@ -69,15 +69,12 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op);
   static const char* GetHloOpName() { return "collective-permute-start"; }
-  static constexpr bool IsAsync() { return true; }
 
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
                                   mlir::lmhlo_gpu::CollectivePermuteStartOp op,
                                   int64_t replica_count,
                                   int64_t partition_count,
                                   const Buffer& buffer);
-
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
@@ -90,7 +87,6 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
 
   const NcclCollectivePermuteConfig config_;
   const Buffer buffer_;
-  AsyncExecutor async_;
 };
 
 class NcclCollectivePermuteDoneThunk : public NcclCollectiveDoneThunk {

@@ -68,9 +68,6 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
-  static constexpr bool IsAsync() { return true; }
-
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
@@ -79,8 +76,6 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  private:
   Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
                       ncclComm_t comm);
-
-  AsyncExecutor async_;
 };
 
 class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
@@ -108,8 +103,6 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
-  static constexpr bool IsAsync() { return true; }
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
@@ -118,8 +111,6 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  private:
   Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
                           ncclComm_t comm);
-
-  AsyncExecutor async_;
 };
 
 class NcclReduceScatterDoneThunk : public NcclCollectiveDoneThunk {

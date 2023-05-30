@@ -252,7 +252,7 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 
 Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
                                                   ncclComm_t comm) {
-  return async_.Execute(
+  return async_executor().Execute(
       [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
         return RunAllReduce(params, stream, comm);
       },
@@ -296,7 +296,7 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
 
 Status NcclReduceScatterStartThunk::RunNcclCollective(
     const ExecuteParams& params, ncclComm_t comm) {
-  return async_.Execute(
+  return async_executor().Execute(
       [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
         return RunReduceScatter(params, stream, comm);
       },

@@ -48,9 +48,6 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllToAllStartOp op);
 
-  static constexpr bool IsAsync() { return true; }
-  AsyncExecutor& async_executor() { return async_; }
-
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
   Status RunNcclCollective(const ExecuteParams& params,
@@ -62,7 +59,6 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
 
   const NcclAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
-  AsyncExecutor async_;
 };
 
 class NcclAllToAllDoneThunk : public NcclCollectiveDoneThunk {

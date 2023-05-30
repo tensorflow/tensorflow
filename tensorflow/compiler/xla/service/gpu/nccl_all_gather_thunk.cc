@@ -84,7 +84,7 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 
 Status NcclAllGatherStartThunk::RunNcclCollective(const ExecuteParams& params,
                                                   ncclComm_t comm) {
-  return async_.Execute(
+  return async_executor().Execute(
       [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
         return RunAllGather(params, stream, comm);
       },

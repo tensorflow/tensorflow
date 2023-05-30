@@ -44,9 +44,6 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllGatherStartOp op);
-  static constexpr bool IsAsync() { return true; }
-
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
@@ -59,7 +56,6 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
 
   const NcclAllGatherConfig config_;
   const std::vector<Buffer> buffers_;
-  AsyncExecutor async_;
 };
 
 class NcclAllGatherDoneThunk : public NcclCollectiveDoneThunk {

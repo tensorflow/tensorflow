@@ -89,7 +89,7 @@ NcclAllToAllStartThunk::NcclAllToAllStartThunk(
 
 Status NcclAllToAllStartThunk::RunNcclCollective(const ExecuteParams& params,
                                                  ncclComm_t comm) {
-  return async_.Execute(
+  return async_executor().Execute(
       [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
         return RunAllToAll(params, stream, comm);
       },
