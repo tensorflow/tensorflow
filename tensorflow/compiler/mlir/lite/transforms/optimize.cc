@@ -236,8 +236,8 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
-// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
-// of `indices` are from 0 to n-1, the output tensor are identical to the
+// Returns true if we can eliminate the GatherNdOp or ScatterNdOp. When the
+// value of `indices` are from 0 to n-1, the output tensor are identical to the
 // `params`.
 bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
                                               DenseIntElementsAttr indices,
@@ -635,6 +635,78 @@ TypedAttr ConvertSingleElementAttrToFloatAttr(Attribute attr) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
+struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
+  using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::StridedSliceOp strided_slice_op,
+                                PatternRewriter &rewriter) const override {
+    // Match Add
+    mlir::TFL::AddOp add_op =
+        dyn_cast_or_null<TFL::AddOp>(strided_slice_op.getEnd().getDefiningOp());
+    mlir::TFL::SubOp sub_op =
+        dyn_cast_or_null<TFL::SubOp>(strided_slice_op.getEnd().getDefiningOp());
+    if (!(add_op || sub_op)) {
+      return failure();
+    }
+
+    // Check that add rhs is constant.
+    DenseElementsAttr added_value;
+    Value constant_val = add_op ? add_op.getRhs() : sub_op.getRhs();
+    if (!matchPattern(constant_val, m_Constant(&added_value))) return failure();
+
+    // Check the add op is applied to begin.
+    mlir::TypedValue<::mlir::TensorType> begin_tensor =
+        strided_slice_op.getBegin();
+    mlir::TypedValue<::mlir::TensorType> add_source_tensor =
+        add_op ? add_op.getLhs() : sub_op.getLhs();
+    if (begin_tensor != add_source_tensor) {
+      return failure();
+    }
+
+    // Check that strides are constant
+    DenseElementsAttr strides_value;
+    Value strides_val = strided_slice_op.getStrides();
+    if (!matchPattern(strides_val, m_Constant(&strides_value)))
+      return failure();
+
+    mlir::TensorType constant_val_type =
+        constant_val.getType().cast<TensorType>();
+    // If it's not 1D or 0D (which can be broadcasted to 1D), reject the
+    // matching.
+    if (constant_val_type.getRank() > 1) {
+      return failure();
+    }
+
+    mlir::RankedTensorType end_type =
+        strided_slice_op.getEnd().getType().dyn_cast<RankedTensorType>();
+    // begin, end and strides are Rank 1 tensors with one element per dimension
+    // of input.
+    int64_t num_dims = end_type.getShape()[0];
+    DenseElementsAttr new_added_value =
+        added_value.reshape(RankedTensorType::get(
+            {num_dims},
+            added_value.getType().cast<ShapedType>().getElementType()));
+    ::mlir::arith::ConstantOp new_end = rewriter.create<arith::ConstantOp>(
+        strided_slice_op.getEnd().getLoc(), new_added_value);
+
+    if (strided_slice_op.getBeginMask() != 0) return failure();
+    if (strided_slice_op.getEndMask() != 0) return failure();
+    if (strided_slice_op.getEllipsisMask() != 0) return failure();
+    mlir::TFL::StridedSliceOp new_strided_slice_op =
+        rewriter.create<TFL::StridedSliceOp>(
+            strided_slice_op.getLoc(), strided_slice_op.getOutput().getType(),
+            strided_slice_op.getInput(), strided_slice_op.getBegin(), new_end,
+            strided_slice_op.getStrides(), strided_slice_op.getBeginMask(),
+            strided_slice_op.getEndMask(), strided_slice_op.getEllipsisMask(),
+            strided_slice_op.getNewAxisMask(),
+            strided_slice_op.getShrinkAxisMask(),
+            /*offset=*/true);
+    rewriter.replaceOp(strided_slice_op, new_strided_slice_op.getOutput());
+
+    return success();
+  }
+};
+
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -716,7 +788,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
                   .getOutput();
         } else {
           // If the RHS is neither a scalar constant nor a 1d constant, look
-          // if there is opportunity to reduce the dimentionality and allow
+          // if there is opportunity to reduce the dimensionality and allow
           // implicit broadcasting
 
           auto new_added_value = added_value.reshape(RankedTensorType::get(
@@ -1803,7 +1875,7 @@ void OptimizePass::runOnOperation() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
-      FuseUnpackAndConcatToReshape, OptimizeTopK>(ctx);
+      FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }
