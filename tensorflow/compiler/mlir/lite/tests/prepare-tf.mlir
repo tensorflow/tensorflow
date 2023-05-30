@@ -737,4 +737,12 @@ func.func @UnsupportedGroupConv_DynamicDimAtInputDimThree(%arg0: tensor<?x1x26x?
   // CHECK: "tf.Conv2D"
 }
 
+func.func @RedundantShapeOp(%shape: tensor<?xi64>, %fill: tensor<f32>) -> (tensor<?xi64>) {
+  %0 = "tf.Fill"(%shape, %fill) : (tensor<?xi64>, tensor<f32>) -> (tensor<*xf32>)
+  %1 = "tf.Shape"(%0) : (tensor<*xf32>) -> (tensor<?xi64>)
+  func.return %1 : tensor<?xi64>
+
+  // CHECK-LABEL: RedundantShapeOp
+  // CHECK-NOT: "tf.Shape"
+}
 }

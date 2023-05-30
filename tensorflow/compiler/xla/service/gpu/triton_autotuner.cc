@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/asm_compiler.h"
@@ -305,7 +306,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
           StatusOr<CompilationResult*> res =
               Compile(fusion, device_config, conf);
           if (!res.ok()) {
-            LOG(ERROR) << "Failure: " << res.status().ToString();
+            LOG(ERROR) << "Failure: " << res.status();
           }
           counter.DecrementCount();
         });
@@ -518,7 +519,16 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     std::unique_ptr<HloModule> new_hlo_module = ExtractInstructionIntoNewModule(
         *original_computation.FusionInstruction());
 
+    // Copy the config from the original computations's module, but use the new
+    // entry computation layout. If we extract an instruction into a new
+    // module, then its entry computation layout can be different from that of
+    // the original module.
+    ComputationLayout new_entry_computation_layout =
+        new_hlo_module->config().entry_computation_layout();
     new_hlo_module->set_config(original_computation.parent()->config());
+    *new_hlo_module->config().mutable_entry_computation_layout() =
+        new_entry_computation_layout;
+
     DebugOptions options =
         original_computation.parent()->config().debug_options();
     // Require thunks because so far we are relying on them for execution here.
@@ -527,6 +537,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     // Avoid dumping compilation steps of every autotuning variant.
     options.set_xla_dump_to("");
     options.set_xla_gpu_dump_llvmir(false);
+    // Avoid using another thread pool for PTX compilation - there are maximum
+    // two functions to compile here.
+    options.set_xla_gpu_force_compilation_parallelism(1);
     new_hlo_module->config().set_debug_options(options);
     HloComputation* entry_computation = new_hlo_module->entry_computation();
     HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
@@ -560,6 +573,13 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
 
     llvm::LLVMContext llvm_context;
     CompileModuleResults compile_module_results;
+
+    // Verify the HLO here to catch potential rewrite errors.
+    TF_RETURN_IF_ERROR(HloVerifier(/*layout_sensitive=*/true,
+                                   /*allow_mixed_precision=*/false)
+                           .Run(new_hlo_module.get())
+                           .status());
+
     Status compilation_status = xla::gpu::CompileModuleToLlvmIrImpl(
         new_hlo_module.get(), &llvm_context,
         /*target_triple=*/nvptx::TargetTriple(),
@@ -632,15 +652,17 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
   if (compute_capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
     absl::c_copy(
         std::vector<AutotuneResult::TritonGemmKey>{
-            GemmKey(128, 256, 32, 1, 3, 8), GemmKey(256, 128, 32, 1, 3, 8),
-            GemmKey(256, 64, 32, 1, 4, 4), GemmKey(64, 256, 32, 1, 4, 4),
-            GemmKey(128, 64, 32, 1, 4, 4), GemmKey(64, 128, 32, 1, 4, 4),
-            GemmKey(128, 256, 32, 1, 3, 8), GemmKey(256, 128, 128, 1, 3, 8),
-            GemmKey(256, 64, 128, 1, 4, 4), GemmKey(64, 256, 128, 1, 4, 4),
+            GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 32, 1, 3, 8),
+            GemmKey(256, 64, 32, 1, 4, 4),   GemmKey(64, 256, 32, 1, 4, 4),
+            GemmKey(128, 64, 32, 1, 4, 4),   GemmKey(64, 128, 32, 1, 4, 4),
+            GemmKey(128, 256, 32, 1, 3, 8),  GemmKey(256, 128, 128, 1, 3, 8),
+            GemmKey(256, 64, 128, 1, 4, 4),  GemmKey(64, 256, 128, 1, 4, 4),
             GemmKey(128, 128, 128, 1, 4, 4), GemmKey(128, 64, 64, 1, 4, 4),
-            GemmKey(64, 128, 64, 1, 4, 4), GemmKey(128, 32, 64, 1, 4, 4),
-            GemmKey(64, 32, 64, 1, 4, 4), GemmKey(32, 128, 32, 1, 4, 4),
-            GemmKey(128, 128, 32, 1, 4, 4), GemmKey(16, 16, 256, 1, 3, 4)},
+            GemmKey(64, 128, 64, 1, 4, 4),   GemmKey(128, 32, 64, 1, 4, 4),
+            GemmKey(64, 32, 64, 1, 4, 4),    GemmKey(32, 128, 32, 1, 4, 4),
+            GemmKey(128, 128, 32, 1, 4, 4),  GemmKey(16, 16, 256, 1, 3, 4),
+            GemmKey(128, 128, 64, 2, 1, 8),  GemmKey(64, 64, 64, 1, 2, 4),
+            GemmKey(16, 64, 256, 8, 1, 4),   GemmKey(256, 256, 128, 1, 3, 8)},
         std::back_inserter(configs));
   }
   return configs;
@@ -665,7 +687,7 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
   std::unique_ptr<HloInstruction> new_instruction =
       hlo.CloneWithNewOperands(hlo.shape(), new_operands, &clone_context);
   builder.AddInstruction(std::move(new_instruction));
-  new_hlo_module->AddEntryComputation(builder.Build());
+  new_hlo_module->AddEntryComputationWithLayouts(builder.Build());
   return new_hlo_module;
 }
 

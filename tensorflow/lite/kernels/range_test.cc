@@ -183,5 +183,73 @@ TEST(RangeOpModel, EmptyOutputConst) {
   EXPECT_THAT(model.GetOutput(), ElementsAre());
 }
 
+TEST(RangeOpModel, Int64Simple) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(model.start(), {0});
+  model.PopulateTensor<int64_t>(model.limit(), {4});
+  model.PopulateTensor<int64_t>(model.delta(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+}
+
+TEST(RangeOpModel, Int64SimpleConst) {
+  RangeOpModel<int64_t> model(TensorType_INT64, {0}, {4}, {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+}
+
+TEST(RangeOpModel, Int64DeltaGreaterThanOne) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(model.start(), {2});
+  model.PopulateTensor<int64_t>(model.limit(), {9});
+  model.PopulateTensor<int64_t>(model.delta(), {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(2, 4, 6, 8));
+}
+
+TEST(RangeOpModel, Int64DeltaGreaterThanOneConst) {
+  RangeOpModel<int64_t> model(TensorType_INT64, {2}, {9}, {2});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(2, 4, 6, 8));
+}
+
+TEST(RangeOpModel, Int64NegativeDelta) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(model.start(), {10});
+  model.PopulateTensor<int64_t>(model.limit(), {3});
+  model.PopulateTensor<int64_t>(model.delta(), {-3});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
+}
+
+TEST(RangeOpModel, Int64NegativeDeltaConst) {
+  RangeOpModel<int64_t> model(TensorType_INT64, {10}, {3}, {-3});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
+}
+
+TEST(RangeOpModel, Int64EmptyOutput) {
+  RangeOpModel<int64_t> model(TensorType_INT64);
+  model.PopulateTensor<int64_t>(model.start(), {0});
+  model.PopulateTensor<int64_t>(model.limit(), {0});
+  model.PopulateTensor<int64_t>(model.delta(), {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(0));
+  EXPECT_THAT(model.GetOutput(), ElementsAre());
+}
+
+TEST(RangeOpModel, Int64EmptyOutputConst) {
+  RangeOpModel<int64_t> model(TensorType_INT64, {0}, {0}, {1});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(0));
+  EXPECT_THAT(model.GetOutput(), ElementsAre());
+}
+
 }  // namespace
 }  // namespace tflite

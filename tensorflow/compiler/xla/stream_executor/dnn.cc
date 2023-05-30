@@ -119,13 +119,6 @@ std::vector<std::pair<int64_t, int64_t>> AlgorithmDesc::TuningKnobs() const {
   return result;
 }
 
-bool DnnSupport::GetConvolveAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    const NumericOptions& numeric_options,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
-}
-
 tsl::Status DnnSupport::GetConvolveRunners(
     bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
     dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
@@ -270,20 +263,6 @@ bool DnnSupport::GetMIOpenConvolveAlgorithms(
 }
 
 bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
-}
-
-bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    const NumericOptions& numeric_options,
-    std::vector<AlgorithmDesc>* out_algorithms) {
-  return false;
-}
-
-bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    const NumericOptions& numeric_options,
-    std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 

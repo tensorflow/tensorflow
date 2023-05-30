@@ -8,7 +8,7 @@ package(
         "//tensorflow/python/distribute:__pkg__",
         "//tensorflow/python/feature_column:__pkg__",
         "//tensorflow/python/keras:__subpackages__",
-        "//tensorflow/python/training/tracking:__pkg__",
+        "//tensorflow/python/trackable:__pkg__",
         "//tensorflow/tools/pip_package:__pkg__",
         "//tensorflow_models/official/projects/residual_mobilenet/modeling/backbones:__pkg__",
     ],

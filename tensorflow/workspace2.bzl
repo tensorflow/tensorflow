@@ -174,9 +174,9 @@ def _tf_repositories():
         name = "cudnn_frontend_archive",
         build_file = "//third_party:cudnn_frontend.BUILD",
         patch_file = ["//third_party:cudnn_frontend_header_fix.patch"],
-        sha256 = "bfcf778030831f325cfc13ae5995388cc834fbff2995a297ba580d9ec65ca3b6",
-        strip_prefix = "cudnn-frontend-0.8",
-        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.8.zip"),
+        sha256 = "d8dba9e2607a0c256aa8eacb45b39986ab6f3f24a4d431d4397047a3cb0cd4fb",
+        strip_prefix = "cudnn-frontend-0.9",
+        urls = tf_mirror_urls("https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v0.9.zip"),
     )
 
     tf_http_archive(
@@ -506,10 +506,10 @@ def _tf_repositories():
     tf_http_archive(
         name = "curl",
         build_file = "//third_party:curl.BUILD",
-        sha256 = "dfb8582a05a893e305783047d791ffef5e167d295cf8d12b9eb9cfa0991ca5a9",
-        strip_prefix = "curl-7.88.0",
+        sha256 = "5fd29000a4089934f121eff456101f0a5d09e2a3e89da1d714adf06c4be887cb",
+        strip_prefix = "curl-8.0.1",
         system_build_file = "//third_party/systemlibs:curl.BUILD",
-        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-7.88.0.tar.gz"),
+        urls = tf_mirror_urls("https://curl.haxx.se/download/curl-8.0.1.tar.gz"),
     )
 
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
@@ -819,8 +819,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(
         name = "build_bazel_rules_apple",
-        sha256 = "36072d4f3614d309d6a703da0dfe48684ec4c65a89611aeb9590b45af7a3e592",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/1.0.1/rules_apple.1.0.1.tar.gz"),
+        sha256 = "a6141240657093fa7ccc7ca1ee5a62408dd9996d1bf47bc2369b8b9faefb2698",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/2.3.0/rules_apple.2.3.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/rules_swift/releases
@@ -833,8 +833,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "ce1042cf936540eaa7b49c4549d7cd9b6b1492acbb6e765840a67a34b8e17a97",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.1.0/apple_support.1.1.0.tar.gz"),
+        sha256 = "9f7bb62c3ae889e0eae8c18458fd8764e2e537687d9a1d85885d6af980e4fc31",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.6.0/apple_support.1.6.0.tar.gz"),
     )
 
     # https://github.com/apple/swift-protobuf/releases
@@ -845,12 +845,11 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/apple/swift-protobuf/archive/1.19.0.tar.gz"),
     )
 
-    # https://github.com/google/xctestrunner/releases
     tf_http_archive(
         name = "xctestrunner",
-        strip_prefix = "xctestrunner-0.2.15",
-        sha256 = "b789cf18037c8c28d17365f14925f83b93b1f7dabcabb80333ae4331cf0bcb2f",
-        urls = tf_mirror_urls("https://github.com/google/xctestrunner/archive/refs/tags/0.2.15.tar.gz"),
+        strip_prefix = "xctestrunner-4c5709da9444eae6bba2425734b8654635bed0a6",
+        sha256 = "e5d4c53c3965ae943fb08ccd7df0efd75590213fce5052388f23fad81a649f5a",
+        urls = tf_mirror_urls("https://github.com/google/xctestrunner/archive/4c5709da9444eae6bba2425734b8654635bed0a6.tar.gz"),
     )
 
     tf_http_archive(
@@ -921,11 +920,14 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_google_ortools",
-        sha256 = "b87922b75bbcce9b2ab5da0221751a3c8c0bff54b2a1eafa951dbf70722a640e",
-        strip_prefix = "or-tools-7.3",
+        sha256 = "bc4b07dc9c23f0cca43b1f5c889f08a59c8f2515836b03d4cc7e0f8f2c879234",
+        strip_prefix = "or-tools-9.6",
         patch_file = ["//third_party/ortools:ortools.patch"],
-        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v7.3.tar.gz"),
-        repo_mapping = {"@com_google_protobuf_cc": "@com_google_protobuf"},
+        urls = tf_mirror_urls("https://github.com/google/or-tools/archive/v9.6.tar.gz"),
+        repo_mapping = {
+            "@com_google_protobuf_cc": "@com_google_protobuf",
+            "@eigen": "@eigen_archive",
+        },
     )
 
     tf_http_archive(
@@ -936,6 +938,23 @@ def _tf_repositories():
             "https://storage.googleapis.com/mirror.tensorflow.org/ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
             "http://ftp.gnu.org/gnu/glpk/glpk-4.52.tar.gz",
         ],
+    )
+
+    tf_http_archive(
+        name = "scip",
+        sha256 = "fe7636f8165a8c9298ff55ed3220d084d4ea31ba9b69d2733beec53e0e4335d6",
+        strip_prefix = "scip-803",
+        build_file = "//third_party/ortools:scip.BUILD",
+        patch_file = ["//third_party/ortools:scip.patch"],
+        urls = tf_mirror_urls("https://github.com/scipopt/scip/archive/refs/tags/v803.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "bliss",
+        build_file = "//third_party/ortools:bliss.BUILD",
+        sha256 = "f57bf32804140cad58b1240b804e0dbd68f7e6bf67eba8e0c0fa3a62fd7f0f84",
+        urls = tf_mirror_urls("https://github.com/google/or-tools/releases/download/v9.0/bliss-0.73.zip"),
+        #url = "http://www.tcs.hut.fi/Software/bliss/bliss-0.73.zip",
     )
 
     # used for adding androidx.annotation dependencies in tflite android jni.

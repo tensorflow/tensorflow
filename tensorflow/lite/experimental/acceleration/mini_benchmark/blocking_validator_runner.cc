@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/status_codes.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator_runner_options.h"

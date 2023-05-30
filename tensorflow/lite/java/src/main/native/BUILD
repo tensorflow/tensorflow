@@ -101,8 +101,8 @@ cc_library_with_tflite(
         "//tensorflow/lite/c/jni:jni_utils",
         "//tensorflow/lite/c:c_api_without_op_resolver",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:xnnpack_plugin",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
         "//tensorflow/lite/tools:verifier_internal",
     ],
     deps = [

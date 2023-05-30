@@ -21,8 +21,18 @@ import pickle
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import layout
 from tensorflow.dtensor.python.tests import test_util
+from tensorflow.python.eager import backprop
+from tensorflow.python.eager.polymorphic_function import polymorphic_function
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import test
 
 UNSHARDED = layout.UNSHARDED
@@ -379,6 +389,184 @@ class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
     tensor_layout = layout.Layout.from_single_device_mesh(_SINGLE_DEVICE_MESH)
     roundtrip = layout.Layout.from_proto(tensor_layout.as_proto())
     self.assertEqual(roundtrip, tensor_layout)
+
+
+class RelayoutTest(test_util.DTensorBaseTest):
+
+  def setUp(self):
+    super().setUp()
+    global_ids = test_util.create_device_ids_array((2, 2))
+    local_ids = np.ravel(global_ids).tolist()
+    mesh_dict = {  # pylint: disable=g-complex-comprehension
+        device: layout.Mesh(
+            [_MESH_DIM_X, _MESH_DIM_Y],
+            global_ids,
+            local_ids,
+            test_util.create_device_list((2, 2), device),
+        )
+        for device in ('CPU', 'GPU', 'TPU')
+    }
+    self.mesh = self.configTestMesh(mesh_dict)
+    # 1D Layouts
+    self.x_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=1)
+    self.y_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
+    # 2D Layouts
+    self.unsharded_unsharded_layout = layout.Layout.replicated(
+        self.mesh, rank=2
+    )
+    self.x_unsharded_layout = layout.Layout.batch_sharded(
+        self.mesh, _MESH_DIM_X, rank=2
+    )
+    self.unsharded_x_layout = layout.Layout.inner_sharded(
+        self.mesh, _MESH_DIM_X, rank=2
+    )
+
+  @combinations.generate(
+      combinations.combine(is_graph=[False, True], is_replicated=[False, True])
+  )
+  def test_relayout(self, is_graph, is_replicated):
+    inp = stateless_random_ops.stateless_random_uniform([4, 4], seed=[0, 1])
+    if is_replicated:
+      to_layout = self.unsharded_unsharded_layout
+    else:
+      to_layout = self.x_unsharded_layout
+
+    def do_relayout():
+      return api.relayout(inp, to_layout)
+
+    if is_graph:
+      relayout_fn = polymorphic_function.function(do_relayout)
+      self.assertRaisesRegex(
+          errors_impl.InvalidArgumentError,
+          "No OpKernel was registered to support Op 'Relayout'",
+          relayout_fn,
+      )
+    else:
+      self.assertDTensorEqual(inp, to_layout, do_relayout())
+
+  @combinations.generate(combinations.combine(is_graph=[False, True]))
+  def test_relayout_like_simple(self, is_graph):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+    inp_layout = api.relayout(data, self.x_layout)
+
+    def do_relayout():
+      return api.relayout_like(inp, inp_layout)
+
+    if is_graph:
+      do_relayout = polymorphic_function.function(do_relayout)
+
+    with api.default_mesh(self.mesh):
+      result = do_relayout()
+
+    self.assertDTensorEqual(data, self.x_layout, result)
+
+  def test_relayout_like_init_scope(self):
+    data = np.array([1, 2, 3, 4.0], dtype='f4')
+    inp = api.relayout(data, self.y_layout)
+    inp_layout = api.relayout(data, self.x_layout)
+
+    @polymorphic_function.function
+    def do_relayout(x):
+      with ops.init_scope():
+        return api.relayout_like(inp, x)
+
+    with api.default_mesh(self.mesh):
+      with self.assertRaisesRegex(
+          TypeError, 'is out of scope and cannot be used here'
+      ):
+        result = do_relayout(inp_layout)
+        result.numpy()
+
+  def test_nested_relayout_gradient_preserves_layout(self):
+    # Test that nesting gradient tapes with relayouts preserves the layout of
+    # the original DTensor input. The second-order gradient should have a layout
+    # equivalent to the original input, even if the inner gradient tape
+    # relayouts the DTensor to a different layout.
+
+    @polymorphic_function.function
+    def inner(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        t = x * 1.0
+        t = api.relayout(t, self.unsharded_x_layout)
+        cube = t * t * t
+      grad = tape.gradient(cube, x)
+      return grad
+
+    @polymorphic_function.function
+    def outer(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        t = api.relayout(x, self.x_unsharded_layout)
+        grad = inner(t)
+        out = grad + t
+      out_grad = tape.gradient(out, x)
+      return out_grad
+
+    a = stateless_random_ops.stateless_random_uniform([8, 8], seed=[0, 1])
+    a_dt = api.relayout(a, self.unsharded_unsharded_layout)
+
+    with ops.device_v2(api.device_name()):
+      inner_grad = inner(a_dt)
+      outer_grad = outer(a_dt)
+
+    self.assertDTensorEqual(
+        3 * a * a, self.unsharded_unsharded_layout, inner_grad
+    )
+    self.assertDTensorEqual(
+        6 * a + 1, self.unsharded_unsharded_layout, outer_grad
+    )
+
+  def test_wus_using_relayout(self):
+    sharded_layout = layout.Layout.batch_sharded(self.mesh, _MESH_DIM_X, rank=2)
+    w = stateless_random_ops.stateless_random_uniform(
+        [4, 4], seed=[0, 1], dtype=dtypes.float32
+    )
+    sharded_w = api.relayout(w, sharded_layout)
+    replicated_layout = layout.Layout(
+        [layout.UNSHARDED, layout.UNSHARDED], mesh=self.mesh
+    )
+
+    @polymorphic_function.function
+    def func_with_relayout(t):
+      with backprop.GradientTape() as tape:
+        tape.watch(t)
+        t = t + t
+        out = api.relayout(t, replicated_layout)
+        loss = math_ops.reduce_sum(out)
+      grad = tape.gradient(loss, t)
+      t = t - grad
+      return t
+
+    func_with_relayout(sharded_w)
+
+  @combinations.generate(
+      combinations.combine(size=[16, 4096], is_graph=[False, True])
+  )
+  def test_call_with_layout(self, size, is_graph):
+    layout_x = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_X, rank=1
+    )
+    layout_y = layout.Layout.batch_sharded(
+        self.mesh, batch_dim=_MESH_DIM_Y, rank=1
+    )
+
+    expected = array_ops.zeros(shape=[size])
+
+    def func():
+      tensor_x = api.call_with_layout(array_ops.zeros, layout_x, shape=[size])
+      tensor_y = api.call_with_layout(array_ops.zeros, layout_y, shape=[size])
+      return tensor_x, tensor_y
+
+    if is_graph:
+      func = polymorphic_function.function(func)
+
+    with api.default_mesh(self.mesh):
+      tensor_x, tensor_y = func()
+
+    self.assertDTensorEqual(expected, layout_x, tensor_x)
+    self.assertDTensorEqual(expected, layout_y, tensor_y)
 
 
 if __name__ == '__main__':

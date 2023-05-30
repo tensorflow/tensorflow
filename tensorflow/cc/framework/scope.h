@@ -209,7 +209,7 @@ class Scope {
   /// If status() is OkStatus(), construct a Graph object using `opts` as the
   /// GraphConstructorOptions, and return Status::OK if graph construction was
   /// successful. Otherwise, return the error status.
-  // TODO(joshl, keveman): Make this faster; right now it converts
+  // TODO(josh11b, keveman): Make this faster; right now it converts
   // Graph->GraphDef->Graph.  This cleans up the graph (e.g. adds
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.

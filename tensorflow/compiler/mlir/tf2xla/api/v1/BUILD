@@ -47,6 +47,7 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_util_hdrs",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//mlir:IR",
@@ -71,7 +72,7 @@ tf_cc_test(
         "//tensorflow/core/tpu/kernels:tpu_compile_op_support",
         "//tensorflow/tsl/lib/monitoring:test_utils",
         "//tensorflow/tsl/platform:statusor",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 

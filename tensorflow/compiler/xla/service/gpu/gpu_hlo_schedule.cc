@@ -17,18 +17,20 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
+#include "tensorflow/compiler/xla/service/profile_guided_latency_estimator.h"
 
 namespace xla {
 namespace gpu {
@@ -38,6 +40,13 @@ namespace {
 bool IsSyncCollective(const HloInstruction& instr) {
   auto backend_config = instr.backend_config<CollectiveBackendConfig>().value();
   return backend_config.is_sync();
+}
+
+bool IsNopInstruction(const HloInstruction& hlo) {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         hlo.IsEffectiveBitcast();
 }
 
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
@@ -207,7 +216,7 @@ SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
   config.aggressive_scheduling_policies = true;
 
   // Assume 75% of the total device memory is available for XLA.
-  config.memory_limit = gpu_info.device_memory_size * 0.75;
+  config.memory_limit = gpu_info.device_memory_size * 0.95;
   return config;
 }
 
@@ -243,7 +252,7 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
 
   ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& instr) const override {
-    CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
+    CanonicalAsyncOp op = DefaultGetCanonicalAsyncOp(instr);
     if (op.outer == HloOpcode::kAsyncStart ||
         op.outer == HloOpcode::kAsyncDone) {
       ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
@@ -315,6 +324,9 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
 class GpuLatencyEstimator : public ApproximateLatencyEstimator {
  public:
   TimeCost NodeCost(const HloInstruction* instr) const override {
+    if (IsNopInstruction(*instr)) {
+      return 0.0;
+    }
     // Consider cublas/cuddn/softmax custom calls as medium cost. Since the
     // latency between async-start and async-done is 5000 and cost of each
     // custom call is 1000, the LHS will try to schedule approximately 5 of
@@ -330,6 +342,43 @@ class GpuLatencyEstimator : public ApproximateLatencyEstimator {
     return ApproximateLatencyEstimator::NodeCost(instr);
   }
 };
+
+std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
+    const HloModule* module, const std::string& fingerprint) {
+  const std::string& pgle_profile_file_or_dir_path =
+      module->config()
+          .debug_options()
+          .xla_gpu_pgle_profile_file_or_directory_path();
+  if (pgle_profile_file_or_dir_path.empty()) {
+    return std::nullopt;
+  }
+  tsl::Env* env = tsl::Env::Default();
+  ProfiledInstructionsProto profile;
+  // If its a directory, use fingerprint to look for the profile for this
+  // specific module.
+  if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {
+    std::string pgle_profile_path =
+        pgle_profile_file_or_dir_path + "/" + fingerprint + ".pbtxt";
+    Status s =
+        tsl::ReadTextProto(tsl::Env::Default(), pgle_profile_path, &profile);
+    if (!s.ok()) {
+      // Unable to read PGLE using fingerprint.
+      return std::nullopt;
+    }
+    LOG(INFO) << "Found profile for module using fingerprint";
+    return profile;
+  }
+
+  // The pgle_profile_file_or_dir is a file. Read the profile and see if its
+  // applicable for this HLO module (all instruction names in the profile should
+  // be present in the HLO module)
+  Status s = tsl::ReadTextProto(tsl::Env::Default(),
+                                pgle_profile_file_or_dir_path, &profile);
+  if (!s.ok()) {
+    return std::nullopt;
+  }
+  return profile;
+}
 
 }  // end namespace
 
@@ -356,10 +405,10 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
       HloPrintOptions::Canonical().set_print_backend_config(true));
   HloInstruction* root = module->entry_computation()->root_instruction();
   FrontendAttributes attributes;
-  (*attributes.mutable_map())[kFingerprintBeforeLHS] = fingerprint;
+  (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
   root->add_frontend_attributes(attributes);
-  VLOG(1) << "Fingerprint before LHS for module " << module->name() << " = "
-          << fingerprint;
+  VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
+          << module->unique_id() << ") = " << fingerprint;
 
   const bool enable_latency_hiding_scheduler =
       module->config()
@@ -371,7 +420,19 @@ Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
   }
 
   SchedulerConfig config = GetSchedulerConfig(gpu_info);
-  auto latency_estimator = std::make_unique<GpuLatencyEstimator>();
+  auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
+
+  std::unique_ptr<LatencyEstimator> latency_estimator;
+  std::optional<ProfiledInstructionsProto> profile =
+      ReadPGLEProfile(module, fingerprint);
+  if (profile.has_value()) {
+    latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), profile.value());
+    LOG(INFO) << "Found profile, using profile guided latency estimator";
+  } else {
+    latency_estimator = std::move(gpu_latency_estimator);
+  }
+
   auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
     return module->config()
                    .debug_options()

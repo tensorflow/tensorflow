@@ -214,6 +214,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID;
     case xla::PrimitiveType::PRED:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
+    case xla::PrimitiveType::S4:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S4;
     case xla::PrimitiveType::S8:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S8;
     case xla::PrimitiveType::S16:
@@ -222,6 +224,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U4:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U4;
     case xla::PrimitiveType::U8:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U8;
     case xla::PrimitiveType::U16:
@@ -242,6 +246,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E5M2;
     case xla::PrimitiveType::F8E4M3FN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN;
+    case xla::PrimitiveType::F8E4M3B11FNUZ:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ;
     case xla::PrimitiveType::C64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_C64;
     case xla::PrimitiveType::C128:
@@ -257,6 +263,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
   switch (type) {
     case PJRT_Buffer_Type::PJRT_Buffer_Type_PRED:
       return xla::PrimitiveType::PRED;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
+      return xla::PrimitiveType::S4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S8:
       return xla::PrimitiveType::S8;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S16:
@@ -265,6 +273,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:
+      return xla::PrimitiveType::U4;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U8:
       return xla::PrimitiveType::U8;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U16:
@@ -289,6 +299,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::F8E5M2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3FN:
       return xla::PrimitiveType::F8E4M3FN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_F8E4M3B11FNUZ:
+      return xla::PrimitiveType::F8E4M3B11FNUZ;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_INVALID:
       CHECK(false) << "Buffer type is not supported in C API layer.";
   }
@@ -568,6 +580,16 @@ xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk) {
       [deleter_arg = chunk.deleter_arg, deleter = chunk.deleter](void* data) {
         deleter(data, deleter_arg);
       });
+}
+
+PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
+                                             PJRT_Device* device) {
+  PJRT_Device_GetDescription_Args args;
+  args.struct_size = PJRT_Device_GetDescription_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device;
+  pjrt::LogFatalIfPjrtError(api->PJRT_Device_GetDescription(&args), api);
+  return args.device_description;
 }
 
 }  // namespace pjrt

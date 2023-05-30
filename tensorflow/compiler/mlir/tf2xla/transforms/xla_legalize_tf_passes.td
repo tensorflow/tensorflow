@@ -46,7 +46,7 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
         "Prioritize tf2xla fallback legalization over MLIR legalization "
         "patterns">,
     Option<"use_tf2xla_hlo_importer_", "use-tf2xla-hlo-importer",
-       "bool", /*default=*/"false",
+       "bool", /*default=*/"true",
         "Use the experimental HLO to MHLO importer for per-op fallback calls "
         " from MLIR bridge to TF2XLA."
         "Users should not set this flag and ideally this goes away.">
@@ -59,26 +59,6 @@ def LegalizeTF : Pass<"xla-legalize-tf", "ModuleOp"> {
                            "shape::ShapeDialect",
                            "func::FuncDialect",
                            "sparse_tensor::SparseTensorDialect"];
-}
-
-def LegalizeTFModulePass : Pass<"xla-fallback-legalize-tf-module-pass", "ModuleOp"> {
-  let summary = "Legalize whitelisted Ops using TF2XLA fallback for ops that "
-      "must also be able to create new functions.";
-
-  let description = [{
-    Legalizes whitelisted Ops from TF dialect to HLO dialect using TF2XLA
-    fallback for ops that must be allowed to create new functions.
-  }];
-  let options = [
-    Option<"device_type_", "device-type", "std::string",
-        /*default=*/"\"INVALID_DEVICE_TYPE\"",
-        "The device type used by TF2XLA fallback. Required.">,
-  ];
-
-  let constructor = "mlir::mhlo::createLegalizeTFModulePass()";
-  let dependentDialects = ["arith::ArithDialect, chlo::ChloDialect",
-                           "mhlo::MhloDialect",
-                           "shape::ShapeDialect", "func::FuncDialect", "sparse_tensor::SparseTensorDialect"];
 }
 
 def ConvertMHLOQuantToInt : Pass<"convert-mhlo-quant-to-int", "mlir::func::FuncOp"> {

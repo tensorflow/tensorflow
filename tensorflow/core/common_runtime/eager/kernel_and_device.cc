@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -236,6 +237,8 @@ Status KernelAndDeviceFunc::InstantiateFunc(const bool log_device_placement,
     options.xla_compile_device_type = xla_compile_device_type_.value();
   }
 
+  options.allow_soft_placement = allow_soft_placement_;
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->IsCrossProcess(handle_, &is_cross_process_);
@@ -328,7 +331,7 @@ Status KernelAndDeviceOp::Run(
 
   Status s = context.status();
   if (TF_PREDICT_FALSE(!s.ok())) {
-    if (errors::IsUnavailable(s) && !is_distributed_communication_op_) {
+    if (absl::IsUnavailable(s) && !is_distributed_communication_op_) {
       s = errors::ReplaceErrorFromNonCommunicationOps(s, kernel_->name());
     }
     return s;

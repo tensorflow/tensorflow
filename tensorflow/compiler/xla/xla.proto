@@ -376,11 +376,17 @@ message DebugOptions {
   bool xla_gpu_enable_async_reduce_scatter = 200;
   bool xla_gpu_enable_async_all_to_all = 201;
 
-  // Size threshold (in bytes) for the GPU all-reduce combiner.
+  // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+  int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
+  int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
 
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
+
+  // Enable allreduce reassociation on allreduces that are converted to a wider
+  // type. The resulting allreduce will be promoted to a wider-typed allreduce.
+  bool xla_gpu_enable_reassociation_for_converted_ar = 209;
 
   // Number of devices per host for first stage of BlueConnect decomposition
   // pass. The pass will attempt to decompose all-reduces ops into a
@@ -497,6 +503,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
+  string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -513,7 +520,11 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 209
+  // Whether to enable dot strength reduction-related algebraic simplifications
+  // on GPU.
+  bool xla_gpu_enable_dot_strength_reduction = 211;
+
+  // Next id: 214
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -905,10 +916,15 @@ message ScheduleProto {
 }
 
 message ProfiledInstructionsProto {
-  message Instruction {
+  message InstructionCost {
     string name = 1;
-    double timestamp_us = 2;
-    double duration_us = 3;
+    double cost_us = 2;
   }
-  repeated Instruction instructions = 1;
+  message Latency {
+    string source = 1;
+    string target = 2;
+    double latency_us = 3;
+  }
+  repeated InstructionCost costs = 1;
+  repeated Latency latencies = 2;
 }

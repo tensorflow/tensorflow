@@ -19,7 +19,7 @@ package(
 py_strict_library(
     name = "checkpoint_lib",
     deps = [
-        ":checkpoint_core",
+        ":checkpoint",
         ":checkpoint_management",
         ":checkpoint_options",
         ":functional_saver",
@@ -52,18 +52,7 @@ py_strict_library(
 
 py_strict_library(
     name = "checkpoint",
-    srcs_version = "PY3",
-    deps = [
-        ":async_checkpoint_helper",
-        ":checkpoint_core",
-    ],
-)
-
-py_strict_library(
-    name = "checkpoint_core",
-    srcs = [
-        "checkpoint.py",
-    ],
+    srcs = ["checkpoint.py"],
     srcs_version = "PY3",
     deps = [
         ":async_checkpoint_helper",
@@ -215,7 +204,7 @@ tf_py_strict_test(
     srcs = ["checkpoint_view_test.py"],
     tags = ["no_pip"],
     deps = [
-        ":checkpoint_core",
+        ":checkpoint",
         ":checkpoint_view",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/trackable:autotrackable",
@@ -358,7 +347,7 @@ tf_py_strict_test(
     name = "restore_test",
     srcs = ["restore_test.py"],
     deps = [
-        ":checkpoint_core",
+        ":checkpoint",
         ":restore",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:variables",

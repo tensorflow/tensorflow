@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "pybind11/attr.h"  // from @pybind11
 #include "pybind11/cast.h"  // from @pybind11
@@ -53,10 +53,11 @@ limitations under the License.
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
 #endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
+#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
-#include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/tpu_client.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_initializer_helper.h"  // NOLINT(unused-includes): required for tensorflow::tpu::FindAndLoadTpuLibrary
 #endif  // XLA_PYTHON_ENABLE_TPU
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/compiler/xla/python/custom_call_sharding.h"
@@ -155,6 +156,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("U64", U64)
       .value("F16", F16)
       .value("F8E4M3FN", F8E4M3FN)
+      .value("F8E4M3B11FNUZ", F8E4M3B11FNUZ)
       .value("F8E5M2", F8E5M2)
       .value("BF16", BF16)
       .value("F32", F32)
@@ -221,13 +223,12 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return ValueOrThrow(LiteralToPython(std::move(literal)));
            })
-      .def("live_buffers",
-           [](const ClientAndPtr<PjRtDevice>& device) {
-             PythonDeprecationWarning(
-                 "Per device live_buffers() is going to be deprecated. Please "
-                 "use the jax.live_arrays() for jax.Arrays instead.");
-             return py::list();
-           });
+      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
+        PythonDeprecationWarning(
+            "Per device live_buffers() is going to be deprecated. Please "
+            "use the jax.live_arrays() for jax.Arrays instead.");
+        return py::list();
+      });
   static PyMethodDef get_attr_method = {
       "__getattr__",
       +[](PyObject* self, PyObject* args) -> PyObject* {
@@ -295,12 +296,6 @@ PYBIND11_MODULE(xla_extension, m) {
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
            xla::ValueOrThrowWrapper(&PyClient::GetDefaultDeviceAssignment1D))
-      .def("create_channel_handle",
-           xla::ValueOrThrowWrapper(&PyClient::CreateChannelHandle))
-      .def("create_device_to_host_channel_handle",
-           xla::ValueOrThrowWrapper(&PyClient::CreateDeviceToHostChannelHandle))
-      .def("create_host_to_device_channel_handle",
-           xla::ValueOrThrowWrapper(&PyClient::CreateHostToDeviceChannelHandle))
       .def(
           "buffer_from_pyval",
           [](py::handle py_client, py::handle argument, py::handle py_device,
@@ -327,20 +322,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("serialize_executable",
            xla::ValueOrThrowWrapper(&PyClient::SerializeExecutable))
       .def("deserialize_executable",
-           xla::ValueOrThrowWrapper(
-               py::overload_cast<const std::string&, CompileOptions,
-                                 std::vector<py::capsule>>(
-                   &PyClient::DeserializeExecutable)),
-           py::arg("serialized"), py::arg("compile_options"),
-           py::arg("host_callbacks") = std::vector<py::capsule>())
-      // TODO(skyewm): remove when jax stop providing hlo_module
-      .def("deserialize_executable",
-           xla::ValueOrThrowWrapper(
-               py::overload_cast<const std::string&, std::shared_ptr<HloModule>,
-                                 CompileOptions, std::vector<py::capsule>>(
-                   &PyClient::DeserializeExecutable)),
-           py::arg("serialized"), py::arg("hlo_module"),
-           py::arg("compile_options"),
+           xla::ValueOrThrowWrapper(&PyClient::DeserializeExecutable),
+           py::arg("serialized"), py::arg("compile_options") = std::nullopt,
            py::arg("host_callbacks") = std::vector<py::capsule>())
       .def("heap_profile", xla::ValueOrThrowWrapper(&PyClient::HeapProfile))
       // TODO(zhangqiaorjc): Experimental.
@@ -379,6 +362,10 @@ PYBIND11_MODULE(xla_extension, m) {
         xla::ValueOrThrow(GetInterpreterClient());
     return std::make_shared<PyClient>(
         ifrt::PjRtClient::Create(std::move(client)));
+  });
+  m.def("pjrt_plugin_loaded", [](std::string platform_name) -> bool {
+    xla::StatusOr<const PJRT_Api*> pjrt_api = pjrt::PjrtApi(platform_name);
+    return pjrt_api.ok();
   });
   m.def("load_pjrt_plugin",
         [](std::string platform_name, std::string library_path) {
@@ -430,14 +417,24 @@ PYBIND11_MODULE(xla_extension, m) {
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("max_inflight_computations") = 32);
-  // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
-  // GetCApiClient does not depend on TPU.
+#endif  // XLA_PYTHON_ENABLE_TPU
+
   m.def(
       "get_c_api_client",
       [](std::string platform_name,
          const absl::flat_hash_map<std::string, PjRtValueType>& options)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
+#ifdef XLA_PYTHON_ENABLE_TPU
+    // TODO(b/262050449): use a common plugin discovery mechanism, rather than
+    // having TPU-specific code here.
+#if !defined(PLATFORM_GOOGLE) || defined(LIBTPU_STATIC)
+        if (absl::AsciiStrToLower(platform_name) == "tpu") {
+          // TODO(b/261484192): handle device specific initialization.
+          tensorflow::tpu::FindAndLoadTpuLibrary().IgnoreError();
+        }
+#endif
+#endif  // XLA_PYTHON_ENABLE_TPU
         std::unique_ptr<PjRtClient> c_api_client =
             xla::ValueOrThrow(GetCApiClient(platform_name, options));
         return std::make_shared<PyClient>(
@@ -452,7 +449,6 @@ PYBIND11_MODULE(xla_extension, m) {
             -> std::shared_ptr<PjRtTopologyDescription> {
           return xla::ValueOrThrow(GetCApiTopology(platform_name));
         });
-#endif  // XLA_PYTHON_ENABLE_TPU
 
 #ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
   m.def("get_plugin_device_client", []() -> std::shared_ptr<PyClient> {

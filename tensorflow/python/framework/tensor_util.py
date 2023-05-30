@@ -153,7 +153,7 @@ if _FAST_TENSOR_UTIL_AVAILABLE:
           fast_tensor_util.AppendUInt16ArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           fast_tensor_util.AppendInt32ArrayToTensorProto,
-      # NOTE(mdevin): Intentionally no way to feed a DT_BFLOAT16.
+      # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 else:
 
@@ -239,7 +239,7 @@ else:
           SlowAppendQIntArrayToTensorProto,
       dtypes.qint32.as_numpy_dtype:
           SlowAppendQIntArrayToTensorProto,
-      # NOTE(mdevin): Intentionally no way to feed a DT_BFLOAT16.
+      # NOTE(touts): Intentionally no way to feed a DT_BFLOAT16.
   }
 
 
@@ -743,7 +743,7 @@ def ShapeEquals(tensor_proto, shape):
 
 
 def _ConstantValue(tensor, partial):
-  # TODO(mdevin): Support Variables?
+  # TODO(touts): Support Variables?
   if not isinstance(tensor, core.Symbol):
     raise TypeError(f"{tensor!r} must be a Tensor, but got {type(tensor)}.")
   if tensor.op.type == "Const":

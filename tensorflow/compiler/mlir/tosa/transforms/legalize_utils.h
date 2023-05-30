@@ -170,6 +170,7 @@ TosaOp CreateOpAndInfer(ImplicitLocOpBuilder& builder, Type result_ty,
   if (shapeInterface
           .inferReturnTypeComponents(op.getContext(), builder.getLoc(),
                                      op->getOperands(), op->getAttrDictionary(),
+                                     op->getPropertiesStorage(),
                                      op->getRegions(), returnedShapes)
           .failed())
     return op;

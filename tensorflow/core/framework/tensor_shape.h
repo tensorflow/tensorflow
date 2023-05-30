@@ -296,7 +296,7 @@ class TensorShapeBase : public TensorShapeRep {
 
   /// \brief Returns the number of elements in dimension `d`.
   /// REQUIRES: `0 <= d < dims()`
-  // TODO(mdevin): Rename to `dimension()` to match
+  // TODO(touts): Rename to `dimension()` to match
   // `Eigen::Tensor::dimension()`?
   int64_t dim_size(int d) const;
 
@@ -305,7 +305,7 @@ class TensorShapeBase : public TensorShapeRep {
   gtl::InlinedVector<int64_t, 4> dim_sizes() const;
 
   /// Return true iff the rank and all of the dimensions are well defined
-  // TODO(geoffreyi): Rename to is_fully_defined now that it's fast.
+  // TODO(irving): Rename to is_fully_defined now that it's fast.
   bool IsFullyDefined() const { return !kIsPartial || num_elements() != -1; }
 
   /// Fill `*proto` from `*this`.

@@ -187,4 +187,60 @@ def OutlineCudaGraphsPass :
   let constructor = "createOutlineCudaGraphsPass()";
 }
 
+//===----------------------------------------------------------------------===//
+// Add concurrent regions to CUDA graph capture functions.
+//===----------------------------------------------------------------------===//
+
+def AddConcurrentRegionsPass:
+    Pass<"xla-gpu-add-concurrent-regions", "mlir::ModuleOp"> {
+  let summary = "Identify and mark concurrent regions in CUDA graph capture "
+                "functions";
+
+  let description = [{
+    Add concurent region markers to indicate a region of operations that can be
+    executed concurrently.
+
+    Example:
+
+    ```mlir
+    func.func @capture.cuda.graph() {
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+
+      // Everything here can run concurrently
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+      // Back to sequential execution
+
+      call @xla.gpu.launch.func
+      func.return
+    }
+    ```
+
+    becomes:
+
+    ```mlir
+    func.func @capture.cuda.graph() {
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+
+      call @xla.gpu.concurrent_region.begin()
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+      call @xla.gpu.launch.func
+      call @xla.gpu.concurrent_region.end()
+
+      call @xla.gpu.launch.func
+      func.return
+    }
+    ```
+
+  }];
+
+  let constructor = "createAddConcurrentRegionsPass()";
+}
+
 #endif  // XLA_GPU_PASSES

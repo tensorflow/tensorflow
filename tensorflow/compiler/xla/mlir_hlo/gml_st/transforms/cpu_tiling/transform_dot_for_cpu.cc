@@ -49,6 +49,8 @@ namespace {
 #define GEN_PASS_DEF_TRANSFORMDOTFORCPUPASS
 #include "gml_st/transforms/passes.h.inc"
 
+constexpr llvm::StringRef kFusionPlanningLabel = "__fusion_planning_label__";
+
 struct MatmulSizes {
   // [m, k] x [k, n]
   int64_t m;
@@ -280,14 +282,12 @@ struct DotAddPattern : public OpRewritePattern<linalg::MapOp> {
   }
 };
 
-LogicalResult tileAndPeelReductionDim(
-    PatternRewriter &rewriter, Operation *reduceOp,
-    ArrayRef<int64_t> reductionDimTileSizes,
-    llvm::function_ref<bool(Operation *)> producerFilterFn) {
+LogicalResult tileAndPeelReductionDim(PatternRewriter &rewriter,
+                                      Operation *reduceOp,
+                                      ArrayRef<int64_t> reductionDimTileSizes) {
   FailureOr<scf::SCFTilingResult> reductionDimTilingResult =
       tileUsingSCFForOpAndFuseGreedily(
-          rewriter, reduceOp, getSCFTilingOptions(reductionDimTileSizes),
-          producerFilterFn);
+          rewriter, reduceOp, getSCFTilingOptions(reductionDimTileSizes));
   if (failed(reductionDimTilingResult)) return failure();
 
   SCFForPeelingResult reductionDimPeelingResult =
@@ -320,18 +320,10 @@ SmallVector<int64_t> getTileSizesForDimsOfType(Operation *iop,
 template <typename DotOpTy>
 LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
                                   ArrayRef<int64_t> tileSizes) {
-  auto producerFilterFn = [](Operation *op) {
-    return isa<linalg::FillOp, thlo::ReverseOp, tensor::CastOp>(op);
-  };
-  auto consumerFilterFn = [](Operation *op) {
-    if (auto mapOp = dyn_cast<linalg::MapOp>(op))
-      return mapOp.getNumDpsInputs() == 1;
-    return isa<thlo::ReverseOp>(op);
-  };
-
-  auto cluster = getFusionCluster(dotOp, producerFilterFn, consumerFilterFn);
-  auto fusionCluster = cluster.operations;
-  auto *tilingRoot = cluster.root;
+  Operation *tilingRoot = dotOp;
+  if (auto fusionOp = dyn_cast<gml_st::FusionOp>(dotOp->getParentOp())) {
+    tilingRoot = fusionOp.getTerminator().getValues()[0].getDefiningOp();
+  }
 
   // First level tiling: parallel dimension.
   auto parallelDimsTileSizes = getTileSizesForDimsOfType(
@@ -342,13 +334,11 @@ LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
     parallelDimsTileSizes = dropZeros(parallelDimsTileSizes);
 
   auto tilingParallelDimsResult = tileUsingSCFForallOpAndFuseGreedily(
-      rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes),
-      [&](Operation *op) { return fusionCluster.contains(op); });
+      rewriter, tilingRoot, getSCFTilingOptions(parallelDimsTileSizes));
   if (failed(tilingParallelDimsResult)) return failure();
 
   if (!tilingParallelDimsResult->loop) {
-    return tileAndPeelReductionDim(rewriter, dotOp, reductionDimsTileSizes,
-                                   producerFilterFn);
+    return tileAndPeelReductionDim(rewriter, dotOp, reductionDimsTileSizes);
   }
   auto peeledParallelLoop =
       peelAllLoops(tilingParallelDimsResult->loop, rewriter);
@@ -357,8 +347,8 @@ LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
   scf::ForallOp mainParallelLoop = peeledParallelLoop.mainLoop;
   if (mainParallelLoop) {
     auto tiledDotOp = *mainParallelLoop.getBody()->getOps<DotOpTy>().begin();
-    if (failed(tileAndPeelReductionDim(
-            rewriter, tiledDotOp, reductionDimsTileSizes, producerFilterFn))) {
+    if (failed(tileAndPeelReductionDim(rewriter, tiledDotOp,
+                                       reductionDimsTileSizes))) {
       return failure();
     }
   }
@@ -368,8 +358,7 @@ LogicalResult tileAndPeelMatmulOp(PatternRewriter &rewriter, DotOpTy dotOp,
     for (auto tiledDotOp : llvm::to_vector(
              tailParallelLoop.getBody()->template getOps<DotOpTy>())) {
       auto reductionDimTilingResult = tileUsingSCFForOpAndFuseGreedily(
-          rewriter, tiledDotOp, getSCFTilingOptions(reductionDimsTileSizes),
-          producerFilterFn);
+          rewriter, tiledDotOp, getSCFTilingOptions(reductionDimsTileSizes));
       if (failed(reductionDimTilingResult)) return failure();
     }
   }
@@ -564,6 +553,31 @@ struct MatVecToVecMatPattern : public OpRewritePattern<linalg::MatvecOp> {
   }
 };
 
+template <typename OpTy>
+LogicalResult fusionClusterPattern(OpTy dotOp, PatternRewriter &rewriter) {
+  // The op was already processed.
+  if (dotOp->template getParentOfType<gml_st::FusionOp>()) return failure();
+  if (hasLabel(dotOp, kFusionPlanningLabel)) return failure();
+
+  auto producerFilterFn = [](Operation *op) {
+    return isa<linalg::FillOp, thlo::ReverseOp, tensor::CastOp>(op);
+  };
+  auto consumerFilterFn = [](Operation *op) {
+    if (auto mapOp = dyn_cast<linalg::MapOp>(op))
+      return mapOp.getNumDpsInputs() == 1;
+    return isa<thlo::ReverseOp>(op);
+  };
+
+  auto fusionCluster =
+      getFusionCluster(dotOp, producerFilterFn, consumerFilterFn);
+
+  for (auto *op : fusionCluster.operations) setLabel(op, kFusionPlanningLabel);
+
+  if (failed(wrapFusionCluster(rewriter, fusionCluster))) return failure();
+
+  return success();
+}
+
 struct TransformDotForCpuPass
     : public impl::TransformDotForCpuPassBase<TransformDotForCpuPass> {
   TransformDotForCpuPass() = default;
@@ -593,14 +607,45 @@ struct TransformDotForCpuPass
         return signalPassFailure();
     }
 
-    RewritePatternSet patterns(ctx);
-    patterns.add<BatchMatmulOpPattern, Conv2DNhwcHwcfOpPattern,
-                 MatVecToVecMatPattern>(ctx, 2);
-    patterns.add<MatmulPattern, MatvecPattern, VecmatPattern, DotPattern>(
-        ctx, tileSizeFn);
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<BatchMatmulOpPattern, Conv2DNhwcHwcfOpPattern,
+                   MatVecToVecMatPattern>(ctx);
 
-    if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
-      return signalPassFailure();
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    // Cleanup passes to prepare ops for better clustering.
+    {
+      RewritePatternSet patterns(ctx);
+      populateDuplicateInitOpsPatterns(patterns);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
+
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add(fusionClusterPattern<linalg::DotOp>);
+      patterns.add(fusionClusterPattern<linalg::MatmulOp>);
+      patterns.add(fusionClusterPattern<linalg::MatvecOp>);
+      patterns.add(fusionClusterPattern<linalg::VecmatOp>);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+
+      f.walk([](Operation *op) { removeLabel(op, kFusionPlanningLabel); });
+    }
+
+    {
+      RewritePatternSet patterns(ctx);
+      patterns.add<MatmulPattern, MatvecPattern, VecmatPattern, DotPattern>(
+          ctx, tileSizeFn);
+
+      if (failed(applyPatternsAndFoldGreedily(f, std::move(patterns))))
+        return signalPassFailure();
+    }
   }
 
   MatmulTileSizeComputationFn tileSizeFn;

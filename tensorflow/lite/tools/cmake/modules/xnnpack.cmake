@@ -40,10 +40,9 @@ set(XNNPACK_BUILD_BENCHMARKS OFF CACHE BOOL "Disable XNNPACK benchmarks.")
 
 # The following line adds project of PTHREADPOOL, FP16 and XNNPACK which are
 # needed to compile XNNPACK delegate of TFLite.
-add_subdirectory(
-  "${xnnpack_SOURCE_DIR}"
-  "${xnnpack_BINARY_DIR}"
-)
+# Note, we introduce an intermediate subdirectory, see ${TFLITE_SOURCE_DIR}/tools/cmake/modules/xnnpack/CMakeLists.txt
+# for details.
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/cmake/modules/xnnpack)
 
 include_directories(
   AFTER

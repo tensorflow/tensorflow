@@ -51,7 +51,7 @@ cmake ../tensorflow_src/tensorflow/lite
 #### Debug build
 
 If you need to produce a debug build which has symbol information, you need to
-provide `-DCMAKE_BUILD_TYPE=Debug` option.
+provide the `-DCMAKE_BUILD_TYPE=Debug` option.
 
 ```sh
 cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
@@ -59,8 +59,8 @@ cmake ../tensorflow_src/tensorflow/lite -DCMAKE_BUILD_TYPE=Debug
 
 #### Build with kernel unit tests
 
-In order to be able to run kernel tests, you need to provide
-'-DTFLITE_KERNEL_TEST=on' flag. Unit test cross-compilation specifics can be
+In order to be able to run kernel tests, you need to provide the
+`-DTFLITE_KERNEL_TEST=on` flag. Unit test cross-compilation specifics can be
 found in the next subsection.
 
 ```sh
@@ -203,7 +203,7 @@ NVidia CUDA OpenCL 1.2.
 
 ### Step 5. Build TensorFlow Lite
 
-In the tflite_build directory,
+In the `tflite_build` directory,
 
 ```sh
 cmake --build . -j
@@ -218,7 +218,7 @@ section.
 
 ### Step 6. Build TensorFlow Lite Benchmark Tool and Label Image Example (Optional)
 
-In the tflite_build directory,
+In the `tflite_build` directory,
 
 ```sh
 cmake --build . -j -t benchmark_model
@@ -234,19 +234,19 @@ Here is the list of available options. You can override it with
 `-D<option_name>=[ON|OFF]`. For example, `-DTFLITE_ENABLE_XNNPACK=OFF` to
 disable XNNPACK which is enabled by default.
 
-| Option Name           | Feature        | Android | Linux | macOS | Windows |
-| --------------------- | -------------- | ------- | ----- | ----- | ------- |
-| TFLITE_ENABLE_RUY     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
-:                       : matrix         :         :       :       :         :
-:                       : multiplication :         :       :       :         :
-:                       : library        :         :       :       :         :
-| TFLITE_ENABLE_NNAPI   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
-:                       : delegate       :         :       :       :         :
-| TFLITE_ENABLE_GPU     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
-:                       : delegate       :         :       :       :         :
-| TFLITE_ENABLE_XNNPACK | Enable XNNPACK | ON      | ON    | ON    | ON      |
-:                       : delegate       :         :       :       :         :
-| TFLITE_ENABLE_MMAP    | Enable MMAP    | ON      | ON    | ON    | N/A     |
+| Option Name             | Feature        | Android | Linux | macOS | Windows |
+| ----------------------- | -------------- | ------- | ----- | ----- | ------- |
+| `TFLITE_ENABLE_RUY`     | Enable RUY     | ON      | OFF   | OFF   | OFF     |
+:                         : matrix         :         :       :       :         :
+:                         : multiplication :         :       :       :         :
+:                         : library        :         :       :       :         :
+| `TFLITE_ENABLE_NNAPI`   | Enable NNAPI   | ON      | OFF   | N/A   | N/A     |
+:                         : delegate       :         :       :       :         :
+| `TFLITE_ENABLE_GPU`     | Enable GPU     | OFF     | OFF   | N/A   | N/A     |
+:                         : delegate       :         :       :       :         :
+| `TFLITE_ENABLE_XNNPACK` | Enable XNNPACK | ON      | ON    | ON    | ON      |
+:                         : delegate       :         :       :       :         :
+| `TFLITE_ENABLE_MMAP`    | Enable MMAP    | ON      | ON    | ON    | N/A     |
 
 ## Create a CMake project which uses TensorFlow Lite
 
@@ -291,10 +291,13 @@ cmake --build . -j
 This command generates the following shared library in the current directory.
 
 Platform | Library name
--------- | -------------------------
-Linux    | libtensorflowlite_c.so
-macOS    | libtensorflowlite_c.dylib
-Windows  | tensorflowlite_c.dll
+-------- | ---------------------------
+Linux    | `libtensorflowlite_c.so`
+macOS    | `libtensorflowlite_c.dylib`
+Windows  | `tensorflowlite_c.dll`
 
-**Note:** You need necessary headers (c_api.h, c_api_experimental.h and
-common.h) to use the generated shared library.
+**Note:** You need the public headers (`tensorflow/lite/c_api.h`,
+`tensorflow/lite/c_api_experimental.h`, `tensorflow/lite/c_api_types.h`, and
+`tensorflow/lite/common.h`), and the private headers that those public headers
+include (`tensorflow/lite/core/builtin_ops.h`, `tensorflow/lite/core/c/*.h`, and
+`tensorflow/lite/core/async/c/*.h`, ) to use the generated shared library.

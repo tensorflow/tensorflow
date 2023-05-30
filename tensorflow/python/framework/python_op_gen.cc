@@ -406,7 +406,7 @@ string AvoidPythonReserved(const string& s) {
 // Indent the first line by "initial" spaces and all following lines
 // by "rest" spaces.
 string Indent(int initial, int rest, StringPiece in) {
-  // TODO(joshl): Also word-wrapping?
+  // TODO(josh11b): Also word-wrapping?
   string copy(in.data(), in.size());
   absl::StripTrailingAsciiWhitespace(&copy);
   std::vector<string> v = str_util::Split(copy, '\n');
@@ -1331,7 +1331,7 @@ void GenPythonOp::HandleGraphMode(const string& function_setup,
     if (num_outs_ == 1 && op_def_.is_stateful() &&
         (!op_def_.output_arg(0).number_attr().empty() ||
          !op_def_.output_arg(0).type_list_attr().empty())) {
-      // TODO(joshl): Can skip this if the number_attr/type_list_attr has
+      // TODO(josh11b): Can skip this if the number_attr/type_list_attr has
       // a constraint indicating that this can never be empty.
       strings::StrAppend(&result_,
                          "  if not _result:\n"
@@ -1972,7 +1972,7 @@ string GetPythonOpsImpl(const OpList& ops, const ApiDefMap& api_defs,
 
   string result;
   // Header
-  // TODO(joshl): Mention the library for which wrappers are being generated.
+  // TODO(josh11b): Mention the library for which wrappers are being generated.
   strings::StrAppend(&result, R"("""Python wrappers around TensorFlow ops.
 
 This file is MACHINE GENERATED! Do not edit.

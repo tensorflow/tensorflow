@@ -223,7 +223,7 @@ class QuantizedConcatOp : public OpKernel {
                                      &output_concat_dim));
 
     TensorShape output_shape(input_shape);
-    // TODO(geoffreyi): Remove rank 0 case once !kAllowLegacyScalars
+    // TODO(irving): Remove rank 0 case once !kAllowLegacyScalars
     if (output_shape.dims() == 0) {
       output_shape.AddDim(output_concat_dim);
     } else {

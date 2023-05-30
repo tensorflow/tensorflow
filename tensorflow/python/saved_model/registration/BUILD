@@ -52,7 +52,7 @@ tf_py_strict_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",

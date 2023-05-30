@@ -877,31 +877,6 @@ class Stream {
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *y, int incy);
 
-  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64_t m, uint64 n,
-                                    float alpha, const DeviceMemory<float> &a,
-                                    int lda, const DeviceMemory<float> &x,
-                                    int incx, float beta,
-                                    DeviceMemory<float> *y, int incy,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64_t m, uint64 n,
-                                    double alpha, const DeviceMemory<double> &a,
-                                    int lda, const DeviceMemory<double> &x,
-                                    int incx, double beta,
-                                    DeviceMemory<double> *y, int incy,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(
-      blas::Transpose trans, uint64_t m, uint64 n, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &x, int incx,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(
-      blas::Transpose trans, uint64_t m, uint64 n, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &x, int incx,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *y,
-      int incy, blas::ProfileResult *output_profile_result);
-
   // See BlasSupport::DoBlasSbmv.
   Stream &ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k, float alpha,
                        const DeviceMemory<float> &a, int lda,
@@ -984,44 +959,6 @@ class Stream {
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
                         ldc, blas::kDefaultComputePrecision);
   }
-
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<Eigen::half> &a, int lda,
-                                    const DeviceMemory<Eigen::half> &b, int ldb,
-                                    float beta, DeviceMemory<Eigen::half> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<float> &a, int lda,
-                                    const DeviceMemory<float> &b, int ldb,
-                                    float beta, DeviceMemory<float> *c, int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, double alpha,
-                                    const DeviceMemory<double> &a, int lda,
-                                    const DeviceMemory<double> &b, int ldb,
-                                    double beta, DeviceMemory<double> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &b, int ldb,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
 
   template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemmWithAlgorithm(

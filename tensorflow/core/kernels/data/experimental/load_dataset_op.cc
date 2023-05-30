@@ -262,6 +262,12 @@ class LoadDatasetOp::DatasetV2 : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status InputDatasets(std::vector<const DatasetBase*>* inputs) const override {
+    // No input datasets since this is a source dataset.
+    inputs->clear();
+    return OkStatus();
+  }
+
   Status CheckExternalState() const override { return OkStatus(); }
 
  protected:

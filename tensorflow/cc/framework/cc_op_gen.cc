@@ -407,7 +407,7 @@ void WriteCCOps(const OpList& ops, const ApiDefMap& api_def_map,
 
   for (const auto& graph_op_def : ops.op()) {
     // Skip deprecated ops.
-    // TODO(joshl): If needed, can put them into a "deprecated" namespace
+    // TODO(josh11b): If needed, can put them into a "deprecated" namespace
     // instead of skipping.
     if (graph_op_def.has_deprecation() &&
         graph_op_def.deprecation().version() <= TF_GRAPH_DEF_VERSION) {

@@ -38,7 +38,7 @@ tfrt::Expected<OwnedEagerContext> InitEagerContext(
 
   if (device_mgr != nullptr) {
     Status s = device_mgr->AddDevices(std::move(devices));
-    DCHECK(s.ok()) << "Failed to initialize device manager.";
+    DCHECK_OK(s) << "Failed to initialize device manager.";
     auto r = tsl::core::RefCountPtr<IntraProcessRendezvous>(
         new tensorflow::IntraProcessRendezvous(device_mgr));
 

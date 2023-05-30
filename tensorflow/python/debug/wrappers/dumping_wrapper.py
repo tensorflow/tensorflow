@@ -17,7 +17,6 @@ import os
 import threading
 import time
 
-# Google-internal import(s).
 from tensorflow.core.util import event_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
@@ -32,8 +31,7 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
                session_root,
                watch_fn=None,
                thread_name_filter=None,
-               pass_through_operrors=None,
-               log_usage=True):
+               pass_through_operrors=None):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -55,16 +53,11 @@ class DumpingDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
         more details.
       pass_through_operrors: If true, all captured OpErrors will be
         propagated. By default this captures all OpErrors.
-      log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
        ValueError: If `session_root` is an existing and non-empty directory or
        if `session_root` is a file.
     """
-
-    if log_usage:
-      pass  # No logging for open-source.
-
     framework.NonInteractiveDebugWrapperSession.__init__(
         self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter,
         pass_through_operrors=pass_through_operrors)

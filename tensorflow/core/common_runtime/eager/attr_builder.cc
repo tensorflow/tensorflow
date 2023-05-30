@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -82,7 +83,7 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
-  if (errors::IsNotFound(s)) {
+  if (absl::IsNotFound(s)) {
     // If we did not find the op def, we assume `op_name` is a function.
     // If it is actually a misspelled op, user will get another error when
     // trying to run it.

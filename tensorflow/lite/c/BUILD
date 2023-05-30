@@ -307,16 +307,18 @@ cc_library(
     name = "c_api_opaque_internal",
     srcs = ["c_api_opaque_internal.cc"],
     hdrs = ["c_api_opaque_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external",
     ],
 )
 
@@ -332,14 +334,16 @@ cc_library(
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver_without_alwayslink",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
     ],
 )
 
 # For use with library targets that can't use relative paths.
+# LINT.IfChange(exported_headers)
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
@@ -361,6 +365,7 @@ alias(
     name = "tensorflowlite_c_impl_hdrs_filegroup",
     actual = "//tensorflow/lite/core/c:headers_filegroup",
 )
+# LINT.ThenChange(../java/BUILD:TFLITE_HEADERS)
 
 # Test the C extension API code.
 test_suite(

@@ -59,11 +59,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 // clang-format on
 
+#ifdef __clang__
 #pragma clang diagnostic push
 
 // Make sure that Eigen::half forward declaration in dnn.h matches the
 // declaration in Eigen.
 #pragma clang diagnostic warning "-Wmismatched-tags"
+#endif
 
 namespace stream_executor {
 namespace gpu {
@@ -744,6 +746,8 @@ class CudnnFilterDescriptor {
 // Additionally, users can specify an additional errata JSON file via
 // CUDNN_ERRATA_JSON_FILE at runtime.
 // We are also excluding two flavors of ConvFwd_eng42 due to b/234183340.
+// Excluding ConvFwd_Add_Add_eng32 to avoid misaligned address on A100,
+// see b/279920986.
 const json* CudnnExecutionPlanEngineFilterStatic() {
   static absl::string_view filter_str = R"({
       "version" : 1,
@@ -782,6 +786,28 @@ const json* CudnnExecutionPlanEngineFilterStatic() {
             },
             "cudnn_version_start" : 8000,
             "cudnn_version_end"   : -1
+          },
+          { "rule_id"             : "ConvFwd_Add_Add_eng34_k24=11",
+            "operation"           : "ConvFwd_Add_Add",
+            "engine"              : 34,
+            "cudnn_version_start" : 8700,
+            "cudnn_version_end"   : 8900
+          },
+          { "rule_id"             : "ConvFwd_Add_Add_ReluFwd_eng15_k5=1_k6=0_k7=1_k10=1",
+            "operation"           : "ConvFwd_Add_Add_ReluFwd",
+            "engine"              : 15,
+            "knob"                : ["k5=1", "k6=0", "k7=1", "k10=1"],
+            "cudnn_version_start" : 8900,
+            "cudnn_version_end"   : -1,
+            "comment"             : "b/281585171"
+          },
+          { "rule_id"             : "ConvFwd_Add_Add_eng15_k5=1_k6=0_k7=1_k10=1",
+            "operation"           : "ConvFwd_Add_Add",
+            "engine"              : 15,
+            "knob"                : ["k5=1", "k6=0", "k7=1", "k10=1"],
+            "cudnn_version_start" : 8900,
+            "cudnn_version_end"   : -1,
+            "comment"             : "b/281887114"
           }
       ]})";
   static const json* json_handle = new json(json::parse(filter_str));
@@ -3949,16 +3975,19 @@ GetCudnnOperationGraph(dnn::ConvolutionKind kind, dnn::DataType input_type,
       dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
 #endif
 
-  TF_ASSIGN_OR_RETURN(auto tensor_w,
-                      CreateCudnnTensor(filter_dims, filter_strides, 'w',
-                                        input_type, vector_size, vector_dim,
-                                        /*is_virtual=*/false,
 #if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
-                                        tensor_ordering_type
+  TF_ASSIGN_OR_RETURN(
+      auto tensor_w,
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false, tensor_ordering_type));
 #else
-                                        is_reordered_nchw_vect
+  TF_ASSIGN_OR_RETURN(
+      auto tensor_w,
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false, is_reordered_nchw_vect));
 #endif
-                                        ));
 
   // conv_desc.
   auto mode = convolution_descriptor.convolution_not_crosscorr()
@@ -4099,16 +4128,21 @@ GetCudnnFusedOperationGraph(
       dnn::FilterLayout::kOutputInputYX32_CudnnReordered;
 #endif
 
-  TF_ASSIGN_OR_RETURN(auto tensor_w,
-                      CreateCudnnTensor(filter_dims, filter_strides, 'w',
-                                        input_type, vector_size, vector_dim,
-                                        /*is_virtual=*/false,
 #if (CUDNN_VERSION >= 8800 && TF_ENABLE_CUDNN_FRONTEND)
-                                        tensor_ordering_type
+  TF_ASSIGN_OR_RETURN(
+      auto tensor_w,
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false,
+                        tensor_ordering_type));  // cuDNN 8.3 fails here
 #else
-                                        is_reordered_nchw_vect
+  TF_ASSIGN_OR_RETURN(
+      auto tensor_w,
+      CreateCudnnTensor(filter_dims, filter_strides, 'w', input_type,
+                        vector_size, vector_dim,
+                        /*is_virtual=*/false,
+                        is_reordered_nchw_vect));  // cuDNN 8.3 fails here
 #endif
-                                        ));  // cuDNN 8.3 fails here
 
   // For the purposes of the cudnn graph, say that the bias tensor has the same
   // layout as the output tensor.  It doesn't actually matter, because bias is a
@@ -7676,7 +7710,9 @@ void initialize_cudnn() {
 
 }  // namespace stream_executor
 
+#ifdef __clang__
 #pragma clang diagnostic pop
+#endif
 
 REGISTER_MODULE_INITIALIZER(register_cudnn,
                             { stream_executor::initialize_cudnn(); });

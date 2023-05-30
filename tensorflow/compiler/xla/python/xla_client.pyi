@@ -54,6 +54,7 @@ mlir_api_version: int
 
 bfloat16: Type[numpy.generic]
 float8_e4m3fn: Type[numpy.generic]
+float8_e4m3b11fnuz: Type[numpy.generic]
 float8_e5m2: Type[numpy.generic]
 XLA_ELEMENT_TYPE_TO_DTYPE: Dict[PrimitiveType, numpy.dtype]
 
@@ -96,7 +97,7 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None) -> C
   ...
 
 
-def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+def make_tfrt_tpu_c_api_device_topology(topology_name: Optional[str] = None, **kwargs) -> DeviceTopology:
   ...
 
 
@@ -105,6 +106,9 @@ def make_tpu_client() -> Client:
 
 
 def make_c_api_client(plugin_name: str, options: Optional[_NameValueMapping] = None) -> Client:
+  ...
+
+def pjrt_plugin_loaded(plugin_name: str) -> bool:
   ...
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:

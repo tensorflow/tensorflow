@@ -135,6 +135,8 @@ from tensorflow.python.data.experimental.ops import lookup_ops as data_lookup_op
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column as fc_old
+from tensorflow.python.feature_column import feature_column_v2_types as fc_types
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -516,7 +518,7 @@ def make_parse_example_spec_v2(feature_columns):
   """
   result = {}
   for column in feature_columns:
-    if not isinstance(column, FeatureColumn):
+    if not isinstance(column, fc_types.FeatureColumn):
       raise ValueError('All feature_columns must be FeatureColumn instances. '
                        'Given: {}'.format(column))
     config = column.parse_example_spec
@@ -1976,267 +1978,13 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
       keys=tuple(keys), hash_bucket_size=hash_bucket_size, hash_key=hash_key)
 
 
-
-
-# TODO(b/181853833): Add a tf.type for instance type checking.
-@tf_export('__internal__.feature_column.FeatureColumn', v1=[])
-@six.add_metaclass(abc.ABCMeta)
-class FeatureColumn(object):
-  """Represents a feature column abstraction.
-
-  WARNING: Do not subclass this layer unless you know what you are doing:
-  the API is subject to future changes.
-
-  To distinguish between the concept of a feature family and a specific binary
-  feature within a family, we refer to a feature family like "country" as a
-  feature column. For example, we can have a feature in a `tf.Example` format:
-    {key: "country",  value: [ "US" ]}
-  In this example the value of feature is "US" and "country" refers to the
-  column of the feature.
-
-  This class is an abstract class. Users should not create instances of this.
-  """
-
-  @abc.abstractproperty
-  def name(self):
-    """Returns string. Used for naming."""
-    pass
-
-  def __lt__(self, other):
-    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
-
-    Feature columns need to occasionally be sortable, for example when used as
-    keys in a features dictionary passed to a layer.
-
-    In CPython, `__lt__` must be defined for all objects in the
-    sequence being sorted.
-
-    If any objects in the sequence being sorted do not have an `__lt__` method
-    compatible with feature column objects (such as strings), then CPython will
-    fall back to using the `__gt__` method below.
-    https://docs.python.org/3/library/stdtypes.html#list.sort
-
-    Args:
-      other: The other object to compare to.
-
-    Returns:
-      True if the string representation of this object is lexicographically less
-      than the string representation of `other`. For FeatureColumn objects,
-      this looks like "<__main__.FeatureColumn object at 0xa>".
-    """
-    return str(self) < str(other)
-
-  def __gt__(self, other):
-    """Allows feature columns to be sorted in Python 3 as they are in Python 2.
-
-    Feature columns need to occasionally be sortable, for example when used as
-    keys in a features dictionary passed to a layer.
-
-    `__gt__` is called when the "other" object being compared during the sort
-    does not have `__lt__` defined.
-    Example:
-    ```
-    # __lt__ only class
-    class A():
-      def __lt__(self, other): return str(self) < str(other)
-
-    a = A()
-    a < "b" # True
-    "0" < a # Error
-
-    # __lt__ and __gt__ class
-    class B():
-      def __lt__(self, other): return str(self) < str(other)
-      def __gt__(self, other): return str(self) > str(other)
-
-    b = B()
-    b < "c" # True
-    "0" < b # True
-    ```
-
-    Args:
-      other: The other object to compare to.
-
-    Returns:
-      True if the string representation of this object is lexicographically
-      greater than the string representation of `other`. For FeatureColumn
-      objects, this looks like "<__main__.FeatureColumn object at 0xa>".
-    """
-    return str(self) > str(other)
-
-  @abc.abstractmethod
-  def transform_feature(self, transformation_cache, state_manager):
-    """Returns intermediate representation (usually a `Tensor`).
-
-    Uses `transformation_cache` to create an intermediate representation
-    (usually a `Tensor`) that other feature columns can use.
-
-    Example usage of `transformation_cache`:
-    Let's say a Feature column depends on raw feature ('raw') and another
-    `FeatureColumn` (input_fc). To access corresponding `Tensor`s,
-    transformation_cache will be used as follows:
-
-    ```python
-    raw_tensor = transformation_cache.get('raw', state_manager)
-    fc_tensor = transformation_cache.get(input_fc, state_manager)
-    ```
-
-    Args:
-      transformation_cache: A `FeatureTransformationCache` object to access
-        features.
-      state_manager: A `StateManager` to create / access resources such as
-        lookup tables.
-
-    Returns:
-      Transformed feature `Tensor`.
-    """
-    pass
-
-  @abc.abstractproperty
-  def parse_example_spec(self):
-    """Returns a `tf.Example` parsing spec as dict.
-
-    It is used for get_parsing_spec for `tf.io.parse_example`. Returned spec is
-    a dict from keys ('string') to `VarLenFeature`, `FixedLenFeature`, and other
-    supported objects. Please check documentation of `tf.io.parse_example` for
-    all supported spec objects.
-
-    Let's say a Feature column depends on raw feature ('raw') and another
-    `FeatureColumn` (input_fc). One possible implementation of
-    parse_example_spec is as follows:
-
-    ```python
-    spec = {'raw': tf.io.FixedLenFeature(...)}
-    spec.update(input_fc.parse_example_spec)
-    return spec
-    ```
-    """
-    pass
-
-  def create_state(self, state_manager):
-    """Uses the `state_manager` to create state for the FeatureColumn.
-
-    Args:
-      state_manager: A `StateManager` to create / access resources such as
-        lookup tables and variables.
-    """
-    pass
-
-  @abc.abstractproperty
-  def _is_v2_column(self):
-    """Returns whether this FeatureColumn is fully conformant to the new API.
-
-    This is needed for composition type cases where an EmbeddingColumn etc.
-    might take in old categorical columns as input and then we want to use the
-    old API.
-    """
-    pass
-
-  @abc.abstractproperty
-  def parents(self):
-    """Returns a list of immediate raw feature and FeatureColumn dependencies.
-
-    For example:
-    # For the following feature columns
-    a = numeric_column('f1')
-    c = crossed_column(a, 'f2')
-    # The expected parents are:
-    a.parents = ['f1']
-    c.parents = [a, 'f2']
-    """
-    pass
-
-  def get_config(self):
-    """Returns the config of the feature column.
-
-    A FeatureColumn config is a Python dictionary (serializable) containing the
-    configuration of a FeatureColumn. The same FeatureColumn can be
-    reinstantiated later from this configuration.
-
-    The config of a feature column does not include information about feature
-    columns depending on it nor the FeatureColumn class name.
-
-    Example with (de)serialization practices followed in this file:
-    ```python
-    class SerializationExampleFeatureColumn(
-        FeatureColumn, collections.namedtuple(
-            'SerializationExampleFeatureColumn',
-            ('dimension', 'parent', 'dtype', 'normalizer_fn'))):
-
-      def get_config(self):
-        # Create a dict from the namedtuple.
-        # Python attribute literals can be directly copied from / to the config.
-        # For example 'dimension', assuming it is an integer literal.
-        config = dict(zip(self._fields, self))
-
-        # (De)serialization of parent FeatureColumns should use the provided
-        # (de)serialize_feature_column() methods that take care of de-duping.
-        config['parent'] = serialize_feature_column(self.parent)
-
-        # Many objects provide custom (de)serialization e.g: for tf.DType
-        # tf.DType.name, tf.as_dtype() can be used.
-        config['dtype'] = self.dtype.name
-
-        # Non-trivial dependencies should be Keras-(de)serializable.
-        config['normalizer_fn'] = generic_utils.serialize_keras_object(
-            self.normalizer_fn)
-
-        return config
-
-      @classmethod
-      def from_config(cls, config, custom_objects=None, columns_by_name=None):
-        # This should do the inverse transform from `get_config` and construct
-        # the namedtuple.
-        kwargs = config.copy()
-        kwargs['parent'] = deserialize_feature_column(
-            config['parent'], custom_objects, columns_by_name)
-        kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
-        kwargs['normalizer_fn'] = generic_utils.deserialize_keras_object(
-          config['normalizer_fn'], custom_objects=custom_objects)
-        return cls(**kwargs)
-
-    ```
-    Returns:
-      A serializable Dict that can be used to deserialize the object with
-      from_config.
-    """
-    return self._get_config()
-
-  def _get_config(self):
-    raise NotImplementedError('Must be implemented in subclasses.')
-
-  @classmethod
-  def from_config(cls, config, custom_objects=None, columns_by_name=None):
-    """Creates a FeatureColumn from its config.
-
-    This method should be the reverse of `get_config`, capable of instantiating
-    the same FeatureColumn from the config dictionary. See `get_config` for an
-    example of common (de)serialization practices followed in this file.
-
-    TODO(b/118939620): This is a private method until consensus is reached on
-    supporting object deserialization deduping within Keras.
-
-    Args:
-      config: A Dict config acquired with `get_config`.
-      custom_objects: Optional dictionary mapping names (strings) to custom
-        classes or functions to be considered during deserialization.
-      columns_by_name: A Dict[String, FeatureColumn] of existing columns in
-        order to avoid duplication. Should be passed to any calls to
-        deserialize_feature_column().
-
-    Returns:
-      A FeatureColumn for the input config.
-    """
-    return cls._from_config(config, custom_objects, columns_by_name)
-
-  @classmethod
-  def _from_config(cls, config, custom_objects=None, columns_by_name=None):
-    raise NotImplementedError('Must be implemented in subclasses.')
+# TODO(b/283983575): Remove this once references are using the new location
+FeatureColumn = fc_types.FeatureColumn
 
 
 # TODO(b/181853833): Add a tf.type for instance type checking.
 @tf_export('__internal__.feature_column.DenseColumn', v1=[])
-class DenseColumn(FeatureColumn):
+class DenseColumn(fc_types.FeatureColumn):
   """Represents a column which can be represented as `Tensor`.
 
   Some examples of this type are: numeric_column, embedding_column,
@@ -2276,7 +2024,7 @@ class DenseColumn(FeatureColumn):
 def is_feature_column_v2(feature_columns):
   """Returns True if all feature columns are V2."""
   for feature_column in feature_columns:
-    if not isinstance(feature_column, FeatureColumn):
+    if not isinstance(feature_column, fc_types.FeatureColumn):
       return False
     if not feature_column._is_v2_column:  # pylint: disable=protected-access
       return False
@@ -2311,7 +2059,7 @@ def _create_dense_column_weighted_sum(column, transformation_cache,
   return math_ops.matmul(tensor, weight_var, name='weighted_sum')
 
 
-class CategoricalColumn(FeatureColumn):
+class CategoricalColumn(fc_types.FeatureColumn):
   """Represents a categorical feature.
 
   A categorical feature typically handled with a `tf.sparse.SparseTensor` of
@@ -2400,7 +2148,8 @@ def _create_categorical_column_weighted_sum(column, transformation_cache,
 
 # TODO(b/181853833): Add a tf.type for instance type checking.
 @tf_export('__internal__.feature_column.SequenceDenseColumn', v1=[])
-class SequenceDenseColumn(FeatureColumn):
+@serialization.register_feature_column
+class SequenceDenseColumn(fc_types.FeatureColumn):
   """Represents dense sequence data."""
 
   TensorSequenceLengthPair = collections.namedtuple(  # pylint: disable=invalid-name
@@ -2499,7 +2248,7 @@ class FeatureTransformationCache(object):
     if isinstance(key, six.string_types):
       raise ValueError('Feature {} is not in features dictionary.'.format(key))
 
-    if not isinstance(key, FeatureColumn):
+    if not isinstance(key, fc_types.FeatureColumn):
       raise TypeError('"key" must be either a "str" or "FeatureColumn". '
                       'Provided: {}'.format(key))
 
@@ -2633,7 +2382,7 @@ def _normalize_feature_columns(feature_columns):
   Raises:
     ValueError: for any invalid inputs, such as empty, duplicated names, etc.
   """
-  if isinstance(feature_columns, FeatureColumn):
+  if isinstance(feature_columns, fc_types.FeatureColumn):
     feature_columns = [feature_columns]
 
   if isinstance(feature_columns, collections_abc.Iterator):
@@ -2643,7 +2392,7 @@ def _normalize_feature_columns(feature_columns):
     raise ValueError('Expected feature_columns to be iterable, found dict.')
 
   for column in feature_columns:
-    if not isinstance(column, FeatureColumn):
+    if not isinstance(column, fc_types.FeatureColumn):
       raise ValueError('Items of feature_columns must be a FeatureColumn. '
                        'Given (type {}): {}.'.format(type(column), column))
   if not feature_columns:
@@ -2662,6 +2411,7 @@ def _normalize_feature_columns(feature_columns):
   return sorted(feature_columns, key=lambda x: x.name)
 
 
+@serialization.register_feature_column
 class NumericColumn(
     DenseColumn,
     fc_old._DenseColumn,  # pylint: disable=protected-access
@@ -2770,7 +2520,6 @@ class NumericColumn(
   def get_config(self):
     """See 'FeatureColumn` base class."""
     config = dict(zip(self._fields, self))
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     config['normalizer_fn'] = serialization._serialize_keras_object(  # pylint: disable=protected-access
         self.normalizer_fn)
     config['dtype'] = self.dtype.name
@@ -2780,7 +2529,6 @@ class NumericColumn(
   def from_config(cls, config, custom_objects=None, columns_by_name=None):
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     kwargs = _standardize_and_copy_config(config)
     kwargs['normalizer_fn'] = serialization._deserialize_keras_object(  # pylint: disable=protected-access
         config['normalizer_fn'],
@@ -2790,6 +2538,7 @@ class NumericColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class BucketizedColumn(
     DenseColumn,
     CategoricalColumn,
@@ -2801,8 +2550,10 @@ class BucketizedColumn(
 
   @property
   def _is_v2_column(self):
-    return (isinstance(self.source_column, FeatureColumn) and
-            self.source_column._is_v2_column)  # pylint: disable=protected-access
+    return (
+        isinstance(self.source_column, fc_types.FeatureColumn)
+        and self.source_column._is_v2_column
+    )  # pylint: disable=protected-access
 
   @property
   def name(self):
@@ -2944,6 +2695,7 @@ class BucketizedColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class EmbeddingColumn(
     DenseColumn,
     SequenceDenseColumn,
@@ -2980,8 +2732,10 @@ class EmbeddingColumn(
 
   @property
   def _is_v2_column(self):
-    return (isinstance(self.categorical_column, FeatureColumn) and
-            self.categorical_column._is_v2_column)  # pylint: disable=protected-access
+    return (
+        isinstance(self.categorical_column, fc_types.FeatureColumn)
+        and self.categorical_column._is_v2_column
+    )  # pylint: disable=protected-access
 
   @property
   def name(self):
@@ -3189,7 +2943,6 @@ class EmbeddingColumn(
 
   def get_config(self):
     """See 'FeatureColumn` base class."""
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     config = dict(zip(self._fields, self))
     config['categorical_column'] = serialization.serialize_feature_column(
         self.categorical_column)
@@ -3202,7 +2955,6 @@ class EmbeddingColumn(
     """See 'FeatureColumn` base class."""
     if 'use_safe_embedding_lookup' not in config:
       config['use_safe_embedding_lookup'] = True
-    from tensorflow.python.feature_column import serialization  # pylint: disable=g-import-not-at-top
     _check_config_keys(config, cls._fields)
     kwargs = _standardize_and_copy_config(config)
     kwargs['categorical_column'] = serialization.deserialize_feature_column(
@@ -3274,6 +3026,7 @@ class SharedEmbeddingColumnCreator(autotrackable.AutoTrackable):
     return self._dimension
 
 
+@serialization.register_feature_column
 class SharedEmbeddingColumn(
     DenseColumn,
     SequenceDenseColumn,
@@ -3427,6 +3180,7 @@ def _check_shape(shape, key):
   return shape
 
 
+@serialization.register_feature_column
 class HashedCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3538,6 +3292,7 @@ class HashedCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class VocabularyFileCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3699,6 +3454,7 @@ class VocabularyFileCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class VocabularyListCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3820,6 +3576,7 @@ class VocabularyListCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class IdentityCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3929,6 +3686,7 @@ class IdentityCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class WeightedCategoricalColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -3939,8 +3697,10 @@ class WeightedCategoricalColumn(
 
   @property
   def _is_v2_column(self):
-    return (isinstance(self.categorical_column, FeatureColumn) and
-            self.categorical_column._is_v2_column)  # pylint: disable=protected-access
+    return (
+        isinstance(self.categorical_column, fc_types.FeatureColumn)
+        and self.categorical_column._is_v2_column
+    )  # pylint: disable=protected-access
 
   @property
   def name(self):
@@ -4055,6 +3815,7 @@ class WeightedCategoricalColumn(
     return cls(**kwargs)
 
 
+@serialization.register_feature_column
 class CrossedColumn(
     CategoricalColumn,
     fc_old._CategoricalColumn,  # pylint: disable=protected-access
@@ -4067,7 +3828,7 @@ class CrossedColumn(
     for key in _collect_leaf_level_keys(self):
       if isinstance(key, six.string_types):
         continue
-      if not isinstance(key, FeatureColumn):
+      if not isinstance(key, fc_types.FeatureColumn):
         return False
       if not key._is_v2_column:  # pylint: disable=protected-access
         return False
@@ -4078,7 +3839,7 @@ class CrossedColumn(
     """See `FeatureColumn` base class."""
     feature_names = []
     for key in _collect_leaf_level_keys(self):
-      if isinstance(key, (FeatureColumn, fc_old._FeatureColumn)):  # pylint: disable=protected-access
+      if isinstance(key, (fc_types.FeatureColumn, fc_old._FeatureColumn)):  # pylint: disable=protected-access
         feature_names.append(key.name)
       else:  # key must be a string
         feature_names.append(key)
@@ -4089,7 +3850,7 @@ class CrossedColumn(
     """See `FeatureColumn` base class."""
     config = {}
     for key in self.keys:
-      if isinstance(key, FeatureColumn):
+      if isinstance(key, fc_types.FeatureColumn):
         config.update(key.parse_example_spec)
       elif isinstance(key, fc_old._FeatureColumn):  # pylint: disable=protected-access
         config.update(key._parse_example_spec)  # pylint: disable=protected-access
@@ -4240,6 +4001,7 @@ def _prune_invalid_weights(sparse_ids, sparse_weights):
   return sparse_ids, sparse_weights
 
 
+@serialization.register_feature_column
 class IndicatorColumn(
     DenseColumn,
     SequenceDenseColumn,
@@ -4255,8 +4017,10 @@ class IndicatorColumn(
 
   @property
   def _is_v2_column(self):
-    return (isinstance(self.categorical_column, FeatureColumn) and
-            self.categorical_column._is_v2_column)  # pylint: disable=protected-access
+    return (
+        isinstance(self.categorical_column, fc_types.FeatureColumn)
+        and self.categorical_column._is_v2_column
+    )  # pylint: disable=protected-access
 
   @property
   def name(self):
@@ -4332,7 +4096,7 @@ class IndicatorColumn(
   @property
   def variable_shape(self):
     """Returns a `TensorShape` representing the shape of the dense `Tensor`."""
-    if isinstance(self.categorical_column, FeatureColumn):
+    if isinstance(self.categorical_column, fc_types.FeatureColumn):
       return tensor_shape.TensorShape([1, self.categorical_column.num_buckets])
     else:
       return tensor_shape.TensorShape([1, self.categorical_column._num_buckets])  # pylint: disable=protected-access
@@ -4493,6 +4257,7 @@ def _verify_static_batch_size_equality(tensors, columns):
                 expected_batch_size, batch_size))
 
 
+@serialization.register_feature_column
 class SequenceCategoricalColumn(
     CategoricalColumn,
     fc_old._SequenceCategoricalColumn,  # pylint: disable=protected-access
@@ -4502,8 +4267,10 @@ class SequenceCategoricalColumn(
 
   @property
   def _is_v2_column(self):
-    return (isinstance(self.categorical_column, FeatureColumn) and
-            self.categorical_column._is_v2_column)  # pylint: disable=protected-access
+    return (
+        isinstance(self.categorical_column, fc_types.FeatureColumn)
+        and self.categorical_column._is_v2_column
+    )  # pylint: disable=protected-access
 
   @property
   def name(self):

@@ -1,5 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -30,9 +30,9 @@ py_strict_library(
         "//tensorflow/python/autograph/core:function_wrappers",
         "//tensorflow/python/autograph/core:unsupported_features_checker",
         "//tensorflow/python/autograph/lang:special_functions",
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:__init__",
+        "//tensorflow/python/autograph/operators:py_builtins",
         "//tensorflow/python/autograph/pyct:anno",
-        "//tensorflow/python/autograph/pyct:cache",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:error_utils",
         "//tensorflow/python/autograph/pyct:errors",
@@ -66,7 +66,7 @@ py_strict_library(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "api_test",
     srcs = ["api_test.py"],
     python_version = "PY3",
@@ -97,7 +97,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
     deps = [

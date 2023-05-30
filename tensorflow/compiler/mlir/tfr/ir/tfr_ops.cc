@@ -161,6 +161,16 @@ bool TFRType::classof(Type type) {
 // Custom op methods
 //===----------------------------------------------------------------------===//
 
+void CallOp::setCalleeFromCallable(CallInterfaceCallable callee) {
+  // Direct call.
+  if (FlatSymbolRefAttr calleeAttr = getCalleeAttr()) {
+    auto symRef = callee.get<SymbolRefAttr>();
+    return setCalleeAttr(cast<FlatSymbolRefAttr>(symRef));
+  }
+  // Indirect call, callee Value is the first operand.
+  return setOperand(0, callee.get<Value>());
+}
+
 LogicalResult ConstantTensorOp::verify() {
   ConstantTensorOp op = *this;
   auto input_type = op.getArg().getType();

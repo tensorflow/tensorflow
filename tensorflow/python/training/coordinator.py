@@ -203,7 +203,7 @@ class Coordinator:
           _, ex_instance, _ = ex
           raise ex_instance
         elif ex is not None:
-          # NOTE(mdevin): This is bogus if request_stop() is not called
+          # NOTE(touts): This is bogus if request_stop() is not called
           # from the exception handler that raised ex.
           _, ex_instance, _ = sys.exc_info()
           raise ex_instance
@@ -233,7 +233,7 @@ class Coordinator:
                   % self._exc_info_to_raise)
             except ValueError:
               # Record this error so it kills the coordinator properly.
-              # NOTE(mdevin): As above, this is bogus if request_stop() is not
+              # NOTE(touts): As above, this is bogus if request_stop() is not
               # called from the exception handler that raised ex.
               self._exc_info_to_raise = sys.exc_info()
 

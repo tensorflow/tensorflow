@@ -3,6 +3,8 @@
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-float16-quantization" | FileCheck --check-prefix=Float16 %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="enable-custom-op-quantization=CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=CustomOp %s
 // RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="min-elements-for-weights=4000 enable-custom-op-quantization=CustomTestOp=1-3,CustomTestOp3=3" | FileCheck --check-prefix=MinElement %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="min-elements-for-weights=19" | FileCheck --check-prefix=LSTMOpQuantized %s
+// RUN: tf-opt %s -tfl-prepare-quantize-dynamic-range="min-elements-for-weights=21" | FileCheck --check-prefix=LSTMOpNotQuantized %s
 
 // CHECK-LABEL: QuantizeConv2D
 // PerTensor-LABEL: QuantizeConv2D
@@ -408,4 +410,42 @@ func.func @LargeFloat16Constants(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112
 
 // Float16-DAG: %[[w:.*]] = arith.constant dense<6.550400e+04> : tensor<64x3x3x3xf16>
 // Float16-DAG: %[[b:.*]] = arith.constant dense<-6.550400e+04> : tensor<64xf16>
+}
+
+// LSTMOpQuantized-LABEL: LSTMOpNotPartiallyQuantized
+// LSTMOpNotQuantized-LABEL: LSTMOpNotPartiallyQuantized
+func.func @LSTMOpNotPartiallyQuantized(%arg0: tensor<1x28x28xf32>) -> tensor<1x28x20xf32> {
+    %cst_2 = "tfl.no_value"() {value = unit} : () -> none
+    %cst_3 = arith.constant dense<1.0> : tensor<20x20xf32>
+    %cst_7 = arith.constant dense<1.0> : tensor<20xf32>
+    %recurrent_input = arith.constant dense<1.0> : tensor<1x20xf32>
+    %recurrent_stats = "quantfork.stats"(%recurrent_input) {layerStats = dense<[-2.0, 1.0]> : tensor<2xf32>} : (tensor<1x20xf32>) -> tensor<1x20xf32>
+    %cell_input = arith.constant dense<1.0> : tensor<1x20xf32>
+    %cell_stats = "quantfork.stats"(%cell_input) {layerStats = dense<[-2.73090601, 7.94872093]> : tensor<2xf32>} : (tensor<1x20xf32>) -> tensor<1x20xf32>
+    %0 = "tfl.unidirectional_sequence_lstm"(%arg0,
+      %cst_3, %cst_3, %cst_3, %cst_3,
+      %cst_3, %cst_3, %cst_3, %cst_3,
+      %cst_7, %cst_7, %cst_7,
+      %cst_7, %cst_7, %cst_7, %cst_7,
+      %cst_3, %cst_2,
+      %recurrent_stats, %cell_stats,
+      %cst_2, %cst_2, %cst_2, %cst_2) {cell_clip = 1.000000e+01 : f32, fused_activation_function = "TANH", proj_clip = 0.000000e+00 : f32, time_major = false}
+    : ( tensor<1x28x28xf32>,
+        tensor<20x20xf32>, tensor<20x20xf32>, tensor<20x20xf32>, tensor<20x20xf32>,
+        tensor<20x20xf32>, tensor<20x20xf32>, tensor<20x20xf32>, tensor<20x20xf32>,
+        tensor<20xf32>, tensor<20xf32>, tensor<20xf32>,
+        tensor<20xf32>, tensor<20xf32>, tensor<20xf32>, tensor<20xf32>,
+        tensor<20x20xf32>, none,
+        tensor<1x20xf32>, tensor<1x20xf32>,
+        none, none, none, none) -> tensor<1x28x20xf32>
+    %1 = "quantfork.stats"(%0) {layerStats = dense<[-1.0, 2.0]> : tensor<2xf32>} : (tensor<1x28x20xf32>) -> tensor<1x28x20xf32>
+    func.return %1 : tensor<1x28x20xf32>
+
+// LSTMOpQuantized-DAG: %[[dq1:.*]] = "tfl.dequantize"({{.*}}) : (tensor<20x20x!quant.uniform<i8<-127:127>:f32, 0.0078740157480314959>>) -> tensor<20x20xf32>
+// LSTMOpQuantized-DAG: %[[dq3:.*]] = "tfl.dequantize"({{.*}}) : (tensor<20x!quant.uniform<i8<-127:127>:f32, 0.0078740157480314959>>) -> tensor<20xf32>
+// LSTMOpQuantized: %[[lstm:.*]] = "tfl.unidirectional_sequence_lstm"(%arg0, %[[dq1]], %[[dq1]], %[[dq1]], %[[dq1]], %[[dq1]], %[[dq1]], %[[dq1]], %[[dq1]], %[[dq3]], %[[dq3]], %[[dq3]], %cst_0, %cst_0, %cst_0, %cst_0, %[[dq1]], %0, %cst_1, %cst_1, %0, %0, %0, %0)
+
+// LSTMOpNotQuantized-DAG: %[[cst_1:.*]] = arith.constant dense<1.000000e+00> : tensor<20x20xf32>
+// LSTMOpNotQuantized-DAG: %[[cst_3:.*]] = arith.constant dense<1.000000e+00> : tensor<20xf32>
+// LSTMOpNotQuantized: %[[lstm:.*]] = "tfl.unidirectional_sequence_lstm"(%arg0, %[[cst_1]], %[[cst_1]], %[[cst_1]], %[[cst_1]], %[[cst_1]], %[[cst_1]], %[[cst_1]], %[[cst_1]], %[[cst_3]], %[[cst_3]], %[[cst_3]], %cst_0, %cst_0, %cst_0, %cst_0, %[[cst_1]], %0, %cst_1, %cst_1, %0, %0, %0, %0)
 }

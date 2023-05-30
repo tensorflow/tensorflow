@@ -21,7 +21,7 @@ namespace tensorflow {
 namespace tfrt_stub {
 
 absl::StatusOr<ModelConfig> ModelConfig::CreateFromProto(
-    ModelConfigProto proto) {
+    RuntimeConfigProto proto) {
   ModelConfig model_config;
   model_config.proto_ = std::move(proto);
   size_t i = 0;

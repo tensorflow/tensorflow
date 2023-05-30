@@ -13,6 +13,9 @@ package_group(
         # copybara:uncomment "//learning/brain/experimental/tfrt/...",
         # copybara:uncomment "//learning/brain/research/pjrt/...",
         # copybara:uncomment "//learning/brain/tfrt/...",
+        # copybara:uncomment "//learning/infra/mira/distributed/...",
+        "//learning/serving/...",
+        "//quality/webanswers/...",
         "//smartass/brain/inference/...",
         # copybara:uncomment "//smartass/brain/ops/...",
         "//tensorflow/c/eager/...",
@@ -20,9 +23,18 @@ package_group(
         "//tensorflow/core/runtime_fallback/...",
         "//tensorflow/core/tfrt/...",
         "//tensorflow/python/...",
-        # copybara:uncomment "//tensorflow_serving/batching/google/...",
-        # copybara:uncomment "//tensorflow_serving/servables/tensorflow/google/...",
+        # copybara:uncomment "//tensorflow_serving/...",
         # copybara:uncomment "//third_party/tf_runtime_google/...",
+    ],
+)
+
+cc_library(
+    name = "tfrt_runtime",
+    srcs = ["tfrt_runtime.cc"],
+    hdrs = ["tfrt_runtime.h"],
+    deps = [
+        "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -45,7 +57,6 @@ cc_library(
         "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/tfrt/eager:virtual_device",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/status",
@@ -188,7 +199,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

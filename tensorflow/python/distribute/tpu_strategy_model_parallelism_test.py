@@ -516,6 +516,28 @@ class TPUStrategyModelParallelismTest(
         self.evaluate(strategy.reduce("SUM", result, axis=None)),
     )
 
+  def test_spmd_with_map_outside_comp(self):
+    strategy, num_replicas = get_tpu_strategy(enable_spmd=True)
+
+    def host_inc(x):
+      return x + 1
+
+    @def_function.function
+    def fn(a):
+      b = strategy.experimental_split_to_logical_devices(a, [2, 1])
+      c = tpu_replication.experimental_map_outside_compilation(host_inc, b)
+      d = strategy.experimental_split_to_logical_devices(c, [2, 1])
+      return d
+
+    arg = constant_op.constant(
+        [[0, 1], [2, 3]], shape=(2, 2), dtype=dtypes.int64
+    )
+    result = strategy.run(fn, args=(arg,))
+    expected = (arg + 1) * num_replicas
+    self.assertAllEqual(
+        expected, self.evaluate(strategy.reduce("SUM", result, axis=None))
+    )
+
 
 if __name__ == "__main__":
   test.main()

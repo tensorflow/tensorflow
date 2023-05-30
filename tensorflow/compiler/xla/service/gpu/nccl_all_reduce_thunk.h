@@ -19,7 +19,6 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/nccl_collective_thunk.h"
@@ -51,43 +50,10 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 };
 
 // -----------------------------------------------------------------------------
-// AllReduce thunks
+// AllReduce thunk.
 // -----------------------------------------------------------------------------
 
-class NcclAllReduceThunkBase : public NcclAllReduceReduceScatterThunkBase {
- public:
-  using NcclAllReduceReduceScatterThunkBase::
-      NcclAllReduceReduceScatterThunkBase;
-
- protected:
-  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-};
-
-class NcclAllReduceThunk : public NcclAllReduceThunkBase {
- public:
-  NcclAllReduceThunk(ThunkInfo thunk_info, mlir::lmhlo::AllReduceOp op,
-                     std::vector<Buffer> buffers);
-
-  static const char* GetHloOpName() { return "all-reduce"; }
-
-  // Checks whether the given instruction can be implemented using NCCL.
-  // If yes, returns OK, else returns an error indicating why it cannot be
-  // implemented.
-  static Status CheckImplementable(mlir::lmhlo::AllReduceOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo::AllReduceOp op, int64_t replica_count,
-                           int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::AllReduceOp op);
-  static constexpr bool IsAsync() { return false; }
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
-};
-
-class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
+class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclAllReduceStartThunk(ThunkInfo thunk_info,
                           mlir::lmhlo_gpu::AllReduceStartOp op,
@@ -102,60 +68,20 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
-  static constexpr bool IsAsync() { return true; }
-
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
  private:
-  AsyncExecutor async_;
-};
-
-class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllReduceDoneThunk(ThunkInfo thunk_info,
-                         NcclCollectiveThunk::AsyncExecutor& async)
-      : NcclCollectiveDoneThunk(Thunk::kNcclAllReduceDone, thunk_info, async) {}
+  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
+                      ncclComm_t comm);
 };
 
 // -----------------------------------------------------------------------------
-// ReduceScatter thunks
+// ReduceScatter thunk
 // -----------------------------------------------------------------------------
-
-class NcclReduceScatterThunkBase : public NcclAllReduceReduceScatterThunkBase {
- public:
-  using NcclAllReduceReduceScatterThunkBase::
-      NcclAllReduceReduceScatterThunkBase;
-
- protected:
-  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
-                          ncclComm_t comm);
-};
-
-class NcclReduceScatterThunk : public NcclReduceScatterThunkBase {
- public:
-  NcclReduceScatterThunk(ThunkInfo thunk_info, mlir::lmhlo::ReduceScatterOp op,
-                         std::vector<Buffer> buffers);
-
-  static const char* GetHloOpName() { return "reduce-scatter"; }
-
-  static Status CheckImplementable(mlir::lmhlo::ReduceScatterOp op,
-                                   int64_t replica_count,
-                                   int64_t partition_count);
-  static bool IsDegenerate(mlir::lmhlo::ReduceScatterOp op,
-                           int64_t replica_count, int64_t partition_count);
-  static CollectiveOpGroupMode GetGroupMode(mlir::lmhlo::ReduceScatterOp op);
-  static constexpr bool IsAsync() { return false; }
-
- protected:
-  Status RunNcclCollective(const ExecuteParams& params,
-                           ncclComm_t comm) override;
-};
-
-class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
+class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterStartThunk(ThunkInfo thunk_info,
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
@@ -170,23 +96,14 @@ class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
-  static constexpr bool IsAsync() { return true; }
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
   Status RunNcclCollective(const ExecuteParams& params,
                            ncclComm_t comm) override;
 
  private:
-  AsyncExecutor async_;
-};
-
-class NcclReduceScatterDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclReduceScatterDoneThunk(ThunkInfo thunk_info,
-                             NcclCollectiveThunk::AsyncExecutor& async)
-      : NcclCollectiveDoneThunk(Thunk::kNcclReduceScatterDone, thunk_info,
-                                async) {}
+  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
+                          ncclComm_t comm);
 };
 
 // -----------------------------------------------------------------------------

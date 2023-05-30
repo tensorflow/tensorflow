@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/cleanup/cleanup.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
@@ -586,14 +587,13 @@ XlaComputationLaunchContext::BuildXlaCompilerArguments(
   return out;
 }
 
-std::vector<xla::PjRtBuffer*> PreparePjRtExecutableArguments(
+void PreparePjRtExecutableArguments(
     const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
-    const std::vector<VariableInfo>& variables) {
+    const std::vector<VariableInfo>& variables,
+    std::vector<xla::PjRtBuffer*>* args,
+    absl::flat_hash_set<int>* non_donatable_input_indices) {
   const auto& variable_lookup = CreateVariableLookup(variables);
-
-  std::vector<xla::PjRtBuffer*> args;
-  args.reserve(input_mapping.size());
 
   for (auto arg_num : input_mapping) {
     const Tensor* tensor;
@@ -602,17 +602,18 @@ std::vector<xla::PjRtBuffer*> PreparePjRtExecutableArguments(
     } else {
       tensor = inputs[arg_num];
     }
-    AsyncValueTensor* av_tensor = AsyncValueTensor::FromTensor(tensor);
+    if (!tensor->RefCountIsOne()) {
+      non_donatable_input_indices->insert(arg_num);
+    }
 
+    AsyncValueTensor* av_tensor = AsyncValueTensor::FromTensor(tensor);
     if (av_tensor->GetBuffer() == nullptr) {
       // TODO(b/260799971): verify size 0 argument is supported.
       CHECK_EQ(tensor->NumElements(), 0);  // Crash OK
       continue;
     }
-    args.push_back(av_tensor->GetBuffer().get());
+    args->push_back(av_tensor->GetBuffer().get());
   }
-
-  return args;
 }
 
 Status PopulateCtxOutputsFromPjRtExecutableOutputs(
@@ -687,7 +688,8 @@ Status PopulateCtxOutputsFromPjRtExecutableOutputs(
   return OkStatus();
 }
 
-xla::ExecuteOptions GetPjRtExecuteOptions() {
+xla::ExecuteOptions GetPjRtExecuteOptions(
+    absl::flat_hash_set<int> non_donatable_input_indices) {
   xla::ExecuteOptions options;
   options.arguments_are_tupled = false;
   options.untuple_result = true;
@@ -697,6 +699,7 @@ xla::ExecuteOptions GetPjRtExecuteOptions() {
   // [1]:
   // tensorflow/compiler/xla/pjrt/pjrt_c_api_client.cc;l=923-927;rcl=519286815
   options.use_major_to_minor_data_layout_for_callbacks = true;
+  options.non_donatable_input_indices = std::move(non_donatable_input_indices);
   return options;
 }
 
@@ -718,15 +721,19 @@ Status RunPjRtExecutable(
   TF_ASSIGN_OR_RETURN(xla::PjRtDevice * device,
                       pjrt_client.LookupAddressableDevice(pjrt_device_id));
 
-  const std::vector<xla::PjRtBuffer*> executable_args =
-      PreparePjRtExecutableArguments(compilation_result.input_mapping, inputs,
-                                     variables);
+  std::vector<xla::PjRtBuffer*> executable_args;
+  executable_args.reserve(compilation_result.input_mapping.size());
+  absl::flat_hash_set<int> non_donatable_input_indices;
+  PreparePjRtExecutableArguments(compilation_result.input_mapping, inputs,
+                                 variables, &executable_args,
+                                 &non_donatable_input_indices);
   // TODO(b/257548614): currently PJRT is compiled as portable (num_replica = 1
   // and num_partition = 1). Support multiple partitions case.
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<xla::PjRtBuffer>> execute_outputs,
-      executable->ExecutePortable(executable_args, device,
-                                  GetPjRtExecuteOptions()));
+      executable->ExecutePortable(
+          executable_args, device,
+          GetPjRtExecuteOptions(std::move(non_donatable_input_indices))));
 
   TF_RETURN_IF_ERROR(PopulateCtxOutputsFromPjRtExecutableOutputs(
       inputs, variables, compilation_result, execute_outputs, ctx));

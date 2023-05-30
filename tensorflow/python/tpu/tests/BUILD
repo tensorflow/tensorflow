@@ -48,7 +48,7 @@ tpu_py_strict_test(
     deps = [
         ":tpu_embedding_base_test",
         "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -469,7 +469,7 @@ tpu_py_strict_test(
     deps = [
         ":tpu_embedding_base_test",
         "//tensorflow/python:init_ops_v2",
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
@@ -502,7 +502,6 @@ tpu_py_strict_test(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/tpu:tpu_embedding_v1",
         "//tensorflow/python/tpu:tpu_embedding_v2_utils",

@@ -50,6 +50,15 @@ class ConditionalPrinter : public BridgeLoggerConfig {
 
   void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
                            PrintCallbackFn print_callback) override {
+    // NOTE(b/284312504): Disable dumping of
+    // FunctionalToExecutorDialectConversionPass as it tends to get very large
+    // being a nested pass on FuncOp before inliner.
+    if (pass->getName() == "ExecutorDialectToFunctionalPass") {
+      return;
+    }
+    if (pass->getName() == "FunctionalToExecutorDialectConversionPass") {
+      return;
+    }
     mlir::ModuleOp module = mlir::dyn_cast<mlir::ModuleOp>(operation);
     if (!module) module = operation->getParentOfType<mlir::ModuleOp>();
     if (module && !module->hasAttr(dtensor::kDoNotLog) && !do_not_print_)

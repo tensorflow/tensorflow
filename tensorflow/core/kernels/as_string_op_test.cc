@@ -170,14 +170,6 @@ TEST_F(AsStringGraphTest, Variant) {
   test::ExpectTensorEqual<tstring>(expected, *GetOutput(0));
 }
 
-TEST_F(AsStringGraphTest, String) {
-  Status s = Init(DT_STRING);
-  ASSERT_EQ(error::INVALID_ARGUMENT, s.code());
-  ASSERT_TRUE(absl::StrContains(
-      s.message(),
-      "Value for attr 'T' of string is not in the list of allowed values"));
-}
-
 TEST_F(AsStringGraphTest, OnlyOneOfScientificAndShortest) {
   Status s = Init(DT_FLOAT, /*fill=*/"", /*width=*/-1, /*precision=*/-1,
                   /*scientific=*/true, /*shortest=*/true);

@@ -423,9 +423,8 @@ class Node {
   // Collects derivatives of `ComputeWaitTime` w.r.t `producer_time`,
   // `consumer_time' and `buffer_size` if the corresponding pointers are not
   // `nullptr`.
-  static double ComputeWaitTime(const double& producer_time,
-                                const double& consumer_time,
-                                const double& buffer_size,
+  static double ComputeWaitTime(double producer_time, double consumer_time,
+                                double buffer_size,
                                 double* producer_time_derivative,
                                 double* consumer_time_derivative,
                                 double* buffer_size_derivative);

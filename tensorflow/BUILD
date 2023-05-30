@@ -1150,6 +1150,9 @@ tf_cc_shared_library(
         ],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
+            # copybara:uncomment_begin(google-only)
+            # "-Wl,--undefined-version",
+            # copybara:uncomment_end(google-only)
         ],
     }),
     linkstatic = 1,

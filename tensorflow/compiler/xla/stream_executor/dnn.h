@@ -1575,13 +1575,6 @@ class DnnSupport {
       AlgorithmDesc algorithm_desc, DeviceMemory<uint8_t> scratch_memory,
       ProfileResult* output_profile_result) = 0;
 
-  // Return a list of algorithms supported by the forward convolution pass.
-  // cc_major and cc_minor are the compute capabilities of the device.
-  virtual bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      const NumericOptions& numeric_options,
-      std::vector<AlgorithmDesc>* out_algorithms);
-
   virtual tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -1746,20 +1739,6 @@ class DnnSupport {
       const ConvolutionDescriptor& convolution_descriptor,
       const BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data) = 0;
-
-  // Return a list of algorithms supported by the backward convolution pass for
-  // data.
-  virtual bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      const NumericOptions& numeric_options,
-      std::vector<AlgorithmDesc>* out_algorithms);
-
-  // Return a list of algorithms supported by the backward convolution pass for
-  // filters.
-  virtual bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      const NumericOptions& numeric_options,
-      std::vector<AlgorithmDesc>* out_algorithms);
 
   // Fully connects the "nodes" (float values) in input_data with
   // shape input_dimensions to output_data with output_dimensions

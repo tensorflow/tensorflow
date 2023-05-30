@@ -5,13 +5,14 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_oss",
 )
-load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_test", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_py_build_info_genrule", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_lib_deps", "tf_proto_library", "tf_protos_grappler")  # @unused
 
 visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
     "//learning/brain/python/platform:__subpackages__",
+    "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
 ]
 
 package(
@@ -29,39 +30,6 @@ py_strict_library(
     name = "build_info",
     srcs = ["build_info.py"],
     srcs_version = "PY3",
-)
-
-py_library(
-    name = "platform",
-    srcs = glob(
-        [
-            "*.py",
-        ],
-        exclude = [
-            "*test.py",
-            "benchmark.py",  # In platform_benchmark.
-            "analytics.py",  # In platform_analytics.
-            "device_context.py",  # In platform_device_context.
-            "self_check.py",  # In self_check
-        ],
-    ) + ["build_info.py"],
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    deps = [
-        ":_pywrap_cpu_feature_guard",
-        ":build_info",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:pywrap_tfe",
-        "//tensorflow/python/lib/io:lib",
-        "//tensorflow/python/util:_pywrap_util_port",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-        "@absl_py//absl/logging",
-        "@rules_python//python/runfiles",
-    ],
 )
 
 py_strict_library(
@@ -125,7 +93,7 @@ py_strict_library(
     ]),
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "resource_loader_test",
     size = "small",
     srcs = ["resource_loader_test.py"],
@@ -143,7 +111,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "sysconfig_test",
     size = "small",
     srcs = ["sysconfig_test.py"],
@@ -165,7 +133,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "flags_test",
     size = "small",
     srcs = ["flags_test.py"],
@@ -181,7 +149,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "stacktrace_handler_test",
     size = "small",
     srcs = ["stacktrace_handler_test.py"],
@@ -197,7 +165,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "app_test",
     size = "small",
     srcs = ["app_test.py"],
@@ -349,7 +317,7 @@ py_strict_library(
     ]),
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "build_info_test",
     size = "small",
     srcs = [
@@ -369,7 +337,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "benchmark_test",
     size = "small",
     srcs = [

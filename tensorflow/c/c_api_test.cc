@@ -2669,7 +2669,7 @@ TEST(CAPI, TestTensorNonScalarBytesAllocateDelete) {
 }  // namespace
 }  // namespace tensorflow
 
-// TODO(joshl): Test:
+// TODO(josh11b): Test:
 // * TF_SetDevice(desc, "/job:worker");
 // * control inputs / outputs
 // * targets

@@ -669,7 +669,7 @@ def _current_graph(op_input_list, graph=None):
   original_graph_element = None
   for op_input in op_input_list:
     # Determine if this is a valid graph_element.
-    # TODO(joshl): Note that we exclude subclasses of Tensor. Need to clean this
+    # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     if (isinstance(op_input, (
         ops.Operation, ops.Tensor, composite_tensor.CompositeTensor)) and

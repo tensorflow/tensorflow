@@ -3526,6 +3526,31 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
 }
 
+TEST_F(SpmdPartitioningTest, ReshapePartialHaloExchange) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[4,14,4] parameter(0),
+    sharding={devices=[2,4,2]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+  ROOT %reshape = f32[2,2,2,7,2,2] reshape(%param0),
+    sharding={devices=[2,1,4,1,2,1]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/16));
+  VLOG(1) << module->ToString();
+
+  const auto root = module->entry_computation()->root_instruction();
+  auto halo_exchange =
+      AllOf(op::Concatenate(op::Copy(op::Parameter()), op::CollectivePermute(),
+                            op::CollectivePermute(), op::CollectivePermute()));
+  EXPECT_THAT(
+      root,
+      AllOf(op::Reshape(op::DynamicSlice(op::Pad(halo_exchange, _), _, _, _)),
+            op::Shape("f32[1,2,1,7,1,2]")));
+}
+
 TEST_F(SpmdPartitioningTest, ReshapeWithReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -13329,6 +13354,66 @@ ENTRY main.4 {
   EXPECT_NE(allreduce, nullptr);
   auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
   EXPECT_EQ(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ReshardCrash) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[8,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* alltoall = FindInstruction(module.get(), HloOpcode::kAllToAll);
+  EXPECT_NE(alltoall, nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ReshardNoFullRematCompatible) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_NE(allreduce, nullptr);
+  // It should not touch the middle dim in the [2,2,2] sharding.
+  EXPECT_EQ(allreduce->replica_groups().size(), 2);
+  EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
+            nullptr);
+}
+
+TEST_F(SpmdPartitioningTest, ReshardNoFullRematIncompatible) {
+  const char* const hlo_string = R"(
+HloModule Test
+
+ENTRY main.6 {
+  Arg_0.1 = f32[6,32,4] parameter(0), sharding={devices=[4,2,1]0,2,1,3,4,6,5,7}
+  ROOT copy = copy(Arg_0.1), sharding={devices=[2,2,2]0,1,3,4,2,6,5,7}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  XLA_VLOG_LINES(1, module->ToString());
+  auto* allreduce = FindInstruction(module.get(), HloOpcode::kAllReduce);
+  EXPECT_NE(allreduce, nullptr);
+  // It should not touch the middle dim in the [2,2,2] sharding.
+  EXPECT_EQ(allreduce->replica_groups().size(), 2);
+  // Collective permute to resolve different device orders.
+  EXPECT_NE(FindInstruction(module.get(), HloOpcode::kCollectivePermute),
+            nullptr);
 }
 
 }  // namespace

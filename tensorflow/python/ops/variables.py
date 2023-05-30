@@ -43,14 +43,9 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
-def default_variable_creator(_, **kwds):
-  del kwds
-  raise NotImplementedError("variable_scope needs to be imported")
-
-
 def default_variable_creator_v2(_, **kwds):
   del kwds
-  raise NotImplementedError("variable_scope needs to be imported")
+  raise NotImplementedError("resource_variable_ops needs to be imported")
 
 
 def _make_getter(captured_getter, captured_previous):
@@ -1231,6 +1226,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
         aggregation=aggregation,
         shape=shape,
         experimental_enable_variable_lifting=experimental_enable_variable_lifting,
+        **kwargs
     )
 
   class SaveSliceInfo:
@@ -1963,7 +1959,7 @@ def assert_variables_initialized(var_list=None):
   """
   if var_list is None:
     var_list = global_variables() + local_variables()
-  # Backwards compatibility for old-style variables. TODO(mdevin): remove.
+  # Backwards compatibility for old-style variables. TODO(touts): remove.
   if not var_list:
     var_list = []
     for op in ops.get_default_graph().get_operations():
@@ -2002,7 +1998,7 @@ def report_uninitialized_variables(var_list=None,
   """
   if var_list is None:
     var_list = global_variables() + local_variables()
-    # Backwards compatibility for old-style variables. TODO(mdevin): remove.
+    # Backwards compatibility for old-style variables. TODO(touts): remove.
     if not var_list:
       var_list = []
       for op in ops.get_default_graph().get_operations():

@@ -501,12 +501,12 @@ using mlir::lmhlo_gpu::ReduceScatterStartOp;
 // TODO(ezhulenev): Once XLA runtime custom calls support returning values, we
 // should explicitly return event id from the `Start` custom call, and pass it
 // to the `Done` custom call. Longer term this should become an `!async.token`
-// and rely on XLA runtime asynchonous execution.
+// and rely on XLA runtime asynchronous execution.
 class CollectiveUidGenerator {
  public:
   CollectiveUidGenerator() : cnt_(0) {}
 
-  // Assings a unique event id to the pair of start and done operations.
+  // Assigns a unique event id to the pair of start and done operations.
   int32_t AssignUid(Operation* start, Operation* done) {
     int32_t id = next();
     uids_[start] = id;
@@ -552,6 +552,14 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
                                                       int /*replica_count*/,
                                                       int /*num_partitions*/) {
     return GetNcclCollectiveConfigForMlir(op, op.getUseGlobalDeviceIds());
+  }
+
+  static NcclCollectiveConfig GetNcclCollectiveConfig(AllToAllStartOp op,
+                                                      int /*replica_count*/,
+                                                      int /*num_partitions*/) {
+    // TODO(b/180174349): LMHLO AllToAll incorrectly has use_global_device_ids
+    // attribute and it should be removed.
+    return GetNcclCollectiveConfigForMlir(op, std::nullopt);
   }
 
   static NcclCollectiveConfig GetNcclCollectiveConfig(
@@ -813,7 +821,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if (!is_async) {
       erase_done_op();
     } else {
-      // For asynchonous start operation we need to produce a fake token, that
+      // For asynchronous start operation we need to produce a fake token, that
       // will be later removed, because corresponding `done` operation doesn't
       // have a token argument. We rely on the `unrealized_conversion_cast`
       // operation to create a fake token from the `i8` constant, and on the

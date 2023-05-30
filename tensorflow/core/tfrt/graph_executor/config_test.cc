@@ -49,7 +49,7 @@ TEST(ConfigTest, Load) {
   TestConfig2 expected_test_config2;
   expected_test_config2.set_tag("test config2");
 
-  ModelConfigProto model_config_proto;
+  RuntimeConfigProto model_config_proto;
   model_config_proto.add_config()->PackFrom(expected_test_config1);
   model_config_proto.add_config()->PackFrom(expected_test_config2);
 
@@ -69,7 +69,7 @@ TEST(ConfigTest, NotFound) {
   TestConfig1 expected_test_config1;
   expected_test_config1.set_tag("test config1");
 
-  ModelConfigProto model_config_proto;
+  RuntimeConfigProto model_config_proto;
   model_config_proto.add_config()->PackFrom(expected_test_config1);
 
   ASSERT_OK_AND_ASSIGN(auto model_config,

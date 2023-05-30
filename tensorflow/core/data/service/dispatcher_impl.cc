@@ -24,11 +24,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/tsl/platform/errors.h"
-
-#ifdef PLATFORM_GOOGLE
-#include "file/logging/log_lines.h"
-#endif
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
@@ -1048,10 +1043,9 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
-
   if (snapshots_.contains(request->path())) {
-    return errors::InvalidArgument("a snapshot at ", request->path(),
-                                   " is already started or completed");
+    return errors::AlreadyExists("tf.data snapshot at ", request->path(),
+                                 " is already started or completed");
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,
@@ -1256,9 +1250,10 @@ Status DataServiceDispatcherImpl::GcOldIterations()
 bool DataServiceDispatcherImpl::ShouldGcIteration(const Iteration& iteration,
                                                   int64_t now_us) const {
   if (iteration.job->processing_mode.sharding_policy() ==
-      ProcessingModeDef::DYNAMIC) {
+          ProcessingModeDef::DYNAMIC &&
+      !config_.gc_dynamic_sharding_jobs()) {
     // Jobs with dynamic sharding have visitation guarantees that are violated
-    // if they're garbage collected and later recreated.
+    // if they are garbage collected and later recreated.
     return false;
   }
   return !(iteration.finished || iteration.num_clients > 0 ||

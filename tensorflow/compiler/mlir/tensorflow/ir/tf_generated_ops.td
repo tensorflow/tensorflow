@@ -671,7 +671,7 @@ array([b'3.14', b'2.72'], dtype=object)
   }];
 
   let arguments = (ins
-    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$input,
+    TensorOf<[TF_Bfloat16, TF_Bool, TF_Complex128, TF_Complex64, TF_Float16, TF_Float32, TF_Float64, TF_Int16, TF_Int32, TF_Int64, TF_Int8, TF_Str, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>:$input,
 
     DefaultValuedOptionalAttr<I64Attr, "-1">:$precision,
     DefaultValuedOptionalAttr<BoolAttr, "false">:$scientific,
@@ -2509,15 +2509,16 @@ This is typically used by gradient computations for a concat operation.
 
   let arguments = (ins
     Arg<TF_Int32Tensor, [{The dimension along which to concatenate.}]>:$concat_dim,
-    Arg<Variadic<TF_Int32Tensor>, [{The `N` int32 vectors representing shape of tensors being concatenated.}]>:$shape
+    Arg<Variadic<TF_I32OrI64Tensor>, [{The `N` int32 or int64 vectors representing shape of tensors being concatenated.}]>:$shape
   );
 
   let results = (outs
-    Res<Variadic<TF_Int32Tensor>, [{The `N` int32 vectors representing the starting offset
-of input tensors within the concatenated output.}]>:$offset
+    Res<Variadic<TF_I32OrI64Tensor>, [{The `N` vectors representing the starting offset
+of input tensors within the concatenated output with type matching `shape`.}]>:$offset
   );
 
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
 
   let hasVerifier = 1;
 
@@ -4619,6 +4620,36 @@ This operation creates a tensor of `shape` and `dtype`.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 
   let hasFolder = 1;
+}
+
+def TF_EncodePngOp : TF_Op<"EncodePng", [Pure]> {
+  let summary = "PNG-encode an image.";
+
+  let description = [{
+`image` is a 3-D uint8 or uint16 Tensor of shape `[height, width, channels]`
+where `channels` is:
+
+*   1: for grayscale.
+*   2: for grayscale + alpha.
+*   3: for RGB.
+*   4: for RGBA.
+
+The ZLIB compression level, `compression`, can be -1 for the PNG-encoder
+default or a value from 0 to 9.  9 is the highest compression level, generating
+the smallest output, but is slower.
+  }];
+
+  let arguments = (ins
+    Arg<TensorOf<[TF_Uint16, TF_Uint8]>, [{3-D with shape `[height, width, channels]`.}]>:$image,
+
+    DefaultValuedOptionalAttr<I64Attr, "-1">:$compression
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{0-D. PNG-encoded image.}]>:$contents
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_EnqueueTPUEmbeddingArbitraryTensorBatchOp : TF_Op<"EnqueueTPUEmbeddingArbitraryTensorBatch", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, SameVariadicOperandSize, TF_TPUEmbeddingWriteEffect]> {
@@ -11187,6 +11218,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
 
     // returns the callee of this operation.
     func::FuncOp func() {
@@ -21054,6 +21087,33 @@ where(input) ==> [[0, 0, 0],
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_WriteTrainingPredictionsOp : TF_Op<"WriteTrainingPredictions", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
+  let summary = [{
+Writes the given predictions into a RecordIO file using a previously
+  }];
+
+  let description = [{
+initialized global TrainingPredictionWriter. The predictions are transformed
+into a PredictionData proto before they are written to the file.
+  }];
+
+  let arguments = (ins
+    Arg<TF_StrTensor, [{A tensor of Woodshed Keys corresponding to each of the prediction
+values. These keys should be in byte format.}]>:$keys,
+    Arg<Variadic<TF_Float32Tensor>, [{A list of float tensors containing prediction values.}]>:$predictions_list,
+    Arg<TF_Int64Tensor, [{An int that speficies at which step the predictions are generated.}]>:$step,
+    Arg<TF_Int64Tensor, [{The utc timestamp in microseconds of when the predictions were created.}]>:$timestamp_usec,
+
+    StrArrayAttr:$prediction_names,
+    BoolAttr:$training,
+    StrAttr:$file_path
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandSizeAttr num_predictions = TF_DerivedOperandSizeAttr<1>;
+}
+
 def TF_XdivyOp : TF_Op<"Xdivy", [Pure, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns 0 if x == 0, and x / y otherwise, elementwise.";
@@ -21125,7 +21185,7 @@ for binary operators.
   }];
 }
 
-def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [Pure]> {
+def TF_XlaCallModuleOp : TF_Op<"XlaCallModule", [DeclareOpInterfaceMethods<MemoryEffectsOpInterface>, DeclareOpInterfaceMethods<SymbolUserOpInterface>]> {
   let summary = "Invokes a StableHLO module.";
 
   let description = [{
@@ -21144,7 +21204,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     TF_ShapeAttrArray:$Sout,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
-    SymbolRefArrayAttr:$function_list
+    DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list,
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output
   );
 
   let results = (outs

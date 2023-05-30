@@ -163,7 +163,7 @@ class AttrSlice {
                       const AttrValue** attr_value) const;
 
   // Helper class to avoid allocations in EqualAttrs.
-  // TODO(geoffreyi): Will go away once NodeInfo is used.
+  // TODO(irving): Will go away once NodeInfo is used.
   struct Scratch {
     std::string a;
     std::string b;
@@ -172,7 +172,7 @@ class AttrSlice {
   // Check if all attrs and attr values match.  Does not take defaults into
   // account.
   //
-  // TODO(geoffreyi): There is a bug in this routine inherited from its
+  // TODO(irving): There is a bug in this routine inherited from its
   // OptimizerCSE::EqualAttrs predecessor.  The same tensor attr can be
   // represented in more than one way as an AttrValue, since TensorProto is
   // not 1-1.  This bug will go away once I replace everything with NodeInfo,

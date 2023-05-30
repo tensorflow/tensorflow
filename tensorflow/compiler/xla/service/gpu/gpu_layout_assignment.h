@@ -39,9 +39,6 @@ class GpuLayoutAssignment : public LayoutAssignment {
 
  protected:
   Status AddBackendConstraints(LayoutConstraints* constraints) override;
-  // The GPU backend does not use memory spaces, so there is no need to
-  // propagate them.
-  Status PropagateMemorySpace(HloModule* module) override { return OkStatus(); }
 
  private:
   Status AddBackendConstraintsToDnnConvCustomCall(

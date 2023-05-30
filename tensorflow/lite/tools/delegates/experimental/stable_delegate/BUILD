@@ -17,11 +17,11 @@ cc_library(
         # extended to support Windows.
         "//tensorflow:windows": [],
         "//conditions:default": [
+            "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+            "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
+            "//tensorflow/lite/acceleration/configuration/c:stable_delegate",
             "//tensorflow/lite/delegates/utils/experimental/stable_delegate:delegate_loader",
             "//tensorflow/lite/delegates/utils/experimental/stable_delegate:tflite_settings_json_parser",
-            "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-            "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
-            "//tensorflow/lite/experimental/acceleration/configuration/c:stable_delegate",
         ],
     }),
     # Statically registers itself with DelegateProviderRegistrar.

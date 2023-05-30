@@ -409,6 +409,8 @@ def TF_LegacyCallOp : TF_Op<"LegacyCall",
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -570,6 +572,8 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable
+    void setCalleeFromCallable(::mlir::CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by
@@ -1009,6 +1013,8 @@ def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall",
 
     // Returns the callee of this operation.
     CallInterfaceCallable getCallableForCallee() { return getFAttr(); }
+    // Sets the callee from the callable.
+    void setCalleeFromCallable(CallInterfaceCallable callee);
 
     // Returns the resolved callee function of this operation.
     // Prefer passing in SymbolTableCollection to reduce lookup costs by

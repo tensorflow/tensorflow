@@ -54,6 +54,7 @@ cc_library(
         ":eager_client",
         "//tensorflow/core/common_runtime/eager:eager_executor",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -119,6 +120,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/tsl/distributed_runtime/preemption:preemption_notifier",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ] + tf_grpc_cc_dependencies(),
@@ -147,6 +149,7 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:variant",
     ],

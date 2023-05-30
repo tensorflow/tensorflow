@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
+#include <memory>
 #include <utility>
 
+#include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/cc/ops/array_ops_internal.h"
@@ -39,6 +42,7 @@ limitations under the License.
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -250,7 +254,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2))
+    EXPECT_TRUE(absl::IsNotFound(status2))
         << "Actual status: " << status2.ToString();
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
@@ -309,7 +313,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsNotFound(status2));
+    EXPECT_TRUE(absl::IsNotFound(status2));
     EXPECT_TRUE(absl::StrContains(status2.message(), "Handle"));
     EXPECT_TRUE(absl::StrContains(status2.message(), "not found"));
 
@@ -387,6 +391,10 @@ TEST_F(FunctionLibraryRuntimeTest, InstantiationStackTraceCopying) {
     }
 
     StackFrame LastUserFrame() const override { return StackFrame{}; }
+
+    std::vector<StackFrame> GetUserFrames(int limit) const override {
+      return {};
+    }
   };
 
   FunctionDef func = test::function::XTimesTwo();
@@ -2442,6 +2450,137 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithControlDeps) {
   // NOTE: We are not removing Identity nodes with any control
   // dependencies yet.
   TF_EXPECT_GRAPH_EQ(expected, Optimize(remove_listarray_and_identity, func));
+}
+
+class TestStackTrace : public AbstractStackTrace {
+ public:
+  explicit TestStackTrace(const std::vector<StackFrame>& frames)
+      : frames_(frames) {}
+
+  absl::Span<StackFrame const> ToFrames() const override { return frames_; }
+  std::vector<StackFrame> ToUncachedFrames() const override { return frames_; }
+
+  StackFrame LastUserFrame() const override { return frames_.back(); }
+
+  std::vector<StackFrame> GetUserFrames(int limit) const override {
+    return frames_;
+  }
+
+  string ToString(const TracePrintingOptions& opts) const override {
+    return "";
+  }
+
+  std::vector<StackFrame> frames_;
+};
+
+TEST(StackTracesMapToGraphDebugInfoTest, EmptyMap) {
+  StackTracesMap map;
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 0);
+  EXPECT_EQ(generated.traces_size(), 0);
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, EmptyFrames) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames;
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 0);
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 0);
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, OneFrame) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"})};
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 1);
+  EXPECT_EQ(generated.files()[0], "dummy_file_name");
+
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 1);
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[0].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].line(), 10);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].func(),
+            "dummy_function_name");
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesSameFile) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"dummy_file_name", 20, "other_function_name"})};
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 1);
+  EXPECT_EQ(generated.files()[0], "dummy_file_name");
+
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 2);
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[0].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].line(), 10);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].func(),
+            "dummy_function_name");
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[1].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].line(), 20);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].func(),
+            "other_function_name");
+}
+
+TEST(StackTracesMapToGraphDebugInfoTest, TwoFramesDifferentFile) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = std::make_shared<TestStackTrace>(frames);
+  map.insert({"dummy_name", stack_trace});
+  GraphDebugInfo generated = StackTracesMapToGraphDebugInfo(map);
+
+  EXPECT_EQ(generated.files_size(), 2);
+  EXPECT_EQ(generated.files()[0], "dummy_file_name");
+  EXPECT_EQ(generated.files()[1], "other_file_name");
+
+  EXPECT_EQ(generated.traces_size(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols().size(), 2);
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[0].file_index(), 0);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].line(), 10);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[0].func(),
+            "dummy_function_name");
+
+  EXPECT_EQ(
+      generated.traces().at("dummy_name").file_line_cols()[1].file_index(), 1);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].line(), 20);
+  EXPECT_EQ(generated.traces().at("dummy_name").file_line_cols()[1].func(),
+            "other_function_name");
+}
+
+TEST(StackTracesTest, ToFrames) {
+  StackTracesMap map;
+  std::vector<StackFrame> frames = {
+      StackFrame({"dummy_file_name", 10, "dummy_function_name"}),
+      StackFrame({"other_file_name", 20, "other_function_name"})};
+  auto stack_trace = TestStackTrace(frames);
+  EXPECT_EQ(stack_trace.ToFrames().size(), 2);
+  auto uncached_frames = stack_trace.ToUncachedFrames();
+  EXPECT_EQ(uncached_frames.size(), 2);
+  EXPECT_EQ(frames[0], uncached_frames[0]);
+  EXPECT_EQ(frames[1], uncached_frames[1]);
 }
 
 }  // namespace

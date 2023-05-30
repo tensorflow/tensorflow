@@ -26,12 +26,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
+
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
+                    // or kReduceScatter
+};
+
+CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
+
+using GetCanonicalAsyncOpFunc =
+    std::function<CanonicalAsyncOp(const HloInstruction& hlo)>;
 
 class HloGraphNode;
 class ModulePressureState;
@@ -108,7 +120,16 @@ class LatencyEstimator {
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
 
-  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
+  inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
+    return get_canonical_async_op_(hlo);
+  }
+  bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
+  explicit LatencyEstimator(
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : get_canonical_async_op_(func) {}
+
+ private:
+  GetCanonicalAsyncOpFunc get_canonical_async_op_;
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
@@ -188,13 +209,21 @@ class AsyncTracker {
   // Default resources have a hazard type of kUnshareable.
   virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
-  explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
+  inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
+    return get_canonical_async_op_(hlo);
+  }
+
+  explicit AsyncTracker(
+      const SchedulerConfig& config,
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : config_(config), get_canonical_async_op_(func) {}
 
  private:
   const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloComputation*,
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
+  GetCanonicalAsyncOpFunc get_canonical_async_op_;
 };
 
 // Base class for the core scheduling algorithm.
@@ -246,7 +275,9 @@ class HloGraphNode {
   TimeCost GetCost() const { return cost_; }
   void SetCost(TimeCost cost) { cost_ = cost; }
   TimeCost GetAsyncDepth() const { return async_depth_; }
+  TimeCost GetDepth() const { return depth_; }
   void SetAsyncDepth(TimeCost async_depth) { async_depth_ = async_depth; }
+  void SetDepth(TimeCost depth) { depth_ = depth; }
   bool GetForceDelay() const { return force_delay_; }
   void SetForceDelay(bool force_delay) { force_delay_ = force_delay; }
   ResourcesVector GetResources() const { return resources_; }
@@ -304,6 +335,7 @@ class HloGraphNode {
     absl::StrAppend(&result, "Outdegree: ", outdegree_, "\n");
     absl::StrAppend(&result, "Cost: ", cost_, "\n");
     absl::StrAppend(&result, "Async Depth: ", async_depth_, "\n");
+    absl::StrAppend(&result, "Depth: ", depth_, "\n");
     absl::StrAppend(&result, "Force Delay: ", force_delay_, "\n");
     absl::StrAppend(&result, "Predecessors:\n");
     for (const HloEdge& e : predecessors_) {
@@ -348,6 +380,8 @@ class HloGraphNode {
   TimeCost cost_ = 0.0;
   // Depth in latency terms of a node based on Async operation cost on the path.
   TimeCost async_depth_ = 0.0;
+  // Depth in latency terms of node based on distance to the entry nodes.
+  TimeCost depth_ = 0.0;
   // AsyncResources used by the node.
   ResourcesVector resources_;
   // Force the scheduling of the nodes with attribute set as late as possible.
@@ -738,6 +772,8 @@ class LatencyHidingScheduler : public HloModulePass {
     double all_gather_wasted_cycles = 0;
     double all_reduce_wasted_cycles = 0;
     double collective_permute_wasted_cycles = 0;
+    double all_to_all_wasted_cycles = 0;
+    double reduce_scatter_wasted_cycles = 0;
     double send_wasted_cycles = 0;
     double recv_wasted_cycles = 0;
     double total_cycles = 0;
@@ -781,14 +817,6 @@ class LatencyHidingScheduler : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
 };
-
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
-                    // or kReduceScatter
-};
-
-CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo);
 
 }  // namespace xla
 

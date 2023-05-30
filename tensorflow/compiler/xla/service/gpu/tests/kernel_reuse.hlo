@@ -45,8 +45,6 @@ ENTRY main {
 // All (Triton) fusions must reuse the same kernel:
 // CHECK-LABEL: target triple
 // CHECK-NOT: define void
-// CHECK: define void @triton_gemm_dot1_impl(
-// CHECK-NOT: define void
 // CHECK: define void @triton_gemm_dot1(
 // CHECK-NOT: define void
 

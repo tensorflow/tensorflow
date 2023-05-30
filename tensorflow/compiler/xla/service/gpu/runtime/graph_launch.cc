@@ -21,18 +21,21 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/non_atomically_upgradeable_rw_lock.h"
+#include "tensorflow/compiler/xla/service/gpu/runtime/concurrent_region.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/conv.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/gemm.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/kernel_launch.h"
 #include "tensorflow/compiler/xla/service/gpu/runtime/support.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/tsl/profiler/lib/scoped_annotation_stack.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_graph.h"
@@ -48,6 +51,7 @@ using xla::runtime::Executable;
 using xla::runtime::MemrefDesc;
 using xla::runtime::ScalarArg;
 using xla::runtime::StridedMemrefView;
+using xla::runtime::success;
 
 //===----------------------------------------------------------------------===//
 // CUDA graphs caching.
@@ -137,12 +141,10 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   const ServiceExecutableRunOptions capture_opts(capture_run_options);
   user_data.insert(&capture_opts);
 
-  std::string error;
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& diagnostic) {
-    error.append(diagnostic.status().message());
-    return runtime::success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic);
 
   // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
@@ -177,12 +179,16 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
 
   // Create a graph from running the graph capture function.
   auto captured = se::gpu::CaptureCudaGraph(capture_stream->get(), [&]() {
-    return FromAbslStatus(function_ref(args, runtime::NoResultConverter{}, opts,
-                                       /*verify_arguments=*/InDebugMode())
-                              .status());
+    return function_ref(args, runtime::NoResultConverter{}, opts,
+                        /*verify_arguments=*/InDebugMode())
+        .status();
   });
 
-  if (!captured.ok()) return ToAbslStatus(captured.status());
+  if (!captured.ok()) {
+    return InternalError("CaptureCudaGraph failed (%s): %s",
+                         diagnostic.empty() ? "<no details>" : diagnostic,
+                         captured.status().ToString());
+  }
   return std::move(*captured);
 }
 
@@ -194,12 +200,11 @@ static absl::Status RunGraphWithoutCapture(
   Executable::ExecuteOpts opts;
   opts.custom_call_data = &user_data;
 
-  std::string error;
+  // Collect all emitted diagnostic messages.
+  std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& diagnostic) {
-    error.append(diagnostic.status().message());
-    return runtime::success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic);
+
   opts.diagnostic_engine = &diagnostic_engine;
 
   // Graph capture function should not launch any async tasks.
@@ -224,8 +229,15 @@ static absl::Status RunGraphWithoutCapture(
     return absl::InvalidArgumentError("Unsupported argument type");
   }
 
-  return function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
-      .status();
+  auto status =
+      function_ref(args, runtime::NoResultConverter{}, opts, InDebugMode())
+          .status();
+  if (!status.ok()) {
+    return InternalError("RunGraphWithoutCapture failed (%s): %s",
+                         diagnostic.empty() ? "<no details>" : diagnostic,
+                         status.ToString());
+  }
+  return absl::OkStatus();
 }
 
 #endif  // #if GOOGLE_CUDA
@@ -244,7 +256,8 @@ static absl::Status LaunchGraph(
     CapturedFunctionExecutionCount::Snapshot* counts,
     GemmConfigs::Snapshot* gemm_config, runtime::Executable* executable,
     NonAtomicallyUpgradeableRWLock* gpu_lock,
-    CustomCall::RemainingArgs fwd_args, CustomCall::FunctionOrdinal capture) {
+    ConcurrentRegionStatus* region_status, CustomCall::RemainingArgs fwd_args,
+    CustomCall::FunctionOrdinal capture) {
 #if GOOGLE_CUDA
   VLOG(1) << "Launch Cuda Graph: capture=" << capture.ordinal;
 
@@ -254,18 +267,11 @@ static absl::Status LaunchGraph(
   // Compute the hash of the buffer arguments.
   size_t ptrs_hash = absl::HashOf(RemainingArgsPtrs{fwd_args, temp_buffer});
 
-  CapturingCudaGraph not_capturing(false);
-  CapturingCudaGraph capturing(true);
   // Forwards user data required for launching kernels.
-  auto user_data_no_capture = [&] {
+  auto user_data = [&] {
     return CustomCall::UserData(run_options, debug_options, ptx, cubin,
                                 temp_buffer, kernels, convs, executable,
-                                gemm_config, gpu_lock, &not_capturing);
-  };
-  auto user_data_capture = [&] {
-    return CustomCall::UserData(run_options, debug_options, ptx, cubin,
-                                temp_buffer, kernels, convs, executable,
-                                gemm_config, gpu_lock, &capturing);
+                                gemm_config, gpu_lock, region_status);
   };
 
   absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>*> get_count =
@@ -278,53 +284,65 @@ static absl::Status LaunchGraph(
   uint64_t count = (**get_count)->fetch_add(1);
   uint64_t instantiation_threshold =
       debug_options->xla_gpu_cuda_graph_instantiation_threshold();
-  if (count < instantiation_threshold) {
+
+  // TODO(ezhulenev): Cupti tracing leads to deadlocks in CUDA 11. Always fall
+  // back on regular execution if we detect tracing activity.
+#if CUDA_VERSION >= 12000
+  bool is_profiling = false;
+#else
+  bool is_profiling = tsl::profiler::ScopedAnnotationStack::IsEnabled();
+#endif
+
+  if (count < instantiation_threshold || is_profiling) {
     // Run captured graph directly.
-    absl::Status result = RunGraphWithoutCapture(
-        run_options, function_ref, fwd_args, user_data_no_capture());
+    absl::Status result = RunGraphWithoutCapture(run_options, function_ref,
+                                                 fwd_args, user_data());
     if (!result.ok()) return result;
     return absl::OkStatus();
   }
 
   absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
       capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
-        auto g = CaptureGraph(run_options, function_ref, fwd_args,
-                              user_data_capture());
+        auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
         if (!g.ok()) return g.status();
 
         auto e = se::gpu::InstantiateCudaGraph(std::move(*g));
-        if (!e.ok()) return ToAbslStatus(e.status());
+        if (!e.ok()) return e.status();
 
         return GraphInstance(ptrs_hash, std::move(*e));
       });
   if (!instance.ok()) return instance.status();
 
-  // Lock graph instance mutex for exclusive access, because we potentially
-  // might have to update it with a new graph version.
-  absl::MutexLock lock((*instance)->mutex.get());
+  {
+    // Lock graph instance for read only access. If we'll have to update the
+    // graph, we'll update to a writer lock below.
+    absl::ReaderMutexLock lock((*instance)->mutex.get());
 
-  // If pointers did not change we can run captured graph.
-  if (ptrs_hash == (*instance)->ptr_hash) {
-    VLOG(3) << "Execute cached graph instance";
-    return ToAbslStatus((*instance)->exec.Launch(run_options->stream()));
+    // If pointers did not change we can run captured graph.
+    if (ptrs_hash == (*instance)->ptr_hash) {
+      VLOG(3) << "Execute cached graph instance";
+      return (*instance)->exec.Launch(run_options->stream());
+    }
   }
 
   // Otherwise we have to re-capture the graph and update the graph instance.
   VLOG(3) << "Update cached graph instance";
-
   // Capture CUDA graph by running capture function.
-  auto g =
-      CaptureGraph(run_options, function_ref, fwd_args, user_data_capture());
+  auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
   if (!g.ok()) return g.status();
+
+  // At this point we have to grab a writer lock, because we might potentially
+  // have concurrent execution of the cached graph instance.
+  absl::WriterMutexLock lock((*instance)->mutex.get());
 
   // Update captured graph executable.
   auto updated = (*instance)->exec.Update(std::move(*g));
-  if (!updated.ok()) return ToAbslStatus(updated);
+  if (!updated.ok()) return updated;
 
   // Update captured graph pointers hash.
   (*instance)->ptr_hash = ptrs_hash;
 
-  return ToAbslStatus((*instance)->exec.Launch(run_options->stream()));
+  return (*instance)->exec.Launch(run_options->stream());
 
 #else  // #if !GOOGLE_CUDA
 
@@ -350,6 +368,7 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
         .UserData<GemmConfigs::Snapshot*>()
         .UserData<Executable*>()
         .UserData<NonAtomicallyUpgradeableRWLock*>()
+        .UserData<ConcurrentRegionStatus*>()
         .RemainingArgs()
         .Attr<CustomCall::FunctionOrdinal>("capture"));
 

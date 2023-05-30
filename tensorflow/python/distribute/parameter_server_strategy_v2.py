@@ -648,6 +648,11 @@ class ParameterServerStrategyV2Extended(
 
       return variable_creator_single_replica
 
+  def _create_per_worker_variable(self, next_creator, **kwargs):
+    """Create an unsynced, unaggregated variable on each worker."""
+    return ps_values.PerWorkerVariable(
+        self._container_strategy(), next_creator, **kwargs)
+
   def _create_variable(self, next_creator, **kwargs):
     """Implements StrategyExtendedV2._create_variable.
 
@@ -667,6 +672,9 @@ class ParameterServerStrategyV2Extended(
     Returns:
       A `Variable` or `ShardedVariable`.
     """
+    if kwargs.pop("per_worker_variable", False):
+      logging.info("Creating per worker variable")
+      return self._create_per_worker_variable(next_creator, **kwargs)
 
     var_creator = self._create_var_creator(next_creator, **kwargs)
     if "colocate_with" in kwargs:  # Never partition colocated_with variables.

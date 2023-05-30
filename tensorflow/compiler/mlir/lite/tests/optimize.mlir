@@ -643,6 +643,46 @@ func.func @RetainRedundantReshapeUseInNonBinaryOp(%arg0: tensor<128xf32>, %arg1:
   // CHECK: return %1, %2
 }
 
+// CHECK-LABEL: @FuseTransposeReshapeTranspose
+func.func @FuseTransposeReshapeTranspose(%arg0: tensor<1x16x256xf32>) -> tensor<16x256xf32> {
+  %cst_10 = arith.constant dense<[0, 2, 1]> : tensor<3xi32>
+  %cst_3 = arith.constant dense<[256, 16]> : tensor<2xi32>
+  %cst_6 = arith.constant dense<[1, 0]> : tensor<2xi32>
+  %2057 = "tfl.transpose"(%arg0, %cst_10) : (tensor<1x16x256xf32>, tensor<3xi32>) -> tensor<1x256x16xf32>
+  %2058 = "tfl.reshape"(%2057, %cst_3) : (tensor<1x256x16xf32>, tensor<2xi32>) -> tensor<256x16xf32>
+  %2059 = "tfl.transpose"(%2058, %cst_6) : (tensor<256x16xf32>, tensor<2xi32>) -> tensor<16x256xf32>
+  return %2059: tensor<16x256xf32>
+  // CHECK-DAG: %cst = arith.constant dense<[16, 256]> : tensor<2xi32>
+  // CHECK: %0 = "tfl.reshape"(%arg0, %cst) : (tensor<1x16x256xf32>, tensor<2xi32>) -> tensor<16x256xf32>
+  // CHECK: return %0
+}
+
+// CHECK-LABEL: @FoldDoubleTranspose
+func.func @FoldDoubleTranspose(%arg0: tensor<1x4x1440x256xf32>) -> tensor<1x1440x256x4xf32> {
+    %cst_12 = arith.constant dense<[0, 1, 3, 2]> : tensor<4xi32>
+    %cst_18 = arith.constant dense<[0, 2, 1, 3]> : tensor<4xi32>
+    %2112 = "tfl.transpose"(%arg0, %cst_18) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x1440x4x256xf32>
+    %2114 = "tfl.transpose"(%2112, %cst_12) : (tensor<1x1440x4x256xf32>, tensor<4xi32>) -> tensor<1x1440x256x4xf32>
+    return %2114 : tensor<1x1440x256x4xf32>
+  // CHECK-DAG: %cst = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+  // CHECK: %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x1440x256x4xf32>
+  // CHECK: return %0
+}
+
+// CHECK-LABEL: @FoldMultpleTranspose
+func.func @FoldMultpleTranspose(%arg0: tensor<1x4x1440x256xf32>) -> tensor<1x256x4x1440xf32> {
+    %cst_11 = arith.constant dense<[0, 2, 3, 1]> : tensor<4xi32>
+    %cst_12 = arith.constant dense<[0, 1, 3, 2]> : tensor<4xi32>
+    %cst_18 = arith.constant dense<[0, 2, 1, 3]> : tensor<4xi32>
+    %2112 = "tfl.transpose"(%arg0, %cst_11) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x1440x256x4xf32>
+    %2113 = "tfl.transpose"(%2112, %cst_18) : (tensor<1x1440x256x4xf32>, tensor<4xi32>) -> tensor<1x256x1440x4xf32>
+    %2114 = "tfl.transpose"(%2113, %cst_12) : (tensor<1x256x1440x4xf32>, tensor<4xi32>) -> tensor<1x256x4x1440xf32>
+    return %2114 : tensor<1x256x4x1440xf32>
+  // CHECK-DAG: %cst = arith.constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  // CHECK: %0 = "tfl.transpose"(%arg0, %cst) : (tensor<1x4x1440x256xf32>, tensor<4xi32>) -> tensor<1x256x4x1440xf32>
+  // CHECK: return %0
+}
+
 // CHECK-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 // FOLD-LABEL: @FuseFullyConnectedReshapeAddConstWithOptionalAttribute
 func.func @FuseFullyConnectedReshapeAddConstWithOptionalAttribute(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> tensor<40x40xf32> {
@@ -3117,4 +3157,150 @@ func.func @DontEliminateExtraSelect(%arg0: tensor<4x2xf32>, %arg1: tensor<4x2xi1
   // CHECK: %[[FC:.*]] = "tfl.fully_connected"(%[[SELECT]], %[[CST]], %[[CST_1]]) {asymmetric_quantize_inputs = true, fused_activation_function = "NONE", keep_num_dims = true, weights_format = "DEFAULT"} : (tensor<4x2xf32>, tensor<2x2xf32>, tensor<2xf32>) -> tensor<4x2xf32>
   // CHECK-NEXT: %[[SELECT_1:.*]] = "tfl.select_v2"
   // CHECK-NEXT: return %[[SELECT_1]]
+}
+
+// CHECK-LABEL:   func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float1
+func.func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float1(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %cst0 = arith.constant dense<0.0> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %cst0) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  %cst1 = arith.constant dense<1.0> : tensor<f32>
+  %1 = "tfl.minimum"(%0, %cst1) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+
+  func.return %1 : tensor<2x2xf32>
+  // CHECK-NOT: "tfl.relu"
+  // CHECK-NOT: "tfl.minimum"
+  // CHECK-NOT: "tfl.pseudo_const"
+  // CHECK: "tfl.relu_0_to_1"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+}
+
+// CHECK-LABEL:   func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float2
+func.func @fuseReluToMin1_StaticShapeWithBroadcastedCst_Float2(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %cst0 = arith.constant dense<1.0> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %cst0) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  %cst1 = arith.constant dense<0.0> : tensor<f32>
+  %1 = "tfl.maximum"(%0, %cst1) : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+
+  func.return %1 : tensor<2x2xf32>
+  // CHECK-NOT: "tfl.relu"
+  // CHECK-NOT: "tfl.minimum"
+  // CHECK-NOT: "tfl.pseudo_const"
+  // CHECK: "tfl.relu_0_to_1"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+}
+
+// CHECK-LABEL:   func @fuseReluToMin1_StaticShapeWithSameShapeCst_Float
+func.func @fuseReluToMin1_StaticShapeWithSameShapeCst_Float2(%arg0: tensor<2x2xf32>) -> (tensor<2x2xf32>) {
+  %cst0 = arith.constant dense<1.0> : tensor<2x2xf32>
+  %0 = "tfl.minimum"(%arg0, %cst0) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  %cst1 = arith.constant dense<0.0> : tensor<2x2xf32>
+  %1 = "tfl.maximum"(%0, %cst1) : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+
+  func.return %1 : tensor<2x2xf32>
+  // CHECK-NOT: "tfl.relu"
+  // CHECK-NOT: "tfl.minimum"
+  // CHECK-NOT: "tfl.pseudo_const"
+  // CHECK: "tfl.relu_0_to_1"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+}
+
+
+
+// CHECK-LABEL:   func @fuseAddAndStridedSlice
+func.func @fuseAddAndStridedSlice(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK:  %cst = arith.constant dense<1> : tensor<1xi32>
+  // CHECK:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK:  %1 = "tfl.strided_slice"(%arg0, %arg1, %cst, %0) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = true, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst_0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %cst_1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tfl.add"(%arg1, %cst_0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @fuseSubAndStridedSlice
+func.func @fuseSubAndStridedSlice(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK:  %cst = arith.constant dense<1> : tensor<1xi32>
+  // CHECK:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK:  %1 = "tfl.strided_slice"(%arg0, %arg1, %cst, %0) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = true, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst_0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %cst_1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tfl.sub"(%arg1, %cst_0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @dontFuseAddAndStridedSliceNonConstantStride
+func.func @dontFuseAddAndStridedSliceNonConstantStrides(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK-DAG:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK:  %1 = tfl.add(%arg1, %0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:  %2 = "tfl.strided_slice"(%arg0, %arg1, %1, %arg2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.add"(%arg1, %cst) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %arg2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @dontFuseAddAndStridedSliceOffset
+func.func @dontFuseAddAndStridedSliceOffset(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>, %arg3: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK-DAG:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK:  %1 = tfl.add(%arg2, %0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:  %2 = "tfl.strided_slice"(%arg0, %arg1, %1, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %0 = "tfl.add"(%arg2, %cst) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %arg3) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @dontFuseAddAndStridedSliceNonConstantOffset
+func.func @dontFuseAddAndStridedSliceNonConstantOffset(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>, %arg2: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK:  %0 = tfl.add %arg1, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
+  // CHECK: "tfl.strided_slice"(%arg0, %arg1, %0, %arg2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %0 = "tfl.add"(%arg1, %arg1) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %arg2) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @dontFuseAddAndStridedSliceBeginMask
+func.func @dontFuseAddAndStridedSliceBeginMask(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK-DAG:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK:  %2 = tfl.add(%arg1, %0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:  %3 = "tfl.strided_slice"(%arg0, %arg1, %2, %1) {begin_mask = 1 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst_0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %cst_1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tfl.add"(%arg1, %cst_0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 1 : i32, ellipsis_mask = 0 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @dontFuseAddAndStridedSliceEndMask
+func.func @dontFuseAddAndStridedSliceEndMask(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK-DAG:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK:  %2 = tfl.add(%arg1, %0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:  %3 = "tfl.strided_slice"(%arg0, %arg1, %2, %1) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 1 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst_0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %cst_1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tfl.add"(%arg1, %cst_0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 0 : i32, ellipsis_mask = 0 : i32, end_mask = 1 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
+}
+
+// CHECK-LABEL:   func @dontFuseAddAndStridedSliceEllipsisMask
+func.func @dontFuseAddAndStridedSliceEllipsisMask(%arg0: tensor<4xi32>, %arg1: tensor<1xi32>) -> tensor<4xi32> {
+  // CHECK-DAG:  %0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // CHECK-DAG:  %1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK:  %2 = tfl.add(%arg1, %0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  // CHECK:  %3 = "tfl.strided_slice"(%arg0, %arg1, %2, %1) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+
+  %cst_0 = "tfl.pseudo_const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %cst_1 = "tfl.pseudo_const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
+  %0 = "tfl.add"(%arg1, %cst_0) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<i32>) -> tensor<1xi32>
+  %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
+  func.return %1 : tensor<4xi32>
 }

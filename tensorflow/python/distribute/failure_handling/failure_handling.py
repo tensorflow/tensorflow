@@ -698,7 +698,7 @@ class PreemptionCheckpointHandler(object):
   def _maybe_set_received_own_sigterm(self):
     """Claim earliest preemption if no one else has done it before."""
     if self._local_mode:
-      logging.info('Received termination notice.',
+      logging.info('Member %s has received termination notice.',
                    self._id_in_cluster)
       self._received_own_sigterm_time = time.time()
       self._received_own_sigterm.set()

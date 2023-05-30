@@ -47,15 +47,13 @@ StatusScopedDiagnosticHandler::StatusScopedDiagnosticHandler(
 }
 
 Status StatusScopedDiagnosticHandler::ConsumeStatus() {
-  return tensorflow::FromAbslStatus(
-      BaseScopedDiagnosticHandler::ConsumeStatus());
+  return BaseScopedDiagnosticHandler::ConsumeStatus();
 }
 
 Status StatusScopedDiagnosticHandler::Combine(Status status) {
-  absl::Status absl_s =
-      BaseScopedDiagnosticHandler::Combine(tensorflow::ToAbslStatus(status));
+  absl::Status absl_s = BaseScopedDiagnosticHandler::Combine(status);
 
-  return tensorflow::FromAbslStatus(absl_s);
+  return absl_s;
 }
 
 }  // namespace mlir
