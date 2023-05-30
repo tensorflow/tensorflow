@@ -78,13 +78,6 @@ class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
                       ncclComm_t comm);
 };
 
-class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllReduceDoneThunk(ThunkInfo thunk_info,
-                         NcclCollectiveThunk::AsyncExecutor& async)
-      : NcclCollectiveDoneThunk(Thunk::kNcclAllReduceDone, thunk_info, async) {}
-};
-
 // -----------------------------------------------------------------------------
 // ReduceScatter thunk
 // -----------------------------------------------------------------------------
@@ -111,14 +104,6 @@ class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  private:
   Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
                           ncclComm_t comm);
-};
-
-class NcclReduceScatterDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclReduceScatterDoneThunk(ThunkInfo thunk_info,
-                             NcclCollectiveThunk::AsyncExecutor& async)
-      : NcclCollectiveDoneThunk(Thunk::kNcclReduceScatterDone, thunk_info,
-                                async) {}
 };
 
 // -----------------------------------------------------------------------------

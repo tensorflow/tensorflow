@@ -58,12 +58,6 @@ class NcclAllGatherStartThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
-class NcclAllGatherDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllGatherDoneThunk(ThunkInfo thunk_info,
-                         NcclCollectiveThunk::AsyncExecutor& async);
-};
-
 Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
                     ncclComm_t comm);
 

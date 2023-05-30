@@ -107,10 +107,6 @@ Status NcclAllToAllStartThunk::RunAllToAll(const ExecuteParams& params,
                                stream, comm);
 }
 
-NcclAllToAllDoneThunk::NcclAllToAllDoneThunk(
-    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
-    : NcclCollectiveDoneThunk(Thunk::kNcclAllToAllDone, thunk_info, async) {}
-
 Status RunAllToAll(bool has_split_dimension,
                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
                    ncclComm_t comm) {

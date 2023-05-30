@@ -179,11 +179,6 @@ Status NcclCollectivePermuteStartThunk::RunCollectivePermute(
                                           current_id);
 }
 
-NcclCollectivePermuteDoneThunk::NcclCollectivePermuteDoneThunk(
-    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
-    : NcclCollectiveDoneThunk(Thunk::kNcclCollectivePermuteDone, thunk_info,
-                              async) {}
-
 Status RunCollectivePermute(
     NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
     DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,

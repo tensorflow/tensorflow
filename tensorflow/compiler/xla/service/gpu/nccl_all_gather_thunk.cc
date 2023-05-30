@@ -101,10 +101,6 @@ Status NcclAllGatherStartThunk::RunAllGather(const ExecuteParams& params,
   return xla::gpu::RunAllGather(device_buffers, stream, comm);
 }
 
-NcclAllGatherDoneThunk::NcclAllGatherDoneThunk(
-    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
-    : NcclCollectiveDoneThunk(Thunk::kNcclAllGatherDone, thunk_info, async) {}
-
 Status RunAllGather(std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
                     ncclComm_t comm) {
 #if XLA_ENABLE_XCCL

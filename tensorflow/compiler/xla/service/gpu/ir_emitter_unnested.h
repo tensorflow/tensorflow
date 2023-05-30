@@ -226,8 +226,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
-  template <typename NcclThunkType, typename OpT>
-  Status EmitNcclAsyncDone(mlir::Operation* op);
+  template <typename OpT>
+  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);

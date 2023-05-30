@@ -61,12 +61,6 @@ class NcclAllToAllStartThunk : public NcclCollectiveThunk {
   const std::vector<Buffer> buffers_;
 };
 
-class NcclAllToAllDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllToAllDoneThunk(ThunkInfo thunk_info,
-                        NcclCollectiveThunk::AsyncExecutor& async);
-};
-
 Status RunAllToAll(bool has_split_dimension,
                    std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
                    ncclComm_t comm);

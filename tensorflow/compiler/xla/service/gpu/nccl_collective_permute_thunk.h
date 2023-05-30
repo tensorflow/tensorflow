@@ -89,12 +89,6 @@ class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
   const Buffer buffer_;
 };
 
-class NcclCollectivePermuteDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclCollectivePermuteDoneThunk(ThunkInfo thunk_info,
-                                 NcclCollectiveThunk::AsyncExecutor& async);
-};
-
 Status RunCollectivePermute(
     NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,
     DeviceBufferPair& buffer, se::Stream& stream, ncclComm_t comm,
