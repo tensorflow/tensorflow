@@ -180,7 +180,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/util:lock_util",
     "//tensorflow/python/util:module_wrapper",
     "//tensorflow/python/util:serialization",
-    "//tensorflow/python:image_grad_test_base",
+    "//tensorflow/python/ops:image_grad_test_base",
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
