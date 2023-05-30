@@ -213,6 +213,7 @@ py_library(
         ":pywrap_tfe",
         ":random_crop_ops",
         ":ref_variable",
+        ":rnn_cell",
         ":rnn_ops_gen",
         ":script_ops",
         ":sendrecv_ops_gen",
@@ -514,6 +515,7 @@ cc_header_only_library(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "map_fn",
     actual = "//tensorflow/python/ops:map_fn",
@@ -545,6 +547,7 @@ py_strict_library(
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "functional_ops_gen",
     actual = "//tensorflow/python/ops:functional_ops_gen",
@@ -556,12 +559,14 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "functional_ops",
     actual = "//tensorflow/python/ops:functional_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "debug_ops_gen",
     actual = "//tensorflow/python/ops:debug_ops_gen",
@@ -571,6 +576,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "array_ops_gen",
     actual = "//tensorflow/python/ops:array_ops_gen",
@@ -588,6 +594,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "bitwise_ops_gen",
     actual = "//tensorflow/python/ops:bitwise_ops_gen",
@@ -601,6 +608,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "boosted_trees_ops_gen",
     actual = "//tensorflow/python/ops:boosted_trees_ops_gen",
@@ -608,6 +616,7 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "summary_ops_gen",
     actual = "//tensorflow/python/ops:summary_ops_gen",
@@ -615,6 +624,7 @@ alias(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "audio_ops_gen",
     actual = "//tensorflow/python/ops:audio_ops_gen",
@@ -622,6 +632,7 @@ alias(
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "cudnn_rnn_ops_gen",
     actual = "//tensorflow/python/ops:cudnn_rnn_ops_gen",
@@ -631,6 +642,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "candidate_sampling_ops_gen",
     actual = "//tensorflow/python/ops:candidate_sampling_ops_gen",
@@ -638,6 +650,7 @@ alias(
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "checkpoint_ops_gen",
     actual = "//tensorflow/python/ops:checkpoint_ops_gen",
@@ -649,6 +662,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "clustering_ops_gen",
     actual = "//tensorflow/python/ops:clustering_ops_gen",
@@ -656,6 +670,7 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "collective_ops_gen",
     actual = "//tensorflow/python/ops:collective_ops_gen",
@@ -663,6 +678,7 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_ops_gen",
     actual = "//tensorflow/python/ops:control_flow_ops_gen",
@@ -675,12 +691,14 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "ctc_ops_gen",
     actual = "//tensorflow/python/ops:ctc_ops_gen",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "data_flow_ops_gen",
     actual = "//tensorflow/python/ops:data_flow_ops_gen",
@@ -694,6 +712,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "dataset_ops_gen",
     actual = "//tensorflow/python/ops:dataset_ops_gen",
@@ -705,6 +724,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "optional_ops_gen",
     actual = "//tensorflow/python/ops:optional_ops_gen",
@@ -716,6 +736,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "experimental_dataset_ops_gen",
     actual = "//tensorflow/python/ops:experimental_dataset_ops_gen",
@@ -727,6 +748,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "filesystem_ops_gen",
     actual = "//tensorflow/python/ops:filesystem_ops_gen",
@@ -736,6 +758,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "image_ops_gen",
     actual = "//tensorflow/python/ops:image_ops_gen",
@@ -747,6 +770,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "io_ops_gen",
     actual = "//tensorflow/python/ops:io_ops_gen",
@@ -763,6 +787,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "linalg_ops_gen",
     actual = "//tensorflow/python/ops:linalg_ops_gen",
@@ -773,6 +798,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "logging_ops_gen",
     actual = "//tensorflow/python/ops:logging_ops_gen",
@@ -787,6 +813,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "lookup_ops_gen",
     actual = "//tensorflow/python/ops:lookup_ops_gen",
@@ -799,6 +826,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "batch_ops_gen",
     actual = "//tensorflow/python/ops:batch_ops_gen",
@@ -808,12 +836,14 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "batch_ops",
     actual = "//tensorflow/python/ops:batch_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "manip_ops_gen",
     actual = "//tensorflow/python/ops:manip_ops_gen",
@@ -824,6 +854,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "math_ops_gen",
     actual = "//tensorflow/python/ops:math_ops_gen",
@@ -838,6 +869,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "nn_ops_gen",
     actual = "//tensorflow/python/ops:nn_ops_gen",
@@ -854,6 +886,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "count_ops_gen",
     actual = "//tensorflow/python/ops:count_ops_gen",
@@ -864,6 +897,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "parsing_ops_gen",
     actual = "//tensorflow/python/ops:parsing_ops_gen",
@@ -876,6 +910,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "random_ops_gen",
     actual = "//tensorflow/python/ops:random_ops_gen",
@@ -888,6 +923,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "special_math_ops_gen",
     actual = "//tensorflow/python/ops:special_math_ops_gen",
@@ -895,6 +931,7 @@ alias(
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "stateful_random_ops_gen",
     actual = "//tensorflow/python/ops:stateful_random_ops_gen",
@@ -905,6 +942,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "resource_variable_ops_gen",
     actual = "//tensorflow/python/ops:resource_variable_ops_gen",
@@ -916,6 +954,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "stateless_random_ops_gen",
     actual = "//tensorflow/python/ops:stateless_random_ops_gen",
@@ -926,6 +965,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "stateless_random_ops_v2_gen",
     actual = "//tensorflow/python/ops:stateless_random_ops_v2_gen",
@@ -933,6 +973,7 @@ alias(
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "random_index_shuffle_ops_gen",
     actual = "//tensorflow/python/ops:random_index_shuffle_ops_gen",
@@ -940,6 +981,7 @@ alias(
     visibility = visibility + ["//tensorflow/python/kernel_tests/random:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "list_ops_gen",
     actual = "//tensorflow/python/ops:list_ops_gen",
@@ -947,18 +989,21 @@ alias(
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "map_ops_gen",
     actual = "//tensorflow/python/ops:map_ops_gen",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "script_ops_gen",
     actual = "//tensorflow/python/ops:script_ops_gen",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sdca_ops_gen",
     actual = "//tensorflow/python/ops:sdca_ops_gen",
@@ -966,6 +1011,7 @@ alias(
     visibility = ["//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "set_ops_gen",
     actual = "//tensorflow/python/ops:set_ops_gen",
@@ -973,6 +1019,7 @@ alias(
     visibility = visibility + ["//tensorflow/python/kernel_tests/math_ops:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "state_ops_gen",
     actual = "//tensorflow/python/ops:state_ops_gen",
@@ -988,6 +1035,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sparse_ops_gen",
     actual = "//tensorflow/python/ops:sparse_ops_gen",
@@ -995,6 +1043,7 @@ alias(
     visibility = visibility + ["//tensorflow/python/kernel_tests/sparse_ops:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "spectral_ops_gen",
     actual = "//tensorflow/python/ops:spectral_ops_gen",
@@ -1005,6 +1054,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "string_ops_gen",
     actual = "//tensorflow/python/ops:string_ops_gen",
@@ -1012,6 +1062,7 @@ alias(
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "training_ops_gen",
     actual = "//tensorflow/python/ops:training_ops_gen",
@@ -1021,6 +1072,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "composite_tensor_ops_gen",
     actual = "//tensorflow/python/ops:composite_tensor_ops_gen",
@@ -1028,6 +1080,7 @@ alias(
     visibility = visibility + ["//tensorflow/python/kernel_tests:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "ragged_array_ops_gen",
     actual = "//tensorflow/python/ops:ragged_array_ops_gen",
@@ -1035,6 +1088,7 @@ alias(
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "ragged_math_ops_gen",
     actual = "//tensorflow/python/ops:ragged_math_ops_gen",
@@ -1042,6 +1096,7 @@ alias(
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "ragged_conversion_ops_gen",
     actual = "//tensorflow/python/ops:ragged_conversion_ops_gen",
@@ -1049,6 +1104,7 @@ alias(
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "risc_ops_gen",
     actual = "//tensorflow/python/ops:risc_ops_gen",
@@ -1058,6 +1114,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "rnn_ops_gen",
     actual = "//tensorflow/python/ops:rnn_ops_gen",
@@ -1065,6 +1122,7 @@ alias(
     visibility = ["//tensorflow/python/kernel_tests/nn_ops:__pkg__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sendrecv_ops_gen",
     actual = "//tensorflow/python/ops:sendrecv_ops_gen",
@@ -1072,6 +1130,7 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "tpu_ops_gen",
     actual = "//tensorflow/python/ops:tpu_ops_gen",
@@ -1083,6 +1142,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "tpu_partition_ops_gen",
     actual = "//tensorflow/python/ops:tpu_partition_ops_gen",
@@ -1094,6 +1154,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "uniform_quant_ops_gen",
     actual = "//tensorflow/python/ops:uniform_quant_ops_gen",
@@ -1103,6 +1164,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sync_ops_gen",
     actual = "//tensorflow/python/ops:sync_ops_gen",
@@ -1112,12 +1174,14 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "array_grad",
     actual = "//tensorflow/python/ops:array_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "array_ops",
     actual = "//tensorflow/python/ops:array_ops",
@@ -1125,120 +1189,143 @@ alias(
     visibility = visibility,
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "array_ops_stack",
     actual = "//tensorflow/python/ops:array_ops_stack",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "inplace_ops",
     actual = "//tensorflow/python/ops:inplace_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "bitwise_ops",
     actual = "//tensorflow/python/ops:bitwise_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "boosted_trees_ops",
     actual = "//tensorflow/python/ops:boosted_trees_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "optional_grad",
     actual = "//tensorflow/python/ops:optional_grad",
     tags = ["avoid_dep"],
 )
 
-alias(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "sets",
-    actual = "//tensorflow/python/ops:sets",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:sets_impl",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "candidate_sampling_ops",
     actual = "//tensorflow/python/ops:candidate_sampling_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "check_ops",
     actual = "//tensorflow/python/ops:check_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "clip_ops",
     actual = "//tensorflow/python/ops:clip_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "clustering_ops",
     actual = "//tensorflow/python/ops:clustering_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "collective_ops",
     actual = "//tensorflow/python/ops:collective_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_assert",
     actual = "//tensorflow/python/ops:control_flow_assert",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_grad",
     actual = "//tensorflow/python/ops:control_flow_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_ops",
     actual = "//tensorflow/python/ops:control_flow_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_case",
     actual = "//tensorflow/python/ops:control_flow_case",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_switch_case",
     actual = "//tensorflow/python/ops:control_flow_switch_case",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "cond",
     actual = "//tensorflow/python/ops:cond",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "while_loop",
     actual = "//tensorflow/python/ops:while_loop",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_util",
     actual = "//tensorflow/python/ops:control_flow_util",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_util_v2",
     actual = "//tensorflow/python/ops:control_flow_util_v2",
@@ -1246,426 +1333,515 @@ alias(
     visibility = visibility + ["//waymo/ml:__subpackages__"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_v2_func_graphs",
     actual = "//tensorflow/python/ops:control_flow_v2_func_graphs",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_v2_toggles",
     actual = "//tensorflow/python/ops:control_flow_v2_toggles",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "cond_v2",
     actual = "//tensorflow/python/ops:cond_v2",
     tags = ["avoid_dep"],
 )
 
-alias(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "while_v2",
-    actual = "//tensorflow/python/ops:while_v2",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:while_v2",
+        "//tensorflow/python/ops:while_v2_indexed_slices_rewriter",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "bincount_ops",
     actual = "//tensorflow/python/ops:bincount_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "ctc_ops",
     actual = "//tensorflow/python/ops:ctc_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "cudnn_rnn_grad",
     actual = "//tensorflow/python/ops:cudnn_rnn_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "data_flow_grad",
     actual = "//tensorflow/python/ops:data_flow_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "data_flow_ops",
     actual = "//tensorflow/python/ops:data_flow_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "embedding_ops",
     actual = "//tensorflow/python/ops:embedding_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "handle_data_util",
     actual = "//tensorflow/python/ops:handle_data_util",
     tags = ["avoid_dep"],
 )
 
-alias(
+py_strict_library(
     name = "gradients",
-    actual = "//tensorflow/python/ops:gradients",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:custom_gradient",
+        "//tensorflow/python/ops:gradients",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "gradients_impl",
     actual = "//tensorflow/python/ops:gradients_impl",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "gradients_util",
     actual = "//tensorflow/python/ops:gradients_util",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "default_gradient",
     actual = "//tensorflow/python/ops:default_gradient",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "control_flow_state",
     actual = "//tensorflow/python/ops:control_flow_state",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "unconnected_gradients",
     actual = "//tensorflow/python/ops:unconnected_gradients",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "filesystem_ops",
     actual = "//tensorflow/python/ops:filesystem_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "histogram_ops",
     actual = "//tensorflow/python/ops:histogram_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "image_grad",
     actual = "//tensorflow/python/ops:image_grad",
     tags = ["avoid_dep"],
 )
 
-alias(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "image_ops",
-    actual = "//tensorflow/python/ops:image_ops",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:image_ops_impl",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "init_ops",
     actual = "//tensorflow/python/ops:init_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "init_ops_v2",
     actual = "//tensorflow/python/ops:init_ops_v2",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "initializers_ns",
     actual = "//tensorflow/python/ops:initializers_ns",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "io_ops",
     actual = "//tensorflow/python/ops:io_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "linalg_grad",
     actual = "//tensorflow/python/ops:linalg_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "linalg_ops",
     actual = "//tensorflow/python/ops:linalg_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "linalg_ops_impl",
     actual = "//tensorflow/python/ops:linalg_ops_impl",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "manip_grad",
     actual = "//tensorflow/python/ops:manip_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "manip_ops",
     actual = "//tensorflow/python/ops:manip_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "logging_ops",
     actual = "//tensorflow/python/ops:logging_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "lookup_ops",
     actual = "//tensorflow/python/ops:lookup_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "math_grad",
     actual = "//tensorflow/python/ops:math_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "op_selector",
     actual = "//tensorflow/python/ops:op_selector",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "math_ops",
     actual = "//tensorflow/python/ops:math_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "resources",
     actual = "//tensorflow/python/ops:resources",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "resource_variable_ops",
     actual = "//tensorflow/python/ops:resource_variable_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "critical_section_ops",
     actual = "//tensorflow/python/ops:critical_section_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "list_ops",
     actual = "//tensorflow/python/ops:list_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "map_ops",
     actual = "//tensorflow/python/ops:map_ops",
     tags = ["avoid_dep"],
 )
 
-alias(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "nn",
-    actual = "//tensorflow/python/ops:nn",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:nn_impl",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "nn_grad",
     actual = "//tensorflow/python/ops:nn_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "nn_ops",
     actual = "//tensorflow/python/ops:nn_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "numerics",
     actual = "//tensorflow/python/ops:numerics",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "parsing_config",
     actual = "//tensorflow/python/ops:parsing_config",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "parsing_ops",
     actual = "//tensorflow/python/ops:parsing_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "partitioned_variables",
     actual = "//tensorflow/python/ops:partitioned_variables",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "random_grad",
     actual = "//tensorflow/python/ops:random_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "random_ops",
     actual = "//tensorflow/python/ops:random_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "random_crop_ops",
     actual = "//tensorflow/python/ops:random_crop_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "stateful_random_ops",
     actual = "//tensorflow/python/ops:stateful_random_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "stateless_random_ops",
     actual = "//tensorflow/python/ops:stateless_random_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "rnn",
     actual = "//tensorflow/python/ops:rnn",
     tags = ["avoid_dep"],
 )
 
-alias(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "rnn_cell",
-    actual = "//tensorflow/python/ops:rnn_cell",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:rnn_cell_impl",
+        "//tensorflow/python/ops:rnn_cell_wrapper_impl",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "script_ops",
     actual = "//tensorflow/python/ops:script_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sdca_ops",
     actual = "//tensorflow/python/ops:sdca_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "session_ops",
     actual = "//tensorflow/python/ops:session_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "shape_util",
     actual = "//tensorflow/python/ops:shape_util",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sparse_grad",
     actual = "//tensorflow/python/ops:sparse_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sparse_ops",
     actual = "//tensorflow/python/ops:sparse_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "sort_ops",
     actual = "//tensorflow/python/ops:sort_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "confusion_matrix",
     actual = "//tensorflow/python/ops:confusion_matrix",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "weights_broadcast_ops",
     actual = "//tensorflow/python/ops:weights_broadcast_ops",
     tags = ["avoid_dep"],
 )
 
-alias(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "metrics",
-    actual = "//tensorflow/python/ops:metrics",
     tags = ["avoid_dep"],
+    deps = [
+        "//tensorflow/python/ops:metrics",
+        "//tensorflow/python/ops:metrics_impl",
+    ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "special_math_ops",
     actual = "//tensorflow/python/ops:special_math_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "rnn_grad",
     actual = "//tensorflow/python/ops:rnn_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "standard_ops",
     actual = "//tensorflow/python/ops:standard_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "state_grad",
     actual = "//tensorflow/python/ops:state_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "state_ops",
     actual = "//tensorflow/python/ops:state_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "string_ops",
     actual = "//tensorflow/python/ops:string_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "summary_ops_v2",
     actual = "//tensorflow/python/ops:summary_ops_v2",
@@ -1673,60 +1849,70 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "template",
     actual = "//tensorflow/python/ops:template",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "tensor_array_grad",
     actual = "//tensorflow/python/ops:tensor_array_grad",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "tensor_array_ops",
     actual = "//tensorflow/python/ops:tensor_array_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "composite_tensor_ops",
     actual = "//tensorflow/python/ops:composite_tensor_ops",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "variable_scope",
     actual = "//tensorflow/python/ops:variable_scope",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "variables",
     actual = "//tensorflow/python/ops:variables",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "ref_variable",
     actual = "//tensorflow/python/ops:ref_variable",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "variable_v1",
     actual = "//tensorflow/python/ops:variable_v1",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "gradient_checker",
     actual = "//tensorflow/python/ops:gradient_checker",
     tags = ["avoid_dep"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "gradient_checker_v2",
     actual = "//tensorflow/python/ops:gradient_checker_v2",
@@ -2199,6 +2385,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "summary_op_util",
     actual = "//tensorflow/python/ops:summary_op_util",
@@ -2212,6 +2399,7 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "nccl_ops_gen",
     actual = "//tensorflow/python/ops:nccl_ops_gen",
@@ -2219,6 +2407,7 @@ alias(
     visibility = ["//tensorflow:internal"],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "nccl_ops",
     actual = "//tensorflow/python/ops:nccl_ops",
@@ -2229,6 +2418,7 @@ alias(
     ],
 )
 
+# TODO(b/285020435): Update usages and then remove.
 alias(
     name = "proto_ops",
     actual = "//tensorflow/python/ops:proto_ops",
