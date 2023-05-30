@@ -162,6 +162,11 @@ struct AutoShardingOption {
   // Explore other mesh shapes with the same number of devices as the provided
   // one for a potentially better auto-sharding solution.
   bool try_multiple_mesh_shapes = false;
+
+  // Timeout for the solver. If the solver fails to find an optimal solution
+  // before the timeout, we rely on the heuristic-based sharding implemented in
+  // sharding_propagation.cc.
+  int64_t solver_timeout_in_seconds = 3600;
   std::vector<int64_t> strategy_vector;
 
   std::string ToString() {
@@ -320,13 +325,19 @@ struct AutoShardingOption {
   }
 };
 
+enum class AutoShardingResult {
+  kModuleUnchanged,
+  kModuleChangedShardingPerformed,
+  kModuleUnchangedNoShardingPerfomed
+};
+
 class AutoShardingImplementation {
  public:
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
   // using HloPassInterface::Run;
-  StatusOr<bool> RunAutoSharding(
+  StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 
