@@ -84,6 +84,33 @@ class StridedSliceOpModel : public SingleOpModel {
     }
   }
 
+  // Constant input, strides and end with offset.
+  StridedSliceOpModel(std::initializer_list<int> input_shape,
+                      std::initializer_list<int> begin_shape,
+                      std::initializer_list<int> end_shape,
+                      std::initializer_list<int> strides_shape,
+                      const std::vector<input_type> input_data,
+                      const std::vector<int> begin_data,
+                      const std::vector<int> end_data,
+                      const std::vector<int> strides_data, int begin_mask,
+                      int end_mask, int ellipsis_mask, int new_axis_mask,
+                      int shrink_axis_mask) {
+    input_ =
+        AddConstInput(GetTensorType<input_type>(), input_data, input_shape);
+    begin_ = AddInput(TensorType_INT32);
+    end_ = AddConstInput(TensorType_INT32, end_data, end_shape);
+    strides_ = AddConstInput(TensorType_INT32, strides_data, strides_shape);
+    output_ = AddOutput(GetTensorType<input_type>());
+    SetBuiltinOp(BuiltinOperator_STRIDED_SLICE,
+                 BuiltinOptions_StridedSliceOptions,
+                 CreateStridedSliceOptions(builder_, begin_mask, end_mask,
+                                           ellipsis_mask, new_axis_mask,
+                                           shrink_axis_mask, /*offset=*/true)
+                     .Union());
+    BuildInterpreter({input_shape, begin_shape, end_shape, strides_shape});
+    SetBegin(begin_data);
+  }
+
   template <typename T>
   void SetInput(const std::vector<T> data, std::false_type) {
     PopulateTensor<input_type>(input_, data);
@@ -1293,6 +1320,13 @@ TYPED_TEST(StridedSliceOpTest, NegEndMask) {
     EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
     EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1, 6, 5, 4}));
   }
+}
+TYPED_TEST(StridedSliceOpTest, NoopOffset) {
+  StridedSliceOpModel<TypeParam> m({2, 3}, {2}, {2}, {2}, {1, 2, 3, 4, 5, 6},
+                                   {0, -1}, {2, -3}, {1, -1}, 0, 0b10, 0, 0, 0);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 2, 1, 6, 5, 4}));
 }
 }  // namespace
 }  // namespace tflite

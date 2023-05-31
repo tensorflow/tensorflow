@@ -340,6 +340,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteOk;
   }
   if (IsConstantOrPersistentTensor(op_context.input) &&
+      IsConstantOrPersistentTensor(op_context.begin) &&
       IsConstantOrPersistentTensor(op_context.end)) {
     SetTensorToPersistentRo(op_context.output);
     ResizeOutputTensor(context, &op_context);
