@@ -6,13 +6,15 @@ md C:\tf\tmp
 cd C:\tf
 git clone https://github.com/tensorflow/tensorflow.git
 cd C:\tf\tensorflow\tensorflow\tools\tf_windows_build_dockerfiles\
+# The testing of building the Docker image has been conducted using Python versions <?.?.?> = 3.11.3, 3.10.11, and 3.9.13.
 docker build  --no-cache --build-arg PYTHON_VERSION=<?.?.?> -t win-docker .
 
 ```
+
 **Starting docker:**
 
 ```
-#Change to tensorlflow root directory
+#Change to tensorflow root directory
 cd C:\tf\tensorflow
 docker exec -it tf bash
 ```
@@ -27,7 +29,7 @@ exit
 Running Docker image:
 
 ```
-docker run --name tf -itd --rm -v C:\tf\tensorflow:C:\workspace -v C:\tf\tmp:C:\tmp -e TEST_TMPDIR=C:\tmp -w C:\workspace win-docker bash
+docker run --name tf -itd --rm -v C:\tf\tensorflow:C:\tensorflow -v C:\tf\tmp:C:\tmp -e TEST_TMPDIR=C:\tmp -w C:\tensorflow win-docker bash
 ```
 **To create the TensorFlow package builder run:**
 
