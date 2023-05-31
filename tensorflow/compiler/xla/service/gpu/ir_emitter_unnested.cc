@@ -1420,9 +1420,9 @@ Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
   }
   TF_ASSIGN_OR_RETURN(GpufMHAConfig config, GpufMHAConfig::For(descriptor));
 
-  AddThunkToThunkSequence(std::move(std::make_unique<FusedMHAThunk>(
+  AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
       GetThunkInfo(op), std::move(config), lhs_bmm1_slice, rhs_bmm1_slice,
-      rhs_bmm2_slice, output_slice, scratch_slice, mask_slice, bias_slice)));
+      rhs_bmm2_slice, output_slice, scratch_slice, mask_slice, bias_slice));
 
   return OkStatus();
 }

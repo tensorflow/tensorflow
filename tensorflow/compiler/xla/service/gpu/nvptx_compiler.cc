@@ -197,7 +197,6 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   AlgebraicSimplifierOptions algebraic_simplifier_options({}, {});
   mha_fusion_pipeline.AddPass<AlgebraicSimplifier>(
       algebraic_simplifier_options);
-  // mha_fusion_pipeline.AddPass<CudnnFusedMHATransposeFusion>();
   mha_fusion_pipeline.AddPass<HloDCE>();
 
   TF_RETURN_IF_ERROR(mha_fusion_pipeline.Run(hlo_module).status());
