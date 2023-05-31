@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSED_MHA_RUNNER_H_
-#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSED_MHA_RUNNER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
 
 #include <optional>
 
@@ -257,4 +257,4 @@ std::string ToString(const GpufMHAConfig& config);
 
 }  // namespace gpu
 }  // namespace xla
-#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_FUSED_MHA_RUNNER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_GPU_FUSED_MHA_RUNNER_H_
