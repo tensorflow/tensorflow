@@ -411,10 +411,10 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16();
+          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16();  // NOLINT
     } else if (std::is_same<T, bfloat16>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16();
+          GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16();  // NOLINT
     }
     ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
                       rhs_bmm2_literal);
@@ -490,7 +490,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16();
+          GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16();  // NOLINT
     }
 
     ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
@@ -501,8 +501,9 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
 
 
   // BMM1 - Scale - Bias - Mask - Softmax - BMM2
-  class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM : public MultiHeadedAttentionTest {
-protected:
+class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
+    : public MultiHeadedAttentionTest {
+ protected:
   const std::string
   GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
@@ -728,7 +729,7 @@ protected:
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {
+  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
 
@@ -784,7 +785,7 @@ protected:
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {
+  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
   HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
@@ -885,10 +886,10 @@ protected:
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller();
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller();  // NOLINT
     } else if (std::is_same<T, bfloat16>::value) {
       hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller();
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller();  // NOLINT
     }
 
     ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
@@ -914,20 +915,21 @@ protected:
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16();
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_F16();  // NOLINT
     } else if (std::is_same<T, bfloat16>::value) {
       hlo_string =
-          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();
+          GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();  // NOLINT
     }
 
     ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
                                rhs_bmm2_literal, mask_literal);
   }
-  };
+};
 
   // BMM1 - Scale - Mask - Softmax - BMM2
-  class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM : public MultiHeadedAttentionTest {
-protected:
+class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
+    : public MultiHeadedAttentionTest {
+ protected:
   const std::string GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_HloString_F16() {
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
@@ -1194,7 +1196,7 @@ protected:
     ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
                                rhs_bmm2_literal, mask_literal);
   }
-  };
+};
 
   class MultiHeadedAttentionBMMSoftmaxBMM : public MultiHeadedAttentionTest {
   // Bmm1 - Softmax - Bmm2
@@ -1317,11 +1319,13 @@ protected:
   }
   };
 
-  class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM : public MultiHeadedAttentionTest {
-  protected:
-  // Bmm1 - Scale - Bias - Softmax - Bmm2
-  const std::string GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16() {
-    const std::string hlo_text = R"(
+  class MultiHeadedAttentionBMMScaleBiasSoftmaxBMM
+      : public MultiHeadedAttentionTest {
+   protected:
+    // Bmm1 - Scale - Bias - Softmax - Bmm2
+    const std::string
+    GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16() {
+      const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 
     region_0.13 {
@@ -1368,11 +1372,12 @@ protected:
     }
   )";
 
-    return hlo_text;
-  }
+      return hlo_text;
+    }
 
-  const std::string GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_BF16() {
-    const std::string hlo_text = R"(
+    const std::string
+    GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_BF16() {
+      const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 
     region_0.13 {
@@ -1419,36 +1424,36 @@ protected:
     }
   )";
 
-    return hlo_text;
-  }
-
-  // BMM1 - Scale - bias - Softmax - BMM2
-  template <typename T>
-  void TestImpl_FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla() {
-    stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
-    if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
-      GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
-    }
-    XlaBuilder builder(TestName());
-
-    auto lhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm1_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-    auto rhs_bmm2_literal =
-        GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
-
-    std::string hlo_string = "";
-    if (std::is_same<T, Eigen::half>::value) {
-      hlo_string = GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16();
-    } else if (std::is_same<T, bfloat16>::value) {
-      hlo_string = GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_BF16();
+      return hlo_text;
     }
 
-    ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
-                      rhs_bmm2_literal);
-  }
-};
+    // BMM1 - Scale - bias - Softmax - BMM2
+    template <typename T>
+    void TestImpl_FMHABMM1_Scale_Bias_Softmax_BMM2_vanilla() {
+      stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
+      if (!(cc.IsAtLeast(se::CudaComputeCapability::AMPERE) && cc.minor == 0)) {
+        GTEST_SKIP() << "Fused MHA is supported with the Nvidia AMPERE+ GPUs.";
+      }
+      XlaBuilder builder(TestName());
+
+      auto lhs_bmm1_literal =
+          GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+      auto rhs_bmm1_literal =
+          GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+      auto rhs_bmm2_literal =
+          GetInput4DLiteral<T>({16, 16, 256, 64}, {3, 2, 1, 0});
+
+      std::string hlo_string = "";
+      if (std::is_same<T, Eigen::half>::value) {
+        hlo_string = GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_F16();
+      } else if (std::is_same<T, bfloat16>::value) {
+        hlo_string = GetModuleFMHABMM1_Scale_Bias_Softmax_BMM2_HloString_BF16();
+      }
+
+      ExecuteAndCompare(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
+                        rhs_bmm2_literal);
+    }
+  };
 
 // BMM1 - BMM2
 XLA_TEST_F(MultiHeadedAttentionBMMBMM, FMHABMM_BMM_vanilla_F16) {
@@ -1544,11 +1549,13 @@ XLA_TEST_F(MultiHeadedAttentionBMMScaleMaskSoftmaxBMM,
 }
 
 // BMM1 - Softmax - BMM2
-XLA_TEST_F(MultiHeadedAttentionBMMSoftmaxBMM, FMHABMM1_Softmax_BMM2_vanilla_F16) {
+XLA_TEST_F(MultiHeadedAttentionBMMSoftmaxBMM,
+           FMHABMM1_Softmax_BMM2_vanilla_F16) {
   TestImpl_FMHABMM1_Softmax_BMM2_vanilla<Eigen::half>();
 }
 
-XLA_TEST_F(MultiHeadedAttentionBMMSoftmaxBMM, FMHABMM1_Softmax_BMM2_vanilla_BF16) {
+XLA_TEST_F(MultiHeadedAttentionBMMSoftmaxBMM,
+           FMHABMM1_Softmax_BMM2_vanilla_BF16) {
   TestImpl_FMHABMM1_Softmax_BMM2_vanilla<Eigen::half>();
 }
 
