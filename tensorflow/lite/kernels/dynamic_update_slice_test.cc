@@ -206,9 +206,9 @@ TEST(DynamicUpdateSliceOpTest, UpdateShapeTooLargeTest) {
 class DynamicUpdateSliceGraphModel {
  public:
   static constexpr struct InPlaceGraph {
-  } kInPlaceGraph;
+  } kInPlaceGraph{};
   static constexpr struct NotInPlaceGraph {
-  } kNotInPlaceGraph;
+  } kNotInPlaceGraph{};
 
   DynamicUpdateSliceGraphModel(InPlaceGraph, bool multiple_consumers) {
     builder_.BuildInplaceDynamicUpdateSliceSubgraph(
