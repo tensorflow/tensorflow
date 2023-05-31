@@ -2855,6 +2855,8 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.getX().getDefiningOp());
   if (!transpose) return {};
 
+  if (transpose->getBlock() != op->getBlock()) return {};
+
   // Permutations defined by constant operations.
   DenseIntElementsAttr perm0;
   DenseIntElementsAttr perm1;
