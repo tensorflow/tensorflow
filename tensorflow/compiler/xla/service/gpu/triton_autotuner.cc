@@ -197,7 +197,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       : config_(config), thread_pool_(thread_pool) {}
 
   Status HandleFusion(HloInstruction* hlo) override {
-    if (hlo->raw_backend_config_string() != kTritonGemmBackendConfig) {
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        hlo->backend_config<FusionBackendConfig>());
+    if (backend_config.kind() != kTritonGemmFusionKind) {
       return OkStatus();
     }
 
@@ -213,7 +215,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(MakeDotSplitKBatch(hlo, tiling));
     }
 
-    TF_RETURN_IF_ERROR(hlo->set_backend_config(tiling));
+    *backend_config.mutable_triton_gemm_config() = tiling;
+    TF_RETURN_IF_ERROR(hlo->set_backend_config(backend_config));
     MarkAsChanged();
     return OkStatus();
   }
@@ -543,7 +546,13 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     new_hlo_module->config().set_debug_options(options);
     HloComputation* entry_computation = new_hlo_module->entry_computation();
     HloInstruction* cloned_dot_fusion = entry_computation->root_instruction();
-    TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(autotune_config));
+
+    TF_ASSIGN_OR_RETURN(
+        auto backend_config,
+        cloned_dot_fusion->backend_config<FusionBackendConfig>());
+    *backend_config.mutable_triton_gemm_config() = autotune_config;
+    TF_RETURN_IF_ERROR(cloned_dot_fusion->set_backend_config(backend_config));
+
     if (autotune_config.split_k() > 1) {
       if (!MakeDotSplitKBatch(cloned_dot_fusion, autotune_config).ok()) {
         return {std::nullopt};

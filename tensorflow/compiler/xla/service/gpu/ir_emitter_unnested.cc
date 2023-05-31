@@ -1763,7 +1763,8 @@ Status IrEmitterUnnested::EmitLaunchFunc(mlir::Operation* op) {
 
 #if GOOGLE_CUDA
 Status IrEmitterUnnested::EmitTritonFusion(
-    mlir::Operation* op, tensorflow::AutotuneResult::TritonGemmKey& config) {
+    mlir::Operation* op,
+    const tensorflow::AutotuneResult::TritonGemmKey& config) {
   // Note: In this method we can't use `BuildKernelThunk` as usual,
   // because we only get the launch dimensions after code generation. So we
   // implement kernel reuse using lower level APIs, such as
@@ -2013,6 +2014,20 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
 
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
+
+  FusionBackendConfig backend_config;
+  if (auto backend_config_str = fusion_op.getBackendConfig()
+                                    .value_or(mlir::Attribute())
+                                    .dyn_cast_or_null<mlir::StringAttr>()) {
+    auto status = tsl::HumanReadableJsonToProto(backend_config_str.str(),
+                                                &backend_config);
+    if (!status.ok()) {
+      LOG(ERROR) << "Ignoring invalid backend config on "
+                 << GetIrNameFromLoc(op->getLoc()) << ": "
+                 << backend_config_str.str();
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(
       HloComputation * fused_computation,
       GetOrCreateSubComputationFromRegion(&fusion_op.getRegion(),
@@ -2027,24 +2042,19 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   }
 
 #if GOOGLE_CUDA
-  if (auto backend_config = fusion_op.getBackendConfig()
-                                .value_or(mlir::Attribute())
-                                .dyn_cast_or_null<mlir::StringAttr>()) {
-    tensorflow::AutotuneResult::TritonGemmKey triton_config;
-    if (backend_config == kTritonGemmBackendConfig) {
-      LOG(WARNING) << "Using fallback triton GEMM config";
+  if (backend_config.kind() == kTritonGemmFusionKind) {
+    if (!backend_config.has_triton_gemm_config()) {
+      LOG(WARNING) << "Using fallback triton GEMM config for op "
+                   << GetIrNameFromLoc(op->getLoc());
+      auto& triton_config = *backend_config.mutable_triton_gemm_config();
       triton_config.set_block_m(64);
       triton_config.set_block_k(64);
       triton_config.set_block_n(64);
       triton_config.set_split_k(1);
       triton_config.set_num_stages(1);
       triton_config.set_num_warps(2);
-      return EmitTritonFusion(fusion_op, triton_config);
-    } else if (tsl::HumanReadableJsonToProto(backend_config.str(),
-                                             &triton_config)
-                   .ok()) {
-      return EmitTritonFusion(fusion_op, triton_config);
     }
+    return EmitTritonFusion(fusion_op, backend_config.triton_gemm_config());
   }
 #endif  // GOOGLE_CUDA
 

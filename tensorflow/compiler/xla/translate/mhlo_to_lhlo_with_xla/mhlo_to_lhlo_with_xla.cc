@@ -319,8 +319,7 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
         *instr->called_computations()[0], symbol_table_, &reduce_op.getBody(),
-        &builder_,
-        /*flatten_region_arg_tuple=*/true));
+        &builder_, /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(op,
@@ -607,8 +606,18 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     }
   }
 
-  fusion.setBackendConfigAttr(
-      builder_.getStringAttr(instr->raw_backend_config_string()));
+  // The fusion op might not have a backend-config.  But we at least want to set
+  // the fusion kind, because LMHLO doesn't have this concept.
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      instr->backend_config<xla::gpu::FusionBackendConfig>());
+  if (backend_config.kind().empty() &&
+      instr->opcode() == xla::HloOpcode::kFusion) {
+    backend_config.set_kind(std::string(ToString(instr->fusion_kind())));
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string backend_config_str,
+                      HloInstruction::BackendConfigToRawString(backend_config));
+  fusion.setBackendConfigAttr(builder_.getStringAttr(backend_config_str));
 
   // Fold GTE/Tuple pairs.
   //

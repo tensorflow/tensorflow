@@ -58,6 +58,7 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "//tensorflow/tsl/protobuf:autotuning_proto",
     ],
 )
 
@@ -456,6 +457,7 @@ xla_test(
     shard_count = 10,
     tags = ["nomac"],
     deps = [
+        ":backend_configs_cc",
         ":gpu_device_info_for_tests",
         ":ir_emitter_triton",
         ":launch_dimensions",
@@ -586,6 +588,7 @@ xla_test(
     ],
     tags = ["nomac"],
     deps = [
+        ":backend_configs_cc",
         ":gemm_rewriter_triton",
         ":triton_autotuner",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -1105,6 +1108,8 @@ cc_library(
     srcs = ["gemm_rewriter_triton.cc"],
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
+        ":backend_configs_cc",
+        ":gpu_types",
         ":ir_emission_utils",
         ":matmul_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -1115,7 +1120,6 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
