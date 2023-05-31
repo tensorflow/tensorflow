@@ -172,6 +172,7 @@ void ArenaPlanner::IdentifyInPlaceTensors() {
         break;
       case kTfLiteBuiltinAdd:
       case kTfLiteBuiltinDiv:
+      case kTfLiteBuiltinDynamicUpdateSlice:
       case kTfLiteBuiltinMul:
       case kTfLiteBuiltinSoftmax:
       case kTfLiteBuiltinSub:
