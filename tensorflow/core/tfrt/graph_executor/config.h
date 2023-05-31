@@ -27,11 +27,12 @@ namespace tfrt_stub {
 
 // The helper class for building RuntimeConfigProto and retrieving configs of
 // certain types from the RuntimeConfigProto.
-class ModelConfig {
+class RuntimeConfig {
  public:
-  ModelConfig() = default;
+  RuntimeConfig() = default;
 
-  static absl::StatusOr<ModelConfig> CreateFromProto(RuntimeConfigProto proto);
+  static absl::StatusOr<RuntimeConfig> CreateFromProto(
+      RuntimeConfigProto proto);
 
   template <typename ConcreteProto>
   absl::Status Add(const ConcreteProto& config) {

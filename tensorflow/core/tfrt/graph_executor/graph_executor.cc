@@ -230,7 +230,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   fallback_request_state.set_cost_recorder(cost_recorder);
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
-  fallback_request_state.set_model_config(&options.model_config);
+  fallback_request_state.set_runtime_config(&options.runtime_config);
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));

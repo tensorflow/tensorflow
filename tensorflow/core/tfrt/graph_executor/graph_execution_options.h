@@ -55,8 +55,8 @@ struct GraphExecutionOptions {
   // Model metadata used for monitoring and tracing.
   tensorflow::SessionMetadata model_metadata;
 
-  // The model-specific configurations.
-  tensorflow::tfrt_stub::ModelConfig model_config;
+  // The model-specific runtime configurations.
+  tensorflow::tfrt_stub::RuntimeConfig runtime_config;
 
   // If true, for each client graph, the op costs of the first request will be
   // recorded and used to re-compile the client graph.
