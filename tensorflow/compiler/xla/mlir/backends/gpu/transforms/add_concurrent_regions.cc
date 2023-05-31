@@ -55,10 +55,6 @@ struct BufferUse {
   size_t offset;
   size_t len;
 
-  // The accessed buffer is constant, which means that operation in the capture
-  // function cannot write to the buffer.
-  bool is_constant;
-
   // The buffer is only read by the operation.
   bool read_only;
 };
@@ -67,18 +63,10 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
   Operation* defining_op = operand.getDefiningOp();
   if (!defining_op) {
     auto block_argument = cast<mlir::BlockArgument>(operand);
-
-    // Check if the input buffer is marked as constant.
-    Region* parent_region = block_argument.getParentRegion();
-    auto parent_func = parent_region->getParentOfType<FuncOp>();
-    unsigned parent_func_arg_index = block_argument.getArgNumber();
-    auto cst = parent_func.getArgAttrOfType<StringAttr>(parent_func_arg_index,
-                                                        "lmhlo.constant_name");
-
     auto memref_type = cast<MemRefType>(block_argument.getType());
     size_t len = memref_type.getNumElements() *
                  (memref_type.getElementTypeBitWidth() / 8);
-    return {block_argument, 0, len, cst ? true : false, read_only};
+    return {block_argument, 0, len, read_only};
   }
 
   if (isa<memref::ViewOp>(defining_op)) {
@@ -99,8 +87,7 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
     size_t len = memref_type.getNumElements() *
                  (memref_type.getElementTypeBitWidth() / 8);
 
-    return {buffer_use.arg, buffer_use.offset + offset, len,
-            buffer_use.is_constant, read_only};
+    return {buffer_use.arg, buffer_use.offset + offset, len, read_only};
   }
 
   if (auto cast = dyn_cast<mlir::memref::ReinterpretCastOp>(defining_op)) {
@@ -110,13 +97,25 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
   return {};
 }
 
+// Arguments to the graph capture function may have the "lmhlo.constant_name"
+// attribute, which indicates that the passed-in buffer is constant.
+bool IsConstant(BlockArgument block_argument) {
+  // Check if the input buffer is marked as constant.
+  Region* parent_region = block_argument.getParentRegion();
+  auto parent_func = parent_region->getParentOfType<FuncOp>();
+  unsigned parent_func_arg_index = block_argument.getArgNumber();
+  auto cst = parent_func.getArgAttrOfType<StringAttr>(parent_func_arg_index,
+                                                      "lmhlo.constant_name");
+  return cst != nullptr;
+}
+
 // Check if buffer_use has any overlap with buffers in the region.
 bool HasDependency(llvm::ArrayRef<BufferUse> region_buffer_uses,
                    BufferUse buffer_use) {
-  if (buffer_use.is_constant) return false;
+  if (IsConstant(buffer_use.arg)) return false;
 
   for (auto buffer_use_in_region : region_buffer_uses) {
-    if (buffer_use_in_region.is_constant ||
+    if (IsConstant(buffer_use_in_region.arg) ||
         buffer_use_in_region.arg.getArgNumber() !=
             buffer_use.arg.getArgNumber()) {
       continue;
