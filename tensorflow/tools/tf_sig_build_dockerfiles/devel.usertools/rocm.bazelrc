@@ -1,1 +1,1 @@
-gpu.bazelrc
+gpu_gcc.bazelrc
