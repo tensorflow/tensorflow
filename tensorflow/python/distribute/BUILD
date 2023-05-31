@@ -2203,6 +2203,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/284496291)
         "notsan",  # TODO(b/220133218)
     ],
     # b/141096229: Non-atomic AssignAdd
