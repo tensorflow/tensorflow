@@ -51,6 +51,8 @@
     * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
       relayouting a tensor according to the layout of another tensor. 
 
+*   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
