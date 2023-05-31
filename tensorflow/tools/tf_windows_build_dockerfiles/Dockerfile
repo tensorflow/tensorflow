@@ -40,12 +40,12 @@ RUN (New-Object Net.WebClient).DownloadFile( \
     Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x LLVM.exe -oC:\tools\llvm' -Wait; \
     $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\llvm\bin'; \
     [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
-# Disable signature checking on pacman because we cannot initialize the keyring
-RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw32 -Value 'SigLevel = Never'
-RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw64 -Value 'SigLevel = Never'
-RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.msys -Value 'SigLevel = Never'
+# Enable signature checking on pacman
+RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw32 -Value 'SigLevel = Required'
+RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw64 -Value 'SigLevel = Required'
+RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.msys -Value 'SigLevel = Required'
 # Install pacman packages.
-RUN C:\tools\msys64\usr\bin\bash.exe -lc 'pacman --noconfirm -Syy git curl zip unzip patch'
+RUN C:\tools\msys64\usr\bin\bash.exe -lc 'pacman-key --init && pacman-key --populate msys2 && pacman --noconfirm -Syy git curl zip unzip patch'
 
 # Install Python (specified by ARG PYTHON_VERSION)
 ARG PYTHON_VERSION
