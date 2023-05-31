@@ -3205,8 +3205,12 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       auto operand_propagated_back = hlo_sharding_util::ReshapeSharding(
           base_shape, operand_base_shape, propagated);
       std::vector<int64_t> operand_group_dims;
+      if (!operand_propagated_back.has_value()) {
+        // Unlikely, but if certain case is not implemented properly in
+        // ReshapeSharding we fallback to shard_reshape().
+        return shard_reshape(operand, sharding, base_shape);
+      }
       CHECK(operand_propagated_back->IsTiled());
-      CHECK(operand_propagated_back.has_value());
       Shape inner_operand_base_shape = operand_base_shape;
       for (int64_t i = 0; i < operand_base_shape.rank(); ++i) {
         if (operand_propagated_back->tile_assignment().dim(i) > 1) {
