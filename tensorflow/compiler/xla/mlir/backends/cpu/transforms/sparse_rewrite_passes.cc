@@ -238,9 +238,8 @@ struct SparseSliceCallRewriter {
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     // TODO(peiming): add a getSliceEncodingFrom into MLIR upstream.
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getLvlTypes(), srcEnc.getDimOrdering(),
-        srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
-        slice_attrs);
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getPosWidth(),
+        srcEnc.getCrdWidth(), slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),
                                          retTp.getElementType(), sliceEnc);
 
@@ -295,9 +294,8 @@ struct SparseDynSliceCallRewriter {
     auto srcEnc =
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getLvlTypes(), srcEnc.getDimOrdering(),
-        srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
-        slice_attrs);
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getPosWidth(),
+        srcEnc.getCrdWidth(), slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),
                                          retTp.getElementType(), sliceEnc);
 

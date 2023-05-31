@@ -3,7 +3,7 @@
 
 #CSR = #sparse_tensor.encoding<{
   lvlTypes = ["dense", "compressed"],
-  dimOrdering = affine_map<(i, j) -> (i, j)>,
+  dimToLvl = affine_map<(i, j) -> (i, j)>,
   posWidth = 32,
   crdWidth = 32
 }>
@@ -18,7 +18,7 @@ func.func @main(%arg: tensor<3x4xf32, #CSR>) -> tensor<3x4xf32, #CSR> {
 
 #COO = #sparse_tensor.encoding<{
   lvlTypes = ["compressed-nu", "singleton"],
-  dimOrdering = affine_map<(i, j) -> (i, j)>,
+  dimToLvl = affine_map<(i, j) -> (i, j)>,
   posWidth = 32,
   crdWidth = 32
 }>

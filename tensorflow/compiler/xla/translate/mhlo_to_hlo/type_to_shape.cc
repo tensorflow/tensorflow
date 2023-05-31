@@ -214,12 +214,12 @@ Shape TypeToShape(mlir::Type type) {
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);
       // Uses an identity map for dim ordering as the default value.
-      auto dimOrder = sparse.getDimOrdering()
-                          ? sparse.getDimOrdering()
+      auto dimToLvl = sparse.getDimToLvl()
+                          ? sparse.getDimToLvl()
                           : mlir::AffineMap::getMultiDimIdentityMap(
                                 rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
-          dimOrder, llvm::ArrayRef<int64_t>(ordering));
+          dimToLvl, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
           primitive_type, shape, final_ordering, lvl_types, level_unique,
           level_ordered);
