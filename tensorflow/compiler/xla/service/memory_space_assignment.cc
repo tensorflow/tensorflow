@@ -454,10 +454,18 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     }
   }
 
-  // Penalize larger buffers by dividing the benefit by the square root of the
-  // size. Empirically, we observed this resulted in better performance compared
-  // to dividing by the size.
-  float memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
+  // Penalize larger buffers by dividing the benefit by the square root of
+  // the size. Empirically, we observed this resulted in better performance
+  // compared to dividing by the size.
+  float memory_boundedness = 1;
+  if (options_
+          .xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers ==
+      "NO_SCALE") {
+    memory_boundedness = alternate_mem_benefit;
+  } else {
+    memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
+  }
+
   if (cache) {
     cache->memory_boundedness[interval.buffer->defining_position()] =
         memory_boundedness;

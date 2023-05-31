@@ -1224,6 +1224,12 @@ struct Options {
   // executed pow(while_execution_count, nesting_level) times.
   uint64_t xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
 
+  // This variable is used to scale the alternate memory benefit factor for
+  // large buffers. The default scaling function is sqrt.
+  std::string
+      xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers =
+          "SQRT";
+
   float async_copy_bandwidth_bytes_per_second = 0.0f;
 
   float alternate_mem_bandwidth_bytes_per_second = 0.0f;
