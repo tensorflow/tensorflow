@@ -2959,9 +2959,8 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto_cc",
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:statusor",
-        "//tensorflow/core/platform:stream_executor_no_cuda",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:statusor",
     ],
 )
 
