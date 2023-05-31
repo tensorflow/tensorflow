@@ -1004,6 +1004,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   saved_model_proto, debug_info = (
       loader_impl.parse_saved_model_with_debug_info(export_dir))
 
+  loader = None
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     metrics.IncrementReadApi(_LOAD_V2_LABEL)
@@ -1081,7 +1082,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
     singleprint = fingerprint.singleprint()
   metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
 
-  if filters:
+  if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}
   else:
     return {"root": root}
