@@ -703,6 +703,7 @@ py_strict_library(
 distribute_py_strict_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
+    exec_properties = {"mem": "24g"},
     main = "random_generator_test.py",
     shard_count = 12,
     tags = [
