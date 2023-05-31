@@ -554,6 +554,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
@@ -705,6 +706,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/data_structures:__pkg__",
@@ -765,6 +767,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
     ],
@@ -794,6 +797,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
     ],
 )
@@ -917,6 +921,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
@@ -938,6 +943,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
 )
@@ -1026,6 +1032,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
@@ -1137,6 +1144,7 @@ alias(
     tags = ["avoid_dep"],
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
