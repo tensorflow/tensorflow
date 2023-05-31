@@ -244,7 +244,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16() {
+  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0},bf16[16,256,16,64]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
@@ -260,7 +260,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16() {
+  GetModuleFMHABMM_BMM_arg_layout_manipulation_arg_reversal_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0},f16[16,256,16,64]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
 
@@ -326,7 +326,7 @@ class MultiHeadedAttentionBMMBMM : public MultiHeadedAttentionTest {
   }
 
   const std::string
-  GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16() {
+  GetModuleFMHABMM_BMM2_non_contracting_dim_stride_not_1_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_.10, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{2,3,1,0})->f16[16,16,256,64]{3,2,1,0}}
 
@@ -617,7 +617,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller() {
+  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_BF16_smaller() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[2,6,40,64]{3,2,1,0},bf16[2,6,64,40]{3,2,1,0},bf16[2,6,40,64]{3,2,1,0},pred[2,6,40,40]{3,2,1,0})->bf16[2,6,40,64]{3,2,1,0}}
 
@@ -673,7 +673,7 @@ class MultiHeadedAttentionBMMScaleBiasMaskSoftmaxBMM
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller() {
+  GetModuleFMHABMM1_Scale_Bias_Mask_Softmax_BMM2_HloString_F16_smaller() {  // NOLINT
     const std::string hlo_text = R"(
   HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[2,6,40,64]{3,2,1,0},f16[2,6,64,40]{3,2,1,0},f16[2,6,40,64]{3,2,1,0},pred[2,6,40,40]{3,2,1,0})->f16[2,6,40,64]{3,2,1,0}}
 
@@ -1035,7 +1035,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {
+  GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->f16[16,16,64,256]{3,2,1,0}}
 
@@ -1088,7 +1088,7 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
   }
 
   const std::string
-  GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {
+  GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16() {  // NOLINT
     const std::string hlo_text = R"(
     HloModule jit__unnamed_wrapped_function_, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},pred[16,16,256,256]{3,2,1,0})->bf16[16,16,64,256]{3,2,1,0}}
 
@@ -1187,10 +1187,10 @@ class MultiHeadedAttentionBMMScaleMaskSoftmaxBMM
     std::string hlo_string = "";
     if (std::is_same<T, Eigen::half>::value) {
       hlo_string =
-          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16();
+          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_F16();  // NOLINT
     } else if (std::is_same<T, bfloat16>::value) {
       hlo_string =
-          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();
+          GetModuleFMHABMM1_Scale_Mask_Softmax_BMM2_arg_reversal_HloString_BF16();  // NOLINT
     }
 
     ExecuteAndCompareUsingMask(hlo_string, lhs_bmm1_literal, rhs_bmm1_literal,
