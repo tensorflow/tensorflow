@@ -229,6 +229,7 @@ py_strict_library(
     deps = [
         ":feature_column",
         ":feature_column_v2",
+        ":feature_column_v2_types",
         ":serialization",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
