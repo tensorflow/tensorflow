@@ -140,7 +140,8 @@ XlaJitCompiledCpuFunction::Compile(
 
   // Compute buffer infos and the result index, needed to run the raw function.
   std::vector<xla::cpu_function_runtime::BufferInfo> buffer_infos =
-      xla::cpu::CreateBufferInfosFromBufferAssignment(buffer_assignment);
+      xla::cpu::CreateBufferInfosFromBufferAssignment(cpu_executable->module(),
+                                                      buffer_assignment);
   std::vector<int32> arg_index_table =
       xla::cpu::CreateArgIndexTableFromBufferInfos(buffer_infos);
   TF_ASSIGN_OR_RETURN(size_t result_index,

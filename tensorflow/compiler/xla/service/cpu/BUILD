@@ -188,6 +188,7 @@ cc_library(
     hdrs = ["buffer_info_util.h"],
     deps = [
         "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "@com_google_absl//absl/types:span",
     ],
