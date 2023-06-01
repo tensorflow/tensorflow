@@ -99,7 +99,7 @@ tf_cc_test(
         "//tensorflow/core/tfrt/utils:thread_pool",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],

@@ -144,11 +144,7 @@ static absl::StatusOr<OwnedCudaGraph> CaptureGraph(
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic);
 
   // Prepare options for executing graph capture function.
   Executable::ExecuteOpts opts;
@@ -207,11 +203,8 @@ static absl::Status RunGraphWithoutCapture(
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    if (!diagnostic.empty()) absl::StrAppend(&diagnostic, "; ");
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic);
+
   opts.diagnostic_engine = &diagnostic_engine;
 
   // Graph capture function should not launch any async tasks.
@@ -281,14 +274,14 @@ static absl::Status LaunchGraph(
                                 gemm_config, gpu_lock, region_status);
   };
 
-  absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>*> get_count =
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<std::atomic<uint64_t>> * get_count,
       counts->GetOrCreate(
           capture.ordinal,
           []() -> absl::StatusOr<std::unique_ptr<std::atomic<uint64_t>>> {
             return std::make_unique<std::atomic<uint64_t>>(0);
-          });
-  if (!get_count.ok()) return get_count.status();
-  uint64_t count = (**get_count)->fetch_add(1);
+          }));
+  uint64_t count = (*get_count)->fetch_add(1);
   uint64_t instantiation_threshold =
       debug_options->xla_gpu_cuda_graph_instantiation_threshold();
 
@@ -302,54 +295,51 @@ static absl::Status LaunchGraph(
 
   if (count < instantiation_threshold || is_profiling) {
     // Run captured graph directly.
-    absl::Status result = RunGraphWithoutCapture(run_options, function_ref,
-                                                 fwd_args, user_data());
-    if (!result.ok()) return result;
-    return absl::OkStatus();
+    return RunGraphWithoutCapture(run_options, function_ref, fwd_args,
+                                  user_data());
   }
 
-  absl::StatusOr<GraphInstance*> instance = instances->GetOrCreate(
-      capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
-        auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
-        if (!g.ok()) return g.status();
+  TF_ASSIGN_OR_RETURN(
+      GraphInstance * instance,
+      instances->GetOrCreate(
+          capture.ordinal, [&]() -> absl::StatusOr<GraphInstance> {
+            TF_ASSIGN_OR_RETURN(auto g, CaptureGraph(run_options, function_ref,
+                                                     fwd_args, user_data()));
 
-        auto e = se::gpu::InstantiateCudaGraph(std::move(*g));
-        if (!e.ok()) return e.status();
-
-        return GraphInstance(ptrs_hash, std::move(*e));
-      });
-  if (!instance.ok()) return instance.status();
+            TF_ASSIGN_OR_RETURN(auto e,
+                                se::gpu::InstantiateCudaGraph(std::move(g)));
+            return GraphInstance(ptrs_hash, std::move(e));
+          }));
 
   {
     // Lock graph instance for read only access. If we'll have to update the
     // graph, we'll update to a writer lock below.
-    absl::ReaderMutexLock lock((*instance)->mutex.get());
+    absl::ReaderMutexLock lock(instance->mutex.get());
 
     // If pointers did not change we can run captured graph.
-    if (ptrs_hash == (*instance)->ptr_hash) {
+    if (ptrs_hash == instance->ptr_hash) {
       VLOG(3) << "Execute cached graph instance";
-      return (*instance)->exec.Launch(run_options->stream());
+      return instance->exec.Launch(run_options->stream());
     }
   }
 
   // Otherwise we have to re-capture the graph and update the graph instance.
   VLOG(3) << "Update cached graph instance";
   // Capture CUDA graph by running capture function.
-  auto g = CaptureGraph(run_options, function_ref, fwd_args, user_data());
-  if (!g.ok()) return g.status();
+  TF_ASSIGN_OR_RETURN(
+      auto g, CaptureGraph(run_options, function_ref, fwd_args, user_data()));
 
   // At this point we have to grab a writer lock, because we might potentially
   // have concurrent execution of the cached graph instance.
-  absl::WriterMutexLock lock((*instance)->mutex.get());
+  absl::WriterMutexLock lock(instance->mutex.get());
 
   // Update captured graph executable.
-  auto updated = (*instance)->exec.Update(std::move(*g));
-  if (!updated.ok()) return updated;
+  TF_RETURN_IF_ERROR(instance->exec.Update(std::move(g)));
 
   // Update captured graph pointers hash.
-  (*instance)->ptr_hash = ptrs_hash;
+  instance->ptr_hash = ptrs_hash;
 
-  return (*instance)->exec.Launch(run_options->stream());
+  return instance->exec.Launch(run_options->stream());
 
 #else  // #if !GOOGLE_CUDA
 

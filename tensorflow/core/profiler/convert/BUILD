@@ -754,7 +754,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/protobuf:memory_viewer_preprocess_proto_cc",
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -899,7 +899,7 @@ tf_cc_test(
         "//tensorflow/core/profiler/utils:xplane_utils",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -920,5 +920,54 @@ cc_library(
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "dcn_utils",
+    srcs = ["dcn_utils.cc"],
+    hdrs = ["dcn_utils.h"],
+    deps = [
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "//tensorflow/tsl/profiler/utils:xplane_visitor",
+    ],
+)
+
+tf_cc_test(
+    name = "dcn_utils_test",
+    srcs = ["dcn_utils_test.cc"],
+    deps = [
+        ":dcn_utils",
+        "//tensorflow/tsl/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_builder",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "dcn_analysis",
+    srcs = ["dcn_analysis.cc"],
+    hdrs = ["dcn_analysis.h"],
+    deps = [
+        ":dcn_utils",
+        "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:math_utils",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "dcn_analysis_test",
+    srcs = ["dcn_analysis_test.cc"],
+    deps = [
+        ":dcn_analysis",
+        ":dcn_utils",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
+        "//tensorflow/tsl/profiler/utils:xplane_schema",
+        "@com_google_googletest//:gtest_main",
     ],
 )

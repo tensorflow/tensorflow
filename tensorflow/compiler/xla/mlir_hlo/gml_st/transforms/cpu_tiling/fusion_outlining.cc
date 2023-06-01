@@ -34,7 +34,6 @@ namespace {
 #include "gml_st/transforms/passes.h.inc"
 
 constexpr llvm::StringRef kFusionFunctionLabel = "fusion";
-constexpr llvm::StringRef kElementwiseLabel = "__elementwise_label__";
 
 void outlineFusionOp(func::FuncOp parentFuncOp, gml_st::FusionOp fusionOp,
                      int64_t localFusionId, PatternRewriter& rewriter) {
@@ -82,9 +81,6 @@ LogicalResult outlineFusionOpPattern(func::FuncOp funcOp,
   // Outline fusion ops one by one.
   int64_t numOutlinedFusions = 0;
   funcOp.walk([&](gml_st::FusionOp fusionOp) {
-    // TODO(shyshkov): Enable outlining for elementwise clusters.
-    if (hasLabel(fusionOp, kElementwiseLabel)) return;
-
     // Outline only outermost cluster.
     if (fusionOp->getParentOfType<gml_st::FusionOp>()) return;
 

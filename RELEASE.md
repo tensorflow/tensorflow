@@ -50,6 +50,10 @@
 *  `tf.experimental.dtensor`
     * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
       relayouting a tensor according to the layout of another tensor. 
+    * Added `dtensor.get_default_mesh`, for retrieving the current default 
+      mesh under the dtensor context.
+
+*   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
 # Thanks to our Contributors
 

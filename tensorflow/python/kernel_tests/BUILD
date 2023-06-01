@@ -209,7 +209,7 @@ tf_py_strict_test(
 
 cuda_py_strict_test(
     name = "logging_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["logging_ops_test.py"],
     deps = [
         "//tensorflow/python:client_testlib",

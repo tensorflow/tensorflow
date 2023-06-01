@@ -48,8 +48,14 @@ namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
+<<<<<<< HEAD
 extern void broadcast_fp32(void* stream, float* dst, int dst_stride,
                            int batches, int src_batches, float* src, int size);
+=======
+extern void rocm_Broadcast_fp32(void *stream, float *dst, int dst_stride,
+                                int batches, int src_batches, float *src,
+                                int size);
+>>>>>>> google_upstream/master
 
 template <class T>
 const typename RocBlasTypeConversionHelper<T>::mapped_type *complex_cast(
@@ -532,7 +538,8 @@ tsl::Status ROCMBlas::DoBlasGemmWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ComputePrecision precision,
     blas::ProfileResult *output_profile_result) {
   // ROCM TODO: properly implement the interface
-  return tsl::errors::Internal("Not implemented on ROCm");
+  return tsl::errors::Internal("DoBlasGemmWithAlgorithm ",
+                               "is not implemented on ROCm yet");
 }
 
 tsl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
@@ -545,7 +552,8 @@ tsl::Status ROCMBlas::DoBlasGemmStridedBatchedWithAlgorithm(
     blas::AlgorithmType algorithm, blas::ComputePrecision precision,
     blas::ProfileResult *output_profile_result) {
   // ROCM TODO: properly implement the interface
-  return tsl::errors::Internal("Not implemented on ROCm");
+  return tsl::errors::Internal("DoBlasGemmStridedBatchedWithAlgorithm ",
+                               "is not implemented on ROCm yet");
 }
 
 bool ROCMBlas::GetBlasGemmAlgorithms(
@@ -554,6 +562,7 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
   return true;
 }
 
+<<<<<<< HEAD
 struct memory_copy_op {
     char* src_ptr;
     char* dst_ptr;
@@ -591,6 +600,47 @@ static bool fold(memory_copy_op& y, const memory_copy_op& x)
       && x.count == y.count
       && x.dst_stride == y.dst_stride) {
     y.src_count+=x.src_count;
+=======
+struct MemoryCopyOp {
+  char *src_ptr;
+  char *dst_ptr;
+  uint64_t size;
+  uint64_t count;
+  uint64_t dst_stride;
+  uint64_t src_count;
+};
+
+// Check whether two Memory Copy Ops can be fold together.
+// If it's true, fold it. Otherwise, return false.
+static bool MemCopyOpsFold(MemoryCopyOp &y, const MemoryCopyOp &x) {
+  bool misaligned = (x.size & 3) ||
+                    (reinterpret_cast<uint64_t>(x.dst_ptr) & 3) ||
+                    (reinterpret_cast<uint64_t>(x.src_ptr) & 3) ||
+                    (reinterpret_cast<uint64_t>(y.dst_ptr) & 3) ||
+                    (reinterpret_cast<uint64_t>(y.src_ptr) & 3);
+
+  int64_t dst_step = reinterpret_cast<int64_t>(x.dst_ptr) -
+                     reinterpret_cast<int64_t>(y.dst_ptr);
+
+  if (x.src_ptr == y.src_ptr && x.size == y.size &&
+      (y.count == 1 || x.dst_ptr == y.dst_ptr + y.count * y.dst_stride) &&
+      !misaligned && y.src_count == 1 && !(dst_step & 3)) {
+    if (y.count == 1) {
+      y.dst_stride = dst_step;
+    }
+    y.count++;
+    return true;
+  } else if (x.src_ptr == y.src_ptr + y.size &&
+             x.dst_ptr == y.dst_ptr + y.size && y.count == 1 &&
+             y.src_count == 1) {
+    y.size += x.size;
+    return true;
+  }
+  if (x.src_ptr == y.src_ptr + y.size * y.src_count &&
+      x.dst_ptr == y.dst_ptr + y.dst_stride * y.src_count * y.count &&
+      x.count == y.count && x.dst_stride == y.dst_stride) {
+    y.src_count += x.src_count;
+>>>>>>> google_upstream/master
     return true;
   }
   return false;
@@ -599,24 +649,39 @@ static bool fold(memory_copy_op& y, const memory_copy_op& x)
 // This copies from source memory: raw_ptrs[i] to target memory:
 // device_memory_ptr at the interval of matrix_byte_size, or vice versa.
 // The below algorithm tries to minimize the number of memcpy by consolidating
-// neighboring memcpy into a single request
+// neighboring memcpy into a single request.
 template <typename MAPPED_T>
 tsl::Status ReorganizeMemory(Stream *stream,
                              DeviceMemory<MAPPED_T> *device_memory,
                              const std::vector<MAPPED_T *> &raw_ptrs,
                              int batch_count, uint64_t batch_stride,
                              bool gather) {
+<<<<<<< HEAD
   if(gather==false)
     return tsl::Status(absl::StatusCode::kInternal, "gather=false unsupported");
+=======
+  if (gather == false) {
+    return tsl::Status(absl::StatusCode::kUnimplemented,
+                       "gather=false is unsupported");
+  }
+
+>>>>>>> google_upstream/master
   assert(batch_count > 0);
   char *device_memory_ptr = static_cast<char *>(device_memory->opaque());
   char* src_ptr = reinterpret_cast<char*>(raw_ptrs[0]);
   char* dst_ptr = device_memory_ptr;
   size_t matrix_byte_size = batch_stride * sizeof(MAPPED_T);
+<<<<<<< HEAD
+=======
+
+  std::vector<MemoryCopyOp> mem_copy_ops{
+      MemoryCopyOp{src_ptr, dst_ptr, matrix_byte_size, 1, 0, 1}};
+>>>>>>> google_upstream/master
 
   std::vector<memory_copy_op> ops;
   ops.push_back(memory_copy_op{src_ptr, dst_ptr, matrix_byte_size, 1, 0, 1});
   for (int i = 1; i < batch_count; ++i) {
+<<<<<<< HEAD
     src_ptr = reinterpret_cast<char*>(raw_ptrs[i]);
     dst_ptr = device_memory_ptr + i * matrix_byte_size;
 
@@ -642,6 +707,38 @@ tsl::Status ReorganizeMemory(Stream *stream,
                      x.size >> 2);
     }
     else {
+=======
+    src_ptr = reinterpret_cast<char *>(raw_ptrs[i]);
+    dst_ptr = device_memory_ptr + i * matrix_byte_size;
+
+    MemoryCopyOp x{src_ptr, dst_ptr, matrix_byte_size, 1, 0, 1};
+    while (mem_copy_ops.size() > 1 &&
+           MemCopyOpsFold(mem_copy_ops[mem_copy_ops.size() - 2],
+                          mem_copy_ops.back())) {
+      mem_copy_ops.pop_back();
+    }
+    MemoryCopyOp &op = mem_copy_ops.back();
+    if (MemCopyOpsFold(op, x)) {
+      continue;
+    }
+    mem_copy_ops.push_back(x);
+  }
+
+  while (mem_copy_ops.size() > 1 &&
+         MemCopyOpsFold(mem_copy_ops[mem_copy_ops.size() - 2],
+                        mem_copy_ops.back())) {
+    mem_copy_ops.pop_back();
+  }
+
+  int i = 0;
+  for (auto &x : mem_copy_ops) {
+    if (x.src_count > 1 || x.count > 1) {
+      rocm_Broadcast_fp32(AsGpuStreamValue(stream),
+                          reinterpret_cast<float *>(x.dst_ptr),
+                          x.dst_stride >> 2, x.count, x.src_count,
+                          reinterpret_cast<float *>(x.src_ptr), x.size >> 2);
+    } else {
+>>>>>>> google_upstream/master
       DeviceMemoryBase src_mem = DeviceMemoryBase(x.src_ptr, x.size);
       DeviceMemoryBase target_mem = DeviceMemoryBase(x.dst_ptr, x.size);
       bool a_status = stream->ThenMemcpy(&target_mem, src_mem, x.size).ok();
@@ -653,7 +750,10 @@ tsl::Status ReorganizeMemory(Stream *stream,
     }
     i++;
   }
+<<<<<<< HEAD
   fflush(stdout);
+=======
+>>>>>>> google_upstream/master
   return tsl::OkStatus();
 }
 

@@ -891,6 +891,10 @@ bool AllInfinityCosts(
     const std::vector<std::vector<double>>& resharding_costs) {
   for (const auto& costs : resharding_costs) {
     bool all_infinity = true;
+    if (costs.empty()) {
+      all_infinity = false;
+      continue;
+    }
     for (const auto& cost : costs) {
       if (cost < kInfinityCost) {
         all_infinity = false;
@@ -951,7 +955,6 @@ void RemoveDuplicatedStrategy(std::unique_ptr<StrategyVector>& strategies) {
     strategies->leaf_vector = std::move(new_vector);
   }
 }
-
 
 bool IsDivisible(const HloInstruction* ins, const Array<int64_t>& device_mesh,
                  absl::Span<const int64_t> tensor_dims,
@@ -1138,7 +1141,7 @@ void RemoveCustomCallMarker(HloModule* module) {
 StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
                                                     int dim) {
   if (dim >= array.num_dimensions()) {
-    return tsl::errors::OutOfRange(absl::StrCat(
+    return absl::OutOfRangeError(absl::StrCat(
         "Input dim (", dim,
         ") should be smaller than the number of dimensions of array (",
         array.num_dimensions(), ")."));
@@ -1155,13 +1158,13 @@ StatusOr<std::vector<int64_t>> GetValuesAlongOneDim(const Array<int64_t>& array,
 // Check whether a sequence is an arithmetic sequence.
 StatusOr<int64_t> CheckArithmeticSequence(absl::Span<const int64_t> sequence) {
   if (sequence.size() < 2) {
-    return tsl::errors::OutOfRange(
+    return absl::OutOfRangeError(
         "Invalid device id assignment: sequence.size() < 2");
   }
   int64_t delta = sequence[1] - sequence[0];
   for (int i = 2; i < sequence.size(); ++i) {
     if (sequence[i] - sequence[i - 1] != delta) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           "Invalid device id assignment: sequence[i] - sequence[i - 1] != "
           "delta");
     }
@@ -1913,7 +1916,7 @@ AdjustShardingWithPartialMeshShapePerElement(
           LOG(FATAL) << err_msg;
         } else {
           LOG(WARNING) << err_msg;
-          return std::make_pair(tsl::errors::Internal(err_msg), std::nullopt);
+          return std::make_pair(absl::InternalError(err_msg), std::nullopt);
         }
       }
     }

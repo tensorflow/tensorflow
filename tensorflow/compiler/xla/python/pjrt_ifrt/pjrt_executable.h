@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
@@ -140,10 +142,12 @@ class PjRtLoadedExecutable final
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client,
-      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
+      std::unique_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client,
-      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable);
+      std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
 
   // Creates PjRtExecutable from an MHLO or StableHLO MLIR module. We expect
   // that xla::PjRtLoadedExecutable has fixed output dtypes/shapes/shardings. If
@@ -152,11 +156,13 @@ class PjRtLoadedExecutable final
   // PjRtLoadedExecutable::GetHloModules() must be implemented.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client, mlir::ModuleOp module,
-      xla::CompileOptions compile_options);
+      xla::CompileOptions compile_options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
   // TODO(phawkins): remove the XlaComputation overload.
   static StatusOr<std::unique_ptr<LoadedExecutable>> Create(
       PjRtCompatibleClient* client, const XlaComputation& computation,
-      xla::CompileOptions compile_options);
+      xla::CompileOptions compile_options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
 
   // PjRtCompatibleLoadedExecutable implementation.
 
@@ -172,7 +178,7 @@ class PjRtLoadedExecutable final
 
   // LoadedExecutable implementation.
 
-  ~PjRtLoadedExecutable() override = default;
+  ~PjRtLoadedExecutable() override;
 
   absl::string_view name() const override {
     DCHECK(this);
@@ -245,24 +251,26 @@ class PjRtLoadedExecutable final
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       const xla::Shape& result_shape,
-      const xla::HloSharding* result_hlo_sharding);
+      const xla::HloSharding* result_hlo_sharding,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks);
 
   PjRtLoadedExecutable(
       PjRtCompatibleClient* client,
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
-      DeviceList devices, std::vector<DType> output_dtypes,
-      std::vector<Shape> output_shapes,
-      std::vector<std::shared_ptr<const Sharding>> output_shardings)
-      : client_(client),
-        pjrt_loaded_executable_(std::move(pjrt_loaded_executable)),
-        devices_(std::move(devices)),
-        output_dtypes_(std::move(output_dtypes)),
-        output_shapes_(std::move(output_shapes)),
-        output_shardings_(std::move(output_shardings)) {}
+      DeviceList devices,
+      std::vector<tsl::RCReference<LoadedHostCallback>>
+          all_loaded_host_callbacks,
+      std::vector<PjRtHostSendAndRecvLoadedHostCallback*>
+          host_send_recv_callbacks,
+      std::vector<DType> output_dtypes, std::vector<Shape> output_shapes,
+      std::vector<std::shared_ptr<const Sharding>> output_shardings);
 
   PjRtCompatibleClient* client_;
   std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable_;
   DeviceList devices_;
+  std::shared_ptr<std::vector<tsl::RCReference<LoadedHostCallback>>>
+      all_loaded_host_callbacks_;
+  std::vector<PjRtHostSendAndRecvLoadedHostCallback*> host_send_recv_callbacks_;
   std::vector<DType> output_dtypes_;
   std::vector<Shape> output_shapes_;
   std::vector<std::shared_ptr<const Sharding>> output_shardings_;

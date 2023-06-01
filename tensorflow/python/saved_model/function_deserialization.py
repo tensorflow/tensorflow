@@ -20,6 +20,8 @@ import re
 
 from absl import logging
 
+from tensorflow.core.function import trace_type
+from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
@@ -163,6 +165,41 @@ def _deserialize_function_spec_as_nonmethod(function_spec_proto):
       jit_compile=jit_compile)
 
 
+# TODO(b/203440205): Set FunctionType with ConcreteFunction constructor.
+def set_preinitialized_function_spec(concrete_fn, spec):
+  """Set the FunctionType of the ConcreteFunction using FunctionSpec."""
+  if spec is None:
+    concrete_fn._function_type = None  # pylint: disable=protected-access
+    return
+
+  unconstrained_type = function_type_lib.FunctionType(
+      [
+          function_type_lib.Parameter(p.name, p.kind, p.optional, None)
+          for p in spec.function_type.parameters.values()
+      ]
+  )
+  arg_specs, kwarg_specs = concrete_fn.structured_input_signature
+
+  _, input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+      arg_specs,
+      {
+          function_type_lib.sanitize_arg_name(k): v
+          for k, v in kwarg_specs.items()
+      },
+      spec.default_values,
+      {},
+      unconstrained_type,
+  )
+
+  output_type = trace_type.from_value(concrete_fn.graph.structured_outputs)
+  # Captures are restored later so we will update it then.
+  function_type = function_type_lib.FunctionType(
+      input_function_type.parameters.values(),
+      return_annotation=output_type,
+  )
+  concrete_fn._function_type = function_type  # pylint: disable=protected-access
+
+
 # TODO(b/205016761): The fact that we can't derive ConcreteFunction calling
 # conventions from the serialized input spec right now is unfortunate. Merging
 # these would be good, maybe by adding TensorSpec names to cache keys so renamed
@@ -180,7 +217,7 @@ def setup_bare_concrete_function(saved_bare_concrete_function,
   if saved_bare_concrete_function.HasField("function_spec"):
     function_spec = _deserialize_function_spec_as_nonmethod(
         saved_bare_concrete_function.function_spec)
-    concrete_function._set_function_spec(function_spec)
+    set_preinitialized_function_spec(concrete_function, function_spec)
   # pylint: enable=protected-access
   concrete_function.add_to_graph()
   return concrete_function
@@ -312,7 +349,7 @@ def recreate_function(saved_function, concrete_functions):
     concrete_function_objects.append(concrete_functions[concrete_function_name])
 
   for cf in concrete_function_objects:
-    cf._set_function_spec(function_spec)  # pylint: disable=protected-access
+    set_preinitialized_function_spec(cf, function_spec)
 
   restored_function = RestoredFunction(restored_function_body,
                                        restored_function_body.__name__,

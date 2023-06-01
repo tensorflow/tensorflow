@@ -162,6 +162,11 @@ struct AutoShardingOption {
   // Explore other mesh shapes with the same number of devices as the provided
   // one for a potentially better auto-sharding solution.
   bool try_multiple_mesh_shapes = false;
+
+  // Timeout for the solver. If the solver fails to find an optimal solution
+  // before the timeout, we rely on the heuristic-based sharding implemented in
+  // sharding_propagation.cc.
+  int64_t solver_timeout_in_seconds = 3600;
   std::vector<int64_t> strategy_vector;
 
   std::string ToString() {
@@ -239,11 +244,11 @@ struct AutoShardingOption {
 
   Status CheckAndSetup() {
     if (device_mesh_shape.empty()) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           "device_mesh_shape is empty and it needs to be specified.");
     }
     if (device_mesh_shape.size() > 3) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           absl::StrCat("Not supported: the length of device_mesh_shape is "
                        "greater than 3, actual length: ",
                        device_mesh_shape.size()));
@@ -251,13 +256,13 @@ struct AutoShardingOption {
     // All values in device_mesh_shape must be greater than 0.
     if (absl::c_any_of(device_mesh_shape,
                        [](const int64_t i) { return i <= 0; })) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           absl::StrCat("device_mesh_shape values need to be larger than 0: "
                        "device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
     }
     if (spmd::VectorGreaterThanOneElementCount(device_mesh_shape) > 2) {
-      return tsl::errors::OutOfRange(
+      return absl::OutOfRangeError(
           absl::StrCat("the auto-sharding pass currently does not support ",
                        "more than two shardable dims: device_mesh_shape=",
                        absl::StrJoin(device_mesh_shape, ",")));
@@ -287,7 +292,7 @@ struct AutoShardingOption {
 
     if (device_mesh_shape.size() != device_mesh_alpha.size() ||
         device_mesh_shape.size() != device_mesh_beta.size()) {
-      return tsl::errors::OutOfRange(absl::StrCat(
+      return absl::OutOfRangeError(absl::StrCat(
           "Sizes do not match: length of device_mesh_shape is ",
           device_mesh_shape.size(), ", length of device_mesh_alpha is ",
           device_mesh_alpha.size(), ", length of device_mesh_beta is ",
@@ -309,7 +314,7 @@ struct AutoShardingOption {
     } else {
       // Checks whether device_mesh_shape and device_mesh_ids are compatible.
       if (total_devices != device_mesh_ids.size()) {
-        return tsl::errors::OutOfRange(absl::StrCat(
+        return absl::OutOfRangeError(absl::StrCat(
             "Expect the product of device_mesh_shape to be the same as the "
             "size of device_mesh_ids, but we have total devices = ",
             total_devices,
@@ -320,13 +325,19 @@ struct AutoShardingOption {
   }
 };
 
+enum class AutoShardingResult {
+  kModuleUnchanged,
+  kModuleChangedShardingPerformed,
+  kModuleUnchangedNoShardingPerfomed
+};
+
 class AutoShardingImplementation {
  public:
   explicit AutoShardingImplementation(const AutoShardingOption& option);
   ~AutoShardingImplementation() = default;
 
   // using HloPassInterface::Run;
-  StatusOr<bool> RunAutoSharding(
+  StatusOr<AutoShardingResult> RunAutoSharding(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads);
 

@@ -107,13 +107,6 @@ from tensorflow.python.util.tf_export import tf_export
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
 FREQUENT_TRACING_WARNING_MAX_WARNING_PER_DETECTOR = 2
-ALLOW_DYNAMIC_VARIABLE_CREATION = False
-
-
-def set_dynamic_variable_creation(is_allowed):
-  global ALLOW_DYNAMIC_VARIABLE_CREATION
-  ALLOW_DYNAMIC_VARIABLE_CREATION = is_allowed
-
 
 _tf_function_counter = monitoring.Counter(
     "/tensorflow/core/tf_function_counter",
@@ -846,11 +839,7 @@ class Function(core.GenericFunction, trackable.Trackable):
   def _call(self, *args, **kwds):
     """Calls the graph function."""
     self._lock.acquire()
-    if ALLOW_DYNAMIC_VARIABLE_CREATION:
-      condition = self._created_variables and self._variable_creation_fn is None
-    else:
-      condition = self._created_variables
-    if condition:
+    if self._created_variables:
       # Release the lock early so that multiple threads can perform the call
       # in parallel.
       self._lock.release()
@@ -864,7 +853,7 @@ class Function(core.GenericFunction, trackable.Trackable):
       # In this case we have not created variables on the first call. So we can
       # run the first trace but we should fail if variables are created.
       results = self._variable_creation_fn(*args, **kwds)
-      if self._created_variables and not ALLOW_DYNAMIC_VARIABLE_CREATION:
+      if self._created_variables:
         raise ValueError("Creating variables on a non-first call to a function"
                          " decorated with tf.function.")
       return results
@@ -982,14 +971,8 @@ class Function(core.GenericFunction, trackable.Trackable):
     fn_name = concrete_fn.name
 
     # pylint: disable=protected-access
-    _, _, filtered_flat_args = (
-        function_type_utils.canonicalize_function_inputs(
-            args,
-            kwargs,
-            concrete_fn._function_spec.function_type,
-            concrete_fn._function_spec.default_values,
-            concrete_fn._function_spec.is_pure,
-        )
+    _, _, filtered_flat_args = function_type_utils.canonicalize_function_inputs(
+        args, kwargs, concrete_fn.function_type
     )
 
     def compiler_ir_generator(stage="hlo", device_name=None):

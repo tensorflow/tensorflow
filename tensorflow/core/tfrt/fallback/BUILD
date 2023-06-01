@@ -112,6 +112,15 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "device_with_custom_allocator",
+    hdrs = ["device_with_custom_allocator.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/framework:allocator",
+    ],
+)
+
 tf_cc_test(
     name = "cost_recorder_test",
     srcs = ["cost_recorder_test.cc"],

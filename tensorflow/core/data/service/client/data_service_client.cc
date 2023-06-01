@@ -358,7 +358,7 @@ DataServiceClient::CreateAlternativeWorkerClientWithGrpcFallback(
 
 StatusOr<std::unique_ptr<DataServiceWorkerClient>>
 DataServiceClient::CreateWorkerClient(const TaskInfo& task_info) {
-  if (params_.data_transfer_protocol == kLocalTransferProtocol) {
+  if (LocalWorkers::Get(task_info.worker_address()) != nullptr) {
     DataTransferServerInfo info;
     info.set_protocol(kLocalTransferProtocol);
     info.set_address(task_info.worker_address());

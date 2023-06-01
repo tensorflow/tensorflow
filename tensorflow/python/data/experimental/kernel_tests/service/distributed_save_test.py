@@ -265,6 +265,30 @@ class DistributedSaveTest(
         dataset, list(range(10)) * num_workers, assert_items_equal=ignore_order)
 
   @combinations.generate(test_base.default_test_combinations())
+  def testImbalancedZipAndRepeat(self):
+    smaller_num_elements = 200
+    larger_num_elements = 1000
+    repetitions = 3
+
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset1 = dataset_ops.Dataset.range(smaller_num_elements)
+    dataset2 = dataset_ops.Dataset.range(larger_num_elements)
+    dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
+    dataset = dataset.repeat(repetitions)
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._test_dir, cluster.dispatcher_address()
+        )
+    )
+    _wait_for_snapshot(self._test_dir)
+
+    dataset = dataset_ops.Dataset.load(self._test_dir)
+    expected = repetitions * (
+        list(zip(range(smaller_num_elements), range(smaller_num_elements)))
+    )
+    self.assertDatasetProduces(dataset, expected, assert_items_equal=True)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testSnapshotDoesNotExist(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     with self.assertRaises(errors.NotFoundError):

@@ -32,11 +32,6 @@ from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import nest
 
-# Sentinel value used by with ConcreteFunction's structured signature to
-# indicate that a non-tensor parameter should use the value that was
-# specified when the concrete function was created.
-BOUND_VALUE = object()
-
 
 def to_fullargspec(
     function_type: function_type_lib.FunctionType,
@@ -203,9 +198,12 @@ def to_arg_names(function_type):
   return arg_names
 
 
-# TODO(b/214462107): Clean up and migrate to core/function when unblocked.
+# TODO(b/214462107): Minimize API surface for FunctionSpec.
 class FunctionSpec(object):
-  """Specification of how to bind arguments to a function."""
+  """Specification of how to bind arguments to a function.
+
+  Deprecated. Please use FunctionType instead.
+  """
 
   @classmethod
   def from_function_and_signature(
@@ -386,7 +384,7 @@ def make_canonicalized_monomorphic_type(
 
 
 def canonicalize_function_inputs(
-    args, kwargs, function_type, default_values, is_pure
+    args, kwargs, function_type, default_values=None, is_pure=False
 ):
   """Canonicalizes `args` and `kwargs`.
 
@@ -421,6 +419,7 @@ def canonicalize_function_inputs(
       argument when an input signature is specified, or when the inputs
       do not conform to the input signature.
   """
+  default_values = {} if not default_values else default_values
   if is_pure:
     args, kwargs = _convert_variables_to_tensors(args, kwargs)
   args, kwargs = bind_function_inputs(
@@ -555,6 +554,24 @@ def _get_variable_specs(args):
       # arg is a CompositeTensor spec.
       variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
   return variable_specs
+
+
+def derive_from_graph(func_graph):
+  """Derives a FunctionType from FuncGraph."""
+  # TODO(fmuham): Include structure info from structured_inputs
+  input_signature = (
+      tuple(trace_type.from_value(i) for i in func_graph.inputs),
+      {},
+  )
+
+  # TODO(fmuham): Include output structure info from structured_outputs
+  output_signature = tuple(trace_type.from_value(o) for o in func_graph.outputs)
+
+  return function_type_lib.from_structured_signature(
+      input_signature,
+      output_signature,
+      func_graph.function_captures.capture_types,
+  )
 
 
 # TODO(fmuham): Replace usages with TraceType and remove.

@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_utils.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
+#include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
@@ -229,7 +230,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   fallback_request_state.set_cost_recorder(cost_recorder);
   fallback_request_state.set_client_graph_resource_context(
       client_graph_resource_context);
-  fallback_request_state.set_model_config(&options.model_config);
+  fallback_request_state.set_runtime_config(&options.runtime_config);
 
   TF_RETURN_IF_ERROR(
       tensorflow::SetUpTfJitRtRequestContext(&request_context_builder));
@@ -251,8 +252,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, const tfrt::Function* func,
-    const mlrt::LoadedExecutable* loaded_executable,
+    absl::string_view signature_name, absl::string_view symbol_uid,
+    const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context,
@@ -272,14 +273,15 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
       [request_id = request_info->tfrt_request_context->id(), signature_name,
-       &options] {
+       &options, symbol_uid] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
              {"id", request_id},
              {"signature", signature_name},
              {"model_id", absl::StrCat(options.model_metadata.name(), ":",
-                                       options.model_metadata.version())}});
+                                       options.model_metadata.version())},
+             {"symbol_uid", symbol_uid}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());
@@ -543,9 +545,9 @@ tensorflow::Status GraphExecutor::Run(
 
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-      options_, run_options, loaded_client_graph.name(), func,
-      loaded_executable, flat_inputs, &flat_outputs, &resource_context_,
-      &executable_context->resource_context,
+      options_, run_options, loaded_client_graph.name(),
+      loaded_client_graph.symbol_uid(), func, loaded_executable, flat_inputs,
+      &flat_outputs, &resource_context_, &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state_,
       &req_deadline_tracker_, cost_recorder.get()));
@@ -579,6 +581,9 @@ GraphExecutor::ImportAndCompileClientGraph(
   auto context = std::make_unique<mlir::MLIRContext>();
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
+  // TODO(b/278143179): Upload module w/o control flow.
+  ASSIGN_OR_RETURN_IN_IMPORT(string symbol_uid,
+                             MaybeUploadMlirToXsymbol(module.get()));
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(import_duration)
@@ -630,7 +635,7 @@ GraphExecutor::ImportAndCompileClientGraph(
             << " ms. Client graph name: " << client_graph.name;
 
   return std::make_unique<LoadedClientGraph>(
-      client_graph.name, this, std::move(context),
+      client_graph.name, symbol_uid, this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
       std::move(executable_context));
 }

@@ -604,12 +604,29 @@ def custom_call_v2(
   )
 
 
-def call_module(args, *, version=4, module, Tout, Sout,
-                dim_args_spec=(), platforms=(), function_list=()):
+def call_module(
+    args,
+    *,
+    version=4,
+    module,
+    Tout,
+    Sout,
+    platforms=(),
+    function_list=(),
+    has_token_input_output=False,
+):
   """See documentation for the XlaCallModule op."""
   res = gen_xla_ops.xla_call_module(
-      args, version=version, module=module, dim_args_spec=dim_args_spec,
-      Tout=Tout, Sout=Sout, platforms=platforms, function_list=function_list)
+      args,
+      version=version,
+      module=module,
+      dim_args_spec=(),
+      Tout=Tout,
+      Sout=Sout,
+      platforms=platforms,
+      function_list=function_list,
+      has_token_input_output=has_token_input_output,
+  )
   # Since XLACallModule op is stateful, zero return function will return the TF
   # op under tf.function. It creates trouble for downstream codes.
   # Here we force it return empty tuple to work around it.

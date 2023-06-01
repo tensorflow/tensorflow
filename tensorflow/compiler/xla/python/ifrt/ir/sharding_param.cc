@@ -31,7 +31,8 @@ namespace xla {
 namespace ifrt {
 namespace {
 
-void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<int64_t> dims) {
+template <typename T>
+void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<T> dims) {
   os << dims[0];
   for (int i = 1; i < dims.size(); ++i) {
     os << "x" << dims[i];
@@ -42,15 +43,14 @@ void PrintDims(llvm::raw_ostream& os, llvm::ArrayRef<int64_t> dims) {
 // `axis_sizes` is the size of mesh dimensions before the permutation.
 // `cum_sizes` is the cumulative product of the element in `sizes`.
 // `base` is the start device id of this slice of `permutation`.
-void PopulateDevices(llvm::ArrayRef<int64_t> permutation,
-                     llvm::ArrayRef<int64_t> axis_sizes,
-                     llvm::ArrayRef<int64_t> cum_sizes,
-                     llvm::SmallVectorImpl<int64_t>& out_devices,
-                     int64_t base = 0) {
-  const int64_t expanding_dim = permutation.back();
-  const int64_t expanding_dim_size = axis_sizes[expanding_dim];
-  const int64_t expanding_cum_dim_size = cum_sizes[expanding_dim];
-  for (int64_t i = 0; i < expanding_dim_size; ++i) {
+void PopulateDevices(llvm::ArrayRef<int> permutation,
+                     llvm::ArrayRef<int> axis_sizes,
+                     llvm::ArrayRef<int> cum_sizes,
+                     llvm::SmallVectorImpl<int>& out_devices, int base = 0) {
+  const int expanding_dim = permutation.back();
+  const int expanding_dim_size = axis_sizes[expanding_dim];
+  const int expanding_cum_dim_size = cum_sizes[expanding_dim];
+  for (int i = 0; i < expanding_dim_size; ++i) {
     if (permutation.size() == 1) {
       out_devices.push_back(base + i * expanding_cum_dim_size);
     } else {
@@ -73,9 +73,9 @@ mlir::LogicalResult ShardingParam::MinorToMajor::verify(
 }
 
 void ShardingParam::MinorToMajor::ToDeviceList(
-    llvm::SmallVectorImpl<int64_t>& out_devices) const {
-  llvm::SmallVector<int64_t, 4> cum_sizes;
-  int64_t cum_size = 1;
+    llvm::SmallVectorImpl<int>& out_devices) const {
+  llvm::SmallVector<int, 4> cum_sizes;
+  int cum_size = 1;
   cum_sizes.reserve(axis_sizes.size());
   for (auto size : axis_sizes) {
     cum_sizes.push_back(cum_size);
@@ -99,15 +99,20 @@ mlir::FailureOr<ShardingParam> ShardingParam::Parse(
     return mlir::ParseResult::success();
   };
 
+  llvm::SmallVector<int64_t, 4> axis_sizes_64;
   if (ods_parser.parseDimensionList(dim_shards, false, false) ||
       ods_parser.parseKeyword("to") ||
       ods_parser.parseCommaSeparatedList(mlir::AsmParser::Delimiter::Square,
                                          parseIntoPermutation) ||
       ods_parser.parseKeyword("on") ||
-      ods_parser.parseDimensionList(minor_to_major.axis_sizes, false, false)) {
+      ods_parser.parseDimensionList(axis_sizes_64, false, false)) {
     return mlir::failure();
   }
 
+  minor_to_major.axis_sizes.reserve(axis_sizes_64.size());
+  for (int64_t size : axis_sizes_64) {
+    minor_to_major.axis_sizes.push_back(size);
+  }
   return ShardingParam(dim_shards, minor_to_major);
 }
 
@@ -120,9 +125,9 @@ mlir::LogicalResult ShardingParam::verify(
     return emit_error() << "Dim shards is empty";
   }
 
-  int64_t dim_index = 0;
-  int64_t cum_size = 1;
-  for (const int64_t index : minor_to_major().permutation) {
+  int dim_index = 0;
+  int cum_size = 1;
+  for (const int index : minor_to_major().permutation) {
     while (dim_index < dim_shards().size() && dim_shards()[dim_index] == 1) {
       dim_index++;
     }
@@ -172,9 +177,9 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
   PrintDims(os, sharding.dim_shards());
   os << " to [";
   llvm::interleaveComma(
-      llvm::ArrayRef<int64_t>(sharding.minor_to_major().permutation), os);
+      llvm::ArrayRef<int>(sharding.minor_to_major().permutation), os);
   os << "] on ";
-  PrintDims(os, sharding.minor_to_major().axis_sizes);
+  PrintDims<int>(os, sharding.minor_to_major().axis_sizes);
   return os;
 }
 

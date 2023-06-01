@@ -122,6 +122,36 @@ cc_test(
     ],
 )
 
+cc_library(
+    name = "kernel_test_main",
+    testonly = 1,
+    srcs = ["kernel_test_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/lite/kernels:acceleration_test_util",
+        "//tensorflow/lite/kernels:acceleration_test_util_internal",
+        "//tensorflow/lite/kernels:test_delegate_providers_lib",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels:test_util_delegate_providers",
+        "//tensorflow/lite/testing:util",
+        "//testing/base/public:gunit_for_library_testonly",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
+
+cc_test(
+    name = "stable_delegate_test_suite",
+    size = "medium",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":kernel_test_main",
+        "//tensorflow/lite/kernels:combined_all_kernel_tests_lib",
+    ],
+)
+
 exports_files(
     srcs = [
         "test_xnnpack_settings.json",

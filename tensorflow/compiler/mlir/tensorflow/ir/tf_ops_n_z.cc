@@ -2855,6 +2855,8 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.getX().getDefiningOp());
   if (!transpose) return {};
 
+  if (transpose->getBlock() != op->getBlock()) return {};
+
   // Permutations defined by constant operations.
   DenseIntElementsAttr perm0;
   DenseIntElementsAttr perm1;
@@ -2978,6 +2980,18 @@ void XlaCallModuleOp::getEffects(
     effects.emplace_back(MemoryEffects::Write::get(),
                          ResourceEffects::XlaHostCompute::get());
   }
+}
+
+LogicalResult XlaCallModuleOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  for (auto f : getFunctionList()) {
+    auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+        getOperation(), f.cast<mlir::SymbolRefAttr>());
+    if (!func) {
+      return emitOpError() << "refers to an undefined function: " << f;
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -252,7 +252,7 @@ class GpuAsyncTracker : public GpuAsyncTrackerBase {
 
   ResourcesVector GetResourcesFromInstruction(
       const HloInstruction& instr) const override {
-    CanonicalAsyncOp op = GetCanonicalAsyncOp(instr);
+    CanonicalAsyncOp op = DefaultGetCanonicalAsyncOp(instr);
     if (op.outer == HloOpcode::kAsyncStart ||
         op.outer == HloOpcode::kAsyncDone) {
       ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart

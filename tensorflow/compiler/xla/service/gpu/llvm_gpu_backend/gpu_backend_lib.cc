@@ -905,7 +905,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   // feature str, based on the underlying GPU HW to get max performance.
   std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
   std::vector<std::string> mapped_tokens;
-  if (tokens.size() > 0) gfx = tokens[0];
+  if (!tokens.empty()) gfx = tokens[0];
   for (auto it = tokens.begin(); it != tokens.end(); it++) {
     // Skip the first token, that is the gfxNNN str
     // The rest of the tokens are the feature/targetid strings

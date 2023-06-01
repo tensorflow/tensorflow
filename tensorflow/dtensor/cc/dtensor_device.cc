@@ -1570,7 +1570,7 @@ DTensorDevice::DTensorOperationToModule(
             << ". DTensor is (re-)using its SPMD transformation.";
     result.module = **cached_mlir_module;
     return result;
-  } else if (function_def) {
+  } else if (function_def || VLOG_IS_ON(2)) {
     LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
               << ". DTensor is (re-)computing its SPMD transformation.";
   }
@@ -1639,11 +1639,9 @@ void DTensorDevice::ModuleToExecutionFunctions(
     VLOG(2) << "DTensor cache key lookup found for " << doperation.name
             << ". DTensor is (re-)using its ExecutionFunctions.";
     return;
-  } else {
-    if (doperation.is_func()) {
-      LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
-                << ". DTensor is (re-)computing its ExecutionFunctions.";
-    }
+  } else if (doperation.is_func() || VLOG_IS_ON(2)) {
+    LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
+              << ". DTensor is (re-)computing its ExecutionFunctions.";
   }
 
   // Transforms ModuleOp and extracts ExecutionFunctions from lowered ModuleOp.

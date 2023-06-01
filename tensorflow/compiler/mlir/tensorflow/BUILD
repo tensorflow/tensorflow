@@ -1348,6 +1348,7 @@ cc_library(
         ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
+        ":stablehlo_custom_call_utils",
         ":string_util",
         ":tensorflow",
         ":tensorflow_analysis",
@@ -1435,6 +1436,19 @@ cc_library(
     srcs = [],
     hdrs = ["utils/xla_call_module_attrs.h"],
     deps = ["@llvm-project//llvm:Support"],
+)
+
+cc_library(
+    name = "stablehlo_custom_call_utils",
+    srcs = ["utils/stablehlo_custom_call.cc"],
+    hdrs = ["utils/stablehlo_custom_call.h"],
+    deps = [
+        ":xla_call_module_attrs",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
 )
 
 cc_library(
@@ -2380,7 +2394,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/platform:statusor",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
     ],
 )
@@ -2490,7 +2504,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",

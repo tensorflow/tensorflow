@@ -12,6 +12,7 @@ visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
     "//learning/brain/python/platform:__subpackages__",
+    "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
 ]
 
 package(

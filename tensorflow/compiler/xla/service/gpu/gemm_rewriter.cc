@@ -222,7 +222,6 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
       HloInstruction::CreateTranspose(new_shape, instr, permutation));
 }
 
-
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
 //
@@ -738,15 +737,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // If a matrix bias was not fused, set C to a matrix of zeros.
-    if (!c) {
-      Literal c_literal = LiteralUtil::Zero(c_type);
-      HloInstruction *c_const = instr->AddInstruction(
-          HloInstruction::CreateConstant(c_literal.Clone()));
-      c = instr->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::ChangeElementType(instr->shape(), c_type), c_const, {}));
-    }
-
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
     absl::Span<const int64_t> a_contracting_dims =
@@ -841,22 +831,30 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
 
-    // Pad the non-batch dimensions of the operands to multiples of 16 as
-    // required by cuBLASLt.
-    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = x->shape();
-      for (int i = 0; i < x->shape().rank(); ++i) {
-        auto dimension = padding_config.add_dimensions();
+    // Get the padded shape.
+    auto pad_shape = [&batch_dims](const Shape old_shape) {
+      Shape padded_shape = old_shape;
+      for (int i = 0; i < old_shape.rank(); ++i) {
         if (!absl::c_linear_search(batch_dims, i)) {
           int64_t padded_dimension =
-              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
-          dimension->set_edge_padding_low(0);
-          dimension->set_edge_padding_high(padded_dimension -
-                                           x->shape().dimensions(i));
-          dimension->set_interior_padding(0);
+              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
           padded_shape.set_dimensions(i, padded_dimension);
         }
+      }
+      return padded_shape;
+    };
+
+    // Pad the non-batch dimensions of the operands to multiples of 16 as
+    // required by cuBLASLt.
+    auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = pad_shape(x->shape());
+      for (int i = 0; i < x->shape().rank(); ++i) {
+        auto dimension = padding_config.add_dimensions();
+        dimension->set_edge_padding_low(0);
+        dimension->set_edge_padding_high(padded_shape.dimensions(i) -
+                                         x->shape().dimensions(i));
+        dimension->set_interior_padding(0);
       }
       if (!ShapeUtil::Equal(padded_shape, x->shape())) {
         HloInstruction *zero =
@@ -867,17 +865,26 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
       return;
     };
+
     pad_operand(a);
     pad_operand(b);
-    pad_operand(c);
+    if (c != nullptr) {
+      pad_operand(c);
+    }
+    Shape new_output_shape = pad_shape(instr->shape());
+
+    std::vector<HloInstruction *> operands_list = {
+        a, b, scales_f32[0], scales_f32[1], one, one};
+    if (c != nullptr) {
+      operands_list.insert(operands_list.begin() + 2, c);
+    }
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
             ShapeUtil::MakeShapeWithDenseLayout(
-                instr->shape().element_type(), c->shape().dimensions(),
+                instr->shape().element_type(), new_output_shape.dimensions(),
                 instr->shape().layout().minor_to_major()),
-            {a, b, c, scales_f32[0], scales_f32[1], one, one},
-            kCublasLtMatmulF8CallTarget));
+            operands_list, kCublasLtMatmulF8CallTarget));
 
     TF_RETURN_IF_ERROR(
         new_custom_call->set_backend_config(gemm_backend_config));
@@ -885,7 +892,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Slice the result of the GEMM if the operands were padded.
     HloInstruction *slice = nullptr;
-    if (c->shape().dimensions() != instr->shape().dimensions()) {
+    if (new_output_shape.dimensions() != instr->shape().dimensions()) {
       std::vector<int64_t> start_indices(instr->shape().rank(), 0);
       std::vector<int64_t> strides(instr->shape().rank(), 1);
       slice = instr->AddInstruction(HloInstruction::CreateSlice(
@@ -970,28 +977,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
-    // FP8 outputs (see cuBLASLt documentation).
-    if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+    TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
+                        existing_gemm->backend_config<GemmBackendConfig>());
+    if (gemm_backend_config.beta() != 0.0 &&
+        existing_gemm->operand(2)->shape().element_type() != BF16 &&
         existing_gemm->operand(2)->shape().element_type() != F16) {
-      TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
-      if (gemm_backend_config.beta() == 1.0) {
-        VLOG(1) << "The scaling and conversion of the result of "
-                << existing_gemm->ToShortString()
-                << " is not fused into the FP8 Custom Call because it "
-                   "conflicts with the existing fusion of the addition of a "
-                   "matrix bias with element type other than BF16 or F16.";
-        return OkStatus();
-      } else {
-        Literal c_literal = LiteralUtil::Zero(BF16);
-        HloInstruction *c = instr->AddInstruction(
-            HloInstruction::CreateConstant(c_literal.Clone()));
-        HloInstruction *c_bcast =
-            instr->AddInstruction(HloInstruction::CreateBroadcast(
-                ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
-        TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
-      }
+      VLOG(1) << "The scaling and conversion of the result of "
+              << existing_gemm->ToShortString()
+              << " is not fused into the FP8 Custom Call because it "
+                 "conflicts with the existing fusion of the addition of a "
+                 "matrix bias with element type other than BF16 or F16.";
+      return OkStatus();
     }
 
     // If necessary, invert the scaling factor of D and convert to F32.
@@ -1006,7 +1002,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       d_scale = instr->AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::MakeScalarShape(F32), d_scale));
     }
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale));
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
+        gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.

@@ -100,8 +100,8 @@ mlir::LogicalResult IfrtDialect::verifyRegionArgAttribute(
 mlir::LogicalResult IfrtArrayType::verify(
     llvm::function_ref<mlir::InFlightDiagnostic()> emit_error,
     mlir::RankedTensorType global, ShardingParam sharding,
-    llvm::ArrayRef<int64_t> devices) {
-  llvm::SmallSet<int64_t, 4> device_set;
+    llvm::ArrayRef<int> devices) {
+  llvm::SmallSet<int, 4> device_set;
   for (auto device : devices) {
     if (!device_set.insert(device).second) {
       return emit_error() << "`devices` has duplicated id " << device;
@@ -112,8 +112,8 @@ mlir::LogicalResult IfrtArrayType::verify(
     return mlir::failure();
   }
 
-  int64_t devices_in_mesh = 1;
-  for (const int64_t axis_size : sharding.minor_to_major().axis_sizes) {
+  int devices_in_mesh = 1;
+  for (const int axis_size : sharding.minor_to_major().axis_sizes) {
     devices_in_mesh *= axis_size;
   }
   if (devices_in_mesh != devices.size()) {

@@ -483,10 +483,6 @@ class LayoutAssignment : public HloModulePass {
                                       int64_t priority,
                                       const HloInstruction* user = nullptr);
 
-  // Propagates the memory space defined in the entry computation to the called
-  // computations.
-  virtual Status PropagateMemorySpace(HloModule* module);
-
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.
   // Returns null if it can't decide the best layout.

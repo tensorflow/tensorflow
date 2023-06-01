@@ -15,18 +15,18 @@ module {
     // CHECK-SAME:   Sout = [#tf_type.shape<?>]
     // CHECK-SAME:   _entry_function = @_stablehlo_main_0
     // CHECK-SAME:   _stablehlo_module_attrs = {}
-    // CHECK-SAME:   function_list = [@__tf_host_callback]
+    // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
     // CHECK-SAME:   platforms = []
     // CHECK-SAME:   version = 5
 
-    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, function_list = [@__tf_host_callback], module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
+    %0 = "tf.XlaCallModule"(%arg0, %arg1) {Sout = [#tf_type.shape<?>], dim_args_spec = [], _entry_function = @_stablehlo_main_0, module = "", platforms = [], version = 5 : i64} : (tensor<10xi32>, tensor<10xi32>) -> tensor<10xi32>
     // CHECK: return %[[RESULT]]
     func.return %0 : tensor<10xi32>
   }
 
-  // CHECK-LABEL: func private @__tf_host_callback
-  func.func private @__tf_host_callback(%arg0: tensor<?xi32>, %arg1: tensor<*xi32>) {
+  // CHECK-LABEL: func private @_tf_func
+  func.func private @_tf_func(%arg0: tensor<?xi32>, %arg1: tensor<*xi32>) {
     // CHECK: tf.StreamResults
 
     // StreamResults is a pseudo op in this test.
@@ -44,9 +44,9 @@ module {
     // CHECK-SAME: {
     // CHECK-SAME:  api_version = 2 : i32,
     // CHECK-SAME:  has_side_effect = true,
-    // CHECK-SAME:  tf.backend_config = {caller_name = "__tf_host_callback"}
+    // CHECK-SAME:  tf.backend_config = {called_func = @_tf_func}
     // CHECK-SAME: }
-    stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {caller_name = "__tf_host_callback"}} : (tensor<?xi32>, tensor<*xi32>) -> ()
+    stablehlo.custom_call @tf.call_tf_function(%arg0, %arg1) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {called_func = @_tf_func}} : (tensor<?xi32>, tensor<*xi32>) -> ()
     // CHECK: call @_stablehlo__stablehlo_f_0
     %arg2 = func.call @_stablehlo_f(%arg0) : (tensor<?xi32>) -> (tensor<?xi32>)
     return %arg2 : tensor<?xi32>

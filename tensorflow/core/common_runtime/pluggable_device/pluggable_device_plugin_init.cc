@@ -21,6 +21,8 @@ limitations under the License.
 #include "tensorflow/c/experimental/grappler/grappler_internal.h"
 #include "tensorflow/c/experimental/pluggable_profiler/pluggable_profiler_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_api.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_api.h"
@@ -82,10 +84,9 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
     return status;
   }
   auto init_fn = reinterpret_cast<TFNPDInitPluginFn>(dso_symbol);
-  string device_type, compilation_device_name;
   TF_ASSIGN_OR_RETURN(auto init_params, InitNextPluggableDevicePlugin(init_fn));
-  device_type = std::string(init_params.device_type);
-  compilation_device_name = std::string(init_params.compilation_device_name);
+  std::string device_type(init_params.device_type);
+  std::string compilation_device_name(init_params.compilation_device_name);
   int priority = init_params.priority;
   bool is_pluggable_device = init_params.is_pluggable_device;
 
@@ -107,10 +108,24 @@ static Status InitNextPluggableDeviceModule(void* dso_handle) {
                               device_type, compilation_device_name),
                           priority, is_pluggable_device);
   if (init_params.use_pjrt_on_demand_compile) {
-    // PjRtCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
+    // XlaCompileOnDemand op compiles a TensorFlow op to a PjRtExecutable and
     // runs it.
-    RegisterPjRtCompileOnDemand(device_type.c_str(),
-                                compilation_device_name.c_str());
+    auto& pjrt_rollout_config = GetXlaOpsCommonFlags()->tf_xla_use_device_api;
+    pjrt_rollout_config.AllowForDeviceInXlaCompileOnDemand(
+        DeviceType(device_type));
+    CHECK(  // Crash OK
+        pjrt_rollout_config.IsEnabledInXlaCompileOnDemandForDevice(
+            DeviceType(device_type)))
+        << "Using Device API (PjRt) for 'on-demand' mode needs to be turned on "
+           "by setting the '--tf_xla_use_device_api_for_compile_on_demand' "
+           "flag in the `TF_XLA_FLAGS` environment variable.";
+
+    static XlaDeviceOpRegistrations* registrations = RegisterXlaDeviceKernels(
+        device_type.c_str(), compilation_device_name.c_str());
+    (void)registrations;
+
+    VLOG(1) << "Registered XlaCompileOnDemand op for device_type: "
+            << device_type;
   }
 
   VLOG(1) << "Successfully initialized NextPluggableDevice module.";

@@ -9333,10 +9333,7 @@ TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEnd) {
                                            /*alternate_memory_size=*/1024,
                                            loop_start_idx, &optimizer));
 
-  LOG(INFO) << "Running Optimize";
   optimizer->Optimize();
-
-  LOG(INFO) << "Running MSA";
   TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
                           RunMsa(module.get(), /*alternate_memory_size=*/1024));
 
@@ -9394,7 +9391,6 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
 
-  LOG(INFO) << "Running MSA";
   TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
                           RunMsa(module.get(), /*alternate_memory_size=*/512));
 
@@ -9425,6 +9421,109 @@ ENTRY entry {
   };
   EXPECT_EQ(prefetch_distance(prev_copy_done), prefetch_distance(copy_done));
   EXPECT_EQ(prefetch_distance(next_copy_done), prefetch_distance(copy_done));
+}
+
+TEST_F(MemoryBoundLoopOptimizerTest, OptimizerEndToEndNestedWhileLoopBug) {
+  absl::string_view hlo_str = R"(
+HloModule module, is_scheduled=true
+
+prev_while_cond {
+  prev_while_cond_param = (f32[1,4], pred[]) parameter(0)
+  ROOT p = pred[] get-tuple-element(prev_while_cond_param), index=1
+}
+
+prev_while_body {
+  prev_while_body_param = (f32[1,4], pred[]) parameter(0)
+  prev_while_body_gte = f32[1,4] get-tuple-element(prev_while_body_param), index=0
+  prev_while_body_pred = pred[] get-tuple-element(prev_while_body_param), index=1
+  prev_while_body_op = f32[1,4] negate(prev_while_body_gte)
+  ROOT prev_while_body_root = (f32[1,4], pred[]) tuple(prev_while_body_op, prev_while_body_pred)
+}
+
+current_while_cond {
+  current_while_cond_param = (f32[1,4], pred[]) parameter(0)
+  ROOT p = pred[] get-tuple-element(current_while_cond_param), index=1
+}
+
+current_while_body {
+  current_while_body_param = (f32[1,4], pred[]) parameter(0)
+  current_while_body_gte = f32[1,4] get-tuple-element(current_while_body_param), index=0
+  current_while_body_pred = pred[] get-tuple-element(current_while_body_param), index=1
+  current_while_body_op = f32[1,4] negate(current_while_body_gte)
+  ROOT current_while_body_root = (f32[1,4], pred[]) tuple(current_while_body_op, current_while_body_pred)
+}
+
+next_while_cond {
+  next_while_cond_param = (f32[1,4], pred[]) parameter(0)
+  ROOT p = pred[] get-tuple-element(next_while_cond_param), index=1
+}
+
+next_while_body {
+  next_while_body_param = (f32[1,4], pred[]) parameter(0)
+  next_while_body_gte = f32[1,4] get-tuple-element(next_while_body_param), index=0
+  next_while_body_pred = pred[] get-tuple-element(next_while_body_param), index=1
+  next_while_body_op = f32[1,4] negate(next_while_body_gte)
+  ROOT next_while_body_root = (f32[1,4], pred[]) tuple(next_while_body_op, next_while_body_pred)
+}
+
+while_cond {
+  while_cond_param = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+  ROOT p = pred[] get-tuple-element(while_cond_param), index=6
+}
+
+while_body {
+  while_body_param = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) parameter(0)
+  prev_param0 = f32[1,4] get-tuple-element(while_body_param), index=0
+  param0 = f32[1,4] get-tuple-element(while_body_param), index=1
+  next_param0 = f32[1,4] get-tuple-element(while_body_param), index=2
+  prev_prev_op3 = f32[1,4] get-tuple-element(while_body_param), index=3
+  prev_prev_op4 = f32[1,4] get-tuple-element(while_body_param), index=4
+  while_pred = pred[] get-tuple-element(while_body_param), index=6
+  prev_op0 = f32[1,4] add(f32[1,4] prev_prev_op3, f32[1,4] prev_prev_op4)
+  prev_op1 = f32[1,4] add(f32[1,4] prev_prev_op4, f32[1,4] prev_op0)
+  prev_op2 = f32[1,4] add(f32[1,4] prev_op0, f32[1,4] prev_op1)
+  prev_op3 = f32[1,4] add(f32[1,4] prev_op1, f32[1,4] prev_op2)
+  prev_tuple = (f32[1,4], pred[]) tuple(prev_op3, while_pred)
+  prev_while = (f32[1,4], pred[]) while(prev_tuple), condition=prev_while_cond, body=prev_while_body
+  prev_gte = f32[1,4] get-tuple-element(prev_while), index=0
+  prev_op4 = f32[1,4] multiply(f32[1,4] prev_param0, f32[1,4] prev_gte)
+  op0 = f32[1,4] add(f32[1,4] prev_op3, f32[1,4] prev_op4)
+  op1 = f32[1,4] add(f32[1,4] prev_op4, f32[1,4] op0)
+  op2 = f32[1,4] add(f32[1,4] op0, f32[1,4] op1)
+  op3 = f32[1,4] add(f32[1,4] op1, f32[1,4] op2)
+  current_tuple = (f32[1,4], pred[]) tuple(op3, while_pred)
+  current_while = (f32[1,4], pred[]) while(current_tuple), condition=current_while_cond, body=current_while_body
+  current_gte = f32[1,4] get-tuple-element(current_while), index=0
+  op4 = f32[1,4] multiply(f32[1,4] param0, f32[1,4] current_gte)
+  next_op0 = f32[1,4] add(f32[1,4] op3, f32[1,4] op4)
+  next_op1 = f32[1,4] add(f32[1,4] op4, f32[1,4] next_op0)
+  next_op2 = f32[1,4] add(f32[1,4] next_op0, f32[1,4] next_op1)
+  next_op3 = f32[1,4] add(f32[1,4] next_op1, f32[1,4] next_op2)
+  next_tuple = (f32[1,4], pred[]) tuple(next_op3, while_pred)
+  next_while = (f32[1,4], pred[]) while(next_tuple), condition=next_while_cond, body=next_while_body
+  next_gte = f32[1,4] get-tuple-element(next_while), index=0
+  next_op4 = f32[1,4] multiply(f32[1,4] next_param0, f32[1,4] next_gte)
+  ROOT root = tuple(prev_param0, param0, next_param0, prev_prev_op3, prev_prev_op4, next_op4, while_pred)
+}
+
+ENTRY entry {
+  p0 = f32[1,4] parameter(0)
+  p1 = f32[1,4] parameter(1)
+  p2 = f32[1,4] parameter(2)
+  p3 = f32[1,4] parameter(3)
+  p4 = f32[1,4] parameter(4)
+  p5 = pred[] parameter(5)
+  copy = f32[1,4] copy(p4)
+  tuple = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) tuple(p0, p1, p2, p3, p4, copy, p5)
+  while = (f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], f32[1,4], pred[]) while(tuple), condition=while_cond, body=while_body
+  ROOT root = f32[1,4] get-tuple-element(while), index=5
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_str));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto preset_assignments,
+                          RunMsa(module.get(), /*alternate_memory_size=*/512));
 }
 
 }  // namespace

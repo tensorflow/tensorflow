@@ -143,6 +143,13 @@ config_setting(
 )
 
 config_setting(
+    name = "tvos_x86_64",
+    values = {
+        "cpu": "tvos_x86_64",
+    },
+)
+
+config_setting(
     name = "ios_armv7",
     values = {
         "cpu": "ios_armv7",
@@ -248,6 +255,7 @@ selects.config_setting_group(
         ":darwin_x86_64",
         ":freebsd",
         ":windows",
+        ":tvos_x86_64",
     ],
 )
 

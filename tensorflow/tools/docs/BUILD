@@ -170,7 +170,9 @@ py_test(
     ],
     deps = [
         ":generate2_lib",
+        "//third_party/py/packaging",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
+        "//third_party/py/yaml",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:platform_test",
     ],
@@ -203,6 +205,7 @@ py_library(
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_estimator",
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python/util:pywrap_xla_ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
         "@absl_py//absl:app",

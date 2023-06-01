@@ -1828,7 +1828,11 @@ miopenDataType_t ToMIOpenDataType(
     case dnn::DataType::kHalf:
       return miopenHalf;
     case dnn::DataType::kInt8:
+<<<<<<< HEAD
       return miopenInt8;
+=======
+      if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
+>>>>>>> google_upstream/master
     case dnn::DataType::kDouble:
       LOG(FATAL)
           << "Unsupported DNN data type: tf.float64 (dnn::DataType::kDouble)";
@@ -2330,8 +2334,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (reserve_space_size_in_bytes > 0) {
       auto allocated =
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
-      if (!allocated.ok() ||
-          (reserve_space = allocated.value()) == nullptr) {
+      if (!allocated.ok() || (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return false;
       }

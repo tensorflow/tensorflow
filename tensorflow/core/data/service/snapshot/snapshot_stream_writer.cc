@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/time/time.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/utils.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -85,6 +88,10 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
+  if (IsPreemptedError(status)) {
+    LOG(INFO) << "tf.data service snapshot writer is cancelled: " << status;
+    return;
+  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {
@@ -184,6 +191,8 @@ Status SnapshotStreamWriter::WriteRecord(
   if (end_of_sequence_) {
     return writer.Close();
   }
+  tsl::profiler::TraceMe activity("SnapshotWriteRecord",
+                                  tsl::profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(writer.WriteTensors(element));
   chunk_size_bytes_ += EstimatedSizeBytes(element);
   ++chunk_num_elements_;
@@ -260,12 +269,19 @@ Status SnapshotStreamWriter::Save() {
             << params_.stream_index << ", chunk " << chunk_index_
             << ", chunk size in bytes: " << chunk_size_bytes_
             << ", number of elements in chunk: " << chunk_num_elements_ << ".";
+  tsl::profiler::TraceMe activity("SnapshotCheckpoint",
+                                  tsl::profiler::TraceMeLevel::kInfo);
+  absl::Time start_time = absl::FromUnixMicros(params_.env->NowMicros());
   std::string checkpoint_path =
       CheckpointPath(chunk_index_, chunk_num_elements_);
   TF_ASSIGN_OR_RETURN(std::vector<Tensor> serialized_iterator,
                       iterator_->Save());
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
       checkpoint_path, serialized_iterator, params_.compression, params_.env));
+  absl::Time end_time = absl::FromUnixMicros(params_.env->NowMicros());
+  LOG(INFO) << "Wrote checkpoint file " << checkpoint_path << ". "
+            << "Checkpointing distributed tf.data snapshot writer took "
+            << (end_time - start_time);
   return DeleteOutdatedCheckpoints();
 }
 

@@ -57,7 +57,10 @@ tf_cc_fuzz_test(
 tf_cc_fuzz_test(
     name = "matmul_fuzz",
     srcs = ["matmul_fuzz.cc"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "noasan",  # b/283972985
+    ],
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/framework:types_proto_cc",

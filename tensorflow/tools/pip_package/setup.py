@@ -114,7 +114,7 @@ if project_name.endswith('_rocm'):
 REQUIRED_PACKAGES = [
     'absl-py >= 1.0.0',
     'astunparse >= 1.6.0',
-    'flatbuffers >= 23.1.21',
+    'flatbuffers >= 23.5.8',
     # TODO(b/213222745) gast versions above 0.4.0 break TF's tests
     'gast >= 0.2.1, <= 0.4.0',
     'google_pasta >= 0.1.1',
@@ -127,10 +127,10 @@ REQUIRED_PACKAGES = [
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
-    'typing_extensions >= 3.6.6',
+    'typing_extensions>=3.6.6,<4.6.0',
     'wrapt >= 1.11.0',
-    'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or ' +
-    'platform_system!="Darwin"',
+    'tensorflow-io-gcs-filesystem >= 0.23.1;platform_machine!="arm64" or '
+    + 'platform_system!="Darwin"',
     # grpcio does not build correctly on big-endian machines due to lack of
     # BoringSSL support.
     # See https://github.com/tensorflow/tensorflow/issues/17882.
@@ -142,12 +142,16 @@ REQUIRED_PACKAGES = [
     # current release version. These also usually have "alpha" or "dev" in their
     # version name.
     # These are all updated during the TF release process.
-    standard_or_nightly('tensorboard >= 2.13, < 2.14',
-                        'tb-nightly ~= 2.14.0.a'),
-    standard_or_nightly('tensorflow_estimator >= 2.13.0rc0, < 2.14',
-                        'tf-estimator-nightly ~= 2.14.0.dev'),
-    standard_or_nightly('keras >= 2.13.1rc0, < 2.14',
-                        'keras-nightly ~= 2.14.0.dev'),
+    standard_or_nightly(
+        'tensorboard >= 2.13, < 2.14', 'tb-nightly ~= 2.14.0.a'
+    ),
+    standard_or_nightly(
+        'tensorflow_estimator >= 2.13.0rc0, < 2.14',
+        'tf-estimator-nightly ~= 2.14.0.dev',
+    ),
+    standard_or_nightly(
+        'keras >= 2.13.1rc0, < 2.14', 'keras-nightly ~= 2.14.0.dev'
+    ),
 ]
 REQUIRED_PACKAGES = [p for p in REQUIRED_PACKAGES if p is not None]
 

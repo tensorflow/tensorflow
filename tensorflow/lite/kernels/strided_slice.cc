@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
@@ -73,7 +74,8 @@ struct StridedSliceContext {
   int input_dims;
 };
 
-StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
+StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context,
+                                           bool start_and_end_indices) {
   StridedSliceParams op_params{};
 
   // The ellipsis_mask and new_axis_mask in op_params are not used. Those masks
@@ -83,6 +85,7 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   op_params.end_mask = 0;
   op_params.new_axis_mask = 0;
   op_params.shrink_axis_mask = 0;
+  op_params.offset = op_context->params->offset;
 
   // Count indexes where the new_axis_mask is set but the ellipsis_mask is not.
   const int begin_count = GetTensorShape(op_context->begin).Dims(0);
@@ -161,8 +164,10 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
           i, input_shape.Dims(i - added_axises));
     } else {
       const int orig_idx = i - added_ellipsis;
-      op_params.start_indices[i] = begin_data[orig_idx];
-      op_params.stop_indices[i] = end_data[orig_idx];
+      if (start_and_end_indices) {
+        op_params.start_indices[i] = begin_data[orig_idx];
+        op_params.stop_indices[i] = end_data[orig_idx];
+      }
       op_params.strides[i] = strides_data[orig_idx];
       if (op_context->params->begin_mask & (1 << orig_idx)) {
         op_params.begin_mask |= (1 << i);
@@ -190,36 +195,35 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 StridedSliceContext* op_context) {
   std::vector<int> output_shape_vector;
-  StridedSliceParams op_params = BuildStridedSliceParams(op_context);
+  StridedSliceParams op_params =
+      BuildStridedSliceParams(op_context, !op_context->params->offset);
   const RuntimeShape effective_input_shape = op_context->effective_input_shape;
   TF_LITE_ENSURE_MSG(
       context, effective_input_shape.DimensionsCount() <= 5,
       "StridedSlice op only supports up to 5D output including added axis.");
 
+  const int32_t* end_data = GetTensorData<int32_t>(op_context->end);
   for (int idx = effective_input_shape.DimensionsCount() - 1; idx >= 0; --idx) {
     int32_t stride = op_params.strides[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
-    int32_t begin = ::tflite::strided_slice::StridedSliceStartForAxis(
-        op_params, effective_input_shape, idx);
-    int32_t end = ::tflite::strided_slice::StridedSliceEndForAxis(
-        op_params, effective_input_shape, idx, begin);
-
-    // When shrinking an axis, the end position does not matter (and can be
-    // incorrect when negative indexing is used, see Issue #19260). Always use
-    // begin + 1 to generate a length 1 slice, since begin has
-    // already been adjusted for negative indices by GetBeginValueAtIndex.
+    int32_t dim_shape = 0;
     const bool shrink_axis = op_params.shrink_axis_mask & (1 << idx);
-    if (shrink_axis) {
-      end = begin + 1;
-    }
+    if (shrink_axis) continue;
+    if (op_params.offset) {
+      dim_shape = end_data[idx];
+    } else {
+      int32_t begin = ::tflite::strided_slice::StridedSliceStartForAxis(
+          op_params, effective_input_shape, idx);
+      int32_t end = ::tflite::strided_slice::StridedSliceEndForAxis(
+          op_params, effective_input_shape, idx, begin);
 
-    // This is valid for both positive and negative strides
-    int32_t dim_shape = std::ceil((end - begin) / static_cast<float>(stride));
-    dim_shape = dim_shape < 0 ? 0 : dim_shape;
-    if (!shrink_axis) {
-      output_shape_vector.push_back(dim_shape);
+      // This is valid for both positive and negative strides
+      dim_shape = end - begin;
     }
+    dim_shape = std::ceil((dim_shape) / static_cast<float>(stride));
+    dim_shape = dim_shape < 0 ? 0 : dim_shape;
+    output_shape_vector.push_back(dim_shape);
   }
 
   TfLiteIntArray* output_shape =
@@ -241,7 +245,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
   }
-  StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
+  StridedSliceParams op_params = BuildStridedSliceParams(&op_context, true);
 
   switch (op_context.input->type) {
     case kTfLiteFloat32:
@@ -326,13 +330,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
-  if (!(IsConstantOrPersistentTensor(op_context.begin) &&
-        IsConstantOrPersistentTensor(op_context.end) &&
-        IsConstantOrPersistentTensor(op_context.strides))) {
+  bool offset = op_context.params->offset;
+  bool output_shape_known = IsConstantOrPersistentTensor(op_context.strides);
+  output_shape_known &=
+      offset || (IsConstantOrPersistentTensor(op_context.begin) &&
+                 IsConstantOrPersistentTensor(op_context.end));
+  if (!output_shape_known) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }
-  if (IsConstantOrPersistentTensor(op_context.input)) {
+  if (IsConstantOrPersistentTensor(op_context.input) &&
+      IsConstantOrPersistentTensor(op_context.begin) &&
+      IsConstantOrPersistentTensor(op_context.end)) {
     SetTensorToPersistentRo(op_context.output);
     ResizeOutputTensor(context, &op_context);
     op_data->noop = true;

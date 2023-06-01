@@ -1855,7 +1855,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = tf.lite.TFLiteConverter.from_saved_model(tf_saved_model_dir)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
-    # 2. Initialize the Intepreter
+    # 2. Initialize the Interpreter
     interpreter = Interpreter(model_content=tflite_model)
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
@@ -1875,7 +1875,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter.inference_input_type = tf.int8
     converter.inference_output_type = tf.int8
     tflite_model_quant = converter.convert()
-    # 2. Initialize the Intepreter
+    # 2. Initialize the Interpreter
     interpreter = Interpreter(model_content=tflite_model_quant)
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
@@ -3628,6 +3628,49 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     # Check values from converted model.
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+
+class StridedSliceTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testStridedSlice(self):
+    input_data = tf.constant(
+        [
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6,
+        ],
+        shape=[6],
+        dtype=tf.float32,
+    )
+    begin = tf.Variable([1], dtype=tf.int32)
+
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=[6], dtype=tf.float32),
+            tf.TensorSpec(shape=[1], dtype=tf.int32),
+        ]
+    )
+    def model(a, begin):
+      return tf.strided_slice(a, begin, begin + 3)
+
+    concrete_func = model.get_concrete_function()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], model
+    )
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data, begin)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data, begin])[
+        0
+    ]
+    self.assertAllClose(expected_value, actual_value)
 
 
 class GrapplerTest(lite_v2_test_util.ModelTest):

@@ -26,6 +26,10 @@ LogicalResult generateLinalgThreeFry(OpBuilder& builder, Location loc,
                                      ShapedType resultTy, Value& state,
                                      Value& result);
 
+LogicalResult generateLinalgPhilox(OpBuilder& builder, Location loc,
+                                   ShapedType resultTy, Value& state,
+                                   Value& result);
+
 }  // namespace mhlo
 }  // namespace mlir
 

@@ -20,6 +20,7 @@ NOTE: This API is a work in progress and will likely be changing frequently.
 import collections
 
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import serialization
 from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -408,8 +409,7 @@ def _assert_all_equal_and_return(tensors, name=None):
       return array_ops.identity(tensors[0])
 
 
-
-
+@serialization.register_feature_column
 class SequenceNumericColumn(
     fc.SequenceDenseColumn,
     collections.namedtuple(

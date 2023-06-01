@@ -1944,13 +1944,17 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   TF_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
 
-  if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
-                             result_layout.shape())) {
+  // TPU layout assignment doesn't set the tiles on entry_computation_layout, so
+  // let's not check that.
+  if (!ShapesSame(computation->root_instruction()->shape(),
+                  result_layout.shape(),
+                  /*minor_to_major_only=*/false, /*ignore_memory_space=*/false,
+                  /*ignore_tiles=*/true)) {
     return InternalError(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
-        ShapeUtil::HumanString(computation->root_instruction()->shape()),
-        ShapeUtil::HumanString(result_layout.shape()));
+        StringifyShape(computation->root_instruction()->shape()),
+        StringifyShape(result_layout.shape()));
   }
 
   if (computation->num_parameters() != layout.parameter_count()) {
@@ -1964,13 +1968,18 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     const HloInstruction* parameter = computation->parameter_instruction(i);
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
-    if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
+    // TPU layout assignment doesn't set the tiles on entry_computation_layout,
+    // so let's not check that.
+    if (!ShapesSame(parameter->shape(), layout.parameter_shape(i),
+                    /*minor_to_major_only=*/false,
+                    /*ignore_memory_space=*/false,
+                    /*ignore_tiles=*/true)) {
       return InternalError(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "
           "layout %s",
-          i, ShapeUtil::HumanString(parameter->shape()),
-          ShapeUtil::HumanString(layout.parameter_shape(i)));
+          i, StringifyShape(parameter->shape()),
+          StringifyShape(layout.parameter_shape(i)));
     }
   }
 

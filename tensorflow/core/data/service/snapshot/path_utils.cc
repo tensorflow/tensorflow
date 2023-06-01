@@ -63,24 +63,24 @@ std::string SplitsDirectory(absl::string_view snapshot_path,
 }
 
 std::string SourceDirectory(absl::string_view snapshot_path,
-                            int64_t stream_index, int64_t source_id) {
+                            int64_t stream_index, int64_t source_index) {
   return tsl::io::JoinPath(SplitsDirectory(snapshot_path, stream_index),
-                           absl::StrCat("source_", source_id));
+                           absl::StrCat("source_", source_index));
 }
 
 std::string RepetitionDirectory(absl::string_view snapshot_path,
-                                int64_t stream_index, int64_t source_id,
+                                int64_t stream_index, int64_t source_index,
                                 int64_t repetition_index) {
   return tsl::io::JoinPath(
-      SourceDirectory(snapshot_path, stream_index, source_id),
+      SourceDirectory(snapshot_path, stream_index, source_index),
       absl::StrCat("repetition_", repetition_index));
 }
 
 std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
-                      int64_t source_id, int64_t repetition_index,
+                      int64_t source_index, int64_t repetition_index,
                       int64_t local_index, int64_t global_index) {
   return tsl::io::JoinPath(
-      RepetitionDirectory(snapshot_path, stream_index, source_id,
+      RepetitionDirectory(snapshot_path, stream_index, source_index,
                           repetition_index),
       absl::StrCat("split_", local_index, "_", global_index));
 }
@@ -96,6 +96,33 @@ tsl::StatusOr<int64_t> ParseStreamDirectoryName(
         ". Expected stream_<stream_index>.");
   }
   return stream_index;
+}
+
+tsl::StatusOr<int64_t> ParseSourceDirectoryName(
+    absl::string_view source_directory_name) {
+  std::vector<std::string> tokens = absl::StrSplit(source_directory_name, '_');
+  int64_t source_index = 0;
+  if (tokens.size() != 2 || tokens[0] != "source" ||
+      !absl::SimpleAtoi(tokens[1], &source_index) || source_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid source directory name: ", source_directory_name,
+        ". Expected source_<source_index>.");
+  }
+  return source_index;
+}
+
+tsl::StatusOr<int64_t> ParseRepetitionDirectoryName(
+    absl::string_view repetition_directory_name) {
+  std::vector<std::string> tokens =
+      absl::StrSplit(repetition_directory_name, '_');
+  int64_t repetition_index = 0;
+  if (tokens.size() != 2 || tokens[0] != "repetition" ||
+      !absl::SimpleAtoi(tokens[1], &repetition_index) || repetition_index < 0) {
+    return tsl::errors::InvalidArgument(
+        "Invalid repetition directory name: ", repetition_directory_name,
+        ". Expected repetition_<repetition_index>.");
+  }
+  return repetition_index;
 }
 
 tsl::StatusOr<std::pair<int64_t, int64_t>> ParseSplitFilename(

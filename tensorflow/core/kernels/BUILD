@@ -7842,7 +7842,6 @@ tf_cc_test(
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/framework:types_proto_cc",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

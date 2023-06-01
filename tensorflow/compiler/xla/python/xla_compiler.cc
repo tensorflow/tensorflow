@@ -32,6 +32,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl_bind.h"  // from @pybind11
+#include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -179,6 +180,69 @@ StatusOr<Shape> MakeShapeWithDenseLayout(
     shape.clear_layout();
   }
   return shape;
+}
+
+// Pybind function for HloSharding.iota_tile, which is a non-crashing factory
+// that produces a HloSharding instance backed by tile assignment of a
+// transposed and reshaped iota array of device ids. More specifically the tile
+// assignment array is as if it is produced by the following numpy code:
+// numpy.arange(math.prod(dims)).reshape(reshape_dims)
+//      .transpose(transpose_perm).reshape(math.prod(dims))
+// where:
+// `dims`: is the dimensions of the tile assignment array, which corresponds to
+//   OpSharding.tile_assignment_dimensions.
+// `reshape_dims`: is the dimensions the 1D iota array is reshaped to.
+// `transpose_perm`: is the dimension permutation to transpose `reshape_dims`.
+// `subgroup_types`: indicates the subgroups of the last `subgroup_types.size()`
+//   dimensions in `dims`.
+//
+// In practice, `reshape_dims` often maps to the axises of user defined device
+// mesh, and `transpose_perm` often maps to the user specification of how a
+// tensor is partitioned based on the axes defined in the mesh, e.g. for a mesh
+// of size 4x2x2 as AxBxC:
+// PartitionSpec('A', 'B', 'C') corresponds to reshape_dims=[4,2,2],
+// transpose_perm=[0,1,2] (no transpose)
+// PartitionSpec('B', 'A', 'C') corresponds to reshape_dims=[4,2,2],
+// transpose_perm=[1,0,2] (swap A and B)
+StatusOr<HloSharding> IotaTileHelper(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm,
+    absl::Span<const OpSharding::Type> subgroup_types) {
+  if (dims.empty()) {
+    return InvalidArgument("`dims` should not be empty.");
+  }
+  if (reshape_dims.size() != transpose_perm.size()) {
+    return InvalidArgument(
+        "`reshape_dims` and `transpose_perm` should have the same size, saw "
+        "[%s] v.s. [%s]",
+        absl::StrJoin(reshape_dims, ","), absl::StrJoin(transpose_perm, ","));
+  }
+  if (!reshape_dims.empty() && Product(dims) != Product(reshape_dims)) {
+    return InvalidArgument(
+        "Cannot reshape from `dims` [%s] to `reshape_dims` [%s].",
+        absl::StrJoin(dims, ","), absl::StrJoin(reshape_dims, ","));
+  }
+  if (subgroup_types.size() > dims.size()) {
+    return InvalidArgument(
+        "`subgroup_types`(%lld) should not have more dimensions than "
+        "`dims`(%lld).",
+        subgroup_types.size(), dims.size());
+  }
+  auto make_assignment = [&] {
+    if (reshape_dims.empty() && transpose_perm.empty()) {
+      Array<int64_t> assignment(dims);
+      assignment.FillIota(0);
+      return assignment;
+    }
+    Array<int64_t> assignment(reshape_dims);
+    assignment.FillIota(0);
+    assignment.TransposeDimensions(transpose_perm);
+    assignment.Reshape(dims);
+    return assignment;
+  };
+  return subgroup_types.empty()
+             ? HloSharding::Tile(make_assignment())
+             : HloSharding::Subgroup(make_assignment(), subgroup_types);
 }
 
 // Registers a 'fn_capsule' as a CPU custom call target.
@@ -975,15 +1039,45 @@ void BuildXlaCompilerSubmodule(py::module& m) {
             return HloSharding::Tuple(shape, shardings);
           },
           "Constructs a tuple sharding.")
+      .def_static(
+          "iota_tile", xla::ValueOrThrowWrapper(IotaTileHelper),
+          py::arg("dims"),
+          py::arg("reshape_dims") = absl::Span<const int64_t>(),
+          py::arg("transpose_perm") = absl::Span<const int>(),
+          py::arg("subgroup_types") = absl::Span<const xla::OpSharding::Type>())
+      .def_static("manual", [] { return HloSharding::Manual(); })
+      .def_static("replicate", [] { return HloSharding::Replicate(); })
       .def("__eq__", [](const xla::HloSharding& a,
                         const xla::HloSharding& b) { return a == b; })
       .def("__hash__",
            [](const xla::HloSharding& self) { return absl::HashOf(self); })
       .def("is_replicated", &xla::HloSharding::IsReplicated)
+      .def("is_manual", &xla::HloSharding::IsManual)
+      .def("is_tiled", &xla::HloSharding::IsTiled)
       .def("tile", [](const xla::HloSharding& self,
                       xla::Shape shape) { return self.TileShape(shape); })
       .def("tuple_elements",
            [](const xla::HloSharding& self) { return self.tuple_elements(); })
+      .def("num_devices",
+           [](const xla::HloSharding& self) {
+             return self.tile_assignment().num_elements();
+           })
+      .def("num_dimensions",
+           [](const xla::HloSharding& self) {
+             return self.tile_assignment().num_dimensions();
+           })
+      .def("tile_assignment_dimensions",
+           [](const xla::HloSharding& self) {
+             return self.tile_assignment().dimensions();
+           })
+      .def("tile_assignment_devices",
+           [](const xla::HloSharding& self) {
+             return absl::MakeConstSpan(self.tile_assignment().data(),
+                                        self.tile_assignment().num_elements());
+           })
+      .def("replicate_on_last_tile_dim",
+           &xla::HloSharding::ReplicateOnLastTileDim)
+      .def("subgroup_types", &xla::HloSharding::subgroup_types)
       .def("__repr__",
            [](const xla::HloSharding& self) { return self.ToString(); })
       .def("to_proto", &xla::HloSharding::ToProto);
@@ -999,22 +1093,6 @@ void BuildXlaCompilerSubmodule(py::module& m) {
       .value("DEFAULT", PrecisionConfig::DEFAULT)
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
-
-  py::enum_<ChannelHandle::ChannelType>(m, "ChannelHandle_ChannelType")
-      .value("CHANNEL_TYPE_INVALID", ChannelHandle::CHANNEL_TYPE_INVALID)
-      .value("DEVICE_TO_DEVICE", ChannelHandle::DEVICE_TO_DEVICE)
-      .value("DEVICE_TO_HOST", ChannelHandle::DEVICE_TO_HOST)
-      .value("HOST_TO_DEVICE", ChannelHandle::HOST_TO_DEVICE);
-
-  py::class_<ChannelHandle>(m, "ChannelHandle")
-      .def_property("type", &ChannelHandle::type,
-                    [](ChannelHandle* h, ChannelHandle::ChannelType type) {
-                      h->set_type(type);
-                    })
-      .def_property(
-          "handle", &ChannelHandle::handle,
-          [](ChannelHandle* h, int64_t handle) { h->set_handle(handle); })
-      .def("__repr__", [](ChannelHandle* h) { return h->DebugString(); });
 
   py::enum_<FftType>(m, "FftType")
       .value("FFT", FftType::FFT)

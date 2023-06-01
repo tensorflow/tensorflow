@@ -1326,6 +1326,7 @@ REGISTER_OP("XlaCallModule")
     .Attr("dim_args_spec: list(string) = []")
     .Attr("platforms: list(string) = []")
     .Attr("function_list: list(func) = []")
+    .Attr("has_token_input_output: bool = false")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<shape_inference::ShapeHandle> args_shapes;
@@ -1387,11 +1388,18 @@ dim_args_spec: in presence of dynamic shapes, this is the specification for the
   string of the form "<arg_idx>.<axis_idx>" that specifies that the value of
   the corresponding dimension argument must be "args[arg_idx].shape[axis_idx]",
   where "args" are the actual array arguments.
+  This attribute is not used anymore in modules serialized after March 28th,
+  2023 and JAX OSS versions higher than 0.4.6.
+  TODO(b/283439649): remove support for dim_args_spec.
 function_list: This list contains the TensorFlow FunctionDefs that are used by
   the XLACallModule. If the XLACallModule contains `stablehlo.custom_call`
   operations, they can call TensorFlow graph functions outside of the
   XLACallModule. This `function_list` attribute registers the dependency of the
   XLACallModule on those functions. This attribute was added in version 5.
+has_token_input_output: If true, the embedded StableHLO module's main function
+  must take a `!stablehlo.token` as its first argument and returns a token as
+  its first result. This can be used in conjunction with the TF2XLA's side
+  effect mechanism in order to model side effects.
 )doc");
 
 }  // namespace

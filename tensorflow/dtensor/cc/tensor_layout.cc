@@ -1371,5 +1371,78 @@ StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
   return Layout::FromProto(output_layout_proto);
 }
 
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts) {
+  if (layouts.empty())
+    return absl::InvalidArgumentError("Layout should not be empty");
+
+  absl::flat_hash_map<std::string, std::set<int>> layout_map;
+  for (const Layout& layout : layouts) {
+    for (int i = 0; i < layout.rank(); ++i) {
+      const std::string& mesh_dim = layout.dim(i).sharding_spec();
+      if (mesh_dim == Layout::kUnshardedDim) continue;
+
+      layout_map[mesh_dim].insert(i);
+    }
+  }
+
+  for (auto& it : layout_map)
+    if (it.second.size() > 1) it.second.clear();
+
+  std::map<int, std::set<std::string>> dim_to_layout_map;
+  for (const auto& it : layout_map) {
+    assert(it.second.size() <= 1);
+    if (it.second.empty()) continue;
+
+    const int tensor_dim_index = *it.second.begin();
+    dim_to_layout_map[tensor_dim_index].insert(it.first);
+  }
+
+  for (auto& it : dim_to_layout_map)
+    if (it.second.size() > 1) it.second.clear();
+
+  std::vector<std::string> merged_spec;
+  assert(!layouts.empty());
+  for (int i = 0; i < layouts[0].rank(); ++i) {
+    const auto it = dim_to_layout_map.find(i);
+    if (it != dim_to_layout_map.end() && !it->second.empty()) {
+      assert(it->second.size() == 1);
+      merged_spec.emplace_back(*it->second.begin());
+    } else {
+      merged_spec.emplace_back(Layout::kUnshardedDim);
+    }
+  }
+  return Layout::GetLayout(merged_spec, layouts[0].mesh());
+}
+
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts) {
+  if (layouts.empty())
+    return absl::InvalidArgumentError("Layout should not be empty");
+  int rank = -1;
+  std::vector<std::string> specs;
+  for (const auto& layout : layouts) {
+    if (rank == -1) {
+      rank = layout.rank();
+    } else {
+      if (rank != layout.rank()) {
+        return absl::InvalidArgumentError(
+            "Not all layouts to GetLeastShardedLayout are of the same rank.");
+      }
+    }
+  }
+  specs.resize(rank, Layout::kAny);
+  for (const auto& layout : layouts) {
+    auto current_specs = layout.sharding_spec_strs();
+    for (int i = 0; i < rank; i++) {
+      auto current_spec = current_specs[i];
+      if (specs[i] == Layout::kAny) {
+        specs[i] = current_spec;
+      } else if (specs[i] != current_spec) {
+        // Least sharded compatible spec must be unsharded.
+        specs[i] = Layout::kUnshardedDim;
+      }
+    }
+  }
+  return Layout::GetLayout(specs, layouts[0].mesh());
+}
 }  // namespace dtensor
 }  // namespace tensorflow

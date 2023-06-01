@@ -2937,4 +2937,11 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
 }
 
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+  return DeserializeExecutable(serialized, options);
+}
+
 }  // namespace xla

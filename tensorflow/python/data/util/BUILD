@@ -1,5 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -26,11 +25,14 @@ py_strict_test(
         ":nest",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
-        "//tensorflow/python/ops/ragged",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -62,6 +64,10 @@ py_strict_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -104,14 +110,14 @@ py_strict_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:type_spec",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
@@ -139,6 +145,8 @@ py_strict_test(
         ":options",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -165,7 +173,10 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/util:compat",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -185,7 +196,7 @@ py_strict_library(
 
 py_strict_test(
     name = "random_seed_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_seed_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
@@ -194,6 +205,10 @@ py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:random_seed",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -215,10 +230,12 @@ py_strict_test(
     deps = [
         ":traverse",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python/data/experimental/kernel_tests/service:test_base",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/compat",
         "//tensorflow/python/data/experimental/ops:dataset_ops",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/framework:combinations",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

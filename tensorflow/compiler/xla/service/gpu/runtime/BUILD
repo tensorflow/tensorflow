@@ -460,6 +460,7 @@ cc_library(
 
 cc_library(
     name = "support",
+    srcs = ["support.cc"],
     hdrs = ["support.h"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
@@ -468,6 +469,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )

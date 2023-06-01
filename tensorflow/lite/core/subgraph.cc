@@ -1381,17 +1381,6 @@ TfLiteStatus Subgraph::PrepareOpsStartingAt(
 }
 
 TfLiteStatus Subgraph::PrepareOpsAndTensors() {
-  if (!memory_planner_) {
-#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
-    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
-#else
-    memory_planner_ = std::make_unique<ArenaPlanner>(
-        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
-        kDefaultTensorAlignment, subgraph_index_);
-#endif
-    memory_planner_->PlanAllocations();
-  }
-
   // Prepare original execution plan if any applied delegate wants it.
   // If any of the delegates is immutable, this won't be triggered
   // post-delegation (since we undo/redo delegation). For all other cases, other
@@ -1420,6 +1409,17 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
       PrepareOpsStartingAt(next_execution_plan_index_to_prepare_,
                            execution_plan_, &last_exec_plan_index_prepared));
   next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
+
+  if (!memory_planner_) {
+#ifdef TFLITE_USE_SIMPLE_MEMORY_PLANNER
+    memory_planner_.reset(new SimplePlanner(&context_, CreateGraphInfo()));
+#else
+    memory_planner_ = std::make_unique<ArenaPlanner>(
+        &context_, CreateGraphInfo(), ShouldPreserveAllTensors(),
+        kDefaultTensorAlignment, subgraph_index_);
+#endif
+    memory_planner_->PlanAllocations();
+  }
 
   // Execute arena allocations.
   TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(

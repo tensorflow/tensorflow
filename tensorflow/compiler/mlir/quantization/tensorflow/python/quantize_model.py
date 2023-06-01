@@ -1017,7 +1017,7 @@ def _populate_quantization_options_default_values(
     quantization_options: An instance of QuantizationOptions.
   """
   if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
-    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+    quantization_options.op_set = quant_opts_pb2.OpSet.XLA
 
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True
