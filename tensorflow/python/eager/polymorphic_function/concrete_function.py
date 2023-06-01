@@ -61,6 +61,43 @@ def _is_type_subset(a, b):
   return True
 
 
+def _parse_func_attr_value(key, value):
+  """Converts a python object to an attr_value_pb2.AttrValue object."""
+  if isinstance(value, attr_value_pb2.AttrValue):
+    return value
+  # bool type check has to happen before int since bool is a subclass of int.
+  elif isinstance(value, bool):
+    return attr_value_pb2.AttrValue(b=value)
+  elif isinstance(value, int):
+    return attr_value_pb2.AttrValue(i=value)
+  elif isinstance(value, float):
+    return attr_value_pb2.AttrValue(f=value)
+  elif isinstance(value, (str, bytes)):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  elif isinstance(value, list):
+    list_value = attr_value_pb2.AttrValue.ListValue()
+    for v in value:
+      if isinstance(v, bool):
+        list_value.b.append(v)
+      elif isinstance(v, int):
+        list_value.i.append(v)
+      elif isinstance(v, float):
+        list_value.f.append(v)
+      elif isinstance(v, (str, bytes)):
+        list_value.s.append(compat.as_bytes(v))
+      else:
+        raise ValueError(
+            f"Attributes for {key} must be bool, int, float, or string. "
+            f"Got {type(v)}."
+        )
+    return attr_value_pb2.AttrValue(list=list_value)
+  else:
+    raise ValueError(
+        f"Attribute {key} must be bool, int, float, string, list, or"
+        f"AttrValue. Got {type(value)}."
+    )
+
+
 def _parse_func_attrs(attributes):
   """Convert the keyword arguments into function_def attributes.
 
@@ -80,20 +117,7 @@ def _parse_func_attrs(attributes):
     if key not in attributes_lib.MONOMORPHIC_FUNCTION_ALLOWLIST:
       raise ValueError(
           f"ConcreteFunction does not support `{key}` as an attribute.")
-    if isinstance(value, attr_value_pb2.AttrValue):
-      attrs[key] = value
-    # bool type check has to happen before int since bool is a subclass of int.
-    elif isinstance(value, bool):
-      attrs[key] = attr_value_pb2.AttrValue(b=value)
-    elif isinstance(value, int):
-      attrs[key] = attr_value_pb2.AttrValue(i=value)
-    elif isinstance(value, float):
-      attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, (str, bytes)):
-      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
-    else:
-      raise ValueError(f"Attribute {key} must be bool, int, float, string, or "
-                       f"AttrValue. Got {type(value)}.")
+    attrs[key] = _parse_func_attr_value(key, value)
   return attrs
 
 _FORWARD_PREFIX = "__forward_"
