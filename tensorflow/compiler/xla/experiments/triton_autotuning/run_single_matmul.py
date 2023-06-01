@@ -19,51 +19,71 @@ import sys
 
 from absl import app
 from absl import flags
-import triton
+from matmul_lib import benchmark_cublas
+from matmul_lib import benchmark_matmul
+from matmul_lib import MatmulSize
+from matmul_lib import MatmulTiling
+from matmul_lib import print_roofline_performance
 import torch
 import tqdm
+import triton
 
-from matmul_lib import benchmark_matmul, print_roofline_performance, benchmark_cublas, MatmulSize, MatmulTiling
 
-FLAGS = flags.FLAGS
+_M = flags.DEFINE_integer('m', 64, 'Size of first matrix')
+_K = flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
+_N = flags.DEFINE_integer('n', 64, 'Size of second matrix')
+_QUANTIZED_LHS = flags.DEFINE_integer(
+    'quantized_lhs', 0, 'Whether LHS is in int8'
+)
 
-flags.DEFINE_integer('m', 64, 'Size of first matrix')
-flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
-flags.DEFINE_integer('n', 64, 'Size of second matrix')
-flags.DEFINE_integer('quantized_lhs', 0, 'Whether LHS is in int8')
+_BLOCK_M = flags.DEFINE_integer('block_m', 16, 'Tiling in M-dimension')
+_BLOCK_N = flags.DEFINE_integer('block_n', 16, 'Tiling in N-dimension')
+_BLOCK_K = flags.DEFINE_integer('block_k', 16, 'Tiling in K-dimension')
 
-flags.DEFINE_integer('block_m', 16, 'Tiling in M-dimension')
-flags.DEFINE_integer('block_n', 16, 'Tiling in N-dimension')
-flags.DEFINE_integer('block_k', 16, 'Tiling in K-dimension')
-
-flags.DEFINE_integer('split_k', 1, 'Number of splits for contracting dimension')
-flags.DEFINE_integer('num_stages', 1, 'Number of pipelining stages')
-flags.DEFINE_integer('num_warps', 4, 'Number of warps to allocate in a given block')
-flags.DEFINE_bool('debug', False, 'Print debug information')
+_SPLIT_K = flags.DEFINE_integer(
+    'split_k', 1, 'Number of splits for contracting dimension'
+)
+_NUM_STAGES = flags.DEFINE_integer(
+    'num_stages', 1, 'Number of pipelining stages'
+)
+_NUM_WARPS = flags.DEFINE_integer(
+    'num_warps', 4, 'Number of warps to allocate in a given block'
+)
+_DEBUG = flags.DEFINE_bool('debug', False, 'Print debug information')
 
 
 def main():
   s = torch.cuda.Stream()
   pbar = tqdm.tqdm()
-  dims = MatmulSize(FLAGS.m, FLAGS.n, FLAGS.k, FLAGS.quantized_lhs)
-  timing = benchmark_matmul(dims=dims,
-                        pbar=pbar,
-                        shared_stream=s,
-                       tilings=[MatmulTiling(FLAGS.block_m, FLAGS.block_n, FLAGS.block_k,
-                       FLAGS.split_k, FLAGS.num_stages, FLAGS.num_warps)],
-                       repetitions=20,
-                       debug=FLAGS.debug)
+  dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
+  timing = benchmark_matmul(
+      dims=dims,
+      pbar=pbar,
+      shared_stream=s,
+      tilings=[
+          MatmulTiling(
+              _BLOCK_M.value,
+              _BLOCK_N.value,
+              _BLOCK_K.value,
+              _SPLIT_K.value,
+              _NUM_STAGES.value,
+              _NUM_WARPS.value,
+          )
+      ],
+      repetitions=20,
+      debug=_DEBUG.value,
+  )
   if len(timing) != 1:
-      print("Failed to find working configuration")
-      sys.exit(1)
+    print('Failed to find working configuration')
+    sys.exit(1)
   t = timing[0]
-  print(f"Timing: {t}")
+  print(f'Timing: {t}')
   print_roofline_performance(dims, t.min_time_ms)
   cublas_time = benchmark_cublas(dims)
-  print(f"Reference cuBLAS time (bf16xbf16->bf16): {cublas_time:0.4f}ms")
+  print(f'Reference cuBLAS time (bf16xbf16->bf16): {cublas_time:0.4f}ms')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   triton.compiler.init_cuda_utils()
   app.parse_flags_with_usage(sys.argv)
   main()

@@ -14,56 +14,77 @@
 # limitations under the License.
 # ==============================================================================
 
+"""Measures timings of tilings provided in a CSV file."""
 import sys
 
 from absl import app
 from absl import flags
-import torch
-import pandas as pd
-import tqdm
-
-import triton
-import triton.language as tl
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('data', '', 'Data to check')
-flags.DEFINE_string('output_file', '/tmp/checked.csv',
-                    'File to write output data to')
-flags.DEFINE_integer('num_samples', 100, 'Number of samples to check')
-flags.DEFINE_float('time_cutoff', 0.02,
-                   'Only consider samples with min_time_ms larger than cutoff')
-
 from matmul_lib import benchmark_matmul
+from matmul_lib import MatmulSize
+from matmul_lib import MatmulTiling
+import pandas as pd
+import torch
+import tqdm
+import triton
+
+_DATA = flags.DEFINE_string('data', '', 'Data to check')
+_OUTPUT_FILE = flags.DEFINE_string(
+    'output_file', '/tmp/checked.csv', 'File to write output data to'
+)
+_NUM_SAMPLES = flags.DEFINE_integer(
+    'num_samples', 100, 'Number of samples to check'
+)
+_M = flags.DEFINE_integer('m', 64, 'Size of first matrix')
+_K = flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
+_N = flags.DEFINE_integer('n', 64, 'Size of second matrix')
+_QUANTIZED_LHS = flags.DEFINE_integer(
+    'quantized_lhs', 0, 'Whether LHS is in int8'
+)
+
 
 def get_actual_time(r, s, pbar):
-  dims = MatmulSize(FLAGS.m, FLAGS.n, FLAGS.k, FLAGS.quantized_lhs)
-  return benchmark_matmul(dims=dims,
-                        pbar=pbar,
-                        shared_stream=s,
-                       tilings=[MatmulTiling(r.block_m, r.block_n, r.block_k,
-                       r.split_k, r.num_stages, r.num_warps)],
-                          repetitions=20)[0].min_time_ms
+  dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
+  return benchmark_matmul(
+      dims=dims,
+      pbar=pbar,
+      shared_stream=s,
+      tilings=[
+          MatmulTiling(
+              r.block_m,
+              r.block_n,
+              r.block_k,
+              r.split_k,
+              r.num_stages,
+              r.num_warps,
+          )
+      ],
+      repetitions=20,
+  )[0].min_time_ms
+
 
 def main():
-  df = pd.read_csv(FLAGS.data).sample(FLAGS.num_samples)
+  df = pd.read_csv(_DATA.value).sample(_NUM_SAMPLES.value)
   shared_stream = torch.cuda.Stream()
   measured_times = []
-  pbar = tqdm.tqdm(total=FLAGS.num_samples)
+  pbar = tqdm.tqdm(total=_NUM_SAMPLES.value)
   with torch.cuda.stream(shared_stream):
-    for index, r in df.iterrows():
-      measured_times.append(get_actual_time(r, shared_stream, s))
+    for _, r in df.iterrows():
+      measured_times.append(get_actual_time(r, shared_stream, pbar))
   df = df.assign(measured_min_time_ms=measured_times)
   pbar.close()
 
-  errors = df.assign(
-      absolute_error=lambda r: abs(r.measured_min_time_ms - r.min_time_ms)
-  ).assign(
-      relative_error=lambda r: abs(r.measured_min_time_ms - r.min_time_ms) / r.min_time_ms
-  )[["absolute_error", "relative_error"]]
+  def absolute_error(r):
+    return abs(r.measured_min_time_ms - r.min_time_ms)
+
+  def relative_error(r):
+    return absolute_error(r) / r.min_time_ms
+
+  errors = df.assign(absolute_error=absolute_error).assign(
+      relative_error=relative_error
+  )[['absolute_error', 'relative_error']]
   print(errors)
   print(errors.describe())
-  df.to_csv(FLAGS.output_file)
+  df.to_csv(_OUTPUT_FILE.value)
 
 
 if __name__ == '__main__':
