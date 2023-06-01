@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/pjrt/distributed/service.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/topology_util.h"
+
+#include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
@@ -33,8 +35,8 @@ TEST(TopologyTest, BuildGlobalTopology) {
   DeviceProto* d3 = locals[1].add_devices();
   d3->set_local_device_ordinal(1);
 
-  GlobalTopologyProto global;
-  BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals), &global);
+  GlobalTopologyProto global =
+      BuildGlobalTopology(absl::Span<LocalTopologyProto>(locals));
   EXPECT_EQ(global.nodes_size(), 2);
   EXPECT_EQ(global.nodes()[0].devices_size(), 2);
   EXPECT_EQ(global.nodes()[1].devices_size(), 2);
