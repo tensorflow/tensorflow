@@ -1,5 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
 load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -95,6 +95,11 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
     ],
+)
+
+filegroup(
+    name = "aot_ffi_execution_context_hdrs",
+    srcs = ["aot_ffi_execution_context.h"],
 )
 
 cc_library(
