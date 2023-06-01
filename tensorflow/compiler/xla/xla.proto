@@ -524,7 +524,11 @@ message DebugOptions {
   // on GPU.
   bool xla_gpu_enable_dot_strength_reduction = 211;
 
-  // Next id: 214
+  // Enables experimental heuristic of choosing block size for launching a
+  // kernel on GPU.
+  bool xla_gpu_enable_experimental_block_size = 214;
+
+  // Next id: 215
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

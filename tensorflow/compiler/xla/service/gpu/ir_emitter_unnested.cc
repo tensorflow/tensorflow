@@ -1910,10 +1910,9 @@ Status IrEmitterUnnested::EmitLoopFusion(mlir::Operation* op) {
     launch_config.few_waves = false;
   }
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      CalculateLaunchDimensions(element_shape, gpu_device_info, launch_config));
-
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      CalculateLaunchDimensions(element_shape, gpu_device_info,
+                                                launch_config, op));
   TF_ASSIGN_OR_RETURN(
       std::optional<std::vector<llvm_ir::IrArray>> opt_ir_arrays,
       BuildKernelThunkForFusion(fusion, launch_dimensions));
