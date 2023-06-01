@@ -67,14 +67,12 @@ absl::Status LstmTest(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(
           PointWiseNear({7.0 / 15.0, 10.0 / 15.0, 13.0 / 15.0, 16.0 / 15.0},
                         new_state.data, eps))
-          << ToString(storage) << ", " << ToString(precision);
       RETURN_IF_ERROR(PointWiseNear(
           {static_cast<float>((1.0 / 6.0) * std::tanh(7.0 / 15.0)),
            static_cast<float>((1.0 / 6.0) * std::tanh(10.0 / 15.0)),
            static_cast<float>((1.0 / 6.0) * std::tanh(13.0 / 15.0)),
            static_cast<float>((1.0 / 6.0) * std::tanh(16.0 / 15.0))},
           new_activ.data, eps))
-          << ToString(storage) << ", " << ToString(precision);
     }
   }
   return absl::OkStatus();

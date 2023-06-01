@@ -52,8 +52,7 @@ absl::Status FullyConnectedTest(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, 2), &dst_tensor));
-      RETURN_IF_ERROR(PointWiseNear({14.5f, 37.5f}, dst_tensor.data, eps))
-          << "Failed using precision " << ToString(precision);
+      RETURN_IF_ERROR(PointWiseNear({14.5f, 37.5f}, dst_tensor.data, eps));
     }
   }
   return absl::OkStatus();
@@ -101,8 +100,7 @@ absl::Status FullyConnectedLargeTest(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(
           PointWiseNear({139.4f, 363.5f, 587.6f, 811.7f, 1035.8f, 1259.9f,
                          1484.1f, 1708.2f, 1932.3f, 2156.4f, 2380.5f, 2604.6f},
-                        dst_tensor.data, eps))
-          << "Failed using precision " << ToString(precision);
+                        dst_tensor.data, eps));
     }
   }
   return absl::OkStatus();
@@ -159,8 +157,7 @@ absl::Status FullyConnectedExtraLargeTest(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, kOutputSize), &dst_tensor));
-      RETURN_IF_ERROR(PointWiseNear(expected, dst_tensor.data, eps))
-          << "Failed using precision " << ToString(precision);
+      RETURN_IF_ERROR(PointWiseNear(expected, dst_tensor.data, eps));
     }
   }
   return absl::OkStatus();
@@ -194,8 +191,7 @@ absl::Status FullyConnectedInt8Test(TestExecutionEnvironment* env) {
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor, std::make_unique<FullyConnected>(std::move(operation)),
           BHWC(1, 1, 1, 2), &dst_tensor));
-      RETURN_IF_ERROR(PointWiseNear({20.5f, 15.5f}, dst_tensor.data, eps))
-          << "Failed using precision " << ToString(precision);
+      RETURN_IF_ERROR(PointWiseNear({20.5f, 15.5f}, dst_tensor.data, eps));
     }
   }
   return absl::OkStatus();
