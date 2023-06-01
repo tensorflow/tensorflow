@@ -69,11 +69,13 @@ absl::Status RunSyncOrAsync(
   }
 
   // Launch the collective on either the main or async stream.
-  auto status = to_run(is_async ? async_stream : main_stream);
+  se::Stream* stream = is_async ? async_stream : main_stream;
+  auto status = to_run(stream);
   if (!status.ok()) return status;
 
   if (is_async) {
-    return async_collectives->RecordEvent(uid);
+    status = async_collectives->RecordEvent(uid);
+    if (!status.ok()) return status;
   }
   int32_t device_ordinal = main_stream->parent()->device_ordinal();
   return collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, main_stream);
@@ -128,7 +130,6 @@ StatusOr<std::vector<DeviceBufferPair>> GetDeviceBufferPairs(
 }
 
 absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
-                           CollectivesSupport* collectives,
                            AsyncCollectivesSupport* async_collectives,
                            int32_t uid, std::string_view done_type) {
 #if XLA_ENABLE_XCCL
@@ -139,8 +140,7 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
   if (!event.ok()) return event.status();
   stream->ThenWaitFor(&*event);
 
-  int32_t device_ordinal = stream->parent()->device_ordinal();
-  return collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, stream);
+  return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
   return absl::InternalError("NCCL disabled");
 #endif  // XLA_ENABLE_XCCL
@@ -523,7 +523,6 @@ XLA_RUNTIME_DEFINE_CUSTOM_CALL(
     AsyncDone, FunctionWrapper<AsyncDoneImpl>(), checks,
     CustomCall::Bind("xla.gpu.async_collective_done")
         .UserData<const ServiceExecutableRunOptions*>()
-        .UserData<CollectivesSupport*>()
         .UserData<AsyncCollectivesSupport*>()
         .Attr<int32_t>("uid")
         .Attr<std::string_view>("done_type"));
