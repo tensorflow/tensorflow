@@ -22,17 +22,6 @@ package(
     licenses = ["notice"],
 )
 
-cc_library(
-    name = "constants",
-    hdrs = [
-        "constants.h",
-    ],
-    compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@com_google_absl//absl/strings",
-    ],
-)
-
 py_binary(
     name = "gen_quantized_function_library",
     srcs = ["gen_quantized_function_library.py"],
@@ -427,7 +416,6 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":constants",
         ":manipulate_model_attr",
         ":pass_utils",
         ":quantization_options_proto_cc",
