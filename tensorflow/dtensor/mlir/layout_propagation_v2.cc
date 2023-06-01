@@ -73,10 +73,7 @@ constexpr int kLayoutPropagationMaxStages = 3;
 
 bool IsProducerResourceOpWithEmptyLayout(const mlir::Value& producer_value,
                                          const Layout& producer) {
-  return (
-      producer.IsEmpty() &&
-      llvm::isa<mlir::TF::ResourceType>(
-          producer_value.getType().cast<mlir::TensorType>().getElementType()));
+  return (producer.IsEmpty() && IsResourceType(producer_value));
 }
 
 bool AllOpResultsHaveLayouts(
