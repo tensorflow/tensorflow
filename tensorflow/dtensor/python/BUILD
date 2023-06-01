@@ -79,7 +79,6 @@ pytype_strict_library(
     name = "layout",
     srcs = ["layout.py"],
     deps = [
-        ":config",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
