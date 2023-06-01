@@ -89,6 +89,8 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
+        # XLA Runtime support.
+        "buffer_desc.h",
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_conv_impl.h",
@@ -109,20 +111,6 @@ filegroup(
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
     ],
-    visibility = [":friends"],
-)
-
-filegroup(
-    name = "xla_runtime_runner_hdrs",
-    srcs = [
-        "buffer_desc.h",
-    ],
-    visibility = [":friends"],
-)
-
-filegroup(
-    name = "xla_runtime_runner_srcs",
-    srcs = [],
     visibility = [":friends"],
 )
 
