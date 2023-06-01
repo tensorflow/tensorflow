@@ -4210,7 +4210,17 @@ py_strict_library(
 py_strict_library(
     name = "rnn_cell_impl",
     srcs = ["rnn_cell_impl.py"],
-    deps = ["//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl"],
+    deps = [
+        ":array_ops",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
+        "//tensorflow/python/util:nest",
+    ],
 )
 
 py_strict_library(
