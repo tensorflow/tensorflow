@@ -210,6 +210,7 @@ filegroup(
     srcs = [
         "xla_compiled_cpu_function.h",
         "//tensorflow/compiler/xla:cpu_runtime_hdrs",
+        "//tensorflow/compiler/xla/runtime:aot_ffi_execution_context_hdrs",
         "//tensorflow/compiler/xla/service:custom_call_status_hdrs",
         "//tensorflow/compiler/xla/service/cpu:runtime_hdrs",
         "//tensorflow/core/kernels:xla_cpu_runtime_hdrs",
@@ -375,6 +376,7 @@ cc_library(
         # binary produced by tfcompile.
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/runtime:aot_ffi_execution_context",
         "//tensorflow/compiler/xla/service/cpu:buffer_desc",
         "//tensorflow/core/platform:types",
     ],
