@@ -249,7 +249,8 @@ Status NcclCollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   // continue enqueuing operations. Otherwise, the allocations can cause
   // deadlock in the CUDA driver (b/215649390).
   if (first_call_to_execute_) {
-    TF_RETURN_IF_ERROR(params.stream->BlockHostUntilDone());
+    se::Stream* stream = IsAsync() ? params.async_comms_stream : params.stream;
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
     first_call_to_execute_ = false;
   }
   return OkStatus();
