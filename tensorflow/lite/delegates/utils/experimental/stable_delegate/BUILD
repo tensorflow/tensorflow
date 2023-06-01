@@ -139,6 +139,19 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "stable_delegate_test_suite",
+    size = "medium",
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":kernel_test_main",
+        "//tensorflow/lite/kernels:combined_all_kernel_tests_lib",
+    ],
+)
+
 exports_files(
     srcs = [
         "test_xnnpack_settings.json",

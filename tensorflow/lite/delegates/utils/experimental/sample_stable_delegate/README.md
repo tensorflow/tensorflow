@@ -81,19 +81,33 @@ adb shell 'echo "{
 "> /data/local/tmp/stable_delegate_settings.json'
 ```
 
+We create a configuration file for the delegate test suite to verify that the
+models in the specified test cases have been delegated:
+
+```bash
+adb shell 'echo "
+  # The sample stable delegate supports static-sized addition and subtraction operations.
+  FloatSubOpModel.NoActivation
+  FloatSubOpModel.VariousInputShapes
+  FloatAddOpModel.NoActivation
+  FloatAddOpModel.VariousInputShapes
+"> /data/local/tmp/stable_delegate_acceleration_test_config.json'
+```
+
 Then, we build the test suite itself:
 
 ```bash
-bazel build -c opt --config=android_arm64 //tensorflow/lite/kernels:combined_all_kernel_tests
+bazel build -c opt --config=android_arm64 //tensorflow/lite/delegates/utils/experimental/stable_delegate:stable_delegate_test_suite
 
-adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/kernels/combined_all_kernel_tests /data/local/tmp
+adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_test_suite /data/local/tmp
 ```
 
 Now, we can execute the test suite with providing the settings file:
 
 ```bash
-adb shell "/data/local/tmp/combined_all_kernel_tests \
-  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json"
+adb shell "/data/local/tmp/stable_delegate_test_suite \
+  --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
+  --acceleration_test_config_path=/data/local/tmp/stable_delegate_acceleration_test_config.json"
 ```
 
 The test suite will show the following output in console after all tests are
