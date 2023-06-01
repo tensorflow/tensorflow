@@ -145,7 +145,7 @@ SmallVector<IntType> extractVector(ArrayAttr arrayAttr) {
 
 InterpreterValue bitcast(InterpreterState&, vector::BitCastOp op,
                          const InterpreterValue& vector) {
-  ShapedType ty = op->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto flattened = vector.coerceLayout({});
   auto buffer = flattened.buffer();
   auto view = flattened.view();
@@ -547,7 +547,7 @@ InterpreterValue outerProduct(InterpreterState&,
                               const InterpreterValue& lhs,
                               const InterpreterValue& rhs,
                               std::optional<InterpreterValue> acc) {
-  ShapedType ty = outerproduct->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(outerproduct->getResultTypes()[0]);
   return dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     using T = decltype(dummy);
     using TT = TensorOrMemref<T>;
@@ -712,11 +712,6 @@ InterpreterValue transferRead(InterpreterState& state,
                               ArrayRef<int64_t> offsets,
                               const InterpreterValue& padding,
                               std::optional<TensorOrMemref<bool>> mask) {
-  if (transfer.getVectorType().getElementType().isInteger(1)) {
-    state.addFailure("cannot transfer directly to i1 vector");
-    return {};
-  }
-
   auto* maskChannel = state.getTopScope()->getSideChannel<MaskSideChannel>(
       /*optional=*/true);
   if (maskChannel) {
@@ -767,11 +762,6 @@ llvm::SmallVector<InterpreterValue> transferWrite(
     InterpreterState& state, vector::TransferWriteOp transfer,
     InterpreterValue src, InterpreterValue dst, ArrayRef<int64_t> offsets,
     std::optional<TensorOrMemref<bool>> mask) {
-  if (transfer.getVectorType().getElementType().isInteger(1)) {
-    state.addFailure("cannot transfer directly from i1 vector");
-    return {};
-  }
-
   if (auto* maskChannel = state.getTopScope()->getSideChannel<MaskSideChannel>(
           /*optional=*/true)) {
     if (mask) {

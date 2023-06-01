@@ -1,4 +1,4 @@
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite", "verifier_internal_visibility_allowlist")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
@@ -6,6 +6,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
 )
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -80,7 +81,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform",
+        "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -128,7 +129,7 @@ py_library(
     deps = [
         "//tensorflow/lite/python:schema_py",
         "//tensorflow/lite/python:schema_util",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:gfile",
         "@flatbuffers//:runtime_py",
     ],
 )
@@ -204,9 +205,10 @@ cc_test(
 cc_library_with_tflite(
     name = "verifier",
     hdrs = ["verifier.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
     tflite_deps = [
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_stable",
     ],
     deps = [
         ":verifier_internal",
@@ -226,11 +228,8 @@ cc_library_with_tflite(
 cc_library_with_tflite(
     name = "verifier_internal",
     hdrs = ["verifier_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings(),
-    visibility = verifier_internal_visibility_allowlist() + [
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/java/src/main/native:__pkg__",
-    ],
     deps = ["//tensorflow/lite/core/tools:verifier_internal"],
 )
 
@@ -408,7 +407,7 @@ cc_library(
 cc_test(
     name = "model_loader_test",
     srcs = ["model_loader_test.cc"],
-    data = ["//tensorflow/lite/java/demo/app/src/main/assets:mobilenet_v1_1.0_224.tflite"],
+    data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
     deps = [
         ":model_loader",
         "//tensorflow/lite:model_builder",

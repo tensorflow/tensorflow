@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/tsl/lib/io/buffered_file.h"
 
 using llvm::raw_ostream;
 
@@ -86,7 +87,19 @@ struct WritableFileRawStream : public llvm::raw_ostream {
     SetUnbuffered();
   }
   ~WritableFileRawStream() override = default;
-  uint64_t current_pos() const override { return 0; }
+
+  uint64_t current_pos() const override {
+    int64_t position;
+    if (file->Tell(&position).ok()) {
+      return position;
+    } else {
+      // MLIR uses os.tell() to determine whether something was written by
+      // a subroutine or not, so it's important we have a working current_pos().
+      LOG(WARNING)
+          << "Couldn't query file position. Stream might be malformed.\n";
+      return -1;
+    }
+  }
 
   void write_impl(const char* ptr, size_t size) override {
     // Write the file if it is still valid. If the write fails, null out the
@@ -147,7 +160,7 @@ Status CreateFileForDumping(llvm::StringRef name,
     dir = GetDumpDirFromEnvVar();
 
   if (dir.empty()) {
-    return Status(error::Code::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "(TF_DUMP_GRAPH_PREFIX not specified)");
   }
 
@@ -163,7 +176,7 @@ Status CreateFileForDumping(llvm::StringRef name,
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create '" << dir
                  << "' directory for dumping: " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
   *filepath = io::JoinPath(dir, MakeUniqueFilename(std::string(name)));
 
@@ -172,8 +185,9 @@ Status CreateFileForDumping(llvm::StringRef name,
   status = env->NewWritableFile(*filepath, &file);
   if (!status.ok()) {
     LOG(WARNING) << "Failed to create file '" << filepath << "': " << status;
-    return Status(error::Code::UNAVAILABLE, "(unavailable)");
+    return Status(absl::StatusCode::kUnavailable, "(unavailable)");
   }
+  file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
   *os = std::make_unique<WritableFileRawStream>(std::move(file));
   return Status();
 }
@@ -200,7 +214,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
+  if (!result.ok()) return std::string(result.message());
 
   if (pass_manager) PrintPassPipeline(*pass_manager, op, *os);
   op->print(*os, mlir::OpPrintingFlags().useLocalScope());
@@ -234,7 +248,7 @@ std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
   std::unique_ptr<raw_ostream> os;
   std::string filepath;
   Status result = CreateFileForDumping(name, &os, &filepath, dirname);
-  if (!result.ok()) return result.error_message();
+  if (!result.ok()) return std::string(result.message());
 
   (*os) << content;
   LOG(INFO) << "Outputted requested string to '" << filepath << "'";
@@ -274,8 +288,8 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     auto* env = tensorflow::Env::Default();
     auto status = env->RecursivelyCreateDir(path);
     if (!status.ok()) {
-      LOG(WARNING) << "cannot create directory '" + path +
-                          "': " + status.error_message();
+      LOG(WARNING) << "cannot create directory '" << path
+                   << "': " << status.message();
       return;
     }
 
@@ -301,9 +315,11 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
     // Try to open the file and generate a raw_ostream.
     std::unique_ptr<WritableFile> file;
     Status status = tensorflow::Env::Default()->NewWritableFile(path, &file);
+    file = std::make_unique<tsl::BufferedWritableFile>(std::move(file));
+
     if (!status.ok()) {
       error = absl::StrCat("Failed to create file '", path,
-                           "': ", status.error_message());
+                           "': ", status.message());
       return nullptr;
     }
     return std::make_unique<CrashReproducerStream>(
@@ -314,7 +330,11 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
 
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path) {
-  mlir::applyPassManagerCLOptions(pm);
+  mlir::registerPassManagerCLOptions();
+  if (!mlir::succeeded(mlir::applyPassManagerCLOptions(pm))) {
+    LOG(ERROR) << "cannot apply MLIR pass manager CL options";
+    return;
+  }
   SetCrashReproducer(pm, dir_path);
 }
 

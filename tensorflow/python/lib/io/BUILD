@@ -1,6 +1,7 @@
 # python/lib/io package
 
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test", "tf_python_pybind_extension")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 
 # copybara:uncomment_begin(google-only)
@@ -29,7 +30,7 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "lib",
     srcs = [
         "file_io.py",
@@ -41,8 +42,9 @@ py_library(
         ":_pywrap_file_io",
         ":_pywrap_record_io",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
 )
@@ -61,7 +63,7 @@ tf_python_pybind_extension(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "file_io_test",
     size = "small",
     srcs = ["file_io_test.py"],
@@ -74,10 +76,12 @@ tf_py_test(
         ":lib",
         "//tensorflow/python:errors",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/platform:gfile",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = if_oss("tf_record_test", "_tf_record_test"),
     size = "small",
     srcs = ["tf_record_test.py"],
@@ -92,8 +96,8 @@ tf_py_test(
     deps = [
         ":lib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:util",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:compat",
     ],
 )
 

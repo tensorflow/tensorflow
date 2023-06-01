@@ -13,7 +13,10 @@ cc_library(
     srcs = [
         "flatbuffer_translator.cc",
     ],
-    hdrs = ["flatbuffer_translator.h"],
+    hdrs = [
+        "flatbuffer_operator.h",
+        "flatbuffer_translator.h",
+    ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -23,12 +26,12 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/stablehlo/schema:schema_fbs",
         "//tensorflow/lite/toco:toco_flags_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@flatbuffers",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",

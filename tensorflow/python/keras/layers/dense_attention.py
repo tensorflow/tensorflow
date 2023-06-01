@@ -19,7 +19,7 @@ Attention is formed by three tensors: Query, Key and Value.
 """
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine.base_layer import Layer
@@ -183,7 +183,7 @@ class BaseDenseAttention(Layer):
       q_mask = mask[0]
       if q_mask is None:
         return None
-      return ops.convert_to_tensor_v2_with_dispatch(q_mask)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(q_mask)
     return None
 
   def _validate_call_args(self, inputs, mask):

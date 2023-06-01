@@ -1,6 +1,3 @@
-#ifndef MLIR_HLO_UTILS_CODEGEN_UTILS_H
-#define MLIR_HLO_UTILS_CODEGEN_UTILS_H
-
 /* Copyright 2021 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef MLIR_HLO_UTILS_CODEGEN_UTILS_H
+#define MLIR_HLO_UTILS_CODEGEN_UTILS_H
+
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-
-#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CODEGEN_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CODEGEN_UTILS_H_
 
 namespace mlir {
 class Value;
@@ -45,6 +42,4 @@ llvm::SmallVector<Value> calcMultiDimIndex(OpBuilder& b, Location loc,
 }  // namespace codegen_utils
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_CODEGEN_UTILS_H_
-
-#endif
+#endif  // MLIR_HLO_UTILS_CODEGEN_UTILS_H

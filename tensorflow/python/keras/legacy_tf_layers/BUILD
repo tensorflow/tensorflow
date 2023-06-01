@@ -27,7 +27,6 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
@@ -35,6 +34,9 @@ py_library(
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/mixed_precision:policy",
         "//tensorflow/python/trackable:base",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -45,8 +47,8 @@ py_library(
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -57,8 +59,8 @@ py_library(
     deps = [
         ":layers_base",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -68,7 +70,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":layers_base",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras/layers",
+        "//tensorflow/python/util:tf_export",
     ],
 )

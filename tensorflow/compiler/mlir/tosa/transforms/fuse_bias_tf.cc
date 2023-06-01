@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <numeric>
+#include <optional>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -119,7 +120,7 @@ LogicalResult ConvertTFBiasAddOp::matchAndRewrite(
           op, "bias dimension must match filter output channels");
     }
 
-    llvm::Optional<Value> result = convertTFConv3DCommon(
+    std::optional<Value> result = convertTFConv3DCommon(
         rewriter, op, output_type, tf_conv3d_op.getInput(),
         tf_conv3d_op.getFilter(), bias, tf_conv3d_op.getStrides(),
         tf_conv3d_op.getDilations(), tf_conv3d_op.getPadding(),

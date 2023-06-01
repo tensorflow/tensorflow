@@ -28,13 +28,14 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import forwardprop_util
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import map_fn
@@ -84,7 +85,7 @@ def _jacfwd(f, primals):
               functools.partial(array_ops.reshape, shape=[-1]),
               _jvp(f, primals, nest.pack_sequence_as(primals,
                                                      tangent_mask))[1]))
-    jac_flat.append(array_ops.stack(jac_columns, axis=1))
+    jac_flat.append(array_ops_stack.stack(jac_columns, axis=1))
     tangent_mask[primal_index] = array_ops.zeros_like(primal)
   return nest.pack_sequence_as(primals, jac_flat)
 
@@ -721,11 +722,11 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       with backprop.GradientTape() as gg:
         gg.watch(primals)
         out = fun(primals)
-      grad = array_ops.unstack(gg.gradient(out, primals))
+      grad = array_ops_stack.unstack(gg.gradient(out, primals))
     hessian = []
     for i in range(3):
       hessian.append(g.gradient(grad[i], primals))
-    hessian = array_ops.stack(hessian, axis=0)
+    hessian = array_ops_stack.stack(hessian, axis=0)
     backback_hvp = math_ops.tensordot(hessian, tangents, axes=1)
 
     self.assertAllClose(backback_hvp, forwardback_hvp_eager)
@@ -737,19 +738,19 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     c_tangent = constant_op.constant(2.)
     with forwardprop.ForwardAccumulator(c, c_tangent) as acc:
       with backprop.GradientTape() as tape:
-        self.assertFalse(tape_lib.should_record_backprop([c]))
+        self.assertFalse(record.should_record_backprop([c]))
         self.assertEqual(1, pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
         tape.watch(c)
         self.assertEqual(2, pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
-        self.assertTrue(tape_lib.should_record_backprop([c]))
-        with tape_lib.stop_recording():
+        self.assertTrue(record.should_record_backprop([c]))
+        with record.stop_recording():
           self.assertEqual(0,
                            pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
-          self.assertFalse(tape_lib.should_record_backprop([c]))
+          self.assertFalse(record.should_record_backprop([c]))
           d = c * 2.
         self.assertEqual(2, pywrap_tfe.TFE_Py_TapeSetPossibleGradientTypes([c]))
-        self.assertTrue(tape_lib.should_record_backprop([c]))
-        self.assertFalse(tape_lib.should_record_backprop([d]))
+        self.assertTrue(record.should_record_backprop([c]))
+        self.assertFalse(record.should_record_backprop([d]))
         self.assertIsNone(acc.jvp(d))
       self.assertIsNone(tape.gradient(d, c))
 
@@ -760,7 +761,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     with forwardprop.ForwardAccumulator(c, c_tangent) as acc:
       with backprop.GradientTape(persistent=True) as tape:
         tape.watch(c)
-        with tape_lib.stop_recording():
+        with record.stop_recording():
           two = constant_op.constant(2.)
           d = c * two
           three = constant_op.constant(3.)
@@ -769,12 +770,12 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         self.assertIsNone(acc.jvp(e))
         self.assertIsNone(tape.gradient(d, c))
         self.assertIsNone(tape.gradient(e, c))
-        tape_lib.record_operation_forwardprop_only(
+        record.record_operation_forwardprop_only(
             "CustomForwardMul", [d], [c, two], lambda dd: (two * dd, c * dd),
             None)
-        tape_lib.record_operation_backprop_only("CustomBackwardMul", [e],
-                                                [c, three], lambda de:
-                                                (three * de, c * de))
+        record.record_operation_backprop_only("CustomBackwardMul", [e],
+                                              [c, three], lambda de:
+                                              (three * de, c * de))
         self.assertAllClose(4., acc.jvp(d))
         self.assertIsNone(acc.jvp(e))
         self.assertIsNone(tape.gradient(d, c))
@@ -825,7 +826,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         with gradient_tape as tape:
           tape.watch(c)
           d = math_ops.cos(c)
-          self.assertFalse(tape_lib.should_record_backprop((acc.jvp(d),)))
+          self.assertFalse(record.should_record_backprop((acc.jvp(d),)))
           e = math_ops.cos(acc.jvp(d))
           math_ops.cos(e)
           weak_e = weakref.ref(e)
@@ -850,7 +851,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       with forward_accumulator as acc:
         tape.watch(c)
         d = math_ops.cos(c)
-        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(d),)))
+        self.assertTrue(record.should_record_backprop((acc.jvp(d),)))
       self.assertAllClose(-.1 * math_ops.cos(1.), tape.gradient(acc.jvp(d), c))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
@@ -861,10 +862,10 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose([10.], packed_input_tangents)
       d = constant_op.constant(2.)
       d_tangent = constant_op.constant(3.)
-      tape_lib.record_operation_forwardprop_only("FunctionWithInlineJVPs",
-                                                 [d] + [d_tangent],
-                                                 [c] + packed_input_tangents,
-                                                 None, (((0, 1),),))
+      record.record_operation_forwardprop_only("FunctionWithInlineJVPs",
+                                               [d] + [d_tangent],
+                                               [c] + packed_input_tangents,
+                                               None, (((0, 1),),))
       self.assertAllClose(3., acc.jvp(d))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
@@ -873,12 +874,12 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
     d = constant_op.constant(2.)
     e = constant_op.constant(3.)
     with forwardprop.ForwardAccumulator(c, 10.) as acc:
-      tape_lib.record_operation("ForwardIsSpecial", [d], [c], None,
-                                lambda jvp: [-2. * jvp])
+      record.record_operation("ForwardIsSpecial", [d], [c], None,
+                              lambda jvp: [-2. * jvp])
       self.assertAllClose(-20., acc.jvp(d))
-      tape_lib.record_operation("ForwardIsSpecial2", [], [], None, lambda: [])
-      tape_lib.record_operation("ForwardIsSpecial3", [e], [d], None,
-                                lambda x: [x])
+      record.record_operation("ForwardIsSpecial2", [], [], None, lambda: [])
+      record.record_operation("ForwardIsSpecial3", [e], [d], None,
+                              lambda x: [x])
       self.assertAllClose(-20., acc.jvp(e))
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
@@ -1117,7 +1118,7 @@ class BatchTests(test.TestCase, parameterized.TestCase):
       with batch_acc as acc:
         tape.watch(x)
         y = math_ops.cos(x)
-        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(y),)))
+        self.assertTrue(record.should_record_backprop((acc.jvp(y),)))
         jvps = acc.jvp(y)
       d2y_dx2 = [tape.gradient(dy_dx, x) for dy_dx in jvps]
     self.assertAllClose(expected, d2y_dx2)

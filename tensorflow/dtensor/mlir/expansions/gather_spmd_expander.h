@@ -71,7 +71,8 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
     // all-concat, which can be added later.
     {
       LayoutProto tgt_params_layout;
-      *tgt_params_layout.mutable_mesh_config() = params_layout.mesh().ToProto();
+      TF_ASSIGN_OR_RETURN(*tgt_params_layout.mutable_mesh_config(),
+                          params_layout.mesh().ToProto());
       // check the first half
       for (int i = 0; i < axis; ++i) {
         const std::string& dim_name = params_layout.sharding_spec(i);
@@ -128,8 +129,8 @@ class GatherCommonSPMDExpander : public SPMDExpanderBase {
     {
       bool indices_relayout_needed = false;
       LayoutProto tgt_indices_layout;
-      *tgt_indices_layout.mutable_mesh_config() =
-          output_layout.mesh().ToProto();
+      TF_ASSIGN_OR_RETURN(*tgt_indices_layout.mutable_mesh_config(),
+                          output_layout.mesh().ToProto());
       for (int i = 0; i < indices_rank; ++i) {
         int index_in_output;
         int index_in_indices;

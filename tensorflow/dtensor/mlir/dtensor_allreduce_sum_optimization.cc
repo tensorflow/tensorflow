@@ -163,7 +163,7 @@ mlir::LogicalResult OptimizeAllReduceAndSum(mlir::Operation* op,
   if (!layout_or_status.ok())
     return first_reduction_op->emitOpError(llvm::formatv(
         "Malformed layout specification for DTensorAllReduce op found: {0}",
-        layout_or_status.status().error_message()));
+        layout_or_status.status().message()));
 
   if (!layout_or_status->has_value())
     return first_reduction_op->emitOpError(
@@ -398,7 +398,7 @@ mlir::LogicalResult ExtractAllReduceFromWhileOp(
   if (!layout_or_status.ok())
     return all_reduce->emitOpError(llvm::formatv(
         "Malformed layout specification for DTensorAllReduce op found: {0}",
-        layout_or_status.status().error_message()));
+        layout_or_status.status().message()));
 
   if (!layout_or_status->has_value())
     return all_reduce->emitOpError(

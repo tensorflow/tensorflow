@@ -29,6 +29,9 @@ limitations under the License.
 #include "flatbuffers/util.h"  // from @flatbuffers
 #include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/interpreter_builder.h"
+#if FLATBUFFERS_LITTLEENDIAN == 0
+#include "tensorflow/lite/core/model_builder.h"
+#endif
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/call_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/decode_jpeg_register.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/model_modifier/embedder.h"
@@ -69,6 +72,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << std::endl;
     return 3;
   }
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&main_model_contents);
+#endif
   const Model* main_model =
       flatbuffers::GetRoot<Model>(main_model_contents.data());
 
@@ -80,6 +86,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << std::endl;
     return 4;
   }
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&metrics_model_contents);
+#endif
   const Model* metrics_model =
       flatbuffers::GetRoot<Model>(metrics_model_contents.data());
 
@@ -124,6 +133,9 @@ int RunEmbedder(const EmbedderOptions& options) {
               << " for writing failed: " << strerror(errno) << std::endl;
     return 7;
   }
+#if FLATBUFFERS_LITTLEENDIAN == 0
+  tflite::FlatBufferModel::ByteSwapSerializedModel(&binary);
+#endif
   f << binary;
   f.close();
   if (!f.good()) {

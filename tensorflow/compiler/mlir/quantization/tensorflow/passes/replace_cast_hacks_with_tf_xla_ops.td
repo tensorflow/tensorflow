@@ -34,6 +34,13 @@ def CreateXLAConvOpFromTFConv3DOp : NativeCodeCall<
 def CreateXlaDotV2OpFromTfBatchMatMulOp : NativeCodeCall<
   "CreateXlaDotV2OpFromTfBatchMatMulOp($_builder, $_loc, $0...)">;
 
+def CreateXlaDotV2OpFromTfEinsumOp : NativeCodeCall<
+  "CreateXlaDotV2OpFromTfEinsumOp($_builder, $_loc, $0...)">;
+
+def IsEinsumOpSupported : Constraint<
+  CPred<"IsEinsumOpSupported($0, $1, $2)">,
+  "Check if the given einsum op could be converted into a XlaDotV2 op.">;
+
 // Converts inlined Conv2D pattern to TF XlaConvV2 op. This pattern doesn't
 // support non-constant weights.
 def ConvertTFConv2DToXLAConvOp : Pat<
@@ -507,5 +514,18 @@ def ConvertTFBatchMatMulWithTwoInputTensorsAndNoBothZeroPointsToXLADotV2Op : Pat
    (IsInt32ElementType $batch_matmul)],
   (addBenefit 10)>;
 
-
-
+// Converts inlined Einsum pattern to TF XlaDotV2 op.
+def ConvertTFEinsumToXLADotV2Op : Pat<
+  (TF_EinsumOp:$einsum
+    $args, $equation),
+  (CreateXlaDotV2OpFromTfEinsumOp
+    $equation, $args, $einsum),
+  [(IsInt32ElementType $einsum),
+   // Constraint to check:
+   // 1. The einsum has two inputs and one output.
+   // 2. The einsum is not created by the convert function itself.
+   // 3. Both inputs are int32 tensor.
+   // 4. Both inputs have the graph ancestor of either const-(sub), or cast-sub.
+   // 5. The type of the const tensor (or input of the cast operation) is int8.
+   (IsEinsumOpSupported $einsum, $args, $equation)],
+  (addBenefit 10)>;

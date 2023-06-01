@@ -153,8 +153,8 @@ mlir::ArrayAttr ConvertCrossProgramPrefetches(
   for (auto [parameter, index, alt_memory_offset] : prefetches) {
     llvm::SmallVector<int64_t, 4> dims;
     for (auto dim : index) dims.push_back(dim);
-    llvm::Optional<int64_t> offset =
-        alt_memory_offset ? llvm::Optional<int64_t>(*alt_memory_offset)
+    std::optional<int64_t> offset =
+        alt_memory_offset ? std::optional<int64_t>(*alt_memory_offset)
                           : std::nullopt;
     shapes.push_back(mlir::mhlo::CrossProgramPrefetchAttr::get(
         builder->getContext(), parameter, dims, offset));
@@ -256,6 +256,18 @@ StatusOr<mlir::ArrayAttr> ExtractLayoutsFromTuple(const Shape shape,
                                                   mlir::Builder* builder) {
   if (!shape.IsTuple()) return InvalidArgument("Expected shape to be Tuple");
   return ExtractLayoutsFromShapes(shape.tuple_shapes(), builder);
+}
+
+mlir::Attribute ConvertSharding(const xla::HloSharding& sharding,
+                                mlir::Builder* builder) {
+  return builder->getStringAttr(sharding.ToString(/*include_metadata=*/true));
+}
+
+mlir::Attribute ConvertSharding(const xla::OpSharding& sharding,
+                                mlir::Builder* builder) {
+  auto hlo_sharding = xla::HloSharding::FromProto(sharding);
+  if (!hlo_sharding.ok()) return {};
+  return ConvertSharding(hlo_sharding.value(), builder);
 }
 
 }  // namespace xla

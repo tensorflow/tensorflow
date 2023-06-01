@@ -231,7 +231,7 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
     tensorflow::StatusOr<Attribute> maybe_attr =
         ConvertAttributeValue(attr.default_value(), b);
     if (!maybe_attr.ok())
-      return op->emitError(maybe_attr.status().error_message());
+      return op->emitError(std::string(maybe_attr.status().message()));
     if (maybe_attr.value() == it.first->getValue())
       indices_to_remove.set(std::distance(attrs.begin(), it.first));
   }
@@ -240,7 +240,7 @@ LogicalResult StripDefaultAttrsPass::removeDefaultValuedAttrs(Operation *op) {
   // Construct and set the new attributes.
   SmallVector<NamedAttribute> new_attrs;
   new_attrs.reserve(attrs.size());
-  for (auto &it : llvm::enumerate(attrs)) {
+  for (const auto &it : llvm::enumerate(attrs)) {
     if (indices_to_remove.test(it.index())) continue;
     new_attrs.push_back(it.value());
   }
@@ -321,7 +321,7 @@ LogicalResult AddDefaultAttrsPass::addDefaultValuedAttrs(Operation *op) {
     tensorflow::StatusOr<Attribute> maybe_attr =
         ConvertAttributeValue(attr.default_value(), b);
     if (!maybe_attr.ok())
-      return op->emitError(maybe_attr.status().error_message());
+      return op->emitError(std::string(maybe_attr.status().message()));
     attrs.set(attr.name(), maybe_attr.value());
   }
   op->setAttrs(attrs.getDictionary(&getContext()));

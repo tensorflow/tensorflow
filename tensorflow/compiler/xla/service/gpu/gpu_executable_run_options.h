@@ -20,37 +20,46 @@ limitations under the License.
 #include <map>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/global_device_id.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace gpu {
 
 // Key for naming up a particular NCCL clique.  This is just a set of unique
-// device IDs (i.e. GPU IDs). The device IDs must be global within a cluster.
+// device IDs (i.e. GPU IDs) and a stream_id. The device IDs must be global
+// within a cluster. The stream_id is used to create different NCCL clique and
+// communicators for collectives executed on different streams within an
+// executable.
 class NcclCliqueKey {
  public:
-  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices);
+  explicit NcclCliqueKey(std::vector<GlobalDeviceId> devices,
+                         int64_t stream_id = 0)
+      : devices_(std::move(devices)), stream_id_(stream_id) {}
 
   template <typename H>
   friend H AbslHashValue(H h, const NcclCliqueKey& k) {
-    return H::combine(std::move(h), k.devices_);
+    return H::combine(std::move(h), k.devices_, k.stream_id_);
   }
   friend bool operator==(const NcclCliqueKey& a, const NcclCliqueKey& b) {
-    return a.devices_ == b.devices_;
+    return a.devices_ == b.devices_ && a.stream_id_ == b.stream_id_;
   }
 
   const std::vector<GlobalDeviceId>& devices() const { return devices_; }
 
-  std::string ToString() const;
+  std::string ToString() const {
+    return absl::StrCat("stream[", stream_id_, "]",
+                        GlobalDeviceIdsToString(devices_));
+  }
 
  private:
-  std::vector<GlobalDeviceId> devices_;
+  const std::vector<GlobalDeviceId> devices_;
+  const int64_t stream_id_;
 };
 
 using NcclUniqueIdCallback =
@@ -84,9 +93,9 @@ class GpuExecutableRunOptions {
 // NCCL-related execution parameters.
 struct NcclExecuteParams {
   NcclExecuteParams(const ServiceExecutableRunOptions& run_options,
-                    se::Stream* stream);
+                    se::StreamExecutor* stream_executor);
 
-  se::Stream* stream;
+  se::StreamExecutor* stream_executor;
   RunId run_id;
   const DeviceAssignment* device_assn;                         // never null
   const std::map<int, GlobalDeviceId>* gpu_global_device_ids;  // may be null

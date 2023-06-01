@@ -68,6 +68,7 @@ InterpreterValue alloc(InterpreterState& state, memref::AllocOp alloc,
     stats->peakHeapSize = std::max(stats->peakHeapSize, stats->heapSize);
     ++stats->numAllocations;
   }
+  result.buffer()->setAllocatedBy(alloc);
   return result;
 }
 
@@ -77,10 +78,11 @@ InterpreterValue allocA(InterpreterState&, memref::AllocaOp alloc,
   auto shape = replaceDynamicVals(ty.getShape(), dynamicSizes);
   auto result = InterpreterValue::makeTensor(ty.getElementType(), shape);
   result.buffer()->setIsAlloca();
+  result.buffer()->setAllocatedBy(alloc);
   return result;
 }
 
-void dealloc(InterpreterState& state, memref::DeallocOp,
+void dealloc(InterpreterState& state, memref::DeallocOp op,
              InterpreterValue memref) {
   if (!memref.buffer()) {
     state.addFailure("attempting to deallocate null pointer.");
@@ -96,7 +98,7 @@ void dealloc(InterpreterState& state, memref::DeallocOp,
       buffer->getByteSize()) {
     state.addFailure("Attempting to deallocate a subview");
   } else if (!state.getOptions().disableDeallocations) {
-    buffer->deallocate();
+    buffer->deallocate(op);
   }
 }
 
@@ -170,8 +172,14 @@ llvm::SmallVector<InterpreterValue> collapseShape(
   return {out};
 }
 
-template <typename Op>
-InterpreterValue cast(InterpreterState& state, Op op, InterpreterValue memref) {
+InterpreterValue cast(InterpreterState&, memref::CastOp,
+                      InterpreterValue memref) {
+  return memref;
+}
+
+// TODO(jreiffers): Implement full expand_shape support.
+InterpreterValue expandShape(InterpreterState& state, memref::ExpandShapeOp op,
+                             InterpreterValue memref) {
   BufferView inputView = memref.view();
   auto outTy = op->getResultTypes()[0].template cast<MemRefType>();
   if (outTy.getNumDynamicDims() > 0) {
@@ -223,13 +231,12 @@ int64_t dim(InterpreterState& state, memref::DimOp,
 
 REGISTER_MLIR_INTERPRETER_OP(alloc);
 REGISTER_MLIR_INTERPRETER_OP(allocA);
+REGISTER_MLIR_INTERPRETER_OP(cast);
 REGISTER_MLIR_INTERPRETER_OP(collapseShape);
-REGISTER_MLIR_INTERPRETER_OP(cast<memref::CastOp>);
 REGISTER_MLIR_INTERPRETER_OP(copy);
 REGISTER_MLIR_INTERPRETER_OP(dealloc);
 REGISTER_MLIR_INTERPRETER_OP(dim);
-// TODO(jreiffers): Implement full expand_shape support.
-REGISTER_MLIR_INTERPRETER_OP(cast<memref::ExpandShapeOp>);
+REGISTER_MLIR_INTERPRETER_OP(expandShape);
 REGISTER_MLIR_INTERPRETER_OP(getGlobal);
 REGISTER_MLIR_INTERPRETER_OP(load);
 REGISTER_MLIR_INTERPRETER_OP(store);

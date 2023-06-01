@@ -15,9 +15,9 @@
 r"""Micro benchmark.
 
 bazel run -c opt --config=cuda \
-  //third_party/tensorflow/python/ops/numpy_ops/benchmarks:micro_benchmarks -- \
+  //third_party/tensorflow/python/ops/numpy_ops/integration_test/benchmarks:micro_benchmarks -- \
   --number=100 --repeat=100 \
-  --benchmarks=.
+  --benchmark_filter=.
 """
 import gc
 import time
@@ -28,11 +28,14 @@ from absl import logging
 import numpy as np  # pylint: disable=unused-import
 import tensorflow.compat.v2 as tf
 
-from tensorflow.python.ops import numpy_ops as tfnp   # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops.numpy_ops.integration_test.benchmarks import numpy_mlp
 from tensorflow.python.ops.numpy_ops.integration_test.benchmarks import tf_numpy_mlp
 
 FLAGS = flags.FLAGS
+
+# Used instead of "import tensorflow(dot)experimental.numpy as tfnp" due to
+# copybara issues.
+tfnp = tf.experimental.numpy
 
 flags.DEFINE_integer('repeat', 100, '#Measurements per benchmark.')
 flags.DEFINE_integer('number', 100, '#Runs per a measure.')

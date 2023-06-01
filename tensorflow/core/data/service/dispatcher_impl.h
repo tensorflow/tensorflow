@@ -201,18 +201,16 @@ class DataServiceDispatcherImpl {
       const std::string& dataset_id,
       std::vector<std::unique_ptr<SplitProvider>>& split_providers)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Registers a dataset with the given fingerprint, storing the new dataset's
-  // id in `dataset_id`.
-  Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
+  // Registers a dataset, storing the new dataset's id in `dataset_id`.
+  Status RegisterDataset(const DatasetDef& dataset,
                          const DataServiceMetadata& metadata,
                          const std::string& requested_dataset_id,
                          std::string& dataset_id)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // Finds the dataset ID with the requested dataset ID, or with the matching
-  // fingerprint if the ID does not exist. Returns nullptr if no such dataset
-  // exists.
+  // Finds the dataset ID with the requested dataset ID.
+  // Returns nullptr if no such dataset exists.
   StatusOr<std::optional<std::string>> FindDataset(
-      const GetOrRegisterDatasetRequest& request, uint64 fingerprint);
+      const GetOrRegisterDatasetRequest& request);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
   // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
   // stored in `out_stub`.
@@ -315,6 +313,9 @@ class DataServiceDispatcherImpl {
   void DetectMissingWorkers() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Scans for old iterations and marks them as finished.
   Status GcOldIterations() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Returns true if an iteration should be garbage collected.
+  bool ShouldGcIteration(const DispatcherState::Iteration& iteration,
+                         int64_t now_us) const;
   // Gets a `DatasetDef` from `dataset_store_` for the given dataset id, and
   // stores it in `dataset_def`.
   Status GetDatasetDef(const std::string& dataset_id,

@@ -19,7 +19,6 @@ limitations under the License.
 #include <map>
 #include <string>
 
-#include "tensorflow/lite/core/async/interop/attribute_keys.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/async/interop/variant.h"
 
@@ -40,8 +39,10 @@ class AttributeMap {
   using ContainerT = std::map<KeyT, ValueT>;
   using CustomContainerT = std::map<CustomKeyT, ValueT>;
 
-  bool IsBufferAttributeMap() const { return type_ == kTfLiteBufferAttrMap; }
-  bool IsSyncAttributeMap() const { return type_ == kTfLiteSyncAttrMap; }
+  bool IsBufferAttributeMap() const {
+    return type_ == kTfLiteAttrMapTypeBuffer;
+  }
+  bool IsSyncAttributeMap() const { return type_ == kTfLiteAttrMapTypeSync; }
 
   // Reconciles and merges the attribute values from other.
   // After reconciliation, the merged value is compatible with both *this and
@@ -62,20 +63,23 @@ class AttributeMap {
                               AttributeMap* conflict) const;
 
   // Retrieves attribute value by key.
-  // Returns true if corresponding attribute exists, otherwise returns false.
-  template <typename ValueT>
-  bool GetAttr(TfLiteBufferAttributeKey key, ValueT* value) const {
+  // Returns true if corresponding attribute exists and requested type matches,
+  // otherwise returns false.
+  template <typename AttrKeyT, typename ValueT>
+  bool GetAttr(AttrKeyT key, ValueT* value) const {
     if (auto it = attrs_.find(static_cast<uint32_t>(key)); it != attrs_.end()) {
-      *value = it->second.Get<ValueT>();
-      return true;
+      if (auto* v = it->second.Get<ValueT>(); v != nullptr) {
+        *value = *v;
+        return true;
+      }
     }
     return false;
   }
 
   // Sets attribute value by key.
-  template <typename ValueT>
-  void SetAttr(TfLiteBufferAttributeKey key, ValueT value) {
-    attrs_.insert_or_assign(static_cast<uint32_t>(key), value);
+  template <typename AttrKeyT, typename ValueT>
+  void SetAttr(AttrKeyT key, ValueT value) {
+    attrs_.insert_or_assign(static_cast<KeyT>(key), value);
   }
 
   // Retrieves custom attribute value by key.
@@ -83,8 +87,10 @@ class AttributeMap {
   template <typename ValueT>
   bool GetCustomAttr(CustomKeyT key, ValueT* value) const {
     if (auto it = custom_attrs_.find(key); it != custom_attrs_.end()) {
-      *value = it->second.Get<ValueT>();
-      return true;
+      if (auto* v = it->second.Get<ValueT>(); v != nullptr) {
+        *value = *v;
+        return true;
+      }
     }
     return false;
   }

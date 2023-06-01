@@ -187,6 +187,8 @@ def TF_RecvResource : TF_ResourceBase<"Recv">;
 def TF_TPUExecuteResource : TF_ResourceBase<"TPUExecute">;
 def TF_RandomGeneratorResource : TF_ResourceBase<"RandomGenerator">;
 def TF_XlaHostComputeResource : TF_ResourceBase<"XlaHostCompute">;
+def TF_XlaLaunchResource : TF_ResourceBase<"XlaLaunch">;
+def TF_WriteTrainingPredictionsResource : TF_ResourceBase<"WriteTrainingPredictions">;
 def TF_CollectiveReduceOrderingResource : TF_ResourceBase<"CollectiveReduceOrdering">;
 def TF_NcclAllReduceOrderingResource : TF_ResourceBase<"NcclAllReduceOrdering">;
 
@@ -249,8 +251,9 @@ def TF_SendSideEffect : MemoryEffects<[MemWrite<TF_SendResource>]>;
 def TF_RecvSideEffect : MemoryEffects<[MemWrite<TF_RecvResource>]>;
 def TF_XlaHostComputeSideEffect : MemoryEffects<[MemWrite<TF_XlaHostComputeResource>]>;
 
-def TF_TPUExecuteSideEffect : MemoryEffects<[MemWrite<TF_TPUExecuteResource>]>;
+def TF_XlaLaunchSideEffect : MemoryEffects<[MemWrite<TF_XlaLaunchResource>]>;
 
+def TF_WriteTrainingPredictions : MemoryEffects<[MemWrite<TF_WriteTrainingPredictionsResource>]>; 
 def TF_RandomGeneratorSideEffect : MemoryEffects<[MemWrite<TF_RandomGeneratorResource>]>;
 
 // Special effect for keeping `CollectiveReduce` ops in order.
@@ -283,7 +286,7 @@ class TF_TensorFlowAttr <string name, string description> :
          "TensorFlow " # description # " attribute">;
 
 def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
-  let returnType = "llvm::Optional<llvm::ArrayRef<int64_t>>";
+  let returnType = "std::optional<llvm::ArrayRef<int64_t>>";
   let convertFromStorage = "$_self.cast<mlir::TF::ShapeAttr>().getValue()";
 
   // Create a ranked shape attr by default.
@@ -292,6 +295,13 @@ def TF_ShapeAttr : TF_TensorFlowAttr<"Shape", "shape"> {
 
 def TF_ShapeAttrArray :
     TypedArrayAttrBase<TF_ShapeAttr, "tensorflow shape attribute array">;
+
+// An array of FlatSymbolRef attributes that can be used as a default valued
+// attribute.
+def TF_SymbolRefArrayAttr :
+  TypedArrayAttrBase<SymbolRefAttr, "tensorflow symbol ref array attribute"> {
+  let constBuilderCall = "::mlir::ArrayAttr::get($_builder.getContext(), $0)";
+}
 
 //===----------------------------------------------------------------------===//
 // TensorFlow type definitions
@@ -672,8 +682,10 @@ class WithBroadcastableBinOpBuilder {
     [{
   auto resultType =
       OpTrait::util::getBroadcastedType(x.getType(), y.getType());
-  if (!resultType)
+  if (!resultType) {
     mlir::emitError($_state.location, "non-broadcastable operands");
+    resultType = $_builder.getNoneType();
+  }
   return build($_builder, $_state, resultType, x, y);
 }]>];
 }

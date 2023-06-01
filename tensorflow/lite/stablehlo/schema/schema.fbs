@@ -30,6 +30,8 @@ enum DataType: byte{
   UINT8 = 8,
   UINT16 = 9,
   UINT32 = 10,
+  UINT64 = 11,
+  INT64 = 12,
 }
 
 table Tensor {
@@ -75,6 +77,7 @@ enum OperatorCode : int32 {
   GATHER = 21,
   ABS = 22,
   DOT_GENERAL = 23,
+  RESIZE_BILINEAR = 24,
 }
 
 // Options for stablehlo operators.
@@ -103,6 +106,7 @@ union OperatorOptions {
   GatherOptions,
   AbsOptions,
   DotGeneralOptions,
+  ResizeBilinearOptions,
 }
 
 table DotOptions {
@@ -227,6 +231,11 @@ table DotGeneralOptions {
   rhs_batching_dimensions:[long];
   lhs_contracting_dimensions:[long];
   rhs_contracting_dimensions:[long];
+}
+
+table ResizeBilinearOptions {
+  align_corners: bool;
+  half_pixel_centers: bool;
 }
 
 table Operator {

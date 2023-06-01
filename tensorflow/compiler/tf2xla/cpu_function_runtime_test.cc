@@ -151,7 +151,7 @@ TEST(XlaCompiledCpuFunctionTest, MallocFreeContiguousBuffers) {
 }
 
 void CheckRoundTripIsOk(const BufferInfo& buffer_info) {
-  BufferInfo round_trip(buffer_info.Encode());
+  BufferInfo round_trip(buffer_info.EncodeOld());
   ASSERT_EQ(round_trip, buffer_info);
 }
 

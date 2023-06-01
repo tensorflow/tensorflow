@@ -80,7 +80,7 @@ XlaInterpreterPlatform::GetUncachedExecutor(
   auto init_status = executor->Init(config.device_options);
   if (!init_status.ok()) {
     return tsl::Status{
-        tsl::error::INTERNAL,
+        absl::StatusCode::kInternal,
         absl::StrFormat(
             "failed initializing StreamExecutor for device ordinal %d: %s",
             config.ordinal, init_status.ToString())};

@@ -161,6 +161,7 @@ class GpuRuntimeExecutable {
 
   // Keep captured and instantiated CUDA graphs instances.
   GraphInstances graph_instances_;
+  CapturedFunctionExecutionCounts captured_function_counts_;
 #endif  // GOOGLE_CUDA
 
   // Keep an executable state for all registered runtime modules.

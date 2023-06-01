@@ -44,7 +44,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
         mlir::mhlo::createLegalizeSparseChloToLinalgPass());
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::mhlo::createChloLegalizeToHloPass(
-            /*legalize_broadcasts=*/true, /*expand_compositions=*/true));
+            /*legalizeBroadcasts=*/true, /*expandCompositions=*/true));
     pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
     // In order to export to XLA, we must sink constants to control flow
     // regions, since XLA uses functional control flow.
@@ -53,7 +53,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
-      return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+      return diagnostic_handler.ConsumeStatus();
     }
 
     VLOG(5) << "MHLO module after lowering, before HLO import ";
@@ -84,12 +84,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   return std::move(module);
 }

@@ -15,94 +15,145 @@ limitations under the License.
 
 #include "tensorflow/lite/core/c/common.h"
 
+#ifndef TF_LITE_STATIC_MEMORY
+#include <cstdlib>
+#endif  // TF_LITE_STATIC_MEMORY
+
+#include <cstring>
+#include <type_traits>
+#include <utility>
+
 #include "tensorflow/lite/core/c/c_api_types.h"
 #ifdef TF_LITE_TENSORFLOW_PROFILER
 #include "tensorflow/lite/tensorflow_profiler_logger.h"
 #endif
 
-#ifndef TF_LITE_STATIC_MEMORY
-#include <stdlib.h>
-#include <string.h>
-#endif  // TF_LITE_STATIC_MEMORY
+namespace {
 
-extern "C" {
-
-size_t TfLiteIntArrayGetSizeInBytes(int size) {
-  static TfLiteIntArray dummy;
-
-  size_t computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
+template <class T>
+size_t TfLiteVarArrayGetSizeInBytes(const int size) {
+  constexpr size_t data_size = sizeof(std::declval<T>().data[0]);
+  size_t computed_size = sizeof(T) + data_size * size;
 #if defined(_MSC_VER)
   // Context for why this is needed is in http://b/189926408#comment21
-  computed_size -= sizeof(dummy.data[0]);
+  computed_size -= data_size;
 #endif
   return computed_size;
 }
 
+template <class T, class U>
+int TfLiteVarArrayEqualsArray(const T* const a, const int b_size,
+                              const U* const b_data) {
+  static_assert(std::is_same<decltype(a->data[0]), const U&>::value,
+                "TfLiteVarArrayEqualsArray can only compare same type arrays");
+  if (a == nullptr) {
+    return b_size == 0;
+  }
+  if (a->size != b_size) {
+    return 0;
+  }
+  return !memcmp(a->data, b_data, a->size * sizeof(a->data[0]));
+}
+
+template <class T>
+int TfLiteVarArrayEqual(const T* const a, const T* const b) {
+  // This goes first because null arrays must compare equal.
+  if (a == b) {
+    return 1;
+  }
+  if (a == nullptr || b == nullptr) {
+    return 0;
+  }
+  return TfLiteVarArrayEqualsArray(a, b->size, b->data);
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+
+template <class T>
+T* TfLiteVarArrayCreate(const int size) {
+  const size_t alloc_size = TfLiteVarArrayGetSizeInBytes<T>(size);
+  if (alloc_size <= 0) {
+    return nullptr;
+  }
+  T* ret = (T*)malloc(alloc_size);
+  if (!ret) {
+    return nullptr;
+  }
+  ret->size = size;
+  return ret;
+}
+
+template <class T>
+T* TfLiteVarArrayCopy(const T* const src) {
+  if (!src) {
+    return nullptr;
+  }
+  T* const ret = TfLiteVarArrayCreate<T>(src->size);
+  if (ret) {
+    memcpy(ret->data, src->data, src->size * sizeof(src->data[0]));
+  }
+  return ret;
+}
+
+#endif  // TF_LITE_STATIC_MEMORY
+
+template <class T>
+void TfLiteVarArrayFree(T* a) {
+  free(a);
+}
+
+}  // namespace
+
+extern "C" {
+
+size_t TfLiteIntArrayGetSizeInBytes(int size) {
+  return TfLiteVarArrayGetSizeInBytes<TfLiteIntArray>(size);
+}
+
 int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
-  if (a == b) return 1;
-  if (a == nullptr || b == nullptr) return 0;
-  return TfLiteIntArrayEqualsArray(a, b->size, b->data);
+  return TfLiteVarArrayEqual(a, b);
 }
 
 int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
                               const int b_data[]) {
-  if (a == nullptr) return (b_size == 0);
-  if (a->size != b_size) return 0;
-  int i = 0;
-  for (; i < a->size; i++)
-    if (a->data[i] != b_data[i]) return 0;
-  return 1;
+  return TfLiteVarArrayEqualsArray(a, b_size, b_data);
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteIntArray* TfLiteIntArrayCreate(int size) {
-  size_t alloc_size = TfLiteIntArrayGetSizeInBytes(size);
-  if (alloc_size <= 0) return nullptr;
-  TfLiteIntArray* ret = (TfLiteIntArray*)malloc(alloc_size);
-  if (!ret) return ret;
-  ret->size = size;
-  return ret;
+  return TfLiteVarArrayCreate<TfLiteIntArray>(size);
 }
 
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
-  if (!src) return nullptr;
-  TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
-  if (ret) {
-    memcpy(ret->data, src->data, src->size * sizeof(int));
-  }
-  return ret;
+  return TfLiteVarArrayCopy(src);
 }
 
-void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
+void TfLiteIntArrayFree(TfLiteIntArray* a) { TfLiteVarArrayFree(a); }
 
 #endif  // TF_LITE_STATIC_MEMORY
 
 int TfLiteFloatArrayGetSizeInBytes(int size) {
-  static TfLiteFloatArray dummy;
-
-  int computed_size = sizeof(dummy) + sizeof(dummy.data[0]) * size;
-#if defined(_MSC_VER)
-  // Context for why this is needed is in http://b/189926408#comment21
-  computed_size -= sizeof(dummy.data[0]);
-#endif
-  return computed_size;
+  return TfLiteVarArrayGetSizeInBytes<TfLiteFloatArray>(size);
 }
 
 #ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
-  TfLiteFloatArray* ret =
-      (TfLiteFloatArray*)malloc(TfLiteFloatArrayGetSizeInBytes(size));
-  ret->size = size;
-  return ret;
+  return TfLiteVarArrayCreate<TfLiteFloatArray>(size);
 }
 
-void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
+TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
+  return TfLiteVarArrayCopy(src);
+}
+
+void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic ||
-      t->allocation_type == kTfLitePersistentRo) {
+  if (t->allocation_type == kTfLiteVariantObject) {
+    delete reinterpret_cast<VariantData*>(t->data.data);
+  } else if (t->allocation_type == kTfLiteDynamic ||
+             t->allocation_type == kTfLitePersistentRo) {
     if (t->data.raw) {
 #ifdef TF_LITE_TENSORFLOW_PROFILER
       tflite::PauseHeapMonitoring(/*pause=*/true);
@@ -207,11 +258,16 @@ TfLiteStatus TfLiteTensorCopy(const TfLiteTensor* src, TfLiteTensor* dst) {
   if (!src || !dst) return kTfLiteOk;
   if (src->bytes != dst->bytes) return kTfLiteError;
   if (src == dst) return kTfLiteOk;
-
   dst->type = src->type;
   if (dst->dims) TfLiteIntArrayFree(dst->dims);
   dst->dims = TfLiteIntArrayCopy(src->dims);
-  memcpy(dst->data.raw, src->data.raw, src->bytes);
+  if (src->allocation_type == kTfLiteVariantObject) {
+    if (dst->allocation_type != kTfLiteVariantObject) return kTfLiteError;
+    dst->data.data =
+        reinterpret_cast<VariantData*>(src->data.data)->Clone(dst->data.raw);
+  } else {
+    memcpy(dst->data.raw, src->data.raw, src->bytes);
+  }
   dst->buffer_handle = src->buffer_handle;
   dst->data_is_stale = src->data_is_stale;
   dst->delegate = src->delegate;

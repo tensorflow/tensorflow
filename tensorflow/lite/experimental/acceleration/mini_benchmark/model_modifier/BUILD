@@ -80,6 +80,7 @@ cc_binary(
         ":embedder",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core:model_builder",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:call",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:decode_jpeg",
         "//tensorflow/lite/schema:schema_fbs_with_reflection",

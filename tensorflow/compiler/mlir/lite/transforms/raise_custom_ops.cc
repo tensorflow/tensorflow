@@ -90,7 +90,7 @@ void RaiseCustomOpsPass::runOnOperation() {
 
     new_block->addArguments(op->getOperandTypes(),
                             SmallVector<Location>(op->getNumOperands(), loc));
-    for (auto &idx_args : llvm::enumerate(new_block->getArguments())) {
+    for (const auto &idx_args : llvm::enumerate(new_block->getArguments())) {
       inner_op->setOperand(idx_args.index(), idx_args.value());
     }
     custom_op->setAttrs(inner_op->getAttrs());

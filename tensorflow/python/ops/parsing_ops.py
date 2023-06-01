@@ -17,6 +17,7 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import math_ops
@@ -1133,7 +1134,7 @@ def _assert_scalar(value, name):
   """Asserts that `value` is scalar, and returns `value`."""
   value_rank = value.shape.rank
   if value_rank is None:
-    check = control_flow_ops.Assert(
+    check = control_flow_assert.Assert(
         math_ops.equal(array_ops.rank(value), 0),
         ["Input %s must be a scalar" % name],
         name="%sIsScalar" % name.capitalize())

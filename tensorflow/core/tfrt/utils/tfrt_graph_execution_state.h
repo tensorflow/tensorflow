@@ -56,6 +56,7 @@ class TfrtGraphExecutionState {
     bool enable_tfrt_gpu = false;
     // TODO(b/260915352): Remove the flag and default to using bridge.
     bool use_bridge_for_gpu = false;
+    bool run_placer_on_graph = true;
   };
 
   // Creates a `GraphExecutionState` given `graph_def` and `fallback_state`.

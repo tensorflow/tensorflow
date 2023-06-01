@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -94,7 +94,7 @@ ENTRY entry {
 
   auto result = decomposer.Run(module.get());
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(), HasSubstr("have same bits"));
+  EXPECT_THAT(result.status().message(), HasSubstr("have same bits"));
 }
 
 TEST_F(StochasticConvertDecomposerTest, WrongRandomType) {
@@ -114,7 +114,7 @@ ENTRY entry {
 
   auto result = decomposer.Run(module.get());
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("must be unsigned integers"));
 }
 

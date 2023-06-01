@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/fixed_array.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -69,7 +70,7 @@ tsl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
     return tsl::Status(
-        tsl::error::RESOURCE_EXHAUSTED,
+        absl::StatusCode::kResourceExhausted,
         absl::StrFormat(
             "Allocating %d bytes exceeds the memory limit of %d bytes.",
             byte_size, GetMemoryLimitInBytes()));

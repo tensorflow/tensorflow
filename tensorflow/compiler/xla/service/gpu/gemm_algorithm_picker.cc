@@ -24,6 +24,7 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -489,10 +490,9 @@ StatusOr<bool> RunOnComputation(HloComputation* computation,
   for (HloInstruction* instr : computation->instructions()) {
     if (IsCublasGemm(*instr)) {
       bool result;
-      if (std::holds_alternative<DeviceConfig>(config)) {
+      if (auto device_config = std::get_if<DeviceConfig>(&config)) {
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
-        TF_ASSIGN_OR_RETURN(
-            result, RunOnInstruction(instr, std::get<DeviceConfig>(config)));
+        TF_ASSIGN_OR_RETURN(result, RunOnInstruction(instr, *device_config));
 #else
         LOG(FATAL) << "GPU-enabled build is required to run autotuning";
 #endif

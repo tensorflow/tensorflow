@@ -15,18 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 
+#include <memory>
+
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_cache.h"
-#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_call.h"
 
 namespace tensorflow {
 namespace eager {
 
 GrpcEagerServiceImpl::GrpcEagerServiceImpl(
-    const WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
+    WorkerEnv* env, ::grpc::ServerBuilder* server_builder)
     : env_(env),
       local_impl_(env),
       enqueue_streaming_thread_(env_->env, "enqueue_streaming_thread", 1) {
@@ -89,7 +90,7 @@ void GrpcEagerServiceImpl::Shutdown() {
   // This enqueues a special event (with a null tag)
   // that causes the completion queue to be shut down on the
   // polling thread.
-  shutdown_alarm_ = MakeUnique<::grpc::Alarm>(
+  shutdown_alarm_ = std::make_unique<::grpc::Alarm>(
       cq_.get(), gpr_now(GPR_CLOCK_MONOTONIC), nullptr);
 }
 

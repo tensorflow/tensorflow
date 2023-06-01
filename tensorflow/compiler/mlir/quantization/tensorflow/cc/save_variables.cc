@@ -38,10 +38,7 @@ namespace {
 
 using ::mlir::func::FuncOp;
 using ::mlir::tf_saved_model::GetInitializerFunction;
-using ::mlir::tf_saved_model::GetSessionInitializerOp;
 using ::mlir::tf_saved_model::kTfSavedModelInitializerRestoreType;
-using ::mlir::tf_saved_model::kTfSavedModelInitializerTypeAttr;
-using ::mlir::tf_saved_model::SessionInitializerOp;
 
 // Adds the tensor that initializes the variable through the provided
 // `assign_var_op` to the `bundle_writer` for saving to checkpoint. Returns the
@@ -73,12 +70,12 @@ absl::StatusOr<std::string> AddTensorToBundleWriter(
   if (const tsl::Status status = mlir::tfg::ConvertToTensor(
           /*attr=*/const_op.getValue(), /*output_tensor=*/&const_tensor);
       !status.ok()) {
-    return tsl::ToAbslStatus(status);
+    return status;
   }
 
   if (!bundle_writer.Add(/*key=*/var_handle_op.getSharedName(), const_tensor)
            .ok()) {
-    return tsl::ToAbslStatus(bundle_writer.status());
+    return bundle_writer.status();
   }
 
   return var_handle_op.getSharedName().str();
@@ -100,7 +97,7 @@ absl::StatusOr<std::vector<std::string>> SaveVariablesToCheckpoint(
 
   BundleWriter bundle_writer(Env::Default(), prefix);
   if (!bundle_writer.status().ok()) {
-    return tsl::ToAbslStatus(bundle_writer.status());
+    return bundle_writer.status();
   }
 
   std::vector<std::string> saved_variable_shared_names;
@@ -125,7 +122,7 @@ absl::StatusOr<std::vector<std::string>> SaveVariablesToCheckpoint(
   }
 
   if (!bundle_writer.Finish().ok()) {
-    return tsl::ToAbslStatus(bundle_writer.status());
+    return bundle_writer.status();
   }
 
   return saved_variable_shared_names;

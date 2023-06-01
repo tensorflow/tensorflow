@@ -30,8 +30,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import variables
@@ -83,8 +84,8 @@ class _Dense(module.Module):
     if self.kernel is None:
       self.kernel = variables.Variable(
           array_ops.ones(
-              array_ops.stack([self.output_size,
-                               array_ops.shape(x)[-1]])))
+              array_ops_stack.stack([self.output_size,
+                                     array_ops.shape(x)[-1]])))
       self.bias = variables.Variable(array_ops.ones([self.output_size]))
     return math_ops.matmul(x, self.kernel, transpose_b=True) + self.bias
 
@@ -295,8 +296,11 @@ class ParallelDeviceTests(_VirtualDeviceTestCase, parameterized.TestCase):
             c.shape, c.dtype, group_size=2, group_key=1, instance_key=1)
         return r0
 
-      return control_flow_ops.switch_case(
-          device_id, branch_fns={0: send, 1: recv})
+      return control_flow_switch_case.switch_case(
+          device_id, branch_fns={
+              0: send,
+              1: recv
+          })
 
     with self.device:
       result = broadcast_send_recv(self.device.device_ids)

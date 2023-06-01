@@ -48,8 +48,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, data->axis >= 0);
 
   if (input0->type != kTfLiteInt32 && input0->type != kTfLiteFloat32 &&
-      input0->type != kTfLiteUInt8 && input0->type != kTfLiteInt8 &&
-      input0->type != kTfLiteInt16 && input0->type != kTfLiteInt64) {
+      input0->type != kTfLiteUInt8 && input0->type != kTfLiteUInt32 &&
+      input0->type != kTfLiteInt8 && input0->type != kTfLiteInt16 &&
+      input0->type != kTfLiteInt64) {
     TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by pack.",
                        TfLiteTypeGetName(input0->type));
     return kTfLiteError;
@@ -122,6 +123,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8: {
       return PackImpl<uint8_t>(context, node, output, data->values_count,
                                data->axis);
+    }
+    case kTfLiteUInt32: {
+      return PackImpl<uint32_t>(context, node, output, data->values_count,
+                                data->axis);
     }
     case kTfLiteInt8: {
       return PackImpl<int8_t>(context, node, output, data->values_count,

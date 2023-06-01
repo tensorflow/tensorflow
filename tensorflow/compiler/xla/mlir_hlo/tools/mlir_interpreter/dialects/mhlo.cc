@@ -34,6 +34,7 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "tools/mlir_interpreter/dialects/comparators.h"
+#include "tools/mlir_interpreter/dialects/cwise_math.h"
 #include "tools/mlir_interpreter/dialects/util.h"
 #include "tools/mlir_interpreter/framework/interpreter.h"
 #include "tools/mlir_interpreter/framework/interpreter_value.h"
@@ -60,7 +61,7 @@ InterpreterValue getTupleElement(InterpreterState&, mhlo::GetTupleElementOp get,
 
 InterpreterValue bitcastConvert(InterpreterState&, mhlo::BitcastConvertOp op,
                                 const InterpreterValue& in) {
-  ShapedType ty = op->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto result = dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     TensorOrMemref<decltype(dummy)> result;
     result.view = {};
@@ -89,6 +90,22 @@ InterpreterValue broadcastInDim(InterpreterState&,
     return in.extractElement(inIndices);
   });
   return out;
+}
+
+InterpreterValue clamp(InterpreterState&, mhlo::ClampOp,
+                       const InterpreterValue& lb, const InterpreterValue& arg,
+                       const InterpreterValue& ub) {
+  auto result = arg.clone();
+  for (const auto& index : arg.view().indices()) {
+    auto lbScalar = lb.isTensor() ? lb.extractElement(index) : lb;
+    auto ubScalar = ub.isTensor() ? ub.extractElement(index) : ub;
+    assert(arg.isTensor() && "clamp only bcasts scalar bounds");
+    auto argScalar = arg.extractElement(index);
+    auto resultScalar = applyCwiseBinaryMap<Min>(
+        applyCwiseBinaryMap<Max>(argScalar, lbScalar), ubScalar);
+    result.insertElement(index, resultScalar);
+  }
+  return result;
 }
 
 InterpreterValue concatenate(InterpreterState&, mhlo::ConcatenateOp concat,
@@ -742,7 +759,7 @@ InterpreterValue dotGeneralImpl(InterpreterValue& lhs, InterpreterValue& rhs,
 // TODO(jreiffers): Unify this with DotGeneral.
 InterpreterValue dot(InterpreterState& state, mhlo::DotOp op,
                      const InterpreterValue& lhs, const InterpreterValue& rhs) {
-  ShapedType ty = op->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto result = lhs.typedAlike(ty.getShape());
 
   if (lhs.view().rank() == 1 && rhs.view().rank() == 1) {
@@ -839,6 +856,7 @@ REGISTER_MLIR_INTERPRETER_OP("mhlo.return", noOpTerminator);
 REGISTER_MLIR_INTERPRETER_OP("mhlo.tuple", makeTuple);
 REGISTER_MLIR_INTERPRETER_OP(bitcastConvert);
 REGISTER_MLIR_INTERPRETER_OP(broadcastInDim);
+REGISTER_MLIR_INTERPRETER_OP(clamp);
 REGISTER_MLIR_INTERPRETER_OP(compare);
 REGISTER_MLIR_INTERPRETER_OP(computeReshapeShape);
 REGISTER_MLIR_INTERPRETER_OP(concatenate);

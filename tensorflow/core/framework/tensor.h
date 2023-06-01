@@ -318,6 +318,14 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
+    // If ptr is allocated through AsyncValueAllocator, the last bit is 1,
+    // which indicates ptr points to an AsyncValueTensor instead of raw buffer,
+    // and disable alignemnt check for it.
+    constexpr uintptr_t kTag = 0x1ULL;
+    uintptr_t value = reinterpret_cast<uintptr_t>(ptr);
+    if (value & kTag) {
+      return true;
+    }
     return dtype() == DT_STRING || NumElements() == 0 ||
            (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
@@ -668,6 +676,10 @@ class Tensor {
   // Returns true if the refcount on buf_ and any possible underlying root
   // buffer is one.
   bool RefCountIsOne() const;
+
+  // Experimental. Returns the refcount on buf_ if it points to a regular
+  // TensorBuffer. If buf_ points to a SubBuffer, returns -1.
+  int RefCount() const;
 
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }

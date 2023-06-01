@@ -15,7 +15,7 @@
 """Contains utility functions used by summary ops in distribution strategy."""
 
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 
@@ -33,7 +33,7 @@ def skip_summary():
   # TODO(priyag): Add a new optional argument that will provide multiple
   # alternatives to override default behavior. (e.g. run on last replica,
   # compute sum or mean across replicas).
-  replica_context = distribution_strategy_context.get_replica_context()
+  replica_context = distribute_lib.get_replica_context()
   if not replica_context:
     return False
   # TODO(b/118385803): when replica_id of _TPUReplicaContext is properly

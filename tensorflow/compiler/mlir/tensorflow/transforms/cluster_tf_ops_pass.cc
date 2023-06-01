@@ -109,7 +109,7 @@ struct FunctionMetadata {
 // for that remote host. The metadata of the function specifies the input
 // values, result values, result devices and the operations to be included in
 // the function body.
-llvm::Optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
+std::optional<llvm::StringMap<FunctionMetadata>> GetFunctionMetadatas(
     func::FuncOp func_op) {
   llvm::StringMap<FunctionMetadata> metadatas;
   WalkResult result = func_op.getBody().walk([&](Operation *op) {
@@ -312,7 +312,7 @@ class ClusterTFOpsByHostPass
       original_func.push_back(func_op);
     }
     for (auto func_op : original_func) {
-      llvm::Optional<llvm::StringMap<FunctionMetadata>> metadatas =
+      std::optional<llvm::StringMap<FunctionMetadata>> metadatas =
           GetFunctionMetadatas(func_op);
       if (!metadatas) {
         signalPassFailure();

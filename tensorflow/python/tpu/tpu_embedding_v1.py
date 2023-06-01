@@ -16,7 +16,7 @@
 
 from typing import Any, Dict, Iterable, Optional, Text, Union
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -131,7 +131,7 @@ class TPUEmbeddingV0(tpu_embedding_base.TPUEmbeddingBase):
       feature_config: Union[tpu_embedding_v2_utils.FeatureConfig, Iterable],  # pylint:disable=g-bare-generic
       optimizer: Optional[tpu_embedding_v2_utils._Optimizer]):  # pylint:disable=protected-access
     super(TPUEmbeddingV0, self).__init__(feature_config, optimizer)
-    self._strategy = distribution_strategy_context.get_strategy()
+    self._strategy = distribute_lib.get_strategy()
     if not isinstance(self._strategy,
                       (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV2)):
       raise RuntimeError(

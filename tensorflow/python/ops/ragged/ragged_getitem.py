@@ -21,7 +21,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_math_ops
@@ -464,7 +464,7 @@ def _if_ge_zero(value, true_fn, false_fn):
   if isinstance(value, ops.Tensor):
     const_value = tensor_util.constant_value(value)
     if const_value is None:
-      return control_flow_ops.cond(value >= 0, true_fn, false_fn)
+      return cond.cond(value >= 0, true_fn, false_fn)
     else:
       value = const_value
   if value >= 0:

@@ -2,10 +2,10 @@
 
 // CHECK:      name: "tf.ParseExample"
 // CHECK-NEXT: op: "ParseExample"
-// CHECK-NEXT: input: "tf.Const3"
+// CHECK-NEXT: input: "tf.Const{{_.*_3}}"
 // CHECK-NEXT: input: "tf.Const"
-// CHECK-NEXT: input: "tf.Const1"
-// CHECK-NEXT: input: "tf.Const2"
+// CHECK-NEXT: input: "tf.Const{{_.*_1}}"
+// CHECK-NEXT: input: "tf.Const{{_.*_2}}"
 // CHECK-NEXT: attr {
 // CHECK-NEXT:   key: "Ndense"
 // CHECK-NEXT:   value {

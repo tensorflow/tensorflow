@@ -167,15 +167,15 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
   def tearDown(self):
     # Make sure all async ops finish.
-    context.async_wait()
+    try:
+      context.async_wait()
+    finally:
+      # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
+      # DefaultMesh placement issue.
+      reset_dtensor()
 
-    # TODO(hthu): Remove the reset once we fixed the CopyToMesh with
-    # DefaultMesh placement issue.
-    reset_dtensor()
-
-    self._backend_configurator.tearDown()
-
-    super().tearDown()
+      self._backend_configurator.tearDown()
+      super().tearDown()
 
   @staticmethod
   def configTestMesh(  # pylint: disable=invalid-name
@@ -259,6 +259,10 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
     if hasattr(self, '_backend_configurator'):
       self._backend_configurator.tearDown()
     super().skipTest(reason)
+
+  def skipForPathways(self, reason: str):  # pylint: disable=invalid-name
+    if config.backend_is_pw():
+      self.skipTest(reason)
 
   def assertDTensorEqual(
       self,  # pylint: disable=invalid-name
@@ -345,7 +349,7 @@ class DTensorBaseTest(tf_test.TestCase, parameterized.TestCase):
 
     # pylint: disable=protected-access
     replicated_dims = [
-        x for x in layout.mesh._dim_names if x not in layout.sharding_specs
+        x for x in layout.mesh.dim_names if x not in layout.sharding_specs
     ]
     # pylint: enable=protected-access
 

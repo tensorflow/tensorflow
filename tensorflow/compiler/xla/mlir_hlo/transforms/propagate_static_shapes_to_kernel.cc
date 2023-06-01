@@ -18,6 +18,7 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -139,7 +140,7 @@ LogicalResult PropagateStaticShapesPattern::matchAndRewrite(
   }
 
   // Collect gpu.launch_func ops which launch the func_op kernel.
-  Optional<SymbolTable::UseRange> symUses =
+  std::optional<SymbolTable::UseRange> symUses =
       symbolTable.getSymbolUses(funcOp, symbolTable.getOp());
   if (!symUses)
     return rewriter.notifyMatchFailure(funcOp, "failed to find symbol uses");

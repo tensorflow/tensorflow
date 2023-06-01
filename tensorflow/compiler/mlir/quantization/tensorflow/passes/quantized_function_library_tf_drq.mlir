@@ -204,4 +204,35 @@ module {
     %mul = "tf.Mul"(%cast, %scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
     func.return %mul : tensor<*xf32>
   }
+
+  //===----------------------------------------------------------------------===//
+  // Weight-only functions.
+  //===----------------------------------------------------------------------===//
+
+  func.func private @internal_dequantize_f32(
+                           %input : tensor<*xf32>, %weight_scale : tensor<*xf32>) -> tensor<*xf32> {
+    %mul = "tf.Mul"(%input, %weight_scale) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    func.return %mul : tensor<*xf32>
+  }
+
+  // Note that input i64 type is also supported by this.
+  parameters[
+    {"quantized_ops": ["Gather"]}
+  ]
+  func.func @GenerateQuantizedFunctionName(${quantized_ops})(
+                         %weight : tensor<*xi8>, %input : tensor<*xi32>, %axis : tensor<i32>,
+                         %weight_scale : tensor<*xf32>, %weight_zp : tensor<*xi32>) -> tensor<*xf32>
+      attributes {tf_quant.quantized_ops = ${quantized_ops}}
+  {
+    %accum_out = "tf.GatherV2"(%weight, %input, %axis) {
+      batch_dims = 0 : i64, attr_map = "batch_dims:0"} : (tensor<*xi8>, tensor<*xi32>, tensor<i32>) -> tensor<*xi8>
+
+    %accum_out_new = "tf.Cast"(%accum_out) : (tensor<*xi8>) -> tensor<*xf32>
+
+    %out = "tf.PartitionedCall"(%accum_out_new, %weight_scale) {
+        config = "", config_proto = "", executor_type = "", f=@internal_dequantize_f32
+      } : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+
+    func.return %out : tensor<*xf32>
+  }
 }

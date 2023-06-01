@@ -73,7 +73,6 @@ using ::std::any_cast;
 
 using ::llvm::cast;
 using ::llvm::Expected;
-using ::llvm::Optional;
 
 using ::tfrt::Argument;
 using ::tfrt::ArrayRef;
@@ -289,7 +288,7 @@ static const std::string GetSessionName(RequestContext* req_ctx) {
 
 static Expected<AsyncValuePtr<JitExecutable>> CompileImpl(
     const CompilationUnitAttribute& kernel, const ExecutionContext& exec_ctx,
-    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
+    const std::optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   // Request context must be initialized with the tf_jitrt state.
   auto* state = exec_ctx.request_ctx()->GetDataIfExists<TfJitRtRequestState>();
   if (LLVM_UNLIKELY(!state))
@@ -652,7 +651,7 @@ struct DebugListener : public SpecializationListener {
     std::string message;
     llvm::raw_string_ostream os(message);
     os << "Specialized operands:\n";
-    for (auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
+    for (const auto& tuple : llvm::enumerate(llvm::zip(operands, attrs))) {
       mlir::Type type = std::get<0>(tuple.value());
       mlir::Attribute attr = std::get<1>(tuple.value());
       os << "%arg" << tuple.index() << ": " << type << " " << attr << "\n";
@@ -821,7 +820,7 @@ static void ExecuteImpl(RepeatedArguments<FallbackTensor> operands,
                         RemainingResults results, const StringAttribute& device,
                         const CompilationUnitAttribute& kernel,
                         const ExecutionContext& exec_ctx, bool debug,
-                        const Optional<TfJitRtPipelineOpts>& opts) {
+                        const std::optional<TfJitRtPipelineOpts>& opts) {
   VLOG(2) << "kernel_name: " << kernel.root_symbol().str()
           << ", operands: " << OperandsToString(operands);
 
@@ -882,7 +881,7 @@ static void ExecuteImplAndMaybeLogQueryOfDeath(
     RepeatedArguments<FallbackTensor> operands, RemainingResults results,
     const StringAttribute& device, const CompilationUnitAttribute& kernel,
     const ExecutionContext& exec_ctx, bool debug = false,
-    const Optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
+    const std::optional<TfJitRtPipelineOpts>& opts = std::nullopt) {
   if (LLVM_LIKELY(!GetJitRtFlags().log_query_of_death)) {
     return ExecuteImpl(operands, results, device, kernel, exec_ctx, debug,
                        opts);

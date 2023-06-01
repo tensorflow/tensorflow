@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -123,7 +124,7 @@ TEST(RemoteProfilerSessionManagerTest, ExpiredDeadline) {
   absl::Duration elapsed = absl::Now() - approx_start;
   EXPECT_THAT(elapsed, DurationNear(absl::Seconds(0)));
   ASSERT_EQ(responses.size(), 1);
-  EXPECT_TRUE(errors::IsDeadlineExceeded(responses.back().status));
+  EXPECT_TRUE(absl::IsDeadlineExceeded(responses.back().status));
   EXPECT_TRUE(responses.back().profile_response->empty_trace());
   EXPECT_EQ(responses.back().profile_response->tool_data_size(), 0);
 }

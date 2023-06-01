@@ -454,6 +454,10 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
     SignedSymmetricQuantizeAndPopulate(weights_, f);
   }
 
+  void SetSignedWeights4Bit(std::initializer_list<float> f) {
+    SignedSymmetricQuantizeAndPopulate4Bit(weights_, f);
+  }
+
   void SetInput(const std::vector<float>& f) { PopulateTensor(input_, f); }
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
@@ -1369,6 +1373,36 @@ TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedInt8) {
                                  {
                                      24, 25, 26,  //
                                      58, 59, 60,  //
+                                 },
+                                 /*max_abs_error=*/1.3f)));
+}
+
+// The expected values for this test were obtained by running the test with the
+// same weights but populated to a Int8 filter.
+TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt4) {
+  HybridFullyConnectedOpModel m(
+      /*units=*/3, /*batches=*/2,
+      /*input=*/{TensorType_FLOAT32, {2, 10}},
+      /*weights=*/{TensorType_INT4, {3, 10}, 0, 0, 10.0 / 7.0, 0});  // Hybrid
+
+  m.SetSignedWeights4Bit({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                 {
+                                     36, 37, 38,  //
+                                     52, 53, 54,  //
                                  },
                                  /*max_abs_error=*/1.3f)));
 }

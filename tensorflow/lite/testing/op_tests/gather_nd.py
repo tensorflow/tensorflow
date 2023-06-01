@@ -25,21 +25,21 @@ def make_gather_nd_tests(options):
 
   test_parameters = [
       {
-          "params_dtype": [tf.float32, tf.int32, tf.int64, tf.string],
+          "params_dtype": [tf.float32, tf.int16, tf.int32, tf.int64, tf.string],
           "params_shape": [[5, 1]],
-          "indices_dtype": [tf.int32, tf.int64],
+          "indices_dtype": [tf.int16, tf.int32, tf.int64],
           "indices_shape": [[1, 1]],
       },
       {
-          "params_dtype": [tf.float32, tf.int32, tf.int64, tf.string],
+          "params_dtype": [tf.float32, tf.int16, tf.int32, tf.int64, tf.string],
           "params_shape": [[5, 5]],
-          "indices_dtype": [tf.int32, tf.int64],
+          "indices_dtype": [tf.int16, tf.int32, tf.int64],
           "indices_shape": [[2, 1], [2, 2]],
       },
       {
-          "params_dtype": [tf.float32, tf.int32, tf.int64, tf.string],
+          "params_dtype": [tf.float32, tf.int16, tf.int32, tf.int64, tf.string],
           "params_shape": [[5, 5, 10]],
-          "indices_dtype": [tf.int32, tf.int64],
+          "indices_dtype": [tf.int16, tf.int32, tf.int64],
           "indices_shape": [[3, 1], [2, 2], [2, 3], [2, 1, 3]],
       },
       {

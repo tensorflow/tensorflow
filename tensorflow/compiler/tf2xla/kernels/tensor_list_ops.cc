@@ -553,7 +553,7 @@ class TensorListSplitOp : public XlaOpKernel {
       OP_REQUIRES(ctx, len == length,
                   errors::Unimplemented("All lengths have to be the same"));
     }
-    OP_REQUIRES(ctx, length,
+    OP_REQUIRES(ctx, length > 0,
                 errors::Unimplemented("All lengths must be positive"));
     OP_REQUIRES(
         ctx, element_dims[0] % length == 0,

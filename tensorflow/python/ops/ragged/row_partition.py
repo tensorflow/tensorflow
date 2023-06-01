@@ -26,6 +26,7 @@ from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -40,9 +41,9 @@ from tensorflow.python.ops.ragged import segment_id_ops
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util.tf_export import tf_export
 
-#===============================================================================
+# ===============================================================================
 # RowPartition
-#===============================================================================
+# ===============================================================================
 # TODO(edloper): Consider removing row_starts and row_limits factory methods
 # and accessors from RowPartition.  In particular, these two encodings are
 # "second-class citizens": we never cache them, and if you do construct a
@@ -111,9 +112,9 @@ class RowPartition(composite_tensor.CompositeTensor):
   encoding, use `RowPartition.with_precomputed_<encoding>`.
   """
 
-  #=============================================================================
+  # =============================================================================
   # Constructor (private)
-  #=============================================================================
+  # =============================================================================
   def __init__(self,
                row_splits,
                row_lengths=None,
@@ -187,9 +188,9 @@ class RowPartition(composite_tensor.CompositeTensor):
     self._uniform_row_length = uniform_row_length
     self._nvals = nvals
 
-  #=============================================================================
+  # =============================================================================
   # Factory Methods
-  #=============================================================================
+  # =============================================================================
 
   @classmethod
   def from_value_rowids(cls,
@@ -695,8 +696,9 @@ class RowPartition(composite_tensor.CompositeTensor):
         partition.dtype == np.int32 and dtype is None):
       partition = ops.convert_to_tensor(partition, name=name)
     else:
-      partition = ops.convert_to_tensor_v2(
-          partition, dtype_hint=dtype_hint, dtype=dtype, name=name)
+      partition = tensor_conversion.convert_to_tensor_v2(
+          partition, dtype_hint=dtype_hint, dtype=dtype, name=name
+      )
     if partition.dtype not in (dtypes.int32, dtypes.int64):
       raise ValueError("%s must have dtype int32 or int64" % name)
 
@@ -724,9 +726,9 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=self._uniform_row_length,
         internal=_row_partition_factory_key)
 
-  #=============================================================================
+  # =============================================================================
   # Accessors
-  #=============================================================================
+  # =============================================================================
 
   @property
   def dtype(self):
@@ -959,9 +961,9 @@ class RowPartition(composite_tensor.CompositeTensor):
       raise ValueError("_nrows.dtype=" + str(self._nrows.dtype) + ", not " +
                        str(my_dtype))
 
-  #=============================================================================
+  # =============================================================================
   # Transformation
-  #=============================================================================
+  # =============================================================================
 
   def with_dtype(self, dtype):
     """Returns a copy of this RowPartition with the given encoding dtype.
@@ -988,9 +990,9 @@ class RowPartition(composite_tensor.CompositeTensor):
         uniform_row_length=_cast_if_not_none(self._uniform_row_length, dtype),
         internal=_row_partition_factory_key)
 
-  #=============================================================================
+  # =============================================================================
   # String Encoding
-  #=============================================================================
+  # =============================================================================
 
   def __repr__(self):
     if self._uniform_row_length is not None:
@@ -999,9 +1001,9 @@ class RowPartition(composite_tensor.CompositeTensor):
     else:
       return f"tf.RowPartition(row_splits={self._row_splits})"
 
-  #=============================================================================
+  # =============================================================================
   # Precomputed Encodings
-  #=============================================================================
+  # =============================================================================
 
   def _has_precomputed_row_splits(self):
     """Returns true if `row_splits` has already been computed.
@@ -1192,18 +1194,18 @@ class RowPartition(composite_tensor.CompositeTensor):
         nvals=nvals,
         internal=_row_partition_factory_key)
 
-  #=============================================================================
+  # =============================================================================
   # Composite Tensor
-  #=============================================================================
+  # =============================================================================
 
   @property
   def _type_spec(self):
     return RowPartitionSpec.from_value(self)
 
 
-#===============================================================================
+# ===============================================================================
 # RowPartitionSpec
-#===============================================================================
+# ===============================================================================
 # TODO(edloper): Consider refactoring RowPartitionSpec to allow any combination
 # of precomputed row-partition encodings (rather than always using row_splits).
 
@@ -1393,9 +1395,9 @@ nested_structure_coder.register_codec(
 )
 
 
-#===============================================================================
+# ===============================================================================
 # Helper Functions
-#===============================================================================
+# ===============================================================================
 
 
 def _assert_monotonic_increasing(tensor, message=None):

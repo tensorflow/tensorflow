@@ -112,6 +112,7 @@ class AttrBuilder : public AbstractOpAttrs {
   }
 
   const string& op_name() const { return op_name_; }
+  void set_op_name(const string& name) { op_name_ = name; }
 
   // Needed to work around call to ValidateNodeDef in CreateOpKernel.
   AttrBuilder& NumInputs(int n);
@@ -198,7 +199,7 @@ class AttrBuilder : public AbstractOpAttrs {
   gtl::FlatMap<string, string> encoded_attrs_;
   mutable AttrValue attr_tmp_;  // For encoding
 
-  string op_name_;  // Conceptually const, but can't be because of Reset(...)
+  string op_name_;
   int num_inputs_;
   NodeDef node_def_;
   bool node_def_initialized_;

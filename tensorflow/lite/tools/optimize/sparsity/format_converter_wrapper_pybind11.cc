@@ -15,8 +15,8 @@ limitations under the License.
 
 #include <vector>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/utils/sparsity_format_converter.h"
 

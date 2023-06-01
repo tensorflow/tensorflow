@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -112,7 +113,7 @@ class OpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testExecuteListOutputLen0(self):
     empty = constant_op.constant([], dtype=dtypes.int32)
-    result = array_ops.unstack(empty, 0)
+    result = array_ops_stack.unstack(empty, 0)
     self.assertIsInstance(result, list)
     self.assertEmpty(result)
 

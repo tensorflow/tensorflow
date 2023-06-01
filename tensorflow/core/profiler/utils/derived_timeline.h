@@ -98,6 +98,7 @@ class DerivedXLineBuilder {
 struct Symbol {
   absl::string_view tf_op_name;
   std::string source_info;
+  std::string hlo_text;
 };
 
 using SymbolResolver = std::function<Symbol(std::optional<uint64_t> program_id,

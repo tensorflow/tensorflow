@@ -29,12 +29,12 @@ namespace {
 
 TEST_F(OpenCLOperationTest, Softmax) {
   auto status = SoftmaxTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST_F(OpenCLOperationTest, SoftmaxBigNumber) {
   auto status = SoftmaxBigNumberTest(&exec_env_);
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

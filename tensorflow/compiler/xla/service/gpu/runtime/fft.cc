@@ -111,7 +111,7 @@ static absl::Status FftImpl(const ServiceExecutableRunOptions* run_options,
       RunFft(GetDeviceAddress(input), ToShape(input), GetDeviceAddress(output),
              ToShape(output), fft_type, fft_length, executor->device_ordinal(),
              (*fft_plan_cache)->get(), stream, run_options->allocator());
-  if (!st.ok()) return ToAbslStatus(st);
+  if (!st.ok()) return st;
 
   return absl::OkStatus();
 }

@@ -30,7 +30,7 @@ func.func @exponential(%arg : tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @exponential_minus_one
 func.func @exponential_minus_one(%arg : tensor<10xf32>) -> tensor<10xf32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00>
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<1.000000e+00>
   // CHECK-DAG: %[[VAR1:.*]] = "tosa.exp"(%arg0)
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.sub"(%[[VAR1]], %[[VAR0]])
   %0 = "mhlo.exponential_minus_one"(%arg) : (tensor<10xf32>) -> tensor<10xf32>
@@ -46,7 +46,7 @@ func.func @floor(%arg : tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @is_finite
 func.func @is_finite(%arg : tensor<10xf32>) -> tensor<10xi1> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<0x7F800000>
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<0x7F800000>
   // CHECK-DAG: %[[VAR1:.*]] = "tosa.abs"(%arg0)
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.equal"(%[[VAR1]], %[[VAR0]])
   // CHECK-DAG: %[[VAR3:.*]] = "tosa.logical_not"(%[[VAR2]])
@@ -63,7 +63,7 @@ func.func @log(%arg : tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @log_plus_one
 func.func @log_plus_one(%arg : tensor<10xf16>) -> tensor<10xf16> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<1.000000e+00>
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<1.000000e+00>
   // CHECK-DAG: %[[VAR1:.*]] = "tosa.add"(%arg0, %[[VAR0]])
   // CHECK-DAG: %[[VAR2:.*]] = "tosa.log"(%[[VAR1]])
   %0 = "mhlo.log_plus_one"(%arg) : (tensor<10xf16>) -> tensor<10xf16>
@@ -79,7 +79,7 @@ func.func @negate(%arg : tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @slice
 func.func @slice(%arg : tensor<4x3xf32>) -> tensor<2x2xf32> {
-  // CHECK: "tosa.slice"(%arg0) {size = array<i64: 2, 2>, start = array<i64: 2, 1>}
+  // CHECK: "tosa.slice"(%arg0) <{size = array<i64: 2, 2>, start = array<i64: 2, 1>}>
   %0 = "mhlo.slice"(%arg) {
     start_indices = dense<[2, 1]> : tensor<2xi64>,
     limit_indices = dense<[4, 3]> : tensor<2xi64>,
@@ -121,7 +121,7 @@ func.func @tanh(%arg : tensor<10xf32>) -> tensor<10xf32> {
 
 // CHECK-LABEL: @transpose
 func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<[2, 1, 0]> : tensor<3xi64>} : () -> tensor<3xi64>
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<[2, 1, 0]> : tensor<3xi64>}> : () -> tensor<3xi64>
   // CHECK-DAG: %[[VAR1:.*]] = "tosa.transpose"(%arg0, %[[VAR0]])
   %0 = "mhlo.transpose"(%arg0) {permutation = dense<[2, 1, 0]> : tensor<3xi64>} : (tensor<1x2x3xf32>) -> tensor<3x2x1xf32>
   return %0 : tensor<3x2x1xf32>
@@ -129,8 +129,8 @@ func.func @transpose(%arg0: tensor<1x2x3xf32>) -> tensor<3x2x1xf32> {
 
 // CHECK-LABEL: @while
 func.func @while(%arg0: tensor<i32>) -> tensor<i32> {
-  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() {value = dense<3> : tensor<i32>}
-  // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() {value = dense<1> : tensor<i32>}
+  // CHECK-DAG: %[[VAR0:.*]] = "tosa.const"() <{value = dense<3> : tensor<i32>}>
+  // CHECK-DAG: %[[VAR1:.*]] = "tosa.const"() <{value = dense<1> : tensor<i32>}>
   // CHECK:     %[[VAR2:.*]] = "tosa.while_loop"(%arg0) ({
   // CHECK:     ^bb0(%[[ARG0:.+]]: tensor<i32>):
   // CHECK:       %[[VAR3:.*]] = "tosa.equal"(%[[ARG0]], %[[VAR0]])

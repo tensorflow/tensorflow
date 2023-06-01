@@ -264,8 +264,7 @@ StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
     return errors::InvalidArgument(
         llvm::formatv("Malformed default return layout received. {0} Received "
                       "layout : {1}",
-                      result_layout_or_status.status().error_message(),
-                      layout_string)
+                      result_layout_or_status.status().message(), layout_string)
             .str());
 
   layout.emplace(result_layout_or_status.value());

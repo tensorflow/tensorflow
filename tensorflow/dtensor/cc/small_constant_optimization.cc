@@ -153,26 +153,6 @@ std::optional<NodeDef> ExtractSmallTensorValue(TFE_Context* context,
   return node_def;
 }
 
-bool ShouldFoldInputArgument(absl::string_view operation_name,
-                             int input_index) {
-  // Fold if we are in a function or if a special eager op.
-  // TODO(xiejw,power): Think about how to generalize this so it does not depend
-  // on operation_name. For example, we can check the max abs value of the
-  // tensor value.
-  if (operation_name == absl::string_view("StatelessRandomUniform") ||
-      operation_name == absl::string_view("StatelessRandomUniformFullInt") ||
-      operation_name == absl::string_view("StatelessRandomNormal") ||
-      operation_name == absl::string_view("StatelessTruncatedNormal")) {
-    // For all stateless rng ops, we avoid fold seed (input_index==1) in graph.
-    // This is an important optimization to avoid unnecessary MLIR SPMD lowering
-    // and TPU compilation during model parameters initialization process.
-    // which typically have the same shape for rng ops but different seeds.
-    return input_index != 1;
-  }
-
-  return true;
-}
-
 bool NodeDefsHaveDifferentTensorProto(const NodeDef& a, const NodeDef& b) {
   const TensorProto* tensor_proto_a;
   bool read_a_tensor_proto = TryGetNodeAttr(a, "value", &tensor_proto_a);

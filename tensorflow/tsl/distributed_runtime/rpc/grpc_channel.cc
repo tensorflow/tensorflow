@@ -18,10 +18,12 @@ limitations under the License.
 #include <cstdlib>
 #include <limits>
 #include <map>
+#include <string>
 #include <unordered_map>
 
 #include "grpcpp/create_channel.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/tsl/distributed_runtime/rpc/grpc_channel_common.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
@@ -42,8 +44,8 @@ namespace tsl {
 
 namespace {
 
-string MakeAddress(const string& job, int task) {
-  return strings::StrCat("/job:", job, "/replica:0/task:", task);
+string MakeAddress(const string& job, int replica, int task) {
+  return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task);
 }
 
 // Allows the host to be a raw IP (either v4 or v6).
@@ -164,15 +166,6 @@ ChannelCreationFunction ConvertToChannelCreationFunction(
   };
 }
 
-Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
-                                        const std::vector<string>& host_ports) {
-  std::map<int, string> host_ports_map;
-  for (size_t i = 0; i < host_ports.size(); ++i) {
-    host_ports_map[i] = host_ports[i];
-  }
-  return AddHostPortsJob(job_id, host_ports_map);
-}
-
 Status GrpcChannelSpec::AddHostPortsJob(
     const string& job_id, const std::map<int, string>& host_ports) {
   if (!job_ids_.insert(job_id).second) {
@@ -277,7 +270,12 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   void ListWorkers(std::vector<string>* workers) override {
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
-      workers->emplace_back(MakeAddress(job_id_, id_host_port.first));
+      std::vector<std::string> replicas =
+          absl::StrSplit(id_host_port.second, ',', absl::SkipEmpty());
+      for (int replica = 0; replica < replicas.size(); ++replica) {
+        workers->emplace_back(
+            MakeAddress(job_id_, replica, id_host_port.first));
+      }
     }
   }
 
@@ -298,10 +296,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     if (!parsed.has_job || parsed.job != job_id_) {
       return "";
     }
-    if (!parsed.has_replica || parsed.replica != 0) {
-      LOG(WARNING) << "Replica ID must be 0 in target: " << target;
-      return "";
-    }
+
     int32_t task = parsed.has_task ? parsed.task : -1;
     auto iter = host_ports_.find(task);
     if (iter == host_ports_.end()) {
@@ -309,7 +304,15 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
                    << job_id_ << ": " << target;
       return "";
     }
-    return iter->second;
+
+    std::vector<std::string> host_ports =
+        absl::StrSplit(iter->second, ',', absl::SkipEmpty());
+    if (host_ports.size() > parsed.replica) {
+      return host_ports[parsed.replica];
+    }
+    LOG(WARNING) << "Requested out-of-range replica, defaulting to 0: "
+                 << target;
+    return host_ports[0];
   }
 
  protected:

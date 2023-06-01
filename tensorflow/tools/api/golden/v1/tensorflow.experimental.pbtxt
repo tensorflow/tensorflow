@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "ExtensionTypeSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Optional"
     mtype: "<type \'type\'>"
   }

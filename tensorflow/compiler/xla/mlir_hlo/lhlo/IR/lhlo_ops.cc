@@ -117,56 +117,6 @@ LogicalResult AbsOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// AllToAllOp
-//===----------------------------------------------------------------------===//
-
-// TODO(jurahul): Add verification for output shape.
-LogicalResult AllGatherOp::verify() {
-  AllGatherOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
-                                        /*allGroupsMustHaveSameSize=*/true,
-                                        op.getUseGlobalDeviceIds(),
-                                        /*expectedGroupSize=*/std::nullopt);
-}
-
-// TODO(jurahul): Add verification for output shape.
-LogicalResult AllToAllOp::verify() {
-  AllToAllOp op = *this;
-  return mlir::hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
-                                        /*allGroupsMustHaveSameSize=*/true,
-                                        /*useGlobalDeviceIds=*/false,
-                                        /*expectedGroupSize=*/std::nullopt);
-}
-
-//===----------------------------------------------------------------------===//
-// AllReduceOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AllReduceOp::verify() {
-  AllReduceOp op = *this;
-  return verifyAllReduce(op);
-}
-
-//===----------------------------------------------------------------------===//
-// ReduceScatterOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ReduceScatterOp::verify() {
-  ReduceScatterOp op = *this;
-  if (failed(hlo::verifyReplicaGroups(op.getLoc(), op.getReplicaGroups(),
-                                      /*allGroupsMustHaveSameSize=*/true,
-                                      op.getUseGlobalDeviceIds(),
-                                      /*expectedGroupSize=*/std::nullopt)))
-    return failure();
-  if (failed(mlir::hlo::verifyReduceScatter(
-          op, /*operandTypes=*/op.getInputs().getTypes(),
-          /*resultTypes=*/op.getOutputs().getTypes(),
-          /*scatterDimension=*/op.getScatterDimension())))
-    return failure();
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // CaseOp
 //===----------------------------------------------------------------------===//
 
@@ -181,16 +131,6 @@ void CaseOp::getSuccessorRegions(std::optional<unsigned> index,
   // If the predecessor is one of the branches, branch back to the parent
   // operation.
   regions.push_back(RegionSuccessor());
-}
-
-//===----------------------------------------------------------------------===//
-// CollectivePermuteOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult CollectivePermuteOp::verify() {
-  CollectivePermuteOp op = *this;
-  return mlir::hlo::verifyCollectivePermuteSourceTargetPairs(
-      op, op.getSourceTargetPairs());
 }
 
 //===----------------------------------------------------------------------===//

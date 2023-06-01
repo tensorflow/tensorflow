@@ -16,12 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
-#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
@@ -171,6 +172,55 @@ HloComputation* HloModule::AddEmbeddedComputation(
   return AddComputationInternal(std::move(computation), /*is_entry=*/false,
                                 /*uniquify_identifiers=*/true,
                                 /*preserve_entry_layouts=*/false);
+}
+
+void HloModule::MarkFusionDuplications(
+    const absl::flat_hash_map<HloComputation*, HloComputation*>& replacements) {
+  for (std::unique_ptr<HloComputation>& computation : computations_) {
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
+        auto rep =
+            replacements.find(instruction->fused_instructions_computation());
+        if (rep != replacements.end()) {
+          xla::HloComputation* new_comp = rep->second;
+          if (new_comp->IsFusionComputation()) {
+            auto dedup_name = new_comp->FusionInstruction()->name();
+            new_comp->FusionInstruction()->set_metadata_deduplicated_name(
+                std::string(dedup_name));
+            instruction->set_metadata_deduplicated_name(
+                std::string(dedup_name));
+          }
+        }
+      }
+    }
+  }
+}
+
+void HloModule::MoveComputationsFrom(HloModule* module) {
+  for (size_t i = 0; i < module->computation_count(); ++i) {
+    for (auto* instruction : module->computations_[i]->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    module->computations_[i]->ClearUniqueIdInternal();
+    auto computation_raw_ptr = module->computations_[i].get();
+    if (computation_raw_ptr->IsEntryComputation()) {
+      this->entry_computation_ = nullptr;
+    }
+    this->AddComputationInternal(
+        std::move(module->computations_[i]),
+        /*is_entry=*/computation_raw_ptr->IsEntryComputation(),
+        /*uniquify_identifiers=*/false,
+        /*preserve_entry_layouts=*/false);
+    // Pick unique IDs for each instruction.
+    for (auto* instruction : computation_raw_ptr->instructions()) {
+      instruction->SetUniqueId(NewUniqueInstructionId());
+    }
+    // Set unique id to this computation_raw_ptr.
+    CHECK_NE(computation_raw_ptr->root_instruction()->unique_id(), -1)
+        << "Root has no valid id: " << computation_raw_ptr->ToString();
+    computation_raw_ptr->SetUniqueId(
+        computation_raw_ptr->root_instruction()->unique_id());
+  }
 }
 
 void HloModule::ReplaceComputations(
@@ -318,7 +368,8 @@ HloModuleProto HloModule::ToProto() const {
   proto.set_id(unique_id_);
   proto.set_name(name_);
   if (entry_computation_) {
-    proto.set_entry_computation_name(entry_computation_->name());
+    *proto.mutable_entry_computation_name() =
+        std::string(entry_computation_->name());
     proto.set_entry_computation_id(entry_computation_->unique_id());
     *proto.mutable_host_program_shape() =
         entry_computation_layout().ComputeProgramShape().ToProto();
@@ -382,9 +433,9 @@ StatusOr<HloModuleProtoWithConfig> HloModule::ToProtoWithConfig() const {
 }
 
 Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
-  absl::flat_hash_set<std::string> computation_names;
+  absl::flat_hash_set<absl::string_view> computation_names;
   absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<std::string> instruction_names;
+  absl::flat_hash_set<absl::string_view> instruction_names;
   absl::flat_hash_set<int> instruction_ids;
 
   for (const HloComputation* computation : computations()) {
@@ -918,9 +969,9 @@ std::unique_ptr<HloModule> HloModule::Clone(const std::string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const std::string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::WrapUnique(new HloModule(
+  auto module = std::make_unique<HloModule>(
       absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config,
-      std::make_unique<CompilationEnvironments>(*comp_envs_)));
+      std::make_unique<CompilationEnvironments>(*comp_envs_));
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
@@ -971,7 +1022,7 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
 Status HloModule::RemoveUnusedComputations() {
   std::string suffix = "tmp";
   auto module = std::make_unique<HloModule>(
-      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config(),
+      absl::StrCat(name_, "-", suffix), config(),
       std::make_unique<CompilationEnvironments>(*comp_envs_));
   HloCloneContext context(module.get(), suffix);
   entry_computation_->Clone(suffix, &context);
@@ -1014,6 +1065,13 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+std::string HloModule::GetFingerprint128(const HloPrintOptions& options) const {
+  const tsl::Fprint128 fingerprint = tsl::Fingerprint128(ToString(options));
+  absl::string_view fp_bytes(reinterpret_cast<const char*>(&fingerprint),
+                             sizeof(tsl::Fprint128));
+  return absl::BytesToHexString(fp_bytes);
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

@@ -230,7 +230,6 @@ def tsl_copts(
     android_copts = [
         "-DTF_LEAN_BINARY",
         "-Wno-narrowing",
-        "-fomit-frame-pointer",
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
@@ -257,7 +256,7 @@ def tsl_copts(
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
-        if_android_arm(["-mfpu=neon"]) +
+        if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
@@ -736,3 +735,8 @@ def tsl_pybind_extension_opensource(
 
 # Export open source version of pybind_extension under base name as well.
 tsl_pybind_extension = tsl_pybind_extension_opensource
+
+# Used for specifying external visibility constraints. In non-monorepo situations, this needs to be
+# public, but monorepos can have more precise constraints.
+def set_external_visibility(monorepo_paths):
+    return if_oss(["//visibility:public"], monorepo_paths)

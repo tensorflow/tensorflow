@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/optimize_cross_host_control_deps.h"
 
+#include <algorithm>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/strcat.h"
 
@@ -33,6 +35,26 @@ Status BuildNoopNode(const Node& source, StringPiece name, const string& device,
   if (!device.empty()) {
     builder.Device(device);
   }
+  NodeDef def;
+  TF_RETURN_IF_ERROR(builder.Finalize(&def));
+
+  TF_ASSIGN_OR_RETURN(*node, graph->AddNode(def));
+  if (!device.empty()) {
+    (*node)->set_assigned_device_name(device);
+  }
+  return OkStatus();
+}
+
+Status BuildIdentityNNode(const Node& source, StringPiece name,
+                          const string& device, Graph* graph,
+                          std::vector<NodeDefBuilder::NodeOut>& inputs,
+                          Node** node) {
+  NodeDefBuilder builder(name, "IdentityN", NodeDebugInfo(source));
+  if (!device.empty()) {
+    builder.Device(device);
+  }
+  builder.Input(inputs);
+
   NodeDef def;
   TF_RETURN_IF_ERROR(builder.Finalize(&def));
 
@@ -151,6 +173,79 @@ Status OptimizeCrossHostControlOutputEdges(Graph* graph,
         graph->AddControlEdge(control_after, edge->dst(),
                               /*allow_duplicates=*/true);
         graph->RemoveEdge(edge);
+      }
+    }
+  }
+  return OkStatus();
+}
+
+Status OptimizeCrossHostDataOutputEdges(Graph* graph,
+                                        int cross_host_edges_threshold) {
+  TF_ASSIGN_OR_RETURN(DeviceLookup lookup, DeviceLookup::FromGraph(graph));
+
+  for (Node* n : graph->op_nodes()) {
+    if (n->out_edges().size() < cross_host_edges_threshold) {
+      continue;
+    }
+    absl::flat_hash_map<int, std::vector<const Edge*>> cross_host_edges;
+    int src_id = lookup.NodeToDeviceId(n);
+    for (const Edge* edge : n->out_edges()) {
+      Node* dst = edge->dst();
+      if (edge->IsControlEdge() || dst->IsSink()) {
+        continue;
+      }
+
+      int dst_id = lookup.NodeToDeviceId(dst);
+
+      if (lookup.IsSameAddressSpace(src_id, dst_id)) {
+        continue;
+      }
+      auto iter = cross_host_edges.find(dst_id);
+      if (iter == cross_host_edges.end()) {
+        cross_host_edges[dst_id] = {edge};
+      } else {
+        iter->second.push_back(edge);
+      }
+    }
+    for (const auto& pair : cross_host_edges) {
+      if (pair.second.size() < cross_host_edges_threshold) {
+        continue;
+      }
+      if (pair.second.empty()) {
+        continue;
+      }
+      int device_id = pair.first;
+      // If all our outputs are already going to a single node, we don't
+      // need to insert another node. That also makes this transformation
+      // idempotent.
+      Node* node0 = pair.second[0]->dst();
+      if (std::all_of(pair.second.begin(), pair.second.end(),
+                      [node0](const Edge* e) { return e->dst() == node0; })) {
+        continue;
+      }
+      string device = lookup.DeviceIdToName(device_id);
+      VLOG(1) << "Optimize cross host output edge, src node: " << n->name()
+              << " src device: " << lookup.DeviceIdToName(src_id)
+              << " dst host device: " << device
+              << " edges size: " << pair.second.size();
+
+      Node* data_after;
+      std::vector<NodeDefBuilder::NodeOut> inputs;
+      inputs.reserve(pair.second.size());
+      for (const Edge* edge : pair.second) {
+        inputs.emplace_back(edge->src()->name(), edge->src_output(),
+                            edge->src()->output_type(edge->src_output()));
+      }
+      TF_RETURN_IF_ERROR(BuildIdentityNNode(
+          *n, graph->NewName(strings::StrCat(n->name(), "/", "data_after")),
+          device, graph, inputs, &data_after));
+
+      int i = 0;
+      for (const Edge* edge : pair.second) {
+        graph->AddEdge(edge->src(), edge->src_output(), data_after, i);
+        graph->AddEdge(data_after, i, edge->dst(), edge->dst_input());
+        graph->RemoveEdge(edge);
+        i++;
       }
     }
   }

@@ -23,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/core/model.h"
@@ -39,7 +40,7 @@ namespace tflite {
 
 namespace {
 static const char* kSparseTensorTestModel =
-    "third_party/tensorflow/lite/testdata/sparse_tensor.bin";
+    "tensorflow/lite/testdata/sparse_tensor.bin";
 }  // namespace
 
 class MockErrorReporter : public ErrorReporter {
@@ -614,7 +615,8 @@ TEST(VerifyModel, TypedTensorShapeMatchesTensorBufferSize) {
 }
 
 TEST(VerifyModel, SimpleValidSparseTensor) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -635,7 +637,8 @@ TEST(VerifyModel, SimpleValidSparseTensor) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -661,7 +664,8 @@ TEST(VerifyModel, InvalidSparseTensorMissingBlockMap) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -688,7 +692,8 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -715,7 +720,8 @@ TEST(VerifyModel, InvalidSparseTensorInvalidBuffer) {
 }
 
 TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;
@@ -742,7 +748,8 @@ TEST(VerifyModel, InvalidSparseTensorInvalidTraversalOrder) {
 }
 
 TEST(VerifyModel, ValidSparseTensorBCSC) {
-  const auto model = FlatBufferModel::BuildFromFile(kSparseTensorTestModel);
+  const auto model = FlatBufferModel::BuildFromFile(
+      tensorflow::GetDataDependencyFilepath(kSparseTensorTestModel).c_str());
   ASSERT_TRUE(model);
 
   std::unique_ptr<ModelT> scoped_model;

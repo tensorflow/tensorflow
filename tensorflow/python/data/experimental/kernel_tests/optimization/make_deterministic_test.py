@@ -33,7 +33,7 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import script_ops
@@ -293,7 +293,7 @@ class MakeDeterministicTest(test_base.DatasetTestBase, parameterized.TestCase):
         def interleave_fn(filename):
           # Test function that uses control flow. The True branch is never taken
           concat = string_ops.string_join([filename, "abc"])
-          return control_flow_ops.cond(
+          return cond.cond(
               math_ops.equal(filename, "abc"),
               lambda: reader_ops.TextLineDataset(concat),
               lambda: reader_ops.TextLineDataset(filename))

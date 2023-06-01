@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tsl {
 
-static void CheckPrefixSuffix(const string& str, const string& prefix,
+static void CheckPrefixSuffix(absl::string_view str, const string& prefix,
                               const string& suffix) {
   CHECK_GE(str.size(), prefix.size());
   CHECK_GE(str.size(), suffix.size());
@@ -325,7 +325,7 @@ TEST(SnappyBuffers, SmallUncompressInputBuffer) {
   Status status = TestMultipleWrites(10000, 10000, 10, 10000, 2, true);
   CHECK_EQ(status.code(), error::Code::RESOURCE_EXHAUSTED);
   CheckPrefixSuffix(
-      status.error_message(),
+      status.message(),
       "Input buffer(size: 10 bytes) too small. Should be larger than ",
       " bytes.");
 }
@@ -349,7 +349,7 @@ TEST(SnappyBuffers, CorruptBlock) {
   Status status =
       TestMultipleWrites(10000, 10000, 700, 10000, 2, true, 1, true);
   CHECK_EQ(status.code(), error::Code::DATA_LOSS);
-  CheckPrefixSuffix(status.error_message(), "Failed to read ",
+  CheckPrefixSuffix(status.message(), "Failed to read ",
                     " bytes from file. Possible data corruption.");
 }
 
@@ -361,7 +361,7 @@ TEST(SnappyBuffers, CorruptBlockInputStream) {
   Status status =
       TestMultipleWritesInputStream(10000, 10000, 700, 10000, 2, true, 1, true);
   CHECK_EQ(status.code(), error::Code::DATA_LOSS);
-  CheckPrefixSuffix(status.error_message(), "Failed to read ",
+  CheckPrefixSuffix(status.message(), "Failed to read ",
                     " bytes from file. Possible data corruption.");
 }
 
@@ -382,7 +382,7 @@ TEST(SnappyBuffers, CorruptBlockLargeInputStream) {
   Status status = TestMultipleWritesInputStream(10000, 10000, 2000, 10000, 2,
                                                 true, 1, true);
   CHECK_EQ(status.code(), error::Code::DATA_LOSS);
-  CheckPrefixSuffix(status.error_message(), "Failed to read ",
+  CheckPrefixSuffix(status.message(), "Failed to read ",
                     " bytes from file. Possible data corruption.");
 }
 

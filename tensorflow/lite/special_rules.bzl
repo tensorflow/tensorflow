@@ -32,15 +32,15 @@ def ios_visibility_allowlist():
 
 def internal_visibility_allowlist():
     """Grant public visibility to internal targets so that other repos can depend on them."""
-    return [
-        "//visibility:public",
-    ]
+    return ["//visibility:public"]
+
+def jni_utils_visibility_allowlist():
+    """Returns a list of packages that can depend on tensorflow/lite/java/src/main/native:jni_utils."""
+    return ["//tensorflow/lite:__subpackages__"]
 
 def nonportable_visibility_allowlist():
     """Grant public visibility to nonportable targets so that other repos can depend on them."""
-    return [
-        "//visibility:public",
-    ]
+    return ["//visibility:public"]
 
 def op_resolver_internal_visibility_allowlist():
     """Returns a list of packages that can depend on tensorflow/lite/core/api:op_resolver_internal.
@@ -49,7 +49,7 @@ def op_resolver_internal_visibility_allowlist():
     return []
 
 def nnapi_plugin_impl_visibility_allowlist():
-    """Returns a list of packages that can depend on tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin_impl.
+    """Returns a list of packages that can depend on tensorflow/lite/acceleration/configuration:nnapi_plugin_impl.
 
     This is a no-op outside of Google."""
     return []

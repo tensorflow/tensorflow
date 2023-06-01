@@ -79,8 +79,8 @@ struct SimplifyBroadcasts : public mlir::OpRewritePattern<shape::BroadcastOp> {
     for (const auto &sInfo : shapesInfo) rank = std::max(rank, sInfo.size());
 
     // Compute broadcast symbolically.
-    SmallVector<Optional<SymbolicBroadcastDimension>> symResult(rank,
-                                                                std::nullopt);
+    SmallVector<std::optional<SymbolicBroadcastDimension>> symResult(
+        rank, std::nullopt);
     for (const auto &sInfo : llvm::enumerate(shapesInfo)) {
       size_t dimOffset = rank - sInfo.value().size();
       for (const auto &symExpr : llvm::enumerate(sInfo.value())) {
@@ -790,9 +790,9 @@ struct CstrBroadcastableOpLowering
 
 // Returns a shape tensor if the shapes can be broadcasted to a known shape.
 // Will either return one of the shapes or a generated mix of the shapes.
-llvm::Optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
-                                        ValueRange shapes, Location loc,
-                                        OpBuilder *builder) {
+std::optional<Value> simplifyBroadcast(ShapeComponentAnalysis &analysis,
+                                       ValueRange shapes, Location loc,
+                                       OpBuilder *builder) {
   // First find the input shape with the largest rank.
   SmallVector<ArrayRef<ShapeComponentAnalysis::SymbolicExpr>> shapesFound;
   size_t maxRank = 0;

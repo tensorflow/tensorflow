@@ -26,8 +26,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -105,7 +105,7 @@ class UtilTest(test_util.TensorFlowTestCase):
       i = array_ops.placeholder(dtype=dtypes.int32, shape=())
       c = lambda i: math_ops.less(i, 10)
       b = lambda i: math_ops.add(i, 1)
-      control_flow_ops.while_loop(c, b, [i])
+      while_loop.while_loop(c, b, [i])
       sess = session.Session()
 
     new_graph_def = convert_to_constants.disable_lower_using_switch_merge(

@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
@@ -175,9 +174,9 @@ LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
   return success();
 }
 
-llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
+std::optional<RankedTensorType> GetElementTypeFromAccess(
     Value collection, ModuleOp module,
-    llvm::function_ref<llvm::Optional<Type>(Operation*)> infer_from_op) {
+    llvm::function_ref<std::optional<Type>(Operation*)> infer_from_op) {
   for (auto& use : collection.getUses()) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
       auto body = while_op.body_function();

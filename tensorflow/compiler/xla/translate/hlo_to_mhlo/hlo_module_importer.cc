@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/attribute_importer.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_function_importer.h"
+#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
@@ -60,15 +61,13 @@ Status HloModuleImporter::Import(const xla::HloModule& hlo_module) {
   if (hlo_module.has_spmd_output_sharding()) {
     module->setAttr(
         "mhlo.spmd_output_sharding",
-        builder_.getStringAttr(
-            hlo_module.spmd_output_sharding().ToProto().SerializeAsString()));
+        ConvertSharding(hlo_module.spmd_output_sharding(), &builder_));
   }
 
   if (hlo_module.has_spmd_parameters_shardings()) {
     llvm::SmallVector<mlir::Attribute> parameter_shardings;
     for (const auto& sharding : hlo_module.spmd_parameters_shardings()) {
-      parameter_shardings.push_back(
-          builder_.getStringAttr(sharding.ToProto().SerializeAsString()));
+      parameter_shardings.push_back(ConvertSharding(sharding, &builder_));
     }
     module->setAttr("mhlo.spmd_parameters_shardings",
                     builder_.getArrayAttr(parameter_shardings));

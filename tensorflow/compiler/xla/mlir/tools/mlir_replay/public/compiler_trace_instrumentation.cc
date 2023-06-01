@@ -18,8 +18,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/logging.h"
 #include "tensorflow/tsl/platform/path.h"
@@ -39,8 +39,7 @@ void MlirCompilerTraceInstrumentation::runAfterPass(Pass* pass, Operation* op) {
 
   auto* item = trace_.mutable_passes()->Add();
   item->set_after_pass(pass->getName().str());
-  llvm::raw_string_ostream os(*item->mutable_mlir_module());
-  module.print(os);
+  *item->mutable_mlir_module() = xla::llvm_ir::DumpToString(module);
 }
 
 MlirCompilerTraceInstrumentation::~MlirCompilerTraceInstrumentation() {

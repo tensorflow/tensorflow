@@ -15,19 +15,19 @@ limitations under the License.
 
 #include "gml_st/interfaces/bufferizable_op_interface_impl.h"
 
-#include <iterator>
 #include <optional>
 #include <tuple>
 
 #include "gml_st/IR/gml_st_ops.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/Interfaces/ViewLikeInterface.h"
+#include "mlir/Dialect/Utils/StructuredOpsUtils.h"
 #include "mlir/Support/LogicalResult.h"
+
+namespace mlir {
+namespace gml_st {
+namespace {
 
 using mlir::bufferization::AliasingOpOperandList;
 using mlir::bufferization::AliasingOpResultList;
@@ -35,74 +35,40 @@ using mlir::bufferization::AnalysisState;
 using mlir::bufferization::BufferizableOpInterface;
 using mlir::bufferization::BufferizationOptions;
 using mlir::bufferization::BufferRelation;
-using mlir::bufferization::ToTensorOp;
-using mlir::tensor::ExtractSliceOp;
 
-namespace mlir {
-namespace gml_st {
-namespace {
-
-
-LogicalResult materializeInsertion(OpBuilder &b, Value update, Value set,
-                                   Value memref,
-                                   const BufferizationOptions &options) {
-  Location loc = update.getLoc();
-
-  Operation *setDefiningOp = set.getDefiningOp();
-
-  // Create subviews or store ops for the set computation.
-  auto tile = dyn_cast<TileOp>(setDefiningOp);
-  if (!tile) {
-    // TODO(bchetioui): this check for an unrealized conversion cast does not
-    // belong here. This workaround will have to be deleted once SetYieldOp can
-    // be canonicalized correctly.
-
-    // If constants were folded into the tile type during canonicalization,
-    // tile creation is followed by an UnrealizedConversionCastOp on the tile.
-    auto castOp = dyn_cast<UnrealizedConversionCastOp>(setDefiningOp);
-    if (!castOp) return failure();
-
-    tile = dyn_cast<TileOp>(castOp->getOperand(0).getDefiningOp());
-    if (!tile) return failure();
-  }
-
-  if (!update.getType().isa<ShapedType>()) {
-    auto indices =
-        getValueOrCreateConstantIndexOp(b, loc, tile.getMixedOffsets());
-    b.create<memref::StoreOp>(loc, update, memref, indices);
-    return success();
-  }
-
-  memref =
-      b.create<memref::SubViewOp>(loc, memref, tile.getMixedOffsets(),
-                                  tile.getMixedSizes(), tile.getMixedStrides());
-  return options.createMemCpy(b, loc, update, memref);
-}
-
-struct ParallelOpInterface
-    : public BufferizableOpInterface::ExternalModel<ParallelOpInterface,
-                                                    ParallelOp> {
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const AnalysisState &state) const {
-    auto parallelOp = cast<ParallelOp>(op);
-
-    // gml_st.parallel alone doesn't bufferize to a memory read, one of the uses
-    // of its matching bbArg may.
-    return state.isValueRead(
-        parallelOp.getRegionOutputArgForOpOperand(opOperand));
-  }
-
-  bool bufferizesToMemoryWrite(Operation * /*op*/, OpOperand & /*opOperand*/,
-                               const AnalysisState & /*state*/) const {
-    // Outputs of gml_st::ParallelOp are always considered as a write.
+struct FusionOpBufferizationInterface
+    : public BufferizableOpInterface::ExternalModel<
+          FusionOpBufferizationInterface, FusionOp> {
+  bool bufferizesToMemoryRead(Operation * /*op*/, OpOperand & /*opOperand*/,
+                              const AnalysisState & /*state*/) const {
     return true;
   }
 
-  AliasingOpResultList getAliasingOpResults(Operation *op, OpOperand &opOperand,
-                                            const AnalysisState &) const {
-    auto parallelOp = cast<ParallelOp>(op);
-    return {{parallelOp.getResultForOpOperand(opOperand),
+  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
+                               const AnalysisState & /*state*/) const {
+    return cast<FusionOp>(op).isDpsInit(&opOperand);
+  }
+
+  AliasingOpOperandList getAliasingOpOperands(
+      Operation *op, OpResult opResult, const AnalysisState & /*state*/) const {
+    auto fusionOp = cast<FusionOp>(op);
+
+    // The i-th OpResult aliases with the i-th "out" tensor.
+    return {{fusionOp.getDpsInitOperand(opResult.getResultNumber()),
              BufferRelation::Equivalent}};
+  }
+
+  AliasingOpResultList getAliasingOpResults(
+      Operation *op, OpOperand &opOperand,
+      const AnalysisState & /*state*/) const {
+    auto fusionOp = cast<FusionOp>(op);
+
+    // The i-th "out" tensor aliases with the i-th OpResult.
+    if (fusionOp.isDpsInit(&opOperand)) {
+      return {
+          {fusionOp.getTiedOpResult(&opOperand), BufferRelation::Equivalent}};
+    }
+    return {};
   }
 
   bool isWritable(Operation * /*op*/, Value /*value*/,
@@ -112,264 +78,127 @@ struct ParallelOpInterface
 
   LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
                           const BufferizationOptions &options) const {
-    auto parallelOp = cast<ParallelOp>(op);
+    // Take a guard before anything else.
+    OpBuilder::InsertionGuard g(rewriter);
+    rewriter.setInsertionPoint(op);
 
-    // Get the bufferized output arguments.
-    Location loc = op->getLoc();
-    SmallVector<Value> bufferizedOutputs;
-    bufferizedOutputs.reserve(parallelOp.getNumOutputs());
-    for (Value output : parallelOp.getOutputs()) {
-      FailureOr<Value> maybeBuffer = getBuffer(rewriter, output, options);
-      if (failed(maybeBuffer)) return failure();
-      bufferizedOutputs.push_back(*maybeBuffer);
+    auto loc = op->getLoc();
+    FusionOp fusionOp = cast<FusionOp>(op);
+
+    // Nothing to do. This op is already bufferized.
+    if (fusionOp.hasBufferSemantics()) return success();
+
+    if (!fusionOp.hasTensorSemantics()) {
+      return op->emitError() << "expected either buffer or tensor semantics";
     }
 
-    // Create new ParallelOp.
-    std::optional<StringAttr> distTypeAttr;
-    if (auto distType = cast<ParallelOp>(op).getDistributionType())
-      distTypeAttr = rewriter.getStringAttr(*distType);
+    size_t numOutputs = fusionOp.getNumDpsInits();
 
-    auto newParallelOp = rewriter.create<ParallelOp>(
-        loc, TypeRange{}, parallelOp.getLowerBound(),
-        parallelOp.getUpperBound(), parallelOp.getStep(), ValueRange{},
-        distTypeAttr, nullptr);
-    Block *loopBody = newParallelOp.getBody();
+    // New operands for the cloned op.
+    SmallVector<Value> newOperands;
+    newOperands.reserve(fusionOp.getNumDpsInputs() + numOutputs);
 
-    // Add conversions to tensor so that we can reuse the old loop body.
-    rewriter.setInsertionPointToStart(loopBody);
-    SmallVector<Value> outputsToTensors;
-    for (auto buf : bufferizedOutputs) {
-      Value tensor = rewriter.create<bufferization::ToTensorOp>(loc, buf);
-      outputsToTensors.push_back(tensor);
+    for (OpOperand *opOperand : fusionOp.getDpsInputOperands()) {
+      if (fusionOp.isScalar(opOperand)) {
+        newOperands.push_back(opOperand->get());
+        continue;
+      }
+      FailureOr<Value> buffer = getBuffer(rewriter, opOperand->get(), options);
+      if (failed(buffer)) return failure();
+      newOperands.push_back(*buffer);
     }
-    SmallVector<Value> blockArgs = newParallelOp.getInductionVars();
-    blockArgs.append(outputsToTensors);
 
-    // Move old body into new for loop.
-    rewriter.mergeBlocks(parallelOp.getBody(), loopBody, blockArgs);
+    // New output operands for the cloned op.
+    SmallVector<Value> newOutputs;
+    newOutputs.reserve(numOutputs);
 
-    // Replace results and delete old op.
-    bufferization::replaceOpWithBufferizedValues(rewriter, op,
-                                                 bufferizedOutputs);
+    for (OpResult opResult : fusionOp->getOpResults()) {
+      OpOperand *opOperand =
+          fusionOp.getDpsInitOperand(opResult.getResultNumber());
+      FailureOr<Value> resultBuffer =
+          getBuffer(rewriter, opOperand->get(), options);
+      if (failed(resultBuffer)) return failure();
+      newOutputs.push_back(*resultBuffer);
+    }
+
+    newOperands.append(newOutputs.begin(), newOutputs.end());
+
+    // Set insertion point now that potential alloc/dealloc are introduced.
+    rewriter.setInsertionPoint(op);
+
+    // Clone the op, but use the new operands. Move the existing block into the
+    // new op. Since the new op does not have any tensor results, it does not
+    // return anything.
+    auto newFusionOp = cast<FusionOp>(cloneWithoutRegions(
+        rewriter, op, /*resultTypes=*/TypeRange{}, newOperands));
+
+    // Create empty region in the new bufferized op.
+    Region &region = newFusionOp.getRegion();
+    SmallVector<Type, 4> blockArgTypes =
+        llvm::to_vector(TypeRange(ValueRange(newOperands)));
+    SmallVector<Location, 4> blockArgLocs(blockArgTypes.size(), loc);
+    rewriter.createBlock(&region, region.end(), blockArgTypes, blockArgLocs);
+
+    ArrayRef<BlockArgument> bbArgs =
+        newFusionOp.getRegion().front().getArguments();
+    SmallVector<Value> bbArgsToTensors;
+    for (auto buf : bbArgs) {
+      if (isa<MemRefType>(buf.getType())) {
+        Value tensor = rewriter.create<bufferization::ToTensorOp>(loc, buf);
+        bbArgsToTensors.push_back(tensor);
+      } else {
+        bbArgsToTensors.push_back(buf);
+      }
+    }
+
+    // Move old body into new fusion op.
+    rewriter.mergeBlocks(fusionOp.getBody(), newFusionOp.getBody(),
+                         bbArgsToTensors);
+
+    // Copy results to output memrefs. In most of the cases it's not necessary,
+    // because clusters are constructed in a way that the result is produced by
+    // an dst-style op that already put everything in the output memrefs, but
+    // there are corner cases when it doesn't happen. For example, tiled 1d
+    // linalg.reduce.
+    rewriter.setInsertionPoint(newFusionOp.getTerminator());
+    for (auto [bbArg, resultValue] :
+         llvm::zip(bbArgs.take_back(numOutputs),
+                   newFusionOp.getTerminator().getValues())) {
+      if (auto toTensorOp =
+              resultValue.getDefiningOp<bufferization::ToTensorOp>()) {
+        rewriter.create<memref::CopyOp>(loc, toTensorOp.getMemref(), bbArg);
+      }
+    }
+
+    // Replace gml_st.yield values with output buffers.
+    rewriter.replaceOpWithNewOp<gml_st::YieldOp>(newFusionOp.getTerminator(),
+                                                 bbArgs.take_back(numOutputs));
+
+    // Replace the results of the old op with the new output buffers.
+    bufferization::replaceOpWithBufferizedValues(rewriter, op, newOutputs);
+
     return success();
   }
 
   FailureOr<BaseMemRefType> getBufferType(
       Operation *op, Value value, const BufferizationOptions &options,
       const DenseMap<Value, BaseMemRefType> &fixedTypes) const {
-    auto parallelOp = cast<ParallelOp>(op);
+    auto fusionOp = cast<FusionOp>(op);
 
     if (auto bbArg = value.dyn_cast<BlockArgument>()) {
       // A tensor block argument has the same bufferized type as the
       // corresponding output operand.
       return bufferization::getBufferType(
-          parallelOp.getOpOperandForRegionOutputArg(bbArg).get(), options,
+          fusionOp->getOpOperand(bbArg.getArgNumber()).get(), options,
           fixedTypes);
     }
 
     // The bufferized result type is the same as the bufferized type of the
     // corresponding output operand.
     return bufferization::getBufferType(
-        parallelOp.getOutputs()[value.cast<OpResult>().getResultNumber()],
+        fusionOp.getDpsInitOperand(value.cast<OpResult>().getResultNumber())
+            ->get(),
         options, fixedTypes);
-  }
-
-  bool isRepetitiveRegion(Operation * /*op*/, unsigned /*index*/) const {
-    return true;
-  }
-};
-
-struct SetYieldOpInterface
-    : public BufferizableOpInterface::ExternalModel<SetYieldOpInterface,
-                                                    SetYieldOp> {
-  AliasingOpResultList getAliasingOpResults(
-      Operation * /*op*/, OpOperand & /*opOperand*/,
-      const AnalysisState & /*state*/) const {
-    return {};
-  }
-
-  bool bufferizesToMemoryRead(Operation *op, OpOperand &opOperand,
-                              const AnalysisState & /*state*/) const {
-    return true;
-  }
-
-  bool bufferizesToMemoryWrite(Operation *op, OpOperand &opOperand,
-                               const AnalysisState & /*state*/) const {
-    return cast<SetYieldOp>(op).isDstOperand(opOperand);
-  }
-
-  LogicalResult bufferize(Operation *op, RewriterBase &rewriter,
-                          const BufferizationOptions &options) const {
-    auto yieldOp = cast<SetYieldOp>(op);
-    Operation *loop = yieldOp->getParentOp();
-
-    rewriter.setInsertionPoint(op);
-    for (const auto &it :
-         llvm::enumerate(llvm::zip(yieldOp.getSrcs(), yieldOp.getDsts(),
-                                   yieldOp.getSets(), loop->getResults()))) {
-      Value src, dst, set, loopResult;
-      std::tie(src, dst, set, loopResult) = it.value();
-
-      // `src` can be a scalar, that's `getBuffer()` should be called only for
-      // tensor types.
-      if (src.getType().isa<RankedTensorType>()) {
-        FailureOr<Value> srcBufferOr = getBuffer(rewriter, src, options);
-        if (failed(srcBufferOr)) return failure();
-
-        src = *srcBufferOr;
-      }
-
-      FailureOr<Value> dstBufferOr = getBuffer(rewriter, dst, options);
-      if (failed(dstBufferOr)) return failure();
-      Value dstBuffer = *dstBufferOr;
-
-      if (failed(materializeInsertion(rewriter, src, set, dstBuffer, options)))
-        return failure();
-      if (auto parallelOp =
-              dyn_cast<gml_st::ParallelOp>(yieldOp->getParentOp())) {
-        // Replace results of the enclosing loop with `to_tensor(dst)`.
-        OpBuilder::InsertionGuard g(rewriter);
-        rewriter.setInsertionPointAfter(loop);
-
-        Value resultToTensor =
-            rewriter.create<ToTensorOp>(loop->getLoc(), dstBuffer);
-        for (OpOperand &use :
-             llvm::make_early_inc_range(loopResult.getUses())) {
-          rewriter.updateRootInPlace(use.getOwner(),
-                                     [&]() { use.set(resultToTensor); });
-        }
-      }
-    }
-    rewriter.replaceOpWithNewOp<SetYieldOp>(op);
-    return success();
-  }
-
-  LogicalResult resolveConflicts(Operation *op, RewriterBase &rewriter,
-                                 const AnalysisState &state) const {
-    OpBuilder::InsertionGuard g(rewriter);
-    SmallVector<OpOperand *> outOfPlaceOpOperands;
-    DenseSet<OpOperand *> copiedOpOperands;
-    DenseSet<OpOperand *> escapingOpOperandCopies;
-
-    // Find all out-of-place OpOperands.
-    for (OpOperand &opOperand : op->getOpOperands()) {
-      Type operandType = opOperand.get().getType();
-      if (!operandType.isa<TensorType>()) continue;
-      if (state.isInPlace(opOperand)) continue;
-      if (operandType.isa<UnrankedTensorType>())
-        return op->emitError("copies of unranked tensors are not supported");
-
-      AliasingOpResultList aliasingOpResults =
-          state.getAliasingOpResults(opOperand);
-      // Is the result yielded from a block? Or are deallocations turned off
-      // entirely? In either case, mark the allocation as "escaping", so that it
-      // will not be deallocated.
-      bool escape = !state.getOptions().createDeallocs ||
-                    llvm::any_of(aliasingOpResults,
-                                 [&](bufferization::AliasingOpResult a) {
-                                   return state.isTensorYielded(a.opResult);
-                                 });
-
-      // In all other cases, make a copy of the OpOperand.
-      outOfPlaceOpOperands.push_back(&opOperand);
-      if (!state.canOmitTensorCopy(opOperand))
-        copiedOpOperands.insert(&opOperand);
-      if (escape) escapingOpOperandCopies.insert(&opOperand);
-    }
-
-    // Insert copies of OpOperands before the loop.
-    rewriter.setInsertionPoint(op->getParentOp());
-    for (OpOperand *opOperand : outOfPlaceOpOperands) {
-      FailureOr<Value> copy = allocateTensorForShapedValue(
-          rewriter, op->getLoc(), opOperand->get(),
-          escapingOpOperandCopies.contains(opOperand), state.getOptions(),
-          copiedOpOperands.contains(opOperand));
-      if (failed(copy)) return failure();
-      rewriter.updateRootInPlace(op, [&]() { opOperand->set(*copy); });
-    }
-
-    return success();
-  }
-
-  bool areEquivalentSlices(const AnalysisState &state,
-                           ExtractSliceOp extractSliceOp, SetYieldOp setYieldOp,
-                           int64_t updateIdx) const {
-    if (!extractSliceOp || !setYieldOp) return false;
-    if (extractSliceOp != setYieldOp &&
-        !state.areEquivalentBufferizedValues(extractSliceOp.getSource(),
-                                             setYieldOp.getDsts()[updateIdx])) {
-      return false;
-    }
-    if (!sameOffsetsSizesAndStrides(
-            extractSliceOp,
-            setYieldOp.getSets()[updateIdx].getDefiningOp<TileOp>(),
-            isEqualConstantIntOrValue))
-      return false;
-    return true;
-  }
-
-  /// Return true if `value` is originating from an ExtractSliceOp that matches
-  /// the given SetYieldOp.
-  bool matchesInsertDestination(const AnalysisState &state, Value value,
-                                SetYieldOp setYieldOp,
-                                int64_t updateIdx) const {
-    // Look for matching slices.
-    auto matchesSlice = [&](Value val) {
-      if (auto materializeOp = val.getDefiningOp<ExtractSliceOp>()) {
-        if (areEquivalentSlices(state, materializeOp, setYieldOp, updateIdx)) {
-          return true;
-        }
-      }
-      return false;
-    };
-    return llvm::all_of(
-        state.findValueInReverseUseDefChain(value, matchesSlice), matchesSlice);
-  }
-
-  // Copied and modified for gml_st.materialize/gml_st.set_yield pairs from
-  // mlir/lib/Dialect/Tensor/Transforms/BufferizableOpInterfaceImpl.cpp
-  // Takes into account that gml_st.set_yield can have multiple src/dst pairs.
-  bool isNotConflicting(Operation *op, OpOperand *uRead,
-                        OpOperand *uConflictingWrite,
-                        const AnalysisState &state) const {
-    Operation *readingOp = uRead->getOwner();
-    Operation *conflictingWritingOp = uConflictingWrite->getOwner();
-
-    // Special rules for matching SetYieldOp/ExtractSliceOp pairs. If
-    // uRead is an SetYieldOp...
-    if (auto setYieldOp = dyn_cast<SetYieldOp>(readingOp)) {
-      for (int64_t updateIdx :
-           llvm::seq<int64_t>(0, setYieldOp.getNumUpdates())) {
-        OpOperand &srcOpOperand = setYieldOp->getOpOperand(updateIdx);
-        OpOperand *dstOpOperand = setYieldOp.getDstOperand(updateIdx);
-
-        if (uRead == dstOpOperand /*dest*/ &&
-            matchesInsertDestination(state, uConflictingWrite->get(),
-                                     setYieldOp, updateIdx))
-          return true;
-
-        if (uRead == &srcOpOperand /*source*/ &&
-            uConflictingWrite == dstOpOperand /*dest*/ &&
-            matchesInsertDestination(state, uRead->get(), setYieldOp,
-                                     updateIdx))
-          return true;
-      }
-    }
-
-    // If uConflictingWrite is an SetYieldOp...
-    if (auto setYieldOp = dyn_cast<SetYieldOp>(conflictingWritingOp)) {
-      for (int64_t updateIdx :
-           llvm::seq<int64_t>(0, setYieldOp.getNumUpdates())) {
-        if (uConflictingWrite == setYieldOp.getDstOperand(updateIdx) &&
-            state.areEquivalentBufferizedValues(
-                uRead->get(), setYieldOp.getSrcs()[updateIdx]) &&
-            matchesInsertDestination(state, setYieldOp.getSrcs()[updateIdx],
-                                     setYieldOp, updateIdx))
-          return true;
-      }
-    }
-
-    return false;
   }
 };
 
@@ -381,7 +210,6 @@ void mlir::gml_st::registerBufferizableOpInterfaceExternalModels(
     DialectRegistry &registry) {
   registry.addExtension(
       +[](MLIRContext *ctx, gml_st::GmlStDialect * /*dialect*/) {
-        ParallelOp::attachInterface<ParallelOpInterface>(*ctx);
-        SetYieldOp::attachInterface<SetYieldOpInterface>(*ctx);
+        FusionOp::attachInterface<FusionOpBufferizationInterface>(*ctx);
       });
 }

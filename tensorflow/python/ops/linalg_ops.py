@@ -19,7 +19,7 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
@@ -356,7 +356,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
         # We have to defer determining the shape to runtime and use
         # conditional execution of the appropriate graph.
         matrix_shape = array_ops.shape(matrix)[-2:]
-        return control_flow_ops.cond(
+        return cond.cond(
             matrix_shape[-2] >= matrix_shape[-1],
             lambda: _overdetermined(matrix, rhs, l2_regularizer),
             lambda: _underdetermined(matrix, rhs, l2_regularizer))
@@ -731,8 +731,11 @@ def norm(tensor,
       if is_matrix_norm and ord in [2, 2.0]:
         rank = array_ops.rank(tensor)
         positive_axis = map_fn.map_fn(
-            lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank
-                                           ), ops.convert_to_tensor(axis))
+            lambda i: cond.cond(
+                i >= 0,
+                lambda: i,
+                lambda: i + rank),
+            ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
         perm_before = array_ops.concat([
             gen_array_ops.list_diff(axes, positive_axis, dtypes.int32)[0],

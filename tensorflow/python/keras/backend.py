@@ -32,7 +32,7 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
 from tensorflow.python.client import session as session_module
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager.context import get_config
 from tensorflow.python.framework import composite_tensor
@@ -43,6 +43,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -56,6 +57,7 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
@@ -72,7 +74,9 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
@@ -703,9 +707,9 @@ def _get_session(op_input_list=()):
         _SESSION.session.graph is not _current_graph(op_input_list)):
       # If we are creating the Session inside a tf.distribute.Strategy scope,
       # we ask the strategy for the right session options to use.
-      if distribution_strategy_context.has_strategy():
+      if distribute_lib.has_strategy():
         configure_and_create_distributed_session(
-            distribution_strategy_context.get_strategy())
+            distribute_lib.get_strategy())
       else:
         _SESSION.session = session_module.Session(
             config=get_default_session_config())
@@ -939,7 +943,7 @@ def _to_tensor(x, dtype):
   Returns:
       A tensor.
   """
-  return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
+  return tensor_conversion.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
 
 
 @keras_export('keras.backend.is_sparse')
@@ -1182,7 +1186,7 @@ def _initialize_variables(session):
     # This step is expensive, so we only run it on variables not already
     # marked as initialized.
     is_initialized = session.run(
-        [variables_module.is_variable_initialized(v) for v in candidate_vars])
+        [variable_v1.is_variable_initialized(v) for v in candidate_vars])
     # TODO(kathywu): Some metric variables loaded from SavedModel are never
     # actually used, and do not have an initializer.
     should_be_initialized = [
@@ -4484,7 +4488,7 @@ def rnn(step_function,
         return (time + 1, output_ta_t,
                 tuple(flat_new_output)) + tuple(new_states)
 
-      final_outputs = control_flow_ops.while_loop(
+      final_outputs = while_loop.while_loop(
           body=_step,
           loop_vars=(time, output_ta, flat_zero_output) + states,
           **while_loop_kwargs)
@@ -4518,10 +4522,8 @@ def rnn(step_function,
         new_states = nest.pack_sequence_as(initial_states, flat_new_state)
         return (time + 1, output_ta_t) + tuple(new_states)
 
-      final_outputs = control_flow_ops.while_loop(
-          body=_step,
-          loop_vars=(time, output_ta) + states,
-          **while_loop_kwargs)
+      final_outputs = while_loop.while_loop(
+          body=_step, loop_vars=(time, output_ta) + states, **while_loop_kwargs)
       new_states = final_outputs[2:]
 
     output_ta = final_outputs[1]
@@ -4585,7 +4587,7 @@ def switch(condition, then_expression, else_expression):
         return else_expression
     else:
       else_expression_fn = else_expression
-    x = control_flow_ops.cond(condition, then_expression_fn, else_expression_fn)
+    x = cond.cond(condition, then_expression_fn, else_expression_fn)
   else:
     # tf.where needs its condition tensor
     # to be the same shape as its two
@@ -4856,8 +4858,8 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
   [0. 0. 0.]
 
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
   target.shape.assert_is_compatible_with(output.shape)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
@@ -4917,8 +4919,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   Raises:
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
   # activations cache logits on the `output` Tensor.
@@ -5004,8 +5006,8 @@ def binary_crossentropy(target, output, from_logits=False):
   Returns:
       A tensor.
   """
-  target = ops.convert_to_tensor_v2_with_dispatch(target)
-  output = ops.convert_to_tensor_v2_with_dispatch(output)
+  target = tensor_conversion.convert_to_tensor_v2_with_dispatch(target)
+  output = tensor_conversion.convert_to_tensor_v2_with_dispatch(output)
 
   # Use logits whenever they are available. `softmax` and `sigmoid`
   # activations cache logits on the `output` Tensor.

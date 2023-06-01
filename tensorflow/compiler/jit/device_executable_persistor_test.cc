@@ -71,11 +71,6 @@ class DeviceExecutionPersistorTest : public ::testing::Test {
                             BuildSampleCompilationResult());
   }
 
-  void TearDown() override {
-    TF_ASSERT_OK(DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-        DEVICE_CPU_XLA_JIT));
-  }
-
   StatusOr<std::unique_ptr<xla::LocalExecutable>> BuildSampleExecutable() {
     return xla_compiler_client_->BuildExecutable(DefaultXlaOptions(),
                                                  compilation_result_add_);

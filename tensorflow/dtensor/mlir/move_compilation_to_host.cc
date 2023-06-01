@@ -277,7 +277,7 @@ mlir::LogicalResult HandleCompilationOps(
     if (!device_ordinal_host.ok())
       return compile_op.emitOpError(
           llvm::formatv("error while creating TPU compilation logic. {0}",
-                        device_ordinal_host.status().error_message()));
+                        device_ordinal_host.status().message()));
 
     mlir::Value predicate_host = builder.create<mlir::TF::EqualOp>(
         compile_op.getLoc(), *device_ordinal_host,

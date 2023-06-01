@@ -278,7 +278,7 @@ void BasePattern::CloneAndReorderArgs(TypeRange types, Region &from, Region &to,
   IRMapping bv;
   CloneAndRename(from, to, bv);
   SmallVector<Location> arg_locs(types.size(), from.getLoc());
-  for (auto &it :
+  for (const auto &it :
        llvm::enumerate(llvm::to_vector(to.addArguments(types, arg_locs)))) {
     BlockArgument arg = to.getArgument(it.index() * 2);
     BlockArgument ctl = to.getArgument(arg.getArgNumber() + 1);
@@ -399,7 +399,7 @@ LogicalResult ConvertCaseLikeOp<CaseLikeOp, CaseLikeRegionOp>::matchAndRewrite(
   ControlType control_ty = this->dialect_.getControlType();
   SmallVector<IRMapping> bvs(branch_funcs.size(), {});
   rewriter.setInsertionPoint(region_op);
-  for (auto &arg : llvm::enumerate(args)) {
+  for (const auto &arg : llvm::enumerate(args)) {
     for (auto it : llvm::zip(branch_funcs, bvs)) {
       BlockArgument branch_arg =
           GraphFuncOp::getDataValue(std::get<0>(it).getBody(), arg.index());

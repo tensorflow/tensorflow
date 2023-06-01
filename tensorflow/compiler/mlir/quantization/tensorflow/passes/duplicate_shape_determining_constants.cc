@@ -307,7 +307,10 @@ void DuplicateShapeDeterminingConstantsPass::runOnOperation() {
       CompileTimeConstantOperand<TF::SegmentSumV2Op, 2>,   // $num_segments
       CompileTimeConstantOperand<TF::SliceOp, 1, 2>,       // $begin, $size
       CompileTimeConstantOperand<TF::SparseToDenseOp, 1>,  // $output_shape
-      CompileTimeConstantOperand<TF::StackV2Op, 0>,        // $max_size
+      CompileTimeConstantOperand<TF::SplitOp, 0>,          // $split_dim
+      // $size_splits, $split_dim
+      CompileTimeConstantOperand<TF::SplitVOp, 1, 2>,
+      CompileTimeConstantOperand<TF::StackV2Op, 0>,  // $max_size
       // $num_samples
       CompileTimeConstantOperand<TF::StatelessMultinomialOp, 1>,
       // $shape, $begin, $end, $strides

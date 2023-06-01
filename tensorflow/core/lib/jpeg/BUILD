@@ -67,12 +67,22 @@ cc_library(
     linkopts = if_android(["-ldl"]),
     deps = [
         "//tensorflow/core:core_stringpiece",
+        "//tensorflow/core/platform:byte_order",
+        "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:float8",
         "//tensorflow/core/platform:jpeg",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/tsl/platform:logging",
+        "//tensorflow/tsl/platform:tstring",
+        "//tensorflow/tsl/platform:types",
+        "//tensorflow/tsl/platform/default:dynamic_annotations",
+        "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/strings",
+        "@libjpeg_turbo//:jpeg",
     ],
 )
 

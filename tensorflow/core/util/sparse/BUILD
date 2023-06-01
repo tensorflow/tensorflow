@@ -9,7 +9,9 @@ package(
 filegroup(
     name = "higher_level_tests_group",
     srcs = ["sparse_tensor_test.cc"],
-    visibility = ["//tensorflow/core:__pkg__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
 )
 
 # Export source files needed for mobile builds, which do not use granular targets.

@@ -560,6 +560,7 @@ REGISTER_OP("AnonymousSeedGenerator")
 REGISTER_OP("DatasetCardinality")
     .Input("input_dataset: variant")
     .Output("cardinality: int64")
+    .Attr("cardinality_options: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("DeleteSeedGenerator")

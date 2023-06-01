@@ -20,9 +20,7 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#if CUDA_VERSION >= 9000
 #define CUB_USE_COOPERATIVE_GROUPS
-#endif  // CUDA_VERSION >= 9000
 
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"

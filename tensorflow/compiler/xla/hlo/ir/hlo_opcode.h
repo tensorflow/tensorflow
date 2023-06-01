@@ -18,11 +18,9 @@ limitations under the License.
 
 #include <iosfwd>
 #include <optional>
-#include <string>
 
-#include "tensorflow/compiler/xla/comparison_util.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
@@ -162,6 +160,7 @@ namespace xla {
   V(kSubtract, "subtract", 2)                                                  \
   V(kTan, "tan", 1)                                                            \
   V(kTanh, "tanh", 1)                                                          \
+  V(kTopK, "topk", 1)                                                          \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \
@@ -182,10 +181,10 @@ enum {
 };
 
 // Returns a string representation of the opcode.
-std::string HloOpcodeString(HloOpcode opcode);
+absl::string_view HloOpcodeString(HloOpcode opcode);
 
 // Retrieves the opcode enum by name if the opcode exists.
-StatusOr<HloOpcode> StringToHloOpcode(const std::string& opcode_name);
+StatusOr<HloOpcode> StringToHloOpcode(absl::string_view opcode_name);
 
 inline std::ostream& operator<<(std::ostream& os, HloOpcode opcode) {
   return os << HloOpcodeString(opcode);

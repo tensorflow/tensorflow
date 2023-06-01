@@ -111,7 +111,7 @@ StatusOr<bool> AsyncOpCanonicalizer::Run(
             instruction);
         instruction->ReplaceCalledComputations(
             [&](HloComputation*) { return computation; });
-        computation->AddAsyncInstruction(instruction);
+        computation->AddAsyncInstruction(*instruction);
       }
     }
   }

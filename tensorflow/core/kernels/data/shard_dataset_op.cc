@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/shard_dataset_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -76,14 +80,6 @@ class ShardDatasetOp::Dataset : public DatasetBase {
     name_utils::DatasetDebugStringParams params;
     params.set_args(num_shards_, index_);
     return name_utils::DatasetDebugString(kDatasetType, params);
-  }
-
-  int64_t CardinalityInternal() const override {
-    int64_t n = input_->Cardinality();
-    if (n == kInfiniteCardinality || n == kUnknownCardinality) {
-      return n;
-    }
-    return n / num_shards_ + (index_ < n % num_shards_ ? 1 : 0);
   }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
@@ -217,7 +213,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
    protected:
     std::shared_ptr<model::Node> CreateNode(
         IteratorContext* ctx, model::Node::Args args) const override {
-      return model::MakeKnownRatioNode(std::move(args), dataset()->num_shards_);
+      return model::MakeKnownRatioNode(
+          std::move(args), 1.0 / static_cast<double>(dataset()->num_shards_));
     }
 
     Status SaveInternal(SerializationContext* ctx,

@@ -204,3 +204,25 @@ module attributes {tf_saved_model.semantics} {
 // CHECK-DAG: %[[CONCAT:.*]] = "tf.ConcatV2"(%[[READ_VAR_0]], %[[CST_1]], %[[AXIS]])
 // CHECK: return %[[CONCAT]] : tensor<12xf32>
 }
+
+// -----
+
+// Tests a case where the ConstOp's location is a fused loc containing more
+// than two strings to be combined to form the shared_name. It must not contain
+// the character ";" (which is often used as a delimiter to join fused loc's
+// items).
+
+module attributes {tf_saved_model.semantics} {
+// CHECK: func.func @init_func_restore_op()
+// CHECK-DAG: %[[CST_0:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<8xf32>}
+// Check that the variable's shared_name contains the fused loc's items joined
+// by the delimiter "_" and suffixed with a number.
+// CHECK-DAG: %[[VAR_HANDLE_0:.*]] = "tf.VarHandleOp"() {{.*shared_name = "apple_banana_0".*}}
+// CHECK: "tf.AssignVariableOp"(%[[VAR_HANDLE_0]], %[[CST_0]])
+
+  func.func @serving_default() -> (tensor<8xf32> {tf_saved_model.index_path = ["output"]})
+    attributes {tf.entry_function = {control_outputs = "", inputs = "", outputs = "output:0"}, tf_saved_model.exported_names = ["serving_default"]} {
+    %cst_0 = "tf.Const"() {device = "", value = dense<1.0> : tensor<8xf32>} : () -> tensor<8xf32> loc(fused["Const:", "apple", "banana"])
+    return %cst_0 : tensor<8xf32>
+  }
+}

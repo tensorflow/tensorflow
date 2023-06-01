@@ -98,7 +98,7 @@ TEST(TransposeTest, TestUnequalPermSize) {
 }
 
 TEST(TransposeTest, TestPermOutOfBounds) {
-  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, -1, -2, -3}),
+  EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, -1, -2, -5}),
                "Transpose op permutations array is out of bounds.");
   EXPECT_DEATH(TransposeOpConstModel({1, 3, 3, 1}, {4}, {0, 1, 2, 4}),
                "Transpose op permutations array is out of bounds.");

@@ -44,29 +44,6 @@ Status SetPjRtClientInTFGlobalResourceManager(
   return OkStatus();
 }
 
-Status DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(
-    const DeviceType& device_type) {
-  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
-  PjRtState* pjrt_state;
-  auto status = rmgr->Lookup(rmgr->default_container(), kPjRtStateResourceName,
-                             &pjrt_state);
-  if (!status.ok() && status.code() != error::NOT_FOUND) {
-    return errors::Internal(
-        "Failed to find PjRtState Resource when deleting PJRT client is "
-        "requested: ",
-        status.error_message());
-  }
-  // This method may be called before PJRT resource is created. It is OK to
-  // receive NOT_FOUND in the resource look up.
-  if (status.code() == error::NOT_FOUND) {
-    LOG(INFO) << "PjRtState Resource is not found in TF GlobalResourceManager.";
-    return OkStatus();
-  }
-  core::ScopedUnref pjrt_state_ref(pjrt_state);
-  TF_RETURN_IF_ERROR(pjrt_state->DeletePjRtClientIfExists(device_type));
-  return OkStatus();
-}
-
 StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type) {
   ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
   PjRtState* pjrt_state;

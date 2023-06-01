@@ -36,31 +36,12 @@ TEST(PjRtUtilTest, SetGetAndDeletePjRtClient) {
           .value()));
   TF_ASSERT_OK_AND_ASSIGN(auto pjrt_client, GetPjRtClient(DEVICE_CPU));
   EXPECT_THAT(pjrt_client, ::testing::NotNull());
-  TF_ASSERT_OK(
-      DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_CPU));
 }
 
 TEST(PjRtStateResourceManagerTest, SetNullPjRtClient) {
   EXPECT_THAT(
       SetPjRtClientInTFGlobalResourceManager(DEVICE_CPU, nullptr),
       StatusIs(error::INVALID_ARGUMENT, HasSubstr("PJRT client is nullptr")));
-}
-
-TEST(PjRtUtilTest, DeleteNotExistPjRtClientOk) {
-  TF_ASSERT_OK(SetPjRtClientInTFGlobalResourceManager(
-      DEVICE_CPU,
-      xla::GetTfrtCpuClient(/*asynchronous=*/true, /*cpu_device_count=*/1)
-          .value()));
-  TF_ASSERT_OK(
-      DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_TPU));
-}
-
-TEST(PjRtUtilTest, DeleteNoPjRtStateOk) {
-  ResourceMgr* rmgr = tfrt_global::GetTFGlobalResourceMgr();
-  auto status = rmgr->Delete<PjRtState>(rmgr->default_container(),
-                                        kPjRtStateResourceName);
-  TF_ASSERT_OK(
-      DeletePjRtClientFromTFGlobalResourceManagerIfResourceExists(DEVICE_TPU));
 }
 
 }  // namespace

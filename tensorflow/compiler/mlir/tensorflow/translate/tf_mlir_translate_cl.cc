@@ -86,6 +86,12 @@ opt<std::string> debug_info_file(
     llvm::cl::desc("Path to the debug info file of the input graph def"),
     llvm::cl::init(""));
 
+// NOLINTNEXTLINE
+opt<std::string> xla_compile_device_type(
+    "tf-xla-compile-device-type",
+    llvm::cl::desc("Sets the compilation device type of the input graph def"),
+    llvm::cl::init(""));
+
 // TODO(b/134792656): If pruning is moved into TF dialect as a pass
 // we should remove this.
 // NOLINTNEXTLINE
@@ -122,6 +128,12 @@ opt<bool> unconditionally_use_set_output_shapes(
     "tf-enable-unconditionally-use-set-output-shapes-on-import",
     llvm::cl::desc("Enable using the _output_shapes unconditionally on import "
                    "(temporary)"),
+    llvm::cl::init(false));
+
+// NOLINTNEXTLINE
+opt<bool> enable_soft_placement(
+    "tf-enable-soft-placement-on-import",
+    llvm::cl::desc("Enable soft device placement on import."),
     llvm::cl::init(false));
 
 // Export options.

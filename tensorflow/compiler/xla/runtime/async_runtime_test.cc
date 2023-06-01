@@ -151,21 +151,21 @@ TEST_F(AsyncRuntimeTest, AsValue) {
     *store_t = *v;
   };
 
-  auto *value1 =
-      AsyncRuntime::AsValue<int32_t>(async_value1, sizeof(int32_t), write);
+  auto *value1 = AsyncRuntime::AsValue<int32_t>(
+      async_value1, sizeof(int32_t), alignof(std::max_align_t), write);
   auto *storage1 =
       reinterpret_cast<int32_t *>(AsyncRuntime::GetStorage(value1));
   EXPECT_EQ(*storage1, 42);
 
   auto async_value2 = tsl::MakeConstructedAsyncValueRef<int32_t>();
   async_value2.SetError("error");
-  auto *value2 =
-      AsyncRuntime::AsValue<int32_t>(async_value2, sizeof(int32_t), write);
+  auto *value2 = AsyncRuntime::AsValue<int32_t>(
+      async_value2, sizeof(int32_t), alignof(std::max_align_t), write);
   EXPECT_EQ(AsyncRuntime::IsError(value2), true);
 
   auto async_value3 = tsl::MakeConstructedAsyncValueRef<int32_t>(42);
-  auto *value3 =
-      AsyncRuntime::AsValue<int32_t>(async_value3, sizeof(int32_t), write);
+  auto *value3 = AsyncRuntime::AsValue<int32_t>(
+      async_value3, sizeof(int32_t), alignof(std::max_align_t), write);
   EXPECT_EQ(AsyncRuntime::GetAsyncValue(value3)->IsAvailable(), false);
   async_value3.SetStateConcrete();
   AsyncRuntime::AwaitValue(value3);

@@ -30,16 +30,28 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
+
+#if defined(PLATFORM_GOOGLE)
+FusionDecision::FusionDecision(bool decision,
+                               absl::SourceLocation source_location) {
+  if (!decision) {
+    explanation_ =
+        absl::StrCat("Not fusing: due to ", source_location.file_name(), ":",
+                     source_location.line());
+  }
+}
+#endif  // PLATFORM_GOOGLE
+
 namespace {
 
 // These nodes can always be duplicated into consumers, even if
@@ -194,6 +206,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
@@ -646,7 +659,7 @@ StatusOr<bool> InstructionFusion::Run(
         }
 
         // Saving name to use after the instruction is removed.
-        std::string producer_name = operand->name();
+        std::string producer_name(operand->name());
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;

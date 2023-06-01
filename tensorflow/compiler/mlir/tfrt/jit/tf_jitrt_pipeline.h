@@ -31,8 +31,9 @@ struct TfJitRtPipelineOptions
 
   ListOption<int64_t> matmul_tile_sizes{
       *this, "matmul-tile-sizes",
-      llvm::cl::desc("Tile sizes for `linalg.matmul`."),
-      llvm::cl::list_init<int64_t>({4, 4, 4}), llvm::cl::ZeroOrMore};
+      llvm::cl::desc("Tile sizes for `linalg.matmul`. Leave empty to determine "
+                     "sizes automatically."),
+      llvm::cl::list_init<int64_t>({}), llvm::cl::ZeroOrMore};
 
   Option<bool> lower_to_mmt4d{
       *this, "lower-to-mmt4d",
@@ -48,7 +49,10 @@ struct TfJitRtPipelineOptions
 
 // Make TfJitRtPipelineOptions hashable.
 inline ::llvm::hash_code hash_value(const TfJitRtPipelineOptions& opts) {
-  return ::llvm::hash_value(static_cast<bool>(opts.vectorize));
+  return ::llvm::hash_combine(
+      opts.vectorize.getValue(),
+      static_cast<llvm::ArrayRef<int64_t>>(opts.matmul_tile_sizes),
+      opts.lower_to_mmt4d.getValue(), opts.legalize_i1_tensors.getValue());
 }
 
 // Creates a pipeline that lowers modules from the Tensorflow dialect to

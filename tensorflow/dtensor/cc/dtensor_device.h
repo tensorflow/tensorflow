@@ -38,6 +38,7 @@ namespace dtensor {
 // TODO(b/268241383): Remove the `status = nullptr` overload.
 void AllocateDTensorDevice(absl::string_view device_name,
                            TFE_CustomDevice* device, void** device_info,
+                           bool is_async, int in_flight_nodes_limit,
                            TF_Status* status = nullptr);
 
 // Add a mesh to the `DTensorDevice` indicated by `device_info`.
@@ -56,8 +57,7 @@ void AllocateDTensorDevice(absl::string_view device_name,
 // async executors used by DTensor. The throttling bounds the memory usage
 // of an eager training loop. Python API sets this value to 8 by default.
 void AddMesh(const std::string& serialized_mesh, void* device_info,
-             bool is_async, bool is_host_mesh, int in_flight_nodes_limit,
-             TF_Status* status);
+             bool is_host_mesh, TF_Status* status);
 
 // Sets a requested layout for outputs of all operations.
 void ExperimentalSetDefaultLayout(const std::string& serialized_layout,
@@ -128,11 +128,13 @@ TFE_TensorHandle* SparsePack(TFE_Context* context, int num_inputs,
 bool IsSparseDTensor(TFE_Context* context, TFE_TensorHandle* input,
                      void* device_info, TF_Status* status);
 
-// Returns a dictionary with cache hits and cache miss information.
-// Cache hit count is mapped under 'hit', and cache miss count is mapped under
-// 'miss'.
-std::unordered_map<std::string, int> GetFunctionCacheHitAndMissCount(
-    TFE_Context* context, void* device_info, TF_Status* status);
+// Returns a dictionary with cache stats.
+// 'hit': cache hit count,
+// 'miss': cache miss count,
+// 'size': number of entries in the cache.
+std::unordered_map<std::string, int> GetFunctionCacheStats(TFE_Context* context,
+                                                           void* device_info,
+                                                           TF_Status* status);
 
 // Sets the layouts for the elements emitted by an iterator resource tensor.
 void SetIteratorElementLayouts(TFE_Context* context, TFE_TensorHandle* input,

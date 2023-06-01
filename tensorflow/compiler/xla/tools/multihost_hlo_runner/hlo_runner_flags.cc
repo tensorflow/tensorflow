@@ -39,7 +39,9 @@ void MultiHostHloRunnerFlags::AppendFlags(std::vector<tsl::Flag>* flags) {
                       "Log the input and output to stderr.");
   flags->emplace_back("run_xla_backend_only",
                       &flag_values_.run_xla_backend_only,
-                      "Only call XLA's RunBackend to compile the module.");
+                      "Call only XLA's RunBackend during the compilation. "
+                      "This is used to run a post-optimization HLO module "
+                      "(dumped as 'xxx.after_optimizations.hlo.xxx'");
   flags->emplace_back("disable_all_hlo_passes",
                       &flag_values_.disable_all_hlo_passes,
                       "Disable HLO passes or not.");

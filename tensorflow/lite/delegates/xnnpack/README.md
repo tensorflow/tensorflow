@@ -443,6 +443,10 @@ Below is the list of currently supported floating-point operators:
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
 
+#### `TANH`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+
 #### `TRANSPOSE`
 
 * The first input and the output must be in 32-bit floating-point format.
@@ -458,8 +462,8 @@ Below is the list of currently supported floating-point operators:
 
 ### Floating-Point (IEEE FP16) Operators
 
-XNNPACK supports half-precision (using IEEE FP16 format) inference for a subset
-of floating-point operators. XNNPACK automatically enables half-precision
+XNNPACK supports half-precision (using IEEE FP16 format) inference for all
+floating-point operators. XNNPACK automatically enables half-precision
 inference when the following conditions are met:
 
 * XNNPACK runs on hardware that natively supports computations in IEEE FP16
@@ -468,9 +472,6 @@ ARMv8.2 FP16 arithmetics extension, and includes Android phones starting with
 Pixel 3, Galaxy S9 (Snapdragon SoC), Galaxy S10 (Exynos SoC), iOS devices with
 A11 or newer SoCs, all Apple Silicon Macs, and Windows ARM64 laptops based with
 Snapdragon 850 SoC or newer.
-
-* IEEE FP16 inference is supported for every floating-point operator in the
-model.
 
 * The model's "reduced_precision_support" metadata indicates that the model
 is compatible with FP16 inference. The metadata can be added during model
@@ -689,6 +690,10 @@ Below is the list of currently supported quantized operators:
 * Inputs and outputs must be in 8-bit quantized format.
 * Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
   but fused `TANH` and `SIGN_BIT` activations are not.
+
+#### `TANH`
+
+* Inputs and outputs must be in 8-bit quantized format.
 
 #### `TRANSPOSE`
 

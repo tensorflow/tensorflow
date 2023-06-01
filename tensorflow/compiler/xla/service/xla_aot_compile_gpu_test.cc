@@ -287,6 +287,69 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   EXPECT_EQ(expected, output);
 }
 
+// Run an AOT compiled executable in which the algorithm of convolution is set
+// to -1.
+TEST(XlaCompileTest, LoadGpuExecutableWithConvolutionRuntimeAutotuning) {
+  std::string path = tsl::io::JoinPath(
+      tsl::testing::XlaSrcRoot(), "service",
+      "xla_aot_compile_test_gpu_executable_convolution_runtime_autotuning");
+  std::string serialized_aot_result;
+  TF_ASSERT_OK(
+      tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
+
+  // Check that runtime autotuning is enabled.
+  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "algorithm = -1"));
+
+  // Get a LocalClient
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          PlatformUtil::GetPlatform("CUDA"));
+  ASSERT_GT(platform->VisibleDeviceCount(), 0);
+
+  LocalClientOptions local_client_options;
+  local_client_options.set_platform(platform);
+  TF_ASSERT_OK_AND_ASSIGN(
+      LocalClient * client,
+      ClientLibrary::GetOrCreateLocalClient(local_client_options));
+
+  // Load from AOT result.
+  ExecutableBuildOptions executable_build_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<LocalExecutable> local_executable,
+      client->Load(serialized_aot_result, executable_build_options));
+
+  // Run loaded executable.
+  Literal input1 = LiteralUtil::CreateR4<float>(
+      {{{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}},
+        {{11.0, 12.0}, {13.0, 14.0}, {15.0, 16.0}, {17.0, 18.0}},
+        {{21.0, 22.0}, {23.0, 24.0}, {25.0, 26.0}, {27.0, 28.0}},
+        {{31.0, 32.0}, {33.0, 34.0}, {35.0, 36.0}, {37.0, 38.0}}}});
+  Literal input2 =
+      LiteralUtil::CreateR4<float>({{{{1.0}, {2.0}}, {{3.0}, {4.0}}},
+                                    {{{5.0}, {6.0}}, {{7.0}, {8.0}}},
+                                    {{{9.0}, {10.0}}, {{11.0}, {12.0}}}});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer array1,
+      client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer array2,
+      client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
+
+  ExecutableRunOptions executable_run_options;
+  executable_run_options.set_allocator(client->backend().memory_allocator());
+  TF_ASSERT_OK_AND_ASSIGN(
+      ScopedShapedBuffer result,
+      local_executable->Run({&array1, &array2}, executable_run_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal output,
+                          client->ShapedBufferToLiteral(result));
+  Literal expected = LiteralUtil::CreateR4<float>({{
+      {{1310.0}, {1466.0}, {1622.0}},
+      {{2090.0}, {2246.0}, {2402.0}},
+  }});
+  EXPECT_EQ(expected, output);
+}
+
 }  // namespace
 }  // namespace xla_compile
 }  // namespace xla

@@ -109,6 +109,37 @@ Status ByteSwapBuffer(char* buff, size_t size, DataType dtype,
 
 }  // namespace
 
+bool IsByteSwappable(DataType dtype) {
+  switch (dtype) {
+    // 16-bit types
+    case DT_BFLOAT16:
+    case DT_HALF:
+    case DT_QINT16:
+    case DT_QUINT16:
+    case DT_UINT16:
+    case DT_INT16:
+
+    // 32-bit types
+    case DT_FLOAT:
+    case DT_INT32:
+    case DT_QINT32:
+    case DT_UINT32:
+
+    // 64-bit types
+    case DT_INT64:
+    case DT_DOUBLE:
+    case DT_UINT64:
+
+    // Complex types
+    case DT_COMPLEX64:
+    case DT_COMPLEX128:
+      return true;
+
+    default:
+      return false;
+  }
+}
+
 Status ByteSwapTensor(Tensor* t) {
   char* buff = const_cast<char*>((t->tensor_data().data()));
   return ByteSwapBuffer(buff, t->tensor_data().size(), t->dtype(),

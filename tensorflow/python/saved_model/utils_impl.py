@@ -18,6 +18,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import byte_swap_tensor as bst
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -207,43 +208,7 @@ def get_element_from_tensor_info(tensor_info, graph=None, import_scope=None):
       ops.prepend_name_scope(tensor_info.name, import_scope=import_scope))
 
 
-# Based on tensor_bundle/byte_swap.cc
-byte_swappable = [
-    dtypes.float16, dtypes.float32, dtypes.float64, dtypes.bfloat16,
-    dtypes.complex64, dtypes.complex128, dtypes.uint16, dtypes.uint32,
-    dtypes.uint64, dtypes.int16, dtypes.int32, dtypes.int64, dtypes.qint16,
-    dtypes.quint16, dtypes.qint32
-]
-
-
 def swap_function_tensor_content(meta_graph_def, from_endiness, to_endiness):
-  functions = meta_graph_def.graph_def.library.function
-  for function in functions:
-    node_def = function.node_def
-    for node in node_def:
-      if node.op == "Const":
-        tensor = node.attr["value"].tensor
-        byte_swap_tensor_content(tensor, from_endiness, to_endiness)
-
-
-def byte_swap_tensor_content(tensor, from_endiness, to_endiness):
-  """Byte swaps."""
-  if tensor.dtype in byte_swappable:
-    tshape = tensor.tensor_shape.dim
-    tensor_bytes = tensor.tensor_content
-    if tensor_bytes:
-      tensor_size = 1
-      for sz in tshape:
-        tensor_size = tensor_size * sz.size
-      chunksize = int(len(tensor_bytes) / tensor_size)
-      # Split tensor_data into chunks for byte swapping.
-      to_swap = [
-          tensor_bytes[i:i + chunksize]
-          for i in range(0, len(tensor_bytes), chunksize)
-      ]
-      # Swap and replace tensor_content.
-      tensor.tensor_content = b"".join([
-          int.from_bytes(byteswap,
-                         from_endiness).to_bytes(chunksize, to_endiness)
-          for byteswap in to_swap
-      ])
+  bst.swap_tensor_content_in_graph_function(
+      meta_graph_def, from_endiness, to_endiness
+  )

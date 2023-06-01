@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_C_C_API_INTERNAL_H_
 #define TENSORFLOW_C_C_API_INTERNAL_H_
 
-#include "tensorflow/c/c_api.h"
-
 #include <list>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "tensorflow/c/c_api.h"
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
@@ -34,11 +34,12 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
@@ -141,7 +142,7 @@ struct TF_ImportGraphDefOptions {
 
   // Backing memory for TensorId fields in opts.
   // TODO(skyewm): it'd be better if ImportGraphDefOptions owned this.
-  std::list<tensorflow::string> tensor_id_data;
+  std::vector<tensorflow::string> tensor_id_data;
 };
 
 struct TF_ImportGraphDefResults {
@@ -151,7 +152,7 @@ struct TF_ImportGraphDefResults {
   std::vector<int> missing_unused_key_indexes;
 
   // Backing memory for missing_unused_key_names values.
-  std::list<tensorflow::string> missing_unused_key_names_data;
+  std::vector<tensorflow::string> missing_unused_key_names_data;
 };
 
 struct TF_DeviceList {
@@ -159,8 +160,7 @@ struct TF_DeviceList {
 };
 
 struct TF_Function {
-  tensorflow::FunctionDef fdef;
-  tensorflow::StackTracesMap stack_traces;
+  tensorflow::FunctionRecord* record;
 };
 
 struct TF_ApiDefMap {

@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "deallocation/IR/deallocation_ops.h"
 
-#include <optional>
-#include <vector>
-
 #include "deallocation/IR/deallocation_dialect.cc.inc"
-#include "deallocation/utils/util.h"
+#include "llvm/ADT/TypeSwitch.h"  // IWYU pragma: keep
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/DialectImplementation.h"  // IWYU pragma: keep
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
+
+#define GET_TYPEDEF_CLASSES
+#include "deallocation/IR/deallocation_typedefs.cc.inc"
+#undef GET_TYPEDEF_CLASSES
 
 namespace mlir {
 namespace deallocation {
@@ -34,109 +37,22 @@ void DeallocationDialect::initialize() {
 #include "deallocation/IR/deallocation_ops.cc.inc"
 #undef GET_OP_LIST
       >();
+  addTypes<
+#define GET_TYPEDEF_LIST
+#include "deallocation/IR/deallocation_typedefs.cc.inc"
+#undef GET_TYPEDEF_LIST
+      >();
 }
 
-namespace {
-
-LogicalResult retainOfNothing(RetainOp op, PatternRewriter& rewriter) {
-  if (!op.getAllocs().empty()) {
-    return failure();
-  }
-
-  auto nulls = llvm::to_vector(
-      llvm::map_range(TypeRange{op.getRetained()}, [&](Type ty) -> Value {
-        return rewriter.create<NullOp>(op.getLoc(), getUnrankedMemrefType(ty));
-      }));
-  rewriter.replaceOp(op, nulls);
-  return success();
+void OwnOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                  Value memref) {
+  return build(odsBuilder, odsState,
+               OwnershipIndicatorType::get(odsBuilder.getContext()), memref);
 }
 
-LogicalResult retainNoOp(RetainOp op, PatternRewriter& rewriter) {
-  if (op.getAllocs().size() != 1 || op.getAllocs() != op.getRetained()) {
-    return failure();
-  }
-  rewriter.replaceOp(op, op.getAllocs());
-  return success();
-}
-
-bool allocIsNonNullImpl(Value v, llvm::DenseSet<Value>& pending) {
-  if (llvm::isa_and_present<memref::AllocOp>(v.getDefiningOp())) {
-    return true;
-  }
-
-  if (llvm::isa_and_present<memref::SubViewOp, memref::CastOp,
-                            memref::ExpandShapeOp, memref::CollapseShapeOp,
-                            memref::ReshapeOp, memref::ViewOp,
-                            memref::ReinterpretCastOp, memref::TransposeOp>(
-          v.getDefiningOp())) {
-    return allocIsNonNullImpl(v.getDefiningOp()->getOperand(0), pending);
-  }
-
-  // If v is a block argument, check all incoming edges.
-  if (auto bbarg = v.dyn_cast<BlockArgument>()) {
-    if (auto rbi = llvm::dyn_cast<RegionBranchOpInterface>(
-            bbarg.getParentRegion()->getParentOp())) {
-      for (auto pred : getPredecessorRegions(
-               rbi, bbarg.getParentRegion()->getRegionNumber())) {
-        Value operand = pred.getPredecessorOperand(bbarg.getArgNumber());
-
-        if (pending.insert(operand).second &&
-            !allocIsNonNullImpl(operand, pending)) {
-          return false;
-        }
-      }
-      return true;
-    }
-  }
-
-  if (auto op =
-          llvm::dyn_cast_or_null<RegionBranchOpInterface>(v.getDefiningOp())) {
-    unsigned resultNumber = llvm::cast<OpResult>(v).getResultNumber();
-    for (const auto& exit : getPredecessorRegions(op, std::nullopt)) {
-      if (!allocIsNonNullImpl(exit.getPredecessorOperand(resultNumber),
-                              pending))
-        return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
-bool allocIsNonNull(Value v) {
-  llvm::DenseSet<Value> pendingChecks;
-  return allocIsNonNullImpl(v, pendingChecks);
-}
-
-LogicalResult retainIsDealloc(RetainOp op, PatternRewriter& rewriter) {
-  if (!op.getRetained().empty() || op.getAllocs().size() != 1 ||
-      !allocIsNonNull(op.getAllocs()[0])) {
-    return failure();
-  }
-  rewriter.replaceOpWithNewOp<memref::DeallocOp>(op, op.getAllocs()[0]);
-  return success();
-}
-
-LogicalResult splitRetain(RetainOp op, PatternRewriter& rewriter) {
-  if (!op.getRetained().empty() || op.getAllocs().size() <= 1) {
-    return failure();
-  }
-  for (Value alloc : op.getAllocs()) {
-    rewriter.create<deallocation::RetainOp>(op.getLoc(), TypeRange{},
-                                            ValueRange{}, ValueRange{alloc});
-  }
-  op.erase();
-  return success();
-}
-
-}  // namespace
-
-void RetainOp::getCanonicalizationPatterns(RewritePatternSet& results,
-                                           MLIRContext*) {
-  results.add(retainOfNothing);
-  results.add(retainNoOp);
-  results.add(retainIsDealloc);
-  results.add(splitRetain);
+void NullOp::build(OpBuilder& odsBuilder, OperationState& odsState) {
+  return build(odsBuilder, odsState,
+               OwnershipIndicatorType::get(odsBuilder.getContext()));
 }
 
 }  // namespace deallocation

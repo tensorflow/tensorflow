@@ -172,7 +172,7 @@ Status TransposeShapeFn(InferenceContext* c) {
 
     for (int32_t i = 0; i < rank; ++i) {
       int64_t in_idx = data[i];
-      if (in_idx >= rank || in_idx <= -rank) {
+      if (in_idx >= rank || in_idx < -rank) {
         return errors::InvalidArgument("perm dim ", in_idx,
                                        " is out of range of input rank ", rank);
       }
@@ -563,9 +563,10 @@ expected to invoke these operators.
 
 REGISTER_OP("ConcatOffset")
     .Input("concat_dim: int32")
-    .Input("shape: N * int32")
-    .Output("offset: N * int32")
+    .Input("shape: N * shape_type")
+    .Output("offset: N * shape_type")
     .Attr("N: int >= 2")
+    .Attr("shape_type: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       for (int i = 1; i < c->num_inputs(); ++i) {
         c->set_output(i - 1, c->input(i));
@@ -1304,7 +1305,7 @@ REGISTER_OP("GatherNd")
     .Input("indices: Tindices")
     .Output("output: Tparams")
     .Attr("Tparams: type")
-    .Attr("Tindices: {int16, int32,int64}")
+    .Attr("Tindices: {int16,int32,int64}")
     .SetShapeFn(shape_inference::GatherNdShape);
 
 // --------------------------------------------------------------------------

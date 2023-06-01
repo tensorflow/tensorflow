@@ -152,4 +152,4 @@ struct StackHelper {
 
 }  // namespace ApiConverter
 
-#endif
+#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_C_API_CONVERSIONS_H_

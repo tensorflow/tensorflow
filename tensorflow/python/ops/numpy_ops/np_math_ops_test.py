@@ -350,11 +350,21 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(-1, -1000, num=5, endpoint=False)
 
   @parameterized.parameters([
-      'T', 'ndim', 'size', 'data', '__pos__', '__round__', 'tolist',
+      'T', 'ndim', 'size', 'data', '__pos__', '__round__', 'tolist', 'flatten',
       'transpose', 'reshape', 'ravel', 'clip', 'astype', 'max', 'mean', 'min'])
   def testNumpyMethodsOnTensor(self, np_method):
     a = ops.convert_to_tensor([1, 2])
     self.assertTrue(hasattr(a, np_method))
+
+  def testFlatten(self):
+    a1 = np.array([[[1, 2], [3, 4]], [[5, 6], [7, 8]]])
+    a2 = ops.convert_to_tensor(a1)
+    self.assertAllEqual(a1.flatten('C'), a2.flatten('C'))
+    self.assertAllEqual(a1.flatten('F'), a2.flatten('F'))
+    self.assertAllEqual(a1.flatten('C'), a2.flatten('A'))
+    self.assertAllEqual(a1.flatten('C'), a2.flatten('K'))
+    with self.assertRaises(ValueError):
+      a2.flatten('invalid')
 
 
 if __name__ == '__main__':

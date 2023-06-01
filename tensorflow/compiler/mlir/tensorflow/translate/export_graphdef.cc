@@ -63,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/regularization/util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -135,7 +136,9 @@ class Exporter {
 
  private:
   explicit Exporter(Graph* graph, const Dialect* tf_dialect)
-      : graph_(graph), tf_dialect_(tf_dialect) {}
+      : graph_(graph), tf_dialect_(tf_dialect) {
+    graph_->ToGraphDef(&graphdef_);
+  }
 
   Status AddArgumentNode(BlockArgument arg, unsigned index,
                          llvm::StringRef name);
@@ -158,6 +161,7 @@ class Exporter {
   Status AddEdgeBetweenNodes(Value src, Node* dst_node, unsigned dst_index);
 
   Graph* graph_;
+  GraphDef graphdef_;
   LegalizedOpOrValLocNameMapper op_to_name_;
   absl::flat_hash_map<Operation*, Node*> nodes_;
   llvm::DenseMap<BlockArgument, Node*> args_;
@@ -358,7 +362,8 @@ Status Exporter::AddEdge(Operation* inst) {
 
 Status Exporter::AddInstructionNode(Operation* inst) {
   std::unique_ptr<NodeDef> node_def;
-  auto name = op_to_name_.GetUniqueName(inst);
+  int graph_hash_value = graph_regularization::ComputeHash(graphdef_);
+  auto name = op_to_name_.GetUniqueName(inst, graph_hash_value);
   // Convert registered TF ops to NodeDef. Only registered ops are handled to
   // ensure that PopulateDerivedAttrs adds the correct attributes.
   TF_ASSIGN_OR_RETURN(node_def,
@@ -552,7 +557,7 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
                    llvm::dyn_cast<mlir::tf_executor::IslandOp>(inst)) {
       Operation& inner_op = island.GetBody().front();
       auto op_name = GetTensorFlowOpName(inner_op.getName().getStringRef());
-      if (op_name.ok()) {
+      if (llvm::isa<FuncOp>(inner_op) && op_name.ok()) {
         // If it is TF Control dialect specific op, look up custom operation
         // in the module and first convert that, then add it to function
         // definition library

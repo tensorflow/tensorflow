@@ -14,19 +14,24 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <iostream>
+#include <cstdint>
 #include <memory>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "llvm/ADT/Optional.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/ValueRange.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
@@ -38,6 +43,8 @@ limitations under the License.
 
 namespace mlir::quant {
 namespace {
+
+constexpr StringRef kTfQuantCreatedEinsum = "__tf_quant_created_einsum";
 
 // Replaces mixed-type Conv and Matmul cast hacks with TF XLA ops.
 // TODO(b/228403741): Support conversion for dynamic-shaped TF ops.
@@ -108,7 +115,91 @@ Value CreateZeroPointPartialOffset(OpBuilder &builder, Location loc,
                                 /*keep_dims=*/builder.getBoolAttr(true));
   auto mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
 
-  llvm::SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
+  SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
+  return folded_results.front();
+}
+
+// Add two contributions, and a zeropoint modification term
+// Consider two quantized matrices P, Q with zero points z, w. Let's say the
+// dimensions are l X n, n X m.
+// What we want to calculate is: R = matmul(P-z, Q-w).
+// Then r_ij = sigma(k) (p_ik - z) * (q_kj - w)
+//           = sigma(k)(p_ik * q_kj) - w * sigma(k)p_ik - z * sigma(k)q_kj
+//             + sigma(k)z*w.
+// zp_input_contribution = z * sigma(k)q_kj
+// zp_weight_contribution = w * sigma(k)p_ik
+// In case z != 0 and w != 0, we need to additionally calculate sigma(k)z*w,
+// which is: # of reduced dim(n in this case) * input_zp * weight_zp
+Value MergeZeroPointOffset(OpBuilder &builder, Location loc, Value weight,
+                           const ArrayRef<int64_t> weight_output_dims,
+                           int8_t input_zp, int8_t weight_zp,
+                           Value zp_input_contribution,
+                           Value zp_weight_contribution) {
+  auto weight_shape = weight.getType().template cast<ShapedType>();
+  SmallVector<int64_t> weight_non_output_indices;
+  for (auto i : llvm::seq<int64_t>(0, weight_shape.getRank())) {
+    if (absl::c_count(weight_output_dims, i) == 0) {
+      weight_non_output_indices.push_back(i);
+    }
+  }
+
+  int32_t static_dim_total = 1;
+  Value accum_dynamic_dim = nullptr;
+  SmallVector<int64_t> weight_non_output_dynamic_indices;
+  for (const int64_t weight_idx : weight_non_output_indices) {
+    if (weight_shape.isDynamicDim(weight_idx)) {
+      weight_non_output_dynamic_indices.push_back(weight_idx);
+    } else {
+      static_dim_total *= weight_shape.getDimSize(weight_idx);
+    }
+  }
+
+  if (!weight_non_output_dynamic_indices.empty()) {
+    // Has dynamic shapes.
+    auto weight_shape_op = builder.create<TF::ShapeOp>(
+        loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
+
+    auto slice_output_type = RankedTensorType::get({1}, builder.getI64Type());
+    auto slice_stride = CreateConstValue<int64_t>(builder, loc, {1}, {1});
+    for (int64_t weight_idx : weight_non_output_dynamic_indices) {
+      auto start = CreateConstValue<int64_t>(builder, loc, {1}, {weight_idx});
+      auto end = CreateConstValue<int64_t>(builder, loc, {1}, {weight_idx + 1});
+      auto sliced_shape_op = builder.create<TF::StridedSliceOp>(
+          loc, slice_output_type, weight_shape_op, start, end, slice_stride);
+      if (accum_dynamic_dim == nullptr) {
+        accum_dynamic_dim = sliced_shape_op->getResults().front();
+      } else {
+        accum_dynamic_dim =
+            builder.create<TF::MulOp>(loc, accum_dynamic_dim, sliced_shape_op)
+                ->getResults()
+                .front();
+      }
+    }
+  }
+
+  const int32_t zp_constant_offset = static_cast<int32_t>(input_zp) *
+                                     static_cast<int32_t>(weight_zp) *
+                                     static_dim_total;
+  auto zp_offset_value =
+      CreateScalarConstValue<int32_t>(builder, loc, zp_constant_offset);
+  if (accum_dynamic_dim != nullptr) {
+    accum_dynamic_dim =
+        builder
+            .create<TF::CastOp>(
+                loc, RankedTensorType::get({1}, builder.getI32Type()),
+                accum_dynamic_dim)
+            ->getResults()
+            .front();
+    auto mul_op =
+        builder.create<TF::MulOp>(loc, accum_dynamic_dim, zp_offset_value);
+    zp_offset_value = mul_op->getResults().front();
+  }
+
+  auto offset_sum = builder.create<TF::AddOp>(loc, zp_input_contribution,
+                                              zp_weight_contribution);
+  auto offset_op = builder.create<TF::SubOp>(loc, offset_sum, zp_offset_value);
+
+  SmallVector<Value> folded_results = ConstantFoldOpIfPossible(offset_op);
   return folded_results.front();
 }
 
@@ -129,88 +220,399 @@ Value CalculateZeroPointOffset(OpBuilder &builder, Location loc, Value input,
   Value zp_weight_contribution = CreateZeroPointPartialOffset(
       builder, loc, weight, input_zp, weight_output_dims);
 
+  if (input_zp != 0 && weight_zp != 0) {
+    return MergeZeroPointOffset(builder, loc, weight, weight_output_dims,
+                                input_zp, weight_zp, zp_input_contribution,
+                                zp_weight_contribution);
+  }
+
+  if (input_zp != 0) return zp_weight_contribution;
+  return zp_input_contribution;
+}
+
+// Copy the value of d1 into d2.
+void CopyXlaDotDimensionNumbers(const xla::DotDimensionNumbers &d1,
+                                xla::DotDimensionNumbers &d2,
+                                const bool copy_left = true) {
+  if (copy_left) {
+    for (auto v : d1.lhs_batch_dimensions()) {
+      d2.add_lhs_batch_dimensions(v);
+    }
+    for (auto v : d1.lhs_contracting_dimensions()) {
+      d2.add_lhs_contracting_dimensions(v);
+    }
+  } else {
+    for (auto v : d1.rhs_batch_dimensions()) {
+      d2.add_rhs_batch_dimensions(v);
+    }
+    for (auto v : d1.rhs_contracting_dimensions()) {
+      d2.add_rhs_contracting_dimensions(v);
+    }
+  }
+}
+
+// Figure out the shape of other xladot argument for reducing contracting
+// dimension.
+// It must have the contracting dimensions on its shape, to reduce the
+// contracting dims from the original target. In addition, to match with
+// the XLADotV2 output shape, it requires the following additional rank:
+// xladot_out_rank - used_rank (= batch_rank + output_rank), with dim 1.
+// The final shape of the opponent should be:
+// c1,..,cn,1,...,1 for rhs opponent, 1,..,1, c1,..,cn for lhs opponent.
+// Returns the number of contracting dims.
+int GetXLADotPseudoOpponentShapeForReducingContractDims(
+    const xla::DotDimensionNumbers &dnums, const int xladot_output_rank,
+    ShapedType tensor_shape, const bool is_lhs,
+    SmallVector<int64_t> &opponent_shape) {
+  int opponent_required_dim = xladot_output_rank;
+  int used_rank = tensor_shape.getRank();
+
+  if (is_lhs) {
+    used_rank -= dnums.lhs_contracting_dimensions_size();
+    for (int64_t v : dnums.lhs_contracting_dimensions()) {
+      opponent_shape.push_back(tensor_shape.getDimSize(v));
+    }
+  } else {
+    used_rank -= dnums.rhs_contracting_dimensions_size();
+    for (int64_t v : dnums.rhs_contracting_dimensions()) {
+      opponent_shape.push_back(tensor_shape.getDimSize(v));
+    }
+  }
+
+  const int num_contract_dim = opponent_shape.size();
+  opponent_required_dim -= used_rank;
+
+  // Add redundant 1s to match the shape.
+  // Required 1s = out_dims - # my batch_dims - my remaining dims.
+  if (!is_lhs) {
+    absl::c_reverse(opponent_shape);
+  }
+  for (int i = 0; i < opponent_required_dim; i++) {
+    opponent_shape.push_back(1);
+  }
+  if (!is_lhs) {
+    absl::c_reverse(opponent_shape);
+  }
+
+  return num_contract_dim;
+}
+
+// Create a matrix with 1s using the given shape.
+Operation *Create1sMatrix(OpBuilder &builder, Location loc,
+                          const SmallVector<int64_t> &shape) {
+  SmallVector<int64_t> shape_ones(/*Size=*/shape.size(), /*Value=*/1);
+
+  return builder.create<TF::BroadcastToOp>(
+      loc, RankedTensorType::get(shape, builder.getIntegerType(32)),
+      CreateConstValue<int32_t>(builder, loc, shape_ones, {1}),
+      Create1DConstValue(builder, loc, shape));
+}
+
+// Create the output shape for XlaDotV2, given dot dimension numbers and shapes
+// of both inputs.
+SmallVector<int64_t> CreateOutputShape(const xla::DotDimensionNumbers &ddn,
+                                       const ArrayRef<int64_t> lhs_shape,
+                                       const ArrayRef<int64_t> rhs_shape) {
+  SmallVector<int64_t> output_shape;
+
+  // Prepare necessary indices.
+  absl::flat_hash_set<int64_t> lhs_remove_idx, rhs_remove_idx;
+  for (auto v : ddn.lhs_batch_dimensions()) {
+    lhs_remove_idx.insert(v);
+  }
+  for (auto v : ddn.lhs_contracting_dimensions()) {
+    lhs_remove_idx.insert(v);
+  }
+  for (auto v : ddn.rhs_batch_dimensions()) {
+    rhs_remove_idx.insert(v);
+  }
+  for (auto v : ddn.rhs_contracting_dimensions()) {
+    rhs_remove_idx.insert(v);
+  }
+
+  // Gather shapes for output.
+  for (auto v : ddn.lhs_batch_dimensions()) {
+    output_shape.push_back(lhs_shape[v]);
+  }
+
+  // Batch dimension is gathered from the right side.
+  if (output_shape.empty()) {
+    for (auto v : ddn.rhs_batch_dimensions()) {
+      output_shape.push_back(rhs_shape[v]);
+    }
+  }
+
+  // Gather remaining dimensions.
+  for (int i = 0; i < lhs_shape.size(); i++) {
+    if (lhs_remove_idx.find(i) == lhs_remove_idx.end()) {
+      output_shape.push_back(lhs_shape[i]);
+    }
+  }
+
+  for (int i = 0; i < rhs_shape.size(); i++) {
+    if (rhs_remove_idx.find(i) == rhs_remove_idx.end()) {
+      output_shape.push_back(rhs_shape[i]);
+    }
+  }
+
+  return output_shape;
+}
+
+// Generate an einsum equation from the given DotDimensionNumber.
+std::string CreateEinsumEquation(const xla::DotDimensionNumbers &ddn,
+                                 const int lhs_rank, const int rhs_rank) {
+  // Prepare necessary indices.
+  absl::flat_hash_set<int64_t> lhs_batch_idx, rhs_batch_idx;
+  absl::flat_hash_set<int64_t> lhs_contract_idx, rhs_contract_idx;
+  for (auto v : ddn.lhs_batch_dimensions()) {
+    lhs_batch_idx.insert(v);
+  }
+  for (auto v : ddn.lhs_contracting_dimensions()) {
+    lhs_contract_idx.insert(v);
+  }
+  for (auto v : ddn.rhs_batch_dimensions()) {
+    rhs_batch_idx.insert(v);
+  }
+  for (auto v : ddn.rhs_contracting_dimensions()) {
+    rhs_contract_idx.insert(v);
+  }
+
+  // Generate equation.
+  std::string lhs_eq = "";
+  std::string rhs_eq = "";
+  std::string out_eq = "";
+  char c = 'a';
+  std::vector<char> lhs_batch_dims;
+  std::vector<char> lhs_contract_dims;
+  for (int i = 0; i < lhs_rank; i++) {
+    absl::StrAppend(&lhs_eq, std::string(1, c));
+    if (lhs_batch_idx.find(i) != lhs_batch_idx.end()) {
+      lhs_batch_dims.push_back(c);
+    } else if (lhs_contract_idx.find(i) != lhs_contract_idx.end()) {
+      lhs_contract_dims.push_back(c);
+    }
+    c++;
+  }
+
+  int batch_trace_idx = 0;
+  int contract_trace_idx = 0;
+  bool rhs_only_batch = lhs_batch_dims.empty();
+  for (int i = 0; i < rhs_rank; i++) {
+    if (rhs_batch_idx.find(i) != rhs_batch_idx.end()) {
+      if (!rhs_only_batch) {
+        absl::StrAppend(&rhs_eq,
+                        std::string(1, lhs_batch_dims[batch_trace_idx]));
+        batch_trace_idx++;
+      } else {
+        absl::StrAppend(&rhs_eq, std::string(1, c));
+        lhs_batch_dims.push_back(c);
+        c++;
+      }
+    } else if (rhs_contract_idx.find(i) != rhs_contract_idx.end()) {
+      absl::StrAppend(&rhs_eq,
+                      std::string(1, lhs_contract_dims[contract_trace_idx]));
+      contract_trace_idx++;
+    } else {
+      rhs_eq += c;
+      c++;
+    }
+  }
+
+  // Create out_eq by merging lhs and rhs.
+  // In XlaDotv2 style - batch dim - leftover from lhs - leftover from rhs.
+  for (auto c : lhs_batch_dims) {
+    absl::StrAppend(&out_eq, std::string(1, c));
+  }
+  for (auto c : lhs_eq) {
+    if (!absl::StrContains(out_eq, c) && !absl::StrContains(rhs_eq, c)) {
+      absl::StrAppend(&out_eq, std::string(1, c));
+    }
+  }
+  for (auto c : rhs_eq) {
+    if (!absl::StrContains(out_eq, c) && !absl::StrContains(lhs_eq, c)) {
+      absl::StrAppend(&out_eq, std::string(1, c));
+    }
+  }
+
+  return absl::StrCat(lhs_eq, ",", rhs_eq, "->", out_eq);
+}
+
+// Check if the given einsum equation could be replaced with "reduce".
+bool IsReducable(const StringRef einsum_equation,
+                 const xla::DotDimensionNumbers &dnums, const bool is_lhs,
+                 SmallVector<int64_t> &out_dims) {
+  int idx_arrow = einsum_equation.find("->");
+  StringRef calc_eq = einsum_equation.substr(0, idx_arrow);
+  StringRef out_eq = einsum_equation.substr(idx_arrow + 2);
+
+  int idx_comma = calc_eq.find(',');
+  StringRef lhs_eq = calc_eq.substr(0, idx_comma);
+  StringRef rhs_eq = calc_eq.substr(idx_comma + 1);
+
+  std::string target_eq;
+  if (is_lhs) {
+    target_eq = lhs_eq;
+    for (auto v : dnums.lhs_contracting_dimensions()) {
+      target_eq[v] = '_';
+    }
+  } else {
+    target_eq = rhs_eq;
+    for (auto v : dnums.rhs_contracting_dimensions()) {
+      target_eq[v] = '_';
+    }
+  }
+
+  if (target_eq.size() > out_eq.size()) return false;
+
+  for (int i = 0; i < target_eq.size(); i++) {
+    int out_idx = out_eq.size() - target_eq.size() + i;
+    if (target_eq[i] != '_' && out_eq[out_idx] != target_eq[i]) {
+      return false;
+    }
+
+    if (target_eq[i] != '_') out_dims.push_back(i);
+  }
+
+  return true;
+}
+
+// Calculates other_tensor_zp * tensor for zero point offset calculation.
+// Things to do:
+//  1. Reduce the tensor (which is an input of XlaDotV2) with contracting
+//     dimensions of XlaDotV2.
+//     - The resultant dimension must match with XlaDotV2 resultant dimension
+//  2. Multiply it with zero point from the other tensor.
+// We decided to use tf.Einsum for step 1, since it would require transposes/
+// reshapes in many cases. More precisely, this function creates 1s matrix
+// with appropriate shape to match with the shape of XlaDotV2 result.
+// We didn't apply XlaEinsum or XlaDotV2 for this work, since it would loose
+// the chance for constant folding later. We could try to add some
+// postprocessing passes later to further optimize the graph after constant
+// folding.
+Value CreateZeroPointPartialOffsetXlaDotV2(
+    OpBuilder &builder, Location loc, Value tensor,
+    const int8_t other_tensor_zp, const xla::DotDimensionNumbers &dnums,
+    const bool is_lhs, const int xladot_output_rank) {
+  if (other_tensor_zp == 0) {
+    return CreateScalarConstValue<int32_t>(builder, loc, 0);
+  }
+
+  auto shape = tensor.getType().template cast<ShapedType>();
+  SmallVector<int64_t> tensor_shape;
+  for (auto v : shape.getShape()) {
+    tensor_shape.push_back(v);
+  }
+
+  auto zp = CreateScalarConstValue<int32_t>(builder, loc, other_tensor_zp);
+
+  TensorType tensor_type = tensor.getType().dyn_cast<TensorType>();
+  Value tensor_i32 = builder.create<TF::CastOp>(
+      loc, tensor_type.clone(builder.getIntegerType(32)), tensor);
+
+  // Figure out the shape of einsum opponent pseudo-input.
+  SmallVector<int64_t> opponent_shape;
+  const int num_contract_dim =
+      GetXLADotPseudoOpponentShapeForReducingContractDims(
+          dnums, xladot_output_rank, shape, is_lhs, opponent_shape);
+
+  // Generate the dimension numbers for reduce.
+  xla::DotDimensionNumbers reduce_dnums;
+  CopyXlaDotDimensionNumbers(dnums, reduce_dnums, is_lhs);
+  const int contracting_dim_start =
+      is_lhs ? 0 : opponent_shape.size() - num_contract_dim;
+  for (int i = contracting_dim_start;
+       i < contracting_dim_start + num_contract_dim; i++) {
+    if (is_lhs) {
+      reduce_dnums.add_rhs_contracting_dimensions(i);
+    } else {
+      reduce_dnums.add_lhs_contracting_dimensions(i);
+    }
+  }
+
+  // Create the pseudo opponent matrix.
+  Operation *one_matrix = Create1sMatrix(builder, loc, opponent_shape);
+
+  // Calculate output shape of the reduce einsum operation.
+  SmallVector<int64_t> output_shape;
+  SmallVector<Value> input_arguments;
+  int lhs_rank, rhs_rank;
+  if (is_lhs) {
+    output_shape =
+        CreateOutputShape(reduce_dnums, tensor_shape, opponent_shape);
+    input_arguments.push_back(tensor_i32);
+    input_arguments.push_back(one_matrix->getResult(0));
+    lhs_rank = tensor_shape.size();
+    rhs_rank = opponent_shape.size();
+  } else {
+    output_shape =
+        CreateOutputShape(reduce_dnums, opponent_shape, tensor_shape);
+    input_arguments.push_back(one_matrix->getResult(0));
+    input_arguments.push_back(tensor_i32);
+    lhs_rank = opponent_shape.size();
+    rhs_rank = tensor_shape.size();
+  }
+
+  // Create the equation.
+  const std::string einsum_equation =
+      CreateEinsumEquation(reduce_dnums, lhs_rank, rhs_rank);
+
+  // Check if we can create "reduce" instead of "einsum".
+  // Condition: the target equation except contracting dimension must match the
+  // end of out equation.
+  SmallVector<int64_t> out_dims;
+  if (IsReducable(einsum_equation, dnums, is_lhs, out_dims)) {
+    return CreateZeroPointPartialOffset(builder, loc, tensor, other_tensor_zp,
+                                        out_dims);
+  }
+
+  Value reduced = builder.create<TF::EinsumOp>(
+      loc, RankedTensorType::get(output_shape, builder.getIntegerType(32)),
+      input_arguments, builder.getStringAttr(einsum_equation));
+
+  reduced.getDefiningOp()->setAttr(
+      kTfQuantCreatedEinsum,
+      BoolAttr::get(reduced.getDefiningOp()->getContext(), true));
+  auto mul_op = builder.create<TF::MulOp>(loc, zp, reduced);
+  SmallVector<Value> folded_results = ConstantFoldOpIfPossible(mul_op);
+  return folded_results.front();
+}
+
+// Calculates zero-point offset by reducing the weight and multiply it with zp.
+// Originally, we have:
+//   output = (int8_input - input_zp) * (int8_weight - weight_zp)
+// So, offset = input_zp * int8_weight + weight_zp * int8_input
+// - input_zp * weight_zp.
+// This function calculates the `offset` value mentioned above. Note that the
+// `output_dims` is the weight dimensions that are not contracted, so they
+// appear in the output shape.
+Value CalculateZeroPointOffsetXLADotV2(OpBuilder &builder, Location loc,
+                                       Value input, Value weight,
+                                       int8_t input_zp, int8_t weight_zp,
+                                       const xla::DotDimensionNumbers &dnums,
+                                       int output_rank) {
+  Value zp_input_contribution = CreateZeroPointPartialOffsetXlaDotV2(
+      builder, loc, input, weight_zp, dnums, /*is_lhs=*/true, output_rank);
+  Value zp_weight_contribution = CreateZeroPointPartialOffsetXlaDotV2(
+      builder, loc, weight, input_zp, dnums, /*is_lhs=*/false, output_rank);
+
   auto weight_shape = weight.getType().template cast<ShapedType>();
-  SmallVector<int64_t> weight_non_output_indices;
-  for (auto i : llvm::seq<int64_t>(0, weight_shape.getRank())) {
-    if (absl::c_count(weight_output_dims, i) == 0) {
-      weight_non_output_indices.push_back(i);
+
+  absl::flat_hash_set<int64_t> rhs_contracting_dims;
+  for (auto dim : dnums.rhs_contracting_dimensions()) {
+    rhs_contracting_dims.insert(dim);
+  }
+
+  SmallVector<int64_t> weight_output_dims;
+  for (int64_t i = 0; i < weight_shape.getRank(); i++) {
+    if (rhs_contracting_dims.find(i) == rhs_contracting_dims.end()) {
+      weight_output_dims.push_back(i);
     }
   }
 
   if (input_zp != 0 && weight_zp != 0) {
-    // Add two contributions, and a zeropoint modification term
-    // Consider two quantized matrices P, Q with zero points z, w. Let's say the
-    // dimensions are l X n, n X m.
-    // What we want to calculate is: R = matmul(P-z, Q-w).
-    // Then r_ij = sigma(k) (p_ik - z) * (q_kj - w)
-    //           = sigma(k)(p_ik * q_kj) - w * sigma(k)p_ik - z * sigma(k)q_kj
-    //             + sigma(k)z*w.
-    // zp_input_contribution = z * sigma(k)q_kj
-    // zp_weight_contribution = w * sigma(k)p_ik
-    // In case z != 0 and w != 0, we need to additionally calculate sigma(k)z*w,
-    // which is: # of reduced dim(n in this case) * input_zp * weight_zp
-    int32_t static_dim_total = 1;
-    Value accum_dynamic_dim = nullptr;
-    llvm::SmallVector<int64_t> weight_non_output_dynamic_indices;
-    for (const int64_t weight_idx : weight_non_output_indices) {
-      if (weight_shape.isDynamicDim(weight_idx)) {
-        weight_non_output_dynamic_indices.push_back(weight_idx);
-      } else {
-        static_dim_total *= weight_shape.getDimSize(weight_idx);
-      }
-    }
-
-    if (!weight_non_output_dynamic_indices.empty()) {
-      // Has dynamic shapes.
-      auto weight_shape_op = builder.create<TF::ShapeOp>(
-          loc, weight, /*use32Bit=*/builder.getBoolAttr(false));
-
-      auto slice_output_type = RankedTensorType::get({1}, builder.getI64Type());
-      auto slice_stride = CreateConstValue<int64_t>(builder, loc, {1}, {1});
-      for (int64_t weight_idx : weight_non_output_dynamic_indices) {
-        auto start = CreateConstValue<int64_t>(builder, loc, {1}, {weight_idx});
-        auto end =
-            CreateConstValue<int64_t>(builder, loc, {1}, {weight_idx + 1});
-        auto sliced_shape_op = builder.create<TF::StridedSliceOp>(
-            loc, slice_output_type, weight_shape_op, start, end, slice_stride);
-        if (accum_dynamic_dim == nullptr) {
-          accum_dynamic_dim = sliced_shape_op->getResults().front();
-        } else {
-          accum_dynamic_dim =
-              builder
-                  .create<TF::MulOp>(loc, accum_dynamic_dim, sliced_shape_op)
-                  ->getResults()
-                  .front();
-        }
-      }
-    }
-
-    const int32_t zp_constant_offset = static_cast<int32_t>(input_zp) *
-                                       static_cast<int32_t>(weight_zp) *
-                                       static_dim_total;
-    auto zp_offset_value =
-        CreateScalarConstValue<int32_t>(builder, loc, zp_constant_offset);
-    if (accum_dynamic_dim != nullptr) {
-      accum_dynamic_dim =
-          builder
-              .create<mlir::TF::CastOp>(
-                  loc, mlir::RankedTensorType::get({1}, builder.getI32Type()),
-                  accum_dynamic_dim)
-              ->getResults()
-              .front();
-      auto mul_op =
-          builder.create<TF::MulOp>(loc, accum_dynamic_dim, zp_offset_value);
-      zp_offset_value = mul_op->getResults().front();
-    }
-
-    auto offset_sum = builder.create<TF::AddOp>(loc, zp_input_contribution,
-                                                zp_weight_contribution);
-    auto offset_op =
-        builder.create<TF::SubOp>(loc, offset_sum, zp_offset_value);
-
-    llvm::SmallVector<Value> folded_results =
-        ConstantFoldOpIfPossible(offset_op);
-    return folded_results.front();
+    return MergeZeroPointOffset(builder, loc, weight, weight_output_dims,
+                                input_zp, weight_zp, zp_input_contribution,
+                                zp_weight_contribution);
   }
 
   if (input_zp != 0) return zp_weight_contribution;
@@ -338,7 +740,7 @@ Value CreateXlaConvOpFromTfDepthwiseConv2dOp(
   const int feature_group_cnt = input_shape.getDimSize(3);
 
   // Reshape the filter to [K, K, 1, I * O].
-  llvm::SmallVector<int64_t> new_filter_shape{
+  SmallVector<int64_t> new_filter_shape{
       filter_shape.getDimSize(0), filter_shape.getDimSize(1), 1,
       filter_shape.getDimSize(2) * filter_shape.getDimSize(3)};
   Value new_filter = builder.create<TF::ReshapeOp>(
@@ -414,19 +816,10 @@ Value CreateXlaDotV2Op(OpBuilder &builder, Location loc, Value input,
 
   if (input_zp_value == 0) return dot_result;
 
-  auto input_shape = input.getType().template cast<ShapedType>();
-  auto weight_shape = weight.getType().template cast<ShapedType>();
-  SmallVector<int64_t> input_output_dims(input_shape.getRank() - 2);
-  SmallVector<int64_t> weight_output_dims(weight_shape.getRank() - 2);
-  absl::c_iota(input_output_dims, 0);
-  absl::c_iota(weight_output_dims, 0);
-  input_output_dims.push_back(weight_shape.getRank() - 2);
-  weight_output_dims.push_back(weight_shape.getRank() - 1);
+  Value zp_offset = CalculateZeroPointOffsetXLADotV2(
+      builder, loc, input, weight, input_zp_value, weight_zp_value, dnums,
+      output.getType().template cast<ShapedType>().getRank());
 
-  Value zp_offset = CalculateZeroPointOffset(
-      builder, loc, input, weight, input_zp_value, weight_zp_value,
-      ArrayRef<int64_t>(input_output_dims),
-      ArrayRef<int64_t>(weight_output_dims));
   return builder.create<TF::SubOp>(loc, dot_result, zp_offset);
 }
 
@@ -457,7 +850,7 @@ Value CreateXlaDotV2OpFromTfMatMulOp(OpBuilder &builder, Location loc,
 // Gets the broadcasted shapes of the input and weight of the BatchMatMul op
 // from their types. If there are dynamic dimesions, these shapes couldn't be
 // used as the arguments for the BroadcastTo ops.
-llvm::Optional<std::pair<SmallVector<int64_t>, SmallVector<int64_t>>>
+std::optional<std::pair<SmallVector<int64_t>, SmallVector<int64_t>>>
 GetBroadcastShapesForBatchMatmul(ShapedType input_type,
                                  ShapedType weight_type) {
   ArrayRef<int64_t> input_shape = input_type.getShape();
@@ -615,6 +1008,148 @@ Value CreateXlaDotV2OpFromTfBatchMatMulOp(OpBuilder &builder, Location loc,
   } else {
     dnums.add_lhs_contracting_dimensions(num_batch_dim + 1);
   }
+
+  return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, weight_zp,
+                          output, dnums);
+}
+
+// Check if the given value is a ranked type with specified integer width.
+bool IsRankedInt(Value value, const int integer_width) {
+  ShapedType value_type = value.getType().template cast<ShapedType>();
+  if (!value_type.hasRank()) return false;
+  if (!value_type.getElementType().isInteger(integer_width)) return false;
+
+  return true;
+}
+
+// Constraint to check:
+// 1. The einsum has two inputs and one output.
+// 2. The einsum is not created by the convert function itself.
+// 3. Both inputs are int32 tensor.
+// 4. Both inputs have the graph ancestor of either const-(sub), or cast-sub.
+// 5. The type of the const tensor (or input of the cast operation) is int8.
+bool IsEinsumOpSupported(Value output, OperandRange args,
+                         StringAttr equation_attr) {
+  Operation *op = output.getDefiningOp();
+  if (op->getAttrOfType<BoolAttr>(kTfQuantCreatedEinsum) != nullptr) {
+    return false;
+  }
+
+  // Only supports einsum with two inputs and one specified output.
+  if (args.size() != 2) return false;
+  if (!absl::StrContains(equation_attr.str(), "->")) return false;
+
+  // Check the types and ranks of the input arguments.
+  if (!IsRankedInt(args[0], 32)) return false;
+  if (!IsRankedInt(args[1], 32)) return false;
+
+  // Trace the graph to see if the conversion is applicable.
+  Operation *op_input = args[0].getDefiningOp();
+  Operation *op_weight = args[1].getDefiningOp();
+  if (isa<TF::SubOp>(op_input)) {
+    op_input = op_input->getOperand(0).getDefiningOp();
+  }
+  if (isa<TF::SubOp>(op_weight)) {
+    op_weight = op_weight->getOperand(0).getDefiningOp();
+  }
+  if (isa<TF::CastOp>(op_input)) {
+    op_input = op_input->getOperand(0).getDefiningOp();
+  } else if (!isa<TF::ConstOp>(op_input)) {
+    return false;
+  }
+  if (isa<TF::CastOp>(op_weight)) {
+    op_weight = op_weight->getOperand(0).getDefiningOp();
+  } else if (!isa<TF::ConstOp>(op_weight)) {
+    return false;
+  }
+
+  if (!IsRankedInt(op_weight->getResult(0), 8)) return false;
+  if (!IsRankedInt(op_input->getResult(0), 8)) return false;
+
+  return true;
+}
+
+// Convert an einsum equation into XLA Dot Dimension Numbers.
+// If the return flag is true, the arguments for XlaDotV2 should be swapped.
+xla::DotDimensionNumbers ConvertEinsumEquationIntoXlaDotDimensionNumbers(
+    const StringRef equation) {
+  xla::DotDimensionNumbers dnums;
+
+  // 1. Parse the given equation.
+  int idx_arrow = equation.find("->");
+  StringRef calc_eq = equation.substr(0, idx_arrow);
+  StringRef out_eq = equation.substr(idx_arrow + 2);
+
+  int idx_comma = calc_eq.find(',');
+  StringRef lhs_eq = calc_eq.substr(0, idx_comma);
+  StringRef rhs_eq = calc_eq.substr(idx_comma + 1);
+
+  // 2.Fill the DDN.
+  std::vector<int> lhs_batch_dims, lhs_contract_dims;
+  std::vector<int> rhs_batch_dims, rhs_contract_dims;
+
+  for (int i = 0; i < lhs_eq.size(); i++) {
+    char c = lhs_eq.data()[i];
+    if (absl::StrContains(out_eq, c) && absl::StrContains(rhs_eq, c)) {
+      dnums.add_lhs_batch_dimensions(i);
+    } else if (!absl::StrContains(out_eq, c)) {
+      dnums.add_lhs_contracting_dimensions(i);
+    }
+  }
+
+  for (int i = 0; i < rhs_eq.size(); i++) {
+    char c = rhs_eq.data()[i];
+    if (absl::StrContains(out_eq, c) && absl::StrContains(lhs_eq, c)) {
+      dnums.add_rhs_batch_dimensions(i);
+    } else if (!absl::StrContains(out_eq, c)) {
+      dnums.add_rhs_contracting_dimensions(i);
+    }
+  }
+
+  return dnums;
+}
+
+// Trace the graph to find out the actual operation.
+Value getActualValue(Operation *op) {
+  if (isa<TF::CastOp>(op)) {
+    op = op->getOperand(0).getDefiningOp();
+  }
+
+  if (isa<TF::IdentityOp>(op)) {
+    op = op->getOperand(0).getDefiningOp();
+  }
+  return op->getResult(0);
+}
+
+Value CreateXlaDotV2OpFromTfEinsumOp(OpBuilder &builder, Location loc,
+                                     StringAttr equation_attr,
+                                     OperandRange args, Value output) {
+  xla::DotDimensionNumbers dnums =
+      ConvertEinsumEquationIntoXlaDotDimensionNumbers(equation_attr);
+
+  // Look for zp.
+  Value input_zp = nullptr;
+  Value weight_zp = nullptr;
+  Operation *op_input = args[0].getDefiningOp();
+  Operation *op_weight = args[1].getDefiningOp();
+  if (isa<TF::SubOp>(op_input)) {
+    input_zp = op_input->getOperand(1);
+    op_input = op_input->getOperand(0).getDefiningOp();
+  } else {
+    builder.setInsertionPoint(op_input->getPrevNode());
+    input_zp = Create1DConstValue<int32_t>(builder, loc, {0});
+  }
+
+  if (isa<TF::SubOp>(op_weight)) {
+    weight_zp = op_weight->getOperand(1);
+    op_weight = op_weight->getOperand(0).getDefiningOp();
+  } else {
+    builder.setInsertionPoint(op_weight->getPrevNode());
+    weight_zp = Create1DConstValue<int32_t>(builder, loc, {0});
+  }
+
+  Value input = getActualValue(op_input);
+  Value weight = getActualValue(op_weight);
 
   return CreateXlaDotV2Op(builder, loc, input, weight, input_zp, weight_zp,
                           output, dnums);

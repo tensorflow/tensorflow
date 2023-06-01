@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_GRAPH_DECOMPOSE_PASS_H_
 #define TENSORFLOW_COMPILER_MLIR_TFR_INTEGRATION_GRAPH_DECOMPOSE_PASS_H_
 
+#include <string>
+
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 #include "tensorflow/compiler/mlir/tfr/integration/tfr_decompose_ctx.h"
@@ -40,8 +42,8 @@ class GraphDecomposePass : public MlirOptimizationPass {
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
-  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-             const Graph& graph,
+  Status Run(const std::string& function_name, const ConfigProto& config_proto,
+             mlir::ModuleOp module, const Graph& graph,
              const FunctionLibraryDefinition& function_library) override;
 };
 

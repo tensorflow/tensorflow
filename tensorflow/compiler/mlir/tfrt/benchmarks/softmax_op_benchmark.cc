@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -73,7 +74,7 @@ static void ComputeSoftmax(const Eigen::DefaultDevice& d, InT logits,
 
 auto EigenSoftmax() {
   return [](llvm::ArrayRef<Tensor> inputs,
-            llvm::Optional<Eigen::ThreadPoolDevice>) {
+            std::optional<Eigen::ThreadPoolDevice>) {
     Tensor output(DT_FLOAT, {inputs[0].dim_size(0), inputs[0].dim_size(1)});
 
     auto in = inputs[0].tensor<float, 2>();

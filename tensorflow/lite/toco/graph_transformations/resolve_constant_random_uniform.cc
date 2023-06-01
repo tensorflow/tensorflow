@@ -41,7 +41,7 @@ bool ComputeRandomUniformArray(Model* model, RandomUniformOperator* op) {
   // We use the same random number generator and distribution as TensorFlow to
   // produce the exact same values given the same seeds. See
   // tensorflow::functor::FillPhiloxRandomTask<Distribution, false> in
-  // //third_party/tensorflow/core/kernels/random_op.cc for the implementation.
+  // //tensorflow/core/kernels/random_op.cc for the implementation.
   tensorflow::random::PhiloxRandom generator(op->seed, op->seed2);
   Distribution dist;
 

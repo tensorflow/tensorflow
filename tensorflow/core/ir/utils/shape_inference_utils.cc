@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
@@ -231,7 +231,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
                            /*ignore_unregistered_attrs=*/true, &attributes);
     if (!status.ok()) {
       VLOG(3) << op_name.data()
-              << " failed to get AttrValue: " << status.error_message();
+              << " failed to get AttrValue: " << status.message();
       return failure();
     }
   } else {
@@ -241,8 +241,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
         op, &node_def, dialect,
         [&](Value value) { return GetValueName(value, dialect); });
     if (!status.ok()) {
-      VLOG(3) << op_name.data() << " failed to be converted to NodeDef: "
-              << status.error_message();
+      VLOG(3) << op_name.data()
+              << " failed to be converted to NodeDef: " << status.message();
       return failure();
     }
     attributes = node_def.attr();
@@ -277,13 +277,13 @@ LogicalResult InferReturnTypeComponentsForTFOp(
                      /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   if (!c.construction_status().ok()) {
     VLOG(3) << "InferenceContext construction failed on " << op_name.data()
-            << ": " << c.construction_status().error_message();
+            << ": " << c.construction_status().message();
     return failure();
   }
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok()) {
     return ReportErrorFromShapeFunction(location, op_name,
-                                        status.error_message());
+                                        std::string(status.message()));
   }
 
   std::vector<const tensorflow::Tensor*> input_tensors(num_operands);
@@ -321,8 +321,8 @@ LogicalResult InferReturnTypeComponentsForTFOp(
             has_new_inputs = true;
           } else {
             VLOG(4) << "Error converting input " << input << " of op '"
-                    << op_name.data()
-                    << "' to Tensor: " << status.error_message() << "\n";
+                    << op_name.data() << "' to Tensor: " << status.message()
+                    << "\n";
           }
         }
       }
@@ -350,7 +350,7 @@ LogicalResult InferReturnTypeComponentsForTFOp(
     auto status = c.Run(op_reg_data->shape_inference_fn);
     if (!status.ok()) {
       return ReportErrorFromShapeFunction(location, op_name,
-                                          status.error_message());
+                                          std::string(status.message()));
     }
   }
 

@@ -30,13 +30,14 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
-from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 from tensorflow.python.util import deprecation
@@ -68,7 +69,7 @@ def match_filenames_once(pattern, name=None):
     A variable that is initialized to the list of files matching the pattern(s).
   """
   with ops.name_scope(name, "matching_filenames", [pattern]) as name:
-    return vs.variable(
+    return variable_v1.VariableV1(
         name=name, initial_value=io_ops.matching_files(pattern),
         trainable=False, validate_shape=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
@@ -102,7 +103,7 @@ def limit_epochs(tensor, num_epochs=None, name=None):
     raise ValueError("num_epochs must be > 0 not %d." % num_epochs)
   with ops.name_scope(name, "limit_epochs", [tensor]) as name:
     zero64 = constant_op.constant(0, dtype=dtypes.int64)
-    epochs = vs.variable(
+    epochs = variable_v1.VariableV1(
         zero64, name="epochs", trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES])
     counter = epochs.count_up_to(num_epochs)
@@ -256,9 +257,9 @@ def string_input_producer(string_tensor,
   with ops.name_scope(name, "input_producer", [string_tensor]) as name:
     string_tensor = ops.convert_to_tensor(string_tensor, dtype=dtypes.string)
     with ops.control_dependencies([
-        control_flow_ops.Assert(
-            math_ops.greater(array_ops.size(string_tensor), 0),
-            [not_null_err])]):
+        control_flow_assert.Assert(
+            math_ops.greater(array_ops.size(string_tensor), 0), [not_null_err])
+    ]):
       string_tensor = array_ops.identity(string_tensor)
     return input_producer(
         input_tensor=string_tensor,

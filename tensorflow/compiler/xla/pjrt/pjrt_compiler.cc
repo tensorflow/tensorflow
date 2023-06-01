@@ -44,7 +44,7 @@ void PjRtRegisterCompiler(absl::string_view platform_name,
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
-    const PjRtDeviceTopology& topology, PjRtClient* client) {
+    const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();
   if (topology_compiler.has_value()) {
     return (*topology_compiler)
@@ -62,7 +62,7 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 
 StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, mlir::ModuleOp module,
-    const PjRtDeviceTopology& topology, PjRtClient* client) {
+    const PjRtTopologyDescription& topology, PjRtClient* client) {
   auto topology_compiler = topology.compiler();
   if (topology_compiler.has_value()) {
     return (*topology_compiler)

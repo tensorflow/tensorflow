@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "tensorflow/core/platform/resource_loader.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/lite/tools/versioning/op_signature.h"
 
 namespace tflite {
 
@@ -74,6 +79,19 @@ TEST(CheckGpuDelegateCompatibility, FlexModel) {
   ASSERT_TRUE(model);
   EXPECT_EQ(CheckGpuDelegateCompatibility(model->GetModel()).message(),
             "Not supported custom op FlexAddV2");
+}
+
+TEST(CheckGpuDelegateCompatibility, FCConstInput) {
+  OpSignature op_sig = OpSignature();
+  op_sig.op = BuiltinOperator_FULLY_CONNECTED;
+  auto params = std::make_unique<TfLiteFullyConnectedParams>();
+  params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
+  op_sig.builtin_data = static_cast<void*>(params.get());
+  op_sig.inputs = std::vector<OpSignatureTensorSpec>(1);
+  op_sig.inputs[0] = OpSignatureTensorSpec();
+  op_sig.inputs[0].is_const = true;
+  EXPECT_EQ(CheckGpuDelegateCompatibility(op_sig).message(),
+            "FullyConnected doesn't support constant input.");
 }
 
 }  // namespace tflite

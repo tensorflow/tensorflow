@@ -26,9 +26,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -76,7 +76,9 @@ StatusOr<bool> HloConstantFolding::Run(
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
-  bool changed = false;
+  // We delay deleting dead instructions so that we can print them out if we are
+  // taking too long without use-after-free or other sorts of races.
+  std::vector<HloInstruction*> dead_instructions;
 
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -105,16 +107,15 @@ StatusOr<bool> HloConstantFolding::Run(
       //  - So the only remaining case is where some but not all operands are
       //    broadcasts of constants, e.g. op(constant, broadcast(constant)).
       //
-      if (!absl::c_any_of(instruction->operands(),
-                          [](const HloInstruction* operand) {
-                            return operand->opcode() == HloOpcode::kConstant;
-                          }) ||
-          !absl::c_all_of(
-              instruction->operands(), [](const HloInstruction* operand) {
-                return operand->opcode() == HloOpcode::kConstant ||
-                       (operand->opcode() == HloOpcode::kBroadcast &&
-                        operand->operand(0)->opcode() == HloOpcode::kConstant);
-              })) {
+      if (!instruction->operands().empty() &&
+          (!absl::c_any_of(instruction->operands(),
+                           HloPredicateIsOp<HloOpcode::kConstant>) ||
+           !absl::c_all_of(
+               instruction->operands(), [](const HloInstruction* operand) {
+                 return operand->opcode() == HloOpcode::kConstant ||
+                        (operand->opcode() == HloOpcode::kBroadcast &&
+                         operand->operand(0)->opcode() == HloOpcode::kConstant);
+               }))) {
         continue;
       }
 
@@ -138,28 +139,36 @@ StatusOr<bool> HloConstantFolding::Run(
         continue;
       }
 
-      // Don't fold across async execution thread if it's not supposed to be
-      // changed by this pass.
-      if (instruction->IsAsynchronous() &&
-          instruction->async_execution_thread() !=
-              instruction->parent()->execution_thread()) {
-        continue;
-      }
+      auto is_ok_to_fold = [](const HloInstruction* instruction) {
+        // Don't fold across async execution thread if it's not supposed to be
+        // changed by this pass.
+        if (instruction->IsAsynchronous() &&
+            instruction->async_execution_thread() !=
+                instruction->parent()->execution_thread()) {
+          return false;
+        }
 
-      // Do not fold FFT. Evaluating it may significantly increase compile time.
-      if (instruction->opcode() == HloOpcode::kFft) {
-        continue;
-      }
+        // Do not fold FFT. Evaluating it may significantly increase compile
+        // time.
+        if (instruction->opcode() == HloOpcode::kFft) {
+          return false;
+        }
 
-      // Check for instructions that we can't fold even if they appear inside of
-      // a subcomputation (e.g. a kCall).
-      if (IsOrContainsIllegalInstr(instruction)) {
-        continue;
-      }
+        // Check for instructions that we can't fold even if they appear inside
+        // of a subcomputation (e.g. a kCall).
+        if (IsOrContainsIllegalInstr(instruction)) {
+          return false;
+        }
 
-      // Don't constant-fold side-effecting instructions or instructions which
-      // contain side-effecting instructions.
-      if (instruction->HasSideEffect()) {
+        // Don't constant-fold side-effecting instructions or instructions which
+        // contain side-effecting instructions.
+        if (instruction->HasSideEffect()) {
+          return false;
+        }
+        return true;
+      };
+
+      if (!is_ok_to_fold(instruction)) {
         continue;
       }
 
@@ -182,27 +191,22 @@ StatusOr<bool> HloConstantFolding::Run(
         }
       }
 
+      // We do not constant-fold iotas or broadcasts, so therefore we can get
+      // fusions that have no input elements so, they can be constant-folded.
+      // Before folding fusions we need to check that all instructions pass
+      // instruction_check.
+      if (instruction->opcode() == HloOpcode::kFusion &&
+          !absl::c_all_of(
+              instruction->fused_instructions_computation()->instructions(),
+              is_ok_to_fold)) {
+        continue;
+      }
+
       VLOG(5) << "Constant folding: " << instruction->ToString();
 
       absl::Duration slow_timeout =
           absl::Seconds(uint64_t{1} << slow_op_counter_.load());
-      // We cannot call `instruction->ToString() within the callback, because
-      // the instruction may be modified and invalidated in place, and ToString
-      // will fail if the compilation is slow. We probably do not want to
-      // call `ToString()` for all the instructions, thus, we only display the
-      // name by default.
-      std::string instruction_msg;
-      if (VLOG_IS_ON(4)) {
-        instruction_msg = instruction->ToString();
-      } else {
-        instruction_msg =
-            absl::StrCat(instruction->name(),
-                         " (displaying the full instruction incurs a runtime "
-                         "overhead. Raise your logging level to 4 or above).");
-      }
-      SlowOperationAlarm slow_alarm(slow_timeout, [instruction_msg = std::move(
-                                                       instruction_msg),
-                                                   slow_timeout] {
+      SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
         const bool ndebug =
 #if NDEBUG
             true;
@@ -213,19 +217,19 @@ StatusOr<bool> HloConstantFolding::Run(
             ndebug
                 ? "This isn't necessarily a bug; constant-folding is "
                   "inherently a trade-off between compilation time and speed "
-                  "at runtime.  XLA has some guards that attempt to keep "
+                  "at runtime. XLA has some guards that attempt to keep "
                   "constant folding from taking too long, but fundamentally "
                   "you'll always be able to come up with an input program that "
                   "takes a long time.\n\n"
                   "If you'd like to file a bug, run with envvar "
                   "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results."
                 : "XLA was built without compiler optimizations, which can be "
-                  "slow.  Try rebuilding with -c opt.";
+                  "slow. Try rebuilding with -c opt.";
         return absl::StrFormat(
             "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->name() or instruction->ToString()
             "%s",       // explanation_msg
-            absl::FormatDuration(slow_timeout), instruction_msg,
+            absl::FormatDuration(slow_timeout), instruction->ToString(),
             explanation_msg);
       });
 
@@ -246,11 +250,17 @@ StatusOr<bool> HloConstantFolding::Run(
       }
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
-
-      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-          instruction, HloInstruction::CreateConstant(std::move(result))));
-      changed = true;
+      dead_instructions.push_back(instruction);
+      HloInstruction* new_constant = computation->AddInstruction(
+          HloInstruction::CreateConstant(std::move(result)));
+      TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
     }
+  }
+  const bool changed = !dead_instructions.empty();
+  for (HloInstruction* dead_instruction : dead_instructions) {
+    CHECK(dead_instruction->IsDead());
+    HloComputation* computation = dead_instruction->parent();
+    TF_RETURN_IF_ERROR(computation->RemoveInstruction(dead_instruction));
   }
   return changed;
 }

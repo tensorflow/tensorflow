@@ -45,14 +45,15 @@ CreateLiftQuantizableSpotsAsFunctionsPass(OpSet target_opset,
 
 // Apply graph optimizations such as fusing and constant folding to prepare
 // lifting.
-std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass();
+std::unique_ptr<OperationPass<func::FuncOp>> CreatePrepareLiftingPass(
+    OpSet target_opset);
 
 // Lifts the dynamic range quantizable spots as composite functions.
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateLiftQuantizableSpotsAsFunctionsDRQPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
-    int min_num_elements_for_weights);
+    OpSet op_set, int min_num_elements_for_weights);
 
 // Replaces tf.CustomAggregator ops with quant.Stats ops for finalizing the
 // calibration procedure.
@@ -80,7 +81,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateQuantizeCompositeFunctionsPass(
     tensorflow::quantization::QuantizationMethod::ExperimentalMethod
         quantization_method,
     OpSet target_opset, bool enable_per_channel_quantization,
-    int min_num_elements_for_weights);
+    int min_num_elements_for_weight, bool enable_legacy_weight_only = false);
 
 // Converts dequantize-(quantizable) call-quantize pattern to a single call op
 // that has quantized input and output types. It is expected for this pass to
@@ -108,7 +109,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreatePrepareQuantizeDRQPass(
 // Creates an instance of the PreprocessOp pass, which will perform op
 // preprocessing to allow multi-axis quantization, prior to quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreatePreprocessOpPass(
-    const QuantizationSpecs& quant_specs, OpSet op_set);
+    OpSet op_set,
+    tensorflow::quantization::QuantizationMethod::ExperimentalMethod
+        quantization_method,
+    bool enable_per_channel_quantization);
 
 // Creates an instance of the PostQuantize pass, which will remove unnecessary
 // ops from the final quantized graph.
@@ -209,6 +213,16 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass();
 // model quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreateCastBf16OpsToF32Pass();
 
+// Creates a pass that lifts HashTable ops as function arguments. In the graph
+// execution mode, resource ops with the same `shared_name` attribute point to
+// the same underlying resource. This is not true in the eager execution mode.
+// Lifting resource ops as arguments will help unifying them across functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftHashTableOpsAsArgsPass();
+
+// Creates a pass that merges duplicate resource ops in each function. Two
+// resource ops are considered duplicated if they have the same `shared_name`.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateMergeDuplicateResourceOpsPass();
 }  // namespace quant
 }  // namespace mlir
 

@@ -61,6 +61,12 @@ def make_transpose_tests(options):
       "perm": [[0, 1, 2, 3, 4], [3, 4, 0, 1, 2]],
       "constant_perm": [True],
       "fully_quantize": [True, False],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[2, 2]],
+      "perm": [[-2, -1]],
+      "constant_perm": [True, False],
+      "fully_quantize": [False],
   }]
 
   def build_graph(parameters):

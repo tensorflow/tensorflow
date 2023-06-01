@@ -46,15 +46,24 @@ tsl::Status AtomicallyWriteTextProto(absl::string_view filename,
 
 // Atomically writes `tensor` to `filename` in TFRecord format. Overwrites
 // existing contents if the file already exists.
-tsl::Status AtomicallyWriteTFRecord(absl::string_view filename,
-                                    const Tensor& tensor,
-                                    absl::string_view compression,
-                                    tsl::Env* env);
+tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
+                                     const std::vector<Tensor>& tensors,
+                                     absl::string_view compression,
+                                     tsl::Env* env);
 
 // Returns the relative paths of the children of `directory`, ignoring temporary
 // files. Returns an empty vector if the directory does not have any children.
 tsl::StatusOr<std::vector<std::string>> GetChildren(absl::string_view directory,
                                                     tsl::Env* env);
+
+// Validates a snapshot before reading it by `load`. If the snapshot does not
+// exist, is not finished, or is in an error state, returns an error. If the
+// snapshot is ready to be loaded, returns an OK status.
+Status ValidateSnapshot(const std::string& snapshot_path, tsl::Env* env);
+
+// Returns true if `filename` is a temporary file and should be ignored in
+// normal data processing.
+bool IsTemporaryFile(absl::string_view filename);
 
 }  // namespace data
 }  // namespace tensorflow

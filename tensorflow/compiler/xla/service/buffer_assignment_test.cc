@@ -740,7 +740,8 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(2, f32vec100_, "p2"));
   Shape f32vec100_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {100}, {0}, /*tiles=*/{}, /*memory_space=*/1);
+      F32, {100}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*memory_space=*/1);
   auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -751,8 +752,10 @@ TEST_F(BufferAssignmentTest, PresetAssignments) {
   module->AddEntryComputation(builder.Build());
 
   auto preset_assignments = std::make_unique<PresetAssignments>();
-  preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
-  preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
+  preset_assignments->add_chunk({mul, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(100, 400));
+  preset_assignments->add_chunk({add, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(550, 400));
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
       ->size = 950;
 
@@ -799,7 +802,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
   // HloValue and HloBuffer (i.e., a while loop).
   auto module = CreateNewVerifiedModule();
   Shape f32vec10_color1 = ShapeUtil::MakeShapeWithDenseLayout(
-      F32, {10}, {0}, /*tiles=*/{}, /*memory_space=*/1);
+      F32, {10}, {0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      /*memory_space=*/1);
   Shape t_s32_f32v10_color1 =
       ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
 
@@ -858,7 +862,8 @@ TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
 
   // Set only one preset assignment for while data and its aliases.
   auto preset_assignments = std::make_unique<PresetAssignments>();
-  preset_assignments->add_chunk({negate, {}}, {/*offset=*/100, /*size=*/40});
+  preset_assignments->add_chunk({negate, {}},
+                                HeapSimulator::Chunk::FromOffsetSize(100, 40));
   preset_assignments->assignment_information_for_space(/*memory_space=*/1)
       ->size = 140;
 

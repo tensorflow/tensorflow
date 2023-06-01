@@ -606,7 +606,7 @@ TfLiteStatus EvalInt16(TfLiteContext* context, const OpData* data,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // optimized_ops not yet implemnted for int16_t, use reference_ops in all
+  // optimized_ops not yet implemented for int16_t, use reference_ops in all
   // cases.
   reference_ops::BatchMatMul<int16_t, int64_t>(
       op_params, rhs_shape, GetTensorData<int16_t>(rhs), lhs_shape,
@@ -721,6 +721,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   bool adj_y = op_context.params->adj_y;
   bool adj_x = op_context.params->adj_x;
 
+  int32_t rhs_dims_count = orig_rhs_shape.DimensionsCount();
+  int32_t lhs_dims_count = orig_lhs_shape.DimensionsCount();
+  // Compress ops where rhs shape is [..., 1, X, Y] and lhs shape is
+  // [..., Q, R, S] which is equivalent to rhs: [..., X, Y] and
+  // lhs: [..., Q * R, S].
+  if (rhs_dims_count > 2 && lhs_dims_count > 2) {
+    int rhs_one = orig_rhs_shape.DimsData()[rhs_dims_count - 3];
+    if (rhs_one == 1) {
+      int32_t* lhs_dims = orig_lhs_shape.DimsData();
+      int32_t* rhs_dims = orig_rhs_shape.DimsData();
+      RuntimeShape tmp_l(lhs_dims_count - 1, lhs_dims);
+      tmp_l.SetDim(lhs_dims_count - 3,
+                   lhs_dims[lhs_dims_count - 3] * lhs_dims[lhs_dims_count - 2]);
+      tmp_l.SetDim(lhs_dims_count - 2, lhs_dims[lhs_dims_count - 1]);
+      orig_lhs_shape.ReplaceWith(tmp_l.DimensionsCount(), tmp_l.DimsData());
+      RuntimeShape tmp_r(rhs_dims_count - 1, orig_rhs_shape.DimsData());
+      tmp_r.SetDim(rhs_dims_count - 3, rhs_dims[rhs_dims_count - 2]);
+      tmp_r.SetDim(rhs_dims_count - 2, rhs_dims[rhs_dims_count - 1]);
+      orig_rhs_shape.ReplaceWith(tmp_r.DimensionsCount(), tmp_r.DimsData());
+    }
+  }
+  rhs_dims_count = orig_rhs_shape.DimensionsCount();
+  lhs_dims_count = orig_lhs_shape.DimensionsCount();
   const TfLiteTensor* rhs_tensor = adj_y ? rhs : GetTempRhs(context, node, rhs);
   const TfLiteTensor* lhs_tensor = adj_x ? GetTempLhs(context, node, lhs) : lhs;
   if (!adj_y) {

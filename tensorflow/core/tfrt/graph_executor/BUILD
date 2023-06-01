@@ -1,4 +1,6 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -9,9 +11,10 @@ package(
 package_group(
     name = "friends",
     packages = [
+        "//learning/brain/tfrt/support/...",
         "//smartass/brain/inference/...",
-        "//tensorflow/core/tfrt/saved_model/...",
-        "//tensorflow/core/tfrt/tfrt_session/...",
+        "//tensorflow/core/tfrt/...",
+        "//tensorflow_serving/servables/tensorflow/google/...",
     ],
 )
 
@@ -19,11 +22,13 @@ cc_library(
     name = "graph_execution_options",
     srcs = ["graph_execution_options.cc"],
     hdrs = ["graph_execution_options.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
+        ":config",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "//tensorflow/core/tfrt/runtime",
+        "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils:bridge_graph_analysis",
         "@com_google_absl//absl/types:optional",
     ],
@@ -35,13 +40,11 @@ cc_library(
     hdrs = ["graph_executor.h"],
     tags = ["no_oss"],
     deps = [
+        ":export_mlir",
         ":graph_execution_options",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/attribute",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:parallelization",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:tf_to_mlrt",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
+        ":sync_resource_state",
+        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:import_model",
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:context",
-        "//learning/brain/experimental/tfrt/mlrt/mlir_to_bytecode",
         "//learning/brain/experimental/tfrt/native_lowering/kernels:sync_context",
         "//learning/brain/experimental/tfrt/native_lowering/saved_model:saved_model_translate",
         "//learning/infra/mira/mlrt/bytecode",
@@ -52,6 +55,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_request_context",
+        "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
         "//tensorflow/compiler/mlir/tfrt:transforms/update_op_cost_in_tfrt_mlir",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
@@ -62,26 +66,26 @@ cc_library(
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/core/protobuf:for_core_protos_cc",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_compat_request_state",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
-        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_op_handler",
-        "//tensorflow/core/runtime_fallback/runtime:runtime_fallback_alwayslink",
+        "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_utils",
         "//tensorflow/core/tfrt/fallback:cost_recorder",
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
-        "//tensorflow/core/tfrt/tpu:tpu_resources",
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
@@ -90,7 +94,11 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
-    ],
+    ] + if_google(
+        [
+            "//learning/brain/tfrt/support:export_mlir",
+        ],
+    ),
 )
 
 tf_cc_test(
@@ -113,7 +121,7 @@ tf_cc_test(
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core/tfrt/saved_model:saved_model_testutil",
-        "//tensorflow/core/tfrt/tpu:tpu_resources",
+        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//:tensor",
@@ -131,6 +139,7 @@ cc_library(
         "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
         "//learning/brain/experimental/tfrt/native_lowering/kernels",
         "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
+        "//learning/brain/tfrt/mlrt/application/vrooml:kernel",
         "//learning/infra/mira/mlrt/interpreter:context",
         "//learning/infra/mira/mlrt/interpreter:value",
         "//tensorflow/core/framework:graph_proto_cc",
@@ -141,6 +150,20 @@ cc_library(
         "//tensorflow/core/tfrt/utils:error_util",
         "@com_google_absl//absl/status:statusor",
         "@tf_runtime//:hostcontext",
+    ],
+)
+
+cc_library(
+    name = "config",
+    srcs = ["config.cc"],
+    hdrs = ["config.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":config_proto_cc",
+        "//google/protobuf:any_cc_proto",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )
 
@@ -156,5 +179,47 @@ tf_cc_test(
         "//tensorflow/core/tfrt/utils:error_util",
         "@com_google_googletest//:gtest_main",
         "@tf_runtime//cpp_tests:common",
+    ],
+)
+
+tf_proto_library(
+    name = "config_proto",
+    srcs = ["config.proto"],
+    protodeps = ["//google/protobuf:any"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library(
+    name = "test_config_proto",
+    testonly = True,
+    srcs = ["test_config.proto"],
+)
+
+tf_cc_test(
+    name = "config_test",
+    srcs = ["config_test.cc"],
+    deps = [
+        ":config",
+        ":config_proto_cc",
+        ":test_config_proto_cc",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "sync_resource_state",
+    hdrs = ["sync_resource_state.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@tf_runtime//:tensor",
+    ],
+)
+
+cc_library(
+    name = "export_mlir",
+    hdrs = ["export_mlir.h"],
+    deps = [
+        "//tensorflow/core/platform:statusor",
+        "@llvm-project//mlir:IR",
     ],
 )

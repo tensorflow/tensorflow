@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/tsl/python/lib/core/bfloat16.h"
 #include "tensorflow/tsl/python/lib/core/custom_casts.h"
 #include "tensorflow/tsl/python/lib/core/float8.h"
-#include "tensorflow/tsl/python/lib/core/float8_e4m3b11.h"
 
 namespace tsl {
 

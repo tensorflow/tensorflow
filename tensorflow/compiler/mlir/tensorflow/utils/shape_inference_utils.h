@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SHAPE_INFERENCE_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_SHAPE_INFERENCE_UTILS_H_
 
-#include "llvm/ADT/Optional.h"
 #include "tensorflow/core/ir/utils/shape_inference_utils.h"
 
 namespace mlir {

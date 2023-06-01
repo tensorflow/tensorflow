@@ -119,7 +119,7 @@ def build_mock_flatbuffer_model():
   schema_fb.TensorStart(builder)
   schema_fb.TensorAddName(builder, string1_offset)
   schema_fb.TensorAddShape(builder, shape1_offset)
-  schema_fb.TensorAddType(builder, 0)
+  schema_fb.TensorAddType(builder, schema_fb.TensorType.UINT8)
   schema_fb.TensorAddBuffer(builder, 1)
   schema_fb.TensorAddQuantization(builder, quantization1_offset)
   tensor1_offset = schema_fb.TensorEnd(builder)

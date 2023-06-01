@@ -19,11 +19,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/lite/core/async/async_kernel_internal.h"
+#include "tensorflow/lite/core/async/c/types.h"
+#include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
-#include "tensorflow/lite/core/async/interop/c/types.h"
 
 namespace tflite {
 namespace async {
@@ -31,7 +31,7 @@ namespace async {
 bool ExecutionTask::GetTensorIdx(TfLiteIoType io_type, const char* name,
                                  int* idx) const {
   const std::map<std::string, uint32_t>* map = nullptr;
-  if (io_type == kTfLiteIoInput) {
+  if (io_type == kTfLiteIoTypeInput) {
     map = input_name_to_idx_;
   } else {
     map = output_name_to_idx_;
@@ -67,7 +67,12 @@ TfLiteStatus ExecutionTask::SetBufferHandle(TfLiteIoType io_type,
   if (!GetTensorIdx(io_type, name, &index)) {
     return kTfLiteError;
   }
-  io_data_[index].buf = handle;
+  return SetBufferHandle(index, handle);
+}
+
+TfLiteStatus ExecutionTask::SetBufferHandle(int tensor_index,
+                                            TfLiteBufferHandle handle) {
+  io_data_[tensor_index].buf = handle;
   return kTfLiteOk;
 }
 
@@ -95,7 +100,12 @@ TfLiteStatus ExecutionTask::SetSynchronization(TfLiteIoType io_type,
   if (!GetTensorIdx(io_type, name, &index)) {
     return kTfLiteError;
   }
-  io_data_[index].sync = sync;
+  return SetSynchronization(index, sync);
+}
+
+TfLiteStatus ExecutionTask::SetSynchronization(int tensor_index,
+                                               TfLiteSynchronization* sync) {
+  io_data_[tensor_index].sync = sync;
   return kTfLiteOk;
 }
 

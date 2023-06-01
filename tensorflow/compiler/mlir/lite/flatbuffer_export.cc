@@ -19,55 +19,73 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <cassert>
 #include <cstdint>
+#include <cstring>
+#include <iterator>
+#include <limits>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/attributes.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
-#include "absl/strings/match.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/buffer.h"  // from @flatbuffers
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
+#include "flatbuffers/vector.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Tools/mlir-translate/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/low_bit_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -75,29 +93,33 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/tstring.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/experimental/remat/metadata_util.h"
-#include "tensorflow/lite/kernels/internal/kernel_utils.h"
+#include "tensorflow/lite/graph_info.h"
+#include "tensorflow/lite/python/metrics/converter_error_data.pb.h"
 #include "tensorflow/lite/schema/schema_conversion_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/toco/toco_flags.pb.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/tools/versioning/runtime_version.h"
 #include "tensorflow/lite/version.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/tstring.h"
 
 using llvm::dyn_cast;
 using llvm::formatv;
 using llvm::isa;
-using llvm::Optional;
 using llvm::StringRef;
-using llvm::Twine;
 using mlir::Dialect;
 using mlir::ElementsAttr;
 using mlir::MLIRContext;
@@ -107,6 +129,7 @@ using mlir::Operation;
 using mlir::Region;
 using mlir::StringAttr;
 using mlir::TensorType;
+using mlir::Twine;
 using mlir::Type;
 using mlir::UnknownLoc;
 using mlir::Value;
@@ -126,7 +149,6 @@ using VectorBufferOffset = flatbuffers::Offset<flatbuffers::Vector<T>>;
 
 using CustomOptionsOffset = VectorBufferOffset<uint8_t>;
 
-namespace error = tensorflow::error;
 namespace tfl = mlir::TFL;
 
 ABSL_CONST_INIT const absl::string_view kFlexOpNamePrefix = "Flex";
@@ -144,7 +166,7 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return tflite::TensorType_UINT8;
   }
   if (!is_signed) {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   "'isSigned' can only be set for 8-bits integer type");
   }
 
@@ -166,14 +188,14 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     if (ftype.isF64()) {
       return tflite::TensorType_COMPLEX128;
     }
-    return Status(error::INVALID_ARGUMENT, "Unsupported type");
+    return Status(absl::StatusCode::kInvalidArgument, "Unsupported type");
   } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
     switch (itype.getWidth()) {
       case 1:
         return tflite::TensorType_BOOL;
       case 4:
         if (itype.isUnsigned()) {
-          return Status(error::INVALID_ARGUMENT,
+          return Status(absl::StatusCode::kInvalidArgument,
                         "Unsupported 4bit unsigned int type");
         } else {
           return tflite::TensorType_INT4;
@@ -209,7 +231,7 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   }
   // TFLite export fills FLOAT32 for unknown data types. Returning an error
   // for now for safety and this could be revisited when required.
-  return Status(error::INVALID_ARGUMENT, "Unsupported type");
+  return Status(absl::StatusCode::kInvalidArgument, "Unsupported type");
 }
 
 static bool IsConst(Operation* op) {
@@ -337,7 +359,7 @@ static bool HasValidTFLiteType(Value value, T& error_handler) {
   if (!status.ok()) {
     return error_handler.emitError(
                formatv("Failed to convert element type '{0}': {1}",
-                       element_type, status.status().error_message())),
+                       element_type, status.status().message())),
            false;
   }
   return true;
@@ -579,7 +601,7 @@ class Translator {
       const std::vector<int32_t>& results);
 
   // Build while operator where cond & body are regions.
-  Optional<BufferOffset<tflite::Operator>> BuildWhileOperator(
+  std::optional<BufferOffset<tflite::Operator>> BuildWhileOperator(
       mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
       const std::vector<int32_t>& results);
 
@@ -614,7 +636,7 @@ class Translator {
 
   // Builds operator for the given operation with specified operand and result
   // tensor indices. Emits an error and returns std::nullopt on failure.
-  llvm::Optional<BufferOffset<tflite::Operator>> BuildOperator(
+  std::optional<BufferOffset<tflite::Operator>> BuildOperator(
       Operation* inst, std::vector<int32_t> operands,
       const std::vector<int32_t>& results,
       const std::vector<int32_t>& intermediates);
@@ -1064,7 +1086,7 @@ BufferOffset<tflite::Operator> Translator::BuildCallOnceOperator(
                                 builtin_options);
 }
 
-llvm::Optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildWhileOperator(
     mlir::TFL::WhileOp op, const std::vector<int32_t>& operands,
     const std::vector<int32_t>& results) {
   auto opcode_index = GetOpcodeIndex("while", tflite::BuiltinOperator_WHILE);
@@ -1243,7 +1265,7 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
   return it.first->second;
 }
 
-llvm::Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
+std::optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, std::vector<int32_t> operands,
     const std::vector<int32_t>& results,
     const std::vector<int32_t>& intermediates) {
@@ -1555,7 +1577,7 @@ std::optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   }
 
   bool failed_once = false;
-  for (auto& item : llvm::enumerate(bb)) {
+  for (const auto& item : llvm::enumerate(bb)) {
     Operation& inst = item.value();
     const int operation_index = item.index();
     if (inst.hasTrait<mlir::OpTrait::IsTerminator>()) break;

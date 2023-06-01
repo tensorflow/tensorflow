@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_RUNTIME_FFI_FFI_API_H_
 
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -477,12 +478,26 @@ struct StateTag {};
 template <typename T>
 struct StreamTag {};
 
+// Type tag to distinguish an argument tied to an "ApiPriv" argument
+// to `Ffi::Binding`. This is necessary to obtain `XLA_FFI_Api.priv`
+// from the foreign function. For example:
+//
+// static ffi::FfiStatus FooFfi(MyStruct* bar, ffi::BufferArg input) { ... }
+//
+// XLA_FFI_DEFINE_FUNCTION(
+//     FFI_Foo, FooFfi, ffi::Ffi::Binding()
+//     .ApriPriv<MyStruct*>
+//     .Arg<ffi::BufferArg>);
+template <typename T>
+struct ApiPrivTag {};
+
 // A template for checking if type is a wrapped attribute or user data.
 // clang-format off
-template <typename>   struct IsWrapped               : std::false_type {};
-template <typename T> struct IsWrapped<AttrTag<T>>   : std::true_type {};
-template <typename T> struct IsWrapped<StateTag<T>>  : std::true_type {};
-template <typename T> struct IsWrapped<StreamTag<T>> : std::true_type {};
+template <typename>   struct IsWrapped                : std::false_type {};
+template <typename T> struct IsWrapped<AttrTag<T>>    : std::true_type {};
+template <typename T> struct IsWrapped<StateTag<T>>   : std::true_type {};
+template <typename T> struct IsWrapped<StreamTag<T>>  : std::true_type {};
+template <typename T> struct IsWrapped<ApiPrivTag<T>> : std::true_type {};
 // clang-format on
 
 }  // namespace internal
@@ -511,6 +526,12 @@ class FfiBinding {
     static_assert(std::is_pointer_v<T>,
                   "T must be a pointer type, e.g. for GPU platform it must be "
                   "se::gpu::GpuStreamHandle");
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  FfiBinding<Ts..., internal::ApiPrivTag<T>> ApiPriv() && {
+    static_assert(std::is_pointer_v<T>, "T must be a pointer type");
     return {std::move(*this)};
   }
 
@@ -657,7 +678,7 @@ namespace internal {
 
 // When decoding input data we need to keep track of how many arguments,
 // attributes, and returns we decoded so far to index into the correct data
-// strucuture.
+// structure.
 struct DecodingOffsets {
   int64_t args = 0;
   int64_t attrs = 0;
@@ -739,6 +760,18 @@ struct Decode<StreamTag<T>> {
   }
 };
 
+template <typename T>
+struct Decode<ApiPrivTag<T>> {
+  static std::optional<T> call(const XLA_FFI_Api* api,
+                               XLA_FFI_ExecutionContext* ctx,
+                               DecodingOffsets& offsets, internal::DecodedArgs,
+                               const std::vector<std::string>& attrs_names,
+                               const std::vector<size_t>& attrs_idx,
+                               internal::DecodedAttrs attrs) {
+    return reinterpret_cast<T>(api->priv);
+  }
+};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -754,10 +787,11 @@ namespace internal {
 
 // A helper template to extract the type of the handler argument.
 // clang-format off
-template <typename T> struct FnArgType               { using Type = T;  };
-template <typename T> struct FnArgType<AttrTag<T>>   { using Type = T;  };
-template <typename T> struct FnArgType<StateTag<T>>  { using Type = T*; };
-template <typename T> struct FnArgType<StreamTag<T>> { using Type = T;  };
+template <typename T> struct FnArgType                { using Type = T;  };
+template <typename T> struct FnArgType<AttrTag<T>>    { using Type = T;  };
+template <typename T> struct FnArgType<StateTag<T>>   { using Type = T*; };
+template <typename T> struct FnArgType<StreamTag<T>>  { using Type = T;  };
+template <typename T> struct FnArgType<ApiPrivTag<T>> { using Type = T;  };
 // clang-format on
 
 // A template for counting regular arguments in the Ts pack.
@@ -856,8 +890,16 @@ class FfiHandler : public Ffi {
     // Check if all arguments, attributes and results were decoded;
     bool all_decoded = (std::get<Is>(fn_args).has_value() && ...);
     if (!all_decoded) {
-      return ToError(
-          api, FfiStatus::InvalidArgument("Failed to decode all FFI operands"));
+      std::array<bool, kSize> decoded = {std::get<Is>(fn_args).has_value()...};
+      std::string err = "Failed to decode all FFI operands (bad operands at: ";
+      for (size_t cnt = 0, idx = 0; idx < kSize; ++idx) {
+        if (!decoded[idx]) {
+          if (cnt++) err.append(", ");
+          err.append(std::to_string(idx));
+        }
+      }
+      err.append(")");
+      return ToError(api, FfiStatus::InvalidArgument(err));
     }
 
     // Custom call returns `FfiStatus`, we can call it directly.

@@ -27,9 +27,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/test_compilation_environment.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -145,7 +145,7 @@ TEST_F(HloModuleTest, CloneTest) {
   for (auto origin = post_order.begin(), copied = post_order_copied.begin();
        origin != post_order.end() && copied != post_order_copied.end();
        ++origin, ++copied) {
-    EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+    EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
   }
 }
 
@@ -184,9 +184,9 @@ TEST_F(HloModuleTest, CloneHasFusion) {
     if ((*origin)->name() == "Fused") {
       // Clone of the fused computation is handled when its fusion instruction
       // is cloned, which always use suffix ".clone".
-      EXPECT_EQ((*origin)->name() + ".clone", (*copied)->name());
+      EXPECT_EQ(absl::StrCat((*origin)->name(), ".clone"), (*copied)->name());
     } else {
-      EXPECT_EQ((*origin)->name() + ".copy", (*copied)->name());
+      EXPECT_EQ(absl::StrCat((*origin)->name(), ".copy"), (*copied)->name());
     }
   }
 }

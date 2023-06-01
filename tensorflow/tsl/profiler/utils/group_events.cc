@@ -29,10 +29,12 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/bind_front.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/tsl/lib/gtl/map_util.h"
+#include "tensorflow/tsl/platform/dso_loader.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/types.h"
-#include "tensorflow/tsl/profiler/lib/context_types.h"
 #include "tensorflow/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "tensorflow/tsl/profiler/utils/xplane_builder.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
@@ -925,8 +927,14 @@ void GroupTpuEventsOSS(
   const GroupMetadataMap& group_metadata_map =
       event_forest->GetGroupMetadataMap();
 
+  std::vector<std::unique_ptr<Thread>> threads;
+  ThreadOptions thread_options;
+  threads.reserve(device_traces.size());
   for (XPlane* plane : device_traces) {
-    GroupXplaneEvents(plane, group_metadata_map);
+    threads.emplace_back(Env::Default()->StartThread(
+        thread_options, "group_xplane_events",
+        absl::bind_front(GroupXplaneEvents, plane,
+                         std::ref(group_metadata_map))));
   }
 }
 

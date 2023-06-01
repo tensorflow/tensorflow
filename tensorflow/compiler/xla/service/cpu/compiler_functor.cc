@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Instrumentation/DataFlowSanitizer.h"
+#include "tensorflow/compiler/xla/runtime/execution_engine.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/llvm_ir_runtime.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -91,7 +92,7 @@ static std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl() {
 llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
     llvm::Module& module) {
   VLOG(2) << "IR before optimizations";
-  XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
+  XLA_VLOG_LINES(2, llvm_ir::DumpToString(&module));
 
   if (pre_optimization_hook_) {
     pre_optimization_hook_(module);
@@ -119,7 +120,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   llvm::PipelineTuningOptions pto;
   pto.LoopVectorization = !optimize_for_size_;
-  pto.SLPVectorization = !optimize_for_size_;
+  pto.SLPVectorization = !optimize_for_size_ && !disable_slp_vectorizer_;
   pto.LoopUnrolling = false;
 
   llvm::LoopAnalysisManager lam;
@@ -129,7 +130,7 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
 
   llvm::PassInstrumentationCallbacks pic;
   llvm::StandardInstrumentations si(module.getContext(), false);
-  si.registerCallbacks(pic, &fam);
+  si.registerCallbacks(pic, &mam);
 
   llvm::PassBuilder pb(target_machine_, pto, {}, &pic);
 
@@ -150,6 +151,20 @@ llvm::Expected<std::unique_ptr<llvm::MemoryBuffer>> CompilerFunctor::operator()(
   pb.crossRegisterProxies(lam, fam, cgam, mam);
 
   llvm::ModulePassManager pm;
+
+  for (const auto& func_name : convert_to_xla_runtime_abi_) {
+    llvm::Function* func = module.getFunction(func_name);
+    // Create a new function with the XLA Runtime ABI and inline the original
+    // (i.e. with ctx + memref args) into it.
+    std::string inlined_func_name =
+        absl::StrCat(func_name, "__orig_xla_runtime_abi");
+    func->setName(inlined_func_name);
+    absl::Status status = xla::runtime::ExportWithXlaRuntimeAbi(
+        module, inlined_func_name, func_name);
+    if (!status.ok()) {
+      LOG(FATAL) << status.message();
+    }
+  }
 
   if (dfsan_enabled_) {
     pm.addPass(llvm::DataFlowSanitizerPass(dfsan_abi_list_files_));

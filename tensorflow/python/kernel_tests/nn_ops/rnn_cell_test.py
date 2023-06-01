@@ -32,8 +32,9 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import   array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
@@ -45,6 +46,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -171,8 +173,8 @@ class TestStateSaverWithCounters(TestStateSaver):
   @test_util.run_v1_only("b/124229375")
   def __init__(self, batch_size, state_size):
     super(TestStateSaverWithCounters, self).__init__(batch_size, state_size)
-    self._num_state_calls = variables_lib.VariableV1(0)
-    self._num_save_state_calls = variables_lib.VariableV1(0)
+    self._num_state_calls = variable_v1.VariableV1(0)
+    self._num_save_state_calls = variable_v1.VariableV1(0)
 
   def state(self, name):
     with ops.control_dependencies(
@@ -967,7 +969,7 @@ class LSTMTest(test.TestCase):
             constant_op.constant(
                 np.random.randn(batch_size, input_size).astype(np.float32))
         ]
-      inputs_c = array_ops.stack(inputs)
+      inputs_c = array_ops_stack.stack(inputs)
       cell = rnn_cell.LSTMCell(
           num_units,
           use_peepholes=True,
@@ -1022,7 +1024,8 @@ class LSTMTest(test.TestCase):
       if in_graph_mode:
         comparison_fn(outputs_static, outputs_dynamic)
       else:
-        self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
+        self.assertAllEqual(
+            array_ops_stack.stack(outputs_static), outputs_dynamic)
       comparison_fn(np.hstack(state_static), np.hstack(state_dynamic))
 
   @test_util.run_in_graph_and_eager_modes
@@ -1046,7 +1049,7 @@ class LSTMTest(test.TestCase):
             constant_op.constant(
                 np.random.randn(batch_size, input_size).astype(np.float32))
         ]
-      inputs_c = array_ops.stack(inputs)
+      inputs_c = array_ops_stack.stack(inputs)
 
       def _cell(i):
         return rnn_cell.LSTMCell(
@@ -1112,7 +1115,8 @@ class LSTMTest(test.TestCase):
       if in_graph_mode:
         comparison_fn(outputs_static, outputs_dynamic)
       else:
-        self.assertAllEqual(array_ops.stack(outputs_static), outputs_dynamic)
+        self.assertAllEqual(
+            array_ops_stack.stack(outputs_static), outputs_dynamic)
         state_static = nest.flatten(state_static)
         state_dynamic = nest.flatten(state_dynamic)
       comparison_fn(np.hstack(state_static), np.hstack(state_dynamic))
@@ -1154,7 +1158,7 @@ class LSTMTest(test.TestCase):
             dtypes.float32, shape=(time_steps, batch_size, input_size))
       else:
         concat_inputs = constant_op.constant(input_values)
-      inputs = array_ops.unstack(concat_inputs)
+      inputs = array_ops_stack.unstack(concat_inputs)
       initializer = init_ops.random_uniform_initializer(
           -0.01, 0.01, seed=self._seed)
 
@@ -1234,7 +1238,8 @@ class LSTMTest(test.TestCase):
             sequence_length=sequence_length,
             time_major=True,
             dtype=dtypes.float32)
-        split_outputs_dynamic = array_ops.unstack(outputs_dynamic, time_steps)
+        split_outputs_dynamic = array_ops_stack.unstack(
+            outputs_dynamic, time_steps)
 
       if in_graph_mode:
 
@@ -1354,6 +1359,25 @@ class LSTMTest(test.TestCase):
               forget_bias=forget_bias,
               cell_clip=cell_clip,
               use_peephole=use_peephole))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testLSTMBlockCellEmptyInputRaisesError(self):
+    with self.assertRaisesRegex(errors_impl.InvalidArgumentError, "is empty"):
+      self.evaluate(
+          gen_rnn_ops.lstm_block_cell(
+              x=constant_op.constant(0, shape=[2, 16], dtype=dtypes.half),
+              cs_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              h_prev=constant_op.constant(0, shape=[2, 0], dtype=dtypes.half),
+              w=constant_op.constant(0, shape=[16, 0], dtype=dtypes.half),
+              wci=constant_op.constant(0, shape=[5], dtype=dtypes.half),
+              wcf=constant_op.constant(0, shape=[16], dtype=dtypes.half),
+              wco=constant_op.constant(0, shape=[13], dtype=dtypes.half),
+              b=constant_op.constant(0, shape=[0], dtype=dtypes.half),
+              forget_bias=112.66590343649887,
+              cell_clip=67.12389445926587,
+              use_peephole=False,
+          )
+      )
 
   @test_util.run_in_graph_and_eager_modes
   def testLSTMBlockCellGradErrorHandling(self):
@@ -1483,7 +1507,7 @@ class BidirectionalRNNTest(test.TestCase):
                        [batch_size if use_shape else None, 2 * num_units])
 
     input_value = np.random.randn(batch_size, input_size)
-    outputs = array_ops.stack(outputs)
+    outputs = array_ops_stack.stack(outputs)
 
     return input_value, inputs, outputs, state_fw, state_bw, sequence_length
 
@@ -1594,7 +1618,7 @@ class BidirectionalRNNTest(test.TestCase):
             dtypes.float32,
             shape=(batch_size if use_shape else None, input_size))
     ]
-    inputs_c = array_ops.stack(inputs)
+    inputs_c = array_ops_stack.stack(inputs)
     if not use_time_major:
       inputs_c = array_ops.transpose(inputs_c, [1, 0, 2])
     outputs, states = rnn.bidirectional_dynamic_rnn(
@@ -1772,7 +1796,7 @@ class MultiDimensionalLSTMTest(test.TestCase):
           array_ops.placeholder(
               dtypes.float32, shape=(batch_size,) + input_size)
       ]
-      inputs_c = array_ops.stack(inputs)
+      inputs_c = array_ops_stack.stack(inputs)
       # Create a cell for the whole test. This is fine because the cell has no
       # variables.
       cell = DummyMultiDimensionalLSTM(feature_dims)
@@ -1883,8 +1907,8 @@ class NestedLSTMTest(test.TestCase):
                       array_ops.placeholder(
                           dtypes.float32, shape=(None, input_size)))
       inputs = max_length * [single_input]
-      inputs_c = (array_ops.stack([input_[0] for input_ in inputs]),
-                  array_ops.stack([input_[1] for input_ in inputs]))
+      inputs_c = (array_ops_stack.stack([input_[0] for input_ in inputs]),
+                  array_ops_stack.stack([input_[1] for input_ in inputs]))
       single_input_using_dim = (array_ops.placeholder(
           dtypes.float32, shape=(batch_size, input_size)),
                                 array_ops.placeholder(
@@ -2198,7 +2222,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = (time_ >= sequence_length)
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2303,13 +2327,14 @@ class RawRNNTest(test.TestCase):
           loop_state = constant_op.constant([0])
           next_state = cell.zero_state(batch_size, dtypes.float32)
         else:
-          loop_state = array_ops.stack([array_ops.squeeze(loop_state) + 1])
+          loop_state = array_ops_stack.stack(
+              [array_ops.squeeze(loop_state) + 1])
           next_state = cell_state
         emit_output = cell_output  # == None for time == 0
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2352,7 +2377,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2395,7 +2420,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = array_ops.tile([time_ >= max_time], [batch_size])
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))
@@ -2461,7 +2486,7 @@ class RawRNNTest(test.TestCase):
         elements_finished = (time_ >= sequence_length)
         finished = math_ops.reduce_all(elements_finished)
         # For the very final iteration, we must emit a dummy input
-        next_input = control_flow_ops.cond(
+        next_input = cond.cond(
             finished,
             lambda: array_ops.zeros([batch_size, input_depth], dtype=dtypes.float32),
             lambda: inputs_ta.read(time_))

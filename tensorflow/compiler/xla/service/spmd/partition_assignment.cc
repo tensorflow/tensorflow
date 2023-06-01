@@ -74,22 +74,26 @@ const PartitioningAlgorithm* PartitionAssignment::algorithm() {
   return algorithm_.get();
 }
 
-int64_t PartitionAssignment::num_partitions() { return num_partitions_; }
+int64_t PartitionAssignment::num_partitions() const { return num_partitions_; }
+
+std::unique_ptr<PartitioningAlgorithm>
+PartitionAssignment::ChoosePartitioningAlgorithm(
+    const HloModule& module) const {
+  // Create the partitioning algorithm based on the flag. In the future we can
+  // decide on the algorithm by analyzing the module.
+  auto algo = module.config().debug_options().xla_partitioning_algorithm();
+  CHECK_EQ(algo, DebugOptions::PARTITIONING_ALGORITHM_NOOP);
+  return PartitioningAlgorithm::CreateNoopPartitioning(num_partitions());
+}
 
 StatusOr<bool> PartitionAssignment::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "Running partition assignment on module " << module->name();
 
-  // Create the partitioning algorithm based on the flag. In the future we can
-  // decide on the algorithm by analyzing the module.
-  auto algo = module->config().debug_options().xla_partitioning_algorithm();
-  switch (algo) {
-    case DebugOptions::PARTITIONING_ALGORITHM_NOOP:
-    default:
-      algorithm_ =
-          PartitioningAlgorithm::CreateNoopPartitioning(num_partitions());
-  }
+  // Choose partitioning algorithm.
+  algorithm_ = ChoosePartitioningAlgorithm(*module);
+
   // Run the algorithm.
   return algorithm()->Run(module);
 }

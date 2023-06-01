@@ -74,14 +74,11 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(const std::string& dataset_id, int64_t fingerprint,
+    explicit Dataset(const std::string& dataset_id,
                      const DataServiceMetadata& metadata)
-        : dataset_id(dataset_id),
-          fingerprint(fingerprint),
-          metadata(metadata) {}
+        : dataset_id(dataset_id), metadata(metadata) {}
 
     const std::string dataset_id;
-    const int64_t fingerprint;
     const DataServiceMetadata metadata;
   };
 
@@ -233,10 +230,6 @@ class DispatcherState {
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
   Status DatasetFromId(const std::string& id,
                        std::shared_ptr<const Dataset>& dataset) const;
-  // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
-  // dataset.
-  Status DatasetFromFingerprint(uint64 fingerprint,
-                                std::shared_ptr<const Dataset>& dataset) const;
 
   // Gets a worker by address. Returns NOT_FOUND if there is no such worker.
   Status WorkerFromAddress(const std::string& address,
@@ -327,9 +320,6 @@ class DispatcherState {
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
   absl::flat_hash_map<std::string, std::shared_ptr<Dataset>> datasets_by_id_;
-  // Registered datasets, keyed by dataset fingerprints.
-  absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
-      datasets_by_fingerprint_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;

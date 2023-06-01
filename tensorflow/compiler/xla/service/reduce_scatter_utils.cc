@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/reduce_scatter_utils.h"
 
+#include <functional>
+#include <optional>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
@@ -33,6 +36,14 @@ bool IsTableLookup(const HloInstruction* hlo) {
          hlo->operand(0)->shape().rank() == 1 &&
          (hlo->operand(0)->shape().element_type() == S32 ||
           hlo->operand(0)->shape().element_type() == U32);
+}
+
+std::optional<int64_t> GetScalarInt64Value(const HloInstruction* constant) {
+  CHECK_EQ(constant->opcode(), HloOpcode::kConstant);
+  CHECK(ShapeUtil::IsEffectiveScalar(constant->shape()));
+  absl::InlinedVector<int64_t, 8> multi_index(
+      constant->shape().dimensions_size());
+  return constant->literal().GetIntegralAsS64(multi_index);
 }
 
 // Function to map a replica/partition/global ID to an offset in the offset
@@ -148,8 +159,7 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
       VLOG(2) << "Offset is not multiple(const, ...) " << offset->ToString();
       return false;
     }
-    auto multiplier =
-        offset->operand(const_operand)->literal().GetIntegralAsS64({});
+    auto multiplier = GetScalarInt64Value(offset->operand(const_operand));
     if (!multiplier || shard_size % *multiplier != 0) {
       VLOG(2) << "Multiplier is unknown or cannot evenly divide shard size "
               << offset->operand(const_operand);
@@ -187,11 +197,12 @@ bool IsPerIdOffset(const HloInstruction* offset, int64_t shard_size,
   }
 
   if (offset->opcode() == HloOpcode::kClamp) {
-    auto lower_bound = offset->operand(0)->literal().GetIntegralAsS64({});
-    auto upper_bound = offset->operand(2)->literal().GetIntegralAsS64({});
-    if (!lower_bound || !upper_bound || *lower_bound != 0 ||
+    auto lower_bound = GetScalarInt64Value(offset->operand(0));
+    auto upper_bound = GetScalarInt64Value(offset->operand(2));
+    if (!lower_bound || !upper_bound || lower_bound != 0 ||
         *upper_bound < (group_size - 1) * shard_size) {
-      VLOG(2) << "Boundaries of the clamp is not legal: " << offset->ToString();
+      VLOG(2) << "Boundaries of the clamp are not legal: "
+              << offset->ToString();
       return false;
     }
     return IsPerIdOffset(offset->operand(1), shard_size, map_id, group_size,
@@ -253,12 +264,8 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
     const HloAllReduceInstruction* ar, int64_t num_partitions,
     int64_t num_replicas, bool allow_multiple_split_dims,
     bool allow_intervening_reshape, int64_t min_rank) {
-  HloPredicate match_partition_id = [](const HloInstruction* i) {
-    return i->opcode() == HloOpcode::kPartitionId;
-  };
-  HloPredicate match_replica_id = [](const HloInstruction* i) {
-    return i->opcode() == HloOpcode::kReplicaId;
-  };
+  HloPredicate match_partition_id = HloPredicateIsOp<HloOpcode::kPartitionId>;
+  HloPredicate match_replica_id = HloPredicateIsOp<HloOpcode::kReplicaId>;
   return MatchReduceScatter(ar, num_partitions, num_replicas,
                             allow_multiple_split_dims,
                             allow_intervening_reshape, min_rank,
@@ -366,12 +373,10 @@ std::optional<ReduceScatterSpec> MatchReduceScatter(
         return operand->opcode() == HloOpcode::kMultiply &&
                ((operand->operand(0)->opcode() == HloOpcode::kReplicaId &&
                  operand->operand(1)->IsConstant() &&
-                 operand->operand(1)->literal().GetIntegralAsS64({}) ==
-                     num_partitions) ||
+                 GetScalarInt64Value(operand->operand(1)) == num_partitions) ||
                 (operand->operand(1)->opcode() == HloOpcode::kReplicaId &&
                  operand->operand(0)->IsConstant() &&
-                 operand->operand(0)->literal().GetIntegralAsS64({}) ==
-                     num_partitions));
+                 GetScalarInt64Value(operand->operand(0)) == num_partitions));
       };
       if (hlo->opcode() == HloOpcode::kAdd &&
           ((match_partition_id(hlo->operand(0)) &&

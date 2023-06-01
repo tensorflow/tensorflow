@@ -537,7 +537,7 @@ TEST_F(WindowDatasetOpTest, InvalidArguments) {
        WindowDatasetParamsWithInvalidWindowStride()});
   for (const auto& dataset_params : dataset_params_vec) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

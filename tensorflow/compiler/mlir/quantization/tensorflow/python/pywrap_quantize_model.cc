@@ -20,9 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
-#include "pybind11/stl.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
+#include "pybind11/stl.h"  // from @pybind11
 #include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
 #include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
@@ -161,10 +161,11 @@ PYBIND11_MODULE(pywrap_quantize_model, m) {
       [](const absl::string_view saved_model_path,
          const std::vector<std::string>& signature_keys,
          const std::unordered_set<std::string>& tags,
-         const QuantizationOptions& quant_opts)
+         const QuantizationOptions& quant_opts,
+         const absl::flat_hash_map<std::string, std::string>& function_aliases)
           -> absl::StatusOr<ExportedModel> {
         return QuantizeQatModel(saved_model_path, signature_keys, tags,
-                                quant_opts);
+                                quant_opts, function_aliases);
       },
       R"pbdoc(
       Returns serialized ExportedModel that contains the quantized model's

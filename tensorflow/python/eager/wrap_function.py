@@ -227,7 +227,7 @@ class WrappedFunction(function.ConcreteFunction):
     self._signature = signature
     super(WrappedFunction, self).__init__(fn_graph, attrs=attrs)
 
-  def _call_impl(self, args, kwargs, cancellation_manager=None):
+  def _call_impl(self, args, kwargs):
     if self._arg_keywords is None:
       if kwargs:
         raise NotImplementedError(
@@ -240,8 +240,7 @@ class WrappedFunction(function.ConcreteFunction):
             args[i] = ops.convert_to_tensor(arg, self._signature[i].dtype)
       return self._call_flat(args, self.captured_inputs)
     else:
-      return super(WrappedFunction, self)._call_impl(
-          args, kwargs, cancellation_manager)
+      return super(WrappedFunction, self)._call_impl(args, kwargs)
 
   def prune(self, feeds, fetches, name=None, input_signature=None):
     """Extract a subgraph of this function's underlying graph.
@@ -368,6 +367,13 @@ class WrappedFunction(function.ConcreteFunction):
     # reconstituted into their original composite form.
     pruned_graph.structured_outputs = nest.map_structure(
         _structured_output_mapping, fetches, expand_composites=True)
+
+    if input_signature:
+      # canonicalize the signature before setting
+      args, kwargs = input_signature
+      args = () if args is None else args
+      input_signature = (args, kwargs)
+
     pruned_graph.structured_input_signature = input_signature
     pruned_fn = WrappedFunction(
         pruned_graph, variable_holder=self._variable_holder)

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_DTENSOR_SEND_RECV_H_
 #define TENSORFLOW_DTENSOR_MLIR_DTENSOR_SEND_RECV_H_
 
+#include "absl/status/status.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -67,7 +68,7 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   } else {
     const bool is_recv = std::is_same<DTensorOp, mlir::TF::DTensorRecv>::value;
     if (!is_recv) {
-      return errors::Internal(
+      return absl::InternalError(
           "Error checking if is same for DTensorOp and DTensorRecv.");
     }
     module.walk([&](mlir::Operation* op) {
@@ -99,9 +100,9 @@ StatusOr<mlir::Operation*> GetCorrespondingDTensorSendRecvOp(
   }
 
   if (!corresponding_op)
-    return errors::InvalidArgument(
-        "DTensorSend/DTensorRecv op must have corresponding "
-        "DTensorRecv/DTensorSend op.");
+    return absl::InvalidArgumentError(
+        absl::StrCat("DTensorSend/DTensorRecv op must have corresponding "
+                     "DTensorRecv/DTensorSend op."));
 
   return corresponding_op;
 }

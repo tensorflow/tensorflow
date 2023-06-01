@@ -45,7 +45,7 @@ ENTRY main {
 )";
 
   CompileAndVerifyIr(hlo_string, R"(
-CHECK: @fusion(ptr noalias align 16 dereferenceable(400) %alloc0, ptr noalias align 128 dereferenceable(600) %alloc1, ptr noalias align 128 dereferenceable(928) %temp_buf)
+CHECK: define void @fusion(ptr noalias align 128 dereferenceable(800) %arg0, ptr noalias align 16 dereferenceable(400) %arg1, ptr noalias align 128 dereferenceable(600) %arg2)
 )");
 }
 

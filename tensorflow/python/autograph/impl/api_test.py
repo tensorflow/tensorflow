@@ -1299,13 +1299,13 @@ class ApiTest(test.TestCase):
 
       with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', False):
         with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
-                                    'AutoGraph is unavailable in this runtime'):
+                                    'source code may not be visible'):
           test_func(2)
       warning_log_mock.assert_not_called()
 
       with patch.object(ag_ctx, 'INSPECT_SOURCE_SUPPORTED', True):
         with self.assertRaisesRegex(tf_errors.OperatorNotAllowedInGraphError,
-                                    'AutoGraph did convert this function'):
+                                    'using an unsupported feature'):
           test_func(2)
       warning_log_mock.called_once_with('AutoGraph could not transform')
 

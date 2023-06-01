@@ -17,19 +17,25 @@ limitations under the License.
 
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "json/json.h"
+#include "json/reader.h"
+#include "json/value.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/fingerprint.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace tensorflow {
 namespace {
 
 constexpr char kTestData[] = "cc/saved_model/testdata";
-// This is the value in testdata/VarsAndArithmeticObjectGraph/fingerprint.pb
-constexpr char kV2ModuleSavedModelChecksum[] = "15788619162413586750";
 
 class BundleV2Test : public ::testing::Test {
  protected:
@@ -104,7 +110,7 @@ TEST_F(BundleV2Test, LoadsCyclicModule) {
 
 TEST_F(BundleV2Test, UpdatesMetrics) {
   const string kCCLoadBundleV2Label = "cc_load_bundle_v2";
-  const int read_count = metrics::SavedModelRead("2").value();
+  const int read_count = metrics::SavedModelReadCount("2").value();
   const int api_count =
       metrics::SavedModelReadApi(kCCLoadBundleV2Label).value();
   const string export_dir = io::JoinPath(
@@ -113,13 +119,36 @@ TEST_F(BundleV2Test, UpdatesMetrics) {
   SavedModelV2Bundle bundle;
   TF_ASSERT_OK(SavedModelV2Bundle::Load(export_dir, &bundle));
 
-  EXPECT_EQ(metrics::SavedModelRead("2").value(), read_count + 1);
+  EXPECT_EQ(metrics::SavedModelReadCount("2").value(), read_count + 1);
   EXPECT_EQ(metrics::SavedModelReadApi(kCCLoadBundleV2Label).value(),
             api_count + 1);
-  // Check that the gauge contains the fingerprint.
-  EXPECT_EQ(metrics::SavedModelReadFingerprint().value(),
-            kV2ModuleSavedModelChecksum);
+  // Check that the gauge contains the path and fingerprint.
   EXPECT_EQ(metrics::SavedModelReadPath().value(), export_dir);
+
+  Json::Value fingerprint = Json::objectValue;
+  Json::Reader reader = Json::Reader();
+  reader.parse(metrics::SavedModelReadFingerprint().value(), fingerprint);
+  EXPECT_EQ(fingerprint["saved_model_checksum"].asUInt64(),
+            15788619162413586750ULL);
+  EXPECT_EQ(fingerprint["graph_def_program_hash"].asUInt64(),
+            706963557435316516ULL);
+  EXPECT_EQ(fingerprint["signature_def_hash"].asUInt64(),
+            5693392539583495303ULL);
+  EXPECT_EQ(fingerprint["saved_object_graph_hash"].asUInt64(),
+            12074714563970609759ULL);
+  EXPECT_EQ(fingerprint["checkpoint_hash"].asUInt64(), 10788359570789890102ULL);
+
+  // TODO(adamcogdell): add ASSERT_OK_AND_ASSIGN here after migrating
+  // cc/saved_model code from the tsl version of StatusOr to absl::StatusOr
+  auto [path, singleprint] = metrics::ParseSavedModelPathAndSingleprint(
+      metrics::SavedModelReadPathAndSingleprint().value());
+  EXPECT_TRUE(absl::StrContains(
+      path, absl::StrCat(kTestData, "/VarsAndArithmeticObjectGraph")));
+  EXPECT_EQ(singleprint,
+            "706963557435316516/"     // graph_def_program_hash
+            "5693392539583495303/"    // signature_def_hash
+            "12074714563970609759/"   // saved_object_graph_hash
+            "10788359570789890102");  // checkpoint_hash
 }
 
 }  // namespace

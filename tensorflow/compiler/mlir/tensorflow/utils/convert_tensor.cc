@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -38,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -219,7 +221,7 @@ StatusOr<ElementsAttr> ConvertTensorProto(const TensorProto& input_tensor,
     llvm::SmallVector<int64_t> original_dimensions;
     for (auto dim : input_tensor_shape) original_dimensions.push_back(dim.size);
     return ElementsAttr(mlir::SplatElementsAttr::get(
-        single_attr.getType().clone(original_dimensions),
+        single_attr.getShapedType().clone(original_dimensions),
         single_attr.getValues<mlir::Attribute>()[0]));
   }
 
@@ -266,6 +268,15 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
   // Empty TensorShape indicates a scalar.
   return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
+}
+
+StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(const mlir::Type& type) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
+  TensorSpecProto tensor_spec;
+  tensor_spec.set_dtype(dtype);
+  *tensor_spec.mutable_shape() = ConvertTypeToTensorShape(type).AsProto();
+  return tensor_spec;
 }
 
 // Converts the tensor shape proto into an MLIR shape attribute.
@@ -404,7 +415,7 @@ void ConvertFloat8ElementsAttr(const mlir::DenseElementsAttr attr,
 }
 
 Status ConvertToTensorProto(const ElementsAttr attr, TensorProto* output) {
-  auto type = attr.getType();
+  auto type = attr.getShapedType();
   auto shape = type.getShape();
   DataType output_dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(type, &output_dtype));

@@ -173,6 +173,9 @@ SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
     tensorflow::TfrtDeviceInfraTarget device_target) {
   SavedModel::Options options(runtime);
+  options.graph_execution_options.enable_mlrt =
+      absl::GetFlag(FLAGS_enable_mlrt);
+
   auto& compile_options = options.graph_execution_options.compile_options;
   compile_options.variable_device =
       "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -235,7 +238,9 @@ void ProcessPredictRequestsAndMaybeProfile(
     const tensorflow::serving::PredictRequest& request = requests.at(i);
     const auto& input_map = request.inputs();
     std::vector<tensorflow::Tensor> inputs;
-    const std::string& signature = request.model_spec().signature_name();
+    const std::string& signature = request.model_spec().signature_name().empty()
+                                       ? "serving_default"
+                                       : request.model_spec().signature_name();
     auto func_metadata = saved_model->GetFunctionMetadata(signature);
     if (func_metadata.has_value()) {
       LOG(INFO) << "Running requests for model signature " << signature;

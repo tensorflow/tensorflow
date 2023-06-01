@@ -18,10 +18,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -37,9 +37,7 @@ namespace op = xla::testing::opcode_matchers;
 // Returns the first kWhile instruction within m's entry computation.
 HloInstruction* FindFirstWhile(HloModule* m) {
   const auto& instrs = m->entry_computation()->instructions();
-  return *absl::c_find_if(instrs, [](const HloInstruction* instr) {
-    return instr->opcode() == HloOpcode::kWhile;
-  });
+  return *absl::c_find_if(instrs, HloPredicateIsOp<HloOpcode::kWhile>);
 }
 
 class WhileLoopSimplifierTest : public HloTestBase {

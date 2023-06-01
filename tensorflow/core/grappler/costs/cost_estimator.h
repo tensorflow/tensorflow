@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <cmath>
+#include <limits>
 #include <string>
 #include <unordered_map>
 
@@ -32,8 +33,8 @@ class CostGraphDef;
 namespace grappler {
 struct GrapplerItem;
 
-constexpr int64_t kMemoryUnknown = -1ll;
-constexpr int64_t kZeroMemory = 0ll;
+constexpr uint64_t kMemoryUnknown = std::numeric_limits<uint64_t>::max();
+constexpr uint64_t kZeroMemory = 0ULL;
 
 struct DeviceInfo {
   // Billions of operations executed per second.
@@ -148,9 +149,9 @@ struct Costs {
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
-  int64_t max_memory;  // Maximum main memory requirement in bytes over all ops.
-  int64_t persistent_memory;
-  int64_t temporary_memory;
+  uint64_t max_memory;  // Max main memory requirement in bytes over all ops.
+  uint64_t persistent_memory;
+  uint64_t temporary_memory;
 
   // Output memory usage per port.
   absl::flat_hash_map<int32_t, int64_t> output_tensor_size_bytes;

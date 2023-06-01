@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,19 +17,22 @@ limitations under the License.
 // optimizes them to resulting operations in TensorFlowLite dialect.
 
 #include <algorithm>
+#include <array>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -70,6 +74,14 @@ namespace {
 constexpr char kRelu[] = "RELU";
 constexpr char kRelu6[] = "RELU6";
 constexpr char kRelu1[] = "RELU_N1_TO_1";
+
+ElementsAttr FlattenTo1D(Attribute a) {
+  auto elements = a.cast<DenseElementsAttr>();
+  const std::array<int64_t, 1> flattened_shape = {elements.getNumElements()};
+  auto new_type = RankedTensorType::get(flattened_shape,
+                                        elements.getType().getElementType());
+  return elements.reshape(new_type);
+}
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (axis.getNumElements() == 0) {
@@ -139,14 +151,49 @@ bool IsTailOfShape(Type type1, Type type2) {
   return std::equal(i1, e1, i2);
 }
 
+// This function removes explicit broadcasting on type1 and returns whether if
+// the reduced `type1` dimensions are the same as the ending dimensions
+// of `type2`.
+bool IsReducedTailOfShape(Type type1, Type type2) {
+  auto tail_type = type1.dyn_cast<ShapedType>();
+  auto full_type = type2.dyn_cast<ShapedType>();
+  if (!tail_type || !full_type || !tail_type.hasRank() || !full_type.hasRank())
+    return false;
+
+  auto i1 = tail_type.getShape().rbegin();
+  auto reduced_e1 = tail_type.getShape().rend();
+  auto i2 = full_type.getShape().rbegin();
+
+  while ((std::distance(i1, reduced_e1) > 0) && (*(reduced_e1 - 1) == 1)) {
+    reduced_e1--;
+  }
+
+  return (std::distance(i1, reduced_e1) > 0) &&
+         (std::distance(i1, reduced_e1) <= full_type.getRank()) &&
+         (std::equal(i1, reduced_e1, i2));
+}
+
+// Check if the value of the last dimension of type1 is equal to the number of
+// elements in type2. This is a required condition to flatten type2 to form a
+// 1D array and allow the binaryOp handle the broadcasting implicitly.
+bool IsLastDimEqualToNumElements(Type type1, Type type2) {
+  return (type1.cast<ShapedType>().getRank() >= 1 &&
+          type1.cast<ShapedType>().getDimSize(
+              type1.cast<ShapedType>().getRank() - 1) ==
+              type2.cast<ShapedType>().getNumElements());
+}
+
 bool CanFuseConvOrDepthwiseConvShapes(const ArrayRef<int64_t> filter_shape,
                                       const ArrayRef<int64_t> elements_shape,
                                       bool is_depthwise) {
-  // Also, val tensor must be of rank 1 or 0 (scalar).
-  const auto elements_rank = elements_shape.size();
-  if (elements_rank != 1 && elements_rank != 0) {
-    return false;
+  // Val tensor must be a scalar or of a shape [1, ... , 1, elements_depth].
+  const int elements_rank = elements_shape.size();
+  for (int i = 0; i < elements_rank - 1; ++i) {
+    if (elements_shape[i] != 1) {
+      return false;
+    }
   }
+
   auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
   // If elements depth equals 1 (i.e., scalar or tensor with 1 element), then we
   // can let binary op to broadcast elements.
@@ -190,8 +237,8 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
-// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
-// of `indices` are from 0 to n-1, the output tensor are identical to the
+// Returns true if we can eliminate the GatherNdOp or ScatterNdOp. When the
+// value of `indices` are from 0 to n-1, the output tensor are identical to the
 // `params`.
 bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
                                               DenseIntElementsAttr indices,
@@ -298,15 +345,25 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 
 // Returns shape of a ranked tensor.
 // Precondition: output_val's is ranked tensor.
-DenseElementsAttr GetShape(Value output_val) {
+// Returns a truncated shape when `truncate` is set to true.
+DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
 
   SmallVector<int32_t> shape;
   shape.reserve(output_type.getRank());
-  for (int64_t dim : output_type.getShape()) {
+
+  bool needs_truncation = true;
+  for (size_t dim_idx = 0; dim_idx < output_type.getRank(); ++dim_idx) {
+    int64_t dim = output_type.getShape()[dim_idx];
+    if (truncate && needs_truncation && dim == 1) {
+      continue;
+    } else if (needs_truncation && dim != 1) {
+      needs_truncation = false;
+    }
     shape.push_back(ShapedType::isDynamic(dim) ? -1
                                                : static_cast<int32_t>(dim));
   }
+
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
@@ -314,14 +371,32 @@ DenseElementsAttr GetShape(Value output_val) {
       llvm::ArrayRef(shape));
 }
 
-static Type GetShapeStrippedType(TypeAttr type_attr) {
-  auto type = type_attr.getValue();
-  auto shaped_type = type.dyn_cast<ShapedType>();
-  if (shaped_type) {
-    return shaped_type.getElementType();
-  } else {
-    return type;
+// Utility function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+DenseElementsAttr RemapPermutation(Value permutation1, Value permutation2) {
+  SmallVector<int32_t> initial_permutation;
+  DenseElementsAttr perm1_const;
+  DenseElementsAttr perm2_const;
+
+  SmallVector<int32_t> new_permutation;
+  if (matchPattern(permutation1, m_Constant(&perm1_const)) &&
+      matchPattern(permutation2, m_Constant(&perm2_const))) {
+    for (int32_t idx = 0; idx < perm1_const.getNumElements(); ++idx) {
+      initial_permutation.push_back(idx);
+    }
+    for (auto perm : perm2_const.getValues<APInt>()) {
+      new_permutation.push_back(
+          initial_permutation[perm1_const
+                                  .getValues<APInt>()[perm.getSExtValue()]
+                                  .getSExtValue()]);
+    }
   }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(new_permutation.size())},
+          mlir::IntegerType::get(permutation1.getContext(), 32)),
+      llvm::ArrayRef(new_permutation));
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
@@ -397,65 +472,63 @@ static bool FloatValueEquals(const Attribute &attr, double value) {
   });
 }
 
+// Returns true if `value` is compile-time constant and its splat value equals
+// to `raw_value`.
+template <typename T>
+bool IsConstantValueOf(mlir::TypedAttr value, T raw_value) {
+  auto element_type = value.getType().cast<ShapedType>().getElementType();
+
+  if (element_type.isa<FloatType>()) {
+    return FloatValueEquals(value, raw_value);
+  } else if (element_type.isa<IntegerType>()) {
+    auto int_attr = value.dyn_cast_or_null<DenseIntElementsAttr>();
+    if (!int_attr) return false;
+
+    if (int_attr.isSplat()) {
+      return int_attr.getSplatValue<APInt>() == raw_value;
+    }
+    return llvm::all_of(int_attr.getValues<APInt>(),
+                        [raw_value](const APInt &f) { return f == raw_value; });
+  }
+
+  return false;
+}
+
 // Returns true if the value's element type is F32.
 bool IsF32Value(Value value) {
   return value.getType().cast<ShapedType>().getElementType().isF32();
 }
 
-// Returns the number of elements in attr if it is a DenseElementsAttr, 1
-// otherwise, as an unranked int32 Attribute.
-Attribute GetNumElementsOrOne(Attribute attr) {
-  const auto dense_attr = attr.dyn_cast_or_null<DenseElementsAttr>();
-  int32_t num_elements = dense_attr ? dense_attr.getNumElements() : 1;
+// Returns the number of elements in attr if it is a static shape, 1 otherwise,
+// as an unranked int32 Attribute.
+TypedAttr GetNumElementsOrOne(Type type) {
+  auto shaped_type = type.cast<ShapedType>();
+  int32_t num_elements =
+      shaped_type.hasStaticShape() ? shaped_type.getNumElements() : 1;
 
-  OpBuilder builder(attr.getContext());
+  OpBuilder builder(type.getContext());
 
   return DenseIntElementsAttr::get(
       RankedTensorType::get({}, builder.getI32Type()),
       {llvm::APInt(32, num_elements, true)});
 }
 
-bool HasExactlyTwoElements(Attribute attr) {
-  const auto values = attr.dyn_cast_or_null<ElementsAttr>();
-  if (!values) return false;
-  return values.getNumElements() == 2;
-}
-
-// Returns true if attr is a DenseIntElementsAttr with the last element equal 1.
-bool IsLastElementEqualsOne(Attribute attr) {
-  const auto ints = attr.dyn_cast_or_null<DenseIntElementsAttr>();
-  if (!ints) return false;
-  if (ints.empty()) return false;
-  const auto last_element_index = ints.getNumElements() - 1;
-  const auto iterator = ints.value_begin<int>();
-  const int last_element = iterator[last_element_index];
-  return last_element == 1;
-}
-
 // Reshapes value to a given shape.
-Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value,
-                                  Attribute shape) {
-  // This function is always guarded with IsLastElementEqualsOne(), so we could
-  // cast safely here.
-  const auto old_shape = shape.cast<DenseIntElementsAttr>();
-  auto iterator = old_shape.value_begin<int>();
-  SmallVector<int, 4> new_shape;
-  SmallVector<int64_t, 4> new_shape_i64;
-  for (int i = 0; i < old_shape.size() - 1; ++i) {
-    new_shape.push_back(*iterator);
-    new_shape_i64.push_back(*iterator);
-    ++iterator;
+Value ReshapeValueDroppingLastDim(OpBuilder &builder, Value value) {
+  // This function is always guarded with HasTrivialShapeExceptSecondLastDim(),
+  // so we could cast safely here.
+  auto type = value.getType().cast<ShapedType>();
+  SmallVector<int> new_shape;
+  for (int64_t dim : type.getShape().drop_back()) {
+    new_shape.push_back(dim);
   }
   return builder.create<ReshapeOp>(
-      value.getLoc(),
-      RankedTensorType::get(
-          new_shape_i64, value.getType().cast<ShapedType>().getElementType()),
-      value,
+      value.getLoc(), value,
       builder.create<arith::ConstantOp>(
-          value.getLoc(), DenseIntElementsAttr::get(
-                              RankedTensorType::get({old_shape.size() - 1},
-                                                    builder.getI32Type()),
-                              new_shape)));
+          value.getLoc(),
+          DenseIntElementsAttr::get(
+              RankedTensorType::get(type.getRank() - 1, builder.getI32Type()),
+              new_shape)));
 }
 
 // Returns true if val has a static shape and the last dimension equals 1.
@@ -466,6 +539,27 @@ bool IsLastDimensionEqualOne(Value val) {
   if (val_shape.empty()) return false;
   const auto last_element = *val_shape.rbegin();
   return last_element == 1;
+}
+
+// Returns true if the supplied value-
+// 1) Has only one use or
+// 2) Is only used by binary op like AddOp, SubOp, MulOp or DivOp.
+bool HasOneUseOrUsedByOnlyBinaryOps(Value out_value) {
+  if (out_value.hasOneUse()) {
+    return true;
+  }
+
+  for (auto &use : out_value.getUses()) {
+    mlir::Operation *owner = use.getOwner();
+    if (!llvm::isa<mlir::TFL::AddOp>(owner) &&
+        !llvm::isa<mlir::TFL::SubOp>(owner) &&
+        !llvm::isa<mlir::TFL::DivOp>(owner) &&
+        !llvm::isa<mlir::TFL::MulOp>(owner)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // Returns true if attr is a DenseIntElementsAttr of int32 or int64 values or an
@@ -482,7 +576,10 @@ bool IsOneHotIndexAttribute(Attribute attr) {
   if (index_elem_bits != 32 && index_elem_bits != 64) {
     return false;
   }
-  if (index_type.getRank() != 1) {
+  // Checks that the index has shape of [1, 1, 1, ..., 1, N].
+  if (index_type.getRank() < 1 ||
+      llvm::any_of(index_type.getShape().drop_back(),
+                   [](int64_t dim) { return dim != 1; })) {
     return false;
   }
   const auto elems = dense_attr.value_begin<APInt>();
@@ -492,6 +589,32 @@ bool IsOneHotIndexAttribute(Attribute attr) {
     }
   }
   return true;
+}
+
+Value Get1DShapeValue(OpBuilder &builder, Value value) {
+  auto type = value.getType().cast<ShapedType>();
+  if (!type.hasStaticShape()) {
+    return nullptr;
+  }
+  auto output_type = RankedTensorType::get({1}, builder.getI32Type());
+  const int num_elements = type.getNumElements();
+  return builder.create<ConstOp>(
+      value.getLoc(), output_type,
+      DenseIntElementsAttr::get(output_type, num_elements));
+}
+
+Type GetEmbeddingLookupShape(Value lookup, Value value) {
+  auto lookup_type = lookup.getType().cast<ShapedType>();
+  if (!lookup_type.hasStaticShape()) {
+    return nullptr;
+  }
+  auto value_type = value.getType().cast<ShapedType>();
+  if (!value_type.hasStaticShape() || value_type.getRank() != 2) {
+    return nullptr;
+  }
+  SmallVector<int64_t> new_shape = {lookup_type.getNumElements(),
+                                    value_type.getDimSize(0)};
+  return value_type.clone(new_shape);
 }
 
 // Creates FullyConnected op from params and returns the output.
@@ -522,7 +645,7 @@ bool AllValuesAreZero(mlir::Value value) {
 // Converts an Attribute with a single value of float or integral type to an
 // Attribute holding a single value of float type. If attr has no elements, the
 // result is 0.0f.
-Attribute ConvertSingleElementAttrToFloatAttr(Attribute attr) {
+TypedAttr ConvertSingleElementAttrToFloatAttr(Attribute attr) {
   const auto dense_fp_attr = attr.dyn_cast_or_null<DenseFPElementsAttr>();
   if (dense_fp_attr) {
     // Already float => return
@@ -550,6 +673,78 @@ Attribute ConvertSingleElementAttrToFloatAttr(Attribute attr) {
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
+
+struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
+  using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::StridedSliceOp strided_slice_op,
+                                PatternRewriter &rewriter) const override {
+    // Match Add
+    mlir::TFL::AddOp add_op =
+        dyn_cast_or_null<TFL::AddOp>(strided_slice_op.getEnd().getDefiningOp());
+    mlir::TFL::SubOp sub_op =
+        dyn_cast_or_null<TFL::SubOp>(strided_slice_op.getEnd().getDefiningOp());
+    if (!(add_op || sub_op)) {
+      return failure();
+    }
+
+    // Check that add rhs is constant.
+    DenseElementsAttr added_value;
+    Value constant_val = add_op ? add_op.getRhs() : sub_op.getRhs();
+    if (!matchPattern(constant_val, m_Constant(&added_value))) return failure();
+
+    // Check the add op is applied to begin.
+    mlir::TypedValue<::mlir::TensorType> begin_tensor =
+        strided_slice_op.getBegin();
+    mlir::TypedValue<::mlir::TensorType> add_source_tensor =
+        add_op ? add_op.getLhs() : sub_op.getLhs();
+    if (begin_tensor != add_source_tensor) {
+      return failure();
+    }
+
+    // Check that strides are constant
+    DenseElementsAttr strides_value;
+    Value strides_val = strided_slice_op.getStrides();
+    if (!matchPattern(strides_val, m_Constant(&strides_value)))
+      return failure();
+
+    mlir::TensorType constant_val_type =
+        constant_val.getType().cast<TensorType>();
+    // If it's not 1D or 0D (which can be broadcasted to 1D), reject the
+    // matching.
+    if (constant_val_type.getRank() > 1) {
+      return failure();
+    }
+
+    mlir::RankedTensorType end_type =
+        strided_slice_op.getEnd().getType().dyn_cast<RankedTensorType>();
+    // begin, end and strides are Rank 1 tensors with one element per dimension
+    // of input.
+    int64_t num_dims = end_type.getShape()[0];
+    DenseElementsAttr new_added_value =
+        added_value.reshape(RankedTensorType::get(
+            {num_dims},
+            added_value.getType().cast<ShapedType>().getElementType()));
+    ::mlir::arith::ConstantOp new_end = rewriter.create<arith::ConstantOp>(
+        strided_slice_op.getEnd().getLoc(), new_added_value);
+
+    if (strided_slice_op.getBeginMask() != 0) return failure();
+    if (strided_slice_op.getEndMask() != 0) return failure();
+    if (strided_slice_op.getEllipsisMask() != 0) return failure();
+    mlir::TFL::StridedSliceOp new_strided_slice_op =
+        rewriter.create<TFL::StridedSliceOp>(
+            strided_slice_op.getLoc(), strided_slice_op.getOutput().getType(),
+            strided_slice_op.getInput(), strided_slice_op.getBegin(), new_end,
+            strided_slice_op.getStrides(), strided_slice_op.getBeginMask(),
+            strided_slice_op.getEndMask(), strided_slice_op.getEllipsisMask(),
+            strided_slice_op.getNewAxisMask(),
+            strided_slice_op.getShrinkAxisMask(),
+            /*offset=*/true);
+    rewriter.replaceOp(strided_slice_op, new_strided_slice_op.getOutput());
+
+    return success();
+  }
+};
 
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
@@ -579,8 +774,6 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     bool is_scalar_rhs = false;
     if (constant_val_type.getRank() == 0) {
       is_scalar_rhs = true;
-    } else if (constant_val_type.getRank() != 1) {
-      return failure();
     }
 
     Value filter = fc_op.getFilter();
@@ -594,7 +787,18 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
 
     // Rewrite
     if (is_none_bias) {
-      if (is_scalar_rhs) {
+      if (constant_val_type.getRank() == 1) {
+        // If there no pre-existing bias and the `constant_val` is 1D, simply
+        // use `constant_val` as bias.
+        bias = constant_val;
+      } else {
+        if (!is_scalar_rhs &&
+            !(IsReducedTailOfShape(constant_val.getType(), filter.getType()) &&
+              IsLastDimEqualToNumElements(filter.getType(),
+                                          constant_val.getType()))) {
+          return failure();
+        }
+
         // If the `constant_val` is scalar, we must the shape of filter
         // to properly broadcast the scalar to `{num_channels}` shape.
 
@@ -607,29 +811,48 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         }
         int num_channels = filter_type.getShape()[0];
 
-        // Create a zero tensor with shape {num_channels}, and the type need to
-        // be the same as constant_val.
-        // This is a way to gracefully handle scalar tensor. The Add will always
-        // be constant-folded away regardless if `constant_val` is a scalar or
-        // not.
+        // Create a zero tensor with shape {num_channels}, and the type need
+        // to be the same as constant_val. This is a way to gracefully handle
+        // scalar tensor. The Add will always be constant-folded away
+        // regardless if `constant_val` is a scalar or not.
         RankedTensorType type = RankedTensorType::get(
             {num_channels}, constant_val_type.getElementType());
         auto attr = rewriter.getZeroAttr(type);
         bias = rewriter.create<arith::ConstantOp>(add_op.getLoc(), type, attr);
         auto none_af = rewriter.getStringAttr("NONE");
-        bias =
-            rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
-                .getOutput();
-      } else {
-        // If there no pre-existing bias and the `constant_val` is 1D, simply
-        // use `constant_val` as bias.
-        bias = constant_val;
+        if (is_scalar_rhs) {
+          bias =
+              rewriter
+                  .create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
+                  .getOutput();
+        } else {
+          // If the RHS is neither a scalar constant nor a 1d constant, look
+          // if there is opportunity to reduce the dimensionality and allow
+          // implicit broadcasting
+
+          auto new_added_value = added_value.reshape(RankedTensorType::get(
+              {added_value.getType().cast<ShapedType>().getNumElements()},
+              added_value.getType().cast<ShapedType>().getElementType()));
+
+          ::mlir::arith::ConstantOp new_constant_val =
+              rewriter.create<::mlir::arith::ConstantOp>(
+                  add_op.getLoc(),
+                  /*value=*/new_added_value);
+
+          bias = rewriter
+                     .create<::mlir::TFL::AddOp>(
+                         add_op.getLoc(),
+                         /*lhs=*/bias,
+                         /*rhs=*/new_constant_val.getResult(),
+                         /*fused_activation_function=*/none_af)
+                     .getOutput();
+        }
       }
     } else {
-      auto none_af = rewriter.getStringAttr("NONE");
-      bias =
-          rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
-              .getOutput();
+      bias = rewriter
+                 .create<AddOp>(add_op.getLoc(), bias, constant_val,
+                                rewriter.getStringAttr("NONE"))
+                 .getOutput();
     }
 
     auto fc = rewriter.create<TFL::FullyConnectedOp>(
@@ -642,7 +865,8 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         rewriter.getStringAttr(add_op.getFusedActivationFunction()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.getWeightsFormat()),
         /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.getKeepNumDims()),
-        /*asymmetric_quantize_inputs=*/fc_op.getAsymmetricQuantizeInputsAttr());
+        /*asymmetric_quantize_inputs=*/
+        fc_op.getAsymmetricQuantizeInputsAttr());
     rewriter.replaceOp(add_op, fc.getOutput());
 
     return success();
@@ -1489,7 +1713,7 @@ struct FuseUnpackAndConcatToReshape
     if (!unpack_op || unpack_op.getNumResults() != concat_op.getNumOperands()) {
       return failure();
     }
-    for (auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
+    for (const auto &index_and_value : llvm::enumerate(concat_op.getValues())) {
       if (index_and_value.value() !=
           unpack_op.getResult(index_and_value.index())) {
         return failure();
@@ -1540,7 +1764,7 @@ struct OptimizeTopK : public OpRewritePattern<TFL::TopKV2Op> {
 
   // It computes the last dim k of slice size of value.user.
   // If value has no use then return 0.
-  llvm::Optional<int32_t> ComputeSliceK(Value value) const {
+  std::optional<int32_t> ComputeSliceK(Value value) const {
     if (value.use_empty()) return 0;
     auto slice_op =
         llvm::dyn_cast_or_null<TFL::SliceOp>(value.getUses().begin().getUser());
@@ -1690,7 +1914,7 @@ void OptimizePass::runOnOperation() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
-      FuseUnpackAndConcatToReshape, OptimizeTopK>(ctx);
+      FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }

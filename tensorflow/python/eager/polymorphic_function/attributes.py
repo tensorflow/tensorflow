@@ -28,6 +28,7 @@ API_IMPLEMENTS = "api_implements"
 API_PREFERRED_DEVICE = "api_preferred_device"
 BACKWARD_FUNCTION = "backward_function_name"
 DISABLE_CALL_SHAPE_INFERENCE = "_disable_call_shape_inference"
+DISABLE_SUMMARIES_AT_RUNTIME = "disable_summaries_at_runtime"
 EAGER_RUNTIME_CONSTRUCTION_CONTEXT = "_construction_context"
 FORWARD_FUNCTION = "forward_function_name"
 GO_BACKWARDS = "go_backwards"
@@ -39,6 +40,7 @@ ORIGINAL_FUNCTION_NAME = "_original_func_name"
 OUTPUTS_ON_OP_DEVICE = "_OutputsOnOpDevice"
 QUANTIZED_COMPOSITE_FUNCTION = "tf_quant.composite_function"
 QUANTIZED_OPS = "tf_quant.quantized_ops"
+RUNTIME_CONSTANT_OPTIMIZATION = "runtime_constant_optimization"
 SHARED_RENDEZVOUS = "shared_rendezvous"
 TF_DATA_FUNCTION = "_tf_data_function"
 TFTRT_ALLOW_BUILD_AT_RUNTIME = "_tftrt_allow_build_at_runtime"
@@ -62,19 +64,21 @@ XLA_SEPERATE_COMPILED_GRADIENTS = "_XlaSeparateCompiledGradients"
 POLYMORPHIC_FUNCTION_ALLOWLIST = frozenset({
     API_IMPLEMENTS,
     API_PREFERRED_DEVICE,
+    DISABLE_SUMMARIES_AT_RUNTIME,
+    GO_BACKWARDS,
     IMPLEMENTS,
+    INTS_ON_DEVICE,
+    NO_INLINE,
+    RUNTIME_CONSTANT_OPTIMIZATION,
+    TF_DATA_FUNCTION,
+    TIME_MAJOR,
+    OUTPUTS_ON_OP_DEVICE,
 })
 
 TRACING_COMPILER_ALLOWLIST = frozenset().union(
     POLYMORPHIC_FUNCTION_ALLOWLIST,
     {
-        GO_BACKWARDS,
-        INTS_ON_DEVICE,
-        NO_INLINE,
-        OUTPUTS_ON_OP_DEVICE,
         SHARED_RENDEZVOUS,
-        TF_DATA_FUNCTION,
-        TIME_MAJOR,
         XLA_COMPILE,
     },
 )

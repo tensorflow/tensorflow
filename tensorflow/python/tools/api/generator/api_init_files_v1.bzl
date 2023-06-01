@@ -40,7 +40,6 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "queue/__init__.py",
     "initializers/__init__.py",
     "layers/__init__.py",
-    "layers/experimental/__init__.py",
     "linalg/__init__.py",
     "linalg/experimental/__init__.py",
     "lite/__init__.py",
@@ -166,6 +165,4 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/regularizers/__init__.py",
     "keras/utils/__init__.py",
     "keras/utils/legacy/__init__.py",
-    "keras/wrappers/__init__.py",
-    "keras/wrappers/scikit_learn/__init__.py",
 ]

@@ -32,38 +32,43 @@ void SetReturnValues(func::FuncOp func, ValueRange values) {
   func.getBody().getBlocks().front().getTerminator()->setOperands(values);
 }
 
-SmallVector<OwningOpRef<ModuleOp>> TruncateFunction(BisectState&,
-                                                    func::FuncOp func) {
-  SmallVector<OwningOpRef<ModuleOp>> result;
+SmallVector<std::function<OwningOpRef<ModuleOp>()>> TruncateFunction(
+    BisectState&, func::FuncOp func) {
+  SmallVector<std::function<OwningOpRef<ModuleOp>()>> result;
   for (auto& ret : func.getBody().getBlocks().front().without_terminator()) {
     if (func.getBody().getBlocks().front().getTerminator()->getOperands() ==
         ret.getResults()) {
       continue;
     }
-    auto [module, ret_clone] = CloneModuleFor(&ret);
-    SetReturnValues(ret_clone->getParentOfType<func::FuncOp>(),
-                    ret_clone->getResults());
-    result.push_back(std::move(module));
+    auto fun = [r = &ret]() -> OwningOpRef<ModuleOp> {
+      auto [module, ret_clone] = CloneModuleFor(r);
+      SetReturnValues(ret_clone->getParentOfType<func::FuncOp>(),
+                      ret_clone->getResults());
+      return std::move(module);
+    };
+    result.push_back(fun);
   }
   return result;
 }
 
-SmallVector<OwningOpRef<ModuleOp>> ReturnOperandsOfTerminatorOperands(
-    BisectState&, func::FuncOp func) {
-  SmallVector<OwningOpRef<ModuleOp>> result;
-  auto [module, func_clone] = CloneModuleFor(func);
-  auto* terminator = func_clone.getBody().getBlocks().front().getTerminator();
-  SmallVector<Value> new_operands;
-  for (auto operand : terminator->getOperands()) {
-    if (operand.getDefiningOp()) {
-      llvm::copy(operand.getDefiningOp()->getOperands(),
-                 std::back_inserter(new_operands));
-    } else {
-      return result;
+SmallVector<std::function<OwningOpRef<ModuleOp>()>>
+ReturnOperandsOfTerminatorOperands(BisectState&, func::FuncOp func) {
+  SmallVector<std::function<OwningOpRef<ModuleOp>()>> result;
+  result.push_back([func]() -> OwningOpRef<ModuleOp> {
+    auto [module, func_clone] = CloneModuleFor(func);
+    auto* terminator = func_clone.getBody().getBlocks().front().getTerminator();
+    SmallVector<Value> new_operands;
+    for (auto operand : terminator->getOperands()) {
+      if (operand.getDefiningOp()) {
+        llvm::copy(operand.getDefiningOp()->getOperands(),
+                   std::back_inserter(new_operands));
+      } else {
+        return nullptr;
+      }
     }
-  }
-  SetReturnValues(func_clone, new_operands);
-  result.push_back(std::move(module));
+    SetReturnValues(func_clone, new_operands);
+    return std::move(module);
+  });
   return result;
 }
 

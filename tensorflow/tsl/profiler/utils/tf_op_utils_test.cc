@@ -169,10 +169,37 @@ TEST(TfOpUtilsTest, JaxOpTest) {
   EXPECT_EQ(TfOpEventName(kName), "op_type");
 }
 
+TEST(TfOpUtilsTest, JaxOpWithColonTest) {
+  const absl::string_view kName = "op_name/op_type:";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kJax);
+  EXPECT_EQ(tf_op.name, "op_name/op_type");
+  EXPECT_EQ(tf_op.type, "op_type");
+  EXPECT_EQ(TfOpEventName(kName), "op_type");
+}
+
 TEST(TfOpUtilsTest, JaxOpNameTest) {
   const absl::string_view kOpName = "namescope/add";
   const absl::string_view kOpType = "add";
   EXPECT_TRUE(IsJaxOpNameAndType(kOpName, kOpType));
+}
+
+TEST(TfOpUtilsTest, JaxOpWithBracketTest) {
+  const absl::string_view kName = "op_name:op_type[array=([])]";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kJax);
+  EXPECT_EQ(tf_op.name, "op_name");
+  EXPECT_EQ(tf_op.type, "op_type");
+  EXPECT_EQ(TfOpEventName(kName), "op_type");
+}
+
+TEST(TfOpUtilsTest, JaxOpWithBracketAndTrailingColonTest) {
+  const absl::string_view kName = "op_name/op_type[array=([])]:";
+  TfOp tf_op = ParseTfOpFullname(kName);
+  EXPECT_EQ(tf_op.category, Category::kJax);
+  EXPECT_EQ(tf_op.name, "op_name/op_type[array=([])]");
+  EXPECT_EQ(tf_op.type, "op_type");
+  EXPECT_EQ(TfOpEventName(kName), "op_type");
 }
 
 TEST(TfOpUtilsTest, JaxOpNameWithMetadataTest) {
@@ -232,7 +259,6 @@ TEST(TfOpUtilsTest, NameScopeTest) {
   EXPECT_EQ(name_scopes[0], "scope-1");
   EXPECT_EQ(name_scopes[1], "scope2");
 }
-
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

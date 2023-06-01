@@ -72,8 +72,6 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override { return 1LL; }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return 1LL;
   }

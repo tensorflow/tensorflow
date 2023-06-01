@@ -47,7 +47,8 @@ absl::StatusOr<ExportedModel> QuantizeQatModel(
     absl::string_view saved_model_path,
     const std::vector<std::string>& signature_keys,
     const std::unordered_set<std::string>& tags,
-    const QuantizationOptions& quant_opts);
+    const QuantizationOptions& quant_opts,
+    const absl::flat_hash_map<std::string, std::string>& function_aliases);
 
 // Apply post-training dynamic range quantization to the model.
 absl::StatusOr<ExportedModel> QuantizePtqDynamicRange(

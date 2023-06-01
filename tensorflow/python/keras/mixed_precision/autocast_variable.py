@@ -17,6 +17,7 @@
 import threading
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.ops import math_ops
@@ -139,15 +140,17 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       raise ValueError('Cannot convert AutoCastVariable to a tensor if '
                        'as_ref=True is passed to convert_to_tensor')
     if not self._should_cast():
-      return ops.convert_to_tensor_v2_with_dispatch(self._variable, dtype=dtype,
-                                                    name=name)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self._variable, dtype=dtype, name=name
+      )
     if dtype is not None and not dtype.is_compatible_with(self._cast_dtype):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for '
           'AutoCastVariable which is casted to type {!r}'.format(
               dtype.name, self._cast_dtype.name))
-    val = ops.convert_to_tensor_v2_with_dispatch(
-        self._variable, dtype=self._variable.dtype, name=name)
+    val = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+        self._variable, dtype=self._variable.dtype, name=name
+    )
     return math_ops.cast(val, self._cast_dtype)
 
   def _should_act_as_resource_variable(self):

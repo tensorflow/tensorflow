@@ -17,8 +17,12 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace data {

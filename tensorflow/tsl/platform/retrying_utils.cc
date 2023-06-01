@@ -24,11 +24,11 @@ namespace tsl {
 
 namespace {
 
-bool IsRetriable(error::Code code) {
+bool IsRetriable(absl::StatusCode code) {
   switch (code) {
-    case error::UNAVAILABLE:
-    case error::DEADLINE_EXCEEDED:
-    case error::UNKNOWN:
+    case absl::StatusCode::kUnavailable:
+    case absl::StatusCode::kDeadlineExceeded:
+    case absl::StatusCode::kUnknown:
       return true;
     default:
       // OK also falls here.
@@ -61,10 +61,10 @@ Status RetryingUtils::CallWithRetries(
       // Return AbortedError, so that it doesn't get retried again somewhere
       // at a higher level.
       return Status(
-          error::ABORTED,
-          strings::StrCat("All ", config.max_retries,
-                          " retry attempts failed. The last failure: ",
-                          status.error_message()));
+          absl::StatusCode::kAborted,
+          strings::StrCat(
+              "All ", config.max_retries,
+              " retry attempts failed. The last failure: ", status.message()));
     }
     int64_t delay_micros = 0;
     if (config.init_delay_time_us > 0) {

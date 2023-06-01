@@ -14,13 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include <jni.h>
 
-#include "tensorflow/lite/core/shims/cc/interpreter.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/util.h"
 
+using tflite::Interpreter;
 using tflite::jni::ThrowException;
-using tflite_shims::Interpreter;
 
 #ifndef TFLITE_DISABLE_SELECT_JAVA_APIS
 namespace tflite {
@@ -87,11 +87,11 @@ class SignatureRunnerJNIHelper {
 };
 }  // namespace tflite
 
+using tflite::Interpreter;
 using tflite::SignatureRunner;
 using tflite::SignatureRunnerJNIHelper;
 using tflite::jni::BufferErrorReporter;
 using tflite::jni::CastLongToPointer;
-using tflite_shims::Interpreter;
 #endif  // TFLITE_DISABLE_SELECT_JAVA_APIS
 
 extern "C" {

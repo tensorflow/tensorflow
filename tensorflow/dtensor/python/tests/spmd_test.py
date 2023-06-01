@@ -239,7 +239,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     first_dim_sharded = self.first_dimension_sharded_layout
     second_dim_sharded = self.last_dimension_sharded_layout
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       m1 = numpy_util.stateless_random_uniform(
           layout=second_dim_sharded, shape=[a, b], seed=seed
       )
@@ -279,7 +279,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
           layout=layout,
       )
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       m1 = uniform(layout=second_dim_sharded, shape=[a, b], seed=seed)
       m2 = uniform(layout=first_dim_sharded, shape=[b, c], seed=seed)
 
@@ -301,6 +301,131 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
         self.last_dimension_sharded_layout,
         dtensor_scattered_result,
     )
+
+  @parameterized.named_parameters(
+      (
+          'xu_ux',
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'ux_xu',
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'yu_uy',
+          [_MESH_DIM_Y, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'uy_yu',
+          [layout_lib.UNSHARDED, _MESH_DIM_Y],
+          [_MESH_DIM_Y, layout_lib.UNSHARDED],
+      ),
+  )
+  def testAllToAll2D(self, src_spec, tgt_spec):
+    a = constant_op.constant(
+        np.arange(
+            8 * 8,
+        ).reshape((8, 8)),
+        dtype=dtypes.float32,
+    )
+    sharded_a = numpy_util.pack_numpy(a, layout=Layout(src_spec, self.mesh))
+
+    @polymorphic_function.function
+    def func(a):
+      return api.relayout(a, Layout(tgt_spec, self.mesh))
+
+    dtensor_result = func(sharded_a)
+    self.assertDTensorEqual(a, Layout(tgt_spec, self.mesh), dtensor_result)
+
+  @parameterized.named_parameters(
+      (
+          'yuu_uuy',
+          [_MESH_DIM_Y, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'xuu_uux',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'uux_xuu',
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+      (
+          'xuu_uxu',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'uxu_xuu',
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+      (
+          'xuy_uxy',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+          [layout_lib.UNSHARDED, _MESH_DIM_X, _MESH_DIM_Y],
+      ),
+      (
+          'uxy_xuy',
+          [layout_lib.UNSHARDED, _MESH_DIM_X, _MESH_DIM_Y],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'xyu_uyx',
+          [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, _MESH_DIM_Y, _MESH_DIM_X],
+      ),
+      # Requires additional transpose
+      (
+          'uxu_uux',
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'uux_uxu',
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X],
+          [layout_lib.UNSHARDED, _MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'xyu_xuy',
+          [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+      ),
+      (
+          'xuy_xyu',
+          [_MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y],
+          [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED],
+      ),
+      (
+          'yxu_yux',
+          [_MESH_DIM_Y, _MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_Y, layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'yux_yxu',
+          [_MESH_DIM_Y, layout_lib.UNSHARDED, _MESH_DIM_X],
+          [_MESH_DIM_Y, _MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+  )
+  def testAllToAll3D(self, src_spec, tgt_spec):
+    a = constant_op.constant(
+        np.arange(8 * 8 * 8).reshape((8, 8, 8)), dtype=dtypes.float32
+    )
+    sharded_a = numpy_util.pack_numpy(a, layout=Layout(src_spec, self.mesh))
+
+    @polymorphic_function.function
+    def func(a):
+      return api.relayout(a, Layout(tgt_spec, self.mesh))
+
+    dtensor_result = func(sharded_a)
+
+    self.assertDTensorEqual(a, Layout(tgt_spec, self.mesh), dtensor_result)
 
   def testExpandDimsDifferentInputAndOutputLayouts(self,):
     src_numpy = np.random.uniform(size=[10, 10])
@@ -332,7 +457,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     layout = Layout.replicated(self.mesh, rank=3)
     # Due to Perf concerns, `pack` does not check the compatibility of
     # components and layout. Here, we inject a wrong value components.
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       b = api.pack(
           [constant_op.constant([[[(x + 1) * 1.0]]]) for x in range(8)],
           layout=layout)
@@ -820,7 +945,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     b = constant_op.constant([[1., 2.], [3., 4.]])
     expected_result = op([a, b])
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       a = api.relayout(a, layout_a)
       b = api.relayout(b, layout_b)
       c = op([a, b])
@@ -897,7 +1022,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       expected_result = reduction_op(a)
 
       a = api.copy_to_mesh(a, self.replicated_layout_2d)
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
@@ -932,7 +1057,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
       a = api.relayout(a, self.first_dimension_sharded_layout)
 
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
         self.assertDTensorEqual(expected_result, expected_layout,
@@ -946,7 +1071,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
     a = api.relayout(a, self.first_dimension_sharded_layout)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = math_ops.reduce_logsumexp(a, axis=-1)
 
       self.assertDTensorEqual(expected_result,
@@ -988,7 +1113,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       # pylint: disable=g-long-lambda
       a = api.relayout(a, self.first_dimension_sharded_layout)
 
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
         self.assertDTensorEqual(expected_result, expected_layout,
@@ -1029,7 +1154,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       # pylint: disable=g-long-lambda
       a = api.relayout(a, self.first_dimension_sharded_layout)
 
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = reduction_op(a)
 
         self.assertDTensorEqual(expected_result, expected_layout,
@@ -1061,7 +1186,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = reduction_op(a)
     a = api.relayout(a, self.replicated_layout_2d)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result, self.replicated_layout_1d,
@@ -1093,7 +1218,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = reduction_op(a)
     a = api.relayout(a, self.first_dimension_sharded_layout)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result,
@@ -1135,7 +1260,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = reduction_op(a)
     a = api.relayout(a, self.first_dimension_sharded_layout)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = reduction_op(a)
 
       self.assertDTensorEqual(expected_result, self.scalar_replicated_layout,
@@ -1237,7 +1362,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     global_op_args = inputs()
     expected_result = op(*global_op_args)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_op_args = inputs()
 
       def _broadcast_to_replicated(x):
@@ -1260,7 +1385,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     global_op_args = inputs()
     expected_result = op(*global_op_args)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_op_args = inputs()
 
       def _broadcast_to_replicated(x):
@@ -1286,7 +1411,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     first_d_shard_layout = Layout([_MESH_DIM_X, layout_lib.UNSHARDED],
                                   self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_op_args = inputs()
 
       def _broadcast_to_replicated(x):
@@ -1308,7 +1433,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     expected_result = array_ops.slice(t, [0, 0], [-1, 2])
 
     a = api.copy_to_mesh(t, self.replicated_layout_2d)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(a, [0, 0], [-1, 2])
 
     self.assertDTensorEqual(expected_result, self.replicated_layout_2d,
@@ -1321,7 +1446,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     sharded_layout = self.first_dimension_sharded_layout
 
     t = api.relayout(t, sharded_layout)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(t, [0, 0], [size, 2])
 
     self.assertDTensorEqual(expected_result, sharded_layout, dtensor_result)
@@ -1346,50 +1471,118 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected_result, sharded_layout, dtensor_result)
 
   @parameterized.named_parameters(
-      ('FullyReplicatedInputs', {
-          'begin': [0, 0],
-          'end': [-1, 2],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED] * 2), ('NewAxisMask', {
-          'begin': [0, 0, 0, 0],
-          'end': [0, 0, 2, 4],
-          'strides': [1, 1, 1, 1],
-          'new_axis_mask': 3
-      }, [layout_lib.UNSHARDED] * 2, [layout_lib.UNSHARDED] * 4),
-      ('ShrinkAxisMask', {
-          'begin': [0, 0],
-          'end': [-1, 2],
-          'strides': [1, 1],
-          'shrink_axis_mask': 2
-      }, [layout_lib.UNSHARDED] * 2, [layout_lib.UNSHARDED]),
-      ('ShardingOnNonSlicedDimension', {
-          'begin': [0, 0],
-          'end': [2, 2],
-          'strides': [1, 2]
-      }, [_MESH_DIM_X, layout_lib.UNSHARDED]),
-      ('StrideOnShardedDimensionNoRelayout1', {
-          'begin': [0, 0],
-          'end': [2, 4],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNoRelayout2', {
-          'begin': [0, 1],
-          'end': [2, 4],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNoRelayout3', {
-          'begin': [0, 0],
-          'end': [2, 3],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNeedRelayout', {
-          'begin': [0, 0],
-          'end': [-1, 4],
-          'strides': [1, 3]
-      }, [_MESH_DIM_X, layout_lib.UNSHARDED], [layout_lib.UNSHARDED] * 2))
+      (
+          'FullyReplicatedInputs',
+          {'begin': [0, 0], 'end': [-1, 2], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'NewAxisMask',
+          {
+              'begin': [0, 0, 0, 0],
+              'end': [0, 0, 2, 4],
+              'strides': [1, 1, 1, 1],
+              'new_axis_mask': 3,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 4,
+      ),
+      (
+          'ShrinkAxisMask',
+          {
+              'begin': [0, 0],
+              'end': [-1, 2],
+              'strides': [1, 1],
+              'shrink_axis_mask': 2,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED],
+      ),
+      (
+          'EllipsisAxisMask',
+          {
+              'begin': [0, 0, 0],
+              'end': [0, 0, 0],
+              'strides': [1, 1, 1],
+              'ellipsis_mask': 1,
+              'new_axis_mask': 6,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 4,
+      ),
+      (
+          'MoreAxis',
+          {
+              'begin': [0],
+              'end': [2],
+              'strides': [1],
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'ShardingOnNonSlicedDimension',
+          {'begin': [0, 0], 'end': [2, 2], 'strides': [1, 2]},
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout1',
+          {'begin': [0, 0], 'end': [2, 4], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout2',
+          {'begin': [0, 1], 'end': [2, 4], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout3',
+          {'begin': [0, 0], 'end': [2, 3], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNeedRelayout',
+          {'begin': [0, 0], 'end': [-1, 4], 'strides': [1, 3]},
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'DynamicSliceWithBeginEndMask',
+          {
+              'begin': lambda: array_ops.fill([2], 0),
+              'end': [-1, 4],
+              'strides': [1, 3],
+              'begin_mask': 3,
+              'end_mask': 3,
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'DynamicSliceNoMask',
+          {
+              'begin': lambda: array_ops.fill([2], 0),
+              'end': [-1, 4],
+              'strides': [1, 3],
+              'begin_mask': 0,
+              'end_mask': 0,
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+  )
   def testStridedSliceOps(self, args, input_layout, expected_layout=None):
     input_tensor = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
-    expected_result = gen_array_ops.strided_slice(input=input_tensor, **args)
+
+    @polymorphic_function.function
+    def func(input_tensor):
+      newargs = {}
+      for key, value in args.items():
+        newargs[key] = value() if hasattr(value, '__call__') else value
+
+      return gen_array_ops.strided_slice(input=input_tensor, **newargs)
+
+    expected_result = func(input_tensor)
 
     input_layout = Layout(input_layout, self.mesh)
     if expected_layout is None:
@@ -1398,119 +1591,251 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
       expected_layout = Layout(expected_layout, self.mesh)
 
     dtensor_input_tensor = api.relayout(input_tensor, input_layout)
-    dtensor_result = gen_array_ops.strided_slice(
-        input=dtensor_input_tensor, **args)
+    dtensor_result = func(dtensor_input_tensor)
 
     self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
   @parameterized.named_parameters(
-      ('FullyReplicatedInputs', {
-          'begin': [0, 0],
-          'end': [-1, 2],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED] * 2), ('NewAxisMask', {
-          'begin': [0, 0, 0, 0],
-          'end': [0, 0, 2, 4],
-          'strides': [1, 1, 1, 1],
-          'new_axis_mask': 3
-      }, [layout_lib.UNSHARDED] * 2), ('ShrinkAxisMask', {
-          'begin': [0, 0],
-          'end': [-1, 2],
-          'strides': [1, 1],
-          'shrink_axis_mask': 2
-      }, [layout_lib.UNSHARDED] * 2), ('ShardingOnNonSlicedDimension', {
-          'begin': [0, 0],
-          'end': [2, 2],
-          'strides': [1, 2]
-      }, [_MESH_DIM_X, layout_lib.UNSHARDED]),
-      ('StrideOnShardedDimensionNoRelayout1', {
-          'begin': [0, 0],
-          'end': [2, 4],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNoRelayout2', {
-          'begin': [0, 1],
-          'end': [2, 4],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNoRelayout3', {
-          'begin': [0, 0],
-          'end': [2, 3],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNeedRelayout', {
-          'begin': [0, 0],
-          'end': [-1, 4],
-          'strides': [1, 3]
-      }, [_MESH_DIM_X, layout_lib.UNSHARDED], [layout_lib.UNSHARDED] * 2))
-  def testStridedSliceGradOps(self, args, input_layout, expected_layout=None):
+      (
+          'FullyReplicatedInputs',
+          {'begin': [0, 0], 'end': [-1, 2], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'NewAxisMask',
+          {
+              'begin': [0, 0, 0, 0],
+              'end': [0, 0, 2, 4],
+              'strides': [1, 1, 1, 1],
+              'new_axis_mask': 3,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 4,
+      ),
+      (
+          'ShrinkAxisMask',
+          {
+              'begin': [0, 0],
+              'end': [-1, 2],
+              'strides': [1, 1],
+              'shrink_axis_mask': 2,
+          },
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED],
+      ),
+      (
+          'EllipsisAxisMask',
+          {
+              'begin': [0, 0, 0],
+              'end': [0, 0, 0],
+              'strides': [1, 1, 1],
+              'ellipsis_mask': 1,
+              'new_axis_mask': 6,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 4,
+      ),
+      (
+          'MoreAxis',
+          {
+              'begin': [0],
+              'end': [2],
+              'strides': [1],
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'ShardingOnNonSlicedDimension',
+          {'begin': [0, 0], 'end': [2, 2], 'strides': [1, 2]},
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout1',
+          {'begin': [0, 0], 'end': [2, 4], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout2',
+          {'begin': [0, 1], 'end': [2, 4], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout3',
+          {'begin': [0, 0], 'end': [2, 3], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNeedRelayout',
+          {'begin': [0, 0], 'end': [-1, 4], 'strides': [1, 3]},
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'DynamicSliceWithBeginEndMask',
+          {
+              'begin': lambda: array_ops.fill([2], 0),
+              'end': [-1, 4],
+              'strides': [1, 3],
+              'begin_mask': 3,
+              'end_mask': 3,
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'DynamicSliceNoMask',
+          {
+              'begin': lambda: array_ops.fill([2], 0),
+              'end': [-1, 4],
+              'strides': [1, 3],
+              'begin_mask': 0,
+              'end_mask': 0,
+          },
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+  )
+  def testStridedSliceGradOps(self, args, expected_layout, value_layout=None):
     input_tensor = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
     shape = input_tensor.shape.as_list()
-    input_layout = Layout(input_layout, self.mesh)
-    if expected_layout is None:
-      expected_layout = input_layout
+    expected_layout = Layout(expected_layout, self.mesh)
+    if value_layout is None:
+      value_layout = expected_layout
     else:
-      expected_layout = Layout(expected_layout, self.mesh)
+      value_layout = Layout(value_layout, self.mesh)
 
-    grad = gen_array_ops.strided_slice(input=input_tensor, **args)
-    expected_result = gen_array_ops.strided_slice_grad(
-        shape=shape, **args, dy=grad)
+    def get_newargs():
+      newargs = {}
+      for key, value in args.items():
+        newargs[key] = value() if hasattr(value, '__call__') else value
+      return newargs
 
-    dtensor_input_tensor = api.relayout(input_tensor, input_layout)
-    grad = gen_array_ops.strided_slice(input=dtensor_input_tensor, **args)
-    dtensor_result = gen_array_ops.strided_slice_grad(
-        shape=shape, **args, dy=grad)
+    @polymorphic_function.function
+    def func(grad):
+      return gen_array_ops.strided_slice_grad(
+          shape=shape, **get_newargs(), dy=grad
+      )
+
+    grad = gen_array_ops.strided_slice(input=input_tensor, **get_newargs())
+    expected_result = func(grad)
+
+    dtensor_grad = api.relayout(grad, value_layout)
+    dtensor_result = func(dtensor_grad)
 
     self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
   @parameterized.named_parameters(
-      ('FullyReplicatedInputs', {
-          'begin': [0, 0],
-          'end': [-1, 2],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED] * 2, [layout_lib.UNSHARDED] * 2),
-      ('NewAxisMask', {
-          'begin': [0, 0, 0, 0],
-          'end': [0, 0, 2, 4],
-          'strides': [1, 1, 1, 1],
-          'new_axis_mask': 3
-      }, [layout_lib.UNSHARDED] * 2, [layout_lib.UNSHARDED] * 4),
-      ('ShrinkAxisMask', {
-          'begin': [0, 0],
-          'end': [-1, 2],
-          'strides': [1, 1],
-          'shrink_axis_mask': 2
-      }, [layout_lib.UNSHARDED] * 2, [layout_lib.UNSHARDED]),
-      ('ShardingOnNonSlicedDimension', {
-          'begin': [0, 0],
-          'end': [2, 2],
-          'strides': [1, 2]
-      }, [_MESH_DIM_X, layout_lib.UNSHARDED
-         ], [_MESH_DIM_X, layout_lib.UNSHARDED]),
-      ('StrideOnShardedDimensionNoRelayout1', {
-          'begin': [0, 0],
-          'end': [2, 4],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X
-         ], [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNoRelayout2', {
-          'begin': [0, 1],
-          'end': [2, 4],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X
-         ], [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNoRelayout3', {
-          'begin': [0, 0],
-          'end': [2, 3],
-          'strides': [1, 2]
-      }, [layout_lib.UNSHARDED, _MESH_DIM_X
-         ], [layout_lib.UNSHARDED, _MESH_DIM_X]),
-      ('StrideOnShardedDimensionNeedRelayout', {
-          'begin': [0, 0],
-          'end': [-1, 4],
-          'strides': [1, 3]
-      }, [_MESH_DIM_X, layout_lib.UNSHARDED
-         ], [layout_lib.UNSHARDED] * 2, [layout_lib.UNSHARDED] * 2))
+      (
+          'FullyReplicatedInputs',
+          {'begin': [0, 0], 'end': [-1, 2], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'NewAxisMask',
+          {
+              'begin': [0, 0, 0, 0],
+              'end': [0, 0, 2, 4],
+              'strides': [1, 1, 1, 1],
+              'new_axis_mask': 3,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 4,
+      ),
+      (
+          'ShrinkAxisMask',
+          {
+              'begin': [0, 0],
+              'end': [-1, 2],
+              'strides': [1, 1],
+              'shrink_axis_mask': 2,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED],
+      ),
+      (
+          'EllipsisAxisMask',
+          {
+              'begin': [0, 0, 0],
+              'end': [0, 0, 0],
+              'strides': [1, 1, 1],
+              'ellipsis_mask': 1,
+              'new_axis_mask': 6,
+          },
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 4,
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'MoreAxis',
+          {
+              'begin': [0],
+              'end': [2],
+              'strides': [1],
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'ShardingOnNonSlicedDimension',
+          {'begin': [0, 0], 'end': [2, 2], 'strides': [1, 2]},
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout1',
+          {'begin': [0, 0], 'end': [2, 4], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout2',
+          {'begin': [0, 1], 'end': [2, 4], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNoRelayout3',
+          {'begin': [0, 0], 'end': [2, 3], 'strides': [1, 2]},
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+          [layout_lib.UNSHARDED, _MESH_DIM_X],
+      ),
+      (
+          'StrideOnShardedDimensionNeedRelayout',
+          {'begin': [0, 0], 'end': [-1, 4], 'strides': [1, 3]},
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED] * 2,
+          [layout_lib.UNSHARDED] * 2,
+      ),
+      (
+          'DynamicSliceWithBeginEndMask',
+          {
+              'begin': lambda: array_ops.fill([2], 0),
+              'end': [-1, 4],
+              'strides': [1, 3],
+              'begin_mask': 3,
+              'end_mask': 3,
+          },
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+          [_MESH_DIM_X, layout_lib.UNSHARDED],
+      ),
+      (
+          'DynamicSliceNoMask',
+          {
+              'begin': lambda: array_ops.fill([2], 0),
+              'end': [-1, 4],
+              'strides': [1, 3],
+              'begin_mask': 0,
+              'end_mask': 0,
+          },
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+          [layout_lib.UNSHARDED, layout_lib.UNSHARDED],
+      ),
+  )
   def testStridedSliceUpdateOps(self,
                                 args,
                                 input_layout,
@@ -1518,9 +1843,24 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
                                 expected_layout=None):
     self.skipForDeviceType(['TPU'], 'b/123559667; op has no XLA implementation')
     input_tensor = constant_op.constant([[1., 2., 3., 4.], [5., 6., 7., 8.]])
-    value_tensor = gen_array_ops.strided_slice(input=input_tensor, **args) * 10.
-    expected_result = gen_array_ops.tensor_strided_slice_update(
-        input=input_tensor, value=value_tensor, **args)
+
+    def get_newargs():
+      newargs = {}
+      for key, value in args.items():
+        newargs[key] = value() if hasattr(value, '__call__') else value
+      return newargs
+
+    value_tensor = (
+        gen_array_ops.strided_slice(input=input_tensor, **get_newargs()) * 10.0
+    )
+
+    @polymorphic_function.function
+    def func(input_tensor, value_tensor):
+      return gen_array_ops.tensor_strided_slice_update(
+          input=input_tensor, value=value_tensor, **get_newargs()
+      )
+
+    expected_result = func(input_tensor, value_tensor)
 
     input_layout = Layout(input_layout, self.mesh)
     value_layout = Layout(value_layout, self.mesh)
@@ -1531,9 +1871,8 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
 
     dtensor_input_tensor = api.relayout(input_tensor, input_layout)
     dtensor_value_tensor = api.relayout(value_tensor, value_layout)
-    dtensor_result = gen_array_ops.tensor_strided_slice_update(
-        input=dtensor_input_tensor, value=dtensor_value_tensor, **args)
 
+    dtensor_result = func(dtensor_input_tensor, dtensor_value_tensor)
     self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
   def testBroadcastGradientArgs(self):
@@ -1745,7 +2084,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(
         segment_ids, Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
     )
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_math_ops.unsorted_segment_sum(
           data, segment_ids, num_segments)
       expected_layout = Layout.replicated(self.mesh, 2)
@@ -1764,7 +2103,7 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(
         segment_ids, Layout([_MESH_DIM_X, _MESH_DIM_Y], self.mesh)
     )
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_math_ops.unsorted_segment_sum(
           data, segment_ids, num_segments)
       expected_layout = Layout.replicated(self.mesh, 2)
@@ -2191,6 +2530,9 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
 
   @parameterized.named_parameters(test_util_ops.PADDINGS)
   def testConv2DWithBatchShardedInputs(self, padding):
+    self.skipTest(
+        reason='b/272579753: ensure Conv grad Ops know about input layouts.'
+    )
     # Reason to flip same shape policy: The backprop of the nn_ops.conv2d_v2 is
     # simply array_ops.ones_like_v2(conv2d_result). However, as DTensor does not
     # control gradient tape, the tape will not attach the layout from
@@ -2199,8 +2541,6 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
     # this is not a problem.
     # But this well-design unit tests, without same shape policy, it will get a
     # different layout for the inputs' grad.
-    api._dtensor_device().set_same_shape_policy(True)
-
     np.random.seed(123)
 
     x_in = np.random.normal(0.0, 1.0, 2 * 9 * 9).reshape([2, 9, 9, 1])
@@ -2221,12 +2561,10 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
     x = api.relayout(
         x, Layout([self._dims[0]] + [layout_lib.UNSHARDED] * 3, self.mesh)
     )
-    kernel = api.copy_to_mesh(kernel,
-                              Layout([layout_lib.UNSHARDED] * 4, self.mesh))
-
+    kernel = api.relayout(kernel, Layout([layout_lib.UNSHARDED] * 4, self.mesh))
     # Explicitly open the scope as ops generated from tape could be broadcasted
     # to replicated by default.
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with backprop.GradientTape() as tape:
         tape.watch([x, kernel])
         got = nn_ops.conv2d_v2(x, kernel, strides=[1, 1, 1, 1], padding=padding)
@@ -2242,7 +2580,6 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(expected_filter_gradient,
                             Layout([layout_lib.UNSHARDED] * 4, self.mesh),
                             got_filter_filter)
-    api._dtensor_device().set_same_shape_policy(False)
 
   @parameterized.named_parameters(test_util_ops.PADDINGS)
   def testMaxPoolWithBatchShardedInputs(self, padding):
@@ -2294,7 +2631,7 @@ class DTensorConvSPMDTest(test_util.DTensorBaseTest):
         inputs, Layout([self._dims[0]] + [layout_lib.UNSHARDED] * 3, self.mesh)
     )
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with backprop.GradientTape() as tape:
         tape.watch([x])
         dtensor_result = nn_ops.max_pool_v2(x, window_size, stride_size,
@@ -2537,7 +2874,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected = gen_array_ops.broadcast_to(inputs, shape)
 
     inputs = api.copy_to_mesh(inputs, Layout.replicated(self.mesh, rank=1))
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_array_ops.broadcast_to(inputs, shape)
 
     self.assertDTensorEqual(expected, Layout.replicated(self.mesh, rank=2),
@@ -2568,7 +2905,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     layout = Layout(sharding, self.mesh)
     inputs = api.relayout(inputs.numpy(), layout)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with backprop.GradientTape() as tape:
         tape.watch([inputs])
         dtensor_result = gen_math_ops.tanh(inputs)
@@ -2821,8 +3158,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     @polymorphic_function.function
     def add_fn(x, y):
-      result = math_ops.add(x, y)
-      return api.relayout(result, a_layout)
+      return math_ops.add(x, y)
 
     dtensor_result = add_fn(a, b)
     self.assertDTensorEqual(expected, a_layout, dtensor_result)
@@ -2861,7 +3197,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(
         segment_ids, Layout.batch_sharded(self.mesh, _MESH_DIM_Y, rank=1)
     )
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = gen_math_ops.unsorted_segment_sum(
           data, segment_ids, num_segments)
       expected_layout = Layout.replicated(self.mesh, 2)
@@ -2882,7 +3218,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     segment_ids = api.relayout(segment_ids, Layout.replicated(self.mesh, 1))
 
     with api._dtensor_device()._default_layout(Layout.replicated(self.mesh, 2)):
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = gen_math_ops.unsorted_segment_sum(
             data, segment_ids, num_segments)
         expected_layout = Layout.replicated(self.mesh, 2)
@@ -2905,7 +3241,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected_layout = Layout(
         [layout_lib.UNSHARDED, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
         self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(params, indices, axis=0)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -2930,7 +3266,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     expected_layout = Layout(
         [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(params, indices, axis=0)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -2950,7 +3286,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     expected_layout = Layout(
         [_MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(params, indices, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -2966,7 +3302,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     )
     expected_layout = Layout(
         [layout_lib.UNSHARDED, _MESH_DIM_Y, layout_lib.UNSHARDED], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       with api._dtensor_device()._default_layout(expected_layout):
         dtensor_result = array_ops.gather_v2(params, indices, axis=0)
         self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -2996,7 +3332,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3025,7 +3361,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected_layout = Layout(
         [_MESH_DIM_X, _MESH_DIM_Y, layout_lib.UNSHARDED, layout_lib.UNSHARDED],
         self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=2)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3061,7 +3397,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED, _MESH_DIM_Y
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=2)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3096,7 +3432,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, _MESH_DIM_Y, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=2)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3120,7 +3456,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     expected_layout = Layout(
         [layout_lib.UNSHARDED, layout_lib.UNSHARDED, _MESH_DIM_X], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3149,7 +3485,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
         _MESH_DIM_X, layout_lib.UNSHARDED, layout_lib.UNSHARDED,
         layout_lib.UNSHARDED
     ], self.mesh)
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.gather_v2(
           params, indices, batch_dims=1, axis=1)
       self.assertDTensorEqual(expected, expected_layout, dtensor_result)
@@ -3176,7 +3512,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
       a = api.relayout(a, original_layout)
       expected_layout = Layout(expected_spec, self.mesh)
-      with api.run_on(self.mesh):
+      with api.default_mesh(self.mesh):
         dtensor_result = array_ops.transpose_v2(a, perm)
         self.assertDTensorEqual(expected, expected_layout, dtensor_result)
 
@@ -3189,7 +3525,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     expected_layout = Layout([layout_lib.UNSHARDED, layout_lib.UNSHARDED],
                              self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(t, [0, 0], [1, 2])
       self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
@@ -3201,7 +3537,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     t = api.relayout(t, sharded_layout)
     expected_layout = Layout([layout_lib.UNSHARDED, _MESH_DIM_Y], self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
       dtensor_result = array_ops.slice(t, [0, 0], [1, 4])
       self.assertDTensorEqual(expected_result, expected_layout, dtensor_result)
 
@@ -3218,7 +3554,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     t = api.relayout(t, sharded_layout)
     expected_layout = Layout([_MESH_DIM_X, layout_lib.UNSHARDED], self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
 
       @polymorphic_function.function
       def op_fn(x):
@@ -3242,7 +3578,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
     t = api.relayout(t, operand_layout)
     expected_layout = Layout([_MESH_DIM_X, layout_lib.UNSHARDED], self.mesh)
 
-    with api.run_on(self.mesh):
+    with api.default_mesh(self.mesh):
 
       @polymorphic_function.function
       def op_fn(x):

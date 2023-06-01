@@ -1,5 +1,6 @@
 """Definitions for targets that use the TFLite shims."""
 
+load("//tensorflow:tensorflow.bzl", "clean_dep")
 load(
     "//tensorflow/lite:build_def.bzl",
     "tflite_copts_warnings",
@@ -73,7 +74,7 @@ def android_library_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for android_library.
@@ -124,7 +125,7 @@ def cc_library_with_tflite(
       generate_opaque_delegate_target: (bool) If set, generates an additional
         cc_library target, which has "_opaque_delegate" appended to the name.
         The target depends on
-        //third_party/tensorflow/lite/core/shims:tflite_use_opaque_delegate
+        //tensorflow/lite/core/shims:tflite_use_opaque_delegate
         which enables the truly opaque delegate type. This macro ensures that
         dependencies listed in 'tflite_deps' use _opaque_delegate variant.
       **kwargs: Additional cc_library parameters.
@@ -143,7 +144,7 @@ def cc_library_with_tflite(
             name = name + "_opaque_delegate",
             srcs = srcs + tflite_jni_binaries,
             deps = deps + tflite_deps_renamed + _concat([select(map) for map in tflite_deps_selects_renamed]) + [
-                "//tensorflow/lite/core/shims:tflite_use_opaque_delegate",
+                clean_dep("//tensorflow/lite/core/shims:tflite_use_opaque_delegate"),
             ],
             **kwargs
         )
@@ -189,7 +190,7 @@ def cc_library_with_tflite_with_c_headers_test(name, hdrs, **kwargs):
         cc_library_with_tflite(
             name = "%s_lib" % basename,
             srcs = ["%s.c" % basename],
-            deps = [":" + name],
+            tflite_deps = [":" + name],
             copts = kwargs.get("copts", []),
             visibility = ["//visibility:private"],
             testonly = True,
@@ -240,7 +241,7 @@ def cc_test_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for cc_test.
@@ -273,7 +274,7 @@ def java_library_with_tflite(
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
     on one of the "shim" library targets from
-    //third_party/tensorflow/lite/core/shims:*.
+    //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
@@ -311,7 +312,7 @@ def java_test_with_tflite(
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' or 'tflite_jni_binaries' dependency
     on one of the "shim" library targets from
-    //third_party/tensorflow/lite/core/shims:*.
+    //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for java_library.
@@ -343,7 +344,7 @@ def jni_binary_with_tflite(
     Note that this build rule doesn't itself add any dependencies on
     TF Lite; this macro should normally be used in conjunction with a
     direct or indirect 'tflite_deps' dependency on one of the "shim"
-    library targets from //third_party/tensorflow/lite/core/shims:*.
+    library targets from //tensorflow/lite/core/shims:*.
 
     Args:
       name: as for tflite_jni_binary.
@@ -383,13 +384,13 @@ def custom_c_library_with_tflite(
 
     if experimental:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
-            "//tensorflow/lite/core/shims:c/c_api_experimental.h",
-            "//tensorflow/lite/core/shims:c/c_api_opaque.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_experimental.h"),
+            clean_dep("//tensorflow/lite/core/shims:c/c_api_opaque.h"),
         ]
     else:
         hdrs = [
-            "//tensorflow/lite/core/shims:c/c_api.h",
+            clean_dep("//tensorflow/lite/core/shims:c/c_api.h"),
         ]
 
     cc_library_with_tflite(

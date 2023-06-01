@@ -539,7 +539,7 @@ Status Transposer::UpdateEdge(
         is_src_format_to_dst_format, &added_node));
     added_node_name = node_name;
   } else {
-    return Status(error::INVALID_ARGUMENT,
+    return Status(absl::StatusCode::kInvalidArgument,
                   absl::StrCat("Unsupported op \"", op,
                                "\". Supported ops are Transpose, "
                                "DataFormatVecPerm, DataFormatDimMap."));

@@ -36,7 +36,9 @@ void splitAllocTensors(Block& block) {
     }
 
     for (auto& region : op.getRegions()) {
-      splitAllocTensors(region.front());
+      for (auto& block : region.getBlocks()) {
+        splitAllocTensors(block);
+      }
     }
   }
 

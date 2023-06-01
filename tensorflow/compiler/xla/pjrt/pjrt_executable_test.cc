@@ -48,7 +48,7 @@ TEST(FromProtoTest, MultiSliceConfigNotSupported) {
   auto option = CompileOptions::FromProto(proto);
 
   EXPECT_EQ(option.status().code(), tensorflow::error::UNIMPLEMENTED);
-  EXPECT_EQ(option.status().error_message(),
+  EXPECT_EQ(option.status().message(),
             "multi_slice_config not supported in CompileOptions::FromProto.");
 }
 

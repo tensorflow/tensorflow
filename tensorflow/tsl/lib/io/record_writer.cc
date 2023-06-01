@@ -98,7 +98,7 @@ RecordWriter::~RecordWriter() {
 
 Status RecordWriter::WriteRecord(StringPiece data) {
   if (dest_ == nullptr) {
-    return Status(::tensorflow::error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "Writer not initialized or previously closed");
   }
   // Format of a single record:
@@ -118,7 +118,7 @@ Status RecordWriter::WriteRecord(StringPiece data) {
 #if defined(TF_CORD_SUPPORT)
 Status RecordWriter::WriteRecord(const absl::Cord& data) {
   if (dest_ == nullptr) {
-    return Status(::tensorflow::error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "Writer not initialized or previously closed");
   }
   // Format of a single record:
@@ -149,7 +149,7 @@ Status RecordWriter::Close() {
 
 Status RecordWriter::Flush() {
   if (dest_ == nullptr) {
-    return Status(::tensorflow::error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   "Writer not initialized or previously closed");
   }
   return dest_->Flush();

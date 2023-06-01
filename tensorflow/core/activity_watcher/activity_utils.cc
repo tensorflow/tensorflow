@@ -19,13 +19,14 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace activity_watcher {
 
 std::unique_ptr<Activity> ActivityFromContext(
-    OpKernelContext* context, tensorflow::string name,
-    ActivityCategory category, Activity::Attributes additional_attributes) {
+    OpKernelContext* context, tsl::string name, ActivityCategory category,
+    Activity::Attributes additional_attributes) {
   Activity::Attributes attributes(std::move(additional_attributes));
   if (context) {
     attributes.merge(Activity::Attributes({

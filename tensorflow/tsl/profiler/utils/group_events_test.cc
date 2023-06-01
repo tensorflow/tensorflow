@@ -647,6 +647,76 @@ TEST(GroupEventsTest, BatchingSessionTest) {
   EXPECT_EQ(num_checked, 3);
 }
 
+TEST(GroupTPUEventsTest, TpuExecuteOpTest) {
+  tensorflow::profiler::XSpace space;
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  host_plane_builder.ReserveLines(1);
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  // When there is a TF loop, events are grouped per TF loop iteration.
+  CreateXEvent(
+      &host_plane_builder, &main_thread, HostEventType::kExecutorStateProcess,
+      20, 50,
+      {{StatType::kStepId, int64_t{123}}, {StatType::kIterNum, int64_t{456}}});
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {}, &event_forest);
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 1);
+  XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(&space.planes(0));
+  host_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      // All events should be grouped and have `group_id` set.
+      EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
+    });
+  });
+}
+
+TEST(GroupTPUEventsTest, TpuRequestTest) {
+  tensorflow::profiler::XSpace space;
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  host_plane_builder.ReserveLines(1);
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kSessionRun, 0,
+               100, {{StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&host_plane_builder, &main_thread,
+               GetHostEventTypeStr(HostEventType::kEnqueueRequestLocked), 20,
+               50,
+               {{StatType::kQueueAddr, int64_t{123}},
+                {StatType::kRequestId, int64_t{456}}});
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {}, &event_forest);
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 1);
+  XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(&space.planes(0));
+  host_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      // All events should be grouped and have `group_id` set.
+      EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
+    });
+  });
+}
+
+TEST(GroupTPUEventsTest, TpuProgramCallbackTest) {
+  tensorflow::profiler::XSpace space;
+  XPlaneBuilder host_plane_builder(GetOrCreateHostXPlane(&space));
+  host_plane_builder.ReserveLines(1);
+  auto main_thread = host_plane_builder.GetOrCreateLine(0);
+  CreateXEvent(&host_plane_builder, &main_thread, HostEventType::kSessionRun, 0,
+               100, {{StatType::kIsRoot, int64_t{1}}});
+  CreateXEvent(&host_plane_builder, &main_thread,
+               GetHostEventTypeStr(HostEventType::kDoEnqueueProgram), 20, 50,
+               {{StatType::kRunId, int64_t{123}},
+                {StatType::kQueueId, int64_t{0}},
+                {StatType::kDeviceOrdinal, int64_t{1}}});
+  EventForest event_forest;
+  GroupTpuEventsOSS(&space, {}, &event_forest);
+  EXPECT_EQ(event_forest.GetGroupMetadataMap().size(), 1);
+  XPlaneVisitor host_plane_visitor = CreateTfXPlaneVisitor(&space.planes(0));
+  host_plane_visitor.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      // All events should be grouped and have `group_id` set.
+      EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
+    });
+  });
+}
+
 }  // namespace
 }  // namespace profiler
 }  // namespace tsl

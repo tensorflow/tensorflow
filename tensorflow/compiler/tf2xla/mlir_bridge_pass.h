@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 
+#include <string>
+
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -37,8 +39,8 @@ class MlirBridgePass : public MlirOptimizationPass {
 
   // This should be used as a thin mapper around mlir::ModulePass::runOnModule
   // API integrated with the Tensorflow runtime.
-  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module,
-             const Graph& graph,
+  Status Run(const std::string& function_name, const ConfigProto& config_proto,
+             mlir::ModuleOp module, const Graph& graph,
              const FunctionLibraryDefinition& function_library) override;
 };
 

@@ -18,21 +18,50 @@ limitations under the License.
 
 #include <math.h>
 
+#include <cmath>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 namespace interpreter {
+
+template <typename T>
+bool isEqual(T a, T b) {
+  return a == b;
+}
+
+// TODO(jreiffers): Replace ifndef with a command line flag.
+#ifndef MLIR_INTERPRETER_COMPARE_DOUBLES_EXACT
+// Compare double precision float with a small tolerance, because complex
+// computations in the interpreted don't always produce the exact same result.
+template <>
+inline bool isEqual(double a, double b) {
+  if (isinf(a) || isinf(b)) {
+    return a == b;
+  }
+
+  return fabs(a - b) < 1e-14;
+}
+
+template <>
+inline bool isEqual(std::complex<double> a, std::complex<double> b) {
+  return isEqual(a.real(), b.real()) && isEqual(a.imag(), b.imag());
+}
+#endif
 
 // Represents a view into a physical buffer.
 struct BufferView {
@@ -167,29 +196,19 @@ class Buffer {
   }
 
   char* at(std::optional<int64_t> idx, int64_t elementSize) {
-    if (!idx || isDeallocated) {
-      setFailure("out of bounds access");
+    auto byteOffset = getByteOffset(idx, elementSize);
+    if (!byteOffset) {
       return &storage.data()[0];
     }
-    if (isDeallocated) {
-      setFailure("use-after-free");
-      return &storage.data()[0];
-    }
-    assert(!isDeallocated && "accessing deallocated buffer");
-    return &storage.data()[*idx * elementSize];
+    return &storage.data()[*byteOffset];
   }
 
   const char* at(std::optional<int64_t> idx, int64_t elementSize) const {
-    if (!idx || isDeallocated) {
-      setFailure("out of bounds access");
+    auto byteOffset = getByteOffset(idx, elementSize);
+    if (!byteOffset) {
       return &storage.data()[0];
     }
-    if (isDeallocated) {
-      setFailure("use-after-free");
-      return &storage.data()[0];
-    }
-    assert(!isDeallocated && "accessing deallocated buffer");
-    return &storage.data()[*idx * elementSize];
+    return &storage.data()[*byteOffset];
   }
 
   Buffer(Dummy, size_t numElements, size_t elementSize)
@@ -197,28 +216,60 @@ class Buffer {
 
   int64_t getByteSize() const { return storage.size(); }
 
-  void deallocate() {
+  void deallocate(mlir::Operation* op) {
     if (isAlloca) {
       setFailure("deallocated stack buffer");
-    } else if (isDeallocated) {
-      setFailure("double-free");
+    } else if (freedBy != nullptr) {
+      std::string failure;
+      llvm::raw_string_ostream os(failure);
+      os << "double-free\n";
+      os << "  Note: allocated by " << *allocatedBy << "\n";
+      os << "  Note: previously freed by " << *freedBy << "\n";
+      setFailure(failure);
     } else {
-      isDeallocated = true;
+      freedBy = op;
     }
   }
 
-  bool deallocated() const { return isDeallocated; }
+  bool deallocated() const { return freedBy != nullptr; }
+  mlir::Operation* freedByOp() const { return freedBy; }
+  void setAllocatedBy(mlir::Operation* allocatedBy) {
+    this->allocatedBy = allocatedBy;
+  }
 
-  void setFailure(llvm::StringRef failure) const { this->failure = failure; }
+  void setFailure(llvm::StringRef failure) const {
+    this->failure = failure.str();
+  }
   llvm::StringRef getFailure() const { return failure; }
 
   void setIsAlloca() { isAlloca = true; }
 
  private:
+  std::optional<size_t> getByteOffset(std::optional<int64_t> idx,
+                                      int64_t elementSize) const {
+    if (!idx) {
+      setFailure("out of bounds access");
+      return std::nullopt;
+    }
+
+    if (freedBy != nullptr) {
+      std::string failure;
+      llvm::raw_string_ostream os(failure);
+      os << "use-after-free\n";
+      os << "  Note: allocated by " << *allocatedBy << "\n";
+      os << "  Note: previously freed by " << *freedBy << "\n";
+      setFailure(failure);
+      return std::nullopt;
+    }
+
+    return *idx * elementSize;
+  }
+
   llvm::SmallVector<char> storage;
-  bool isDeallocated = false;
+  mlir::Operation* freedBy = nullptr;
+  mlir::Operation* allocatedBy = nullptr;
   bool isAlloca = false;
-  mutable llvm::StringRef failure;
+  mutable std::string failure;
 };
 
 template <typename T>
@@ -287,7 +338,7 @@ struct TensorOrMemref {
           return false;
         }
       }
-      if (at(indices) != other.at(indices)) return false;
+      if (!isEqual(at(indices), other.at(indices))) return false;
     }
     return true;
   }

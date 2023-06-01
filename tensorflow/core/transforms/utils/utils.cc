@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/utils/utils.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/strings/match.h"
@@ -56,7 +57,8 @@ void ForwardNonIntrinsicAttributes(Operation *src, Operation *dst) {
 
   // Forward all non-intrinsic attributes. If the source op is unregistered,
   // forward all attributes.
-  if (Optional<RegisteredOperationName> src_name = src->getRegisteredInfo()) {
+  if (std::optional<RegisteredOperationName> src_name =
+          src->getRegisteredInfo()) {
     ArrayRef<StringAttr> src_attr_names = src_name->getAttributeNames();
     name_set.insert(src_attr_names.begin(), src_attr_names.end());
   }

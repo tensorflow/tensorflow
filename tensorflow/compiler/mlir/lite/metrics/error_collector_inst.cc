@@ -70,7 +70,7 @@ ErrorCollectorInstrumentation::ErrorCollectorInstrumentation(
 
           for (const auto &note : diag.getNotes()) {
             const std::string note_str = note.str();
-            if (note_str.rfind(kErrorCodePrefix, 0) == 0) {
+            if (absl::StartsWith(note_str, kErrorCodePrefix)) {
               error_code = note_str.substr(sizeof(kErrorCodePrefix) - 1);
             }
 

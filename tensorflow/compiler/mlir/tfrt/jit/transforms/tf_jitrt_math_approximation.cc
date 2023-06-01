@@ -49,8 +49,8 @@ using TypePredicate = ::llvm::function_ref<bool(Type)>;
 
 // Returns vector shape if the element type is matching the predicate (scalars
 // that do match the predicate have shape equal to `{1}`).
-static llvm::Optional<SmallVector<int64_t, 2>> vectorShape(Type type,
-                                                           TypePredicate pred) {
+static std::optional<SmallVector<int64_t, 2>> vectorShape(Type type,
+                                                          TypePredicate pred) {
   // If the type matches the predicate then its shape is `{1}`.
   if (pred(type)) return SmallVector<int64_t, 2>{1};
 

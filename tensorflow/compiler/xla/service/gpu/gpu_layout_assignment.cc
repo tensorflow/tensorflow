@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 
 #include <memory>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/types/span.h"
@@ -233,9 +235,13 @@ bool DotCanSupportShapeWithLayout(const HloInstruction* dot,
   // If we are able to construct a `MatrixLayout` then the dot can support
   // this layout.
   return MatrixLayout::For(shape, dot_dims.lhs_batch_dimensions().size(),
-                           dot_dims.lhs_contracting_dimensions().size(),
+                           dot->operand(0)->shape().rank() -
+                               dot_dims.lhs_contracting_dimensions().size() -
+                               dot_dims.lhs_batch_dimensions().size(),
                            dot_dims.rhs_batch_dimensions().size(),
-                           dot_dims.rhs_contracting_dimensions().size())
+                           dot->operand(1)->shape().rank() -
+                               dot_dims.rhs_contracting_dimensions().size() -
+                               dot_dims.rhs_batch_dimensions().size())
       .ok();
 }
 
@@ -258,7 +264,7 @@ Status GpuLayoutAssignment::AddBackendConstraints(
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
-    if (IsMatrixMultiplication(*instruction)) {
+    if (instruction->opcode() == HloOpcode::kDot) {
       const Shape& output_shape = instruction->shape();
       const Shape& lhs_shape = instruction->operand(0)->shape();
       const Shape& rhs_shape = instruction->operand(1)->shape();
@@ -271,19 +277,19 @@ Status GpuLayoutAssignment::AddBackendConstraints(
       // minor physical dimension for inputs or the output.
       absl::Span<const int64_t> lhs_batch_dims =
           dot_dims.lhs_batch_dimensions();
-      absl::Span<const int64_t> lhs_col_dims =
+      absl::Span<const int64_t> lhs_contracting_dims =
           dot_dims.lhs_contracting_dimensions();
-      TF_ASSIGN_OR_RETURN(
-          std::vector<int64_t> lhs_row_dims,
-          GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_col_dims));
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> lhs_non_contracting_dims,
+                          GetNonContractingDims(lhs_shape, lhs_batch_dims,
+                                                lhs_contracting_dims));
 
       absl::Span<const int64_t> rhs_batch_dims =
           dot_dims.rhs_batch_dimensions();
-      absl::Span<const int64_t> rhs_row_dims =
+      absl::Span<const int64_t> rhs_contracting_dims =
           dot_dims.rhs_contracting_dimensions();
-      TF_ASSIGN_OR_RETURN(
-          std::vector<int64_t> rhs_col_dims,
-          GetNonContractingDims(rhs_shape, rhs_batch_dims, rhs_row_dims));
+      TF_ASSIGN_OR_RETURN(std::vector<int64_t> rhs_non_contracting_dims,
+                          GetNonContractingDims(rhs_shape, rhs_batch_dims,
+                                                rhs_contracting_dims));
 
       // For unbatched S8xS8->S32 matrix multiplication enforce a TN layout,
       // which will allow the NVidia GPUs to use TensorCores.
@@ -296,16 +302,32 @@ Status GpuLayoutAssignment::AddBackendConstraints(
 
       if (is_s8_to_s32) {
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
-            instruction, 0, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
+            instruction, 0, lhs_batch_dims, lhs_non_contracting_dims,
+            lhs_contracting_dims));
         TF_RETURN_IF_ERROR(SetOperandBatchRowsColsLayout(
-            instruction, 1, rhs_batch_dims, rhs_col_dims, rhs_row_dims));
+            instruction, 1, rhs_batch_dims, rhs_non_contracting_dims,
+            rhs_contracting_dims));
         TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
-      } else if (!lhs_batch_dims.empty()) {
-        TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
-                                               lhs_row_dims, lhs_col_dims));
-        TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
-                                               rhs_row_dims, rhs_col_dims));
-        TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+      } else {
+        if (!lhs_batch_dims.empty() || lhs_contracting_dims.size() > 1 ||
+            lhs_non_contracting_dims.size() > 1) {
+          TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 0, lhs_batch_dims,
+                                                 lhs_contracting_dims,
+                                                 lhs_non_contracting_dims));
+        }
+        if (!rhs_batch_dims.empty() || rhs_non_contracting_dims.size() > 1 ||
+            rhs_contracting_dims.size() > 1) {
+          TF_RETURN_IF_ERROR(SetDotOperandLayout(instruction, 1, rhs_batch_dims,
+                                                 rhs_contracting_dims,
+                                                 rhs_non_contracting_dims));
+        }
+        // If we have at least one batch dimension or there is more than one
+        // non-contracting dimension on lhs or rhs, we need to set a layout for
+        // the dot output.
+        if (!lhs_batch_dims.empty() || lhs_non_contracting_dims.size() > 1 ||
+            rhs_non_contracting_dims.size() > 1) {
+          TF_RETURN_IF_ERROR(SetDotLayout(instruction, constraints));
+        }
       }
     } else if (instruction->opcode() == HloOpcode::kTranspose) {
       const HloInstruction* operand = instruction->operand(0);
@@ -415,7 +437,7 @@ Status GpuLayoutAssignment::SetDotOperandLayout(
   if (MatrixLayout::For(shape, batch_dims, row_dims, col_dims).ok())
     return SetOperandLayout(shape, instruction, operand);
 
-  // Otherwise, fallback to forcing a (batch, rows, cols) layout.
+  // Otherwise, fallback to forcing (batch, rows, cols) layout.
   return SetOperandBatchRowsColsLayout(instruction, operand, batch_dims,
                                        row_dims, col_dims);
 }

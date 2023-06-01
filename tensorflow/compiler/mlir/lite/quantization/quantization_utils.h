@@ -20,31 +20,38 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_UTILS_H_
 
 #include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "mlir/IR/IRMapping.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/ir/FakeQuantSupport.h"
@@ -183,7 +190,7 @@ quant::QuantizedType DownCastScale(quant::QuantizedType type,
 quant::QuantizedType DownCastScale(quant::QuantizedType type, double min,
                                    double max, Location loc);
 
-bool IsOpNotQuantizable(Operation* op);
+bool IsOpQuantizable(Operation* op);
 
 // Specialized version of location to string for flatbuffer exported locations.
 inline std::string GetTensorNameFromLoc(Location loc) {
@@ -439,7 +446,7 @@ class QuantizationPattern : public RewritePattern {
         return failure();
       }
 
-      if (IsOpNotQuantizable(quantizing_op) &&
+      if (!IsOpQuantizable(quantizing_op) &&
           !static_cast<const ConcreteT*>(this)->IsQuantizableCustomOp(
               quantizing_op, custom_map)) {
         if (!(enable_verify && enable_whole_model_verify)) {
@@ -646,7 +653,7 @@ class QuantizationPattern : public RewritePattern {
       // compared against in parallel.
       // N.B. the return op will use this floating-point result.
       Value result;
-      if (IsOpNotQuantizable(float_op)) {
+      if (!IsOpQuantizable(float_op)) {
         // For not quantizable ops, search for dequantize attached to the
         // quantized op of the output.
         if (Operation* quantize_op = dyn_cast_or_null<QuantizeOpT>(

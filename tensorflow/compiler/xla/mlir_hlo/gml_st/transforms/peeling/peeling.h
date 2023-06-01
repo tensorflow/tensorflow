@@ -24,19 +24,19 @@ namespace mlir {
 namespace gml_st {
 
 struct GmlStPeelingResult {
-  ParallelOp mainLoop = nullptr;
-  SmallVector<ParallelOp> tailLoops = {};
+  scf::ForallOp mainLoop = nullptr;
+  SmallVector<scf::ForallOp> tailLoops = {};
 };
 
-/// Rewrite a gml_st::ParallelOp with bounds/step that potentially do not divide
-/// evenly into a gml_st::ParallelOp where the step divides the iteration space
-/// evenly, followed by another gml_st::ParallelOp for the last (partial)
+/// Rewrite a scf::ForallOp with bounds/step that potentially do not divide
+/// evenly into a scf::ForallOp where the step divides the iteration space
+/// evenly, followed by another scf::ForallOp for the last (partial)
 /// iteration (if any).  This transformation is called "loop peeling".
 ///
 /// These functions peel all loops in the loop nest by calling
 /// peelAndCanonicalizeGmlStLoop. Additionally, they mark all loops (main and
 /// remainder loops) as peeled, so the same loop is not rewritten a second time.
-GmlStPeelingResult peelAllLoops(ParallelOp loop,
+GmlStPeelingResult peelAllLoops(scf::ForallOp loop,
                                 mlir::PatternRewriter &rewriter);
 
 struct SCFForPeelingResult {

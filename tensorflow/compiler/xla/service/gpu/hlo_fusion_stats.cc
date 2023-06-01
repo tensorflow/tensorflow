@@ -71,7 +71,7 @@ class OpcodeCollector : public ConstDfsHloVisitorWithDefault {
         opcodes_.insert("cwise");
         break;
       default:
-        opcodes_.insert(HloOpcodeString(instr->opcode()));
+        opcodes_.insert(std::string(HloOpcodeString(instr->opcode())));
     }
     return OkStatus();
   }

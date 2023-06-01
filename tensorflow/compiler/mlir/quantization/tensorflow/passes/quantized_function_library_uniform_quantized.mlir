@@ -51,7 +51,13 @@ module {
                                   %filter_scale, %filter_zp, %out_scale, %out_zp) {
           config = "", config_proto = "", executor_type = "", f=@GenerateImplFunctionName(${main_op})
         } : (tensor<*x!tf_type.qint8>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
-      %add = "tf.UniformQuantizedAdd"(%main_out, %bias, %input_scale, %input_zp, %bias_scale, %bias_zp, %out_scale, %out_zp) {
+      // Extract channel shape from filter, and ensure input/output scale/zp's have the same channel size.
+      %filter_shape = "tf.Shape" (%filter_scale) : (tensor<*xf32>) -> tensor<*xi32>
+      %input_scale_filled = "tf.Fill" (%filter_shape, %input_scale) : (tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
+      %input_zp_filled = "tf.Fill" (%filter_shape, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+      %out_scale_filled = "tf.Fill" (%filter_shape, %out_scale) : (tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
+      %out_zp_filled = "tf.Fill" (%filter_shape, %out_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+      %add = "tf.UniformQuantizedAdd"(%main_out, %bias, %input_scale_filled, %input_zp_filled, %bias_scale, %bias_zp, %out_scale_filled, %out_zp_filled) {
         lhs_quantization_axis = -1,
         lhs_quantization_min_val = -128,
         lhs_quantization_max_val = 127,
@@ -64,9 +70,9 @@ module {
         T = "tfdtype$DT_QINT32",
         attr_map = ""
       } : (tensor<*x!tf_type.qint32>, tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
-      %act = "tf.PartitionedCall"(%add, %input_scale, %input_zp, %out_scale, %out_zp) {
+      %act = "tf.PartitionedCall"(%add, %input_scale_filled, %input_zp_filled, %out_scale_filled, %out_zp_filled, %out_scale, %out_zp) {
           config = "", config_proto = "", executor_type = "", f=@${act_func}
-        } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x${output_type}>
+        } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x${output_type}>
       func.return %act : tensor<*x${output_type}>
     }
 
@@ -85,9 +91,14 @@ module {
                                   %filter_scale, %filter_zp, %out_scale, %out_zp) {
           config = "", config_proto = "", executor_type = "", f=@GenerateImplFunctionName(${main_op})
         } : (tensor<*x!tf_type.qint8>, tensor<*x!tf_type.qint8>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
-      %act = "tf.PartitionedCall"(%main_out, %input_scale, %input_zp, %out_scale, %out_zp) {
+      %filter_shape = "tf.Shape" (%filter_scale) : (tensor<*xf32>) -> tensor<*xi32>
+      %input_scale_filled = "tf.Fill" (%filter_shape, %input_scale) : (tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
+      %input_zp_filled = "tf.Fill" (%filter_shape, %input_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+      %out_scale_filled = "tf.Fill" (%filter_shape, %out_scale) : (tensor<*xi32>, tensor<*xf32>) -> tensor<*xf32>
+      %out_zp_filled = "tf.Fill" (%filter_shape, %out_zp) : (tensor<*xi32>, tensor<*xi32>) -> tensor<*xi32>
+      %act = "tf.PartitionedCall"(%main_out, %input_scale_filled, %input_zp_filled, %out_scale_filled, %out_zp_filled, %out_scale, %out_zp) {
           config = "", config_proto = "", executor_type = "", f=@${act_func}
-        } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x${output_type}>
+        } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x${output_type}>
       func.return %act : tensor<*x${output_type}>
     }
   } // end for
@@ -198,7 +209,7 @@ module {
 
   // Requantizes and applies quantized Relu by clipping.
   func.func private @internal_requantize_no_activation_fn(%input : tensor<*x!tf_type.qint32>, %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x!tf_type.qint8> {
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>, %out_scale_single : tensor<*xf32>, %out_zp_single : tensor<*xi32>) -> tensor<*x!tf_type.qint8> {
     %q_out = "tf.PartitionedCall"(%input, %input_scale, %input_zp, %out_scale, %out_zp) {
         config = "", config_proto = "", executor_type = "", f=@internal_requantize_qi8_fn
       } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint8>
@@ -207,20 +218,23 @@ module {
 
   // Requantizes and applies quantized Relu6 by clipping.
   func.func private @internal_requantize_and_relu_fn(%input : tensor<*x!tf_type.qint32>, %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x!tf_type.qint8> {
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>, %out_scale_single : tensor<*xf32>, %out_zp_single : tensor<*xi32>) -> tensor<*x!tf_type.qint8> {
+    %filter_shape = "tf.Shape" (%input_scale) : (tensor<*xf32>) -> tensor<*xi32>
     %i8_min = "tf.Const"() {value = dense<-128.0> : tensor<f32>} : () -> tensor<f32>
     %i8_max = "tf.Const"() {value = dense<127.0> : tensor<f32>} : () -> tensor<f32>
+    %i8_min_filled = "tf.Fill" (%filter_shape, %i8_min) : (tensor<*xi32>, tensor<f32>) -> tensor<*xf32>
+    %i8_max_filled = "tf.Fill" (%filter_shape, %i8_max) : (tensor<*xi32>, tensor<f32>) -> tensor<*xf32>
     %float_out_zp = "tf.Cast"(%out_zp) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<f32>
-    %qclip_min = "tf.Cast"(%i8_min) {Truncate = false} : (tensor<f32>) -> tensor<!tf_type.qint32>
-    %qi8_max = "tf.Cast"(%i8_max) {Truncate = false} : (tensor<f32>) -> tensor<!tf_type.qint32>
-    %relu = "tf.UniformQuantizedClipByValue"(%input, %qclip_min, %qi8_max, %out_scale, %out_zp) {
+    %clip_min = "tf.Maximum"(%i8_min_filled, %float_out_zp) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %qclip_min = "tf.Cast"(%clip_min) {Truncate = false} : (tensor<*xf32>) -> tensor<*x!tf_type.qint32>
+    %qclip_max = "tf.Cast"(%i8_max_filled) {Truncate = false} : (tensor<*xf32>) -> tensor<*x!tf_type.qint32>
+    %relu = "tf.UniformQuantizedClipByValue"(%input, %qclip_min, %qclip_max, %out_scale, %out_zp) {
       T = "tfdtype$DT_QINT32",
       quantization_axis = -1,
       quantization_min_val = -128,
       quantization_max_val = 127,
       attr_map = ""
-    } : (tensor<*x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
+    } : (tensor<*x!tf_type.qint32>, tensor<*x!tf_type.qint32>, tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
     %requantize = "tf.PartitionedCall"(%relu, %input_scale, %input_zp, %out_scale, %out_zp) {
         config = "", config_proto = "", executor_type = "", f=@internal_requantize_qi8_fn
       } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint8>
@@ -229,30 +243,34 @@ module {
 
    // Apply requantization and relu6.
   func.func private @internal_requantize_and_relu6_fn(%input : tensor<*x!tf_type.qint32>, %input_scale : tensor<*xf32>, %input_zp : tensor<*xi32>,
-                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>) -> tensor<*x!tf_type.qint8> {
+                         %out_scale : tensor<*xf32>, %out_zp : tensor<*xi32>, %out_scale_single : tensor<*xf32>, %out_zp_single : tensor<*xi32>) -> tensor<*x!tf_type.qint8> {
+    %filter_shape = "tf.Shape" (%input_scale) : (tensor<*xf32>) -> tensor<*xi32>
     %i8_min = "tf.Const"() {value = dense<-128.0> : tensor<f32>} : () -> tensor<f32>
     %i8_max = "tf.Const"() {value = dense<127.0> : tensor<f32>} : () -> tensor<f32>
     %act_max =  "tf.Const"() {value = dense<6.0> : tensor<f32>} : () -> tensor<f32>
-    %i8_act_max_0 = "tf.PartitionedCall"(%act_max, %input_scale, %input_zp) {
+    // Singular scale/zp is needed to ensure quantization is per-tensor for this variable.
+    %i8_act_max_0 = "tf.PartitionedCall"(%act_max, %out_scale_single, %out_zp_single) {
         config = "", config_proto = "", executor_type = "", f=@quantize_i8
       } : (tensor<f32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint8>
     %i8_act_max_1 = "tf.Cast"(%i8_act_max_0) {Truncate = false} : (tensor<*x!tf_type.qint8>) -> tensor<f32>
     %float_out_zp = "tf.Cast"(%out_zp) {Truncate = false} : (tensor<*xi32>) -> tensor<*xf32>
-    %clip_min = "tf.Maximum"(%i8_min, %float_out_zp) : (tensor<f32>, tensor<*xf32>) -> tensor<f32>
-    %clip_max = "tf.Minimum"(%i8_max, %i8_act_max_1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
-    %qclip_min = "tf.Cast"(%i8_min) {Truncate = false} : (tensor<f32>) -> tensor<!tf_type.qint32>
-    %qclip_max = "tf.Cast"(%i8_max) {Truncate = false} : (tensor<f32>) -> tensor<!tf_type.qint32>
+    %i8_min_filled = "tf.Fill" (%filter_shape, %i8_min) : (tensor<*xi32>, tensor<f32>) -> tensor<*xf32>
+    %i8_max_filled = "tf.Fill" (%filter_shape, %i8_max) : (tensor<*xi32>, tensor<f32>) -> tensor<*xf32>
+    %i8_act_max_1_filled = "tf.Fill" (%filter_shape, %i8_act_max_1) : (tensor<*xi32>, tensor<f32>) -> tensor<*xf32>
+    %clip_min = "tf.Maximum"(%i8_min_filled, %float_out_zp) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %clip_max = "tf.Minimum"(%i8_max_filled, %i8_act_max_1_filled) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+    %qclip_min = "tf.Cast"(%clip_min) {Truncate = false} : (tensor<*xf32>) -> tensor<*x!tf_type.qint32>
+    %qclip_max = "tf.Cast"(%clip_max) {Truncate = false} : (tensor<*xf32>) -> tensor<*x!tf_type.qint32>
     %relu = "tf.UniformQuantizedClipByValue"(%input, %qclip_min, %qclip_max, %out_scale, %out_zp) {
       T = "tfdtype$DT_QINT32",
       quantization_axis = -1,
       quantization_min_val = -128,
       quantization_max_val = 127,
       attr_map = ""
-    } : (tensor<*x!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
+    } : (tensor<*x!tf_type.qint32>, tensor<*x!tf_type.qint32>, tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint32>
     %requantize = "tf.PartitionedCall"(%relu, %input_scale, %input_zp, %out_scale, %out_zp) {
         config = "", config_proto = "", executor_type = "", f=@internal_requantize_qi8_fn
       } : (tensor<*x!tf_type.qint32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) -> tensor<*x!tf_type.qint8>
     func.return %requantize : tensor<*x!tf_type.qint8>
   }
 }
-

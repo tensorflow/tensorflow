@@ -492,6 +492,9 @@ TFTPU_CAPI_EXPORT void TpuCompile_DestroyCompilationCacheKey(
 TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
     uint64_t fingerprint, const char* data, size_t size);
 
+// Returns a pointer to the TPU topology struct.
+TFTPU_CAPI_EXPORT SE_TpuTopology* TpuUtil_GetTopologyPtr();
+
 XLA_TpuNodeContext* TpuNodeContext_Create(int device_ordinal,
                                           TF_Status* status);
 void TpuNodeContext_Free(XLA_TpuNodeContext* node_context);
@@ -796,6 +799,7 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateGuaranteedConstFingerprint);
+  TFTPU_ADD_FN_IN_STRUCT(TpuUtil_GetTopologyPtr);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Create);
   TFTPU_ADD_FN_IN_STRUCT(TpuNodeContext_Free);

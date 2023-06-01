@@ -280,14 +280,14 @@ class MklCPUAllocator : public Allocator {
   }
 
   static inline void* CallocHook(size_t num, size_t size) {
-    Status s = Status(error::Code::UNIMPLEMENTED,
+    Status s = Status(absl::StatusCode::kUnimplemented,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
     return nullptr;  // return a value and make static code analyzers happy
   }
 
   static inline void* ReallocHook(void* ptr, size_t size) {
-    Status s = Status(error::Code::UNIMPLEMENTED,
+    Status s = Status(absl::StatusCode::kUnimplemented,
                       "Unimplemented case for hooking MKL function.");
     TF_CHECK_OK(s);  // way to assert with an error message
     return nullptr;  // return a value and make static code analyzers happy

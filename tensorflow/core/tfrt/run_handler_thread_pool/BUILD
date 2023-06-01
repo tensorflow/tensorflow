@@ -39,7 +39,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -80,7 +79,7 @@ tf_cc_test(
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@tf_runtime//:hostcontext",
     ],
 )

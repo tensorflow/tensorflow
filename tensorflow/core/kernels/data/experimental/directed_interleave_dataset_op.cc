@@ -100,11 +100,11 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     // As long as one of input dataset has infinite cardinality, the output
     // cardinality is infinite.
     for (const auto& input : data_inputs_) {
-      int64_t n = input->Cardinality();
+      int64_t n = input->Cardinality(options);
       if (n == kInfiniteCardinality) {
         return n;
       }

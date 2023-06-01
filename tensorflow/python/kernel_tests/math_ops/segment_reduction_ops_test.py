@@ -50,8 +50,16 @@ class SegmentReductionHelper(test.TestCase):
     return constant_op.constant(
         np_values, shape=input_shape, dtype=dtype), np_values
 
-  def _segmentReduce(self, indices, x, op1, op2=None, num_segments=None,
-                     initial_value=0):
+  def _segmentReduce(
+      self,
+      indices,
+      x,
+      op1,
+      op2=None,
+      num_segments=None,
+      initial_value=0,
+      empty_value=0,
+  ):
     if not x.size:
       return np.array([])
     indices = np.asarray(indices)
@@ -69,8 +77,8 @@ class SegmentReductionHelper(test.TestCase):
       else:
         output[index] = x_flat[i]
     # zero initialize values that are still uncalculated.
-    initial_value_slice = np.ones(slice_shape) * initial_value
-    output = [o if o is not None else initial_value_slice for o in output]
+    empty_value_slice = np.ones(slice_shape) * empty_value
+    output = [o if o is not None else empty_value_slice for o in output]
     if op2 is not None:
       output = [op2(o) for o in output]
     output = [o.reshape(slice_shape) for o in output]
@@ -185,6 +193,23 @@ class SegmentReductionOpTest(SegmentReductionHelper, parameterized.TestCase):
         indices = [0, 0, 3, 3]
         np_ans = self._segmentReduce(indices, np_x, np.add)
         s = math_ops.segment_sum(data=tf_x, segment_ids=indices)
+        tf_ans = self.evaluate(s)
+        self.assertAllClose(np_ans, tf_ans)
+
+  def testSegmentIdsHoleEmptyValue(self):
+    shape = [4, 4]
+    for use_gpu in [True, False]:
+      with self.cached_session(use_gpu=use_gpu):
+        tf_x, np_x = self._input(shape, dtype=dtypes_lib.float32)
+        indices = [0, 0, 3, 3]
+        np_ans = self._segmentReduce(
+            indices,
+            np_x,
+            np.max,
+            initial_value=-dtypes_lib.float32.min,
+            empty_value=0,
+        )
+        s = math_ops.segment_max(data=tf_x, segment_ids=indices)
         tf_ans = self.evaluate(s)
         self.assertAllClose(np_ans, tf_ans)
 
@@ -346,7 +371,9 @@ class UnsortedSegmentTest(SegmentReductionHelper, parameterized.TestCase):
                   np_op1,
                   np_op2,
                   num_segments=num_segments,
-                  initial_value=init_op(dtype))
+                  initial_value=init_op(dtype),
+                  empty_value=init_op(dtype),
+              )
               s = tf_op(tf_x, segment_ids=indices, num_segments=num_segments)
               tf_ans = self.evaluate(s)
               self.assertAllCloseAccordingToType(np_ans, tf_ans)
@@ -689,41 +716,42 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     segment_indices = [0, 2, 2, 2]
     tf_indices = [8, 3, 0, 9]
     num_segments = 5
-    with self.session():
-      for np_op1, np_op2, tf_op in ops_list:
-        np_ans = self._sparseSegmentReduce(
-            np_x,
-            tf_indices,
-            segment_indices,
-            np_op1,
-            np_op2,
-            num_segments=num_segments)
-        s = tf_op(
-            data=tf_x,
-            indices=tf_indices,
-            segment_ids=segment_indices,
-            num_segments=num_segments)
-        tf_ans = self.evaluate(s)
-        self.assertAllClose(np_ans, tf_ans)
+    for np_op1, np_op2, tf_op in ops_list:
+      np_ans = self._sparseSegmentReduce(
+          np_x,
+          tf_indices,
+          segment_indices,
+          np_op1,
+          np_op2,
+          num_segments=num_segments,
+      )
+      s = tf_op(
+          data=tf_x,
+          indices=tf_indices,
+          segment_ids=segment_indices,
+          num_segments=num_segments,
+      )
+      tf_ans = self.evaluate(s)
+      self.assertAllClose(np_ans, tf_ans)
 
   def testWithEmptySegments(self):
     tf_x = constant_op.constant([], shape=[0, 4], dtype=dtypes_lib.float32)
+    ops_list = [math_ops.sparse_segment_sum, math_ops.sparse_segment_mean]
+    for tf_op in ops_list:
+      s = tf_op(data=tf_x, indices=[], segment_ids=[])
+      tf_ans = self.evaluate(s)
+      self.assertAllClose(np.zeros([0, 4]), tf_ans)
+
+  def testWithEmptySegmentsWithNumSegments(self):
+    tf_x = constant_op.constant([], shape=[0, 4], dtype=dtypes_lib.float32)
     ops_list = [
         math_ops.sparse_segment_sum_with_num_segments,
-        math_ops.sparse_segment_mean_with_num_segments
+        math_ops.sparse_segment_mean_with_num_segments,
     ]
-    segment_indices = []
-    tf_indices = []
-    num_segments = 5
-    with self.session():
-      for tf_op in ops_list:
-        s = tf_op(
-            data=tf_x,
-            indices=tf_indices,
-            segment_ids=segment_indices,
-            num_segments=num_segments)
-        tf_ans = self.evaluate(s)
-        self.assertAllClose(np.zeros([5, 4]), tf_ans)
+    for tf_op in ops_list:
+      s = tf_op(data=tf_x, indices=[], segment_ids=[], num_segments=5)
+      tf_ans = self.evaluate(s)
+      self.assertAllClose(np.zeros([5, 4]), tf_ans)
 
   @test_util.run_in_graph_and_eager_modes
   def testSegmentScalarIdiRaisesInvalidArgumentError(self):

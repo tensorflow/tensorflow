@@ -40,7 +40,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import gen_lookup_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
@@ -564,7 +564,7 @@ class StaticHashTableTest(BaseLookupTableTest, parameterized.TestCase):
       def false_fn():
         return constant_op.constant(0, dtype=dtypes.float32)
 
-      return beta * control_flow_ops.cond(
+      return beta * cond.cond(
           constant_op.constant(True), true_fn=true_fn, false_fn=false_fn)
 
     with backprop.GradientTape() as tape:

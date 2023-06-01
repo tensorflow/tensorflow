@@ -8,6 +8,7 @@ package(
         ":__subpackages__",
         "//tensorflow/compiler/mlir:__subpackages__",
         "//tensorflow/core:__subpackages__",
+        "//tensorflow/core:dependency_allowlist",
         "//tensorflow/tools/tfg_graph_transforms:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/overflow.h"
@@ -132,7 +133,7 @@ class ReshapeOp : public OpKernel {
               " and ", d);
         }
         *unknown_index = d;
-        shape->AddDim(1);
+        TF_RETURN_IF_ERROR(shape->AddDimWithStatus(1));
       } else if (size < 0) {
         return errors::InvalidArgument("Size ", d,
                                        " must be non-negative, not ", size);
@@ -140,7 +141,7 @@ class ReshapeOp : public OpKernel {
         // We don't include zero-sized dimension in product, so that we can
         // still calculate number of elements for non-zero-sized dimensions and
         // therefore infer their shapes.
-        shape->AddDim(size);
+        TF_RETURN_IF_ERROR(shape->AddDimWithStatus(size));
         *has_zero_dim = true;
       } else {
         if (MultiplyWithoutOverflow(shape->num_elements(), size) < 0) {
@@ -154,7 +155,7 @@ class ReshapeOp : public OpKernel {
           return errors::InvalidArgument("Shape [", msg,
                                          "] has too many elements");
         }
-        shape->AddDim(size);
+        TF_RETURN_IF_ERROR(shape->AddDimWithStatus(size));
         (*product) *= size;
       }
     }

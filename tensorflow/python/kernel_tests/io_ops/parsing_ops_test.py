@@ -18,6 +18,7 @@ import copy
 import itertools
 
 import numpy as np
+import sys
 
 from google.protobuf import json_format
 
@@ -2501,7 +2502,10 @@ class ParseTensorOpTest(test.TestCase):
   def testToFloat32(self):
     with self.cached_session():
       expected = np.random.rand(3, 4, 5).astype(np.float32)
-      tensor_proto = tensor_util.make_tensor_proto(expected)
+      if sys.byteorder == "big":
+        tensor_proto = tensor_util.make_tensor_proto(expected.byteswap())
+      else:
+        tensor_proto = tensor_util.make_tensor_proto(expected)
 
       serialized = array_ops.placeholder(dtypes.string)
       tensor = parsing_ops.parse_tensor(serialized, dtypes.float32)

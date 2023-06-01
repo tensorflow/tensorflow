@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <optional>
 #include <string>
 
 #include "llvm/Support/FormatVariadic.h"
@@ -53,7 +54,7 @@ std::string Reverse(llvm::ArrayRef<int64_t> input_shape,
 template <int64_t INPUT_RANK, size_t N_REVERSE_DIMS>
 auto EigenReverse(std::array<int64_t, N_REVERSE_DIMS> reverse_dims) {
   return [reverse_dims](llvm::ArrayRef<Tensor> inputs,
-                        llvm::Optional<Eigen::ThreadPoolDevice> device) {
+                        std::optional<Eigen::ThreadPoolDevice> device) {
     std::array<bool, INPUT_RANK> bool_reverse_dims;
     bool_reverse_dims.fill(false);
     for (auto i : reverse_dims) {

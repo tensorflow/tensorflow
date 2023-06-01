@@ -14,7 +14,7 @@ tf_module {
   }
   member {
     name: "Layout"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "MATCH"
@@ -61,6 +61,10 @@ tf_module {
     argspec: "args=[\'mesh_dim_names\', \'mesh_shape\', \'mesh_name\', \'ring_dims\', \'ring_axes\', \'ring_bounds\', \'can_split_host_across_rings\', \'build_ring_across_rings\', \'rotate_ring_across_rings\', \'use_xla_spmd\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\', \'False\', \'False\'], "
   }
   member_method {
+    name: "default_mesh"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
+  member_method {
     name: "device_name"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -75,6 +79,10 @@ tf_module {
   member_method {
     name: "full_job_name"
     argspec: "args=[\'task_id\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get_default_mesh"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "heartbeat_enabled"
@@ -138,7 +146,11 @@ tf_module {
   }
   member_method {
     name: "relayout"
-    argspec: "args=[\'tensor\', \'layout\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'tensor\', \'layout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "relayout_like"
+    argspec: "args=[\'tensor\', \'layout_tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "run_on"

@@ -16,8 +16,8 @@ cc_library(
     hdrs = ["grpc_eager_service.h"],
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
-        "//tensorflow/core/protobuf:eager_service_cc_grpc_proto",
         "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/core/protobuf:eager_service_cc_grpc_proto",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -28,8 +28,6 @@ cc_library(
     # copybara:uncomment copts = ["-Wthread-safety-analysis"],
     deps = [
         ":grpc_eager_service",
-        "//tensorflow/core/platform:error_payloads",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -39,7 +37,9 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/platform:error_payloads",
         "//tensorflow/core/protobuf:eager_service_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
     ] + tf_grpc_cc_dependencies(),
 )
 
@@ -51,7 +51,6 @@ cc_library(
     deps = [
         ":grpc_eager_service",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/core/distributed_runtime/eager:eager_service_impl",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",

@@ -15,15 +15,10 @@ limitations under the License.
 
 #include "gml_st/transforms/transforms.h"
 
-#include <utility>
-
-#include "mlir/IR/Matchers.h"
+#include "mlir/IR/BuiltinTypes.h"
 
 namespace mlir {
 namespace gml_st {
-
-bool isZero(Value v) { return matchPattern(v, m_Zero()); }
-bool isOne(Value v) { return matchPattern(v, m_One()); }
 
 bool hasSingleElementOperandsAndResults(Operation *op) {
   auto isScalar = [](Type type) {
@@ -35,19 +30,6 @@ bool hasSingleElementOperandsAndResults(Operation *op) {
          llvm::all_of(op->getResultTypes(), isScalar);
 }
 
-bool isIdentitySlice(ValueRange offsets, ValueRange strides) {
-  // Offsets must be all 0s and strides must be all 1s.
-  return llvm::all_of(offsets, [](Value v) { return isZero(v); }) &&
-         llvm::all_of(strides, [](Value v) { return isOne(v); });
-}
-
-bool haveSameStaticShape(Value lhs, Value rhs) {
-  auto lhsType = lhs.getType().cast<ShapedType>();
-  auto rhsType = rhs.getType().cast<ShapedType>();
-  if (!lhsType.hasStaticShape() || !rhsType.hasStaticShape()) return false;
-  return lhsType == rhsType;
-}
-
 void setLabel(Operation *op, StringRef name) {
   op->setAttr(name, UnitAttr::get(op->getContext()));
 }
@@ -55,15 +37,6 @@ void setLabel(Operation *op, StringRef name) {
 void removeLabel(Operation *op, StringRef name) { op->removeAttr(name); }
 
 bool hasLabel(Operation *op, StringRef name) { return op->hasAttr(name); }
-
-constexpr llvm::StringLiteral kOpLabel = "op_label";
-
-bool hasMatchingLabel(Operation *op, StringRef label) {
-  auto opLabelAttr = op->getAttr(kOpLabel);
-  if (!opLabelAttr) return false;
-
-  return opLabelAttr.cast<StringAttr>().getValue() == label;
-}
 
 }  // namespace gml_st
 }  // namespace mlir

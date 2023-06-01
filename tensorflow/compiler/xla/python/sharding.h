@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <optional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/types/span.h"
-#include "pybind11/numpy.h"
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/numpy.h"  // from @pybind11
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/sharded_device_array.h"
@@ -41,15 +42,7 @@ class Sharding {
 
   virtual ~Sharding() = default;
 
-  int num_devices() const {
-    if (num_devices_.has_value()) {
-      return *num_devices_;
-    }
-
-    auto self = pybind11::cast(this);
-    pybind11::set device_set = self.attr("device_set");
-    return device_set.size();
-  }
+  static int SafeNumDevices(pybind11::handle sharding);
 
  private:
   std::optional<int> num_devices_;
@@ -145,8 +138,20 @@ class GSPMDSharding : public XLACompatibleSharding {
         devices_(std::move(devices)),
         op_sharding_(std::move(op_sharding)) {}
 
+  GSPMDSharding(pybind11::list devices, xla::HloSharding op_sharding)
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+        devices_(std::move(devices)),  // Implicitly converts a list to a tuple.
+        op_sharding_(std::move(op_sharding)) {}
+
+  GSPMDSharding(pybind11::tuple devices, xla::HloSharding op_sharding)
+      : XLACompatibleSharding(/*num_devices=*/devices.size()),
+        devices_(std::move(devices)),
+        op_sharding_(std::move(op_sharding)) {}
+
   const pybind11::tuple& devices() const { return devices_; }
-  const xla::OpSharding& op_sharding() const { return op_sharding_; }
+  const std::variant<xla::OpSharding, xla::HloSharding>& op_sharding() const {
+    return op_sharding_;
+  }
 
   size_t Hash() {
     if (!hash_.has_value()) {
@@ -161,9 +166,13 @@ class GSPMDSharding : public XLACompatibleSharding {
   }
 
   xla::HloSharding hlo_sharding() const {
-    auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
+    if (std::holds_alternative<xla::HloSharding>(op_sharding_)) {
+      return std::get<xla::HloSharding>(op_sharding_);
+    }
+    auto hlo_sharding =
+        xla::HloSharding::FromProto(std::get<xla::OpSharding>(op_sharding_));
     if (!hlo_sharding.ok()) {
-      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+      throw xla::XlaRuntimeError(std::string(hlo_sharding.status().message()));
     }
     return hlo_sharding.value();
   }
@@ -176,19 +185,38 @@ class GSPMDSharding : public XLACompatibleSharding {
  private:
   size_t CalculateHash() const {
     // We only hash `op_sharding_` here for performance.
-    auto hlo_sharding = xla::HloSharding::FromProto(op_sharding_);
-    if (!hlo_sharding.ok()) {
-      throw xla::XlaRuntimeError(hlo_sharding.status().error_message());
+    if (std::holds_alternative<xla::OpSharding>(op_sharding_)) {
+      auto hlo_sharding =
+          xla::HloSharding::FromProto(std::get<xla::OpSharding>(op_sharding_));
+      if (!hlo_sharding.ok()) {
+        throw xla::XlaRuntimeError(
+            std::string(hlo_sharding.status().message()));
+      }
+      return absl::Hash<xla::HloSharding>()(*hlo_sharding);
+    } else {
+      auto& hlo_sharding = std::get<xla::HloSharding>(op_sharding_);
+      return absl::Hash<xla::HloSharding>()(hlo_sharding);
     }
-    return absl::Hash<xla::HloSharding>()(*hlo_sharding);
   }
 
   bool IsOpShardingReplicated() const {
-    if (op_sharding_.tile_assignment_devices().size() == 1) {
-      return true;
+    if (std::holds_alternative<xla::OpSharding>(op_sharding_)) {
+      if (std::get<xla::OpSharding>(op_sharding_)
+              .tile_assignment_devices()
+              .size() == 1) {
+        return true;
+      }
     } else {
-      return hlo_sharding().IsReplicated();
+      // For JAX, shardings with 1 device are considered as replicated in its
+      // semantics so that downstream things continue to work.
+      if (std::get<xla::HloSharding>(op_sharding_)
+              .tile_assignment()
+              .num_elements() == 1) {
+        return true;
+      }
     }
+
+    return hlo_sharding().IsReplicated();
   }
 
   static bool AreOpShardingsEqual(const GSPMDSharding& a,
@@ -205,7 +233,7 @@ class GSPMDSharding : public XLACompatibleSharding {
   }
 
   pybind11::tuple devices_;
-  xla::OpSharding op_sharding_;
+  std::variant<xla::OpSharding, xla::HloSharding> op_sharding_;
 
   std::optional<size_t> hash_;
 };

@@ -64,6 +64,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateStripSavedModuleMetadataPass();
 std::unique_ptr<OperationPass<ModuleOp>>
 CreateConvertSessionInitializerToFunctionPass();
 
+// Creates forwarding functions for 'exported_names'.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateAddFunctionsForExportedNamesPass();
+
 #define GEN_PASS_REGISTRATION
 #define GEN_PASS_DECL_DEDUPBOUNDINPUTBINDINGPASS
 #define GEN_PASS_DECL_FREEZEASSETSPASS
@@ -73,6 +77,7 @@ CreateConvertSessionInitializerToFunctionPass();
 #define GEN_PASS_DECL_OPTIMIZEGLOBALTENSORSPASS
 #define GEN_PASS_DECL_REMOVEVARIABLESINSESSIONINITIALIZERPASS
 #define GEN_PASS_DECL_STRIPSAVEDMODULEMETADATAPASS
+#define GEN_PASS_DECL_ADDFUNCTIONSFOREXPORTEDNAMESPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
 }  // namespace tf_saved_model

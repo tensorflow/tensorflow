@@ -15,16 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_
 
-#include "tensorflow/lite/core/experimental/acceleration/configuration/delegate_registry.h"
+// This header file is no longer experimental.
+// Please use the non-experimental file instead.
 
-namespace tflite {
-namespace delegates {
+#include "tensorflow/lite/acceleration/configuration/delegate_registry.h"  // IWYU pragma: export
 
-using TfLiteOpaqueDelegatePtr = ::tflite::delegates::TfLiteDelegatePtr;
-using DelegatePluginInterface = ::tflite::delegates::DelegatePluginInterface;
-using DelegatePluginRegistry = ::tflite::delegates::DelegatePluginRegistry;
-
-}  // namespace delegates
-}  // namespace tflite
+// IWYU pragma: private, include "third_party/tensorflow/lite/acceleration/configuration/delegate_registry.h"
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_ACCELERATION_CONFIGURATION_DELEGATE_REGISTRY_H_

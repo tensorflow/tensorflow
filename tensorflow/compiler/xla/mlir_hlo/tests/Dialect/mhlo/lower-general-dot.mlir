@@ -57,11 +57,8 @@ func.func @testBatchPassthrough(%arg0: tensor<2x2x3xf32>, %arg1: tensor<2x1x2xf3
 
 // CHECK-LABEL: @testVec
 func.func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> {
-  // CHECK-NEXT: [[R0:%.+]] = mhlo.reshape %arg0 : (tensor<32xf32>) -> tensor<1x32xf32>
-  // CHECK-NEXT: [[R1:%.+]] = mhlo.reshape %arg1 : (tensor<32xf32>) -> tensor<32x1xf32>
-  // CHECK-NEXT: [[M:%.+]] = "mhlo.dot"([[R0]], [[R1]])
-  // CHECK-NEXT: [[RR:%.+]] = mhlo.reshape [[M]] : (tensor<1x1xf32>) -> tensor<f32>
-  // CHECK-NEXT: return [[RR]]
+  // CHECK-NEXT: [[R:%.+]] = "mhlo.dot"(%arg0, %arg1)
+  // CHECK-NEXT: return [[R]]
   %0 = "mhlo.dot_general"(%arg0, %arg1) {
     dot_dimension_numbers = #mhlo.dot<
       lhs_contracting_dimensions = [0],
@@ -70,6 +67,22 @@ func.func @testVec(%arg0: tensor<32xf32>, %arg1: tensor<32xf32>) -> tensor<f32> 
     precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
   } : (tensor<32xf32>, tensor<32xf32>) -> tensor<f32>
   func.return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: @testMatVec
+func.func @testMatVec(%arg0: tensor<20x32xf32>, %arg1: tensor<32xf32>) -> tensor<20xf32> {
+  // CHECK-NEXT: [[R:%.+]] = "mhlo.dot"(%arg0, %arg1)
+  // CHECK-NEXT: return [[R]]
+  %0 = "mhlo.dot_general"(%arg0, %arg1) {
+    dot_dimension_numbers = #mhlo.dot<
+      lhs_contracting_dimensions = [1],
+      rhs_contracting_dimensions = [0]
+    >,
+    precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]
+  } : (tensor<20x32xf32>, tensor<32xf32>) -> tensor<20xf32>
+  func.return %0 : tensor<20xf32>
 }
 
 // -----

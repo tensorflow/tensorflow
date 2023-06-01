@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -120,10 +119,25 @@ absl::StatusCode ConvertErrorCode(XLA_FFI_Error_Code errc) {
 // Adaptor from the Xla custom call to an Xla FFI calling convention.
 //===----------------------------------------------------------------------===//
 
-// We use weak linking to provide a default implementation here. The XLA:GPU
-// backend overrides this implementation, and it is picked at link time.
-ABSL_ATTRIBUTE_WEAK XLA_FFI_Stream* GetXlaFfiStream(
-    const CustomCall::UserData* user_data, const DiagnosticEngine* diagnostic) {
+using StreamProvider = XLA_FFI_Stream* (*)(const CustomCall::UserData*,
+                                           const DiagnosticEngine*);
+
+static std::vector<StreamProvider>& GetStreamProviders() {
+  static auto* stream_providers = new std::vector<StreamProvider>();
+  return *stream_providers;
+}
+
+void RegisterXlaFfiStreamProvider(StreamProvider provider) {
+  GetStreamProviders().push_back(provider);
+}
+
+XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
+                                const DiagnosticEngine* diagnostic) {
+  for (auto provider : GetStreamProviders()) {
+    if (XLA_FFI_Stream* stream = provider(user_data, diagnostic)) {
+      return stream;
+    }
+  }
   return nullptr;
 }
 

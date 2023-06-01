@@ -132,7 +132,7 @@ class BinaryOpsTestBase : public OpsTestBase {
                        BaselineOutT (*baseline_callback)(BaselineT, BaselineT),
                        const test::OpsTestConfig& config) {
     // Prepare inputs.
-    int input_size = shape.num_elements();
+    int64_t input_size = shape.num_elements();
     CHECK(lhs_input.size() <= input_size && rhs_input.size() <= input_size &&
           "expect input shape to hold all input values");
     auto repeated_lhs_input =
@@ -375,7 +375,7 @@ class BinaryOpsTestBase : public OpsTestBase {
       std::vector<int> rhs_indices, absl::InlinedVector<T, 10> rhs_input,
       BaselineOutT (*baseline_callback)(BaselineT, BaselineT)) {
     absl::InlinedVector<OutT, 10> expected_output;
-    for (int i = 0; i < lhs_indices.size(); i++) {
+    for (int64_t i = 0; i < lhs_indices.size(); i++) {
       auto lhs = static_cast<BaselineT>(lhs_input[lhs_indices[i]]);
       auto rhs = static_cast<BaselineT>(rhs_input[rhs_indices[i]]);
       auto result = static_cast<OutT>(baseline_callback(lhs, rhs));

@@ -16,6 +16,7 @@
 # pylint: disable=g-classes-have-attributes
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -126,17 +127,19 @@ class Nadam(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)] = dict(
         lr_t=lr_t,
         neg_lr_t=-lr_t,  # pylint: disable=invalid-unary-operand-type
-        epsilon=ops.convert_to_tensor_v2_with_dispatch(self.epsilon, var_dtype),
+        epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+            self.epsilon, var_dtype
+        ),
         beta_1_t=beta_1_t,
         beta_2_t=beta_2_t,
         m_t=m_t,
         m_t_1=m_t_1,
         one_minus_beta_1_t=1 - beta_1_t,
         one_minus_beta_2_t=1 - beta_2_t,
-        one_minus_m_t=1. - m_t,
-        one_minus_m_schedule_new=1. - m_schedule_new,
-        one_minus_m_schedule_next=1. - m_schedule_next,
-        v_t_prime_denominator=1. - math_ops.pow(beta_2_t, local_step),
+        one_minus_m_t=1.0 - m_t,
+        one_minus_m_schedule_new=1.0 - m_schedule_new,
+        one_minus_m_schedule_next=1.0 - m_schedule_next,
+        v_t_prime_denominator=1.0 - math_ops.pow(beta_2_t, local_step),
     )
 
   def _prepare(self, var_list):

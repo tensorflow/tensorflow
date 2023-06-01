@@ -22,6 +22,7 @@ limitations under the License.
 #include <sstream>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -91,6 +92,65 @@ std::optional<int64_t> NumTrailingZeroOutputFeatures(HloInstruction* conv) {
       conv->convolution_dimension_numbers();
   int64_t feature_dim = dnums.kernel_output_feature_dimension();
   const HloInstruction* weights = conv->operand(1);
+
+  // If the filter is reordered for an int8x32 NCHW_VECT_C convolution, find the
+  // original, un-reordered filter and check *it* for trailing zero output
+  // features.
+  auto backend_config = conv->backend_config<CudnnConvBackendConfig>();
+  if (backend_config.ok() && backend_config->reordered_int8_nchw_vect()) {
+    VLOG(2) << "Matched int8x32 convolution with filter reordering";
+
+    // Try to set weights to the original, un-reordered value.
+    const HloInstruction *reshape, *transpose;
+    bool matched =
+        Match(weights, m::Reshape(m::Transpose(
+                           &transpose, m::Reshape(&reshape, m::Op(&weights)))));
+
+    // Verify some properties of the reshape-transpose-reshape pattern.
+    // If these don't hold, it means that some pass (e.g. constant folding)
+    // has modified the filter, making making it infeasible to get the original,
+    // un-reordered value.
+    if (!matched || feature_dim != 0 || transpose->shape().rank() != 8) {
+      VLOG(2) << "The filter output feature dimension cannot be determined, as "
+                 "the reordering sequence is modified";
+      return std::nullopt;
+    }
+
+    // Calculate the actual output feature dimension before the transpose.
+    // For example: the input filter [I, O, H, W] will get reshaped to
+    // [I/32, 8, 4, O/8, 4, 2, H, W], transposed in a way that is compatible
+    // with cuDNN INT8x32_CONFIG convolutions (see 'cudnn_support_utils.h') and
+    // reshaped again to [O, I/32, H, W, 32]. While the output features
+    // dimension is zero, we need to get the dimension in the original shape
+    // (equals to one in this example).
+    const auto& transpose_dimensions =
+        Cast<HloTransposeInstruction>(transpose)->dimensions();
+
+    // Calculate combined dimensions size before the first appearing output
+    // component [O/8], which appears in position 3 of the transpose.
+    int64_t preceding_size = 1;
+    for (int64_t i = transpose_dimensions.at(3) - 1; i >= 0; --i) {
+      preceding_size *= reshape->shape().dimensions(i);
+    }
+
+    // Skip dimensions in front until the output features dimension is found.
+    int64_t accumulated_size = 1;
+    for (int64_t size : weights->shape().dimensions()) {
+      if (accumulated_size < preceding_size) {
+        accumulated_size *= size;
+        ++feature_dim;
+      } else {
+        break;
+      }
+    }
+    // Sanity check; if this condition doesn't hold, something is off.
+    if (accumulated_size != preceding_size) {
+      VLOG(2) << "Something is really wrong here, I give up";
+      return std::nullopt;
+    }
+    VLOG(2) << "Computed output feature dimension: " << feature_dim;
+  }
+
   VLOG(2) << "Computing NumTrailingZeroOutputFeatures of " << conv->ToString()
           << "\nwith weights " << weights->ToString();
   if (Match(weights, m::Pad(m::Op(), m::ConstantEffectiveScalar(0)))) {

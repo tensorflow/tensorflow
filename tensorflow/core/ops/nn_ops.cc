@@ -1444,7 +1444,7 @@ Status ApproxTopKShape(shape_inference::InferenceContext* c) {
     // Reverse index
     reduction_dimension += c->Rank(input_shape);
   }
-  if (reduction_dimension >= c->Rank(input_shape)) {
+  if (reduction_dimension >= c->Rank(input_shape) || reduction_dimension < 0) {
     return errors::InvalidArgument("Invalid reduction dimension: ", r_dim_copy,
                                    ". Must be within the range of [", -rank,
                                    ", ", rank - 1, "]");
@@ -1520,11 +1520,13 @@ REGISTER_OP("TopK")
 // This is the same as `TopK`, but takes `k` as in input rather than an attr.
 REGISTER_OP("TopKV2")
     .Input("input: T")
-    .Input("k: int32")
+    .Input("k: Tk")
     .Output("values: T")
-    .Output("indices: int32")
+    .Output("indices: index_type")
     .Attr("sorted: bool = true")
     .Attr("T: realnumbertype")
+    .Attr("Tk: {int16, int32, int64} = DT_INT32")
+    .Attr("index_type: {int16, int32, int64} = DT_INT32")
     .SetShapeFn(TopKShapeFn);
 
 REGISTER_OP("ApproxTopK")

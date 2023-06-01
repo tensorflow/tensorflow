@@ -23,12 +23,16 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+// The source_location.h is not available in open source.
+#if defined(PLATFORM_GOOGLE)
+#include "absl/types/source_location.h"
+#endif  // PLATFORM_GOOGLE
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/fusion_queue.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 
 namespace xla {
 
@@ -56,6 +60,15 @@ class FusionDecision {
       explanation_ = std::string(explanation);
     }
   }
+
+#if defined(PLATFORM_GOOGLE)
+  // We can fuse iff. the decision is `true`. The source location indicates
+  // where an instance was created, making debugging easier without a need to
+  // provide explicit explanation.
+  FusionDecision(  // NOLINT
+      bool decision,
+      absl::SourceLocation source_location = absl::SourceLocation::current());
+#endif  // PLATFORM_GOOGLE
 
   // Can be fused.
   FusionDecision() = default;

@@ -29,11 +29,11 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
-#include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
-#include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/convert_mover.h"
 #include "tensorflow/compiler/xla/service/dump.h"
+#include "tensorflow/compiler/xla/service/float_normalization.h"
+#include "tensorflow/compiler/xla/service/float_support.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_pad_for_gemms.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
@@ -72,23 +72,24 @@ namespace xla {
 namespace gpu {
 namespace {
 
-class ConvBfloat16Support : public BFloat16Support {
+class ConvBfloat16Support : public FloatSupport {
  public:
   explicit ConvBfloat16Support(
       se::dnn::VersionInfo cudnn_version,
       se::CudaComputeCapability cuda_compute_capability)
-      : is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
+      : FloatSupport(BF16),
+        is_conv_bf16_supported_((cudnn_version.major_version() > 8 ||
                                  (cudnn_version.major_version() == 8 &&
                                   cudnn_version.minor_version() >= 2)) &&
                                 cuda_compute_capability.IsAtLeast(
                                     se::CudaComputeCapability::AMPERE)) {}
 
-  bool SupportsBF16Operand(const HloInstruction& hlo,
-                           int64_t operand_index) const override {
+  bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
+                                   int64_t operand_index) const override {
     return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
   }
 
-  bool SupportsBF16Output(const HloInstruction& hlo) const override {
+  bool SupportsLowPrecisionOutput(const HloInstruction& hlo) const override {
     return (hlo.opcode() != HloOpcode::kConvolution) || is_conv_bf16_supported_;
   }
 
@@ -113,7 +114,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
   // Convert upsupported bf16 convolutions to f32.
   ConvBfloat16Support conv_bf16_support(dnn_version, cuda_compute_capability);
-  pipeline.AddPass<BFloat16Normalization>(&conv_bf16_support);
+  pipeline.AddPass<FloatNormalization>(&conv_bf16_support);
 
   pipeline.AddPass<GpusolverRewriter>();
   pipeline.AddPass<GpuConvRewriter>();
@@ -128,8 +129,11 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_dot_strength_reduction(
+      debug_options.xla_gpu_enable_dot_strength_reduction());
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
@@ -140,8 +144,16 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnSimplifyPadding>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
-  // CudnnSimplifyPadding introduce reshapes and transposes.
-  pipeline.AddPass<HloPassFix<ReshapeMover>>();
+  // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
+  // to a fixed point.  Include algsimp because ReshapeMover relies on it.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "reshape_mover_after_conv_canonicalization")] {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+  }();
+
   // The reshapes and transposes can possibly be eliminated using
   // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
   // ConvertMover wants to move some converts down the graph, but ReshapeMover
@@ -164,8 +176,7 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    se::DeviceMemoryAllocator* device_allocator,
-    const GpuTargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
     const AutotuneResults* autotune_results) {
   HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
 
@@ -195,8 +206,7 @@ Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
   TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
 
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, device_allocator, gpu_target_config,
-      autotune_results));
+      hlo_module, stream_exec, options, gpu_target_config, autotune_results));
 
   HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
@@ -231,6 +241,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
         return user_index.size() == 1 && user_index[0] == 0;
       }
       return false;
+    case HloOpcode::kFusion:
+      return GpuCompiler::FusionCanShareBufferHint(user, operand, user_index);
     default:
       return std::nullopt;
   }
@@ -460,7 +472,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
           VLOG(1) << "Compiled PTX size:" << ptx.size()
                   << " CUBIN size: " << cache_value->cubin_data.size();
         } else {
-          if (maybe_cubin.status().code() == tsl::error::Code::NOT_FOUND) {
+          if (maybe_cubin.status().code() == absl::StatusCode::kNotFound) {
             if (!hlo_module_config.debug_options()
                      .xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found()) {
               LOG(WARNING) << nvptx::CantFindCudaMessage(
@@ -486,7 +498,7 @@ std::vector<uint8_t> NVPTXCompiler::CompileGpuAsmOrGetCachedResult(
                 "using $PATH.",
                 hlo_module_config.debug_options().xla_gpu_cuda_data_dir());
           } else if (maybe_cubin.status().code() !=
-                     tsl::error::Code::UNIMPLEMENTED) {
+                     absl::StatusCode::kUnimplemented) {
             // If unimplemented is returned, we fallback to the driver.
             LOG(FATAL) << "ptxas returned an error during compilation of ptx "
                           "to sass: '"

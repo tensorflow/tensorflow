@@ -39,7 +39,7 @@ namespace stream_executor {
       std::ostringstream oss;                                                 \
       oss << error_string << "\nin " << __FILE__ << "(" << __LINE__ << "): '" \
           << #expr << "'";                                                    \
-      return tsl::Status(tsl::error::UNKNOWN, oss.str().c_str());             \
+      return tsl::Status(absl::StatusCode::kUnknown, oss.str().c_str());      \
     }                                                                         \
   } while (false)
 

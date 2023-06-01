@@ -65,6 +65,7 @@ tool_dirs = config.mlir_tf_tools_dirs + [
 ]
 tool_names = [
     'hlo_to_llvm_ir',
+    'ifrt-opt',
     'kernel-gen-opt',
     'mhlo-tosa-opt',
     'mlir-bisect',

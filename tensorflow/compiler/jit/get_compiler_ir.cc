@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/device_compiler.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
+#include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
 #include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -306,7 +307,7 @@ StatusOr<std::string> GetCompilerIr(
 
   XlaCompiler::Options options;
   if (platform_info.device_type() == DEVICE_TPU && stream == nullptr) {
-    options = GenerateTfrtTpuCompilerOptions(*xla_device_compiler, *flr);
+    options = GenerateCompilerOptionsForTfrtTpu(*xla_device_compiler, *flr);
   } else {
     options = GenerateCompilerOptions(*xla_device_compiler, *flr, dev, stream,
                                       platform_info,

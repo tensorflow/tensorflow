@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/while_loop_expensive_invariant_code_motion.h"
 
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
-#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -69,9 +67,7 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return instr.opcode() == HloOpcode::kDot;
-          })
+          /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
           .Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
@@ -90,10 +86,8 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return instr.opcode() == HloOpcode::kDot ||
-                   instr.opcode() == HloOpcode::kReduce;
-          })
+          /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot,
+                                                           HloOpcode::kReduce>)
           .Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
@@ -108,13 +102,10 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   auto m =
       ParseAndReturnVerifiedModule(kModuleWithNonInflatingInvariantDot).value();
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool simplified_loop,
-      WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return false;
-          })
-          .Run(m.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool simplified_loop,
+                          WhileLoopExpensiveInvariantCodeMotion(
+                              /*worth_hoisting_individually=*/HloPredicateFalse)
+                              .Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
 
@@ -159,9 +150,7 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest, DoesNotHoistsInflating) {
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return instr.opcode() == HloOpcode::kDot;
-          })
+          /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
           .Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }
@@ -174,10 +163,8 @@ TEST_F(WhileLoopExpensiveInvariantCodeMotionTest,
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return instr.opcode() == HloOpcode::kDot ||
-                   instr.opcode() == HloOpcode::kReduce;
-          })
+          /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot,
+                                                           HloOpcode::kReduce>)
           .Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
@@ -224,9 +211,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return instr.opcode() == HloOpcode::kDot;
-          })
+          /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
           .Run(m.get()));
   EXPECT_TRUE(simplified_loop);
 
@@ -270,9 +255,7 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(
       bool simplified_loop,
       WhileLoopExpensiveInvariantCodeMotion(
-          /*worth_hoisting_individually=*/[](const HloInstruction& instr) {
-            return instr.opcode() == HloOpcode::kDot;
-          })
+          /*worth_hoisting_individually=*/HloPredicateIsOp<HloOpcode::kDot>)
           .Run(m.get()));
   EXPECT_FALSE(simplified_loop);
 }

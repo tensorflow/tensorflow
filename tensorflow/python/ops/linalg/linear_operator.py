@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -421,7 +422,9 @@ class LinearOperator(
     # `shape` may be passed in if this can be pre-computed in a
     # more efficient manner, e.g. without excessive Tensor conversions.
     if self.tensor_rank is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(self.tensor_rank)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          self.tensor_rank
+      )
     else:
       shape = self.shape_tensor() if shape is None else shape
       return array_ops.size(shape)
@@ -465,7 +468,7 @@ class LinearOperator(
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.domain_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-1]
@@ -509,7 +512,7 @@ class LinearOperator(
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.range_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
+      return tensor_conversion.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-2]
@@ -677,7 +680,7 @@ class LinearOperator(
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
 
       self_dim = -2 if adjoint else -1
@@ -724,7 +727,7 @@ class LinearOperator(
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
@@ -870,7 +873,9 @@ class LinearOperator(
         return linear_operator_algebra.solve(left_operator, right_operator)
 
     with self._name_scope(name):  # pylint: disable=not-callable
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
 
       self_dim = -1 if adjoint else -2
@@ -927,7 +932,9 @@ class LinearOperator(
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
+      rhs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          rhs, name="rhs"
+      )
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
@@ -1090,7 +1097,7 @@ class LinearOperator(
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with self._name_scope(name):  # pylint: disable=not-callable
-      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
+      x = tensor_conversion.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 

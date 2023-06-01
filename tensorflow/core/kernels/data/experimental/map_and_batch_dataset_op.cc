@@ -125,11 +125,11 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
+  int64_t CardinalityInternal(CardinalityOptions options) const override {
     if (!preserve_cardinality_) {
       return kUnknownCardinality;
     }
-    int64_t n = input_->Cardinality();
+    int64_t n = input_->Cardinality(options);
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
@@ -457,7 +457,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           // former may be interpreted by a caller as the end of sequence.
           status = errors::InvalidArgument(
               "Function invocation produced OutOfRangeError: ",
-              status.error_message());
+              status.message());
         }
         result->UpdateStatus(status, offset);
         if (status.ok()) {

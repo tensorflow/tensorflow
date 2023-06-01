@@ -20,7 +20,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 
@@ -146,9 +146,9 @@ class SmartConstantValueTest(test_util.TensorFlowTestCase):
   def testCond(self):
     with ops.Graph().as_default():
       pred = array_ops.placeholder_with_default(True, shape=())
-      x = control_flow_ops.cond(pred,
-                                lambda: constant_op.constant(1),
-                                lambda: constant_op.constant(2))
+      x = cond.cond(pred,
+                    lambda: constant_op.constant(1),
+                    lambda: constant_op.constant(2))
       self.assertIsNone(smart_cond.smart_constant_value(x))
 
 

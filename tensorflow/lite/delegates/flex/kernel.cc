@@ -356,7 +356,7 @@ class OpNode {
                                            node_index)) {
           if (CopyToTfLiteTensor(context, shared_info, tensor, &tf_tensor,
                                  tflite_index) != kTfLiteOk) {
-            return tensorflow::Status(tensorflow::error::INTERNAL,
+            return tensorflow::Status(absl::StatusCode::kInternal,
                                       "failed to copy data from TF tensor");
           }
         } else {
@@ -474,7 +474,8 @@ TfLiteStatus DelegateKernel::Init(TfLiteContext* context,
   // tensors (buffer forwarding).
   auto check_if_op_reuses_input = [](const string& op_name) {
     return op_name == "TensorListPushBack" || op_name == "TensorListSetItem" ||
-           op_name == "SparseReshape" || op_name == "StridedSlice";
+           op_name == "SparseReshape" || op_name == "StridedSlice" ||
+           op_name == "RaggedTensorToVariant";
   };
 
   for (auto node_index : TfLiteIntArrayView(params->nodes_to_replace)) {

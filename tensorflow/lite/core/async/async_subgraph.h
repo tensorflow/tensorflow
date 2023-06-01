@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/async/async_kernel_internal.h"
-#include "tensorflow/lite/core/async/common.h"
+#include "tensorflow/lite/core/async/c/types.h"
 #include "tensorflow/lite/core/async/interop/c/types.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -162,7 +162,7 @@ class AsyncSubgraph {
   Subgraph* subgraph_ = nullptr;
 
   // Next buffer handle to assign in Register* calls.
-  std::atomic<TfLiteBufferHandle> next_buffer_handle_ = 0;
+  std::atomic<TfLiteBufferHandle> next_buffer_handle_ = {0};
 
   // Supported buffer and sync types.
   std::map<TfLiteIoType, std::vector<const char*>> supported_buffer_types_;

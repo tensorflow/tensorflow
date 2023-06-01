@@ -22,7 +22,6 @@
 #include <vector>
 
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "llvm/ADT/Optional.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -55,7 +54,7 @@ bool HasValidHardwareTarget(mlir::Operation* op) {
   return IsOpSupported(op, "CPU");
 }
 
-llvm::Optional<std::string> GetDeviceName(mlir::Operation* op) {
+std::optional<std::string> GetDeviceName(mlir::Operation* op) {
   if (IsConst(op)) return std::nullopt;
 
   // The model may contain quant stats op which is unrelevant to the
@@ -72,7 +71,7 @@ llvm::Optional<std::string> GetDeviceName(mlir::Operation* op) {
   return device_name_str.str();
 }
 
-llvm::Optional<std::vector<float>> GetPerDeviceCosts(
+std::optional<std::vector<float>> GetPerDeviceCosts(
     const std::map<std::string, uint8_t>& hardware_map, mlir::Operation* op) {
   auto device_costs_attr =
       op->getAttrOfType<mlir::DictionaryAttr>("per_device_costs");
@@ -164,7 +163,7 @@ CreateHardwareMetadataAndPopulateLookupTable(
 
 }  // namespace
 
-llvm::Optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module) {
+std::optional<std::string> ExportRuntimeMetadata(mlir::ModuleOp module) {
   mlir::func::FuncOp main_fn = module.lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_fn) return std::string("");
 

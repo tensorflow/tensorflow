@@ -28,7 +28,6 @@ cc_library(
         ":types",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:ptr_util",
         "//tensorflow/lite/delegates/flex:allowlisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
@@ -148,6 +147,9 @@ tf_cc_test(
     name = "import_test",
     srcs = [
         "import_test.cc",
+    ],
+    tags = [
+        "no_oss",  # TODO(b/273558651): Enable after updating flatbuffer version.
     ],
     deps = [
         ":import",

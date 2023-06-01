@@ -1,15 +1,14 @@
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
 
-py_library(
+py_strict_library(
     name = "distributions",
-    srcs = glob(
-        ["*.py"],
-        exclude = ["util.py"],
-    ),
+    srcs = ["distributions.py"],
     deprecation = ("TensorFlow Distributions has migrated to " +
                    "TensorFlow Probability " +
                    "(https://github.com/tensorflow/probability). " +
@@ -19,6 +18,104 @@ py_library(
                    "`tf.distributions` to `tfp.distributions`."),
     srcs_version = "PY3",
     deps = [
+        ":bernoulli",
+        ":beta",
+        ":categorical",
+        ":dirichlet",
+        ":dirichlet_multinomial",
+        ":distribution",
+        ":exponential",
+        ":gamma",
+        ":kullback_leibler",
+        ":laplace",
+        ":multinomial",
+        ":normal",
+        ":student_t",
+        ":uniform",
+        "//tensorflow/python/util:deprecation",
+    ],
+)
+
+py_strict_library(
+    name = "util",
+    srcs = ["util.py"],
+    srcs_version = "PY3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:cond",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:tf_decorator",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "kullback_leibler",
+    srcs = ["kullback_leibler.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_assert",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "laplace",
+    srcs = ["laplace.py"],
+    deps = [
+        ":distribution",
+        ":special_math",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "dirichlet",
+    srcs = ["dirichlet.py"],
+    deps = [
+        ":distribution",
+        ":kullback_leibler",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "beta",
+    srcs = ["beta.py"],
+    deps = [
+        ":distribution",
+        ":kullback_leibler",
         ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -26,30 +123,267 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:special_math_ops",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
 
-py_library(
-    name = "util",
-    srcs = ["util.py"],
-    srcs_version = "PY3",
+py_strict_library(
+    name = "bernoulli",
+    srcs = ["bernoulli.py"],
     deps = [
+        ":distribution",
+        ":kullback_leibler",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "uniform",
+    srcs = ["uniform.py"],
+    deps = [
+        ":distribution",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "special_math",
+    srcs = ["special_math.py"],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "bijector_impl",
+    srcs = ["bijector_impl.py"],
+    deps = [
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/util:object_identity",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "normal",
+    srcs = ["normal.py"],
+    deps = [
+        ":distribution",
+        ":kullback_leibler",
+        ":special_math",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "dirichlet_multinomial",
+    srcs = ["dirichlet_multinomial.py"],
+    deps = [
+        ":distribution",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "distribution",
+    srcs = ["distribution.py"],
+    deps = [
+        ":kullback_leibler",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_decorator",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "identity_bijector",
+    srcs = ["identity_bijector.py"],
+    deps = [
+        ":bijector",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+    ],
+)
+
+py_strict_library(
+    name = "categorical",
+    srcs = ["categorical.py"],
+    deps = [
+        ":distribution",
+        ":kullback_leibler",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "bijector_test_util",
+    srcs = ["bijector_test_util.py"],
+    deps = [
+        ":uniform",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "bijector",
+    srcs = ["bijector.py"],
+    deps = [":bijector_impl"],
+)
+
+py_strict_library(
+    name = "exponential",
+    srcs = ["exponential.py"],
+    deps = [
+        ":gamma",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "gamma",
+    srcs = ["gamma.py"],
+    deps = [
+        ":distribution",
+        ":kullback_leibler",
+        ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "multinomial",
+    srcs = ["multinomial.py"],
+    deps = [
+        ":distribution",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
+    ],
+)
+
+py_strict_library(
+    name = "transformed_distribution",
+    srcs = ["transformed_distribution.py"],
+    deps = [
+        ":distribution",
+        ":identity_bijector",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:array_ops_stack",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_strict_library(
+    name = "student_t",
+    srcs = ["student_t.py"],
+    deps = [
+        ":distribution",
+        ":util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/util:deprecation",
+        "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
 )
