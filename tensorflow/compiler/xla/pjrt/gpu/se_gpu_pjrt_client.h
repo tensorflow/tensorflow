@@ -87,6 +87,28 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   const GpuTopology& gpu_topology() const { return gpu_topology_; }
   const GpuTopology* gpu_topology_ptr() const { return &gpu_topology_; }
 
+  // No subslice is supported.
+  bool is_subslice_topology() const override { return false; }
+
+  // The topology support only single host now.
+  absl::StatusOr<int> ProcessCount() const override { return 1; }
+
+  absl::StatusOr<int> CoreCountOfDefaultType() const override {
+    return gpu_topology_.number_of_devices();
+  }
+
+  absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const override {
+    return gpu_topology_.number_of_devices();
+  }
+
+  absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const override {
+    return gpu_topology_.number_of_devices();
+  }
+
+  absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const override {
+    return 1;
+  }
+
  private:
   const PjRtPlatformId platform_id_;
   const std::string platform_name_;
