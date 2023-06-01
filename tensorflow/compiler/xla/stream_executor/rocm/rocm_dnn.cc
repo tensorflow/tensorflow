@@ -1828,11 +1828,7 @@ miopenDataType_t ToMIOpenDataType(
     case dnn::DataType::kHalf:
       return miopenHalf;
     case dnn::DataType::kInt8:
-<<<<<<< HEAD
-      return miopenInt8;
-=======
       if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
->>>>>>> google_upstream/master
     case dnn::DataType::kDouble:
       LOG(FATAL)
           << "Unsupported DNN data type: tf.float64 (dnn::DataType::kDouble)";
