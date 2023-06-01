@@ -78,7 +78,7 @@ inline void CheckStructSize(std::string_view struct_name, size_t expected_size,
                             args->struct_size)
 
 //===----------------------------------------------------------------------===//
-// Span is non-owning view into contiguous values ot type `T`.
+// Span is non-owning view into contiguous values of type `T`.
 //===----------------------------------------------------------------------===//
 
 // TODO(ezhulenev): Replace with `std::span` when C++20 is available.
@@ -99,6 +99,15 @@ class Span {
  private:
   T* data_;
   size_t size_;
+};
+
+// A type for representing shaped tensors.
+// TODO(ecg): expand API to be compatible with `std::mdspan`, and eventually
+// (when C++23 is available) replace with `std::mdspan`.
+template <typename T>
+struct MdSpan {
+  Span<const int64_t> shape;
+  Span<const T> data;
 };
 
 //===----------------------------------------------------------------------===//
@@ -411,6 +420,11 @@ bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
   ISA(Span<const double>, DoubleArray);
   ISA(Span<const int32_t>, Int32Array);
   ISA(Span<const int64_t>, Int64Array);
+
+  ISA(MdSpan<float>, FloatTensor);
+  ISA(MdSpan<double>, DoubleTensor);
+  ISA(MdSpan<int32_t>, Int32Tensor);
+  ISA(MdSpan<int64_t>, Int64Tensor);
 
   ISA(StridedBufferArg, StridedBufferArg);
   ISA(BufferArg, BufferArg);
@@ -1029,6 +1043,9 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 
+// Both EncodedArray and 1-D EncodedDenseElements can be decoded as a Span.
+// Pointers to both EncodedArray and 1-D EncodedDenseElements can be
+// dereferenced as a pointer to EncodedArray.
 #define XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(T)                            \
   template <>                                                              \
   struct FfiAttrDecoding<Span<const T>> {                                  \
@@ -1036,7 +1053,7 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
                                                std::string_view name,      \
                                                XLA_FFI_TypeId type_id,     \
                                                void* value) {              \
-      if (!Ffi::Isa<Span<const T>>(api, type_id)) {                        \
+      if (!Ffi::Isa<Span<const T>, MdSpan<T>>(api, type_id)) {             \
         return std::nullopt;                                               \
       }                                                                    \
                                                                            \
