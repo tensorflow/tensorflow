@@ -215,8 +215,11 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     all_tensors = (expanded_start, res, expanded_stop)
     concatenated = array_ops.concat(all_tensors, axis=axis)
     begin = array_ops.zeros_like(shape)
-    size = array_ops.where_v2(mask, num_int, shape)
-
+    # Preserve shape information for final slice.
+    size = array_ops.concat(
+        (shape[0:axis], array_ops.reshape(num_int, [1]), shape[axis + 1 :]),
+        axis=0,
+    )
     return array_ops.slice(concatenated, begin, size)
 
 

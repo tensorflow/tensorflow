@@ -3481,6 +3481,9 @@ cuda_py_strict_test(
     ],
     deps = [
         ":math_ops",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
