@@ -111,7 +111,8 @@ Status CheckImplementable(CollectivePermuteStartOp op) {
 NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
     ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
     int64_t partition_count, const Buffer& buffer)
-    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info),
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
+                          op.getIsSync()),
       config_(
           GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
@@ -143,15 +144,6 @@ NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
 }
 
 Status NcclCollectivePermuteStartThunk::RunNcclCollective(
-    const ExecuteParams& params, ncclComm_t comm) {
-  return async_executor().Execute(
-      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
-        return RunCollectivePermute(params, stream, comm);
-      },
-      params, comm);
-}
-
-Status NcclCollectivePermuteStartThunk::RunCollectivePermute(
     const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,

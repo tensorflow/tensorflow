@@ -3021,7 +3021,7 @@ Status IrEmitterUnnested::EmitCollectivePermute(mlir::Operation* op) {
     auto thunk =
         std::make_unique<NcclThunkType>(GetThunkInfo(op), collective_permute_op,
                                         replica_count, partition_count, buffer);
-    async_executor = &thunk->async_executor();
+    async_executor = thunk->async_executor();
     AddThunkToThunkSequence(std::move(thunk));
   }
   async_executors_.insert({op, async_executor});
@@ -3070,7 +3070,7 @@ Status IrEmitterUnnested::EmitNcclThunk(mlir::Operation* untyped_op) {
     auto thunk =
         std::make_unique<NcclThunkType>(GetThunkInfo(op), op,
                                         /*buffers=*/std::move(buffers));
-    async_executors_.insert({untyped_op, &thunk->async_executor()});
+    async_executors_.insert({untyped_op, thunk->async_executor()});
     AddThunkToThunkSequence(std::move(thunk));
     return OkStatus();
   }

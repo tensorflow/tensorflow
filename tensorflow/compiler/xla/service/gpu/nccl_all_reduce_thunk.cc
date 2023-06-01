@@ -217,8 +217,8 @@ NcclAllReduceReduceScatterThunkBase::MatchAllReduceComputation(
 
 NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, NcclAllReduceConfig config,
-    std::vector<Buffer> buffers)
-    : NcclCollectiveThunk(kind, thunk_info),
+    std::vector<Buffer> buffers, bool is_sync)
+    : NcclCollectiveThunk(kind, thunk_info, is_sync),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
@@ -227,9 +227,10 @@ NcclAllReduceReduceScatterThunkBase::NcclAllReduceReduceScatterThunkBase(
 NcclAllReduceStartThunk::NcclAllReduceStartThunk(ThunkInfo thunk_info,
                                                  AllReduceStartOp op,
                                                  std::vector<Buffer> buffers)
-    : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclAllReduceStart, thunk_info,
-          impl::GetNcclAllReduceConfig(op), std::move(buffers)) {}
+    : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclAllReduceStart,
+                                          thunk_info,
+                                          impl::GetNcclAllReduceConfig(op),
+                                          std::move(buffers), op.getIsSync()) {}
 
 Status NcclAllReduceStartThunk::CheckImplementable(AllReduceStartOp op,
                                                    int64_t replica_count,
@@ -251,17 +252,8 @@ CollectiveOpGroupMode NcclAllReduceStartThunk::GetGroupMode(
 }
 
 Status NcclAllReduceStartThunk::RunNcclCollective(const ExecuteParams& params,
+                                                  se::Stream& stream,
                                                   ncclComm_t comm) {
-  return async_executor().Execute(
-      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
-        return RunAllReduce(params, stream, comm);
-      },
-      params, comm);
-}
-
-Status NcclAllReduceStartThunk::RunAllReduce(const ExecuteParams& params,
-                                             se::Stream& stream,
-                                             ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
@@ -273,9 +265,10 @@ Status NcclAllReduceStartThunk::RunAllReduce(const ExecuteParams& params,
 NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
     ThunkInfo thunk_info, ReduceScatterStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclAllReduceReduceScatterThunkBase(
-          Thunk::kNcclReduceScatterStart, thunk_info,
-          impl::GetNcclAllReduceConfig(op), std::move(buffers)) {}
+    : NcclAllReduceReduceScatterThunkBase(Thunk::kNcclReduceScatterStart,
+                                          thunk_info,
+                                          impl::GetNcclAllReduceConfig(op),
+                                          std::move(buffers), op.getIsSync()) {}
 
 /*static*/ Status NcclReduceScatterStartThunk::CheckImplementable(
     ReduceScatterStartOp op, int64_t replica_count, int64_t partition_count) {
@@ -295,15 +288,6 @@ NcclReduceScatterStartThunk::NcclReduceScatterStartThunk(
 }
 
 Status NcclReduceScatterStartThunk::RunNcclCollective(
-    const ExecuteParams& params, ncclComm_t comm) {
-  return async_executor().Execute(
-      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
-        return RunReduceScatter(params, stream, comm);
-      },
-      params, comm);
-}
-
-Status NcclReduceScatterStartThunk::RunReduceScatter(
     const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,

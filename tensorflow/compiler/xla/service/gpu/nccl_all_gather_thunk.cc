@@ -58,7 +58,8 @@ Status CheckImplementable(AllGatherStartOp op) {
 NcclAllGatherStartThunk::NcclAllGatherStartThunk(
     ThunkInfo thunk_info, AllGatherStartOp op,
     std::vector<NcclCollectiveThunk::Buffer> buffers)
-    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info),
+    : NcclCollectiveThunk(Thunk::kNcclAllGatherStart, thunk_info,
+                          op.getIsSync()),
       config_(impl::GetNcclAllGatherConfig(op)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_count, buffers_.size());
@@ -83,17 +84,8 @@ NcclAllGatherStartThunk::NcclAllGatherStartThunk(
 }
 
 Status NcclAllGatherStartThunk::RunNcclCollective(const ExecuteParams& params,
+                                                  se::Stream& stream,
                                                   ncclComm_t comm) {
-  return async_executor().Execute(
-      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
-        return RunAllGather(params, stream, comm);
-      },
-      params, comm);
-}
-
-Status NcclAllGatherStartThunk::RunAllGather(const ExecuteParams& params,
-                                             se::Stream& stream,
-                                             ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params, buffers_,
