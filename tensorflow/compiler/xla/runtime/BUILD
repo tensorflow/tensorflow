@@ -98,6 +98,33 @@ cc_library(
 )
 
 cc_library(
+    name = "aot_ffi_execution_context",
+    hdrs = ["aot_ffi_execution_context.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "aot_ffi",
+    srcs = ["aot_ffi.cc"],
+    hdrs = ["aot_ffi.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":aot_ffi_c_symbols",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
+    ],
+)
+
+cc_library(
+    name = "aot_ffi_c_symbols",
+    srcs = ["aot_ffi_c_symbols.cc"],
+    hdrs = ["aot_ffi_c_symbols.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":aot_ffi_execution_context",
+    ],
+)
+
+cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
