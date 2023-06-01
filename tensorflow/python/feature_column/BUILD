@@ -63,8 +63,6 @@ py_strict_library(
     name = "feature_column_v2",
     srcs = [
         "feature_column_v2.py",
-        "sequence_feature_column.py",  # TODO(b/283983575): Remove this once references are updated.
-        "serialization.py",  # TODO(b/283983575): Remove this once references are updated.
     ],
     srcs_version = "PY3",
     deps = [
