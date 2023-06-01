@@ -90,6 +90,7 @@ void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
   const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
   mlir::SparsificationOptions sparsification_options;
   sparsification_options.enableRuntimeLibrary = false;
+  sparsification_options.enableIndexReduction = true;
   if (gpu_codegen) {
     sparsification_options.parallelizationStrategy =
         mlir::SparseParallelizationStrategy::kDenseOuterLoop;

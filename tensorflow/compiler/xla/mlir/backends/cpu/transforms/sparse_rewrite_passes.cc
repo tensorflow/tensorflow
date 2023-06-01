@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -326,6 +327,28 @@ struct SparseReshapeCallRewriter {
   }
 };
 
+static Value getEmptyTensor(OpBuilder& b, Location loc, RankedTensorType type) {
+  auto t = b.create<tensor::EmptyOp>(loc, type.getShape(),
+                                     type.getElementType(), ValueRange{});
+  auto zero = b.getZeroAttr(type.getElementType());
+  auto c0 = b.create<arith::ConstantOp>(loc, zero);
+  return b.create<linalg::FillOp>(loc, ValueRange{c0}, ValueRange{t})
+      .getResult(0);
+}
+
+struct SparseConvCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need two input tensors");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+
+    auto rtp = op.getResults()[0].getType().cast<RankedTensorType>();
+
+    rewriter.replaceOpWithNewOp<linalg::Conv2DNchwFchwOp>(
+        op, op.getInputs(), getEmptyTensor(rewriter, op.getLoc(), rtp));
+    return success();
+  }
+};
+
 struct SparseConvertCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getInputs().size() == 1 && "Need one input tensor");
@@ -410,6 +433,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_dynamic_slice",
                      SparseDynSliceCallRewriter()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
+      std::make_pair("sparse_tensor_conv_general_dilated",
+                     SparseConvCallRewriter()),
       std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
       std::make_pair("sparse_tensor_add",
                      SparseBinaryCallRewriter<mhlo::AddOp>()),
