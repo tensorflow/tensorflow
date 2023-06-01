@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
@@ -68,7 +67,6 @@ class CudnnFusedMhaRewriterTestHloTest : public HloTestBase {
 };
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, BF16Bmm1Bmm2Pattern) {
-  stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0},bf16[16,16,256,64]{3,2,1,0})->bf16[16,16,256,64]{3,2,1,0}}
 ENTRY main.6 {
@@ -238,7 +236,6 @@ ENTRY main.6 {
 }
 
 TEST_F(CudnnFusedMhaRewriterTestHloTest, F16Bmm1Bmm2Pattern) {
-  stream_executor::CudaComputeCapability cc = GetCudaComputeCapability();
   const char* module_str = R"(
 HloModule fmha_test, entry_computation_layout={(f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0},f16[16,16,256,64]{3,2,1,0})->f16[16,16,256,64]{3,2,1,0}}
 ENTRY main.6 {

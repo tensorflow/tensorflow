@@ -3011,6 +3011,8 @@ xla_cc_test(
         ":cudnn_fused_conv_rewriter",
         ":gpu_conv_rewriter",
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:convert_mover",
