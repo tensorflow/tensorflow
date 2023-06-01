@@ -225,7 +225,7 @@ std::unique_ptr<StrategyVector> MaybeFollowInsStrategyVector(
           pretrimmed_strategy_map));
     }
   } else {
-    CHECK(shape.IsArray());
+    CHECK(shape.IsArray() || shape.IsToken());
     strategies =
         CreateLeafStrategyVectorWithoutInNodes(instruction_id, leaf_strategies);
     strategies->in_nodes.push_back(src_strategies);
@@ -960,6 +960,11 @@ StatusOr<std::unique_ptr<StrategyVector>> CreateAllStrategiesVector(
       TF_RETURN_IF_ERROR(FilterStrategy(ins, shape, strategies, cluster_env,
                                         batch_dim_map, solver_option));
     }
+  } else if (shape.IsToken()) {
+    strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                          leaf_strategies);
+    AddReplicatedStrategy(ins, shape, cluster_env, strategy_map, strategies,
+                          replicated_penalty);
   } else {
     LOG(FATAL) << "Unsupported instruction shape: " << shape.DebugString();
   }
