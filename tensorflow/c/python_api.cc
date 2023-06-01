@@ -50,7 +50,7 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
 }
 
 void ExtendSession(TF_Session* session, TF_Status* status) {
-  TF_ExtendSession(session, status)
+  TF_ExtendSession(session, status);
 }
 
 std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
