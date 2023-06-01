@@ -70,12 +70,10 @@ absl::Status RunSyncOrAsync(
 
   // Launch the collective on either the main or async stream.
   se::Stream* stream = is_async ? async_stream : main_stream;
-  auto status = to_run(stream);
-  if (!status.ok()) return status;
+  TF_RETURN_IF_ERROR(to_run(stream));
 
   if (is_async) {
-    status = async_collectives->RecordEvent(uid);
-    if (!status.ok()) return status;
+    TF_RETURN_IF_ERROR(async_collectives->RecordEvent(uid));
   }
   int32_t device_ordinal = main_stream->parent()->device_ordinal();
   return collectives->MaybeBlockAfterFirstRun(uid, device_ordinal, main_stream);
@@ -136,9 +134,8 @@ absl::Status AsyncDoneImpl(const ServiceExecutableRunOptions* run_options,
   VLOG(3) << "Running " << done_type;
   se::Stream* stream = run_options->stream();
 
-  auto event = async_collectives->PopEvent(uid);
-  if (!event.ok()) return event.status();
-  stream->ThenWaitFor(&*event);
+  TF_ASSIGN_OR_RETURN(se::Event event, async_collectives->PopEvent(uid));
+  stream->ThenWaitFor(&event);
 
   return absl::OkStatus();
 #else   // XLA_ENABLE_XCCL
@@ -161,29 +158,26 @@ absl::Status CollectivePermuteImplCommon(
     absl::Span<const int64_t> target_peers, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, is_async);
-  if (!comm.ok()) return comm.status();
+  TF_ASSIGN_OR_RETURN(
+      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                             replica_group_values, is_async));
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return device_buffers.status();
-
-  if (device_buffers->size() != 1) {
+  if (device_buffers.size() != 1) {
     return absl::InternalError(absl::StrFormat(
-        "Expected device buffer size: 1, got %d", device_buffers->size()));
+        "Expected device buffer size: 1, got %d", device_buffers.size()));
   }
 
-  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return global_device_id.status();
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
 
-  StatusOr<DeviceAssignment::LogicalID> current_logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!current_logical_id.ok()) return current_logical_id.status();
+  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID current_logical_id,
+                      params.device_assn->LogicalIdForDevice(global_device_id));
 
   const int64_t current_id = static_cast<CollectiveOpGroupMode>(group_mode) ==
                                      CollectiveOpGroupMode::kCrossReplica
-                                 ? current_logical_id.value().replica_id
-                                 : current_logical_id.value().computation_id;
+                                 ? current_logical_id.replica_id
+                                 : current_logical_id.computation_id;
   std::string device_string = NcclCollectiveThunk::GetDeviceString(params);
 
   NcclCollectivePermuteConfig::IdToSourceTargetMap id_to_source_target;
@@ -197,8 +191,8 @@ absl::Status CollectivePermuteImplCommon(
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
-        return RunCollectivePermute(source_target, (*device_buffers)[0],
-                                    *stream, **comm, device_string, current_id);
+        return RunCollectivePermute(source_target, device_buffers[0], *stream,
+                                    *comm, device_string, current_id);
       });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -257,16 +251,15 @@ absl::Status AllGatherImplCommon(
     absl::Span<const int64_t> replica_group_values, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, is_async);
-  if (!comm.ok()) return comm.status();
+  TF_ASSIGN_OR_RETURN(
+      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                             replica_group_values, is_async));
 
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return device_buffers.status();
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(),
-      [&]() { return RunAllGather(*device_buffers, *stream, **comm); });
+      [&]() { return RunAllGather(device_buffers, *stream, *comm); });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -320,17 +313,16 @@ absl::Status AllReduceImplCommon(
     absl::Span<const int64_t> replica_group_values, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, is_async);
-  if (!comm.ok()) return comm.status();
+  TF_ASSIGN_OR_RETURN(
+      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                             replica_group_values, is_async));
 
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return device_buffers.status();
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
         return RunAllReduce(static_cast<ReductionKind>(reduction_kind),
-                            *device_buffers, *stream, **comm);
+                            device_buffers, *stream, *comm);
       });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -392,18 +384,16 @@ absl::Status AllToAllImplCommon(const ServiceExecutableRunOptions* run_options,
                                 bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, is_async);
-  if (!comm.ok()) return comm.status();
+  TF_ASSIGN_OR_RETURN(
+      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                             replica_group_values, is_async));
 
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return device_buffers.status();
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
-  return RunRepeated(debug_options->xla_gpu_collective_inflation_factor(),
-                     [&]() {
-                       return RunAllToAll(has_split_dimension, *device_buffers,
-                                          *stream, **comm);
-                     });
+  return RunRepeated(
+      debug_options->xla_gpu_collective_inflation_factor(), [&]() {
+        return RunAllToAll(has_split_dimension, device_buffers, *stream, *comm);
+      });
 }
 #endif  // XLA_ENABLE_XCCL
 
@@ -460,17 +450,16 @@ absl::Status ReduceScatterImplCommon(
     absl::Span<const int64_t> replica_group_values, bool is_async) {
   NcclExecuteParams params(*run_options, stream->parent());
 
-  auto comm = GetNcclComm(params, group_mode, op_id, replica_group_offsets,
-                          replica_group_values, is_async);
-  if (!comm.ok()) return comm.status();
+  TF_ASSIGN_OR_RETURN(
+      auto comm, GetNcclComm(params, group_mode, op_id, replica_group_offsets,
+                             replica_group_values, is_async));
 
-  auto device_buffers = GetDeviceBufferPairs(args);
-  if (!device_buffers.ok()) return device_buffers.status();
+  TF_ASSIGN_OR_RETURN(auto device_buffers, GetDeviceBufferPairs(args));
 
   return RunRepeated(
       debug_options->xla_gpu_collective_inflation_factor(), [&]() {
         return RunReduceScatter(static_cast<ReductionKind>(reduction_kind),
-                                *device_buffers, *stream, **comm);
+                                device_buffers, *stream, *comm);
       });
 }
 #endif  // XLA_ENABLE_XCCL
@@ -538,16 +527,15 @@ absl::Status ReplicaPartitionIdImpl(
   se::Stream* stream = run_options->stream();
   NcclExecuteParams params(*run_options, stream->parent());
 
-  StatusOr<GlobalDeviceId> global_device_id = params.GetGlobalDeviceId();
-  if (!global_device_id.ok()) return global_device_id.status();
+  TF_ASSIGN_OR_RETURN(GlobalDeviceId global_device_id,
+                      params.GetGlobalDeviceId());
 
-  StatusOr<DeviceAssignment::LogicalID> logical_id =
-      params.device_assn->LogicalIdForDevice(global_device_id.value());
-  if (!logical_id.ok()) return logical_id.status();
+  TF_ASSIGN_OR_RETURN(DeviceAssignment::LogicalID logical_id,
+                      params.device_assn->LogicalIdForDevice(global_device_id));
 
   se::DeviceMemoryBase result_data = GetDeviceAddress(result);
   const uint32_t id =
-      is_replica_id ? logical_id->replica_id : logical_id->computation_id;
+      is_replica_id ? logical_id.replica_id : logical_id.computation_id;
   stream->ThenMemset32(&result_data, id, /*size=*/4);
   return absl::OkStatus();
 }

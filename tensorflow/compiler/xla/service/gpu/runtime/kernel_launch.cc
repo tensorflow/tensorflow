@@ -71,14 +71,13 @@ static absl::Status LaunchImpl(
   const int args_size_including_temp_buffer = args.size() + 1;
 
   // If kernel does not exist create it from the ptx and cubin.
-  absl::StatusOr<std::unique_ptr<se::KernelBase>*> kernel =
-      device_kernel.GetOrCreate([&] {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<se::KernelBase> * kernel, device_kernel.GetOrCreate([&] {
         return ToAbsl(CreateKernel(absl::string_view(name.data(), name.size()),
                                    args_size_including_temp_buffer, *ptx,
                                    *cubin, executor, shared_memory_bytes));
-      });
-  if (!kernel.ok()) return kernel.status();
-  assert((**kernel)->name() == name && "unexpected loaded kernel");
+      }));
+  assert((*kernel)->name() == name && "unexpected loaded kernel");
 
 #if GOOGLE_CUDA
   TF_ASSIGN_OR_RETURN(bool is_capturing, se::gpu::IsStreamCapturing(stream));
@@ -88,14 +87,14 @@ static absl::Status LaunchImpl(
 
   if (is_capturing) {
     if (region_status->IsInConcurrentRegion()) {
-      VLOG(3) << "Launching " << (**kernel)->name()
+      VLOG(3) << "Launching " << (*kernel)->name()
               << "in a concurrent region during CUDA graph capture";
     } else {
-      VLOG(3) << "Launching " << (**kernel)->name()
+      VLOG(3) << "Launching " << (*kernel)->name()
               << "during CUDA graph capture";
     }
   } else {
-    VLOG(3) << "Launching " << (**kernel)->name();
+    VLOG(3) << "Launching " << (*kernel)->name();
   }
 
   absl::InlinedVector<se::DeviceMemoryBase, 8> buffer_args(
@@ -126,11 +125,8 @@ static absl::Status LaunchImpl(
   }
 
   // Execute device kernel on the execution stream.
-  auto executed = ExecuteKernelOnStream(***kernel, buffer_args,
-                                        launch_dimensions, execution_stream);
-  if (!executed.ok()) return executed;
-
-  return absl::OkStatus();
+  return ExecuteKernelOnStream(**kernel, buffer_args, launch_dimensions,
+                               execution_stream);
 }
 
 //===----------------------------------------------------------------------===//
