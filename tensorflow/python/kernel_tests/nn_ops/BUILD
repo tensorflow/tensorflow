@@ -326,10 +326,10 @@ tf_py_strict_test(
     deps = [
         "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:ctc_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:ctc_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -342,7 +342,6 @@ cuda_py_strict_test(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:ctc_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
@@ -357,6 +356,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:ctc_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
