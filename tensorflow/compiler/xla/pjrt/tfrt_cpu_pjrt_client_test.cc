@@ -102,7 +102,11 @@ TEST(TfrtCpuClientTest, HloSnapshot) {
       ROOT add = f32[3,2] add(x, y)
     })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto client, GetTfrtCpuClient(/*asynchronous=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client,
+      GetTfrtCpuClient(/*asynchronous=*/true,
+                       /*cpu_device_count=*/1,
+                       /*max_inflight_computations_per_device=*/32));
   TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
                           ParseAndReturnUnverifiedModule(kProgram, {}));
 

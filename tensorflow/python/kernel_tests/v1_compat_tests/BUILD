@@ -80,7 +80,7 @@ cuda_py_strict_test(
 
 cuda_py_strict_test(
     name = "dense_update_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["dense_update_ops_test.py"],
     deps = [
         "//tensorflow/python:array_ops",

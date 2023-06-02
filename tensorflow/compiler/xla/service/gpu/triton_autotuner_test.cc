@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -84,6 +85,10 @@ ENTRY entry {
 
 class TritonAutotunerTest : public HloTestBase {
  public:
+  TritonAutotunerTest()
+      : HloTestBase(/*verifier_layout_sensitive=*/true,
+                    /*allow_mixed_precision_in_hlo_verifier=*/false) {}
+
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_triton_gemm(true);
@@ -120,12 +125,11 @@ class TritonAutotunerTest : public HloTestBase {
             dot_fusion = dot_fusion->operand(0);
           }
           CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
-          CHECK_GT(
-              dot_fusion
-                  ->backend_config<tensorflow::AutotuneResult::TritonGemmKey>()
-                  .value()
-                  .block_m(),
-              0);
+          CHECK_GT(dot_fusion->backend_config<xla::gpu::FusionBackendConfig>()
+                       .value()
+                       .triton_gemm_config()
+                       .block_m(),
+                   0);
         });
   }
 };
@@ -170,7 +174,8 @@ ENTRY e {
   CheckTritonAutotuning(hlo, R"(
 // CHECK:   %triton_gemm_out_computation (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation, backend_config="{\"block_m\":\"
+// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
+// CHECK-SAME: \"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
@@ -193,7 +198,8 @@ ENTRY e {
   CheckTritonAutotuning(hlo, R"(
 // CHECK:   %triton_gemm_out_computation (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation, backend_config="{\"block_m\":\"
+// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
+// CHECK-SAME: \"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -209,9 +215,9 @@ TEST_F(TritonAutotunerTest, SelectsSplitK) {
 HloModule t
 
 ENTRY e {
-  p0 = s8[7,4096] parameter(0)
-  p0c = bf16[7,4096] convert(p0)
-  p1 = bf16[4096,18] parameter(1)
+  p0 = s8[7,8192] parameter(0)
+  p0c = bf16[7,8192] convert(p0)
+  p1 = bf16[8192,18] parameter(1)
   ROOT dot.0 = bf16[7,18] dot(p0c, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })";
@@ -254,7 +260,7 @@ ENTRY e {
 
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p0, %p1), kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: \"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));

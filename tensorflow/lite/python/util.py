@@ -19,8 +19,8 @@ import datetime
 import sys
 
 from absl import logging
-
 import flatbuffers
+
 from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2

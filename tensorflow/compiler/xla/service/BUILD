@@ -15,7 +15,7 @@ load(
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "if_libtpu")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "internal_hlo_deps")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
@@ -1518,6 +1518,8 @@ xla_cc_test(
         ":hlo_memory_scheduler",
         ":hlo_ordering",
         ":hlo_parser",
+        ":hlo_proto_cc",
+        ":hlo_proto_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -1528,6 +1530,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -1824,7 +1827,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+    ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 
 xla_cc_test(

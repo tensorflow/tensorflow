@@ -387,7 +387,7 @@ class ConvolutionLowering : public OpRewritePattern<xla_cpu::ConvolutionOp> {
   }
 
  private:
-  static constexpr const char kCallTarget[] = "xla.cpu.convolution";
+  static constexpr const char kCallTarget[] = "xla_cpu_convolution";
 
   CustomCallDeclarations& custom_calls_;
 };

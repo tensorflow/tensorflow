@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/dataset_utils.h"
+#include "tensorflow/core/data/test_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -47,54 +48,6 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-class TestContext {
- public:
-  static Status Create(std::unique_ptr<TestContext>* result) {
-    *result = absl::WrapUnique<TestContext>(new TestContext());
-
-    SessionOptions options;
-    auto* device_count = options.config.mutable_device_count();
-    device_count->insert({"CPU", 1});
-    std::vector<std::unique_ptr<Device>> devices;
-    TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
-        options, "/job:localhost/replica:0/task:0", &devices));
-    (*result)->device_mgr_ =
-        std::make_unique<StaticDeviceMgr>(std::move(devices));
-
-    FunctionDefLibrary proto;
-    (*result)->lib_def_ = std::make_unique<FunctionLibraryDefinition>(
-        OpRegistry::Global(), proto);
-
-    OptimizerOptions opts;
-    (*result)->pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
-        (*result)->device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-        TF_GRAPH_DEF_VERSION, (*result)->lib_def_.get(), opts);
-    (*result)->runner_ = [](const std::function<void()>& fn) { fn(); };
-    (*result)->params_.function_library =
-        (*result)->pflr_->GetFLR("/device:CPU:0");
-    (*result)->params_.device = (*result)->device_mgr_->ListDevices()[0];
-    (*result)->params_.runner = &(*result)->runner_;
-    (*result)->op_ctx_ =
-        std::make_unique<OpKernelContext>(&(*result)->params_, 0);
-    (*result)->iter_ctx_ =
-        std::make_unique<IteratorContext>((*result)->op_ctx_.get());
-    return OkStatus();
-  }
-
-  IteratorContext* iter_ctx() const { return iter_ctx_.get(); }
-
- private:
-  TestContext() = default;
-
-  std::unique_ptr<DeviceMgr> device_mgr_;
-  std::unique_ptr<FunctionLibraryDefinition> lib_def_;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
-  std::function<void(std::function<void()>)> runner_;
-  OpKernelContext::Params params_;
-  std::unique_ptr<OpKernelContext> op_ctx_;
-  std::unique_ptr<IteratorContext> iter_ctx_;
-};
-
 string full_name(string key) { return FullName("Iterator:", key); }
 
 TEST(SerializationUtilsTest, CheckpointElementsRoundTrip) {
@@ -110,8 +63,8 @@ TEST(SerializationUtilsTest, CheckpointElementsRoundTrip) {
   VariantTensorDataReader reader(data);
   std::vector<std::vector<Tensor>> read_elements;
 
-  std::unique_ptr<TestContext> ctx;
-  TF_ASSERT_OK(TestContext::Create(&ctx));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestContext> ctx,
+                          TestContext::Create());
   TF_ASSERT_OK(ReadElementsFromCheckpoint(ctx->iter_ctx(), &reader, test_prefix,
                                           &read_elements));
   ASSERT_EQ(elements.size(), read_elements.size());

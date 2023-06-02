@@ -137,8 +137,9 @@ struct XlaOpsCommonFlags {
     }
 
     bool IsEnabledInXlaLaunchForDevice(const DeviceType& device_type) const {
-      return enabled_for_xla_launch_ &&
-             xla_launch_allowed_devices_.contains(device_type.type_string());
+      return enabled_for_all_ ||
+             (enabled_for_xla_launch_ &&
+              xla_launch_allowed_devices_.contains(device_type.type_string()));
     }
 
     // Allow using Device API (PjRt) for `device_type` in the XlaCompileOnDemand
@@ -152,9 +153,26 @@ struct XlaOpsCommonFlags {
 
     bool IsEnabledInXlaCompileOnDemandForDevice(
         const DeviceType& device_type) const {
-      return enabled_for_compile_on_demand_ &&
-             xla_compile_on_demand_allowed_devices_.contains(
-                 device_type.type_string());
+      return enabled_for_all_ ||
+             (enabled_for_compile_on_demand_ &&
+              xla_compile_on_demand_allowed_devices_.contains(
+                  device_type.type_string()));
+    }
+
+    // Allow using Device API (PjRt) for `device_type` in the XlaCompile and
+    // XlaRun ops. Please note that `enabled_for_compile_and_run_` needs to be
+    // true in addition to the `device_type` being allowed in order to use the
+    // Device API for single device compilation and execution in the XlaCompile
+    // and XlaRun ops.
+    void AllowForDeviceInXlaCompileAndRun(const DeviceType& device_type) {
+      xla_compile_and_run_allowed_devices_.insert(device_type.type_string());
+    }
+
+    bool IsEnabledInXlaCompileAndRunForDevice(
+        const DeviceType& device_type) const {
+      return enabled_for_all_ || (enabled_for_compile_and_run_ &&
+                                  xla_compile_and_run_allowed_devices_.contains(
+                                      device_type.type_string()));
     }
 
     // If true, uses Device API (PjRt) for single device compilation and
@@ -166,6 +184,16 @@ struct XlaOpsCommonFlags {
     // one in "on-demand" mode. Defaults to false.
     bool enabled_for_compile_on_demand_;
 
+    // If true, uses Device API (PjRt) for compilation and execution when
+    // auto-clustering is enabled. Defaults to false.
+    bool enabled_for_compile_and_run_;
+
+    // If true, uses Device API (PjRt) for compilation and execution everywhere
+    // i.e. for functions marked for JIT compilation, for ops in "on-demand"
+    // mode and autoclustering, no matter whether other flags are enabled or
+    // not, and whether devices have been allowed or not. Defaults to false.
+    bool enabled_for_all_;
+
    private:
     // Devices for which using Device API (PjRt) is allowed in the XlaLaunch op.
     // This can only be modified programmatically.
@@ -173,6 +201,9 @@ struct XlaOpsCommonFlags {
     // Devices for which using Device API (PjRt) is allowed in the
     // XlaCompileOnDemand op. This can only be modified programmatically.
     absl::flat_hash_set<std::string> xla_compile_on_demand_allowed_devices_;
+    // Devices for which using Device API (PjRt) is allowed in the
+    // XlaCompile and XlaRun ops. This can only be modified programmatically.
+    absl::flat_hash_set<std::string> xla_compile_and_run_allowed_devices_;
   } tf_xla_use_device_api;
 };
 

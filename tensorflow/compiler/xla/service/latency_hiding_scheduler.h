@@ -26,12 +26,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
+
+struct CanonicalAsyncOp {
+  HloOpcode outer;  // kAsyncStart or kAsyncDone
+  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
+                    // or kReduceScatter
+};
+
+CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo);
+
+using GetCanonicalAsyncOpFunc =
+    std::function<CanonicalAsyncOp(const HloInstruction& hlo)>;
 
 class HloGraphNode;
 class ModulePressureState;
@@ -108,7 +120,16 @@ class LatencyEstimator {
   virtual int CyclesPerMicrosecond() const = 0;
   virtual ~LatencyEstimator() = default;
 
-  static bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target);
+  inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
+    return get_canonical_async_op_(hlo);
+  }
+  bool IsAsyncPair(const HloGraphNode& from, const HloGraphNode& target) const;
+  explicit LatencyEstimator(
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : get_canonical_async_op_(func) {}
+
+ private:
+  GetCanonicalAsyncOpFunc get_canonical_async_op_;
 };
 
 // Implementation of LatencyEstimator using an approximate cost model.
@@ -188,13 +209,21 @@ class AsyncTracker {
   // Default resources have a hazard type of kUnshareable.
   virtual ResourceHazardType GetResourceHazardType(int64_t resource_type) const;
 
-  explicit AsyncTracker(const SchedulerConfig& config) : config_(config) {}
+  inline CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) const {
+    return get_canonical_async_op_(hlo);
+  }
+
+  explicit AsyncTracker(
+      const SchedulerConfig& config,
+      GetCanonicalAsyncOpFunc func = DefaultGetCanonicalAsyncOp)
+      : config_(config), get_canonical_async_op_(func) {}
 
  private:
   const SchedulerConfig config_;
   mutable absl::flat_hash_map<const HloComputation*,
                               absl::flat_hash_map<int64_t, int64_t>>
       async_in_computation_cache_;
+  GetCanonicalAsyncOpFunc get_canonical_async_op_;
 };
 
 // Base class for the core scheduling algorithm.
@@ -788,14 +817,6 @@ class LatencyHidingScheduler : public HloModulePass {
   const HloCostAnalysis::ShapeSizeFunction shape_size_bytes_;
   absl::flat_hash_set<HloComputation*> computations_to_schedule_;
 };
-
-struct CanonicalAsyncOp {
-  HloOpcode outer;  // kAsyncStart or kAsyncDone
-  HloOpcode inner;  // kAllReduce, kAllGather, kAllToAll, kCollectivePermute,
-                    // or kReduceScatter
-};
-
-CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo);
 
 }  // namespace xla
 

@@ -122,6 +122,7 @@ cc_test(
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/async/c:task",
         "//tensorflow/lite/core/async/c:types",
+        "//tensorflow/lite/core/async/interop:attribute_map_internal",
         "//tensorflow/lite/core/async/testing:mock_async_kernel",
         "//tensorflow/lite/core/async/testing:test_backend",
         "//tensorflow/lite/core/c:c_api_experimental",

@@ -16,6 +16,7 @@ package(
 
 tf_gen_op_wrapper_private_py(
     name = "user_ops_gen",
+    out = "ops/gen_user_ops.py",
 )
 
 # This target is deprecated.

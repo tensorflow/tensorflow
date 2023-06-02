@@ -444,6 +444,8 @@ PYBIND11_MODULE(_pywrap_dtensor_device, m) {
           py::arg("dim_name"), "Returns the size of mesh dimension.")
       .def("device_type", &Mesh::device_type,
            "Returns the device_type of a Mesh.")
+      .def("host_mesh", &Mesh::host_mesh,
+           "Returns a host mesh corresponding to this mesh.")
       .def("num_local_devices", &Mesh::num_local_devices,
            "Returns the number of local devices.")
       .def("min_global_device_id", &Mesh::min_global_device_id,

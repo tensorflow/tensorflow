@@ -417,15 +417,20 @@ gentbl_cc_library(
 cc_library(
     name = "deallocation_passes",
     srcs = [
+        "deallocation/transforms/analysis.cc",
         "deallocation/transforms/buffer_reuse.cc",
         "deallocation/transforms/convert_deallocation_ops_to_llvm.cc",
         "deallocation/transforms/deallocate.cc",
         "deallocation/transforms/deallocation_simplification.cc",
         "deallocation/transforms/deallocation_to_scf.cc",
+        "deallocation/transforms/debug_passes.cc",
         "deallocation/transforms/split_alloc_tensors.cc",
         "deallocation/transforms/xla_buffer_arg_rewrite.cc",
     ],
-    hdrs = ["deallocation/transforms/passes.h"],
+    hdrs = [
+        "deallocation/transforms/analysis.h",
+        "deallocation/transforms/passes.h",
+    ],
     strip_include_prefix = ".",
     deps = [
         ":deallocation",

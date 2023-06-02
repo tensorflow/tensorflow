@@ -347,10 +347,10 @@ absl::string_view TfrtCpuDeviceDescription::ToString() const {
   return to_string_;
 }
 
-TfrtCpuDevice::TfrtCpuDevice(int id, bool asynchronous)
+TfrtCpuDevice::TfrtCpuDevice(int id, int max_inflight_computations)
     : description_(id),
-      max_inflight_computations_semaphore_(/*capacity=*/asynchronous ? 32 : 1) {
-}
+      max_inflight_computations_semaphore_(
+          /*capacity=*/max_inflight_computations) {}
 
 Status TfrtCpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   return TransferLiteralToInfeedOnCpu(local_hardware_id(), literal);
@@ -368,23 +368,25 @@ static int CpuDeviceCount() {
 }
 
 static StatusOr<std::vector<std::unique_ptr<TfrtCpuDevice>>> GetTfrtCpuDevices(
-    bool asynchronous, int cpu_device_count) {
+    int cpu_device_count, int max_inflight_computations_per_device) {
   std::vector<std::unique_ptr<TfrtCpuDevice>> devices;
   for (int i = 0; i < cpu_device_count; ++i) {
     auto device = std::make_unique<TfrtCpuDevice>(
-        /*id=*/i, asynchronous);
+        /*id=*/i, max_inflight_computations_per_device);
     devices.push_back(std::move(device));
   }
   return std::move(devices);
 }
 
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
-                                                       int cpu_device_count) {
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+    bool asynchronous, int cpu_device_count,
+    int max_inflight_computations_per_device) {
   // Need at least CpuDeviceCount threads to launch one collective.
   size_t num_threads = std::max(DefaultThreadPoolSize(), cpu_device_count);
 
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                      GetTfrtCpuDevices(asynchronous, cpu_device_count));
+                      GetTfrtCpuDevices(cpu_device_count,
+                                        max_inflight_computations_per_device));
 
   return std::unique_ptr<PjRtClient>(std::make_unique<TfrtCpuClient>(
       /*process_index=*/0, std::move(devices), num_threads));

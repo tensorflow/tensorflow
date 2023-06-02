@@ -78,7 +78,6 @@ xla_cc_test(
     ],
     deps = [
         ":llvm_gpu_backend",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",

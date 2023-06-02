@@ -233,6 +233,10 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
     get_stream_assignments(cluster, n)  # Blocks until all workers have streams.
     cluster.stop_worker(0)
+    self.assertTrue(
+        os.path.exists(
+            os.path.join(self._path, "streams", "stream_0", "checkpoints")))
+
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
     self._wait_for_snapshot()
@@ -255,6 +259,96 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self._wait_for_snapshot()
     self.assertTrue(self._snapshot_is_done())
     # TODO(b/250921378): Verify the number of elements.
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNonrepeatedDatasetDoesntProduceSecondRepetitionDir(self):
+    num_workers = 5
+    num_sources = 3
+    cluster, _ = self.setup(
+        num_workers=num_workers,
+        ds_size=1000,
+        num_sources=num_sources,
+    )
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, num_workers)
+    cluster.stop_worker(0)
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
+    for stream_idx in range(num_workers):
+      for source_idx in range(num_sources):
+        self.assertFalse(
+            os.path.exists(
+                os.path.join(
+                    self._path,
+                    "streams",
+                    f"stream_{stream_idx}",
+                    "splits",
+                    f"source_{source_idx}",
+                    "repetition_1",
+                )
+            )
+        )
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleDatasetRecoversAndCompletes(self):
+    cluster = data_service_test_base.TestCluster(num_workers=3)
+    dataset1 = dataset_ops.Dataset.range(1000)
+    datasets = [
+        dataset_ops.Dataset.from_tensors("a").repeat(100),
+        dataset_ops.Dataset.from_tensors("b").repeat(100),
+        dataset_ops.Dataset.from_tensors("c").repeat(100),
+    ]
+    choice_dataset = dataset_ops.Dataset.range(3).repeat()
+    dataset2 = dataset_ops.Dataset.choose_from_datasets(
+        datasets, choice_dataset
+    )
+
+    snapshot_path1 = os.path.join(self._path, "snapshot1")
+    snapshot_path2 = os.path.join(self._path, "snapshot2")
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset1, snapshot_path1, cluster.dispatcher_address()
+        )
+    )
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset2, snapshot_path2, cluster.dispatcher_address()
+        )
+    )
+
+    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    while not os.path.exists(os.path.join(snapshot_path1, "DONE")):
+      time.sleep(0.1)
+    while not os.path.exists(os.path.join(snapshot_path2, "DONE")):
+      time.sleep(0.1)
+    # TODO(b/250921378): Verify the number of elements.
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedDataset(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.from_tensor_slices(range(100))
+    def interleave_fn(x):
+      ds = dataset_ops.Dataset.from_tensor_slices(range(x))
+      def flat_map_fn(y):
+        return dataset_ops.Dataset.from_tensor_slices([y])
+      return ds.flat_map(flat_map_fn)
+    dataset = dataset.interleave(
+        interleave_fn, cycle_length=2, num_parallel_calls=2)
+
+    self.evaluate(
+        distributed_save_op.distributed_save(
+            dataset, self._path, cluster.dispatcher_address()))
+    get_stream_assignments(cluster, 1)  # Blocks until all workers have streams.
+    time.sleep(1)
+    cluster.stop_worker(0)
+    cluster.restart_dispatcher()
+    cluster.restart_worker(0)
+    self._wait_for_snapshot()
+    self.assertTrue(self._snapshot_is_done())
 
   def _snapshot_is_done(self):
     return os.path.exists(os.path.join(self._path, "DONE"))

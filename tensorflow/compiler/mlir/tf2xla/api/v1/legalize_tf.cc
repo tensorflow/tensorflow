@@ -279,9 +279,13 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
         xla::HloModule::CreateFromProto(compilation_result.computation->proto(),
                                         hlo_module_config));
 
-    tensorflow::DumpRawStringToFile(
-        "legalize_tf_fallback_hlo",
-        hlo_module->entry_computation()->ToString());
+    std::string all_computations;
+    for (auto computation : hlo_module->computations()) {
+      all_computations += computation->ToString() + "\n\n";
+    }
+
+    tensorflow::DumpRawStringToFile("legalize_tf_fallback_hlo",
+                                    all_computations);
   }
 
   if (filtered_graph) {

@@ -18,6 +18,10 @@ package(
 
 py_strict_library(
     name = "checkpoint_lib",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":checkpoint",
         ":checkpoint_management",

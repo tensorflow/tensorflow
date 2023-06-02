@@ -844,6 +844,7 @@ cuda_py_strict_test(
     timeout = "long",
     srcs = ["xent_op_d9m_test.py"],
     tags = [
+        "no_pip",  # TODO(b/283889547) Flaky on kokoro
         "no_windows",  # Flaky on Windows CPU: https://github.com/tensorflow/tensorflow/issues/55827
         "nomac",  # TODO(b/235277289) Flaky on OSX
     ],

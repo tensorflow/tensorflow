@@ -6146,5 +6146,4 @@ func.func @reshape_sparse_encoding(%arg0: tensor<1x49x16xf32, #ST_3D>) -> tensor
   %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32, #ST_3D>) -> tensor<1x784x1x1xf32, #ST_4D>
   func.return %0 : tensor<1x784x1x1xf32, #ST_4D>
 }
-// CHECK: tensor.collapse_shape %{{.*}} {{\[}}[0, 1, 2]] : tensor<1x49x16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>> into tensor<784xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>
-// CHECK-NEXT: tensor.expand_shape %{{.*}} {{\[}}[0, 1, 2, 3]] : tensor<784xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>> into tensor<1x784x1x1xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed", "compressed" ] }>>
+// CHECK: tensor.reshape %{{.*}} : (tensor<1x49x16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>, tensor<4xi64>) -> tensor<1x784x1x1xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed", "compressed" ] }>>

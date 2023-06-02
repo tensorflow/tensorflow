@@ -138,6 +138,10 @@ macro(populate_tf_source_vars RELATIVE_DIR SOURCES_VAR)
     "${TF_SOURCE_DIR}/${RELATIVE_DIR}" ${SOURCES_VAR} ${ARGN}
   )
 endmacro()
+# Make sure all repos have licenses.
+set(OVERRIDABLE_FETCH_CONTENT_LICENSE_CHECK ON)
+# Additional library dependencies based upon enabled features.
+set(TFLITE_TARGET_DEPENDENCIES "")
 # Find TensorFlow Lite dependencies.
 find_package(absl REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -145,7 +149,10 @@ find_package(farmhash REQUIRED)
 find_package(fft2d REQUIRED)
 find_package(FlatBuffers REQUIRED)
 find_package(gemmlowp REQUIRED)
-find_package(NEON_2_SSE REQUIRED)
+if (NOT CMAKE_SYSTEM_PROCESSOR OR CMAKE_SYSTEM_PROCESSOR MATCHES "x86")
+  find_package(NEON_2_SSE REQUIRED)
+  list(APPEND TFLITE_TARGET_DEPENDENCIES NEON_2_SSE::NEON_2_SSE)
+endif()
 find_package(cpuinfo REQUIRED)  #CPUINFO is used by XNNPACK and RUY library
 find_package(ruy REQUIRED)
 # Download necessary dependencies.
@@ -178,8 +185,6 @@ endif()
 set(TFLITE_TARGET_PUBLIC_OPTIONS "-DEIGEN_NEON_GEBP_NR=4")
 set(TFLITE_TARGET_PRIVATE_OPTIONS "")
 set(TFLITE_TARGET_PRIVATE_DEFINITIONS "")
-# Additional library dependencies based upon enabled features.
-set(TFLITE_TARGET_DEPENDENCIES "")
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang$")
   # TFLite uses deprecated methods in neon2sse which generates a huge number of
   # warnings so surpress these until they're fixed.
@@ -224,6 +229,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Android")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)
+if(CMAKE_SYSTEM_NAME MATCHES "Windows" AND BUILD_SHARED_LIBS)
+  list(FILTER TFLITE_SRCS EXCLUDE REGEX ".*simple_memory_arena_debug_dump\\.cc$")
+endif()
 
 # This particular file is excluded because the more explicit approach to enable
 # XNNPACK delegate is preferred to the weak-symbol one.
@@ -600,7 +608,6 @@ target_include_directories(tensorflow-lite
 target_link_libraries(tensorflow-lite
   PUBLIC
     Eigen3::Eigen
-    NEON_2_SSE::NEON_2_SSE
     absl::flags
     absl::hash
     absl::status

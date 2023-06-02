@@ -1036,7 +1036,13 @@ package_group(
     ],
 )
 
-package_group(name = "ndarray_tensor_allow_list")
+package_group(
+    name = "ndarray_tensor_allow_list",
+    packages = [
+        "//third_party/py/courier/...",
+        "//third_party/py/tensorfn/...",
+    ],
+)
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.

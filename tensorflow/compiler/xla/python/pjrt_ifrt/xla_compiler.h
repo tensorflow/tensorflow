@@ -19,9 +19,11 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
+#include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
 
 namespace xla {
 namespace ifrt {
@@ -29,13 +31,20 @@ namespace ifrt {
 // Wraps compilation options for an XLA computation.
 //
 // TODO(hyeontaek): Move this class out of pjrt_ifrt.
+//
+// TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
+// because compilation (without loading) should not take them.
 struct XlaCompileOptions
     : llvm::RTTIExtends<XlaCompileOptions, CompileOptions> {
   XlaCompileOptions() = default;
-  explicit XlaCompileOptions(xla::CompileOptions compile_options)
-      : compile_options(std::move(compile_options)) {}
+  explicit XlaCompileOptions(xla::CompileOptions compile_options,
+                             std::vector<tsl::RCReference<LoadedHostCallback>>
+                                 loaded_host_callbacks = {})
+      : compile_options(std::move(compile_options)),
+        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
 
   xla::CompileOptions compile_options;
+  std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
 
   // CompileOptions implementation.
 
@@ -47,16 +56,23 @@ struct XlaCompileOptions
 // Wraps deserialization options for an XLA computation.
 //
 // TODO(hyeontaek): Move this class out of pjrt_ifrt.
+//
+// TODO(hyeontaek): Move `loaded_host_callbacks` to a (new) `LoadOptions`
+// because deserialization (without loading) should not take them.
 struct XlaDeserializeOptions
     : llvm::RTTIExtends<XlaDeserializeOptions, DeserializeOptions> {
   XlaDeserializeOptions() = default;
   explicit XlaDeserializeOptions(
-      std::optional<xla::CompileOptions> compile_options)
-      : compile_options(std::move(compile_options)) {}
+      std::optional<xla::CompileOptions> compile_options,
+      std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks =
+          {})
+      : compile_options(std::move(compile_options)),
+        loaded_host_callbacks(std::move(loaded_host_callbacks)) {}
 
   // `compile_options` may be unspecified if deserialization does not override
   // it.
   std::optional<xla::CompileOptions> compile_options;
+  std::vector<tsl::RCReference<LoadedHostCallback>> loaded_host_callbacks;
 
   // DeserializeOptions implementation.
 

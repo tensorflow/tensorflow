@@ -22,7 +22,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python import pywrap_tfe
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver.tpu import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import remote_utils

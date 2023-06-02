@@ -122,6 +122,111 @@ ENTRY entry {
                 std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
 }
 
+TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOp) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+  ROOT n = f32[64,48,32]{2,1,0} negate(t)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  EXPECT_EQ(FindAnyTiledTranspose(*r),
+            std::make_optional(
+                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
+}
+
+TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOpS8) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+  ROOT c = s8[64,48,32]{2,1,0} convert(t)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  // TODO(b/284431534): Update this test when the shared memory transpose
+  // emitter is fast for S8 output.
+  EXPECT_FALSE(FindAnyTiledTranspose(*r).has_value());
+  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
+}
+
+TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateBinaryOp) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  p2 = f32[64,48,32]{2,1,0} parameter(1)
+  t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+  ROOT add = f32[64,48,32]{2,1,0} add(t, p2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  EXPECT_EQ(FindAnyTiledTranspose(*r),
+            std::make_optional(
+                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
+}
+
+TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithTwoIntermediateBinaryOps) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  p2 = f32[64,48,32]{2,1,0} parameter(1)
+  p3 = f32[64,48,32]{2,1,0} parameter(2)
+  t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+  mul = f32[64,48,32]{2,1,0} multiply(t, p3)
+  ROOT add = f32[64,48,32]{2,1,0} add(mul, p3)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  EXPECT_EQ(FindAnyTiledTranspose(*r),
+            std::make_optional(
+                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+  EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0)->operand(0));
+}
+
+TEST_F(IrEmissionUtilsTest,
+       FindAnyTiledTransposeWithIntermediateBinaryOpTwoTransposes) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY entry {
+  p = f32[32,48,64]{2,1,0} parameter(0)
+  p2 = f32[48,32,64]{2,1,0} parameter(1)
+  t = f32[64,48,32]{2,1,0} transpose(p), dimensions={2,1,0}
+  t2 = f32[64,48,32]{2,1,0} transpose(p2), dimensions={2,0,1}
+  ROOT add = f32[64,48,32]{2,1,0} add(t, t2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  HloInstruction* r = module->entry_computation()->root_instruction();
+  EXPECT_FALSE(FindAnyTiledTranspose(*r).has_value());
+  EXPECT_EQ(&FindNonTrivialHero(*r), r);
+}
+
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOneSwapDimIsSmall) {
   const char* hlo = R"(
 HloModule module

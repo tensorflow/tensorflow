@@ -196,3 +196,10 @@ def LowerUInt32AddV2 : Pat<
       (CreateTFCastOpI32 $rhs, /*truncate=*/ConstBoolAttrFalse)),
      /*truncate=*/ConstBoolAttrFalse),
   [(TensorOf<[TF_Uint32]> $lhs), (TensorOf<[TF_Uint32]> $rhs)]>;
+
+//===----------------------------------------------------------------------===//
+// Fill op patterns.
+//===----------------------------------------------------------------------===//
+
+def RemoveRedundantShapeOp :
+  Pat<(TF_ShapeOp (TF_FillOp $shape, $fill)), (replaceWithValue $shape)>;

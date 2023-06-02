@@ -419,16 +419,6 @@ Status MakeIteratorFromInputElement(
   return OkStatus();
 }
 
-IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
-  // Strip out any split providers so that they don't apply to sub-iterators.
-  if (ctx->split_providers().empty()) {
-    return *ctx;
-  }
-  IteratorContext::Params params(ctx);
-  params.split_providers.clear();
-  return IteratorContext(std::move(params));
-}
-
 /* static */
 Status FunctionMetadata::Create(
     OpKernelConstruction* ctx, const string& func_name, Params params,

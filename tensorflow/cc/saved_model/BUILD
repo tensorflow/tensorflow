@@ -400,7 +400,7 @@ tf_cc_test(
         ":metrics",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

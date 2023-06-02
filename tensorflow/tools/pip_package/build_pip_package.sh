@@ -17,6 +17,12 @@
 
 set -e
 
+# Read the value of VERSION from vercod.bzl
+VERSION=$(grep 'VERSION = ' tensorflow/tensorflow.bzl | sed -E 's/VERSION = "(.*)"/\1/g')
+VERSION_MAJOR=$(echo "$VERSION" | cut -d '.' -f1)
+echo TensorFlow Version: ${VERSION}
+echo TensorFlow Major Version: ${VERSION_MAJOR}
+
 function is_absolute {
   [[ "$1" = /* ]] || [[ "$1" =~ ^[a-zA-Z]:[/\\].* ]]
 }
@@ -123,6 +129,7 @@ function prepare_src() {
 
   TMPDIR="${1%/}"
   mkdir -p "$TMPDIR"
+  echo TMPDIR: ${TMPDIR}
   EXTERNAL_INCLUDES="${TMPDIR}/tensorflow/include/external"
   XLA_AOT_RUNTIME_SOURCES="${TMPDIR}/tensorflow/xla_aot_runtime_src"
 
@@ -160,6 +167,25 @@ function prepare_src() {
     fi
   else
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+    # Resolved the issue of a missing symlink to libtensorflow_cc.so.2 b/264967822#comment25
+    if is_macos; then
+      if [ ! -L "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib" ]; then
+        ln -s "$(dirname "$(readlink "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION}.dylib")")/libtensorflow_cc.${VERSION_MAJOR}.dylib" \
+         "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib"
+        echo "Created symlink: $(dirname "$(readlink "${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION}.dylib")")/libtensorflow_cc.${VERSION_MAJOR}.dylib -> \
+          ${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib"
+      else
+        echo "Symlink already exists: ${RUNFILES}/tensorflow/libtensorflow_cc.${VERSION_MAJOR}.dylib"
+      fi
+    else
+      # cp -P ${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION} ${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}
+      if [ ! -L "${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}" ]; then
+        ln -s "$(dirname "$(readlink "${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION}")")/libtensorflow_cc.so.${VERSION_MAJOR}" \
+          "${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}"
+      else
+        echo "Symlink already exists: ${RUNFILES}/tensorflow/libtensorflow_cc.so.${VERSION_MAJOR}"
+      fi
+    fi
     cp -L \
       bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/LICENSE \
       "${TMPDIR}"
@@ -193,8 +219,8 @@ function prepare_src() {
     if is_macos; then
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
-      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/libbfloat16.so.so" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
-      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.so" "@loader_path/../tsl/python/lib/core/libbfloat16.so.so" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
+      install_name_tool -change "@loader_path/../../../../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.dylib" "@loader_path/libbfloat16.so.dylib" ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
+      install_name_tool -change "@loader_path/../../${so_lib_dir}//libtensorflow_Stsl_Spython_Slib_Score_Slibbfloat16.so.dylib" "@loader_path/../tsl/python/lib/core/libbfloat16.so.dylib" ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so
     else
       chmod +rw ${TMPDIR}/tensorflow/tsl/python/lib/core/pywrap_bfloat16.so
       chmod +rw ${TMPDIR}/tensorflow/python/_pywrap_tensorflow_internal.so

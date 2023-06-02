@@ -91,6 +91,7 @@ from tensorflow.python.ops import gen_sparse_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -99,13 +100,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-np_dtypes = LazyLoader(
-    "np_dtypes", globals(),
-    "tensorflow.python.ops.numpy_ops.np_dtypes")
 
 
 # Aliases for some automatically-generated names.
@@ -220,8 +215,11 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     all_tensors = (expanded_start, res, expanded_stop)
     concatenated = array_ops.concat(all_tensors, axis=axis)
     begin = array_ops.zeros_like(shape)
-    size = array_ops.where_v2(mask, num_int, shape)
-
+    # Preserve shape information for final slice.
+    size = array_ops.concat(
+        (shape[0:axis], array_ops.reshape(num_int, [1]), shape[axis + 1 :]),
+        axis=0,
+    )
     return array_ops.slice(concatenated, begin, size)
 
 

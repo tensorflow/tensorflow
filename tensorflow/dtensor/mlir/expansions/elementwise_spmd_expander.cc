@@ -116,8 +116,7 @@ StatusOr<mlir::Operation*> ElementwiseSPMDExpander::ExpandOp(
   // Resource output is only likely to be for identity op. However, keeping
   // the checkgeneric here.
   auto op_result = op->getOpResult(0);
-  if (llvm::isa<mlir::TF::ResourceType>(
-          mlir::getElementTypeOrSelf(op_result))) {
+  if (IsResourceType(op_result)) {
     TF_RETURN_IF_ERROR(InferSPMDExpandedLocalShapeForResourceOutput(
         &op_result, output_layout.value(), builder.getContext()));
   }

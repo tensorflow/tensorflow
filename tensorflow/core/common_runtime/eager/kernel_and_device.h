@@ -283,7 +283,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
       const bool shape_inference_on_tfe_dialect_import,
       const bool int_args_and_retvals_on_device,
       absl::optional<string> xla_compile_device_type,
-      Rendezvous::Factory rendezvous_factory,
+      const bool allow_soft_placement, Rendezvous::Factory rendezvous_factory,
       std::function<int64_t()> get_op_id)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
@@ -296,6 +296,7 @@ class KernelAndDeviceFunc : public KernelAndDevice {
             shape_inference_on_tfe_dialect_import),
         int_args_and_retvals_on_device_(int_args_and_retvals_on_device),
         xla_compile_device_type_(xla_compile_device_type),
+        allow_soft_placement_(allow_soft_placement),
         input_devices_(std::move(input_devices)),
         composite_devices_(std::move(composite_devices)),
         input_resource_dtypes_and_shapes_(
@@ -379,6 +380,8 @@ class KernelAndDeviceFunc : public KernelAndDevice {
   const bool int_args_and_retvals_on_device_;
 
   const absl::optional<string> xla_compile_device_type_;
+
+  const bool allow_soft_placement_;
 
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.

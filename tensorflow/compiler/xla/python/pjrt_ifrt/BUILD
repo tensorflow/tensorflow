@@ -79,6 +79,7 @@ cc_library(
         "pjrt_client.cc",
         "pjrt_compiler.cc",
         "pjrt_executable.cc",
+        "pjrt_host_callback.cc",
         "pjrt_tuple.cc",
     ],
     hdrs = [
@@ -86,6 +87,7 @@ cc_library(
         "pjrt_client.h",
         "pjrt_compiler.h",
         "pjrt_executable.h",
+        "pjrt_host_callback.h",
         "pjrt_tuple.h",
     ],
     deps = [
@@ -96,6 +98,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/pjrt:host_callback",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/pjrt:utils",

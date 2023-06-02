@@ -41,17 +41,17 @@ std::string SplitsDirectory(absl::string_view snapshot_path,
 // Returns the directory path for the assigned splits for one source, for a
 // worker writing one stream of a snapshot.
 std::string SourceDirectory(absl::string_view snapshot_path,
-                            int64_t stream_index, int64_t source_id);
+                            int64_t stream_index, int64_t source_index);
 
 // Returns the directory path for one repetition of a split provider.
 std::string RepetitionDirectory(absl::string_view snapshot_path,
-                                int64_t stream_index, int64_t source_id,
+                                int64_t stream_index, int64_t source_index,
                                 int64_t repetition_index);
 
 // Returns the file path for an assigned split for a worker writing one stream
 // of a snapshot.
 std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
-                      int64_t source_id, int64_t repetition_index,
+                      int64_t source_index, int64_t repetition_index,
                       int64_t local_index, int64_t global_index);
 
 // Returns the index of the stream. The expected format of
@@ -59,6 +59,18 @@ std::string SplitPath(absl::string_view snapshot_path, int64_t stream_index,
 // stream_<stream_index>
 tsl::StatusOr<int64_t> ParseStreamDirectoryName(
     absl::string_view stream_directory_name);
+
+// Returns the index of the source. The expected format of
+// `source_directory_name` is:
+// source_<stream_index>
+tsl::StatusOr<int64_t> ParseSourceDirectoryName(
+    absl::string_view source_directory_name);
+
+// Returns the index of the repetition. The expected format of
+// `repetition_directory_name` is:
+// repetition_<stream_index>
+tsl::StatusOr<int64_t> ParseRepetitionDirectoryName(
+    absl::string_view repetition_directory_name);
 
 // Returns a pair of {local_split_index, global_split_index} of the split. The
 // expected format of `split_filename` is:

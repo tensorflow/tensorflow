@@ -19,10 +19,10 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/python/ifrt/compiler.h"
 #include "tensorflow/compiler/xla/python/ifrt/executable.h"
 
@@ -34,15 +34,14 @@ struct IfrtIRCompileOptions
     : llvm::RTTIExtends<IfrtIRCompileOptions, CompileOptions> {
   IfrtIRCompileOptions() = default;
   IfrtIRCompileOptions(
-      xla::CompileOptions xla_options,
+      std::vector<int> device_assignments,
       absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding)
-      : xla_options(std::move(xla_options)),
+      : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)) {}
 
-  // Options for the IFRT IR program compilation.
-  // TODO(yuchenzhang,hyeontaek): Define a subset of options essential to
-  // compiling programs.
-  xla::CompileOptions xla_options;
+  // Map from logical device ids in MLIR module to runtime device ids obtained
+  // from IFRT client.
+  std::vector<int> device_assignments;
 
   // Map from `getSymName()` of declared LoadedExecutableOp in the `mlir_module`
   // to pre-compiled LoadedExecutable instance. The LoadedExecutables must

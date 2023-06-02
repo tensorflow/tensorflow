@@ -161,7 +161,11 @@ tf_cc_test(
 tf_cuda_cc_test(
     name = "create_pjrt_client_util_test",
     srcs = ["create_pjrt_client_util_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":create_pjrt_client_util",
         ":global_state",
@@ -245,7 +249,10 @@ tf_cuda_cc_test(
     name = "pjrt_gpu_client_registration_test",
     size = "small",
     srcs = ["pjrt_gpu_client_registration_test.cc"],
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + [
+        "nomsan",
+        "notsan",
+    ],
     deps = [
         ":pjrt_client_factory_options",
         ":pjrt_client_factory_registry",

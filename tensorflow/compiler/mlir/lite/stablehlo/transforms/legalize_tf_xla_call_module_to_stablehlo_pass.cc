@@ -44,6 +44,28 @@ namespace odml {
 
 static constexpr std::string_view kStablehloModuleDefaultEntryFuncName = "main";
 static constexpr std::string_view kStablehloFuncNamePrefix = "XlaCallModule";
+static constexpr char kShardingAttr[] = "mhlo.sharding";
+static constexpr char kShardingName[] = "Sharding";
+
+class RemoveCustomCallWithSharding
+    : public mlir::OpRewritePattern<mlir::stablehlo::CustomCallOp> {
+  using OpRewritePattern<mlir::stablehlo::CustomCallOp>::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::stablehlo::CustomCallOp op,
+      PatternRewriter &rewriter) const override {
+    // Removes the custom call with sharding op if the operand type is the
+    // same as the result type.
+    if (op->hasAttr(kShardingAttr) && op.getCallTargetName() == kShardingName &&
+        op.getNumOperands() == 1 && op.getNumResults() == 1 &&
+        op.getOperands().front().getType() ==
+            op.getResults().front().getType()) {
+      rewriter.replaceOp(op, op.getOperands());
+      return mlir::success();
+    }
+    return mlir::failure();
+  }
+};
 
 class ConvertTFXlaCallModuleOp
     : public mlir::OpRewritePattern<mlir::TF::XlaCallModuleOp> {
@@ -93,8 +115,9 @@ class ConvertTFXlaCallModuleOp
               kStablehloModuleDefaultEntryFuncName) &&
           cloned_func_op.getSymVisibility() == "public") {
         main_fn = cloned_func_op;
-        main_fn.setSymVisibility(stablehlo_builder.getStringAttr("private"));
       }
+      cloned_func_op.setSymVisibility(
+          stablehlo_builder.getStringAttr("private"));
       parent_module_symbol_table.insert(cloned_func_op);
     }
 
@@ -160,6 +183,7 @@ class TFXlaCallModuleOpToStablehloPass
     ModuleOp module_op = getOperation();
     RewritePatternSet patterns(&getContext());
     patterns.add<ConvertTFXlaCallModuleOp>(&getContext(), module_op);
+    patterns.add<RemoveCustomCallWithSharding>(&getContext());
     if (failed(applyPatternsAndFoldGreedily(module_op, std::move(patterns)))) {
       return signalPassFailure();
     }

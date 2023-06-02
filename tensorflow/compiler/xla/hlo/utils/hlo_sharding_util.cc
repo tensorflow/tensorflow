@@ -490,6 +490,15 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   for (int64_t i = 0; i < target_shape.rank(); ++i) {
     target_dims_stack[i] = target_shape.dimensions(target_shape.rank() - 1 - i);
   }
+  bool inplace_add_sharding_dim = false;
+  auto append_sharding_dim = [&](int64_t size) {
+    if (inplace_add_sharding_dim) {
+      target_tile_assignment_dimensions.back() *= size;
+    } else {
+      target_tile_assignment_dimensions.push_back(size);
+    }
+    inplace_add_sharding_dim = false;
+  };
   while (!source_dims_stack.empty() || !target_dims_stack.empty()) {
     if (target_dims_stack.empty()) {
       if (Product(sharding_tile_dims_stack) != 1) {
@@ -510,15 +519,26 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     target_dims_stack.pop_back();
     if (s_partitions * Product(sharding_tile_dims_stack) == 1) {
       // No more partitions left.
-      target_tile_assignment_dimensions.push_back(1);
+      append_sharding_dim(1);
+      continue;
+    }
+    if (s_partitions > 1 && s_size % s_partitions == 0 &&
+        t_size % s_partitions == 0) {
+      // If s_partitions evenly divides both s_size and t_size, we can add this
+      // sharding dim and work on shard sized shapes in the next iteration.
+      source_dims_stack.push_back(s_size / s_partitions);
+      target_dims_stack.push_back(t_size / s_partitions);
+      sharding_tile_dims_stack.push_back(1);
+      append_sharding_dim(s_partitions);
+      inplace_add_sharding_dim = true;
       continue;
     }
     if (s_size == t_size) {
       // Same dimension.
-      target_tile_assignment_dimensions.push_back(s_partitions);
+      append_sharding_dim(s_partitions);
     } else if (t_size == 1) {
       // Trivial dimension added.
-      target_tile_assignment_dimensions.push_back(1);
+      append_sharding_dim(1);
       source_dims_stack.push_back(s_size);
       sharding_tile_dims_stack.push_back(s_partitions);
     } else if (s_size == 1) {
@@ -533,12 +553,12 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
         return std::nullopt;
       }
       if (t_size % s_partitions == 0) {
-        target_tile_assignment_dimensions.push_back(s_partitions);
+        append_sharding_dim(s_partitions);
         // We have part of the s_size unprocessed, so put it back to stack.
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(1);
       } else if (s_partitions % t_size == 0) {
-        target_tile_assignment_dimensions.push_back(t_size);
+        append_sharding_dim(t_size);
         // We have part of the s_size unprocessed, so put it back to stack.
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(s_partitions / t_size);

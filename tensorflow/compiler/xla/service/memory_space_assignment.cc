@@ -454,10 +454,18 @@ float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
     }
   }
 
-  // Penalize larger buffers by dividing the benefit by the square root of the
-  // size. Empirically, we observed this resulted in better performance compared
-  // to dividing by the size.
-  float memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
+  // Penalize larger buffers by dividing the benefit by the square root of
+  // the size. Empirically, we observed this resulted in better performance
+  // compared to dividing by the size.
+  float memory_boundedness = 1;
+  if (options_
+          .xla_tpu_alternate_memory_benefit_scaling_factor_for_large_buffers ==
+      "NO_SCALE") {
+    memory_boundedness = alternate_mem_benefit;
+  } else {
+    memory_boundedness = alternate_mem_benefit / std::sqrt(interval.size);
+  }
+
   if (cache) {
     cache->memory_boundedness[interval.buffer->defining_position()] =
         memory_boundedness;
@@ -3229,6 +3237,12 @@ void AlternateMemoryBestFitHeap::IdentifyAndOptimizeMemoryBoundLoops() {
         }
         // Found the start of the loop.
         loop_start_idx = i;
+      }
+      if (inst->parent() != instruction_sequence[loop_start_idx]->parent()) {
+        VLOG(3) << "Mismatch (computation) at " << i << ": "
+                << inst->parent()->name() << " vs "
+                << instruction_sequence[loop_start_idx]->parent()->name();
+        break;
       }
       operand_distances.push_back({});
       if (ignore_op(inst) || fingerprint_it == fingerprint_map_.end()) {

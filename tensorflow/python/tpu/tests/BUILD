@@ -502,7 +502,6 @@ tpu_py_strict_test(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/tpu:tpu_embedding_v1",
         "//tensorflow/python/tpu:tpu_embedding_v2_utils",

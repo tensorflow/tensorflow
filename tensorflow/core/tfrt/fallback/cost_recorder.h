@@ -54,8 +54,6 @@ class CostRecorder {
   // TODO(b/263837451): Fix the op_key unstableness during serialization.
   Status WriteToFile() const;
 
-  bool RecordInCpuCycles() const { return normalize_ratio_ > 1; }
-
   size_t size() const;
 
   static const char* MesuredCostPathEnvVarName() {

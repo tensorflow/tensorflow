@@ -15,8 +15,7 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_4BIT_NEON_FULLY_CONNECTED_IMPL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_4BIT_NEON_FULLY_CONNECTED_IMPL_H_
-#if defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
-
+#if defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
 #include <stdint.h>
 
 #if !defined(EIGEN_MAX_ALIGN_BYTES) && !defined(__aarch64__)
@@ -78,5 +77,5 @@ extern void NeonRunKernelSDot(const uint8_t* lhs, const int8_t* rhs,
 }  // namespace optimized_4bit
 }  // namespace tflite
 
-#endif  // defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
+#endif  // defined(FC_4BIT_NEON)...
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_4BIT_NEON_FULLY_CONNECTED_IMPL_H_

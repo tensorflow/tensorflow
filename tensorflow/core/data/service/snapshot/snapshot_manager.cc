@@ -49,9 +49,7 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
-// The time for which an UNKNOWN stream should transition to ORPHAN if no worker
-// claims ownership of it via heartbeat.
-const absl::Duration kUnknownStreamTimeout = absl::Seconds(45);
+const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
@@ -120,8 +118,7 @@ Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
     absl::string_view path, Env* env) {
-  SnapshotManager* snapshot_manager =
-      new SnapshotManager(path, env, absl::Microseconds(env->NowMicros()));
+  SnapshotManager* snapshot_manager = new SnapshotManager(path, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Resume());
   return absl::WrapUnique(snapshot_manager);
 }
@@ -320,6 +317,7 @@ Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
+  ++num_completed_streams_;
   if (absl::c_all_of(streams_, [](const Stream& stream) {
         return stream.state == Stream::State::kDone;
       })) {
@@ -382,7 +380,7 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
         *assigned_stream_index !=
             snapshot_progress->snapshot_task().stream_index()) {
       return absl::InternalError(absl::StrCat(
-          "Worker ", worker_address, " was assigned stream ",
+          "tf.data snapshot worker ", worker_address, " was assigned stream ",
           snapshot_progress->snapshot_task().stream_index(),
           ", but is now assigned a different stream ", *assigned_stream_index));
     }
@@ -413,17 +411,21 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
-  LOG_EVERY_N_SEC(INFO, 60)
-      << "tf.data snapshot progress [" << path_ << "]: " << num_assigned_splits_
-      << " of " << num_total_splits_
-      << " total splits have been assigned or completed.";
-
   dead_workers_.erase(request.worker_address());
 
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
     // When the snapshot manager is done or in an error state, it returns an
     // empty response to inform the workers to cancel the ongoing tasks.
     return OkStatus();
+  }
+
+  if (absl::Time now = absl::FromUnixMicros(env_->NowMicros());
+      now - last_progress_log_time_ > kProgressLoggingInterval) {
+    LOG(INFO) << "tf.data snapshot progress [" << path_
+              << "]: " << num_completed_streams_ << "/" << streams_.size()
+              << " streams completed; " << num_assigned_splits_ << "/"
+              << num_total_splits_ << " splits assigned or completed.";
+    last_progress_log_time_ = now;
   }
 
   const SnapshotTaskProgress* snapshot_progress = nullptr;
@@ -459,10 +461,10 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
                             request.stream_index(),
                             ", but the assignment is no longer available.");
   } else if (it->second != request.stream_index()) {
-    return errors::Internal("worker ", request.worker_address(),
-                            " think it's assigned stream ",
-                            request.stream_index(),
-                            " but it's actually assigned stream ", it->second);
+    return errors::Internal(
+        "tf.data snapshot worker ", request.worker_address(),
+        " was assigned stream ", request.stream_index(),
+        " but is now assigned a different stream ", it->second);
   }
 
   Stream& stream = streams_[request.stream_index()];
@@ -476,13 +478,20 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
     response.set_end_of_splits(true);
     return OkStatus();
   }
+  while (request.repetition_index() > source.repetition_index) {
+    // This could happen if an iterator is repeated before reaching end of
+    // input, e.g. for the longer input to `Dataset.zip`. In this case we mark
+    // the previous repetitions as completed and advance to the requested
+    // repetition.
+    TF_RETURN_IF_ERROR(ResetSource(source, request.source_index()));
+  }
 
   Tensor split;
   bool end_of_splits;
   TF_RETURN_IF_ERROR(source.split_provider->GetNext(&split, &end_of_splits));
   if (end_of_splits) {
     response.set_end_of_splits(true);
-    return ResetSource(source, request.source_index());
+    return OkStatus();
   }
 
   std::string split_path = SplitPath(
@@ -500,6 +509,8 @@ Status SnapshotManager::GetSnapshotSplit(const GetSnapshotSplitRequest& request,
 Status SnapshotManager::ResetSource(Source& source, int64_t source_index) {
   TF_RETURN_IF_ERROR(source.split_provider->Reset());
   ++source.repetition_index;
+  LOG(INFO) << "Starting the " << source.repetition_index << "th repetition "
+            << " for snapshot " << path_ << ", source " << source_index;
   for (int64_t i = 0; i < streams_.size(); ++i) {
     TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(RepetitionDirectory(
         path_, /*stream_index=*/i, source_index, source.repetition_index)));

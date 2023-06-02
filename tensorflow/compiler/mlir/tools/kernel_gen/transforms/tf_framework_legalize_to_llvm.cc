@@ -125,7 +125,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                              llvm::to_vector<4>(adaptor.getDynSizes()),
                              rewriter, sizes, strides, sizeBytes);
     // Get number of elements.
-    Value num_elements = getNumElements(loc, sizes, rewriter);
+    Value num_elements =
+        getNumElements(loc, memref_type, adaptor.getDynSizes(), rewriter);
     // Get element size.
     Value element_size =
         getSizeInBytes(loc, memref_type.getElementType(), rewriter);

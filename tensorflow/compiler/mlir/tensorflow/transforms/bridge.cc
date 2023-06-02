@@ -150,6 +150,11 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
   pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
   pm.addPass(CreateTPUClusterFormationPass());
+  // CreateEmbeddingPipeliningPass may have created more functions, but
+  // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
+  // only called from one cluster. Here, we choose to fix the all-funcs-one-use
+  // invariant right before it's needed, not after it's been broken.
+  pm.addPass(mlir::TF::CreateGuaranteeAllFuncsOneUsePass());
   // Run TPU cluster cleanup attributes so ops with no outside compiled
   // attribute have no host device attribute.
   pm.addPass(CreateTPUClusterCleanupAttributesPass());
@@ -425,6 +430,12 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<func::FuncOp>(createCanonicalizerPass());
   // Decompose resource ops.
   pm.addPass(TFDevice::CreateDecomposeResourceOpsInClusterPass());
+  // TODO(b/267193636): Remove this flag when outside compilation
+  // for generic pipeline is landed.
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  }
   // Run another shape inference pass because resource decomposition might have
   // created new partial types. Also, after dropping `shape_invariant` attribute
   // from While/WhileRegion ops within cluster would lead to more precise

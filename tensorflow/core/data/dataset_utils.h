@@ -363,6 +363,11 @@ inline int GetCpuBudget() {
 // optimization.
 int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
+// Creates an iterator context appropriate for a nested dataset's iterator. A
+// nested dataset is a dataset created within another dataset, e.g. by the
+// function passed to `interleave` or `flat_map`.
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx);
+
 // A `DatasetExperimentRegistry::JobSelector` that randomly selects
 // `rollout_pct` percent of all jobs. `name_hash` is a hash of the experiment
 // and job names.
