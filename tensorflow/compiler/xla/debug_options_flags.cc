@@ -81,6 +81,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_cuda_graph_capture_threshold(2);
+  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(true);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -857,6 +858,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cuda_graph_capture_threshold(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cuda_graph_enable_concurrent_region",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_cuda_graph_enable_concurrent_region),
+      debug_options->xla_gpu_cuda_graph_enable_concurrent_region(),
+      "Identify concurrent regions in cuda graphs and execute them "
+      "concurrently."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_persistent_temp_buffers",

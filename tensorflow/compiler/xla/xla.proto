@@ -449,6 +449,9 @@ message DebugOptions {
   // graph.
   int32 xla_gpu_cuda_graph_capture_threshold = 208;
 
+  // Identify concurrent regions in cuda graphs and execute them concurrently.
+  bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
+
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot
   // run concurrently if this is enabled.
@@ -526,7 +529,7 @@ message DebugOptions {
   // kernel on GPU.
   bool xla_gpu_enable_experimental_block_size = 214;
 
-  // Next id: 215
+  // Next id: 216
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
