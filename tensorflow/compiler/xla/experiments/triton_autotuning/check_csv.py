@@ -25,7 +25,6 @@ from matmul_lib import MatmulTiling
 import pandas as pd
 import torch
 import tqdm
-import triton
 
 _DATA = flags.DEFINE_string('data', '', 'Data to check')
 _OUTPUT_FILE = flags.DEFINE_string(
@@ -89,5 +88,4 @@ def main():
 
 if __name__ == '__main__':
   app.parse_flags_with_usage(sys.argv)
-  triton.compiler.init_cuda_utils()
   main()

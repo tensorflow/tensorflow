@@ -37,7 +37,6 @@ import numpy as np
 import torch
 import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-import triton
 
 LOG = logging.getLogger(__name__)
 
@@ -217,5 +216,4 @@ def main() -> None:
 if __name__ == '__main__':
   random.seed(42)
   app.parse_flags_with_usage(sys.argv)
-  triton.compiler.init_cuda_utils()
   main()

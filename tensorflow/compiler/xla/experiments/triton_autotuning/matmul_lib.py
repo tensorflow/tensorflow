@@ -261,7 +261,7 @@ def benchmark_matmul_tiling(
       LOG.error('Overly large tile')
     return None
 
-  max_shared_memory = triton.compiler.cuda_utils.get_device_properties(
+  max_shared_memory = triton.runtime.driver.utils.get_device_properties(
       torch.cuda.current_device()
   )['max_shared_mem']
 
@@ -289,7 +289,7 @@ def benchmark_matmul_tiling(
           run_matmul,
           warmup=0,
           rep=repetitions,
-          percentiles=(0.001, 0.1, 0.5, 0.9),
+          quantiles=(0.001, 0.1, 0.5, 0.9),
       )
       min_ms = percentiles[0]
     except Exception as exc:
@@ -304,7 +304,7 @@ def benchmark_cublas(dims: MatmulSize) -> MatmulTiming:
   b = torch.randn(dims.K, dims.N, device='cuda', dtype=torch.bfloat16)
   run_matmul = lambda: torch.matmul(a, b)
   percentiles = triton.testing.do_bench(
-      run_matmul, warmup=0, rep=20, percentiles=(0.001, 0.1, 0.5, 0.9)
+      run_matmul, warmup=0, rep=20, quantiles=(0.001, 0.1, 0.5, 0.9)
   )
   min_ms = percentiles[0]
   return min_ms

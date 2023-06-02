@@ -28,7 +28,6 @@ from matmul_lib import parse_int_list
 from matmul_lib import print_roofline_performance
 import torch
 import tqdm
-import triton
 
 _M = flags.DEFINE_integer('m', 64, 'Size of first matrix')
 _K = flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
@@ -116,5 +115,4 @@ def main() -> None:
 
 if __name__ == '__main__':
   app.parse_flags_with_usage(sys.argv)
-  triton.compiler.init_cuda_utils()
   main()
