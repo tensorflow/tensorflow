@@ -763,8 +763,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
         }
       };
       pipeline.AddPass<GpuAsyncCollectiveAnnotator>(convert_to_async);
-      // Try to constant fold fusions that have only const parameters.
-      pipeline.AddPass<HloConstantFolding>();
     }
 
     if (!hlo_module->config().use_spmd_partitioning()) {
