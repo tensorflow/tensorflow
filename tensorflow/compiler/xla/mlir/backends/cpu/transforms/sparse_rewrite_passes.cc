@@ -433,6 +433,7 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       std::make_pair("sparse_tensor_dynamic_slice",
                      SparseDynSliceCallRewriter()),
       std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
+      std::make_pair("sparse_tensor_reduce_sum", SparseReduceSumCallRewriter()),
       std::make_pair("sparse_tensor_conv_general_dilated",
                      SparseConvCallRewriter()),
       std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
