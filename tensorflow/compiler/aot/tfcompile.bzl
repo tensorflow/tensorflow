@@ -329,6 +329,7 @@ def _tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
+                "//tensorflow/compiler/xla/runtime:aot_ffi_c_symbols",
                 "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
             ] or []
         ) + (
