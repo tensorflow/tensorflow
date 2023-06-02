@@ -208,7 +208,11 @@ py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
     srcs_version = "PY3",
-    visibility = visibility + ["//tensorflow:internal"],
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":test",
         "//tensorflow/python:framework_test_lib",

@@ -291,6 +291,7 @@ py_strict_library(
         "meta_graph.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":_errors_test_helper",
         ":_pywrap_python_api_dispatcher",
@@ -369,6 +370,7 @@ py_strict_library(
     name = "c_api_util",
     srcs = ["c_api_util.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:pywrap_tf_session",
@@ -1149,6 +1151,7 @@ py_strict_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
@@ -1729,6 +1732,7 @@ py_strict_library(
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
         "//tensorflow:internal",
+        "//third_party/py/reverb:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],
@@ -1852,6 +1856,7 @@ py_strict_library(
     srcs = ["tensor_spec.py"],
     visibility = visibility + [
         "//tensorflow:internal",
+        "//third_party/py/reverb:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
