@@ -160,7 +160,8 @@ GenerateReshardingCostsAndMissingShardingsForAllOperands(
             GetInputSharding(ins, operand, k, output_sharding, call_graph);
       }
       if (!cur_input_sharding.has_value() &&
-          ins->opcode() == HloOpcode::kGather && k == 0) {
+          ((ins->opcode() == HloOpcode::kGather && k == 0) ||
+           (ins->opcode() == HloOpcode::kScatter && k != 0))) {
         cur_input_sharding = HloSharding::Replicate();
       }
       CHECK(cur_input_sharding.has_value());
@@ -1345,6 +1346,38 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
                                                             leaf_strategies);
         AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                               strategies, 0);
+        break;
+      }
+      case HloOpcode::kScatter: {
+        strategies = CreateLeafStrategyVector(instruction_id, ins, strategy_map,
+                                              leaf_strategies);
+        // We follow the first operand (the array we're scattering into)
+        auto src_strategies = strategy_map.at(ins->operand(0)).get();
+        CHECK(!src_strategies->is_tuple);
+        for (int64_t sid = 0; sid < src_strategies->leaf_vector.size(); ++sid) {
+          HloSharding output_spec =
+              src_strategies->leaf_vector[sid].output_sharding;
+          std::string name = ToStringSimple(output_spec);
+          double compute_cost = 0, communication_cost = 0;
+          double memory_cost = GetBytes(ins->shape()) / output_spec.NumTiles();
+
+          std::vector<std::optional<HloSharding>> input_shardings_optional(
+              {output_spec, std::nullopt, std::nullopt});
+          std::vector<std::vector<double>> resharding_cost =
+              GenerateReshardingCostsAndMissingShardingsForAllOperands(
+                  ins, output_spec, strategy_map, cluster_env, call_graph,
+                  input_shardings_optional);
+
+          std::vector<HloSharding> input_shardings;
+          for (auto sharding_optional : input_shardings_optional) {
+            CHECK(sharding_optional.has_value());
+            input_shardings.push_back(sharding_optional.value());
+          }
+
+          strategies->leaf_vector.push_back(ShardingStrategy(
+              {name, output_spec, compute_cost, communication_cost, memory_cost,
+               std::move(resharding_cost), input_shardings}));
+        }
         break;
       }
       case HloOpcode::kGather: {
