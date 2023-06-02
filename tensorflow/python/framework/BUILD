@@ -1149,6 +1149,7 @@ py_strict_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
         "//third_party/py/tf_agents:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],
@@ -1561,6 +1562,7 @@ py_strict_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
