@@ -404,6 +404,27 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "constant_value",
+    srcs = ["constant_value.cc"],
+    hdrs = ["constant_value.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+    ],
+)
+
+xla_cc_test(
+    name = "constant_value_test",
+    srcs = ["constant_value_test.cc"],
+    deps = [
+        ":constant_value",
+        "//tensorflow/compiler/xla:literal_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "convert_async_collectives_to_sync",
     srcs = ["convert_async_collectives_to_sync.cc"],
     hdrs = ["convert_async_collectives_to_sync.h"],
@@ -416,6 +437,30 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "value_range",
+    srcs = ["value_range.cc"],
+    hdrs = ["value_range.h"],
+    deps = [
+        ":constant_value",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "value_range_test",
+    srcs = ["value_range_test.cc"],
+    deps = [
+        ":hlo_module_config",
+        ":hlo_parser",
+        ":value_range",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
