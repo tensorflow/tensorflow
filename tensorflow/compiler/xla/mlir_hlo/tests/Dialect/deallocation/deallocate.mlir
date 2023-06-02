@@ -34,13 +34,11 @@ func.func @loop_nested_alloc(
 // CHECK-SAME:      %[[ARG3:[a-z0-9]*]]: memref<2xf32>, %[[OUT:.*]]: memref<2xf32>)
 // CHECK:       %[[ALLOC:.*]] = memref.alloc() : memref<2xf32>
 // CHECK:       %[[ALLOC_OWNED:.*]] = deallocation.own %[[ALLOC]]
-// CHECK:       deallocation.retain() of(%[[ALLOC_OWNED]])
 // CHECK:       %[[ARG3_UNOWNED:.*]] = deallocation.null
 // CHECK:       %[[FOR1:.*]]:2 = scf.for {{.*}}iter_args(%[[A:.*]] = %[[ARG3]], %[[A_OWNERSHIP:.*]] = %[[ARG3_UNOWNED]])
 // CHECK:         %[[FOR2:.*]]:2 = scf.for {{.*}} iter_args(%[[B:.*]] = %[[A]], %[[B_OWNERSHIP:.*]] = %[[A_OWNERSHIP]])
 // CHECK:           %[[ALLOC2:.*]] = memref.alloc() : memref<2xf32>
 // CHECK:           %[[ALLOC2_OWNED:.*]] = deallocation.own %[[ALLOC2]]
-// CHECK:           deallocation.retain() of(%[[ALLOC2_OWNED]])
 // CHECK:           %[[IF:.*]]:2 = scf.if
 // CHECK:             %[[ALLOC3:.*]] = memref.alloc() : memref<2xf32>
 // CHECK:             %[[ALLOC3_OWNED:.*]] = deallocation.own %[[ALLOC3]]
@@ -50,11 +48,13 @@ func.func @loop_nested_alloc(
 // CHECK:             scf.yield %[[B]], %[[NULL]]
 // CHECK:           }
 // CHECK:           %[[RETAINED_IF:.*]] = deallocation.retain(%[[IF]]#0) of(%[[B_OWNERSHIP]], %[[IF]]#1)
+// CHECK:           deallocation.retain() of(%[[ALLOC2_OWNED]])
 // CHECK:           scf.yield %[[IF]]#0, %[[RETAINED_IF]]
 // CHECK:         }
 // CHECK:         scf.yield %[[FOR2]]#0, %[[FOR2]]#1
 // CHECK:       }
 // CHECK:       memref.copy %[[FOR1]]#0, %[[OUT]]
+// CHECK:       deallocation.retain() of(%[[ALLOC_OWNED]])
 // CHECK:       deallocation.retain() of(%[[FOR1]]#1)
 // CHECK:       return
 
@@ -122,18 +122,17 @@ func.func @while(%arg0: index) -> (memref<?xf32>, memref<?xf32>, memref<?xf32>) 
 // CHECK-SAME:      %[[ARG0:.*]]:
 // CHECK-NEXT:    %[[ALLOC:.*]] = memref.alloc(%arg0) : memref<?xf32>
 // CHECK-NEXT:    %[[ALLOC_OWNED:.*]] = deallocation.own %[[ALLOC]]
-// CHECK-NEXT:    %[[NULL1:.*]] = deallocation.null
-// CHECK-NEXT:    %[[NULL2:.*]] = deallocation.null
+// CHECK-NEXT:    %[[NULL:.*]] = deallocation.null
 // CHECK-NEXT:    %[[WHILE:.*]]:6 = scf.while (%[[A:[a-z0-9]*]] = %[[ALLOC]], %[[B:[a-z0-9]*]] = %[[ALLOC]], %[[C:[a-z0-9]*]] = %[[ALLOC]],
-// CHECK-SAME:       %[[A_OWNERSHIP:.*]] = %[[ALLOC_OWNED]], %[[B_OWNERSHIP:.*]] = %[[NULL1]], %[[C_OWNERSHIP:.*]] = %[[NULL2]])
+// CHECK-SAME:       %[[A_OWNERSHIP:.*]] = %[[ALLOC_OWNED]], %[[B_OWNERSHIP:.*]] = %[[NULL]], %[[C_OWNERSHIP:.*]] = %[[NULL]])
 // CHECK:            scf.condition{{.*}} %[[A]], %[[B]], %[[C]], %[[A_OWNERSHIP]], %[[B_OWNERSHIP]], %[[C_OWNERSHIP]]
 // CHECK:         } do {
-// CHECK:           deallocation.retain() of(%[[C_OWNERSHIP]])
-// CHECK:           deallocation.retain() of(%[[A_OWNERSHIP]])
 // CHECK:           %[[ALLOC1:.*]] = memref.alloc(%[[ARG0]])
 // CHECK:           %[[ALLOC1_OWNED:.*]] = deallocation.own %[[ALLOC1]]
 // CHECK:           %[[ALLOC2:.*]] = memref.alloc(%[[ARG0]])
 // CHECK:           %[[ALLOC2_OWNED:.*]] = deallocation.own %[[ALLOC2]]
+// CHECK:           deallocation.retain() of(%[[A_OWNERSHIP]])
+// CHECK:           deallocation.retain() of(%[[C_OWNERSHIP]])
 // CHECK:           scf.yield %[[ALLOC2]], %[[ALLOC1]], %[[B]], %[[ALLOC2_OWNED]], %[[ALLOC1_OWNED]], %[[B_OWNERSHIP]]
 // CHECK:         }
 // CHECK:         %[[RESULTS_RETAINED:.*]] = deallocation.retain(%[[WHILE]]#0, %[[WHILE]]#1, %[[WHILE]]#2)
@@ -182,13 +181,12 @@ func.func @yield_same_alloc_twice() {
 // CHECK-LABEL: @yield_same_alloc_twice
 // CHECK-NEXT:  %[[ALLOC:.*]] = memref.alloc
 // CHECK-NEXT:  %[[ALLOC_OWNED:.*]] = deallocation.own %[[ALLOC]]
-// CHECK-NEXT:  %[[NULL1:.*]] = deallocation.null
-// CHECK-NEXT:  %[[NULL2:.*]] = deallocation.null
+// CHECK-NEXT:  %[[NULL:.*]] = deallocation.null
 // CHECK:       scf.while
 // CHECK-SAME:    %[[ALLOC]]
 // CHECK-SAME:    %[[ALLOC]]
-// CHECK-SAME:    %[[NULL1]]
-// CHECK-SAME:    %[[NULL2]]
+// CHECK-SAME:    %[[NULL]]
+// CHECK-SAME:    %[[NULL]]
 // CHECK:       do
 // CHECK-NEXT:    %[[NULL:.*]] = deallocation.null
 // CHECK-NEXT:    %[[RETAIN:.*]]:2 = deallocation.retain(%[[ALLOC]], %[[ALLOC]]) of()
@@ -212,19 +210,16 @@ func.func @yield_derived(%lb: index, %ub: index, %step: index) {
 // CHECK-NEXT:  memref.alloc
 // CHECK-NEXT:  deallocation.own
 // CHECK-NEXT:  scf.for
-// CHECK-NEXT:    deallocation.retain()
 // CHECK-NEXT:    %[[ALLOC:.*]] = memref.alloc
 // CHECK-NEXT:    %[[ALLOC_OWNED:.*]] = deallocation.own
 // CHECK-NEXT:    "test.someop"
 // CHECK-NEXT:    %[[RESULT:.*]] = "test.someop"
-// CHECK-NEXT:    scf.yield %[[RESULT]], %[[ALLOC_OWNED]]
+// CHECK-NEXT:    %[[RETAINED:.*]] = deallocation.retain
+// CHECK-NEXT:    deallocation.retain() of
+// CHECK-NEXT:    scf.yield %[[RESULT]], %[[RETAINED]]
 // CHECK-NEXT:  }
 // CHECK-NEXT:  test.use
 // CHECK-NEXT:  retain
-
-// CHECK-SIMPLE-LABEL: @yield_derived
-// CHECK-SIMPLE:       test.use
-// CHECK-SIMPLE-NEXT:  memref.dealloc
 
 // -----
 
@@ -739,20 +734,20 @@ func.func @user() -> memref<1x2x3xf32> {
 // CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP]]#1
 
 // CHECK: @user()
-// CHECK:   %[[ALLOC:.*]] = memref.alloc
-// CHECK:   %[[OWN:.*]] = deallocation.own %[[ALLOC]]
-// CHECK:   %[[ALLOC_0:.*]] = memref.alloc
-// CHECK:   %[[OWN_0:.*]] = deallocation.own %[[ALLOC_0]]
-// CHECK:   %[[ALLOC_1:.*]] = memref.alloc
-// CHECK:   %[[OWN_1:.*]] = deallocation.own %[[ALLOC_1]]
-// CHECK:   %[[ALLOC_2:.*]] = memref.alloc
-// CHECK:   %[[OWN_2:.*]] = deallocation.own %[[ALLOC_2]]
-// CHECK:   %[[ALLOC_3:.*]] = memref.alloc
-// CHECK:   %[[OWN_3:.*]] = deallocation.own %[[ALLOC_3]]
-// CHECK:   %[[OWNERSHIP_0:.*]]:2 = call @f(%[[ALLOC]], %[[ALLOC_0]], %[[ALLOC_1]], %[[ALLOC_2]], %[[ALLOC_3]])
-// CHECK:   deallocation.retain() of(%[[OWN_3]])
-// CHECK:   %[[RETAIN:.*]] = deallocation.retain(%[[OWNERSHIP_0]]#0) of(%[[OWN]], %[[OWN_0]], %[[OWN_1]], %[[OWN_2]], %[[OWNERSHIP_0]]#1)
-// CHECK:   return %[[OWNERSHIP_0]]#0, %[[RETAIN]]
+// CHECK-NEXT:   %[[ALLOC:.*]] = memref.alloc
+// CHECK-NEXT:   %[[OWN:.*]] = deallocation.own %[[ALLOC]]
+// CHECK-NEXT:   %[[ALLOC_0:.*]] = memref.alloc
+// CHECK-NEXT:   %[[OWN_0:.*]] = deallocation.own %[[ALLOC_0]]
+// CHECK-NEXT:   %[[ALLOC_1:.*]] = memref.alloc
+// CHECK-NEXT:   %[[OWN_1:.*]] = deallocation.own %[[ALLOC_1]]
+// CHECK-NEXT:   %[[ALLOC_2:.*]] = memref.alloc
+// CHECK-NEXT:   %[[OWN_2:.*]] = deallocation.own %[[ALLOC_2]]
+// CHECK-NEXT:   %[[ALLOC_3:.*]] = memref.alloc
+// CHECK-NEXT:   %[[OWN_3:.*]] = deallocation.own %[[ALLOC_3]]
+// CHECK-NEXT:   %[[OWNERSHIP_0:.*]]:2 = call @f(%[[ALLOC]], %[[ALLOC_0]], %[[ALLOC_1]], %[[ALLOC_2]], %[[ALLOC_3]])
+// CHECK-NEXT:   %[[RETAIN:.*]] = deallocation.retain(%[[OWNERSHIP_0]]#0) of(%[[OWN]], %[[OWN_0]], %[[OWN_1]], %[[OWN_2]], %[[OWNERSHIP_0]]#1)
+// CHECK-NEXT:   deallocation.retain() of(%[[OWN_3]])
+// CHECK-NEXT:   return %[[OWNERSHIP_0]]#0, %[[RETAIN]]
 
 // -----
 
@@ -813,8 +808,8 @@ func.func @user() -> memref<1x2x3xf32> {
 // CHECK:       %[[ALLOC_3:.*]] = memref.alloc
 // CHECK:       %[[OWN_3:.*]] = deallocation.own %[[ALLOC_3]]
 // CHECK:       %[[OWNERSHIP_0:.*]]:2 = call @terminating_f(%[[C0_I32_0]], %[[ALLOC]], %[[ALLOC_0]], %[[ALLOC_1]], %[[ALLOC_2]], %[[ALLOC_3]])
-// CHECK:       deallocation.retain() of(%[[OWN_3]])
 // CHECK:       %[[RETAIN_0:.*]] = deallocation.retain(%[[OWNERSHIP_0]]#0) of(%[[OWN]], %[[OWN_0]], %[[OWN_1]], %[[OWN_2]], %[[OWNERSHIP_0]]#1)
+// CHECK:       deallocation.retain() of(%[[OWN_3]])
 // CHECK:       return %[[OWNERSHIP_0]]#0, %[[RETAIN_0]]
 
 // -----
@@ -847,10 +842,10 @@ func.func @user() -> (memref<1x2x3xf32>, memref<1x2x3xf32>) {
 // CHECK:   %[[ALLOC_1:.*]] = memref.alloc
 // CHECK:   %[[OWN_1:.*]] = deallocation.own %[[ALLOC_1]] : memref<1x2x3xf32>
 // CHECK:   %[[OWNERSHIP:.*]]:2 = call @id(%[[ALLOC]], %[[ALLOC_1]])
-// CHECK:   deallocation.retain() of(%[[OWN]])
 // CHECK:   %[[OWNERSHIP_0:.*]]:2 = call @id(%[[ALLOC_0]], %[[ALLOC_1]])
-// CHECK:   deallocation.retain() of(%[[OWN_0]])
 // CHECK:   %[[RETAIN_0:.*]]:2 = deallocation.retain(%[[OWNERSHIP]]#0, %[[OWNERSHIP_0]]#0) of(%[[OWN_1]], %[[OWNERSHIP]]#1, %[[OWNERSHIP_0]]#1)
+// CHECK:   deallocation.retain() of(%[[OWN]])
+// CHECK:   deallocation.retain() of(%[[OWN_0]])
 // CHECK:   return %[[OWNERSHIP]]#0, %[[OWNERSHIP_0]]#0, %[[RETAIN_0]]#0, %[[RETAIN_0]]#1
 
 // -----

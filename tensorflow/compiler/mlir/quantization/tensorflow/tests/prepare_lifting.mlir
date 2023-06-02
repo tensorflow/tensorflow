@@ -371,10 +371,20 @@ func.func @xla_gather_known_output_shape(%arg0: tensor<5xi32>, %arg1: tensor<1xi
 
 // -----
 
-func.func @replace_checknumerics_to_identity(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+func.func @remove_check_numerics_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.CheckNumerics"(%arg0) {device = "", message = "transformer"} : (tensor<*xf32>) -> tensor<*xf32>
   func.return %0 : tensor<*xf32>
 }
 
-// CHECK: func @replace_checknumerics_to_identity
-// CHECK: %[[out:.*]] = "tf.Identity"(%arg0) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK: func @remove_check_numerics_op
+// CHECK: return %arg0 : tensor<*xf32>
+
+// -----
+
+func.func @remove_stop_gradient_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  %0 = "tf.StopGradient"(%arg0) {device = ""} : (tensor<*xf32>) -> tensor<*xf32>
+  func.return %0 : tensor<*xf32>
+}
+
+// CHECK: func @remove_stop_gradient_op
+// CHECK: return %arg0 : tensor<*xf32>

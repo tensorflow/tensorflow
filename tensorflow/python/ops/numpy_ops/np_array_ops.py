@@ -15,6 +15,7 @@
 """Common array methods."""
 # pylint: disable=g-direct-tensorflow-import
 
+import builtins
 import enum
 import functools
 import math
@@ -97,7 +98,7 @@ def eye(N, M=None, k=0, dtype=float):  # pylint: disable=invalid-name,missing-do
   if k == 0:
     return linalg_ops.eye(N, M, dtype=dtype)
   # We need the precise length, otherwise tf.linalg.diag will raise an error
-  diag_len = min(N, M)
+  diag_len = builtins.min(N, M)
   if k > 0:
     if N >= M:
       diag_len -= k
@@ -1011,11 +1012,11 @@ def _boundaries_to_sizes(a, boundaries, axis):
     if size < 0:
       raise ValueError('The %s-th boundary %s is smaller than the previous '
                        'boundary %s' % (i, b, prev))
-    size = min(size, max(0, total_size - sizes_sum))
+    size = builtins.min(size, builtins.max(0, total_size - sizes_sum))
     sizes.append(size)
     sizes_sum += size
     prev = b
-  sizes.append(max(0, total_size - sizes_sum))
+  sizes.append(builtins.max(0, total_size - sizes_sum))
   return sizes
 
 
@@ -1476,6 +1477,23 @@ def take_along_axis(arr, indices, axis):  # pylint: disable=missing-docstring
   result.set_shape(possible_result_shape)
 
   return result
+
+
+# pylint: disable=redefined-builtin,undefined-variable
+@np_utils.np_doc('max', link=np_utils.AliasOf('amax'))
+def max(a, axis=None, keepdims=None):
+  return amax(a, axis=axis, keepdims=keepdims)
+
+
+@np_utils.np_doc('min', link=np_utils.AliasOf('amin'))
+def min(a, axis=None, keepdims=None):
+  return amin(a, axis=axis, keepdims=keepdims)
+
+
+@np_utils.np_doc('round', link=np_utils.AliasOf('around'))
+def round(a, decimals=0):
+  return around(a, decimals=decimals)
+# pylint: enable=redefined-builtin,undefined-variable
 
 
 _SLICE_ERORR = (

@@ -402,7 +402,7 @@ cuda_py_strict_test(
         "no_oss",  # TODO(b/282984925)
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -493,7 +493,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/parallel_for",
+        "//tensorflow/python/ops/parallel_for:control_flow_ops",
         "//third_party/py/numpy",
     ],
 )

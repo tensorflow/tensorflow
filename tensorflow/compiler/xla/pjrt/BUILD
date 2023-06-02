@@ -269,6 +269,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",

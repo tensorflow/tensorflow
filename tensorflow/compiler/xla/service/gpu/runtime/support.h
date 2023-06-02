@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_RUNTIME_SUPPORT_H_
 
+#include <string>
+#include <string_view>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/custom_call_encoding.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
@@ -115,6 +118,18 @@ inline void PopulateDotDimsAttrEncoding(
           .Add("rhs_batch", &DotDimsAttr::getRhsBatchingDimensions)
           .Add("rhs_contract", &DotDimsAttr::getRhsContractingDimensions));
 }
+
+// Appends to `diagnostic_engine` a handler that appends all emitted errors to
+// the `diagnostic` string. If `append_annotation_stack` is true, it will append
+// current profiler annotation stack to the diagnostic message (annotation used
+// in Xprof).
+void AppendDiagnosticToString(runtime::DiagnosticEngine& diagnostic_engine,
+                              std::string* diagnostic,
+                              bool append_annotation_stack = false);
+
+// Sets the current tracing scope that will be added to all emitted diagnostics.
+void SetCurrentTracingScope(std::string_view scope);
+void ResetCurrentTracingScope();
 
 }  // namespace gpu
 }  // namespace xla

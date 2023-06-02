@@ -1676,7 +1676,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
     std::vector<BufferInfo> buffer_infos =
-        CreateBufferInfosFromBufferAssignment(*assignment);
+        CreateBufferInfosFromBufferAssignment(*module, *assignment);
     HloComputation* computation = module->entry_computation();
 
     if (options.use_mlir_hlo_lowering()) {

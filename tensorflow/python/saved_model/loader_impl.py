@@ -380,6 +380,7 @@ class SavedModelLoader(object):
       RuntimeError: if no metagraphs were found with the associated tags.
     """
     found_match = False
+    meta_graph_def_to_load = None
     available_tags = []
     for meta_graph_def in self._saved_model.meta_graphs:
       available_tags.append(set(meta_graph_def.meta_info_def.tags))

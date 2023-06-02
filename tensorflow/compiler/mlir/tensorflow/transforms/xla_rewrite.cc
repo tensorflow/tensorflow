@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This transformation pass converts stateful and stateless paritioned calls
+// This transformation pass converts stateful and stateless partitioned calls
 // with _xla_compile_device_type attribute to XLA launch ops.
 
 #include <stack>
@@ -52,7 +52,7 @@ void MoveResourceArgsToEnd(func::FuncOp callee) {
       removed_params.push_back(false);
     }
   }
-  // Remove old reousrce-type parameters.
+  // Remove old resource-type parameters.
   callee.getBody().front().eraseArguments(removed_params);
   // Update function type.
   callee.setFunctionType(FunctionType::get(callee.getContext(),

@@ -90,6 +90,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
+  opts.set_xla_gpu_all_gather_combine_threshold_bytes(1024 * 1024 * 1024);
+  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(30 * 1024 * 1024);
   opts.set_xla_gpu_enable_async_all_reduce(true);
   opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
 
@@ -128,11 +130,16 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
 
-  // Moving reduce-scatter out of while loops can incrase memory footprint, so
+  opts.set_xla_gpu_enable_dot_strength_reduction(true);
+
+  // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
 
   opts.set_xla_gpu_collective_inflation_factor(1);
+
+  opts.set_xla_gpu_enable_experimental_block_size(false);
+
   return opts;
 }
 
@@ -774,6 +781,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_all_reduce_combine_threshold_bytes(),
       "Size threshold (in bytes) for the GPU all-reduce combiner."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_all_gather_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_all_gather_combine_threshold_bytes),
+      debug_options->xla_gpu_all_gather_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU all-gather combiner."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_reduce_scatter_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_reduce_scatter_combine_threshold_bytes),
+      debug_options->xla_gpu_reduce_scatter_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU reduce-scatter combiner."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_contiguous",
       bool_setter_for(&DebugOptions::set_xla_gpu_all_reduce_contiguous),
       debug_options->xla_gpu_all_reduce_contiguous(),
@@ -1002,6 +1021,17 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_dot_strength_reduction",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
+      debug_options->xla_gpu_enable_dot_strength_reduction(),
+      "Enable dot strength reduction-related optimizations on GPU."));
+  flag_list->push_back(
+      tsl::Flag("xla_gpu_enable_optimized_block_size",
+                bool_setter_for(
+                    &DebugOptions::set_xla_gpu_enable_experimental_block_size),
+                debug_options->xla_gpu_enable_experimental_block_size(),
+                "Enable experimental block size."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

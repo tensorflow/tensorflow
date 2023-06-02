@@ -97,8 +97,7 @@ absl::Status TypedTopK(TopkArgs<T> args) {
         "Invalid kernel pameters. This is likely a bug in the "
         "TopkSpecializer.");
   }
-  absl::StatusOr<void*> kernel = GetKernel<T>(args.num_elements, args.k);
-  if (!kernel.ok()) return kernel.status();
+  TF_ASSIGN_OR_RETURN(void* kernel, GetKernel<T>(args.num_elements, args.k));
   int blocks_per_grid = args.batch_size;
   constexpr size_t max_kv_size = sizeof(uint64_t);
   // Allocate shmem assuming we have a full reduction.
@@ -106,7 +105,7 @@ absl::Status TypedTopK(TopkArgs<T> args) {
   void* kernel_args[] = {&args.data, &args.num_elements, &args.top_elements,
                          &args.top_indices, &args.k};
   cudaError_t launch_status =
-      cudaLaunchKernel(*kernel, blocks_per_grid, num_threads, kernel_args,
+      cudaLaunchKernel(kernel, blocks_per_grid, num_threads, kernel_args,
                        shmem_size, args.stream);
   if (launch_status != cudaSuccess) {
     return absl::InternalError(absl::StrCat("Failed to launch kernel: ",

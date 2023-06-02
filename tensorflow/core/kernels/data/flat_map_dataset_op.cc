@@ -128,6 +128,8 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
+      mutex_lock l(mu_);
+      input_ckpt_ = std::make_unique<MemoryCheckpoint>(ctx->id_registry());
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
@@ -156,6 +158,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             *end_of_sequence = false;
             return OkStatus();
           }
+          ctx->MergeCheckpoint(input_ckpt_.get());
 
           // We have reached the end of the current element, so maybe move on
           // to the next element.
@@ -165,8 +168,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
 
         // Get the next element from the input dataset.
         inputs_.clear();
+        auto input_ctx = std::make_unique<IteratorContext>(*ctx);
         TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &inputs_, end_of_sequence));
+            input_impl_->GetNext(input_ctx.get(), &inputs_, end_of_sequence));
+        input_ckpt_->Merge(input_ctx->checkpoint());
         if (*end_of_sequence) {
           input_impl_.reset();
           return OkStatus();
@@ -237,7 +242,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             full_name(kCurrentElementIteratorUninitialized),
             static_cast<int64_t>(!current_element_iterator_)));
-        if (current_element_iterator_) {
+        if (current_element_iterator_ && !ctx->symbolic_checkpoint()) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name(kInputsSize), inputs_.size()));
           for (int i = 0; i < inputs_.size(); i++) {
@@ -275,26 +280,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
             reader->ReadScalar(full_name(kCurrentElementIteratorUninitialized),
                                &current_element_iterator_uninitialized));
         if (!static_cast<bool>(current_element_iterator_uninitialized)) {
-          size_t inputs_size;
-          {
-            int64_t temp;
-            TF_RETURN_IF_ERROR(
-                reader->ReadScalar(full_name(kInputsSize), &temp));
-            inputs_size = static_cast<size_t>(temp);
-          }
-          inputs_.reserve(inputs_size);
-          for (int i = 0; i < inputs_size; i++) {
-            inputs_.emplace_back();
-            TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat(kInputs, "[", i, "]")),
-                &inputs_.back()));
-          }
-
-          element_index_--;
-          TF_RETURN_IF_ERROR(
-              BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
-          TF_RETURN_IF_ERROR(
-              RestoreInput(ctx, reader, current_element_iterator_));
+          TF_RETURN_IF_ERROR(RestoreCurrentElementIterator(ctx, reader));
         }
       }
       return OkStatus();
@@ -311,8 +297,64 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           prefix(), &current_element_iterator_, node);
     }
 
+    Status RestoreCurrentElementIterator(IteratorContext* ctx,
+                                         IteratorStateReader* reader)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      if (ctx->symbolic_checkpoint()) {
+        return RestoreCurrentElementIteratorSymbolic(ctx, reader);
+      }
+      size_t inputs_size;
+      {
+        int64_t temp;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kInputsSize), &temp));
+        inputs_size = static_cast<size_t>(temp);
+      }
+      inputs_.reserve(inputs_size);
+      for (int i = 0; i < inputs_size; i++) {
+        inputs_.emplace_back();
+        TF_RETURN_IF_ERROR(reader->ReadTensor(
+            ctx->flr(), full_name(strings::StrCat(kInputs, "[", i, "]")),
+            &inputs_.back()));
+      }
+
+      element_index_--;
+      TF_RETURN_IF_ERROR(
+          BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_element_iterator_));
+      return OkStatus();
+    }
+
+    Status RestoreCurrentElementIteratorSymbolic(IteratorContext* ctx,
+                                                 IteratorStateReader* reader)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      bool end_of_sequence;
+      auto input_ctx = std::make_unique<IteratorContext>(*ctx);
+      TF_RETURN_IF_ERROR(
+          input_impl_->GetNext(input_ctx.get(), &inputs_, &end_of_sequence));
+      if (end_of_sequence) {
+        return absl::FailedPreconditionError(
+            "Unexpected end of sequence while symbolically restoring "
+            "FlatMapDataset. Please verify that the input produces data "
+            "deterministically.");
+      }
+      input_ckpt_->Merge(input_ctx->checkpoint());
+      element_index_--;
+      TF_RETURN_IF_ERROR(
+          BuildCurrentElementIteratorLocked(ctx, /*is_get_next=*/false));
+      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_element_iterator_));
+      return OkStatus();
+    }
+
     mutex mu_;
     size_t element_index_ TF_GUARDED_BY(mu_) = 0;
+    // Checkpoint to use for operations on input_impl_. We maintain a
+    // separate checkpoint from the one passed to flat_map so that we can
+    // control when symbolic checkpoint state will be propagated. In
+    // particular, we wait to propagate input checkpoint state until the
+    // tensors being flat_mapped have been fully consumed, so that if we need
+    // to restore the partially-flat-mapped dataset, we can do so by
+    // re-generating the input.
+    std::unique_ptr<MemoryCheckpoint> input_ckpt_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> current_element_iterator_ TF_GUARDED_BY(mu_);
     std::vector<Tensor> inputs_ TF_GUARDED_BY(mu_);

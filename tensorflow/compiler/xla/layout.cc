@@ -373,4 +373,24 @@ Shape* Layout::mutable_physical_shape() {
 
 void Layout::clear_physical_shape() { physical_shape_ = nullptr; }
 
+Layout& Layout::DeleteDimension(int64_t dim_to_delete) {
+  for (int64_t i = 0; i < minor_to_major_.size();) {
+    if (minor_to_major_[i] == dim_to_delete) {
+      minor_to_major_.erase(minor_to_major_.begin() + i);
+      continue;
+    }
+    if (minor_to_major_[i] > dim_to_delete) {
+      minor_to_major_[i] -= 1;
+    }
+    ++i;
+  }
+  // Delete the corresponding dim level types.
+  if (LayoutUtil::IsSparse(*this)) {
+    dim_level_types_.erase(dim_level_types_.begin() + dim_to_delete);
+    dim_unique_.erase(dim_unique_.begin() + dim_to_delete);
+    dim_ordered_.erase(dim_ordered_.begin() + dim_to_delete);
+  }
+  return *this;
+}
+
 }  // namespace xla

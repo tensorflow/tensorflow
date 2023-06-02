@@ -81,6 +81,17 @@ class BufferedWritableFile : public WritableFile {
     return file_->Flush();
   }
 
+  tsl::Status Tell(int64_t* position) override {
+    int64_t bytes_written;
+    tsl::Status status = file_->Tell(&bytes_written);
+    if (status.ok()) {
+      *position = bytes_written + buffer_pos_;
+      return OkStatus();
+    } else {
+      return status;
+    }
+  }
+
   Status Sync() override { return file_->Sync(); }
 
   // For compatibilty with the TensorBundle writer, we expose CRC32 checksums.

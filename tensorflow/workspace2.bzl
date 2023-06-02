@@ -259,10 +259,10 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_googlesource_code_re2",
-        sha256 = "b90430b2a9240df4459108b3e291be80ae92c68a47bc06ef2dc419c5724de061",
-        strip_prefix = "re2-a276a8c738735a0fe45a6ee590fe2df69bcf4502",
+        sha256 = "ef516fb84824a597c4d5d0d6d330daedb18363b5a99eda87d027e6bdd9cba299",
+        strip_prefix = "re2-03da4fc0857c285e3a26782f6bc8931c4c950df4",
         system_build_file = "//third_party/systemlibs:re2.BUILD",
-        urls = tf_mirror_urls("https://github.com/google/re2/archive/a276a8c738735a0fe45a6ee590fe2df69bcf4502.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/google/re2/archive/03da4fc0857c285e3a26782f6bc8931c4c950df4.tar.gz"),
     )
 
     tf_http_archive(
@@ -819,8 +819,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/rules_apple/releases
     tf_http_archive(
         name = "build_bazel_rules_apple",
-        sha256 = "36072d4f3614d309d6a703da0dfe48684ec4c65a89611aeb9590b45af7a3e592",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/1.0.1/rules_apple.1.0.1.tar.gz"),
+        sha256 = "a6141240657093fa7ccc7ca1ee5a62408dd9996d1bf47bc2369b8b9faefb2698",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_apple/releases/download/2.3.0/rules_apple.2.3.0.tar.gz"),
     )
 
     # https://github.com/bazelbuild/rules_swift/releases
@@ -833,8 +833,8 @@ def _tf_repositories():
     # https://github.com/bazelbuild/apple_support/releases
     tf_http_archive(
         name = "build_bazel_apple_support",
-        sha256 = "ce1042cf936540eaa7b49c4549d7cd9b6b1492acbb6e765840a67a34b8e17a97",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.1.0/apple_support.1.1.0.tar.gz"),
+        sha256 = "9f7bb62c3ae889e0eae8c18458fd8764e2e537687d9a1d85885d6af980e4fc31",
+        urls = tf_mirror_urls("https://github.com/bazelbuild/apple_support/releases/download/1.6.0/apple_support.1.6.0.tar.gz"),
     )
 
     # https://github.com/apple/swift-protobuf/releases
@@ -845,12 +845,11 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/apple/swift-protobuf/archive/1.19.0.tar.gz"),
     )
 
-    # https://github.com/google/xctestrunner/releases
     tf_http_archive(
         name = "xctestrunner",
-        strip_prefix = "xctestrunner-0.2.15",
-        sha256 = "b789cf18037c8c28d17365f14925f83b93b1f7dabcabb80333ae4331cf0bcb2f",
-        urls = tf_mirror_urls("https://github.com/google/xctestrunner/archive/refs/tags/0.2.15.tar.gz"),
+        strip_prefix = "xctestrunner-4c5709da9444eae6bba2425734b8654635bed0a6",
+        sha256 = "e5d4c53c3965ae943fb08ccd7df0efd75590213fce5052388f23fad81a649f5a",
+        urls = tf_mirror_urls("https://github.com/google/xctestrunner/archive/4c5709da9444eae6bba2425734b8654635bed0a6.tar.gz"),
     )
 
     tf_http_archive(

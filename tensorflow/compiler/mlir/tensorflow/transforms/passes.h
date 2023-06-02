@@ -741,6 +741,7 @@ enum MoveTransposeDirection { kBegin, kEnd };
 #define GEN_PASS_DECL_VERIFYSUITABLEFOREXPORTPASS
 #define GEN_PASS_DECL_XLACALLMODULEDESERIALIZATIONPASS
 #define GEN_PASS_DECL_XLACALLMODULESERIALIZATIONPASS
+#define GEN_PASS_DECL_XLACALLMODULECUSTOMCALLTFFUNCTIONRENAMINGPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
 }  // namespace detail
 using namespace detail;  // NOLINT

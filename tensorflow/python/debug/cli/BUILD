@@ -34,27 +34,6 @@ py_strict_library(
 )
 
 py_strict_library(
-    name = "curses_widgets",
-    srcs = ["curses_widgets.py"],
-    srcs_version = "PY3",
-    deps = [":debugger_cli_common"],
-)
-
-py_strict_library(
-    name = "curses_ui",
-    srcs = ["curses_ui.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":base_ui",
-        ":cli_shared",
-        ":command_parser",
-        ":curses_widgets",
-        ":debugger_cli_common",
-        ":tensor_format",
-    ],
-)
-
-py_strict_library(
     name = "readline_ui",
     srcs = ["readline_ui.py"],
     srcs_version = "PY3",
@@ -69,7 +48,6 @@ py_strict_library(
     srcs = ["ui_factory.py"],
     srcs_version = "PY3",
     deps = [
-        ":curses_ui",  # build_cleaner keep.
         ":readline_ui",  # build_cleaner keep.
     ],
 )
@@ -170,28 +148,6 @@ py_strict_library(
         ":analyzer_cli",
         "//tensorflow/python/debug/lib:debug_data",
         "@absl_py//absl:app",
-    ],
-)
-
-py_strict_test(
-    name = "curses_ui_test",
-    size = "small",
-    srcs = ["curses_ui_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "no_windows",
-    ],
-    deps = [
-        ":cli_config",
-        ":cli_test_utils",
-        ":curses_ui",
-        ":debugger_cli_common",
-        ":tensor_format",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python/platform:gfile",
-        "//third_party/py/numpy",
     ],
 )
 

@@ -4,11 +4,11 @@
 # glibc (2.12) and system libstdc++ (4.4).
 #
 # To push a new version, run:
-# $ docker build -f Dockerfile.rbe.cuda11.1-cudnn8-ubuntu20.04-manylinux2014-multipython \
-#  --tag "gcr.io/tensorflow-testing/nosla-cuda11.1-cudnn8-ubuntu20.04-manylinux2014-multipython" .
-# $ docker push gcr.io/tensorflow-testing/nosla-cuda11.1-cudnn8-ubuntu20.04-manylinux2014-multipython
+# $ docker build -f Dockerfile.rbe.cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython \
+#  --tag "gcr.io/tensorflow-testing/nosla-cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython" .
+# $ docker push gcr.io/tensorflow-testing/nosla-cuda12.0.1-cudnn8.8-ubuntu20.04-manylinux2014-multipython
 
-FROM nvidia/cuda:12.0.1-cudnn8-devel-ubuntu20.04 as devtoolset
+FROM nvidia/cuda:12.0.1-devel-ubuntu20.04 as devtoolset
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
@@ -35,7 +35,7 @@ RUN /build_devtoolset.sh devtoolset-7 /dt7
 RUN /build_devtoolset.sh devtoolset-9 /dt9
 
 # TODO(klimek): Split up into two different docker images.
-FROM nvidia/cuda:12.0.1-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:12.0.1-devel-ubuntu20.04
 COPY --from=devtoolset /dt7 /dt7
 COPY --from=devtoolset /dt9 /dt9
 
@@ -47,6 +47,9 @@ RUN /install/install_bootstrap_deb_packages.sh
 
 COPY install/install_deb_packages.sh /install/
 RUN /install/install_deb_packages.sh
+
+RUN apt-get update
+RUN apt-get install -y libcudnn8-dev=8.9.1.23-1+cuda12.1
 
 # LLVM/Clang: https://apt.llvm.org/
 RUN apt-key adv --fetch-keys https://apt.llvm.org/llvm-snapshot.gpg.key

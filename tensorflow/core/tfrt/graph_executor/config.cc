@@ -20,9 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-absl::StatusOr<ModelConfig> ModelConfig::CreateFromProto(
-    ModelConfigProto proto) {
-  ModelConfig model_config;
+absl::StatusOr<RuntimeConfig> RuntimeConfig::CreateFromProto(
+    RuntimeConfigProto proto) {
+  RuntimeConfig model_config;
   model_config.proto_ = std::move(proto);
   size_t i = 0;
   for (const auto& any : model_config.proto_.config()) {

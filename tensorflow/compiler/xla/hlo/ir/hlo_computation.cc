@@ -824,8 +824,8 @@ HloInstruction* HloComputation::CreateFusionInstruction(
 HloInstruction* HloComputation::CreateCallInstruction(
     absl::Span<HloInstruction* const> instructions_to_call) {
   HloInstruction* root = instructions_to_call.front();
-  HloInstruction* call_instruction =
-      AddInstruction(HloInstruction::CreateCall(root->shape(), root));
+  HloInstruction* call_instruction = AddInstruction(
+      HloInstruction::CreateCall(root->shape(), root), root->name());
   AppendInstructionsIntoCalledComputation(instructions_to_call,
                                           call_instruction);
   return call_instruction;
@@ -844,7 +844,8 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
     parameter_shapes[i] = parameter_shape;
   }
   HloInstruction* root = builder.AddInstruction(
-      instruction->CloneWithNewOperands(instruction->shape(), parameters));
+      instruction->CloneWithNewOperands(instruction->shape(), parameters),
+      absl::StrCat(instruction->name(), ".cloned"));
   HloComputation* async_computation =
       parent_->AddEmbeddedComputation(builder.Build(root));
   std::vector<Shape> start_shapes = {
@@ -852,13 +853,17 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   for (const Shape& context_shape : context_shapes) {
     start_shapes.push_back(context_shape);
   }
-  HloInstruction* async_start = AddInstruction(HloInstruction::CreateAsyncStart(
-      ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
-      async_computation, /*async_group_id=*/std::nullopt,
-      async_execution_thread));
-  HloInstruction* async_done = AddInstruction(HloInstruction::CreateAsyncDone(
-      root->shape(), async_start, async_computation,
-      /*async_group_id=*/std::nullopt, async_execution_thread));
+  HloInstruction* async_start = AddInstruction(
+      HloInstruction::CreateAsyncStart(
+          ShapeUtil::MakeTupleShape(start_shapes), instruction->operands(),
+          async_computation, /*async_group_id=*/std::nullopt,
+          async_execution_thread),
+      absl::StrCat(root->name(), ".call-start"));
+  HloInstruction* async_done = AddInstruction(
+      HloInstruction::CreateAsyncDone(
+          root->shape(), async_start, async_computation,
+          /*async_group_id=*/std::nullopt, async_execution_thread),
+      absl::StrCat(root->name(), ".call-done"));
   async_start->set_metadata(instruction->metadata());
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());

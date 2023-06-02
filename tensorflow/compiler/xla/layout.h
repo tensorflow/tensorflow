@@ -273,6 +273,10 @@ class Layout {
     minor_to_major_.clear();
     return *this;
   }
+  // Removes the given dimension from 'minor_to_major_', and adjusts the other
+  // dimensions accordingly. Also adjusts 'dim_level_types_', 'dim_ordered_' and
+  // 'dim_unique_' in case it is a sparse layout.
+  Layout& DeleteDimension(int64_t dim_to_delete);
   absl::Span<const int64_t> minor_to_major() const { return minor_to_major_; }
   DimensionVector* mutable_minor_to_major() { return &minor_to_major_; }
 

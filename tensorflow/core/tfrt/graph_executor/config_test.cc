@@ -29,14 +29,14 @@ TEST(ConfigTest, Basic) {
   TestConfig2 expected_test_config2;
   expected_test_config2.set_tag("test config2");
 
-  ModelConfig model_config;
+  RuntimeConfig runtime_config;
 
-  ASSERT_OK(model_config.Add(expected_test_config2));
-  ASSERT_OK(model_config.Add(expected_test_config1));
+  ASSERT_OK(runtime_config.Add(expected_test_config2));
+  ASSERT_OK(runtime_config.Add(expected_test_config1));
 
-  auto test_config1 = model_config.Get<TestConfig1>();
+  auto test_config1 = runtime_config.Get<TestConfig1>();
   ASSERT_OK(test_config1);
-  auto test_config2 = model_config.Get<TestConfig2>();
+  auto test_config2 = runtime_config.Get<TestConfig2>();
   ASSERT_OK(test_config2);
 
   EXPECT_EQ(test_config1->tag(), "test config1");
@@ -49,16 +49,16 @@ TEST(ConfigTest, Load) {
   TestConfig2 expected_test_config2;
   expected_test_config2.set_tag("test config2");
 
-  ModelConfigProto model_config_proto;
-  model_config_proto.add_config()->PackFrom(expected_test_config1);
-  model_config_proto.add_config()->PackFrom(expected_test_config2);
+  RuntimeConfigProto runtime_config_proto;
+  runtime_config_proto.add_config()->PackFrom(expected_test_config1);
+  runtime_config_proto.add_config()->PackFrom(expected_test_config2);
 
-  ASSERT_OK_AND_ASSIGN(auto model_config,
-                       ModelConfig::CreateFromProto(model_config_proto));
+  ASSERT_OK_AND_ASSIGN(auto runtime_config,
+                       RuntimeConfig::CreateFromProto(runtime_config_proto));
 
-  auto test_config1 = model_config.Get<TestConfig1>();
+  auto test_config1 = runtime_config.Get<TestConfig1>();
   ASSERT_OK(test_config1);
-  auto test_config2 = model_config.Get<TestConfig2>();
+  auto test_config2 = runtime_config.Get<TestConfig2>();
   ASSERT_OK(test_config2);
 
   EXPECT_EQ(test_config1->tag(), "test config1");
@@ -69,13 +69,13 @@ TEST(ConfigTest, NotFound) {
   TestConfig1 expected_test_config1;
   expected_test_config1.set_tag("test config1");
 
-  ModelConfigProto model_config_proto;
-  model_config_proto.add_config()->PackFrom(expected_test_config1);
+  RuntimeConfigProto runtime_config_proto;
+  runtime_config_proto.add_config()->PackFrom(expected_test_config1);
 
-  ASSERT_OK_AND_ASSIGN(auto model_config,
-                       ModelConfig::CreateFromProto(model_config_proto));
+  ASSERT_OK_AND_ASSIGN(auto runtime_config,
+                       RuntimeConfig::CreateFromProto(runtime_config_proto));
 
-  EXPECT_THAT(model_config.Get<TestConfig2>(),
+  EXPECT_THAT(runtime_config.Get<TestConfig2>(),
               ::testing::status::StatusIs(absl::StatusCode::kNotFound));
 }
 
@@ -83,10 +83,10 @@ TEST(ConfigTest, Duplicate) {
   TestConfig1 expected_test_config1;
   expected_test_config1.set_tag("test config1");
 
-  ModelConfig model_config;
+  RuntimeConfig runtime_config;
 
-  ASSERT_OK(model_config.Add(expected_test_config1));
-  EXPECT_THAT(model_config.Add(expected_test_config1),
+  ASSERT_OK(runtime_config.Add(expected_test_config1));
+  EXPECT_THAT(runtime_config.Add(expected_test_config1),
               ::testing::status::StatusIs(absl::StatusCode::kAlreadyExists));
 }
 

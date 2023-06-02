@@ -87,7 +87,19 @@ struct WritableFileRawStream : public llvm::raw_ostream {
     SetUnbuffered();
   }
   ~WritableFileRawStream() override = default;
-  uint64_t current_pos() const override { return 0; }
+
+  uint64_t current_pos() const override {
+    int64_t position;
+    if (file->Tell(&position).ok()) {
+      return position;
+    } else {
+      // MLIR uses os.tell() to determine whether something was written by
+      // a subroutine or not, so it's important we have a working current_pos().
+      LOG(WARNING)
+          << "Couldn't query file position. Stream might be malformed.\n";
+      return -1;
+    }
+  }
 
   void write_impl(const char* ptr, size_t size) override {
     // Write the file if it is still valid. If the write fails, null out the

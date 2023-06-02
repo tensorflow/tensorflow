@@ -122,7 +122,13 @@ upper_tabs:
         path: /lite/android/acceleration_service
         status: experimental
       - title: "GPU delegate"
-        path: /lite/android/delegates/gpu
+        section:
+        - title: "Interpreter API"
+          path: /lite/android/delegates/gpu.md
+        - title: "Task library API"
+          path: /lite/android/delegates/gpu_task.md
+        - title: "Native API"
+          path: /lite/android/delegates/gpu_native.md
       - title: "NNAPI delegate"
         path: /lite/android/delegates/nnapi
       - title: "Hexagon delegate"

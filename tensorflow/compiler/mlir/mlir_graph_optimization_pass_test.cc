@@ -185,12 +185,12 @@ class MlirGraphOptimizationPassTest : public Test {
   }
 
   ConfigProto config_proto_;
+  FunctionOptimizationPass::FunctionOptions function_options_;
   MlirFunctionOptimizationPass function_optimization_pass_;
   DeviceSet device_set_;
   std::unique_ptr<Graph> graph_;
   std::unique_ptr<FunctionLibraryDefinition> flib_;
   std::vector<std::string> control_ret_node_names_;
-  std::string xla_compile_device_type_;
   bool control_rets_updated_{false};
   monitoring::testing::CellReader<int64_t> mlir_function_pass_fallback_count_ =
       monitoring::testing::CellReader<int64_t>(
@@ -217,11 +217,11 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsNoFallback) {
   GraphDef original_graph_def;
   graph_->ToGraphDef(&original_graph_def);
 
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            Status(absl::StatusCode::kAborted, "aborted"));
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      Status(absl::StatusCode::kAborted, "aborted"));
   verifyGraph(original_graph_def);
   verifyCounters();
 }
@@ -244,11 +244,11 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassFailsDisabledFallback) {
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             Status(absl::StatusCode::kAborted, "aborted"));
 
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            OkStatus());
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      OkStatus());
   verifyGraph(original_graph_def);
   verifyCounters();
 }
@@ -261,11 +261,11 @@ TEST_F(MlirGraphOptimizationPassTest, OptimizationPassDoesNotFailFallback) {
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             OkStatus());
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            OkStatus());
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      OkStatus());
 
   verifyGraph(original_graph_def, true);
   verifyCounters();
@@ -279,11 +279,11 @@ TEST_F(MlirGraphOptimizationPassTest, GraphDoesntConvertUpdatesCounter) {
 
   AddModuleModificationPass(MlirOptimizationPassState::FallbackEnabled,
                             OkStatus());
-  EXPECT_EQ(function_optimization_pass_.Run(
-                "test_func", device_set_, config_proto_,
-                xla_compile_device_type_, &graph_, flib_.get(),
-                &control_ret_node_names_, &control_rets_updated_),
-            OkStatus());
+  EXPECT_EQ(
+      function_optimization_pass_.Run(
+          "test_func", device_set_, config_proto_, function_options_, &graph_,
+          flib_.get(), &control_ret_node_names_, &control_rets_updated_),
+      OkStatus());
 
   EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kOk), 0);
   EXPECT_EQ(mlir_function_pass_graph_conversion_count_.Read(kInvalidArgument),

@@ -26,6 +26,7 @@ cc_binary(
     srcs = ["ifrt-opt.cc"],
     deps = [
         "//tensorflow/compiler/xla/python/ifrt/ir",
+        "//tensorflow/compiler/xla/python/ifrt/ir/transforms:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",

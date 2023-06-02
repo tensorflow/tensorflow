@@ -158,9 +158,11 @@ def _stack(t, length):
       raise ValueError(
           "Attempted to stack an unhandled variant-dtype tensor of "
           f"type {shapes_and_types[0].type!r} ({t!r}).")
-  ones = array_ops.ones_like(array_ops.shape(t))
+  shape = array_ops.shape(t)
+  ones = array_ops.ones_like(shape)
   ones = array_ops.reshape(ones, [-1])
   length = array_ops.reshape(length, [-1])
+  length = math_ops.cast(length, shape.dtype)
   multiples = array_ops.concat([length, ones], 0)
   t = array_ops.tile(array_ops.expand_dims(t, 0), multiples)
   return wrap(t, True)
@@ -855,7 +857,8 @@ class _PforInput:
       if inp.is_stacked:
         shape = array_ops.shape(inp.t)
         rank_diff = array_ops.reshape(max_rank - ranks[i], [1])
-        ones = array_ops.tile([1], rank_diff)
+        ones = constant_op.constant([1], dtype=shape.dtype)
+        ones = array_ops.tile(ones, rank_diff)
         new_shape = array_ops.concat([shape[:1], ones, shape[1:]], axis=0)
         self._inputs[i] = wrap(array_ops.reshape(inp.t, new_shape), True)
 
@@ -1761,14 +1764,17 @@ def _convert_adjust_saturation(pfor_input):
 def _flatten_first_two_dims(x):
   """Merges first two dimensions."""
   old_shape = array_ops.shape(x)
-  new_shape = array_ops.concat([[-1], old_shape[2:]], axis=0)
+  first_dim = constant_op.constant([-1], dtype=old_shape.dtype)
+  new_shape = array_ops.concat([first_dim, old_shape[2:]], axis=0)
   return array_ops.reshape(x, new_shape)
 
 
 def _unflatten_first_dim(x, first_dim):
   """Splits first dimension into [first_dim, -1]."""
   old_shape = array_ops.shape(x)
-  new_shape = array_ops.concat([first_dim, [-1], old_shape[1:]], axis=0)
+  first_dim = math_ops.cast(first_dim, old_shape.dtype)
+  second_dim = constant_op.constant([-1], dtype=old_shape.dtype)
+  new_shape = array_ops.concat([first_dim, second_dim, old_shape[1:]], axis=0)
   return array_ops.reshape(x, new_shape)
 
 
@@ -1826,19 +1832,23 @@ def _convert_batch_to_space_nd(pfor_input):
   crops = pfor_input.unstacked_input(2)
 
   inp_shape = array_ops.shape(inp)
-  n = pfor_input.pfor.loop_len_vector
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inp_shape.dtype)
+  block_shape = math_ops.cast(block_shape, inp_shape.dtype)
 
   # Reshape and transpose to move the vectorization axis inside the axes that
   # will move to space.
   # Reshape to 4D and transpose
   block_size = math_ops.reduce_prod(block_shape)
-  new_shape = [n[0], block_size, inp_shape[1] // block_size, -1]
+  neg_one = constant_op.constant(-1, dtype=inp_shape.dtype)
+  new_shape = [n[0], block_size, inp_shape[1] // block_size, neg_one]
   inp = array_ops.reshape(inp, new_shape)
+
   inp = array_ops.transpose(inp, [1, 0, 2, 3])
   # Reshape back to merge the block, vectorization and batch dimension, and
   # restore the other dimensions.
   new_shape = array_ops.concat([n * inp_shape[1], inp_shape[2:]], axis=0)
   inp = array_ops.reshape(inp, new_shape)
+
   # Call batch_to_space and then split the new batch axis.
   output = gen_array_ops.batch_to_space_nd(inp, block_shape, crops)
   output = _unflatten_first_dim(output, n)
@@ -1851,14 +1861,19 @@ def _convert_space_to_batch_nd(pfor_input):
   block_shape = pfor_input.unstacked_input(1)
   paddings = pfor_input.unstacked_input(2)
 
-  n = pfor_input.pfor.loop_len_vector
   inp_shape = array_ops.shape(inp)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inp_shape.dtype)
+  block_shape = math_ops.cast(block_shape, inp_shape.dtype)
+
   inp = _flatten_first_two_dims(inp)
   output = gen_array_ops.space_to_batch_nd(inp, block_shape, paddings)
   output_shape = array_ops.shape(output)
+
   block_size = math_ops.reduce_prod(block_shape)
-  new_shape = [block_size, n[0], -1]
+  neg_one = constant_op.constant(-1, dtype=inp_shape.dtype)
+  new_shape = [block_size, n[0], neg_one]
   output = array_ops.reshape(output, new_shape)
+
   output = array_ops.transpose(output, [1, 0, 2])
   new_shape = array_ops.concat(
       [n, block_size * inp_shape[1:2], output_shape[1:]], axis=0)
@@ -1888,13 +1903,14 @@ def _channel_flatten_input(x, data_format):
   cache_key = (graph, x.ref(), data_format)
   if cache_key not in _channel_flatten_input_cache:
     x_shape = array_ops.shape(x)
+    neg_ones = constant_op.constant([-1], dtype=x_shape.dtype)
     if data_format == b"NCHW":
       order = [1, 0, 2, 3, 4]
-      shape = array_ops.concat([x_shape[1:2], [-1], x_shape[3:]], axis=0)
+      shape = array_ops.concat([x_shape[1:2], neg_ones, x_shape[3:]], axis=0)
       reverse_order = order
     else:
       order = [1, 2, 3, 0, 4]
-      shape = array_ops.concat([x_shape[1:4], [-1]], axis=0)
+      shape = array_ops.concat([x_shape[1:4], neg_ones], axis=0)
       reverse_order = [3, 0, 1, 2, 4]
     # Move S dimension next to C dimension.
     x = array_ops.transpose(x, order)
@@ -2195,7 +2211,8 @@ def _convert_identity_n(pfor_input):
 def _convert_reshape(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
+  new_shape = array_ops.concat([n, shape], axis=0)
   return wrap(array_ops.reshape(t, new_shape), True)
 
 
@@ -2218,15 +2235,18 @@ def _convert_fill(pfor_input):
 def _convert_broadcast_to(pfor_input):
   t = pfor_input.stacked_input(0)
   shape = pfor_input.unstacked_input(1)
-  new_shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+  n = pfor_input.pfor.loop_len_vector
+  new_shape = array_ops.concat([n, shape], axis=0)
 
   # Expand dims of stacked t to broadcast against the new shape.
   # TODO(davmre): consider factoring out common code with
   # `expanddim_inputs_for_broadcast`, which has similar logic but with
   # implicit shapes (of input Tensors) rather than explicit shapes.
-  rank_diff = array_ops.shape(new_shape)[0] - array_ops.rank(t)
-  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
   t_shape = array_ops.shape(t)
+  t_rank = math_ops.cast(array_ops.rank(t), t_shape.dtype)
+  rank_diff = array_ops.shape(new_shape)[0] - t_rank
+  ones = array_ops.tile([1], array_ops.reshape(rank_diff, [1]))
+  ones = math_ops.cast(ones, t_shape.dtype)
   t_expanded_shape = array_ops.concat([t_shape[:1], ones, t_shape[1:]], axis=0)
 
   return wrap(
@@ -2376,9 +2396,12 @@ def _convert_slice(pfor_input):
     # the output would be ragged. This case is not supported. But `size` having
     # some negative values and some loop-variant `begin`s is OK (and it's hard
     # to tell the difference statically).
-    original_unstacked_shape = _stack(
-        array_ops.shape(t)[1:], pfor_input.pfor.loop_len_vector).t
-    broadcast_size = _stack(size, pfor_input.pfor.loop_len_vector).t
+    t_shape = array_ops.shape(t)
+    size = math_ops.cast(size, t_shape.dtype)
+    begin = math_ops.cast(begin, t_shape.dtype)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, t_shape.dtype)
+    original_unstacked_shape = _stack(t_shape[1:], n).t
+    broadcast_size = _stack(size, n).t
     result_shape = array_ops.where(
         math_ops.less(broadcast_size, 0),
         original_unstacked_shape - begin + broadcast_size + 1, broadcast_size)
@@ -3315,8 +3338,8 @@ def _convert_random(pfor_input, op_type, *args, **kw_args):
   del kw_args
   inputs = [pfor_input.unstacked_input(i) for i in range(pfor_input.num_inputs)]
   # inputs[0] is "shape"
-  inputs[0] = array_ops.concat([pfor_input.pfor.loop_len_vector, inputs[0]],
-                               axis=0)
+  n = math_ops.cast(pfor_input.pfor.loop_len_vector, inputs[0].dtype)
+  inputs[0] = array_ops.concat([n, inputs[0]], axis=0)
   # TODO(b/222761732): Turn this warning back on when legacy RNGs are
   #   deprecated.
   # logging.warning(
@@ -3350,7 +3373,8 @@ def _convert_random_with_param(pfor_input):
     loop_dim = array_ops.shape(shape)[0]
     stacked_samples = _transpose_dim_to_front(samples, loop_dim)
   else:
-    shape = array_ops.concat([pfor_input.pfor.loop_len_vector, shape], axis=0)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, shape.dtype)
+    shape = array_ops.concat([n, shape], axis=0)
     stacked_samples = _create_op(
         pfor_input.op_type,
         inputs=[shape, param],
@@ -4096,8 +4120,8 @@ def _convert_tensor_array_push_back(pfor_input):
   else:
     # PopBack has an element shape set when it's the gradient of PushBack, only
     # used when the list is uninitialized.
-    vectorized_shape = array_ops.concat(
-        [pfor_input.pfor.loop_len_vector, element_shape], axis=0)
+    n = math_ops.cast(pfor_input.pfor.loop_len_vector, element_shape.dtype)
+    vectorized_shape = array_ops.concat([n, element_shape], axis=0)
 
   output_handle, tensor = gen_list_ops.tensor_list_pop_back(
       input_handle=handle, element_dtype=pfor_input.get_attr("element_dtype"),

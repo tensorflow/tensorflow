@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/matmul_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
@@ -494,8 +495,12 @@ class GemmRewriterTritonVisitor : public DfsHloRewriteVisitor {
             computation));
     dot_fusion->GetModule()->SetAndUniquifyInstrName(dot_fusion,
                                                      suggested_name);
-    dot_fusion->set_raw_backend_config_string(
-        std::string(kTritonGemmBackendConfig));
+
+    TF_ASSIGN_OR_RETURN(auto backend_config,
+                        dot_fusion->backend_config<FusionBackendConfig>());
+    backend_config.set_kind(std::string(kTritonGemmFusionKind));
+    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(backend_config));
+
     if (dot->IsRoot()) {
       dot->parent()->set_root_instruction(dot_fusion);
       TF_RETURN_IF_ERROR(
@@ -769,8 +774,20 @@ bool IsTritonHandledGEMM(const HloInstruction& dot,
     return false;
   }
 
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
+
   // TODO(b/269580541): support multiple batch dimensions.
-  if (dot.dot_dimension_numbers().lhs_batch_dimensions().size() > 1) {
+  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
+    return false;
+  }
+
+  // Cases where lhs or rhs have no non-contracting dims are not handled.
+  if (dim_numbers.lhs_batch_dimensions().size() +
+              dim_numbers.lhs_contracting_dimensions().size() ==
+          dot.operand(0)->shape().rank() ||
+      dim_numbers.rhs_batch_dimensions().size() +
+              dim_numbers.rhs_contracting_dimensions().size() ==
+          dot.operand(1)->shape().rank()) {
     return false;
   }
 

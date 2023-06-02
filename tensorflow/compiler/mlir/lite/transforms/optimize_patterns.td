@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -679,15 +679,55 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
+// Returns truncated shape of a ranked-tensor.
+// Truncated, here, means eliminating any contiguous 1s' in the lower
+// dimentions of the tensor
+def GetTruncatedShape: NativeCodeCall<"GetShape($0, true)">;
+
 // Returns True if the operand type is RankedTensorType and valid.
 def HasValidRankedTensor : Constraint<CPred<
   "$0.getType().isa<RankedTensorType>() && "
   "$0.getType().cast<RankedTensorType>().getNumDynamicDims() <= 1">>;
 
+// Check if the truncated shape of the lhs is equal to the shape of rhs
+def IsTruncatedShapeEqualTo : Constraint<CPred<
+  "GetShape($0, true) == GetShape($1)">>;
+
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
   (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $squeeze_op))),
   [(HasValidRankedTensor $squeeze_op)]>;
+
+// Pattern to perform the following optimization
+// transpose [1xAxB] -> [1xBxA]
+//    |
+// reshape [1xBxA] -> [BxA]
+//    |
+// transpose [BxA] -> [AxB]
+//    ||
+// reshape [1xAxB] -> [AxB]
+def ConvertTrasposeReshapeTransposeToReshape : Pat<
+  (TFL_TransposeOp:$second_transpose
+    (TFL_ReshapeOp:$middle_reshape
+      (TFL_TransposeOp:$first_transpose $input, $permutation2),
+        $shape),
+      $permutation1),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetTruncatedShape $input))),
+  [(IsTruncatedShapeEqualTo $first_transpose, $middle_reshape),
+   (IsTruncatedShapeEqualTo $input, $second_transpose)]>;
+
+// Function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
+
+// Pattern to fuse redundant tanspose op
+def FoldDoubleTranspose : Pat<
+  (TFL_TransposeOp
+    (TFL_TransposeOp:$transpose_out1 $input, (Arith_ConstantOp:$permutation1 $p1)),
+    (Arith_ConstantOp:$permutation2 $p2)),
+  (TFL_TransposeOp $input,
+    (Arith_ConstantOp (RemapPermutation $permutation1, $permutation2))),
+  [(HasOneUse $transpose_out1)]>;
 
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
@@ -714,6 +754,19 @@ def MinimumOfReluAnd6ToRelu6 :
       (TFL_Relu6Op $x),
       [(IsConstantValueOf<6> $y)]>;
 
+// For both relu1 and relu_0_to_1, the min/max operators commute,
+// so there are two possible orderings we need to rewrite.
+// Concretely, `m < n -> max(m, min(n, x)) = min(m, max(m, x))`.
+// Proof:
+// case (x <= m)
+//   max(m, min(n, x)) = max(m, m) = m and
+//   min(n, max(m, x)) = min(n, m) = m
+// case (m < x < n)
+//   max(m, min(n, x)) = max(m, x) = x and
+//   min(n, max(m, x)) = min(n, x) = x
+// case (n <= x)
+//   max(m, min(n, x)) = max(m, n) = n and
+//   min(n, max(m, x)) = min(n, x) = n
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (Arith_ConstantOp $NegOne)),
     (Arith_ConstantOp $One)),
@@ -725,6 +778,18 @@ def MatchRelu1Pattern2 : Pat<
     (Arith_ConstantOp $NegOne)),
   (TFL_Relu1Op $input),
   [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
+
+def MatchRelu0To1Pattern1: Pat<
+  (TFL_MinimumOp (TFL_MaximumOp $x, (Arith_ConstantOp $max_cst)),
+    (Arith_ConstantOp $min_cst)),
+    (TFL_Relu0To1Op $x),
+  [(FloatValueEquals<"0"> $max_cst), (FloatValueEquals<"1"> $min_cst)]>;
+
+def MatchRelu0To1Pattern2: Pat<
+  (TFL_MaximumOp (TFL_MinimumOp $x, (Arith_ConstantOp $min_cst)),
+    (Arith_ConstantOp $max_cst)),
+    (TFL_Relu0To1Op $x),
+  [(FloatValueEquals<"0"> $max_cst), (FloatValueEquals<"1"> $min_cst)]>;
 
 def MatchLeakyRelu : Pat<
   (TFL_MaximumOp
@@ -1027,15 +1092,8 @@ def ReshapeValueDroppingLastDim : NativeCodeCall<
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
-// Checks if the shape has static shape with last dimension equals 1.
+// Checks if the shape has shape with last dimension equals 1.
 def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
-
-// As above but if shape is not static and non-first dimensions are 1.
-def IsLastDimensionEqualOneOrDynamicBatchDim : Constraint<
-  CPred<"IsLastDimensionEqualOne($0) || "
-        "(!$0.getType().cast<ShapedType>().getShape().empty() && "
-        " llvm::all_of($0.getType().cast<ShapedType>().getShape().drop_front(),"
-        "             [](int64_t dim) { return dim == 1; }))">>;
 
 // Replace
 //   Equal(X, indices)
@@ -1051,7 +1109,7 @@ def ReshapeEqualOpToOneHotOp : Pat<
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastDimensionEqualOneOrDynamicBatchDim $x),
+  [(IsLastDimensionEqualOne $x),
    (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 

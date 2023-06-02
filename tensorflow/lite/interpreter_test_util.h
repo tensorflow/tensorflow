@@ -69,12 +69,13 @@ class InterpreterTest : public ::testing::Test {
   static void BuildSignature(Interpreter* interpreter,
                              const std::string& signature_key,
                              const std::map<std::string, uint32_t>& inputs,
-                             const std::map<std::string, uint32_t>& outputs) {
+                             const std::map<std::string, uint32_t>& outputs,
+                             int subgraph_index = 0) {
     internal::SignatureDef signature;
     signature.inputs = inputs;
     signature.outputs = outputs;
     signature.signature_key = signature_key;
-    signature.subgraph_index = 0;
+    signature.subgraph_index = subgraph_index;
     interpreter->SetSignatureDef({signature});
   }
 

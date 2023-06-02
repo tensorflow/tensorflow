@@ -129,8 +129,11 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
+  algsimp_options.set_enable_dot_strength_reduction(
+      debug_options.xla_gpu_enable_dot_strength_reduction());
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by

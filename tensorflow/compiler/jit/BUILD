@@ -598,7 +598,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/tpu:tpu_defs",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1595,6 +1595,9 @@ tf_cc_test(
 tf_cc_test(
     name = "device_compilation_profiler_test",
     srcs = ["device_compilation_profiler_test.cc"],
+    tags = [
+        "nomsan",  # TODO(b/284492454)
+    ],
     deps = [
         ":device_compilation_profiler",
         ":xla_activity_proto_cc",
@@ -1709,6 +1712,7 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":flags",
+        ":pjrt_device_compiler_client",
         ":test_util",
         ":xla_device_no_jit_rewrite_registration",
         ":xla_gpu_device",
@@ -1717,6 +1721,7 @@ tf_cuda_cc_test(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
         "//tensorflow/core/tpu:tpu_defs",

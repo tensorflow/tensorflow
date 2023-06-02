@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/protobuf/snapshot.pb.h"
@@ -84,10 +85,10 @@ class SnapshotManager {
   tsl::Status GetSnapshotStreams(GetSnapshotStreamsResponse& response);
 
  private:
-  SnapshotManager(
-      absl::string_view path, Env* env,
-      std::optional<absl::Duration> resume_time_micros = std::nullopt)
-      : path_(path), env_(env), resume_time_micros_(resume_time_micros) {}
+  SnapshotManager(absl::string_view path, Env* env)
+      : path_(path),
+        env_(env),
+        last_progress_log_time_(absl::FromUnixMicros(env->NowMicros())) {}
 
   // Helpers for `Start` above. These update the on-disk state.
   tsl::Status Start(const SnapshotRequest& request);
@@ -131,8 +132,8 @@ class SnapshotManager {
   tsl::Env* const env_;
   // Distributed snapshot metadata.
   experimental::DistributedSnapshotMetadata metadata_;
-  // If `Resume`d, the timestamp of the resumption of the snapshot.
-  std::optional<absl::Duration> resume_time_micros_;
+  // The last time progress was logged.
+  absl::Time last_progress_log_time_;
 
   // The addresses of all workers considered to be dead based on heartbeat
   // timeout.

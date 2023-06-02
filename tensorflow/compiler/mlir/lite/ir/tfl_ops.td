@@ -3873,7 +3873,8 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice", [
     I32Attr:$end_mask,
     I32Attr:$ellipsis_mask,
     I32Attr:$new_axis_mask,
-    I32Attr:$shrink_axis_mask
+    I32Attr:$shrink_axis_mask,
+    BoolAttr:$offset
   );
 
   let results = (outs

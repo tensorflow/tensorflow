@@ -8,7 +8,7 @@
 #  --tag "gcr.io/tensorflow-testing/nosla-cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython" .
 # $ docker push gcr.io/tensorflow-testing/nosla-cuda11.8-cudnn8.6-ubuntu20.04-manylinux2014-multipython
 
-FROM gcr.io/tensorflow-sigs/build@sha256:21131f082614f60207cb2242cd5150d5175a2a21e6789ad8fa32bd5eb7a1e5e0
+FROM gcr.io/tensorflow-sigs/build@sha256:c03809a6b4008b430bf241efce78cdcd92c7bc41d11d0ba57216e97d813ac282
 
 # Copy and run the install scripts.
 ARG DEBIAN_FRONTEND=noninteractive
@@ -35,14 +35,12 @@ COPY install/install_bazel.sh /install/
 RUN /install/install_bazel.sh
 
 COPY install/build_and_install_python.sh /install/
-RUN /install/build_and_install_python.sh "3.7.7"
 RUN /install/build_and_install_python.sh "3.8.2"
 RUN /install/build_and_install_python.sh "3.9.4"
 RUN /install/build_and_install_python.sh "3.10.0"
 RUN /install/build_and_install_python.sh "3.11.0"
 
 COPY install/install_pip_packages_by_version.sh /install/
-RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.7" "jax"
 RUN /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.8" "jax"
 # https://github.com/numpy/numpy/issues/22623 for `SETUPTOOLS_USE_DISTUTILS`.
 RUN SETUPTOOLS_USE_DISTUTILS=stdlib /install/install_pip_packages_by_version.sh "/usr/local/bin/pip3.9" "jax"

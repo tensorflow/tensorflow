@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -236,8 +237,8 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
-// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
-// of `indices` are from 0 to n-1, the output tensor are identical to the
+// Returns true if we can eliminate the GatherNdOp or ScatterNdOp. When the
+// value of `indices` are from 0 to n-1, the output tensor are identical to the
 // `params`.
 bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
                                               DenseIntElementsAttr indices,
@@ -344,20 +345,58 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 
 // Returns shape of a ranked tensor.
 // Precondition: output_val's is ranked tensor.
-DenseElementsAttr GetShape(Value output_val) {
+// Returns a truncated shape when `truncate` is set to true.
+DenseElementsAttr GetShape(Value output_val, bool truncate = false) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
 
   SmallVector<int32_t> shape;
   shape.reserve(output_type.getRank());
-  for (int64_t dim : output_type.getShape()) {
+
+  bool needs_truncation = true;
+  for (size_t dim_idx = 0; dim_idx < output_type.getRank(); ++dim_idx) {
+    int64_t dim = output_type.getShape()[dim_idx];
+    if (truncate && needs_truncation && dim == 1) {
+      continue;
+    } else if (needs_truncation && dim != 1) {
+      needs_truncation = false;
+    }
     shape.push_back(ShapedType::isDynamic(dim) ? -1
                                                : static_cast<int32_t>(dim));
   }
+
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(output_val.getContext(), 32)),
       llvm::ArrayRef(shape));
+}
+
+// Utility function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+DenseElementsAttr RemapPermutation(Value permutation1, Value permutation2) {
+  SmallVector<int32_t> initial_permutation;
+  DenseElementsAttr perm1_const;
+  DenseElementsAttr perm2_const;
+
+  SmallVector<int32_t> new_permutation;
+  if (matchPattern(permutation1, m_Constant(&perm1_const)) &&
+      matchPattern(permutation2, m_Constant(&perm2_const))) {
+    for (int32_t idx = 0; idx < perm1_const.getNumElements(); ++idx) {
+      initial_permutation.push_back(idx);
+    }
+    for (auto perm : perm2_const.getValues<APInt>()) {
+      new_permutation.push_back(
+          initial_permutation[perm1_const
+                                  .getValues<APInt>()[perm.getSExtValue()]
+                                  .getSExtValue()]);
+    }
+  }
+
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(new_permutation.size())},
+          mlir::IntegerType::get(permutation1.getContext(), 32)),
+      llvm::ArrayRef(new_permutation));
 }
 
 // Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
@@ -635,6 +674,78 @@ TypedAttr ConvertSingleElementAttrToFloatAttr(Attribute attr) {
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
+struct FuseAddAndStridedSlice : public OpRewritePattern<TFL::StridedSliceOp> {
+  using OpRewritePattern<TFL::StridedSliceOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TFL::StridedSliceOp strided_slice_op,
+                                PatternRewriter &rewriter) const override {
+    // Match Add
+    mlir::TFL::AddOp add_op =
+        dyn_cast_or_null<TFL::AddOp>(strided_slice_op.getEnd().getDefiningOp());
+    mlir::TFL::SubOp sub_op =
+        dyn_cast_or_null<TFL::SubOp>(strided_slice_op.getEnd().getDefiningOp());
+    if (!(add_op || sub_op)) {
+      return failure();
+    }
+
+    // Check that add rhs is constant.
+    DenseElementsAttr added_value;
+    Value constant_val = add_op ? add_op.getRhs() : sub_op.getRhs();
+    if (!matchPattern(constant_val, m_Constant(&added_value))) return failure();
+
+    // Check the add op is applied to begin.
+    mlir::TypedValue<::mlir::TensorType> begin_tensor =
+        strided_slice_op.getBegin();
+    mlir::TypedValue<::mlir::TensorType> add_source_tensor =
+        add_op ? add_op.getLhs() : sub_op.getLhs();
+    if (begin_tensor != add_source_tensor) {
+      return failure();
+    }
+
+    // Check that strides are constant
+    DenseElementsAttr strides_value;
+    Value strides_val = strided_slice_op.getStrides();
+    if (!matchPattern(strides_val, m_Constant(&strides_value)))
+      return failure();
+
+    mlir::TensorType constant_val_type =
+        constant_val.getType().cast<TensorType>();
+    // If it's not 1D or 0D (which can be broadcasted to 1D), reject the
+    // matching.
+    if (constant_val_type.getRank() > 1) {
+      return failure();
+    }
+
+    mlir::RankedTensorType end_type =
+        strided_slice_op.getEnd().getType().dyn_cast<RankedTensorType>();
+    // begin, end and strides are Rank 1 tensors with one element per dimension
+    // of input.
+    int64_t num_dims = end_type.getShape()[0];
+    DenseElementsAttr new_added_value =
+        added_value.reshape(RankedTensorType::get(
+            {num_dims},
+            added_value.getType().cast<ShapedType>().getElementType()));
+    ::mlir::arith::ConstantOp new_end = rewriter.create<arith::ConstantOp>(
+        strided_slice_op.getEnd().getLoc(), new_added_value);
+
+    if (strided_slice_op.getBeginMask() != 0) return failure();
+    if (strided_slice_op.getEndMask() != 0) return failure();
+    if (strided_slice_op.getEllipsisMask() != 0) return failure();
+    mlir::TFL::StridedSliceOp new_strided_slice_op =
+        rewriter.create<TFL::StridedSliceOp>(
+            strided_slice_op.getLoc(), strided_slice_op.getOutput().getType(),
+            strided_slice_op.getInput(), strided_slice_op.getBegin(), new_end,
+            strided_slice_op.getStrides(), strided_slice_op.getBeginMask(),
+            strided_slice_op.getEndMask(), strided_slice_op.getEllipsisMask(),
+            strided_slice_op.getNewAxisMask(),
+            strided_slice_op.getShrinkAxisMask(),
+            /*offset=*/true);
+    rewriter.replaceOp(strided_slice_op, new_strided_slice_op.getOutput());
+
+    return success();
+  }
+};
+
 // Fuse Add with proceeding FullyConnected.
 // TODO(b/136285429): Move to tablegen when variadic is supported
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
@@ -716,7 +827,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
                   .getOutput();
         } else {
           // If the RHS is neither a scalar constant nor a 1d constant, look
-          // if there is opportunity to reduce the dimentionality and allow
+          // if there is opportunity to reduce the dimensionality and allow
           // implicit broadcasting
 
           auto new_added_value = added_value.reshape(RankedTensorType::get(
@@ -1803,7 +1914,7 @@ void OptimizePass::runOnOperation() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp,
       RemoveReshapeAfterFullyConnected, RemoveReshapeBeforeFullyConnected,
-      FuseUnpackAndConcatToReshape, OptimizeTopK>(ctx);
+      FuseUnpackAndConcatToReshape, OptimizeTopK, FuseAddAndStridedSlice>(ctx);
   if (!this->disable_fuse_mul_and_fc_) {
     phase_2_patterns.add<FuseMulAndFullyConnected>(ctx);
   }

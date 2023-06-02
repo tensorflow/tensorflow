@@ -25,13 +25,14 @@ limitations under the License.
 namespace tensorflow {
 namespace tfrt_stub {
 
-// The helper class for building ModelConfigProto and retrieving configs of
-// certain types from the ModelConfigProto.
-class ModelConfig {
+// The helper class for building RuntimeConfigProto and retrieving configs of
+// certain types from the RuntimeConfigProto.
+class RuntimeConfig {
  public:
-  ModelConfig() = default;
+  RuntimeConfig() = default;
 
-  static absl::StatusOr<ModelConfig> CreateFromProto(ModelConfigProto proto);
+  static absl::StatusOr<RuntimeConfig> CreateFromProto(
+      RuntimeConfigProto proto);
 
   template <typename ConcreteProto>
   absl::Status Add(const ConcreteProto& config) {
@@ -68,10 +69,10 @@ class ModelConfig {
     return config;
   }
 
-  const ModelConfigProto& ToProto() const { return proto_; }
+  const RuntimeConfigProto& ToProto() const { return proto_; }
 
  private:
-  ModelConfigProto proto_;
+  RuntimeConfigProto proto_;
   absl::flat_hash_map<std::string, size_t> map_;
 };
 

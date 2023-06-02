@@ -2866,6 +2866,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   PrimitiveType primitive_type = hlo->shape().element_type();
   llvm::Type* primitive_type_llvm =
       llvm_ir::PrimitiveTypeToIrType(primitive_type, module_);
+  if (primitive_type == BF16) {
+    primitive_type_llvm = llvm_ir::PrimitiveTypeToIrType(F32, module_);
+  }
   llvm::AllocaInst* accumulator_alloca =
       llvm_ir::EmitAllocaAtFunctionEntry(primitive_type_llvm, "dot_acc", b_);
   Store(llvm::Constant::getNullValue(primitive_type_llvm), accumulator_alloca);
@@ -2928,12 +2931,22 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
       Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
   TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));
   TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value, rhs_generator(rhs_index));
+
+  if (primitive_type == BF16) {
+    lhs_value = EmitBF16ToF32(lhs_value, b_);
+    rhs_value = EmitBF16ToF32(rhs_value, b_);
+  }
+
   llvm::Value* next_accumulator =
-      EmitMulAdd(lhs_value, rhs_value, current_accumulator, primitive_type);
+      EmitMulAdd(lhs_value, rhs_value, current_accumulator,
+                 primitive_type == BF16 ? F32 : primitive_type);
   Store(next_accumulator, accumulator_alloca);
 
   SetToFirstInsertPoint(inner_loop->GetExitBasicBlock(), b_);
-  return Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
+  llvm::Value* result =
+      Load(accumulator_alloca->getAllocatedType(), accumulator_alloca);
+
+  return primitive_type == BF16 ? EmitF32ToBF16(result) : result;
 }
 
 llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(

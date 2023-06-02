@@ -15,14 +15,13 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_FULLY_CONNECTED_4BIT_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_FULLY_CONNECTED_4BIT_H_
-
 #include <stdint.h>
 
 #include <cstdlib>
 
 #if defined(FC_4BIT_SSE) && defined(__SSSE3__)
 #include "tensorflow/lite/kernels/internal/optimized/4bit/sse_fully_connected.h"
-#elif defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
+#elif defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
 #include "tensorflow/lite/kernels/internal/optimized/4bit/neon_fully_connected.h"
 #else
 #include "tensorflow/lite/kernels/internal/optimized/4bit/fully_connected_reference.h"

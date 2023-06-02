@@ -2,9 +2,9 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "py_test", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
-load("//tensorflow:tensorflow.default.bzl", "cuda_py_test", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_py_test", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
+load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("//tensorflow:tensorflow.bzl", "VERSION", "cc_header_only_library", "clean_dep", "if_google", "if_mlir", "if_oss", "if_windows", "if_xla_available", "tf_enable_mlir_bridge", "tf_python_pybind_static_deps", "tsl_async_value_deps")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "pywrap_tensorflow_macro", "tf_external_workspace_visible", "tf_monitoring_python_deps", "tf_pybind_cc_library_wrapper", "tf_python_pybind_extension")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
@@ -16,7 +16,6 @@ load(
     "tf_additional_plugin_deps",
     "tf_additional_profiler_deps",
 )
-load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//third_party/mkl_dnn:build_defs.bzl", "if_onednn_v3")
 
 # TODO(mdan): Break into per-directory files.
@@ -75,7 +74,9 @@ py_library(
     deps = [
         ":gradient_checker_v2",
         ":no_contrib",
+        ":stateful_random_ops",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/platform:app",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:flags",
@@ -97,7 +98,7 @@ py_library(
 # keras_lib may be removed in the future, it should NOT be used as
 # a direct dependency.
 # TODO(b/199420795) investigate minimal set of dependencies ...
-py_library(
+py_strict_library(
     name = "keras_lib",
     srcs_version = "PY3",
     visibility = [
@@ -117,6 +118,34 @@ py_library(
         ":rnn",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_strict_library(
+    name = "tmp_alias_for_pip",
+    tags = ["avoid_dep"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":array_grad",
+        ":batch_ops",
+        ":candidate_sampling_ops",
+        ":composite_tensor_ops_gen",
+        ":critical_section_ops",
+        ":data_flow_grad",
+        ":data_flow_ops_gen",
+        ":functional_ops_gen",
+        ":inplace_ops",
+        ":linalg_ops_impl",
+        ":math_grad",
+        ":numerics",
+        ":parsing_config",
+        ":random_grad",
+        ":random_index_shuffle_ops_gen",
+        ":set_ops_gen",
+        ":shape_util",
+        ":sparse_grad",
+        ":state_ops_gen",
+        ":stateful_random_ops_gen",
     ],
 )
 
@@ -184,6 +213,7 @@ py_library(
         ":pywrap_tfe",
         ":random_crop_ops",
         ":ref_variable",
+        ":rnn_cell",
         ":rnn_ops_gen",
         ":script_ops",
         ":sendrecv_ops_gen",
@@ -192,8 +222,10 @@ py_library(
         ":sparse_ops",
         ":standard_ops",
         ":state_ops",
+        ":stateful_random_ops",
         ":string_ops",
         ":tensor_array_ops",
+        ":tmp_alias_for_pip",
         ":training",
         ":uniform_quant_ops_gen",
         ":variable_v1",
@@ -242,10 +274,14 @@ py_library(
         "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/distributions:bijector_test_util",
+        "//tensorflow/python/ops/distributions:identity_bijector",
         "//tensorflow/python/ops/linalg",
         "//tensorflow/python/ops/linalg:linear_operator_test_util",
         "//tensorflow/python/ops/linalg/sparse:sparse_py",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/ops/numpy_ops:np_config",
+        "//tensorflow/python/ops/numpy_ops:np_random",
         "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/parallel_for",
         "//tensorflow/python/ops/ragged",
@@ -259,6 +295,7 @@ py_library(
         "//tensorflow/python/ops/signal:spectral_ops",
         "//tensorflow/python/ops/signal:util_ops",
         "//tensorflow/python/ops/signal:window_ops",
+        "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/platform:app",
         "//tensorflow/python/platform:flags",
@@ -294,6 +331,7 @@ py_library(
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:dispatch",
+        "//tensorflow/python/util:module_wrapper",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
     ],
@@ -324,12 +362,20 @@ py_library(
     deps = [
         ":no_contrib",
         "//tensorflow/core/function/trace_type",
+        "//tensorflow/python/data",
         "//tensorflow/python/distribute:merge_call_interim",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute/failure_handling:failure_handling_lib",
         "//tensorflow/python/distribute/failure_handling:preemption_watcher",
+        "//tensorflow/python/ops/numpy_ops:np_array_ops",
+        "//tensorflow/python/ops/numpy_ops:np_arrays",
+        "//tensorflow/python/ops/numpy_ops:np_config",
+        "//tensorflow/python/ops/numpy_ops:np_dtypes",
+        "//tensorflow/python/ops/numpy_ops:np_math_ops",
+        "//tensorflow/python/ops/numpy_ops:np_random",
+        "//tensorflow/python/ops/numpy_ops:np_utils",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
@@ -469,29 +515,14 @@ cc_header_only_library(
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "map_fn",
-    srcs = ["ops/map_fn.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":tensor_array_ops",
-        ":variable_scope",
-        ":while_loop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:variable_utils",
-    ],
+    actual = "//tensorflow/python/ops:map_fn",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+py_strict_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
     # extra_py_tests_deps is public to allow the use of tf_py_test or
@@ -510,71 +541,47 @@ py_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "functional_ops_gen",
+    actual = "//tensorflow/python/ops:functional_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "functional_ops",
-    srcs = ["ops/functional_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":functional_ops_gen",
-        ":tensor_array_ops",
-        ":variable_scope",
-        ":while_loop",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:auto_control_deps_utils",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:functional_ops",
+    tags = ["avoid_dep"],
 )
 
-py_test(
-    name = "functional_ops_test",
-    srcs = ["ops/functional_ops_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":functional_ops",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:tensor_spec",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "debug_ops_gen",
-    out = "ops/gen_debug_ops.py",
+    actual = "//tensorflow/python/ops:debug_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/python/debug:__subpackages__",
     ],
-    deps = ["//tensorflow/core:debug_ops_op_lib"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "array_ops_gen",
+    actual = "//tensorflow/python/ops:array_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -586,14 +593,13 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/training:__pkg__",
         "//tensorflow/security/fuzzing/google:__pkg__",
     ],
-    deps = [
-        "//tensorflow/c/kernels:bitcast_op_lib",
-        "//tensorflow/core:array_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "bitwise_ops_gen",
+    actual = "//tensorflow/python/ops:bitwise_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -603,39 +609,53 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "boosted_trees_ops_gen",
+    actual = "//tensorflow/python/ops:boosted_trees_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:boosted_trees_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "summary_ops_gen",
+    actual = "//tensorflow/python/ops:summary_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:__subpackages__"],
-    deps = ["//tensorflow/core:summary_ops_op_lib"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "audio_ops_gen",
+    actual = "//tensorflow/python/ops:audio_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "cudnn_rnn_ops_gen",
+    actual = "//tensorflow/python/ops:cudnn_rnn_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow:__subpackages__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "candidate_sampling_ops_gen",
+    actual = "//tensorflow/python/ops:candidate_sampling_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "checkpoint_ops_gen",
+    actual = "//tensorflow/python/ops:checkpoint_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/io_ops:__pkg__",
@@ -643,44 +663,50 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "clustering_ops_gen",
+    actual = "//tensorflow/python/ops:clustering_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:clustering_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "collective_ops_gen",
+    actual = "//tensorflow/python/ops:collective_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:collective_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_ops_gen",
+    actual = "//tensorflow/python/ops:control_flow_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow:__subpackages__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
     ],
-    deps = [
-        "//tensorflow/core:control_flow_ops_op_lib",
-        "//tensorflow/core:no_op_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "ctc_ops_gen",
+    actual = "//tensorflow/python/ops:ctc_ops_gen",
+    tags = ["avoid_dep"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "data_flow_ops_gen",
+    actual = "//tensorflow/python/ops:data_flow_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
         "//tensorflow/python/kernel_tests/data_structures:__pkg__",
@@ -688,8 +714,11 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "dataset_ops_gen",
+    actual = "//tensorflow/python/ops:dataset_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow:__subpackages__",
@@ -697,8 +726,11 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "optional_ops_gen",
+    actual = "//tensorflow/python/ops:optional_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow:__subpackages__",
@@ -706,8 +738,11 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "experimental_dataset_ops_gen",
+    actual = "//tensorflow/python/ops:experimental_dataset_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow:__subpackages__",
@@ -715,24 +750,34 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "filesystem_ops_gen",
+    actual = "//tensorflow/python/ops:filesystem_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow:__subpackages__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "image_ops_gen",
+    actual = "//tensorflow/python/ops:image_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "io_ops_gen",
+    actual = "//tensorflow/python/ops:io_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
@@ -745,16 +790,23 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "linalg_ops_gen",
+    actual = "//tensorflow/python/ops:linalg_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "logging_ops_gen",
+    actual = "//tensorflow/python/ops:logging_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/framework:__pkg__",
@@ -763,16 +815,13 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/summary:__pkg__",
         "//tensorflow/python/summary/writer:__pkg__",
     ],
-    deps = [
-        "//tensorflow/c/kernels:histogram_summary_op_lib",
-        "//tensorflow/c/kernels:merge_summary_op_lib",
-        "//tensorflow/c/kernels:summary_op_lib",
-        "//tensorflow/core:logging_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "lookup_ops_gen",
+    actual = "//tensorflow/python/ops:lookup_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -781,60 +830,39 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "batch_ops_gen",
+    actual = "//tensorflow/python/ops:batch_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow:__subpackages__",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "batch_ops",
-    srcs = [
-        "ops/batch_ops.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":batch_ops_gen",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:batch_ops",
+    tags = ["avoid_dep"],
 )
 
-cuda_py_test(
-    name = "batch_ops_test",
-    size = "small",
-    srcs = ["ops/batch_ops_test.py"],
-    main = "ops/batch_ops_test.py",
-    python_version = "PY3",
-    srcs_version = "PY3",
-    tags = [
-        "manual",
-        "no_cuda_asan",  # b/177916286
-        "no_pip",
-        "nomac",
-    ],
-    deps = [
-        ":array_ops",
-        ":batch_ops",
-        ":client_testlib",
-        ":gradients",
-        ":script_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "manip_ops_gen",
+    actual = "//tensorflow/python/ops:manip_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "math_ops_gen",
+    actual = "//tensorflow/python/ops:math_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
         "//learning/brain/python/ops:__pkg__",
@@ -845,8 +873,11 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "nn_ops_gen",
+    actual = "//tensorflow/python/ops:nn_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/compiler/tests:__pkg__",
@@ -859,16 +890,22 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "count_ops_gen",
+    actual = "//tensorflow/python/ops:count_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/security/fuzzing/google:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "parsing_ops_gen",
+    actual = "//tensorflow/python/ops:parsing_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/autograph/operators:__pkg__",
@@ -877,31 +914,45 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "random_ops_gen",
+    actual = "//tensorflow/python/ops:random_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "special_math_ops_gen",
+    actual = "//tensorflow/python/ops:special_math_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//learning/brain/python/ops:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "stateful_random_ops_gen",
+    actual = "//tensorflow/python/ops:stateful_random_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "resource_variable_ops_gen",
+    actual = "//tensorflow/python/ops:resource_variable_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/compiler/tf2xla:internal",
         "//tensorflow/dtensor:dtensor-internal",
@@ -909,51 +960,79 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "stateless_random_ops_gen",
+    actual = "//tensorflow/python/ops:stateless_random_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/data/experimental/ops:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "stateless_random_ops_v2_gen",
+    actual = "//tensorflow/python/ops:stateless_random_ops_v2_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "random_index_shuffle_ops_gen",
+    actual = "//tensorflow/python/ops:random_index_shuffle_ops_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/python/kernel_tests/random:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "list_ops_gen",
+    actual = "//tensorflow/python/ops:list_ops_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "map_ops_gen",
+    actual = "//tensorflow/python/ops:map_ops_gen",
+    tags = ["avoid_dep"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "script_ops_gen",
+    actual = "//tensorflow/python/ops:script_ops_gen",
+    tags = ["avoid_dep"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sdca_ops_gen",
+    actual = "//tensorflow/python/ops:sdca_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "set_ops_gen",
+    actual = "//tensorflow/python/ops:set_ops_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/python/kernel_tests/math_ops:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "state_ops_gen",
+    actual = "//tensorflow/python/ops:state_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/array_ops:__pkg__",
@@ -963,3011 +1042,889 @@ tf_gen_op_wrapper_private_py(
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sparse_ops_gen",
+    actual = "//tensorflow/python/ops:sparse_ops_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/python/kernel_tests/sparse_ops:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "spectral_ops_gen",
+    actual = "//tensorflow/python/ops:spectral_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python/ops/signal:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "string_ops_gen",
+    actual = "//tensorflow/python/ops:string_ops_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "training_ops_gen",
+    actual = "//tensorflow/python/ops:training_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/python/training:__pkg__",
     ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "composite_tensor_ops_gen",
+    actual = "//tensorflow/python/ops:composite_tensor_ops_gen",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//tensorflow/python/kernel_tests:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "ragged_array_ops_gen",
+    actual = "//tensorflow/python/ops:ragged_array_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "ragged_math_ops_gen",
+    actual = "//tensorflow/python/ops:ragged_math_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "ragged_conversion_ops_gen",
+    actual = "//tensorflow/python/ops:ragged_conversion_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "risc_ops_gen",
+    actual = "//tensorflow/python/ops:risc_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow/python/ops/risc:__pkg__",
     ],
-    deps = [
-        "//tensorflow/core:risc_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "rnn_ops_gen",
+    actual = "//tensorflow/python/ops:rnn_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow/python/kernel_tests/nn_ops:__pkg__"],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sendrecv_ops_gen",
+    actual = "//tensorflow/python/ops:sendrecv_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:sendrecv_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "tpu_ops_gen",
+    actual = "//tensorflow/python/ops:tpu_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
-    deps = [
-        "//tensorflow/core:tpu_configuration_ops_op_lib",
-        "//tensorflow/core:tpu_cross_replica_ops_op_lib",
-        "//tensorflow/core:tpu_embedding_load_retrieve_ops_op_lib",
-        "//tensorflow/core:tpu_embedding_ops_op_lib",
-        "//tensorflow/core:tpu_functional_ops_op_lib",
-        "//tensorflow/core:tpu_heartbeat_ops_op_lib",
-        "//tensorflow/core:tpu_host_compute_ops_op_lib",
-        "//tensorflow/core:tpu_infeed_ops_op_lib",
-        "//tensorflow/core:tpu_ordinal_selector_ops_op_lib",
-        "//tensorflow/core:tpu_outfeed_ops_op_lib",
-        "//tensorflow/core:tpu_replication_ops_op_lib",
-        "//tensorflow/core:tpu_sharding_util_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "tpu_partition_ops_gen",
+    actual = "//tensorflow/python/ops:tpu_partition_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",
     ],
-    deps = [
-        "//tensorflow/core/tpu/ops:tpu_partitioned_ops",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "uniform_quant_ops_gen",
+    actual = "//tensorflow/python/ops:uniform_quant_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow:__subpackages__",
     ],
-    deps = [
-        "//tensorflow/core:uniform_quant_ops_op_lib",
-    ],
 )
 
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sync_ops_gen",
+    actual = "//tensorflow/python/ops:sync_ops_gen",
+    tags = ["avoid_dep"],
     visibility = [
         "//tensorflow:internal",
     ],
-    deps = [
-        "//tensorflow/core:sync_ops_op_lib",
-    ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "array_grad",
-    srcs = ["ops/array_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_gen",
-        ":cond",
-        ":control_flow_ops",
-        ":control_flow_util",
-        ":math_ops",
-        ":math_ops_gen",
-        ":pywrap_tfe",
-        ":resource_variable_ops_gen",
-        ":sparse_ops",
-        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-    ],
+    actual = "//tensorflow/python/ops:array_grad",
+    tags = ["avoid_dep"],
 )
 
-cuda_py_test(
-    name = "array_grad_test",
-    srcs = ["ops/array_grad_test.py"],
-    main = "ops/array_grad_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradient_checker_v2",
-        ":gradients",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "array_ops",
-    srcs = [
-        "ops/array_ops.py",
-        "ops/inplace_ops.py",
-    ],
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/ops:array_ops",
+    tags = ["avoid_dep"],
     visibility = visibility,
-    deps = [
-        ":array_ops_gen",
-        ":array_ops_stack",
-        ":control_flow_util",
-        ":math_ops_gen",
-        ":shape_util",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/eager:record",
-        "//tensorflow/python/framework:common_shapes",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:_pywrap_utils",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "array_ops_stack",
-    srcs = ["ops/array_ops_stack.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops_gen",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:array_ops_stack",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
+    name = "inplace_ops",
+    actual = "//tensorflow/python/ops:inplace_ops",
+    tags = ["avoid_dep"],
+)
+
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "bitwise_ops",
-    srcs = ["ops/bitwise_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":bitwise_ops_gen",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:bitwise_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "boosted_trees_ops",
-    srcs = ["ops/boosted_trees_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":boosted_trees_ops_gen",
-        ":ops",
-        ":training",
-        "//tensorflow/python/framework",
-    ],
+    actual = "//tensorflow/python/ops:boosted_trees_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "optional_grad",
-    srcs = ["ops/optional_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:optional_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "sets",
-    srcs = [
-        "ops/sets.py",
-        "ops/sets_impl.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        ":set_ops_gen",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:sets_impl",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "candidate_sampling_ops",
-    srcs = ["ops/candidate_sampling_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":candidate_sampling_ops_gen",
-        ":math_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:candidate_sampling_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "check_ops",
-    srcs = ["ops/check_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":control_flow_ops",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:check_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "clip_ops",
-    srcs = ["ops/clip_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops",
-        ":nn_ops_gen",
-        ":numerics",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:clip_ops",
+    tags = ["avoid_dep"],
 )
 
-tf_py_test(
-    name = "clip_ops_test",
-    size = "small",
-    srcs = ["ops/clip_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":clip_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "clustering_ops",
-    srcs = ["ops/clustering_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":clustering_ops_gen",
-        ":cond",
-        ":ops",
-        ":training",
-        ":variable_v1",
-        "//tensorflow/python/framework",
-    ],
+    actual = "//tensorflow/python/ops:clustering_ops",
+    tags = ["avoid_dep"],
 )
 
-tf_py_test(
-    name = "clustering_ops_test",
-    size = "medium",
-    srcs = ["ops/clustering_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":clustering_ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "collective_ops",
-    srcs = ["ops/collective_ops.py"],
-    srcs_version = "PY3",
-    deps = [":collective_ops_gen"],
+    actual = "//tensorflow/python/ops:collective_ops",
+    tags = ["avoid_dep"],
 )
 
-tf_py_test(
-    name = "collective_ops_test",
-    size = "small",
-    srcs = ["ops/collective_ops_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_rocm",
-    ],
-    deps = [
-        ":client_testlib",
-        ":collective_ops",
-        ":variable_v1",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:kernels",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:tf_logging",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "collective_ops_xla_test",
-    size = "small",
-    srcs = ["ops/collective_ops_xla_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-        "nomac",
-    ],
-    xla_enable_strict_auto_jit = True,
-    deps = [
-        ":client_testlib",
-        ":collective_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:kernels",
-        "//tensorflow/python/framework:ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "collective_ops_gpu_test",
-    size = "small",
-    srcs = ["ops/collective_ops_gpu_test.py"],
-    main = "ops/collective_ops_gpu_test.py",
-    python_version = "PY3",
-    tags = [
-        "guitar",
-        "multi_gpu",
-        "no_windows",
-    ],
-    deps = [
-        ":client_testlib",
-        ":collective_ops",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "compiled_collective_ops_gpu_test",
-    size = "small",
-    srcs = ["ops/compiled_collective_ops_gpu_test.py"],
-    main = "ops/compiled_collective_ops_gpu_test.py",
-    python_version = "PY3",
-    tags = [
-        "guitar",
-        "multi_gpu",
-        "no_windows",
-    ],
-    deps = [
-        ":client_testlib",
-        ":collective_ops",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_assert",
-    srcs = ["ops/control_flow_assert.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":control_flow_ops_gen",
-        ":logging_ops_gen",
-        ":math_ops_gen",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_should_use",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_assert",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_grad",
-    srcs =
-        ["ops/control_flow_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":control_flow_ops",
-        ":control_flow_ops_gen",
-        ":control_flow_util",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_grad",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_ops",
-    srcs = ["ops/control_flow_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_gen",
-        ":control_flow_ops_gen",
-        ":control_flow_util",
-        ":math_ops",
-        ":tensor_array_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:variable_utils",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_ops",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_case",
-    srcs = ["ops/control_flow_case.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops_stack",
-        ":cond",
-        ":control_flow_assert",
-        ":math_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_case",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_switch_case",
-    srcs = ["ops/control_flow_switch_case.py"],
-    deps = [
-        ":array_ops",
-        ":cond_v2",
-        ":control_flow_util",
-        ":functional_ops_gen",
-        ":math_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_switch_case",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "cond",
-    srcs = ["ops/cond.py"],
-    deps = [
-        ":array_ops",
-        ":cond_v2",
-        ":control_flow_ops",
-        ":control_flow_util",
-        ":math_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager/polymorphic_function:eager_function_run",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/types:core",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:cond",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "while_loop",
-    srcs = ["ops/while_loop.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":control_flow_ops",
-        ":control_flow_util",
-        ":math_ops",
-        ":tensor_array_ops",
-        ":while_v2",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:variable_utils",
-    ],
+    actual = "//tensorflow/python/ops:while_loop",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_util",
-    srcs = ["ops/control_flow_util.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/platform:tf_logging",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_util",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_util_v2",
-    srcs = ["ops/control_flow_util_v2.py"],
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/ops:control_flow_util_v2",
+    tags = ["avoid_dep"],
     visibility = visibility + ["//waymo/ml:__subpackages__"],
-    deps = [
-        ":control_flow_util",
-        ":control_flow_v2_func_graphs",
-        ":gradients_util",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager/polymorphic_function:atomic_function",
-        "//tensorflow/python/eager/polymorphic_function:concrete_function",
-        "//tensorflow/python/eager/polymorphic_function:tracing_compiler",
-        "//tensorflow/python/eager/polymorphic_function:transform",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:function_def_to_graph",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:keras_deps",
-        "//tensorflow/python/util:tf_decorator",
-    ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_v2_func_graphs",
-    srcs = ["ops/control_flow_v2_func_graphs.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework:func_graph",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_v2_func_graphs",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_v2_toggles",
-    srcs = ["ops/control_flow_v2_toggles.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":control_flow_util",
-        ":control_flow_util_v2",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_v2_toggles",
+    tags = ["avoid_dep"],
 )
 
-tf_py_test(
-    name = "control_flow_v2_toggles_test",
-    size = "small",
-    srcs = ["ops/control_flow_v2_toggles_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":control_flow_util_v2",
-        ":control_flow_v2_toggles",
-        ":platform_test",
-    ],
-)
-
-tf_py_test(
-    name = "control_flow_v2_enable_test",
-    size = "small",
-    srcs = ["ops/control_flow_v2_enable_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":control_flow_util",
-        ":platform_test",
-        ":tf2",
-    ],
-)
-
-tf_py_test(
-    name = "control_flow_v2_disable_test",
-    size = "small",
-    srcs = ["ops/control_flow_v2_disable_test.py"],
-    python_version = "PY3",
-    # This tests that it is possible to disable cfv2 using env vars.
-    # This does not apply to TF 2.0 nightly builds which enable
-    # v2 behavior using `tf.compat.v1.enable_v2_behavior()` in which case
-    # `tf.compat.v1.disable_control_flow_v2()` needs to be used.
-    tags = [
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":client_testlib",
-        ":control_flow_util",
-        ":platform_test",
-        ":tf2",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "cond_v2",
-    srcs = [
-        "ops/cond_v2.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_util_v2",
-        ":functional_ops_gen",
-        ":gradients_util",
-        ":handle_data_util",
-        ":optional_ops_gen",
-        ":pywrap_tensorflow",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/framework:auto_control_deps_utils",
-        "//tensorflow/python/framework:c_api_util",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:nest",
-    ],
+    actual = "//tensorflow/python/ops:cond_v2",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "while_v2",
-    srcs = [
-        "ops/while_v2.py",
-        "ops/while_v2_indexed_slices_rewriter.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":control_flow_util",
-        ":control_flow_util_v2",
-        ":functional_ops_gen",
-        ":gradients_util",
-        ":handle_data_util",
-        ":list_ops",
-        ":math_ops",
-        ":tensor_array_ops",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/framework:auto_control_deps_utils",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_conversion",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:variable_utils",
+        "//tensorflow/python/ops:while_v2",
+        "//tensorflow/python/ops:while_v2_indexed_slices_rewriter",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "bincount_ops",
-    srcs = ["ops/bincount_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":count_ops_gen",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:bincount_ops",
+    tags = ["avoid_dep"],
 )
 
-cuda_py_test(
-    name = "bincount_ops_test",
-    size = "small",
-    srcs = ["ops/bincount_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":bincount_ops",
-        ":platform_test",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "ctc_ops",
-    srcs = ["ops/ctc_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":ctc_ops_gen",
-        ":functional_ops",
-        ":nn_grad",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:ctc_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "cudnn_rnn_grad",
-    srcs = ["ops/cudnn_rnn_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":cudnn_rnn_ops_gen",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:cudnn_rnn_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "data_flow_grad",
-    srcs = ["ops/data_flow_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":data_flow_ops",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:data_flow_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "data_flow_ops",
-    srcs = ["ops/data_flow_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":data_flow_ops_gen",
-        ":math_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:data_flow_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "embedding_ops",
-    srcs = ["ops/embedding_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":clip_ops",
-        ":data_flow_grad",
-        ":data_flow_ops",
-        ":math_ops",
-        ":resource_variable_ops",
-        ":sparse_ops",
-        ":variables",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/ops/ragged:ragged_functional_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:embedding_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "handle_data_util",
-    srcs = [
-        "ops/handle_data_util.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":protos_all_py",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/types:core",
-        "//tensorflow/python/util:compat",
-    ],
+    actual = "//tensorflow/python/ops:handle_data_util",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+py_strict_library(
     name = "gradients",
-    srcs = [
-        "ops/custom_gradient.py",
-        "ops/gradients.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        ":gradients_impl",
-        ":gradients_util",
-        ":handle_data_util",
-        ":math_ops",
-        ":unconnected_gradients",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/eager:forwardprop",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/eager:record",
-        "//tensorflow/python/eager:tape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:variable_utils",
+        "//tensorflow/python/ops:custom_gradient",
+        "//tensorflow/python/ops:gradients",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "gradients_impl",
-    srcs = [
-        "ops/gradients_impl.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":array_grad",
-        ":array_ops",
-        ":bitwise_ops",
-        ":check_ops",
-        ":control_flow_grad",
-        ":control_flow_util",
-        ":image_grad",
-        ":linalg_grad",
-        ":linalg_ops",
-        ":logging_ops",
-        ":manip_grad",
-        ":manip_ops",
-        ":math_grad",
-        ":math_ops",
-        ":optional_grad",
-        ":random_grad",
-        ":tensor_array_ops",
-        ":unconnected_gradients",
-        ":while_loop",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:gradients_impl",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "gradients_util",
-    srcs = [
-        "ops/gradients_util.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":control_flow_state",
-        ":control_flow_util",
-        ":default_gradient",
-        ":functional_ops_gen",
-        ":math_ops",
-        ":resource_variable_ops",
-        ":unconnected_gradients",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:backprop_util",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:composite_tensor_gradient",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:variable_utils",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:gradients_util",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "default_gradient",
-    srcs = [
-        "ops/default_gradient.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":resource_variable_ops",
-        "//tensorflow/python/framework:dtypes",
-    ],
+    actual = "//tensorflow/python/ops:default_gradient",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "control_flow_state",
-    srcs = [
-        "ops/control_flow_state.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":control_flow_util",
-        ":data_flow_ops_gen",
-        ":resource_variable_ops_gen",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-    ],
+    actual = "//tensorflow/python/ops:control_flow_state",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "unconnected_gradients",
-    srcs = ["ops/unconnected_gradients.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:unconnected_gradients",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "filesystem_ops",
-    srcs = ["ops/filesystem_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":filesystem_ops_gen",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:filesystem_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "histogram_ops",
-    srcs = ["ops/histogram_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":clip_ops",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:histogram_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "image_grad",
-    srcs = ["ops/image_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":image_ops_gen",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:image_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "image_ops",
-    srcs = [
-        "ops/image_ops.py",
-        "ops/image_ops_impl.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        ":array_ops",
-        ":check_ops",
-        ":clip_ops",
-        ":cond",
-        ":control_flow_case",
-        ":control_flow_ops",
-        ":gradients",
-        ":image_ops_gen",
-        ":math_ops",
-        ":nn",
-        ":nn_ops_gen",
-        ":random_ops",
-        ":string_ops",
-        ":variables",
-        ":while_loop",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:image_ops_impl",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "init_ops",
-    srcs = ["ops/init_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_stack",
-        ":linalg_ops_gen",
-        ":linalg_ops_impl",
-        ":math_ops",
-        ":random_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:init_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "init_ops_v2",
-    srcs = ["ops/init_ops_v2.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_stack",
-        ":linalg_ops_gen",
-        ":linalg_ops_impl",
-        ":math_ops",
-        ":random_ops",
-        ":stateless_random_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:init_ops_v2",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "initializers_ns",
-    srcs = ["ops/initializers_ns.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":init_ops",
-        ":variables",
-    ],
+    actual = "//tensorflow/python/ops:initializers_ns",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "io_ops",
-    srcs = ["ops/io_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":data_flow_ops_gen",
-        ":io_ops_gen",
-        ":lib",
-        ":parsing_ops_gen",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:io_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "linalg_grad",
-    srcs = ["ops/linalg_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":control_flow_ops",
-        ":linalg_ops",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/ops/linalg:linalg_impl",
-    ],
+    actual = "//tensorflow/python/ops:linalg_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "linalg_ops",
-    srcs = ["ops/linalg_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":linalg_ops_gen",
-        ":linalg_ops_impl",
-        ":map_fn",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:linalg_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "linalg_ops_impl",
-    srcs = ["ops/linalg_ops_impl.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:compat",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:linalg_ops_impl",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "manip_grad",
-    srcs = ["ops/manip_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":manip_ops",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:manip_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "manip_ops",
-    srcs = ["ops/manip_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":manip_ops_gen",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:manip_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "logging_ops",
-    srcs = ["ops/logging_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":logging_ops_gen",
-        ":string_ops",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:logging_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "lookup_ops",
-    srcs = ["ops/lookup_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":lookup_ops_gen",
-        ":math_ops",
-        ":string_ops",
-        "//tensorflow/python/checkpoint:saveable_compat",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/saved_model/registration",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:lookup_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "math_grad",
-    srcs = ["ops/math_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_gen",
-        ":math_ops",
-        ":math_ops_gen",
-        ":special_math_ops",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:math_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "op_selector",
-    srcs = ["ops/op_selector.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:object_identity",
-    ],
+    actual = "//tensorflow/python/ops:op_selector",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "math_ops",
-    srcs = ["ops/math_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":bitwise_ops_gen",
-        ":control_flow_ops_gen",
-        ":data_flow_ops_gen",
-        ":math_ops_gen",
-        ":nn_ops_gen",
-        ":sparse_ops_gen",
-        ":state_ops",
-        ":state_ops_gen",
-        "//tensorflow/python/compat",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:common_shapes",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:graph_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:lazy_loader",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:traceback_utils",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:math_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "resources",
-    srcs = ["ops/resources.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":math_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_should_use",
-    ],
+    actual = "//tensorflow/python/ops:resources",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "resource_variable_ops",
-    srcs = ["ops/resource_variable_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_gen",
-        ":handle_data_util",
-        ":resource_variable_ops_gen",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/checkpoint:tensor_callable",
-        "//tensorflow/python/client:pywrap_tf_session",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:record",
-        "//tensorflow/python/eager:tape",
-        "//tensorflow/python/framework:auto_control_deps_utils",
-        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/util:_pywrap_utils",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:resource_variable_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "critical_section_ops",
-    srcs = ["ops/critical_section_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":resource_variable_ops_gen",
-        ":tensor_array_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:critical_section_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "list_ops",
-    srcs = ["ops/list_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":handle_data_util",
-        ":list_ops_gen",
-        "//tensorflow/python/framework:cpp_shape_inference_proto_py",
-        "//tensorflow/python/util:lazy_loader",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:list_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "map_ops",
-    srcs = ["ops/map_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":map_ops_gen",
-    ],
+    actual = "//tensorflow/python/ops:map_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "nn",
-    srcs = [
-        "ops/nn.py",
-        "ops/nn_impl.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        ":array_ops",
-        ":candidate_sampling_ops",
-        ":cond",
-        ":ctc_ops",
-        ":embedding_ops",
-        ":math_ops",
-        ":nn_grad",
-        ":nn_ops",
-        ":nn_ops_gen",
-        ":sparse_ops",
-        ":variables",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:device_context",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/ops:nn",
+        "//tensorflow/python/ops:nn_impl",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "nn_grad",
-    srcs = ["ops/nn_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":gradients",
-        ":math_ops",
-        ":nn_ops",
-        ":nn_ops_gen",
-        ":sparse_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-    ],
+    actual = "//tensorflow/python/ops:nn_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "nn_ops",
-    srcs = ["ops/nn_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops",
-        ":nn_ops_gen",
-        ":random_ops",
-        ":stateless_random_ops",
-        ":variables",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:graph_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform:device_context",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:nn_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "numerics",
-    srcs = ["ops/numerics.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:numerics",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "parsing_config",
-    srcs = ["ops/parsing_config.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/ops/ragged:ragged_math_ops",
-        "//tensorflow/python/ops/ragged:ragged_tensor",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:parsing_config",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "parsing_ops",
-    srcs = ["ops/parsing_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":math_ops",
-        ":parsing_config",
-        ":parsing_ops_gen",
-        ":sparse_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:parsing_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "partitioned_variables",
-    srcs = ["ops/partitioned_variables.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":variable_scope",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:partitioned_variables",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "random_grad",
-    srcs = ["ops/random_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops",
-        ":random_ops_gen",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:random_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "random_ops",
-    srcs = ["ops/random_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":math_ops",
-        ":random_ops_gen",
-        ":shape_util",
-        ":stateless_random_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:random_seed",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:random_ops",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "random_crop_ops",
-    srcs = ["ops/random_crop_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_assert",
-        ":control_flow_ops",
-        ":math_ops",
-        ":random_ops",
-        ":stateless_random_ops",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:random_crop_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "stateful_random_ops",
-    srcs = ["ops/stateful_random_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":math_ops",
-        ":stateful_random_ops_gen",
-        ":stateless_random_ops",
-        ":stateless_random_ops_v2_gen",
-        ":variables",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:stateful_random_ops",
+    tags = ["avoid_dep"],
 )
 
-py_strict_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "stateless_random_ops",
-    srcs = ["ops/stateless_random_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_stack",
-        ":bitwise_ops",
-        ":math_ops",
-        ":random_index_shuffle_ops_gen",
-        ":shape_util",
-        ":stateless_random_ops_gen",
-        ":stateless_random_ops_v2_gen",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:stateless_random_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "rnn",
-    srcs = ["ops/rnn.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":control_flow_ops",
-        ":control_flow_util",
-        ":control_flow_util_v2",
-        ":math_ops",
-        ":rnn_cell",
-        ":tensor_array_ops",
-        ":variable_scope",
-        ":while_loop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:rnn",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "rnn_cell",
-    srcs = [
-        "ops/rnn_cell.py",
-        "ops/rnn_cell_impl.py",
-        "ops/rnn_cell_wrapper_impl.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_impl",
-        "//tensorflow/python/keras/layers/legacy_rnn:rnn_cell_wrapper_impl",
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:rnn_cell_impl",
+        "//tensorflow/python/ops:rnn_cell_wrapper_impl",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "script_ops",
-    srcs = [
-        "ops/autograph_ops.py",
-        "ops/script_ops.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":script_ops_gen",
-        "//tensorflow/python/autograph/operators:py_builtins",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:backprop_util",
-        "//tensorflow/python/eager:record",
-        "//tensorflow/python/framework:composite_tensor",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:func_graph",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/framework:type_spec",
-        "//tensorflow/python/lib/core:_pywrap_py_func",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:variable_utils",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:script_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sdca_ops",
-    srcs = ["ops/sdca_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":sdca_ops_gen",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:sdca_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "session_ops",
-    srcs = ["ops/session_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":data_flow_ops_gen",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:session_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "shape_util",
-    srcs = ["ops/shape_util.py"],
-    srcs_version = "PY3",
-    deps = [
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-    ],
+    actual = "//tensorflow/python/ops:shape_util",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sparse_grad",
-    srcs = ["ops/sparse_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops",
-        ":sparse_ops",
-        ":sparse_ops_gen",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-    ],
+    actual = "//tensorflow/python/ops:sparse_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sparse_ops",
-    srcs = ["ops/sparse_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":check_ops",
-        ":control_flow_ops",
-        ":math_ops",
-        ":sparse_ops_gen",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:nest",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:sparse_ops",
+    tags = ["avoid_dep"],
 )
 
-tf_py_test(
-    name = "sparse_ops_test",
-    srcs = ["ops/sparse_ops_test.py"],
-    main = "ops/sparse_ops_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_grad",
-        ":gradient_checker_v2",
-        ":sparse_grad",
-        ":sparse_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:test",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "sort_ops",
-    srcs = ["ops/sort_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops",
-        ":nn_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:sort_ops",
+    tags = ["avoid_dep"],
 )
 
-tf_py_test(
-    name = "sort_ops_test",
-    srcs = ["ops/sort_ops_test.py"],
-    main = "ops/sort_ops_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":random_ops",
-        ":sort_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "confusion_matrix",
-    srcs = ["ops/confusion_matrix.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":check_ops",
-        ":cond",
-        ":control_flow_ops",
-        ":math_ops",
-        ":sparse_ops",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:confusion_matrix",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "weights_broadcast_ops",
-    srcs = [
-        "ops/weights_broadcast_ops.py",
-    ],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":control_flow_ops",
-        ":math_ops",
-        ":sets",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:weights_broadcast_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+py_strict_library(
     name = "metrics",
-    srcs = [
-        "ops/metrics.py",
-        "ops/metrics_impl.py",
-    ],
-    srcs_version = "PY3",
+    tags = ["avoid_dep"],
     deps = [
-        ":array_ops",
-        ":check_ops",
-        ":cond",
-        ":confusion_matrix",
-        ":control_flow_ops",
-        ":math_ops",
-        ":nn",
-        ":sets",
-        ":sparse_ops",
-        ":state_ops",
-        ":variable_scope",
-        ":variable_v1",
-        ":variables",
-        ":weights_broadcast_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
+        "//tensorflow/python/ops:metrics",
+        "//tensorflow/python/ops:metrics_impl",
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "special_math_ops",
-    srcs = ["ops/special_math_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":check_ops",
-        ":control_flow_ops",
-        ":math_ops",
-        ":special_math_ops_gen",
-        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-        "@opt_einsum_archive//:opt_einsum",
-    ],
+    actual = "//tensorflow/python/ops:special_math_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "rnn_grad",
-    srcs = ["ops/rnn_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":rnn_ops_gen",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:rnn_grad",
+    tags = ["avoid_dep"],
 )
 
-cuda_py_test(
-    name = "rnn_grad_test",
-    srcs = ["ops/rnn_grad_test.py"],
-    main = "ops/rnn_grad_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradients",
-        ":math_ops",
-        ":rnn_grad",
-        ":rnn_ops_gen",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "script_ops_test",
-    srcs = ["ops/script_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":script_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "autograph_ops_test",
-    srcs = ["ops/autograph_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":script_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "standard_ops",
-    srcs = ["ops/standard_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_grad",
-        ":array_ops",
-        ":batch_ops",
-        ":check_ops",
-        ":clip_ops",
-        ":cond",
-        ":confusion_matrix",
-        ":control_flow_case",
-        ":control_flow_ops",
-        ":critical_section_ops",
-        ":cudnn_rnn_grad",
-        ":data_flow_grad",
-        ":data_flow_ops",
-        ":functional_ops",
-        ":gradients",
-        ":histogram_ops",
-        ":init_ops",
-        ":io_ops",
-        ":linalg_ops",
-        ":logging_ops",
-        ":lookup_ops",
-        ":manip_grad",
-        ":manip_ops",
-        ":math_grad",
-        ":math_ops",
-        ":numerics",
-        ":parsing_ops",
-        ":partitioned_variables",
-        ":proto_ops",
-        ":random_ops",
-        ":rnn_grad",
-        ":script_ops",
-        ":session_ops",
-        ":sort_ops",
-        ":sparse_grad",
-        ":sparse_ops",
-        ":special_math_ops",
-        ":state_grad",
-        ":state_ops",
-        ":stateful_random_ops",
-        ":stateless_random_ops",
-        ":string_ops",
-        ":template",
-        ":tensor_array_grad",
-        ":tensor_array_ops",
-        ":variable_scope",
-        ":variables",
-        "//tensorflow/python/compiler/tensorrt:trt_convert_py",
-        "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/ops/distributions",
-        "//tensorflow/python/ops/linalg",
-        "//tensorflow/python/ops/ragged",
-        "//tensorflow/python/ops/structured",
-    ],
+    actual = "//tensorflow/python/ops:standard_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "state_grad",
-    srcs = ["ops/state_grad.py"],
-    srcs_version = "PY3",
-    deps = ["//tensorflow/python/framework:ops"],
+    actual = "//tensorflow/python/ops:state_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "state_ops",
-    srcs = ["ops/state_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":math_ops_gen",
-        ":resource_variable_ops_gen",
-        ":state_ops_gen",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:state_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "string_ops",
-    srcs = ["ops/string_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":string_ops_gen",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:dispatch",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:string_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "summary_ops_v2",
-    srcs = ["ops/summary_ops_v2.py"],
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/ops:summary_ops_v2",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        ":array_ops",
-        ":control_flow_ops",
-        ":math_ops",
-        ":resource_variable_ops",
-        ":resource_variable_ops_gen",
-        ":summary_op_util",
-        ":summary_ops_gen",
-        ":training_util",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:profiler",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:smart_cond",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-    ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "template",
-    srcs = ["ops/template.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":variable_scope",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:template",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "tensor_array_grad",
-    srcs = ["ops/tensor_array_grad.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":tensor_array_ops",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:tensor_array_grad",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "tensor_array_ops",
-    srcs = ["ops/tensor_array_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":control_flow_ops_gen",
-        ":data_flow_ops_gen",
-        ":list_ops",
-        ":math_ops",
-        ":tf2",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_util",
-        "//tensorflow/python/framework:type_spec_registry",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/saved_model:nested_structure_coder",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_should_use",
-    ],
+    actual = "//tensorflow/python/ops:tensor_array_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "composite_tensor_ops",
-    srcs = ["ops/composite_tensor_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "composite_tensor_ops_gen",
-        "//tensorflow/python/util:nest",
-    ],
+    actual = "//tensorflow/python/ops:composite_tensor_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "variable_scope",
-    srcs = ["ops/variable_scope.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":init_ops",
-        ":resource_variable_ops",
-        ":tf2",
-        ":variables",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:monitoring",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:function_utils",
-        "//tensorflow/python/util:tf_decorator",
-        "//tensorflow/python/util:tf_export",
-    ],
+    actual = "//tensorflow/python/ops:variable_scope",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "variables",
-    srcs = ["ops/variables.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_stack",
-        ":control_flow_ops",
-        ":math_ops",
-        ":math_ops_gen",
-        ":pywrap_tensorflow",
-        ":state_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/trackable:base",
-        "//tensorflow/python/util:_pywrap_utils",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:object_identity",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_should_use",
-        "//tensorflow/python/util:traceback_utils",
-    ],
+    actual = "//tensorflow/python/ops:variables",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "ref_variable",
-    srcs = ["ops/ref_variable.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":array_ops_gen",
-        ":resource_variable_ops",
-        ":state_ops",
-        ":state_ops_gen",
-        ":variable_scope",
-        ":variable_v1",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_conversion_registry",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/trackable:base",
-        "//tensorflow/python/types:core",
-        "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:deprecation",
-    ],
+    actual = "//tensorflow/python/ops:ref_variable",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "variable_v1",
-    srcs = ["ops/variable_v1.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":cond",
-        ":state_ops",
-        ":variable_scope",
-        ":variables",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/util:tf_export",
-        "//tensorflow/python/util:tf_should_use",
-    ],
+    actual = "//tensorflow/python/ops:variable_v1",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "gradient_checker",
-    srcs = ["ops/gradient_checker.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":gradients",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:deprecation",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:gradient_checker",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "gradient_checker_v2",
-    srcs = ["ops/gradient_checker_v2.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":gradients",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-        "//tensorflow/python/util:tf_export",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "bitwise_ops_test",
-    size = "small",
-    srcs = ["ops/bitwise_ops_test.py"],
-    main = "ops/bitwise_ops_test.py",
-    python_version = "PY3",
-    tags = ["no_windows"],
-    deps = [
-        ":bitwise_ops",
-        ":bitwise_ops_gen",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:test",
-    ],
-)
-
-cuda_py_test(
-    name = "control_flow_ops_test",
-    size = "medium",  # Contains artificial waits.
-    srcs = ["ops/control_flow_ops_test.py"],
-    main = "ops/control_flow_ops_test.py",
-    python_version = "PY3",
-    shard_count = 2,
-    tags = [
-        "no_cuda_asan",  # b/173241932
-    ],
-    xla_tags = [
-        "no_cuda_asan",  # times out
-    ],
-    deps = [
-        ":array_ops",
-        ":cond",
-        ":cond_v2",
-        ":control_flow_case",
-        ":control_flow_ops",
-        ":control_flow_v2_toggles",
-        ":embedding_ops",
-        ":gradients",
-        ":init_ops",
-        ":math_ops",
-        ":platform_test",
-        ":state_ops",
-        ":tensor_array_grad",
-        ":tensor_array_ops",
-        ":training",
-        ":variable_scope",
-        ":variables",
-        ":while_loop",
-        ":while_v2",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/util:nest",
-    ],
-)
-
-py_test(
-    name = "op_selector_test",
-    srcs = ["ops/op_selector_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":math_ops",
-        ":op_selector",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-    ],
-)
-
-cuda_py_test(
-    name = "embedding_ops_test",
-    srcs = ["ops/embedding_ops_test.py"],
-    main = "ops/embedding_ops_test.py",
-    python_version = "PY3",
-    tags = ["no_windows_gpu"],
-    deps = [
-        ":embedding_ops",
-        ":gradients",
-        ":resource_variable_ops",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:test",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "gradient_checker_v2_test",
-    size = "medium",
-    srcs = ["ops/gradient_checker_v2_test.py"],
-    main = "ops/gradient_checker_v2_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradient_checker_v2",
-        ":math_ops",
-        ":nn_grad",
-        ":nn_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:sparse_tensor",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:tf_logging",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "gradients_test",
-    size = "medium",
-    srcs = ["ops/gradients_test.py"],
-    main = "ops/gradients_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_grad",
-        ":array_ops",
-        ":cond",
-        ":control_flow_grad",
-        ":control_flow_ops",
-        ":data_flow_grad",
-        ":data_flow_ops",
-        ":functional_ops",
-        ":gradient_checker_v2",
-        ":gradients",
-        ":init_ops",
-        ":list_ops",
-        ":map_ops",
-        ":math_grad",
-        ":math_ops",
-        ":nn_grad",
-        ":nn_ops",
-        ":platform_test",
-        ":ref_variable",
-        ":state_grad",
-        ":state_ops",
-        ":tensor_array_grad",
-        ":tensor_array_ops",
-        ":unconnected_gradients",
-        ":variable_scope",
-        ":variable_v1",
-        ":while_loop",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:function",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/framework:test_ops",
-        "//tensorflow/python/util:nest",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "image_grad_d9m_test",
-    size = "large",
-    srcs = ["ops/image_grad_d9m_test.py"],
-    main = "ops/image_grad_d9m_test.py",
-    python_version = "PY3",
-    shard_count = 5,
-    deps = [
-        ":image_grad_test_base",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-cuda_py_test(
-    name = "image_grad_test",
-    size = "large",
-    srcs = ["ops/image_grad_test.py"],
-    main = "ops/image_grad_test.py",
-    python_version = "PY3",
-    shard_count = 5,
-    deps = [
-        ":image_grad_test_base",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-py_library(
-    name = "image_grad_test_base",
-    srcs = ["ops/image_grad_test_base.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":errors",
-        ":gradient_checker_v2",
-        ":gradients",
-        ":image_ops",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "image_ops_test",
-    size = "medium",
-    srcs = ["ops/image_ops_test.py"],
-    data = ["//tensorflow/core:image_testdata"],
-    main = "ops/image_ops_test.py",
-    python_version = "PY3",
-    shard_count = 16,
-    tags = [
-        "no_cuda_asan",  # TODO(b/171511582): re-enable.
-        "no_windows",  #TODO(b/207035199): re-enable
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":config",
-        ":control_flow_ops",
-        ":image_ops",
-        ":io_ops",
-        ":math_ops",
-        ":platform_test",
-        ":random_ops",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "init_ops_test",
-    size = "small",
-    srcs = ["ops/init_ops_test.py"],
-    main = "ops/init_ops_test.py",
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":init_ops",
-        ":resource_variable_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "init_ops_v2_test",
-    size = "medium",
-    srcs = ["ops/init_ops_v2_test.py"],
-    main = "ops/init_ops_v2_test.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":init_ops_v2",
-        ":random_ops",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "math_grad_test",
-    size = "small",
-    srcs = ["ops/math_grad_test.py"],
-    main = "ops/math_grad_test.py",
-    python_version = "PY3",
-    tags = ["no_windows_gpu"],
-    xla_tags = [
-        "no_cuda_asan",  # times out
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradient_checker_v2",
-        ":math_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "math_ops_test",
-    size = "medium",
-    srcs = ["ops/math_ops_test.py"],
-    main = "ops/math_ops_test.py",
-    python_version = "PY3",
-    tags = [
-        "no_windows_gpu",
-    ],
-    deps = [
-        ":array_ops",
-        ":gradients",
-        ":math_ops",
-        ":platform_test",
-        ":variables",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:indexed_slices",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "math_ops_linspace_test",
-    size = "medium",
-    srcs = ["ops/math_ops_linspace_test.py"],
-    main = "ops/math_ops_linspace_test.py",
-    python_version = "PY3",
-    tags = [
-        "no_windows_gpu",
-    ],
-    deps = [
-        ":math_ops",
-        ":platform_test",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "nn_batchnorm_test",
-    size = "medium",
-    srcs = ["ops/nn_batchnorm_test.py"],
-    main = "ops/nn_batchnorm_test.py",
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "no_mac_arm64",
-        "no_windows",
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradients",
-        ":math_ops",
-        ":nn",
-        ":nn_grad",
-        ":nn_ops_gen",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "nn_fused_batchnorm_d9m_test",
-    size = "medium",
-    srcs = ["ops/nn_fused_batchnorm_d9m_test.py"],
-    main = "ops/nn_fused_batchnorm_d9m_test.py",
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [],
-    deps = [
-        ":client_testlib",
-        ":config",
-        ":constant_op",
-        ":dtypes",
-        ":errors",
-        ":nn",
-        ":nn_grad",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/framework:config",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "nn_fused_batchnorm_test",
-    size = "large",
-    srcs = ["ops/nn_fused_batchnorm_test.py"],
-    main = "ops/nn_fused_batchnorm_test.py",
-    python_version = "PY3",
-    shard_count = 24,
-    tags = ["no_rocm"],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradients",
-        ":nn",
-        ":nn_grad",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "nn_test",
-    size = "medium",
-    srcs = ["ops/nn_test.py"],
-    main = "ops/nn_test.py",
-    python_version = "PY3",
-    tags = ["no_windows"],
-    xla_tags = [
-        "no_cuda_asan",  # times out
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradient_checker_v2",
-        ":nn",
-        ":nn_grad",
-        ":nn_ops",
-        ":partitioned_variables",
-        ":variable_scope",
-        ":variables",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-py_test(
-    name = "nn_loss_scaling_utilities_test",
-    size = "small",
-    srcs = ["ops/nn_loss_scaling_utilities_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/distribute:test_util",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_test(
-    name = "nn_xent_test",
-    size = "medium",
-    srcs = ["ops/nn_xent_test.py"],
-    main = "ops/nn_xent_test.py",
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":gradients",
-        ":nn",
-        ":nn_grad",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "tensor_array_ops_test",
-    size = "small",
-    srcs = ["ops/tensor_array_ops_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "sobol_ops_test",
-    size = "small",
-    srcs = ["ops/sobol_ops_test.py"],
-    kernels = [
-        "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
-    ],
-    main = "ops/sobol_ops_test.py",
-    tags = [
-        "no_oss",  # TODO(b/149565560)
-        "no_windows_gpu",
-    ],
-    deps = [
-        ":math_ops",
-        ":platform_test",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "special_math_ops_test",
-    size = "medium",
-    srcs = ["ops/special_math_ops_test.py"],
-    main = "ops/special_math_ops_test.py",
-    python_version = "PY3",
-    shard_count = 10,
-    tags = [
-        "no_windows_gpu",
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradient_checker_v2",
-        ":math_ops",
-        ":special_math_ops",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:benchmark",
-        "//tensorflow/python/platform:tf_logging",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "variable_spec_test",
-    size = "small",
-    srcs = ["ops/variable_spec_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":platform_test",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:fast_tensor_util",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:nest",
-        "//third_party/py/numpy",
-    ],
+    actual = "//tensorflow/python/ops:gradient_checker_v2",
+    tags = ["avoid_dep"],
 )
 
 alias(
@@ -3978,7 +1935,7 @@ alias(
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
 # other purposes.
 
-py_library(
+py_strict_library(
     name = "global_test_configuration",
     compatible_with = get_compatible_with_portable(),
     srcs_version = "PY3",
@@ -4007,7 +1964,7 @@ alias(
     actual = "//tensorflow/python/client:device_lib",
 )
 
-py_library(
+py_strict_library(
     name = "pywrap_tensorflow",
     srcs = [
         "pywrap_tensorflow.py",
@@ -4436,15 +2393,12 @@ alias(
     ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "summary_op_util",
-    srcs = ["ops/summary_op_util.py"],
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/ops:summary_op_util",
+    tags = ["avoid_dep"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-    ],
 )
 
 alias(
@@ -4453,392 +2407,33 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# -----------------------------------------------------------------------------
-# Quantization
-
-tf_py_test(
-    name = "dequantize_op_test",
-    size = "small",
-    srcs = ["ops/dequantize_op_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_windows",
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "quantized_ops_test",
-    size = "small",
-    srcs = ["ops/quantized_ops_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_windows",
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "quantized_conv_ops_test",
-    size = "small",
-    srcs = ["ops/quantized_conv_ops_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_windows",
-    ],
-    deps = [
-        ":client_testlib",
-        ":nn_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:errors",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "ops/array_ops_test",
-    srcs = ["ops/array_ops_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradients",
-        ":math_ops",
-        ":random_ops",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-py_strict_test(
-    name = "ops/array_ops_shape_test",
-    srcs = ["ops/array_ops_shape_test.py"],
-    env = {"TF_FLAG_TF_SHAPE_DEFAULT_INT64": "true"},
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        "//tensorflow/core/config:flags_py",
-        "//tensorflow/python/framework:dtypes",
-    ],
-)
-
-cuda_py_test(
-    name = "accumulate_n_benchmark",
-    size = "medium",
-    srcs = ["ops/accumulate_n_benchmark.py"],
-    main = "ops/accumulate_n_benchmark.py",
-    python_version = "PY3",
-    shard_count = 6,
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":control_flow_ops_gen",
-        ":data_flow_ops",
-        ":math_ops",
-        ":random_ops",
-        ":state_ops",
-        ":state_ops_gen",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:tensor_shape",
-    ],
-)
-
-cuda_py_test(
-    name = "batch_norm_benchmark",
-    srcs = ["ops/batch_norm_benchmark.py"],
-    main = "ops/batch_norm_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":gradients",
-        ":math_ops",
-        ":nn",
-        ":nn_grad",
-        ":nn_ops_gen",
-        ":random_ops",
-        ":variables",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-cuda_py_test(
-    name = "collective_ops_benchmark",
-    srcs = ["ops/collective_ops_benchmark.py"],
-    main = "ops/collective_ops_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":collective_ops",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-    ],
-)
-
-cuda_py_test(
-    name = "concat_benchmark",
-    srcs = ["ops/concat_benchmark.py"],
-    main = "ops/concat_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":control_flow_ops",
-        ":gradients",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:ops",
-    ],
-)
-
-cuda_py_test(
-    name = "control_flow_ops_benchmark",
-    srcs = ["ops/control_flow_ops_benchmark.py"],
-    main = "ops/control_flow_ops_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":cond",
-        ":control_flow_ops",
-        "//tensorflow/python/eager:function",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-    ],
-)
-
-cuda_py_test(
-    name = "conv2d_benchmark",
-    size = "large",
-    srcs = ["ops/conv2d_benchmark.py"],
-    main = "ops/conv2d_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":control_flow_ops",
-        ":nn_ops",
-        ":platform_benchmark",
-        ":random_ops",
-        ":variable_v1",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:flags",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "split_benchmark",
-    srcs = ["ops/split_benchmark.py"],
-    main = "ops/split_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":control_flow_ops",
-        ":platform_benchmark",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/platform:tf_logging",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "transpose_benchmark",
-    size = "medium",
-    srcs = ["ops/transpose_benchmark.py"],
-    main = "ops/transpose_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":control_flow_ops",
-        ":platform_benchmark",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "matmul_benchmark",
-    size = "medium",
-    srcs = ["ops/matmul_benchmark.py"],
-    main = "ops/matmul_benchmark.py",
-    python_version = "PY3",
-    deps = [
-        ":matmul_benchmark_main_lib",
-        "//tensorflow/python/platform:client_testlib",
-    ],
-)
-
-py_library(
-    name = "matmul_benchmark_main_lib",
-    testonly = True,
-    srcs = ["ops/matmul_benchmark.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":control_flow_ops",
-        ":math_ops",
-        ":platform_benchmark",
-        ":random_ops",
-        ":variable_v1",
-        ":variables",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/client",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "nn_grad_test",
-    size = "medium",
-    srcs = ["ops/nn_grad_test.py"],
-    main = "ops/nn_grad_test.py",
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":gradient_checker_v2",
-        ":nn_grad",
-        ":nn_ops",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:test_lib",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "nccl_ops_gen",
+    actual = "//tensorflow/python/ops:nccl_ops_gen",
+    tags = ["avoid_dep"],
     visibility = ["//tensorflow:internal"],
-    deps = [
-        "//tensorflow/core:nccl_ops_op_lib",
-    ],
 )
 
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "nccl_ops",
-    srcs = ["ops/nccl_ops.py"],
-    srcs_version = "PY3",
+    actual = "//tensorflow/python/ops:nccl_ops",
+    tags = ["avoid_dep"],
     visibility = visibility + [
         "//learning/deepmind/tensorflow:__subpackages__",
         "//third_party/car/deep_nets/tensorflow:__subpackages__",
     ],
-    deps = [
-        ":nccl_ops_gen",
-        "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:ops",
-    ],
 )
 
-cuda_py_test(
-    name = "nccl_ops_test",
-    size = "small",
-    srcs = ["ops/nccl_ops_test.py"],
-    main = "ops/nccl_ops_test.py",
-    python_version = "PY3",
-    # Disabled on jenkins until errors finding nvmlShutdown are found.
-    tags = [
-        "manual",
-        "multi_gpu",
-        "no_oss",
-        "noguitar",
-        "notap",
-    ],
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":nccl_ops",
-        ":platform_test",
-        "//tensorflow/python/framework:test_lib",
-    ],
-)
-
-cuda_py_test(
-    name = "factory_ops_test",
-    size = "small",
-    srcs = ["ops/factory_ops_test.py"],
-    main = "ops/factory_ops_test.py",
-    deps = [
-        ":platform_test",
-        ":sparse_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/platform:client_testlib",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "decode_proto_ops_gen",
-    deps = [
-        "//tensorflow/core:decode_proto_ops_op_lib",
-    ],
-)
-
-tf_gen_op_wrapper_private_py(
-    name = "encode_proto_ops_gen",
-    deps = [
-        "//tensorflow/core:encode_proto_ops_op_lib",
-    ],
-)
-
-py_library(
+# TODO(b/285020435): Update usages and then remove.
+alias(
     name = "proto_ops",
-    srcs = ["ops/proto_ops.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":decode_proto_ops_gen",
-        ":encode_proto_ops_gen",
-        "//tensorflow/python/framework:ops",
-    ],
+    actual = "//tensorflow/python/ops:proto_ops",
+    tags = ["avoid_dep"],
 )
 
-py_library(
+py_strict_library(
     name = "pywrap_mlir",
     srcs = ["pywrap_mlir.py"],
     srcs_version = "PY3",
@@ -4846,6 +2441,7 @@ py_library(
     deps = [
         ":_pywrap_mlir",
         ":pywrap_tensorflow",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -4871,7 +2467,7 @@ tf_python_pybind_extension(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "pywrap_sanitizers",
     srcs = ["pywrap_sanitizers.py"],
     srcs_version = "PY3",
@@ -4932,7 +2528,7 @@ cc_library(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "pywrap_tfe",
     srcs = ["pywrap_tfe.py"],
     srcs_version = "PY3",
@@ -5011,7 +2607,7 @@ tf_python_pybind_extension(
     ),
 )
 
-py_library(
+py_strict_library(
     name = "pywrap_tfe_monitoring_reader",
     testonly = True,
     srcs = ["pywrap_tfe_monitoring_reader.py"],
@@ -5118,23 +2714,13 @@ tf_pybind_cc_library_wrapper(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tf2",
     srcs = ["tf2.py"],
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python/platform:_pywrap_tf2",
         "//tensorflow/python/util:tf_export",
-    ],
-)
-
-cuda_py_test(
-    name = "raw_ops_test",
-    srcs = ["ops/raw_ops_test.py"],
-    main = "ops/raw_ops_test.py",
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
     ],
 )
 
@@ -5148,7 +2734,7 @@ alias(
     actual = "//tensorflow/python/platform:analytics",
 )
 
-py_library(
+py_strict_library(
     name = "platform_test",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/platform:test"],
@@ -5610,14 +3196,14 @@ alias(
     actual = "//tensorflow/python/layers:layers",
 )
 
-py_library(
+py_strict_library(
     name = "dtensor",
     deps = [
         "//tensorflow/dtensor/python:dtensor",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "learning_rate_decay",
     # This rule depends on a target that only python:__pkg__ has visibility for.
     srcs = ["//tensorflow/python/training:learning_rate_decay.py"],
@@ -5635,7 +3221,7 @@ py_library(
 #
 # # Special build rule for jax2tf.
 # # TODO(b/239052279): remove once TF->TFLite dependency cycle is resolved
-# py_library(
+# py_strict_library(
 #     name = "jax2tf_support",
 #     visibility = ["//third_party/py/jax/experimental/jax2tf:__subpackages__"],
 #     deps = [

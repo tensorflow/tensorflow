@@ -316,7 +316,7 @@ py_strict_library(
     srcs = ["util.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python/ops/distributions",
+        "//tensorflow/python/ops/distributions:special_math",
         "//third_party/py/numpy",
     ],
 )

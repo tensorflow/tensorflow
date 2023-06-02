@@ -40,7 +40,8 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 
   NcclAllReduceReduceScatterThunkBase(Kind kind, ThunkInfo thunk_info,
                                       NcclAllReduceConfig config,
-                                      std::vector<Buffer> buffers);
+                                      std::vector<Buffer> buffers,
+                                      bool is_sync);
 
  protected:
   const NcclCollectiveConfig& config() const override { return config_.config; }
@@ -50,20 +51,10 @@ class NcclAllReduceReduceScatterThunkBase : public NcclCollectiveThunk {
 };
 
 // -----------------------------------------------------------------------------
-// AllReduce thunks
+// AllReduce thunk.
 // -----------------------------------------------------------------------------
 
-class NcclAllReduceThunkBase : public NcclAllReduceReduceScatterThunkBase {
- public:
-  using NcclAllReduceReduceScatterThunkBase::
-      NcclAllReduceReduceScatterThunkBase;
-
- protected:
-  Status RunAllReduce(const ExecuteParams& params, se::Stream& stream,
-                      ncclComm_t comm);
-};
-
-class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
+class NcclAllReduceStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclAllReduceStartThunk(ThunkInfo thunk_info,
                           mlir::lmhlo_gpu::AllReduceStartOp op,
@@ -78,40 +69,16 @@ class NcclAllReduceStartThunk : public NcclAllReduceThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllReduceStartOp op);
-  static constexpr bool IsAsync() { return true; }
-
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
-
- private:
-  AsyncExecutor async_;
-};
-
-class NcclAllReduceDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllReduceDoneThunk(ThunkInfo thunk_info,
-                         NcclCollectiveThunk::AsyncExecutor& async)
-      : NcclCollectiveDoneThunk(Thunk::kNcclAllReduceDone, thunk_info, async) {}
 };
 
 // -----------------------------------------------------------------------------
-// ReduceScatter thunks
+// ReduceScatter thunk
 // -----------------------------------------------------------------------------
-
-class NcclReduceScatterThunkBase : public NcclAllReduceReduceScatterThunkBase {
- public:
-  using NcclAllReduceReduceScatterThunkBase::
-      NcclAllReduceReduceScatterThunkBase;
-
- protected:
-  Status RunReduceScatter(const ExecuteParams& params, se::Stream& stream,
-                          ncclComm_t comm);
-};
-
-class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
+class NcclReduceScatterStartThunk : public NcclAllReduceReduceScatterThunkBase {
  public:
   NcclReduceScatterStartThunk(ThunkInfo thunk_info,
                               mlir::lmhlo_gpu::ReduceScatterStartOp op,
@@ -126,23 +93,10 @@ class NcclReduceScatterStartThunk : public NcclReduceScatterThunkBase {
                            int64_t replica_count, int64_t partition_count);
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::ReduceScatterStartOp op);
-  static constexpr bool IsAsync() { return true; }
-  AsyncExecutor& async_executor() { return async_; }
 
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
-
- private:
-  AsyncExecutor async_;
-};
-
-class NcclReduceScatterDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclReduceScatterDoneThunk(ThunkInfo thunk_info,
-                             NcclCollectiveThunk::AsyncExecutor& async)
-      : NcclCollectiveDoneThunk(Thunk::kNcclReduceScatterDone, thunk_info,
-                                async) {}
 };
 
 // -----------------------------------------------------------------------------

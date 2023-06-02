@@ -141,7 +141,7 @@ LogicalResult Deallocator::transformModuleOp(ModuleOp op) {
 LogicalResult Deallocator::transformFuncOp(func::FuncOp op) {
   // If we find an aliasing record for this function, it is already being
   // transformed. We might be hitting a cycle in the call graph here, in which
-  // case this is a temorary aliasing overapproximation and may be refined
+  // case this is a temporary aliasing overapproximation and may be refined
   // later.
   if (functionAliasOverapprox.find(op) != functionAliasOverapprox.end())
     return success();
@@ -232,23 +232,6 @@ FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
   auto yieldedMemrefs = llvm::to_vector(
       llvm::make_filter_range(block.getTerminator()->getOperands(), isMemref));
 
-  // Handle owned memrefs that don't alias with any yielded memref first.
-  for (auto v : ownedMemrefs) {
-    if (!llvm::any_of(yieldedMemrefs, [&](Value yielded) {
-          return aliasOverapprox.isEquivalent(yielded, v);
-        })) {
-      // This owned memref does not escape, so we can put it in its own
-      // retain and place it as early as possible.
-      auto* insertionPoint = block.getTerminator();
-      while (insertionPoint->getPrevNode() &&
-             !doesAlias(insertionPoint->getPrevNode(), v, aliasOverapprox)) {
-        insertionPoint = insertionPoint->getPrevNode();
-      }
-      ImplicitLocOpBuilder b(loc, insertionPoint);
-      b.create<RetainOp>(TypeRange{}, ValueRange{}, ValueRange{v});
-    }
-  }
-
   // Group yielded memrefs and owned memrefs by equivalence class leader.
   auto groupByLeader = [&](auto& values) {
     breaks_if_you_move_ops::ValueMap<SmallVector<Value>> result;
@@ -262,21 +245,22 @@ FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
   auto ownedByLeader = groupByLeader(ownedMemrefs);
 
   // Create one retain per equivalence class.
+  DenseSet<Value> alreadyRetained;
   ImplicitLocOpBuilder b(loc, block.getTerminator());
   auto null = b.create<NullOp>();
   blockResult.acquired =
       SmallVector<Value>(yieldedMemrefs.size(), null.getResult());
   for (auto [leader, yielded] : yieldedByLeader) {
     auto& ownedGroup = ownedByLeader[leader];
-    if (ownedGroup.size() == 1 && yielded.size() == 1) {
-      // We know the alloc that the yielded memref is derived from, so we can
-      // omit the retain op. This would better be a canonicalization pattern,
-      // but it requires an alias analysis, which we already have here.
-      blockResult.acquired[llvm::find(yieldedMemrefs, yielded.front()) -
-                           yieldedMemrefs.begin()] = ownedGroup.front();
-      continue;
+    alreadyRetained.insert(ownedGroup.begin(), ownedGroup.end());
+    if (yielded.size() == 1 && ownedGroup.size() == 1) {
+      auto oi = ownershipIndicator.find(yielded[0]);
+      if (oi != ownershipIndicator.end() && oi->second == ownedGroup.front()) {
+        blockResult.acquired[llvm::find(yieldedMemrefs, yielded.front()) -
+                             yieldedMemrefs.begin()] = ownedGroup.front();
+        continue;
+      }
     }
-
     SmallVector<Type> types(yielded.size(), ownershipTy);
     auto retain = b.create<RetainOp>(types, yielded, ownedGroup);
     for (auto [retained, result] : llvm::zip(retain.getResults(), yielded)) {
@@ -286,6 +270,14 @@ FailureOr<TransformResult> Deallocator::transformBlock(Block& block,
     }
   }
   if (!llvm::is_contained(blockResult.acquired, null.getResult())) null.erase();
+
+  // Handle owned memrefs that don't alias any yielded memref.
+  for (auto v : ownedMemrefs) {
+    if (!alreadyRetained.contains(v)) {
+      b.create<RetainOp>(TypeRange{}, ValueRange{}, ValueRange{v});
+    }
+  }
+
   return blockResult;
 }
 
@@ -391,6 +383,7 @@ FailureOr<TransformResult> Deallocator::transformOp(
 
   ImplicitLocOpBuilder b(op.getLoc(), op);
   SmallVector<Value> operands = op->getOperands();
+  Value null = nullptr;
   // If we pass an owned memref to the loop and don't reuse it afterwards, we
   // can transfer ownership.
   for (auto operand : llvm::make_filter_range(operands, isMemref)) {
@@ -415,7 +408,8 @@ FailureOr<TransformResult> Deallocator::transformOp(
       released.insert(ownershipIndicator);
     } else {
       // Either the operand is not an alloc or it's reused.
-      op->insertOperands(op->getNumOperands(), b.create<NullOp>().getResult());
+      if (!null) null = b.create<NullOp>().getResult();
+      op->insertOperands(op->getNumOperands(), null);
     }
   }
 
@@ -425,6 +419,12 @@ FailureOr<TransformResult> Deallocator::transformOp(
   auto retained = newOp->getResults().drop_front(numOriginalResults);
   op->replaceAllUsesWith(newResults);
   op->erase();
+
+  for (auto [result, indicator] :
+       llvm::zip(llvm::make_filter_range(newOp->getResults(), isMemref),
+                 newOp->getResults().drop_front(numOriginalResults))) {
+    setOwnershipIndicator(result, indicator);
+  }
 
   auto setupAliases = [&](std::optional<unsigned> index) {
     for (auto& region : getSuccessorRegions(newOp, index)) {

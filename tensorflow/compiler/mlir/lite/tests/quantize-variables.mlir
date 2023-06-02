@@ -83,7 +83,7 @@ func.func @QuantizeReadAssign(%arg0: tensor<1x32x1x3xf32>) -> (tensor<1x34x1x3xf
   %4 = "tfl.concatenation"(%3, %1) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x2x1x3xf32>, tensor<1x32x1x3xf32>) -> tensor<1x34x1x3xf32>
   %5 = "tfl.quantize"(%4) {qtype = tensor<1x34x1x3x!quant.uniform<i8:f32, 1.0>>, volatile} : (tensor<1x34x1x3xf32>) -> tensor<1x34x1x3x!quant.uniform<i8:f32, 1.0>>
   %6 = "tfl.dequantize"(%5) : (tensor<1x34x1x3x!quant.uniform<i8:f32, 1.0>>) -> tensor<1x34x1x3xf32>
-  %7 = "tfl.strided_slice"(%6, %cst_1, %cst_0, %cst) {begin_mask = 13 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x34x1x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x1x3xf32>
+  %7 = "tfl.strided_slice"(%6, %cst_1, %cst_0, %cst) {begin_mask = 13 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<1x34x1x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x1x3xf32>
   %8 = "tfl.quantize"(%7) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>
   %9 = "tfl.dequantize"(%8) : (tensor<1x2x1x3x!quant.uniform<i8:f32, 1.0>>) -> tensor<1x2x1x3xf32>
   "tfl.assign_variable"(%2, %9) : (tensor<!tf_type.resource>, tensor<1x2x1x3xf32>) -> ()
@@ -100,7 +100,7 @@ func.func @QuantizeReadAssign(%arg0: tensor<1x32x1x3xf32>) -> (tensor<1x34x1x3xf
 // CHECK-NEXT:  %[[cc:.*]] = "tfl.concatenation"(%[[dq2]], %[[dq1]]) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x2x1x3xf32>, tensor<1x32x1x3xf32>) -> tensor<1x34x1x3xf32>
 // CHECK-NEXT:  %[[q2:.*]] = "tfl.quantize"(%[[cc]]) {qtype = tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x34x1x3xf32>) -> tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  %[[dq3:.*]] = "tfl.dequantize"(%[[q2]]) : (tensor<1x34x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x34x1x3xf32>
-// CHECK-NEXT:  %[[ss:.*]] = "tfl.strided_slice"(%[[dq3]], %[[cst_1]], %[[cst_0]], %[[cst]]) {begin_mask = 13 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x34x1x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x1x3xf32>
+// CHECK-NEXT:  %[[ss:.*]] = "tfl.strided_slice"(%[[dq3]], %[[cst_1]], %[[cst_0]], %[[cst]]) {begin_mask = 13 : i32, ellipsis_mask = 0 : i32, end_mask = 15 : i32, new_axis_mask = 0 : i32, offset = false, shrink_axis_mask = 0 : i32} : (tensor<1x34x1x3xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x2x1x3xf32>
 // CHECK-NEXT:  %[[q3:.*]] = "tfl.quantize"(%[[ss]]) {qtype = tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>, volatile} : (tensor<1x2x1x3xf32>) -> tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>
 // CHECK-NEXT:  "tfl.assign_variable"(%[[vh]], %[[q3]]) : (tensor<*x!tf_type.resource<tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>>>, tensor<1x2x1x3x!quant.uniform<i8:f32, 1.000000e+00>>) -> ()
 // CHECK-NEXT:  return %[[dq3]] : tensor<1x34x1x3xf32>
@@ -127,7 +127,7 @@ func.func @QuantizeConvVariable(%arg0: tensor<1x3x1x1xf32>) -> (tensor<1x3x1x1xf
   %11 = "tfl.concatenation"(%7, %10) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x3x1x1xf32>, tensor<1x3x1x1xf32>) -> tensor<1x6x1x1xf32>
   %12 = "tfl.quantize"(%11) {qtype = tensor<1x6x1x1x!quant.uniform<i8:f32, 1.0:2>>, volatile} : (tensor<1x6x1x1xf32>) -> tensor<1x6x1x1x!quant.uniform<i8:f32, 1.0:2>>
   %13 = "tfl.dequantize"(%12) : (tensor<1x6x1x1x!quant.uniform<i8:f32, 1.0:2>>) -> tensor<1x6x1x1xf32>
-  %14 = "tfl.strided_slice"(%13, %cst_1, %cst_0, %cst) {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 13 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x6x1x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x3x1x1xf32>
+  %14 = "tfl.strided_slice"(%13, %cst_1, %cst_0, %cst) {begin_mask = 15 : i32, ellipsis_mask = 0 : i32, end_mask = 13 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<1x6x1x1xf32>, tensor<4xi32>, tensor<4xi32>, tensor<4xi32>) -> tensor<1x3x1x1xf32>
   %15 = "tfl.quantize"(%14) {qtype = tensor<1x3x1x1x!quant.uniform<i8:f32, 1.0:2>>, volatile} : (tensor<1x3x1x1xf32>) -> tensor<1x3x1x1x!quant.uniform<i8:f32, 1.0:2>>
   %16 = "tfl.dequantize"(%15) : (tensor<1x3x1x1x!quant.uniform<i8:f32, 1.0:2>>) -> tensor<1x3x1x1xf32>
   "tfl.assign_variable"(%6, %16) : (tensor<!tf_type.resource>, tensor<1x3x1x1xf32>) -> ()
@@ -157,7 +157,7 @@ func.func @QuantizeTwoVariable(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3xf32>) 
   %41 = "quantfork.stats"(%40) {layerStats = dense<[0.0, 1.0]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
   %42 = "tfl.concatenation"(%41, %0) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x4x3xf32>
   %43 = "quantfork.stats"(%42) {layerStats = dense<[-1.0, 1.0]> : tensor<2xf32>} : (tensor<1x4x3xf32>) -> tensor<1x4x3xf32>
-  %44 = "tfl.strided_slice"(%43, %1, %2, %3) {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 5 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x4x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3xf32>
+  %44 = "tfl.strided_slice"(%43, %1, %2, %3) {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 5 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<1x4x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3xf32>
   %45 = "quantfork.stats"(%44) {layerStats = dense<[0.0, 1.0]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
   "tfl.assign_variable"(%4, %45) : (tensor<!tf_type.resource>, tensor<1x2x3xf32>) -> ()
 
@@ -165,7 +165,7 @@ func.func @QuantizeTwoVariable(%arg0: tensor<1x2x3xf32>) -> (tensor<1x2x3xf32>) 
   %51 = "quantfork.stats"(%50) {layerStats = dense<[0.0, 1.0]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
   %52 = "tfl.concatenation"(%51, %0) {axis = 1 : i32, fused_activation_function = "NONE"} : (tensor<1x2x3xf32>, tensor<1x2x3xf32>) -> tensor<1x4x3xf32>
   %53 = "quantfork.stats"(%52) {layerStats = dense<[0.0, 1.0]> : tensor<2xf32>} : (tensor<1x4x3xf32>) -> tensor<1x4x3xf32>
-  %54 = "tfl.strided_slice"(%53, %1, %2, %3) {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 5 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32} : (tensor<1x4x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3xf32>
+  %54 = "tfl.strided_slice"(%53, %1, %2, %3) {begin_mask = 7 : i32, ellipsis_mask = 0 : i32, end_mask = 5 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<1x4x3xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<1x2x3xf32>
   %55 = "quantfork.stats"(%54) {layerStats = dense<[0.0, 1.0]> : tensor<2xf32>} : (tensor<1x2x3xf32>) -> tensor<1x2x3xf32>
   "tfl.assign_variable"(%5, %55) : (tensor<!tf_type.resource>, tensor<1x2x3xf32>) -> ()
 

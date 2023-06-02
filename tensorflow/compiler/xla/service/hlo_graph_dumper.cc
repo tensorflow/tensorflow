@@ -899,6 +899,7 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
   };
 
   std::vector<std::string> lines;
+  constexpr int64_t kMaxOperandsShown = 32;
   for (int64_t i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
     optional<std::string> operand_str;
@@ -938,6 +939,10 @@ std::string HloDotDumper::GetInstructionNodeInlinedOperands(
       } else {
         lines.push_back(StrFormat("<b>operand</b> = %s", *operand_str));
       }
+    }
+    if (lines.size() == kMaxOperandsShown && i < instr->operand_count() - 1) {
+      lines.push_back("...");
+      break;
     }
   }
 

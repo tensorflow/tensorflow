@@ -15,7 +15,7 @@ load(
     "tf_proto_library",
     "tf_pyclif_proto_library",
 )
-load("//tensorflow/tsl:tsl.bzl", "if_libtpu")
+load("//tensorflow/tsl:tsl.bzl", "if_google", "if_libtpu")
 load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_portable", "internal_hlo_deps")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
@@ -1825,7 +1825,7 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-    ],
+    ] + if_google(["@com_google_absl//absl/types:source_location"]),
 )
 
 xla_cc_test(

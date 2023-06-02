@@ -284,13 +284,13 @@ class FunctionType(inspect.Signature):
       if not self_param.is_subtype_of(other_param):
         return False
 
-    # Self must have all capture names of other.
-    if not all(name in self.captures for name in other.captures):
+    # Other must have all capture names of self.
+    if not all(name in other.captures for name in self.captures):
       return False
 
     # Functions are contravariant upon the capture types.
-    return all(self.captures[name].is_subtype_of(capture_type)
-               for name, capture_type in other.captures.items())
+    return all(capture_type.is_subtype_of(other.captures[name])
+               for name, capture_type in self.captures.items())
 
   def most_specific_common_subtype(
       self, others: Sequence["FunctionType"]) -> Optional["FunctionType"]:
@@ -308,16 +308,22 @@ class FunctionType(inspect.Signature):
     if not all(subtyped_parameters):
       return None
 
-    # Common subtype must use captures common to all.
+    # Common subtype has superset of all captures.
     capture_names = set(self.captures.keys())
     for other in others:
-      capture_names = capture_names.intersection(other.captures.keys())
+      capture_names = capture_names.union(other.captures.keys())
 
     subtyped_captures = collections.OrderedDict()
     for name in capture_names:
+      containing = [t for t in [self, *others] if name in t.captures]
+      # Pick the first type that has the capture as the base.
+      base = containing[0]
+      relevant_others = containing[1:]
+
       # Functions are contravariant upon the capture types.
-      common_type = self.captures[name].most_specific_common_supertype(
-          [other.captures[name] for other in others])
+      common_type = base.captures[name].most_specific_common_supertype(
+          [other.captures[name] for other in relevant_others]
+      )
       if common_type is None:
         return None
       else:

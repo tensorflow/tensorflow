@@ -15,8 +15,7 @@ limitations under the License.
 
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_4BIT_NEON_FULLY_CONNECTED_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_4BIT_NEON_FULLY_CONNECTED_H_
-#if defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
-
+#if defined(FC_4BIT_NEON) && (defined(__ARM_NEON__) || defined(__ARM_NEON))
 #include "tensorflow/lite/kernels/internal/optimized/4bit/neon_fully_connected_impl.h"
 
 namespace tflite {
@@ -189,5 +188,5 @@ inline void RunAndUnpack(int rhs_width, const uint8_t* lhs, int8_t* rhs,
 }  // namespace optimized_4bit
 }  // namespace tflite
 
-#endif  // defined(FC_4BIT_NEON) && defined(__ARM_NEON__)
+#endif  // defined(FC_4BIT_NEON)...
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_4BIT_NEON_FULLY_CONNECTED_H_

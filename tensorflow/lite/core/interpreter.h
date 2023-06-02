@@ -349,6 +349,8 @@ class Interpreter {
   /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
   /// part of the graph identified by a SignatureDef. The nullptr is returned if
   /// the given signature key is not valid.
+  /// if the model does not have signature def, pass nullptr to signature_key
+  /// and AsyncSignatureRunner will be created using primary subgraph (0).
   /// The async delegate should be applied before calling this function.
   async::AsyncSignatureRunner* GetAsyncSignatureRunner(
       const char* signature_key);

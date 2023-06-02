@@ -5623,7 +5623,10 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     # grid of size B1 x B2.
     batch_dim_list = array_ops_stack.unstack(batch_shape, axis=0)
     dim_ranges = [
-        gen_math_ops.cast(gen_math_ops._range(0, x, 1), indices.dtype)
+        gen_math_ops.cast(
+            gen_math_ops._range(0, gen_math_ops.cast(x, dtypes.int32), 1),
+            indices.dtype,
+        )
         for x in batch_dim_list
     ]
     mesh_list = meshgrid(*dim_ranges, indexing="ij") if dim_ranges else []
@@ -5636,11 +5639,15 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     index_grid_shape = shape(index_grid)
     index_grid = reshape(
         index_grid,
-        concat([
-            index_grid_shape[:1],
-            ones(index_internal_ndims, dtype=dtypes.int32), index_grid_shape[1:]
-        ],
-               axis=0))
+        concat(
+            [
+                index_grid_shape[:1],
+                ones(index_internal_ndims, dtype=index_grid_shape.dtype),
+                index_grid_shape[1:],
+            ],
+            axis=0,
+        ),
+    )
     tile_shape = concat(((1,), indices_internal_shape, (1,)), axis=0)
     index_grid = tile(index_grid, multiples=tile_shape)
     # index_grid now has shape [(B1.B2), i1, ..., iK, 2]

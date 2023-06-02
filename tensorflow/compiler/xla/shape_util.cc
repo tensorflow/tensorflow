@@ -852,7 +852,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   CHECK(LayoutUtil::IsDenseArray(shape)) << shape.ShortDebugString();
   allocated_element_count = ElementsIn(shape);
 
-  if (shape.layout().element_size_in_bits() != 0) {
+  if (shape.has_layout() && shape.layout().element_size_in_bits() != 0) {
     const int64_t num_bits =
         allocated_element_count * shape.layout().element_size_in_bits();
     return CeilOfRatio<int64_t>(num_bits, CHAR_BIT);

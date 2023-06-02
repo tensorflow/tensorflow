@@ -52,7 +52,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_math_ops
@@ -223,7 +222,7 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
       grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
       learning_rate = 2.0
       momentum = 0.9
-      mom_opt = gradient_descent_v2.SGD(
+      mom_opt = tf.keras.optimizers.legacy.SGD(
           learning_rate=learning_rate, momentum=momentum
       )
       # self.assertFalse(mom_opt._initial_decay)
@@ -295,7 +294,7 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
         accum0_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
         accum1_np = np.array([0.0, 0.0], dtype=dtype.as_numpy_dtype)
         loss = lambda: 5 * var0 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
-        mom_op = gradient_descent_v2.SGD(
+        mom_op = tf.keras.optimizers.legacy.SGD(
             learning_rate=2.0, momentum=0.9, nesterov=True
         )
         opt_op = mom_op.minimize(loss, [var0, var1])

@@ -73,7 +73,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_string, R"(
 ; CHECK: fusion(%p0, %p1)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: \"block_m\":\"
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{params.aabs, params.arel}));

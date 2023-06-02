@@ -23,8 +23,8 @@ limitations under the License.
 // Ensure the included flatbuffers.h is the same version as when this file was
 // generated, otherwise it may not be compatible.
 static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
-              FLATBUFFERS_VERSION_MINOR == 1 &&
-              FLATBUFFERS_VERSION_REVISION == 21,
+              FLATBUFFERS_VERSION_MINOR == 5 &&
+              FLATBUFFERS_VERSION_REVISION == 8,
              "Non-compatible flatbuffers version included");
 
 namespace tflite {
@@ -7933,6 +7933,7 @@ struct StridedSliceOptionsT : public ::flatbuffers::NativeTable {
   int32_t ellipsis_mask = 0;
   int32_t new_axis_mask = 0;
   int32_t shrink_axis_mask = 0;
+  bool offset = false;
 };
 
 struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -7943,7 +7944,8 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
     VT_END_MASK = 6,
     VT_ELLIPSIS_MASK = 8,
     VT_NEW_AXIS_MASK = 10,
-    VT_SHRINK_AXIS_MASK = 12
+    VT_SHRINK_AXIS_MASK = 12,
+    VT_OFFSET = 14
   };
   int32_t begin_mask() const {
     return GetField<int32_t>(VT_BEGIN_MASK, 0);
@@ -7960,6 +7962,9 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
   int32_t shrink_axis_mask() const {
     return GetField<int32_t>(VT_SHRINK_AXIS_MASK, 0);
   }
+  bool offset() const {
+    return GetField<uint8_t>(VT_OFFSET, 0) != 0;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_BEGIN_MASK, 4) &&
@@ -7967,6 +7972,7 @@ struct StridedSliceOptions FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Tabl
            VerifyField<int32_t>(verifier, VT_ELLIPSIS_MASK, 4) &&
            VerifyField<int32_t>(verifier, VT_NEW_AXIS_MASK, 4) &&
            VerifyField<int32_t>(verifier, VT_SHRINK_AXIS_MASK, 4) &&
+           VerifyField<uint8_t>(verifier, VT_OFFSET, 1) &&
            verifier.EndTable();
   }
   StridedSliceOptionsT *UnPack(const ::flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -7993,6 +7999,9 @@ struct StridedSliceOptionsBuilder {
   void add_shrink_axis_mask(int32_t shrink_axis_mask) {
     fbb_.AddElement<int32_t>(StridedSliceOptions::VT_SHRINK_AXIS_MASK, shrink_axis_mask, 0);
   }
+  void add_offset(bool offset) {
+    fbb_.AddElement<uint8_t>(StridedSliceOptions::VT_OFFSET, static_cast<uint8_t>(offset), 0);
+  }
   explicit StridedSliceOptionsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -8010,13 +8019,15 @@ inline ::flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(
     int32_t end_mask = 0,
     int32_t ellipsis_mask = 0,
     int32_t new_axis_mask = 0,
-    int32_t shrink_axis_mask = 0) {
+    int32_t shrink_axis_mask = 0,
+    bool offset = false) {
   StridedSliceOptionsBuilder builder_(_fbb);
   builder_.add_shrink_axis_mask(shrink_axis_mask);
   builder_.add_new_axis_mask(new_axis_mask);
   builder_.add_ellipsis_mask(ellipsis_mask);
   builder_.add_end_mask(end_mask);
   builder_.add_begin_mask(begin_mask);
+  builder_.add_offset(offset);
   return builder_.Finish();
 }
 
@@ -15191,6 +15202,7 @@ inline void StridedSliceOptions::UnPackTo(StridedSliceOptionsT *_o, const ::flat
   { auto _e = ellipsis_mask(); _o->ellipsis_mask = _e; }
   { auto _e = new_axis_mask(); _o->new_axis_mask = _e; }
   { auto _e = shrink_axis_mask(); _o->shrink_axis_mask = _e; }
+  { auto _e = offset(); _o->offset = _e; }
 }
 
 inline ::flatbuffers::Offset<StridedSliceOptions> StridedSliceOptions::Pack(::flatbuffers::FlatBufferBuilder &_fbb, const StridedSliceOptionsT* _o, const ::flatbuffers::rehasher_function_t *_rehasher) {
@@ -15206,13 +15218,15 @@ inline ::flatbuffers::Offset<StridedSliceOptions> CreateStridedSliceOptions(::fl
   auto _ellipsis_mask = _o->ellipsis_mask;
   auto _new_axis_mask = _o->new_axis_mask;
   auto _shrink_axis_mask = _o->shrink_axis_mask;
+  auto _offset = _o->offset;
   return tflite::CreateStridedSliceOptions(
       _fbb,
       _begin_mask,
       _end_mask,
       _ellipsis_mask,
       _new_axis_mask,
-      _shrink_axis_mask);
+      _shrink_axis_mask,
+      _offset);
 }
 
 inline LogSoftmaxOptionsT *LogSoftmaxOptions::UnPack(const ::flatbuffers::resolver_function_t *_resolver) const {

@@ -1004,6 +1004,7 @@ def load_partial(export_dir, filters, tags=None, options=None):
   saved_model_proto, debug_info = (
       loader_impl.parse_saved_model_with_debug_info(export_dir))
 
+  loader = None
   if (len(saved_model_proto.meta_graphs) == 1 and
       saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     metrics.IncrementReadApi(_LOAD_V2_LABEL)
@@ -1081,7 +1082,44 @@ def load_partial(export_dir, filters, tags=None, options=None):
     singleprint = fingerprint.singleprint()
   metrics.SetReadPathAndSingleprint(path=export_dir, singleprint=singleprint)
 
-  if filters:
+  if filters and loader is not None:
     return {node_id: loader.get(node_id) for node_id in filters}
   else:
     return {"root": root}
+
+
+def is_tf2_saved_model(export_dir):
+  """Identifies if an exported SavedModel is a TF2 SavedModel.
+
+  There are differences in SavedModel semantics between TF1 and TF2 that are
+  documented here:
+  https://www.tensorflow.org/guide/migrate/saved_model#savedmodel. This helper
+  util function serves to distinguish the TF1 vs TF2 semantics used when
+  exporting SavedModels.
+
+  Args:
+    export_dir: The SavedModel directory to load from.
+
+  Returns:
+    True if TF2 SavedModel semantics are used, False if TF1 SavedModel semantics
+    are used.
+  """
+  # Try reading the fingerprint first before parsing the SavedModel proto
+  try:
+    fingerprint = fingerprinting.read_fingerprint(export_dir)
+    if fingerprint.saved_object_graph_hash != 0:
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+  except Exception:  # pylint: disable=broad-exception-caught
+    logging.info(
+        "Failed to read fingerprint from SavedModel. Parsing MetaGraph ..."
+    )
+    saved_model_proto = loader_impl.parse_saved_model(export_dir)
+    if len(
+        saved_model_proto.meta_graphs
+    ) == 1 and saved_model_proto.meta_graphs[0].HasField("object_graph_def"):
+      logging.info("SavedModel at %s is a TF2 SavedModel", export_dir)
+      return True
+
+  logging.info("SavedModel at %s is a TF1 SavedModel", export_dir)
+  return False

@@ -40,13 +40,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.util.lazy_loader import LazyLoader
 
-
-load_context = LazyLoader(
-    "load_context", globals(),
-    "tensorflow.python.keras.saving.saved_model.load_context"
-)
 
 TRACKABLE_RESOURCE_METHODS = [
     "_create_resource", "_initialize", "_destroy_resource"

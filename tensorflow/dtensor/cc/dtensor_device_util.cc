@@ -806,6 +806,7 @@ Status PrepareGraphForMlir(
       NodeDef const_node = input->const_value_node()->const_value().value();
       const_node.set_name(absl::StrCat("input_", i, "_const_value"));
       Node* const_value_n = graph->AddNode(const_node, &status);
+      const_value_n->AddAttr(kFromArgIndex, i);
       TF_RETURN_IF_ERROR(status);
       TF_RETURN_IF_ERROR(shape_refiner.AddNode(const_value_n));
       graph_op_inputs.push_back(FunctionArgument{

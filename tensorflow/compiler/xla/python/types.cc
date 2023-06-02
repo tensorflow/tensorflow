@@ -225,43 +225,41 @@ const NumpyScalarTypes& GetNumpyScalarTypes() {
   return *singleton;
 }
 
-// Returns a numpy-style format descriptor string for `type`.
-StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type) {
+const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type) {
   // We use an "=" prefix to indicate that we prefer "standard" types like
   // np.int32 rather than "native" types like np.cint. pybind11 does not qualify
   // its format descriptors.
   switch (type) {
     case PRED:
-      return std::string("?");
+      return "?";
     case S8:
-      return std::string("=b");
+      return "=b";
     case S16:
-      return std::string("=h");
+      return "=h";
     case S32:
-      return std::string("=i");
+      return "=i";
     case S64:
-      return std::string("=q");
+      return "=q";
     case U8:
-      return std::string("=B");
+      return "=B";
     case U16:
-      return std::string("=H");
+      return "=H";
     case U32:
-      return std::string("=I");
+      return "=I";
     case U64:
-      return std::string("=Q");
+      return "=Q";
     case F16:
-      return std::string("=e");
+      return "=e";
     case F32:
-      return std::string("=f");
+      return "=f";
     case F64:
-      return std::string("=d");
+      return "=d";
     case C64:
-      return std::string("=Zf");
+      return "=Zf";
     case C128:
-      return std::string("=Zd");
+      return "=Zd";
     default:
-      return Unimplemented("Unimplemented primitive type %s",
-                           PrimitiveType_Name(type));
+      return nullptr;
   }
 }
 

@@ -78,7 +78,7 @@ inline void CheckStructSize(std::string_view struct_name, size_t expected_size,
                             args->struct_size)
 
 //===----------------------------------------------------------------------===//
-// Span is non-owning view into contiguous values ot type `T`.
+// Span is non-owning view into contiguous values of type `T`.
 //===----------------------------------------------------------------------===//
 
 // TODO(ezhulenev): Replace with `std::span` when C++20 is available.
@@ -99,6 +99,15 @@ class Span {
  private:
   T* data_;
   size_t size_;
+};
+
+// A type for representing shaped tensors.
+// TODO(ecg): expand API to be compatible with `std::mdspan`, and eventually
+// (when C++23 is available) replace with `std::mdspan`.
+template <typename T>
+struct MdSpan {
+  Span<const int64_t> shape;
+  Span<const T> data;
 };
 
 //===----------------------------------------------------------------------===//
@@ -412,6 +421,11 @@ bool Ffi::Isa(const XLA_FFI_Api* api, XLA_FFI_TypeId type_id) {
   ISA(Span<const int32_t>, Int32Array);
   ISA(Span<const int64_t>, Int64Array);
 
+  ISA(MdSpan<float>, FloatTensor);
+  ISA(MdSpan<double>, DoubleTensor);
+  ISA(MdSpan<int32_t>, Int32Tensor);
+  ISA(MdSpan<int64_t>, Int64Tensor);
+
   ISA(StridedBufferArg, StridedBufferArg);
   ISA(BufferArg, BufferArg);
   ISA(Dictionary, Dictionary);
@@ -478,12 +492,26 @@ struct StateTag {};
 template <typename T>
 struct StreamTag {};
 
+// Type tag to distinguish an argument tied to an "ApiPriv" argument
+// to `Ffi::Binding`. This is necessary to obtain `XLA_FFI_Api.priv`
+// from the foreign function. For example:
+//
+// static ffi::FfiStatus FooFfi(MyStruct* bar, ffi::BufferArg input) { ... }
+//
+// XLA_FFI_DEFINE_FUNCTION(
+//     FFI_Foo, FooFfi, ffi::Ffi::Binding()
+//     .ApriPriv<MyStruct*>
+//     .Arg<ffi::BufferArg>);
+template <typename T>
+struct ApiPrivTag {};
+
 // A template for checking if type is a wrapped attribute or user data.
 // clang-format off
-template <typename>   struct IsWrapped               : std::false_type {};
-template <typename T> struct IsWrapped<AttrTag<T>>   : std::true_type {};
-template <typename T> struct IsWrapped<StateTag<T>>  : std::true_type {};
-template <typename T> struct IsWrapped<StreamTag<T>> : std::true_type {};
+template <typename>   struct IsWrapped                : std::false_type {};
+template <typename T> struct IsWrapped<AttrTag<T>>    : std::true_type {};
+template <typename T> struct IsWrapped<StateTag<T>>   : std::true_type {};
+template <typename T> struct IsWrapped<StreamTag<T>>  : std::true_type {};
+template <typename T> struct IsWrapped<ApiPrivTag<T>> : std::true_type {};
 // clang-format on
 
 }  // namespace internal
@@ -512,6 +540,12 @@ class FfiBinding {
     static_assert(std::is_pointer_v<T>,
                   "T must be a pointer type, e.g. for GPU platform it must be "
                   "se::gpu::GpuStreamHandle");
+    return {std::move(*this)};
+  }
+
+  template <typename T>
+  FfiBinding<Ts..., internal::ApiPrivTag<T>> ApiPriv() && {
+    static_assert(std::is_pointer_v<T>, "T must be a pointer type");
     return {std::move(*this)};
   }
 
@@ -740,6 +774,18 @@ struct Decode<StreamTag<T>> {
   }
 };
 
+template <typename T>
+struct Decode<ApiPrivTag<T>> {
+  static std::optional<T> call(const XLA_FFI_Api* api,
+                               XLA_FFI_ExecutionContext* ctx,
+                               DecodingOffsets& offsets, internal::DecodedArgs,
+                               const std::vector<std::string>& attrs_names,
+                               const std::vector<size_t>& attrs_idx,
+                               internal::DecodedAttrs attrs) {
+    return reinterpret_cast<T>(api->priv);
+  }
+};
+
 }  // namespace internal
 
 //===----------------------------------------------------------------------===//
@@ -755,10 +801,11 @@ namespace internal {
 
 // A helper template to extract the type of the handler argument.
 // clang-format off
-template <typename T> struct FnArgType               { using Type = T;  };
-template <typename T> struct FnArgType<AttrTag<T>>   { using Type = T;  };
-template <typename T> struct FnArgType<StateTag<T>>  { using Type = T*; };
-template <typename T> struct FnArgType<StreamTag<T>> { using Type = T;  };
+template <typename T> struct FnArgType                { using Type = T;  };
+template <typename T> struct FnArgType<AttrTag<T>>    { using Type = T;  };
+template <typename T> struct FnArgType<StateTag<T>>   { using Type = T*; };
+template <typename T> struct FnArgType<StreamTag<T>>  { using Type = T;  };
+template <typename T> struct FnArgType<ApiPrivTag<T>> { using Type = T;  };
 // clang-format on
 
 // A template for counting regular arguments in the Ts pack.
@@ -996,6 +1043,9 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
 
 #undef XLA_FFI_REGISTER_SCALAR_ATTR_DECODING
 
+// Both EncodedArray and 1-D EncodedDenseElements can be decoded as a Span.
+// Pointers to both EncodedArray and 1-D EncodedDenseElements can be
+// dereferenced as a pointer to EncodedArray.
 #define XLA_FFI_REGISTER_ARRAY_ATTR_DECODING(T)                            \
   template <>                                                              \
   struct FfiAttrDecoding<Span<const T>> {                                  \
@@ -1003,7 +1053,7 @@ XLA_FFI_REGISTER_SCALAR_ATTR_DECODING(int64_t);
                                                std::string_view name,      \
                                                XLA_FFI_TypeId type_id,     \
                                                void* value) {              \
-      if (!Ffi::Isa<Span<const T>>(api, type_id)) {                        \
+      if (!Ffi::Isa<Span<const T>, MdSpan<T>>(api, type_id)) {             \
         return std::nullopt;                                               \
       }                                                                    \
                                                                            \
