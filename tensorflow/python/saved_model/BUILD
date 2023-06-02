@@ -711,6 +711,7 @@ py_strict_library(
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python:func_graph",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/eager/polymorphic_function:function_type_utils",
         "//tensorflow/python/util:nest",
     ],

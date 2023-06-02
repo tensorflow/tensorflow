@@ -479,7 +479,14 @@ def load_function_def_library(library,
     # initialization at a later stage.
     if "_input_shapes" in fdef.attr:
       del fdef.attr["_input_shapes"]
-    func = function_lib.ConcreteFunction(func_graph, attrs=fdef.attr)
+    function_type = function_type_lib.from_structured_signature(
+        func_graph.structured_input_signature,
+        func_graph.structured_outputs,
+        func_graph.function_captures.capture_types,
+    )
+    func = function_lib.ConcreteFunction(
+        func_graph, attrs=fdef.attr, function_type=function_type
+    )
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)

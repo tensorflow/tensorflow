@@ -154,8 +154,15 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
   backward_function_attr = _parse_func_attrs(
       {attributes_lib.FORWARD_FUNCTION: forward_function_name})
   backward_function_attr.update(common_attributes)
+  # TODO(fmuham): Include inputs as well.
+  function_type = function_type_lib.from_structured_signature(
+      ((), {}),
+      backwards_graph.structured_outputs,
+      backwards_graph.function_captures.capture_types,
+  )
   backward_function = ConcreteFunction(
-      backwards_graph, attrs=backward_function_attr)
+      backwards_graph, attrs=backward_function_attr, function_type=function_type
+  )
   forward_function_attr = _parse_func_attrs({
       attributes_lib.BACKWARD_FUNCTION:
       backward_function.name})
@@ -1050,6 +1057,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         + self._func_graph.deferred_external_captures
     )
     self._function_type = function_type
+    if func_graph.structured_outputs is not None and self.function_type is None:
+      raise ValueError(
+          "Must specify FunctionType if structured outputs are expected"
+      )
 
     if attrs and attributes_lib.IMPLEMENTS in attrs:
       # The alternative is to silently drop "implements" tag
@@ -1196,8 +1207,12 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         except TypeError as structured_err:
           try:
             return self._call_with_flat_signature(args, kwargs)
-          except TypeError:
-            raise structured_err
+          except TypeError as flat_err:
+            raise TypeError(  # pylint: disable=raise-missing-from
+                str(structured_err)
+                + "\n Fallback to flat signature also failed due to: "
+                + str(flat_err)
+            )
 
       return self._call_with_flat_signature(args, kwargs)
 
@@ -1686,22 +1701,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     Returns:
       The actual call output.
     """
-    # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
 
-    # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(
-        self._func_graph.structured_outputs, expand_composites=True)
-    j = 0
-    for i, o in enumerate(outputs_list):
-      if o is not None:
-        handle_data_util.copy_handle_data(self.outputs[j], result[j])
-        outputs_list[i] = result[j]
-        j += 1
-    ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                outputs_list, expand_composites=True)
-    return ret
+    if isinstance(result, ops.Operation):
+      # We get an op when there are no tensor outputs.
+      return self.function_type.pack_output([])
+    else:
+      return self.function_type.pack_output(result)
 
   @property
   def _as_name_attr_list(self):

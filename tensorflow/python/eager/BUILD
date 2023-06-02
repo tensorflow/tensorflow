@@ -1004,6 +1004,7 @@ py_strict_library(
         ":function",
         ":lift_to_graph",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
