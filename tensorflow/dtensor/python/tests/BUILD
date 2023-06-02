@@ -424,6 +424,44 @@ dtensor_test(
 )
 
 dtensor_test(
+    name = "multi_mesh_test",
+    srcs = ["multi_mesh_test.py"],
+    disable_tfrt = [
+        "gpu",
+        "tpu",
+    ],  # TODO(b/192095157)
+    shard_count = {
+        "cpu": 5,
+        "gpu": 5,
+        "tpu": 10,
+        TPU_V3_DONUT_BACKEND: 10,
+    },
+    deps = [
+        ":test_util",
+        "//tensorflow/dtensor/python:accelerator_util",
+        "//tensorflow/dtensor/python:api",
+        "//tensorflow/dtensor/python:config",
+        "//tensorflow/dtensor/python:d_variable",
+        "//tensorflow/dtensor/python:layout",
+        "//tensorflow/dtensor/python:mesh_util",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+dtensor_test(
     name = "numpy_util_test",
     srcs = ["numpy_util_test.py"],
     main = "numpy_util_test.py",
