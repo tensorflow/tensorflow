@@ -71,7 +71,7 @@ def main() -> None:
   pbar = tqdm.tqdm(total=len(tilings))
   timings = sorted(
       benchmark_matmul(
-          dims, pbar, s, tilings, repetitions=10, debug=_DEBUG.value
+          dims, pbar, s, tilings, repetitions_ms=300, debug=_DEBUG.value
       ),
       key=lambda t: t.min_time_ms,
   )

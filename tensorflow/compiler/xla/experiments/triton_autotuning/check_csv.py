@@ -57,7 +57,7 @@ def get_actual_time(r, s, pbar):
               r.num_warps,
           )
       ],
-      repetitions=20,
+      repetitions_ms=300,
   )[0].min_time_ms
 
 

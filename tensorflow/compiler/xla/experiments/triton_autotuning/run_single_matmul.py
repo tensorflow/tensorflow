@@ -69,7 +69,7 @@ def main():
               _NUM_WARPS.value,
           )
       ],
-      repetitions=20,
+      repetitions_ms=300,
       debug=_DEBUG.value,
   )
   if len(timing) != 1:
