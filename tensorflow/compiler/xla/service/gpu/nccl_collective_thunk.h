@@ -135,6 +135,7 @@ class NcclCollectiveThunk : public Thunk {
   // Logging support.
   static std::string GetDeviceString(const NcclExecuteParams& params);
 
+  AsyncExecutor& async_executor() { return async_; }
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
@@ -146,6 +147,7 @@ class NcclCollectiveThunk : public Thunk {
 #if XLA_ENABLE_XCCL
   bool first_call_to_execute_ = true;
 #endif  // XLA_ENABLE_XCCL
+  AsyncExecutor async_;
 };
 
 class NcclCollectiveDoneThunk : public Thunk {
@@ -184,7 +186,7 @@ Status AddOpDescription(Status status, OpT op, int64_t replica_count,
 StatusOr<NcclComm::Lock> LockNcclComm(
     const NcclExecuteParams& params,
     const std::vector<ReplicaGroup>& replica_groups,
-    CollectiveOpGroupMode group_mode, int64_t op_id);
+    CollectiveOpGroupMode group_mode, int64_t op_id, int64_t stream_id);
 #endif  // XLA_ENABLE_XCCL
 
 struct DeviceBufferPair {

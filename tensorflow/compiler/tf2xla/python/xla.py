@@ -611,21 +611,29 @@ def call_module(
     module,
     Tout,
     Sout,
-    dim_args_spec=(),
     platforms=(),
-    function_list=()
+    function_list=(),
+    has_token_input_output=False,
 ):
   """See documentation for the XlaCallModule op."""
-  return gen_xla_ops.xla_call_module(
+  res = gen_xla_ops.xla_call_module(
       args,
       version=version,
       module=module,
-      dim_args_spec=dim_args_spec,
+      dim_args_spec=(),
       Tout=Tout,
       Sout=Sout,
       platforms=platforms,
       function_list=function_list,
+      has_token_input_output=has_token_input_output,
   )
+  # Since XLACallModule op is stateful, zero return function will return the TF
+  # op under tf.function. It creates trouble for downstream codes.
+  # Here we force it return empty tuple to work around it.
+  # TODO(johnqiangzhang): Figure out a better way to handle control dependency.
+  if isinstance(res, ops.Operation):
+    res = ()
+  return res
 
 
 def gather(operand,

@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -209,8 +210,7 @@ mlir::LogicalResult InferMeshFromInputs(
         // extracted from the DTensorLayout op to infer the mesh of the cluster.
         if (auto layout_op =
                 llvm::dyn_cast<mlir::TF::DTensorLayout>(operand->getOwner())) {
-          auto mesh = layout_op.getLayout().mesh();
-          extracted_config.emplace(mesh);
+          extracted_config.emplace(layout_op.getLayout().mesh());
         } else {
           auto extract_result =
               ExtractMeshFromOperand(producers, operand, &extracted_config);
@@ -228,9 +228,18 @@ mlir::LogicalResult InferMeshFromInputs(
 
         inputs_with_inferred_mesh->emplace_back(operand);
         if (mesh->has_value() && extracted_config != mesh->value()) {
+          llvm::SmallVector<std::string, 8> input_debug_strings;
+          int index = 0;
+          for (const auto& input : *inputs_with_inferred_mesh) {
+            input_debug_strings.push_back(
+                llvm::formatv("Input Cluster {0}: {1}", index, input->get()));
+            ++index;
+          }
           result = cluster.emitOpError(
-              "failed during mesh propagation. All inputs to "
-              "`tf_device.Cluster` must have same mesh configuration.");
+              llvm::formatv("failed during mesh propagation. All inputs to "
+                            "`tf_device.Cluster` must have same mesh "
+                            "configuration. List of found inputs:\n{0}",
+                            absl::StrJoin(input_debug_strings, "\n")));
         }
 
         if (!mesh->has_value()) mesh->emplace(extracted_config.value());

@@ -271,6 +271,15 @@ bool IsTPUReplicatedCore(llvm::StringRef device);
 // successive passes in TF/XLA bridge phase 2.
 bool TypeValidForXLA(const mlir::Type& type);
 
+// Returns the map from core to the host that is associated with the
+// core. If `cluster` is not replicated then the core is a physical core index
+// and the host is a physical host name. If `cluster` is replicated then the
+// core with index `i` is a logical core (`TPU_REPLICATED_CORE_i`), and the host
+// is the associated virtual device name (`TPU_REPLICATED_HOST_i`).
+mlir::LogicalResult GetDeviceToHostMap(
+    mlir::tf_device::ClusterOp cluster,
+    llvm::SmallVector<std::string, 8>& core_to_host);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_TPU_REWRITE_DEVICE_UTIL_H_

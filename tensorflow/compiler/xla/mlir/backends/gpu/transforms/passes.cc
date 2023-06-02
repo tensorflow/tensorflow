@@ -42,6 +42,7 @@ void populateXlaGpuRuntimePasses(mlir::OpPassManager& pm,
 
   // Outline CUDA-Graph-compatible operations into graph capture functions.
   pm.addPass(createOutlineCudaGraphsPass(opts.cuda_graph_level));
+  pm.addPass(createAddConcurrentRegionsPass());
 
   // Lower all Gpu operations to the XLA Gpu runtime custom calls.
   pm.addPass(createConvertLmhloGpuToGpuRuntimePass());

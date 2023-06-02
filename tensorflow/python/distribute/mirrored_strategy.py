@@ -31,7 +31,7 @@ from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
-from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
+from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
@@ -48,7 +48,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
-# TODO(joshl): Replace asserts in this file with if ...: raise ...
+# TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
 
 def _is_device_list_single_worker(devices):
@@ -189,7 +189,7 @@ def all_local_devices(num_gpus=None):
 
 def all_devices():
   devices = []
-  tfconfig = TFConfigClusterResolver()
+  tfconfig = tfconfig_cluster_resolver.TFConfigClusterResolver()
   if tfconfig.cluster_spec().as_dict():
     devices = _cluster_spec_to_device_list(tfconfig.cluster_spec(),
                                            context.num_gpus())
@@ -306,7 +306,7 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missin
         "MirroredStrategy")
 
 
-# TODO(joshl): Switch to V2 when we no longer need to support tf.compat.v1.
+# TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
 class MirroredExtended(distribute_lib.StrategyExtendedV1):
   """Implementation of MirroredStrategy."""
 
@@ -317,7 +317,11 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         raise RuntimeError("In-graph multi-worker training with "
                            "`MirroredStrategy` is not supported in eager mode.")
       else:
-        if TFConfigClusterResolver().cluster_spec().as_dict():
+        if (
+            tfconfig_cluster_resolver.TFConfigClusterResolver()
+            .cluster_spec()
+            .as_dict()
+        ):
           # if you are executing in eager mode, only the single machine code
           # path is supported.
           logging.info("Initializing local devices since in-graph multi-worker "
@@ -686,9 +690,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    # TODO(joshl): In eager mode, use one thread per device, or async mode.
+    # TODO(josh11b): In eager mode, use one thread per device, or async mode.
     if not destinations:
-      # TODO(joshl): Use current logical device instead of 0 here.
+      # TODO(josh11b): Use current logical device instead of 0 here.
       destinations = self._devices
     return self._get_cross_device_ops(tensor).broadcast(tensor, destinations)
 
@@ -798,7 +802,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         options=self._communication_options.merge(options))
 
   def _update(self, var, fn, args, kwargs, group):
-    # TODO(joshl): In eager mode, use one thread per device.
+    # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)
     updates = []
     for i, v in enumerate(var.values):
@@ -855,7 +859,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     assert isinstance(colocate_with, tuple)
-    # TODO(joshl): In eager mode, use one thread per device.
+    # TODO(josh11b): In eager mode, use one thread per device.
     updates = []
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
@@ -911,7 +915,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def non_slot_devices(self, var_list):
     del var_list
-    # TODO(joshl): Should this be the last logical device instead?
+    # TODO(josh11b): Should this be the last logical device instead?
     return self._devices
 
   # TODO(priyag): Delete this once all strategies use global batch size.

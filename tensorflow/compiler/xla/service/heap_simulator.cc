@@ -835,8 +835,9 @@ std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
 template <typename BufferType>
 std::string
 GlobalDecreasingSizeBestFitHeap<BufferType>::BufferInterval::ToString() const {
-  return absl::StrCat("{ ",                                           //
-                      "buffer: ", buffer->ToString(), ", ",           //
+  return absl::StrCat("{ ",  //
+                      "buffer: ", (buffer ? buffer->ToString() : "null"),
+                      ", ",                                           //
                       "size: ", size, ", ",                           //
                       "start: ", start, ", ",                         //
                       "end: ", end, ", ",                             //

@@ -704,7 +704,7 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
                                      func.name());
     }
     FunctionDef grad_fdef;
-    // TODO(joshl): Should filter out the attrs from func that aren't used
+    // TODO(josh11b): Should filter out the attrs from func that aren't used
     // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
     TF_RETURN_IF_ERROR(

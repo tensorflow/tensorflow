@@ -88,17 +88,15 @@ _EXCLUDED_OPS = [
     "While",
     "StatelessWhile",
     "Case",
-
     # TF Lite. These ops only appear in OSS.
     # TODO(srbs): Find a better way to filter these out.
     "AudioMicrofrontend",
-
     # DTensor Ops with custom gradient functions.
     # Note that these ops only appear in OSS, and fails the test in OSS.
     "CopyToMesh",
     "CopyToMeshGrad",
     "Relayout",
-    "RelayoutGrad",
+    "RelayoutLike",
 ]
 
 

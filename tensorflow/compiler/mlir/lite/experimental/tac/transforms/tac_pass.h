@@ -41,7 +41,8 @@ class TacPass : public OperationPass<T> {
 
   ~TacPass() override {}
 
-  const TargetHardware* GetTargetHardware(const std::string& hardware_name) {
+  const TargetHardware* GetTargetHardware(
+      const std::string& hardware_name) const {
     return module_ != nullptr
                ? module_->GetTargetHardware(hardware_name)
                : mlir::TFL::tac::GetTargetHardware(hardware_name);

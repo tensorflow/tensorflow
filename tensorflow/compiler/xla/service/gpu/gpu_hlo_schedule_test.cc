@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
@@ -215,7 +215,7 @@ TEST_F(GpuHloScheduleTest, AsyncCollectivePermute) {
   Shape u32_scalar = ShapeUtil::MakeShape(U32, {});
 
   Shape collective_permute_start_shape =
-      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_, u32_scalar, u32_scalar});
+      ShapeUtil::MakeTupleShape({f32_2x2_, f32_2x2_});
   HloInstruction* collective_permute_start =
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           collective_permute_start_shape, add0,

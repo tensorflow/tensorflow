@@ -91,6 +91,7 @@ from tensorflow.python.ops import gen_sparse_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -99,13 +100,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-np_dtypes = LazyLoader(
-    "np_dtypes", globals(),
-    "tensorflow.python.ops.numpy_ops.np_dtypes")
 
 
 # Aliases for some automatically-generated names.
@@ -1002,7 +997,7 @@ def cast(x, dtype, name=None):
       values_cast = cast(x.values, base_type, name=name)
       x = indexed_slices.IndexedSlices(values_cast, x.indices, x.dense_shape)
     else:
-      # TODO(joshl): If x is not already a Tensor, we could return
+      # TODO(josh11b): If x is not already a Tensor, we could return
       # ops.convert_to_tensor(x, dtype=dtype, ...)  here, but that
       # allows some conversions that cast() can't do, e.g. casting numbers to
       # strings.
@@ -3925,7 +3920,7 @@ def _as_indexed_slices(x, optimize=True):
   Raises:
     TypeError: If 'x' is not a Tensor or an IndexedSlices object.
   """
-  # TODO(mdevin): op_scope
+  # TODO(touts): op_scope
   if not isinstance(x, (ops.Tensor, indexed_slices.IndexedSlices)):
     raise TypeError(f"Not a Tensor or IndexedSlices: {type(x)}.")
   if isinstance(x, indexed_slices.IndexedSlices):

@@ -58,6 +58,7 @@ cc_library(
     hdrs = ["functional_hlo_runner.h"],
     deps = [
         "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",

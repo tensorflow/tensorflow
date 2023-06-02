@@ -84,6 +84,9 @@ class PjRtArray final
     return absl::MakeSpan(pjrt_buffers_);
   }
 
+  StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+      ArrayCopySemantics semantics) override;
+
   // Array implementation.
 
   ~PjRtArray() override = default;
@@ -123,6 +126,9 @@ class PjRtArray final
       ArrayCopySemantics semantics) override;
 
   Future<Status> GetReadyFuture() const override;
+
+  std::shared_ptr<PjRtBuffer> GetPjRtBuffer(ArrayCopySemantics semantics,
+                                            int index) const;
 
   Future<Status> Delete() override;
   bool IsDeleted() const override;

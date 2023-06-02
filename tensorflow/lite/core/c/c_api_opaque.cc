@@ -303,6 +303,7 @@ TfLiteStatus TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
   TfLiteRegistration registration{};
   registration.registration_external = registration_external;
 
+  // Takes ownership of registration_external, if delegate is opaque delegate.
   TfLiteStatus status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, registration, nodes_to_replace, delegate);
   return status;

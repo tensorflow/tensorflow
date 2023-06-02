@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -30,6 +31,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+namespace op = ::xla::testing::opcode_matchers;
 using ::testing::NotNull;
 
 // Makes a DeviceAssignment device#i to replica_id #i.
@@ -489,6 +491,44 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({74}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({110}, results[1]);
+}
+
+// Verify that all-to-all with split dims is not decomposed to tuples.
+TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    id = u32[] replica-id()
+    id2 = u32[2, 2] broadcast(id), dimensions={}
+    a0 = u32[2, 2] constant({{10, 15}, {20, 25}})
+    a1 = u32[2, 2] add(id2, a0)
+    all2all = u32[2, 2] all-to-all(a1), replica_groups={{0,1}}, dimensions={0}
+    ROOT out = u32[4] reshape(all2all)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr, config));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  ASSERT_TRUE(executable->has_module());
+  HloModule* executable_module = &executable->module();
+
+  // Verify that the all-to-all is not decomposed into a tuple all-to-all.
+  const HloInstruction* all_to_all =
+      FindInstruction(executable_module, HloOpcode::kAllToAll);
+  EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), kNumReplicas));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
 }
 
 }  // namespace

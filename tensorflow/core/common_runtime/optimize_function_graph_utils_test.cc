@@ -143,7 +143,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
                 metrics::GraphOptimizationSource::kJit),
             0);
-  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheMissCount(
                 metrics::GraphOptimizationSource::kJit),
             0);
 
@@ -163,7 +163,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
                 metrics::GraphOptimizationSource::kJit),
             0);
-  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheMissCount(
                 metrics::GraphOptimizationSource::kJit),
             1);
 
@@ -184,7 +184,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
                 metrics::GraphOptimizationSource::kJit),
             0);
-  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheMissCount(
                 metrics::GraphOptimizationSource::kJit),
             2);
 
@@ -204,7 +204,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
                 metrics::GraphOptimizationSource::kJit),
             1);
-  EXPECT_EQ(metrics::GetFunctinGraphOptimizationCacheMissCount(
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheMissCount(
                 metrics::GraphOptimizationSource::kJit),
             2);
   EXPECT_EQ(optimized_info->name, "FindDevice_1234");

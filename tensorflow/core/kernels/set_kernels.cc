@@ -54,7 +54,7 @@ void CheckRankAtLeast2(OpKernelContext* ctx, const TensorShape& shape) {
 // Return group shape, which is the 1st n-1 dimensions of shape.
 Status GroupShape(const VarDimArray& input_shape, ShapeArray* grouped_shape) {
   if (input_shape.size() < 2) {
-    // TODO(geoffreyi): Why can't 2 be 1 here?
+    // TODO(irving): Why can't 2 be 1 here?
     return errors::InvalidArgument("Shape [", absl::StrJoin(input_shape, ","),
                                    "] has rank ", input_shape.size(), " < 2");
   }

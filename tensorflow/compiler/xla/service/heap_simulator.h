@@ -406,19 +406,19 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
     // Convenience method for use with debugging and logging.
     std::string ToString() const;
 
-    const BufferType* buffer;
-    int64_t size;
+    const BufferType* buffer = nullptr;
+    int64_t size = -1;
     // Alloc time of the buffer.
-    int64_t start;
+    int64_t start = -1;
     // Free time of the buffer.
-    int64_t end;
+    int64_t end = -1;
 
     // Colocation buffers that need to be collocated with this one.
     absl::InlinedVector<const BufferType*, 2> colocations;
 
     // True if this buffer needs an allocation. False if it is collocated with
     // other buffer.
-    bool need_allocation;
+    bool need_allocation = false;
   };
 
   // Comparison function that is used to store buffer intervals.

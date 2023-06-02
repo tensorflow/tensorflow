@@ -74,17 +74,25 @@ struct EventFactory {
   std::vector<std::unique_ptr<TraceEvent>> events;
 };
 
+struct DefaultStdHash {
+  size_t operator()(absl::string_view input) {
+    return std::hash<absl::string_view>()(input);
+  }
+};
+
 template <typename EventFactory, typename RawData,
-          typename Hash = std::hash<absl::string_view>()>
-class TraceEventsContainer {
+          typename Hash = DefaultStdHash>
+class TraceEventsContainerBase {
  public:
-  TraceEventsContainer() { arenas_.insert(std::make_shared<EventFactory>()); }
+  TraceEventsContainerBase() {
+    arenas_.insert(std::make_shared<EventFactory>());
+  }
 
   // Movable but non-copyable.
-  TraceEventsContainer(TraceEventsContainer&&) = default;
-  TraceEventsContainer& operator=(TraceEventsContainer&&) = default;
-  TraceEventsContainer(const TraceEventsContainer&) = delete;
-  TraceEventsContainer& operator=(const TraceEventsContainer&) = delete;
+  TraceEventsContainerBase(TraceEventsContainerBase&&) = default;
+  TraceEventsContainerBase& operator=(TraceEventsContainerBase&&) = default;
+  TraceEventsContainerBase(const TraceEventsContainerBase&) = delete;
+  TraceEventsContainerBase& operator=(const TraceEventsContainerBase&) = delete;
 
   // Creates a TraceEvent prefilled with the given values.
   void AddCompleteEvent(absl::string_view name, uint32_t resource_id,
@@ -177,7 +185,7 @@ class TraceEventsContainer {
   void AddCounterEvent(absl::string_view name, uint32_t device_id,
                        uint64_t timestamp_ps, const RawData& raw_data) {
     TraceEvent* event = CreateArenaEvent();
-    event->set_name(name);
+    event->set_name(name.data(), name.size());
     event->set_device_id(device_id);
     // Do not set resource_id for counter events, they are per device.
     event->set_timestamp_ps(timestamp_ps);
@@ -247,8 +255,8 @@ class TraceEventsContainer {
     return DoLoadFromLevelDbTable(
         filename, std::move(filter), std::move(visibility),
         filter_by_visibility_threshold, trace_, filter_by_visibility_,
-        absl::bind_front(&TraceEventsContainer::CopyEventToArena, this),
-        absl::bind_front(&TraceEventsContainer::AddArenaEvent, this));
+        absl::bind_front(&TraceEventsContainerBase::CopyEventToArena, this),
+        absl::bind_front(&TraceEventsContainerBase::AddArenaEvent, this));
   }
 
   // Calls 'callback' with all events stored in this container.
@@ -343,12 +351,12 @@ class TraceEventsContainer {
 
   // Returns the number of tracks.
   size_t NumTracks() const {
-    size_t num_tracks = 0;
-    for (auto& [device_id, device] : events_by_device_) {
-      num_tracks += device.counter_events_by_name.size() +
-                    device.events_by_resource.size();
-    }
-    return num_tracks;
+    return std::accumulate(
+        events_by_device_.begin(), events_by_device_.end(), 0,
+        [](const size_t tracks, const std::pair<uint32_t, DeviceEvents> item) {
+          return tracks + item.second.counter_events_by_name.size() +
+                 item.second.events_by_resource.size();
+        });
   }
 
   bool FilterByVisibility() const { return filter_by_visibility_; }
@@ -410,7 +418,7 @@ class TraceEventsContainer {
     if (name.size() > kNameInternThreshold) {
       event->set_name_ref(MaybeInternString(name));
     } else {
-      event->set_name(name);
+      event->set_name(name.data(), name.size());
     }
   }
 

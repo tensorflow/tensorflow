@@ -195,6 +195,12 @@ class JitCompiler {
   bool specialized_;
 };
 
+// Adds "rt.export" with ordinal 0 to the "main" function in `module`.
+// This is done by performing a run of the OrdinalAssignment pass using
+// the given `mlir_context`.
+absl::Status ExportMainWithOrdinal0(mlir::ModuleOp module,
+                                    mlir::MLIRContext& mlir_context);
+
 }  // namespace runtime
 }  // namespace xla
 

@@ -216,11 +216,6 @@ class CudnnSupport : public dnn::DnnSupport {
                      ScratchAllocator* workspace_allocator,
                      dnn::ProfileResult* output_profile_result) override;
 
-  bool GetConvolveAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      const NumericOptions& numeric_options,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
   tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
       dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -330,16 +325,6 @@ class CudnnSupport : public dnn::DnnSupport {
       std::optional<double> dropout_rate, std::optional<int64_t> seed) override;
 
   bool GetRnnAlgorithms(
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  bool GetConvolveBackwardDataAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      const NumericOptions& numeric_options,
-      std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
-
-  bool GetConvolveBackwardFilterAlgorithms(
-      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-      const NumericOptions& numeric_options,
       std::vector<dnn::AlgorithmDesc>* out_algorithms) override;
 
   bool DoBatchNormalizationForward(
@@ -655,6 +640,21 @@ class CudnnSupport : public dnn::DnnSupport {
 
   // Provides access to the cuDNN handle.
   std::unique_ptr<class CudnnAccess> cudnn_;
+
+  bool GetConvolveAlgorithms(CudaComputeCapability cuda_compute_capability,
+                             dnn::DataType input_type,
+                             const NumericOptions& numeric_options,
+                             std::vector<dnn::AlgorithmDesc>* out_algorithms);
+
+  bool GetConvolveBackwardDataAlgorithms(
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms);
+
+  bool GetConvolveBackwardFilterAlgorithms(
+      CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
+      const NumericOptions& numeric_options,
+      std::vector<dnn::AlgorithmDesc>* out_algorithms);
 
   template <class T, class U>
   tsl::Status DoBatchNormalizationForwardImpl(

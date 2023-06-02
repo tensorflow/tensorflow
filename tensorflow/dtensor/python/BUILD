@@ -18,7 +18,7 @@ package(
 # A list of all modules linked into TensorFlow.
 
 py_library(
-    name = "core",
+    name = "dtensor",
     srcs = ["__init__.py"],
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
@@ -48,6 +48,7 @@ pytype_strict_library(
         ":layout",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -188,14 +189,13 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:core",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/util:_pywrap_utils",
         "//third_party/py/numpy",
     ],
 )

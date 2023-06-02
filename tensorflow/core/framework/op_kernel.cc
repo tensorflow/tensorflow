@@ -1364,7 +1364,7 @@ const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
     return attr_value->s();
 }
 
-// TODO(geoffreyi): Replace with const Node& version below.
+// TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(
     const DeviceType& device_type, StringPiece node_name,
     bool has_experimental_debug_info,
@@ -1465,7 +1465,7 @@ bool KernelDefAvailable(const DeviceType& device_type,
   return result.ok() && reg != nullptr;
 }
 
-// TODO(geoffreyi): Change const NodeDef& to const Node&
+// TODO(irving): Change const NodeDef& to const Node&
 Status FindKernelDef(
     const DeviceType& device_type, StringPiece node_name,
     bool has_experimental_debug_info,
@@ -1755,7 +1755,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     const OpRegistrationData* op_reg_data;
     const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
     if (!status.ok()) {
-      // TODO(joshl): Make this a hard error.
+      // TODO(josh11b): Make this a hard error.
       LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()
                  << "') for unknown op: " << kernel_def.op();
       continue;

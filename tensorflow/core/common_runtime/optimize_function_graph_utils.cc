@@ -500,10 +500,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
+    FunctionOptimizationPass::FunctionOptions function_options{
+        options.xla_compile_device_type, options.allow_soft_placement};
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        function_name, dev_set, options.config_proto,
-        options.xla_compile_device_type, &graph, &reachable_lib_def,
-        &control_ret_node_names, &control_rets_updated));
+        function_name, dev_set, options.config_proto, function_options, &graph,
+        &reachable_lib_def, &control_ret_node_names, &control_rets_updated));
   }
 
   if (control_rets_updated) {
@@ -625,7 +626,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Scenario (2): File cache exists for this function; restore from the cache.
   if (env->FileExists(file_name).ok()) {
-    VLOG(3) << "Cache existed; reading from cache; file_name: " << file_name;
+    LOG(INFO)
+        << "TensorFlow graph cache existed; reading from cache; function name: "
+        << function_name << ", full cache file path: " << file_name;
 
     StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
         ReadFromCache(file_name, env);
@@ -633,7 +636,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
       metrics::UpdateFunctionGraphOptimizationSavingTime(
           optimized_function_graph_info->optimization_duration_usecs,
           metrics::GraphOptimizationSource::kJit);
-      metrics::IncrementFunctinGraphOptimizationCacheHitCount(
+      metrics::IncrementFunctionGraphOptimizationCacheHitCount(
           1, metrics::GraphOptimizationSource::kJit);
       return optimized_function_graph_info;
     }
@@ -652,7 +655,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Scenario (3): No file cache exists for this function.
   // Run the optimization (Step 1) then write to the cache if eligible (Step 2).
-  metrics::IncrementFunctinGraphOptimizationCacheMissCount(
+  metrics::IncrementFunctionGraphOptimizationCacheMissCount(
       1, metrics::GraphOptimizationSource::kJit);
   VLOG(3) << "No cache existed; run the optimization passes. function name:"
           << " " << function_name;
@@ -672,8 +675,9 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Step 2: Write the optimized function graph into the cache if eligible.
   if (graph_optimization_duration >= caching_threshold_duration) {
-    VLOG(3) << "Writing optimized graph into cache: function name: "
-            << function_name << ", full cache file path: " << file_name;
+    LOG(INFO)
+        << "Writing optimized TensorFlow graph into cache: function name: "
+        << function_name << ", full cache file path: " << file_name;
     Status s = WriteToCache(dir_name, file_name,
                             optimized_function_graph_info.value(), env);
     // If writing to cache failed, log the error message and move on without

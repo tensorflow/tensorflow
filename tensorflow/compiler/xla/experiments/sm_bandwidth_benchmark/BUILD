@@ -1,9 +1,9 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library", "if_cuda")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
 cc_library(
     name = "sm_bw_utils",
     hdrs = ["sm_bw_utils.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
     deps = [
         "//tensorflow/tsl/platform:logging",
     ] + if_cuda([
@@ -20,13 +20,15 @@ cuda_library(
     ],
 )
 
-cc_test(
+xla_cc_test(
     name = "sm_bw_test",
     srcs = ["sm_bw_test.cc"],
-    tags = ["requires-gpu-sm80-only"],
+    tags = ["requires-gpu-nvidia"],
     deps = [
         ":sm_bw_kernels",
         ":sm_bw_utils",
         "@com_google_googletest//:gtest_main",
-    ],
+    ] + if_cuda([
+        "//tensorflow/tsl/platform:cuda",
+    ]),
 )

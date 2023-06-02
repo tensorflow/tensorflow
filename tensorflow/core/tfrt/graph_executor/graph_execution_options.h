@@ -63,6 +63,11 @@ struct GraphExecutionOptions {
   // TODO(b/266251216): Maybe flip the default value or remote it.
   bool enable_online_cost_analysis = false;
 
+  // Normalize the op costs recorded during online cost analysis by dividing by
+  // this.
+  // TODO(b/278298965): Maybe remove normalization.
+  uint64_t online_cost_analysis_normalize_ratio = 1;
+
   // If true, the MLRT interpreter will be used instead of the BEF executor.
   // This option is experimental.
   bool enable_mlrt = false;
@@ -84,7 +89,7 @@ struct GraphExecutionRunOptions {
   // will be raised upon mismatch.
   bool validate_input_specs = false;
 
-  // TODO(b/239749833) Remove after b/239749833 is fixed.
+  // TODO(b/279197040) Remove after b/279197040 is fixed.
   // If true, the input specs will be checked before running, and an error
   // will be logged upon mismatch.
   bool validate_input_specs_dry_run = false;

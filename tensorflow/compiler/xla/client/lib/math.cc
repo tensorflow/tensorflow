@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <functional>
+#include <limits>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -153,6 +157,9 @@ XlaOp IsNegZero(XlaOp operand) {
       case F32:
         return Eq(BitcastConvertType(operand, U32),
                   ConstantR0WithType(&b, U32, uint32_t{1} << 31));
+      case F8E5M2:
+      case F8E4M3FN:
+      case F8E4M3B11FNUZ:
       case F16:
       case BF16:
         // Not all XLA backends handle U16 well, so we convert to F32/U32.
@@ -293,10 +300,11 @@ XlaOp Erfc(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16}, [](XlaOp x) {
-      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
-                    ScalarLike(x, 1) - ErfImpl32Cephes(x));
-    });
+    return DoWithUpcastToF32(
+        x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}, [](XlaOp x) {
+          return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl32(x),
+                        ScalarLike(x, 1) - ErfImpl32Cephes(x));
+        });
   });
 }
 
@@ -338,7 +346,7 @@ XlaOp Erf(XlaOp x) {
     }
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithUpcastToF32(x, {BF16, F16},
+    return DoWithUpcastToF32(x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ},
                              [](XlaOp x) { return ErfImpl32(x); });
   });
 }
@@ -487,7 +495,7 @@ XlaOp ErfInv(XlaOp x) {
     if (shape.element_type() == F64) {
       return ErfInv64(x);
     }
-    return DoWithUpcastToF32(x, {BF16, F16},
+    return DoWithUpcastToF32(x, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ},
                              [](XlaOp x) { return ErfInv32(x); });
   });
 }
@@ -616,7 +624,8 @@ XlaOp Lgamma(XlaOp input) {
     // F16 and BF16 don't provide sufficient precision for intermediate results
     // here (although it's better than you might expect!), so do the
     // computations in F32.
-    return DoWithUpcastToF32(input, {BF16, F16}, do_it);
+    return DoWithUpcastToF32(
+        input, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}, do_it);
   });
 }
 
@@ -711,7 +720,8 @@ XlaOp Digamma(XlaOp input) {
   auto& b = *input.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
-    return DoWithUpcastToF32(input, {BF16, F16}, do_it);
+    return DoWithUpcastToF32(
+        input, {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}, do_it);
   });
 }
 
@@ -965,8 +975,13 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Igamma", a));
     PrimitiveType a_x_type = a_shape.element_type();
-    bool needs_upcast =
-        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+    bool needs_upcast = false;
+    for (PrimitiveType type : {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}) {
+      if (a_shape.element_type() == type) {
+        needs_upcast = true;
+        break;
+      }
+    }
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);
@@ -1012,8 +1027,13 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
           a_shape.ToString(), x_shape.ToString());
     }
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("IgammaGradA", a));
-    bool needs_upcast =
-        a_shape.element_type() == F16 || a_shape.element_type() == BF16;
+    bool needs_upcast = false;
+    for (PrimitiveType type : {BF16, F16, F8E5M2, F8E4M3FN, F8E4M3B11FNUZ}) {
+      if (a_shape.element_type() == type) {
+        needs_upcast = true;
+        break;
+      }
+    }
 
     if (needs_upcast) {
       a = ConvertElementType(a, F32);

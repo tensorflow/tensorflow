@@ -38,7 +38,7 @@ class ZeroDivisionTest(test.TestCase):
             # Ideally, we'd get a nice exception.  In theory, this should only
             # happen on CPU, but 32 bit integer GPU division is actually on
             # CPU due to a placer bug.
-            # TODO(geoffreyi): Make stricter once the placer bug is fixed.
+            # TODO(irving): Make stricter once the placer bug is fixed.
             self.assertIn('Integer division by zero', str(e))
           else:
             # On the GPU, integer division by zero produces all bits set.

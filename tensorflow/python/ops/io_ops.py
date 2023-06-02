@@ -470,7 +470,7 @@ class TextLineReader(ReaderBase):
   use `tf.data` to get data into your model.
   @end_compatibility
   """
-  # TODO(joshl): Support serializing and restoring state.
+  # TODO(josh11b): Support serializing and restoring state.
 
   @deprecation.deprecated(
       None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
@@ -502,7 +502,7 @@ class FixedLengthRecordReader(ReaderBase):
   use `tf.data` to get data into your model.
   @end_compatibility
   """
-  # TODO(joshl): Support serializing and restoring state.
+  # TODO(josh11b): Support serializing and restoring state.
 
   @deprecation.deprecated(
       None, "Queue-based input pipelines have been replaced by `tf.data`. Use "
@@ -548,7 +548,7 @@ class TFRecordReader(ReaderBase):
   use `tf.data` to get data into your model.
   @end_compatibility
   """
-  # TODO(joshl): Support serializing and restoring state.
+  # TODO(josh11b): Support serializing and restoring state.
 
   @deprecation.deprecated(
       None, "Queue-based input pipelines have been replaced by `tf.data`. Use "

@@ -69,7 +69,6 @@ py_binary(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:cond",
@@ -438,6 +437,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
     ],
     deps = [
         ":test_graph_tfadd",
@@ -511,6 +511,7 @@ tf_cc_test(
     tags = [
         "manual",
         "no_mac",  # TODO(b/228273415)
+        "not_run:arm",
     ],
     deps = [
         ":test_graph_tfadd_mlir_bridge",

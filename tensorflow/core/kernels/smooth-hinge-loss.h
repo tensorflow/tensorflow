@@ -104,7 +104,7 @@ class SmoothHingeLossUpdater : public DualLossUpdater {
 
  private:
   // Smoothness constant of smooth hinge loss
-  // TODO(rohananil): expose this parameter
+  // TODO(sibyl-Aix6ihai): expose this parameter
   const double gamma = 1;
 };
 

@@ -205,12 +205,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testInitializeVariableUsingInitializedValue(self):
     var1 = resource_variable_ops.ResourceVariable(1.0, name="var1")
     var2 = resource_variable_ops.ResourceVariable(
-        control_flow_ops.cond(
+        tf_cond.cond(
             variable_v1.is_variable_initialized(var1), var1.read_value,
             lambda: var1.initial_value),
         name="var2")
     self.assertAllEqual(
-        control_flow_ops.cond(
+        tf_cond.cond(
             variable_v1.is_variable_initialized(var2), var2.read_value,
             lambda: var2.initial_value), 1.0)
 
@@ -1001,7 +1001,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
       # But attempts to use read_value will result in errors.
       with self.assertRaises(ValueError):
         self.evaluate(
-            control_flow_ops.cond(
+            tf_cond.cond(
                 variable_v1.is_variable_initialized(v), v.read_value,
                 lambda: v.initial_value))
 

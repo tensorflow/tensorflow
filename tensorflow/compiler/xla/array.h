@@ -510,6 +510,17 @@ class Array {
 
   // Performs a permutation of dimensions.
   void TransposeDimensions(absl::Span<const int64_t> permutation) {
+    return TransposeDimensionsImpl<int64_t>(permutation);
+  }
+  void TransposeDimensions(absl::Span<const int> permutation) {
+    return TransposeDimensionsImpl<int>(permutation);
+  }
+  void TransposeDimensions(std::initializer_list<int> permutation) {
+    return TransposeDimensionsImpl<int>(permutation);
+  }
+  template <typename IntT,
+            std::enable_if_t<std::is_integral_v<IntT>>* = nullptr>
+  void TransposeDimensionsImpl(absl::Span<const IntT> permutation) {
     CHECK_EQ(sizes_.size, permutation.size());
     OwnedBuffer<int64_t> permuted_dims(permutation.size());
     for (int64_t i = 0; i < permutation.size(); ++i) {

@@ -180,7 +180,7 @@ class DistributedValues(ds_types.DistributedValues):
     return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
 
 
-# NOTE(joshl,apassos): It would be great if we could inspect the values this was
+# NOTE(josh11b,apassos): It would be great if we could inspect the values this was
 # initialized with and use that to generate the overloaded operators here.
 # Unfortunately, Python's rules for special methods don't allow this, see
 # https://docs.python.org/3/reference/datamodel.html#special-method-names
@@ -345,7 +345,7 @@ class DistributedDelegate(DistributedValues):
       # See https://docs.python.org/3/library/constants.html#NotImplemented
       return NotImplemented
 
-  # TODO(joshl): Even more operator overloads.
+  # TODO(josh11b): Even more operator overloads.
 
 
 class PerReplica(DistributedValues, composite_tensor.CompositeTensor,

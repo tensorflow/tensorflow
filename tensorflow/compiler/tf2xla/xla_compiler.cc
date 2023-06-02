@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -572,7 +573,7 @@ Status XlaCompiler::FindFunctionBody(const NameAttrList& function,
   // function in flib_runtime_.
   auto status = GetFunctionBody(function, local_flib_runtime_, fbody);
   if (!status.ok()) {
-    if (!errors::IsNotFound(status)) {
+    if (!absl::IsNotFound(status)) {
       return status;
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
@@ -903,8 +904,16 @@ Status XlaCompiler::CompileFunction(
     }
   } else {
     VLOG(1) << "MLIR bridge off. Using the old bridge to compile the function";
-    TF_RETURN_IF_ERROR(
-        CompileGraph(options, function_id, std::move(graph), args, result));
+    auto status =
+        CompileGraph(options, function_id, std::move(graph), args, result);
+    if (!status.ok()) {
+      ::tsl::errors::AppendToMessage(
+          &status, "tf2xla conversion failed while converting ", function_id,
+          ". Run with TF_DUMP_GRAPH_PREFIX=/path/to/dump/dir and "
+          "--vmodule=xla_compiler=2 to obtain a dump of the compiled "
+          "functions.");
+      return status;
+    }
   }
   VLOG(1) << "====================================================";
 
@@ -1399,6 +1408,10 @@ class DummyStackTrace : public AbstractStackTrace {
 
   StackFrame LastUserFrame() const override { return frames_.back(); }
 
+  std::vector<StackFrame> GetUserFrames(int /*limit*/) const override {
+    return frames_;
+  }
+
   std::string ToString(const TracePrintingOptions& opts) const override {
     auto frame = LastUserFrame();
     return absl::StrCat(frame.file_name, ":", frame.line_number, ":",
@@ -1414,6 +1427,11 @@ Status XlaCompiler::CompileGraph(
     std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
     CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.: " << name;
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "XlaCompiler::CompileGraph: "
+            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
+                               flib_runtime_->GetFunctionLibraryDefinition());
+  }
 
   DummyStackTrace stack_trace;
   for (auto node : graph->nodes()) {
@@ -1430,12 +1448,6 @@ Status XlaCompiler::CompileGraph(
       },
       graph.get(), local_flib_def_.get(),
       pflr_->GetFunctionLibraryDefinition()));
-
-  if (VLOG_IS_ON(2)) {
-    VLOG(2) << "XlaCompiler::CompileGraph: "
-            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
-                               flib_runtime_->GetFunctionLibraryDefinition());
-  }
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);

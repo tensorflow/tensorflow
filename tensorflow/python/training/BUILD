@@ -117,7 +117,6 @@ py_library(
         "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
-        "//tensorflow/python/training/tracking:base_delegate",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -132,12 +131,9 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":training_lib",
-        "//tensorflow/python/checkpoint:checkpoint_core",
+        "//tensorflow/python/checkpoint",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
-        "//tensorflow/python/training/tracking:base",
-        "//tensorflow/python/training/tracking:python_state",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -367,6 +363,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":slot_creator",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -506,6 +503,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
@@ -1048,6 +1046,7 @@ py_library(
     srcs = ["training_util.py"],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -1136,6 +1135,7 @@ TRAINING_TEST_DEPS = [
     "//tensorflow/python:array_ops",
     "//tensorflow/python:client",
     "//tensorflow/python:client_testlib",
+    "//tensorflow/python:cond",
     "//tensorflow/python:control_flow_ops",
     "//tensorflow/python:data_flow_ops",
     "//tensorflow/python:data_flow_ops_gen",
@@ -1379,7 +1379,7 @@ distribute_py_test(
 
 cuda_py_test(
     name = "session_manager_test",
-    size = "medium",  # TODO(geoffreyi): Can this be made small?
+    size = "medium",  # TODO(irving): Can this be made small?
     srcs = ["session_manager_test.py"],
     grpc_enabled = True,
     main = "session_manager_test.py",

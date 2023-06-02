@@ -350,6 +350,8 @@ typedef union TfLitePtrUnion {
 //        as constant inputs for downstream ops (also in prepare).
 //  * kTfLiteCustom: Custom memory allocation provided by the user. See
 //        TfLiteCustomAllocation below.
+// * kTfLiteVariantObject: Allocation is an arbitrary type-erased C++ object.
+//        Allocation and deallocation are done through `new` and `delete`.
 typedef enum TfLiteAllocationType {
   kTfLiteMemNone = 0,
   kTfLiteMmapRo,
@@ -358,6 +360,7 @@ typedef enum TfLiteAllocationType {
   kTfLiteDynamic,
   kTfLitePersistentRo,
   kTfLiteCustom,
+  kTfLiteVariantObject,
 } TfLiteAllocationType;
 
 // The delegates should use zero or positive integers to represent handles.
@@ -1201,5 +1204,74 @@ void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate);
 
 #ifdef __cplusplus
 }  // extern "C"
+
+#include <utility>
+
+// `kTfLiteVariant` type tensors encode arbitrary C++ objects behind their
+// `data.data : void*` member. This is the type-erased interface for interacting
+// with such objects at runtime. Deleting or Cloning any `VariantData`
+// will call the destructor and copy constructor of the erased type
+// automatically. For example usage, see `common_test.cc`.
+class VariantData {
+ public:
+  // All variant objects must be able to be destroyed and copied.
+  virtual ~VariantData() = default;
+  // This allows for a "virtual copy-constructor" like pattern.
+  // In most cases, we will be copying from an input to an output tensor.
+  // Often, the output tensor is already allocated so we can pass
+  // a pointer to its buffer for reuse.
+  virtual VariantData* Clone(char* maybe_alloc) const = 0;
+};
+
+// An abstract base class for variant objects. The template parameter
+// is the type we are erasing.
+template <typename ErasedDerived>
+class AbstractVariantData : public VariantData {
+ public:
+  VariantData* Clone(char* maybe_alloc) const override {
+    if (maybe_alloc) {
+      // We assume that the output tensor is already a variant of the same
+      // derived type. If the output is still allocated, then it still may have
+      // state that was not destroyed, so we must call the destructor before
+      // using the buffer.
+      //     This may actual have a non-negligle effect on perfomance if the
+      // destructor is complex. In a future optimization we would want to
+      // introduce something like "move to" semantics, allowing for the
+      // underlying implementation to optimize for this case.
+      reinterpret_cast<VariantData*>(maybe_alloc)->~VariantData();
+      return new (maybe_alloc)
+          ErasedDerived(static_cast<ErasedDerived const&>(*this));
+    }
+    return new ErasedDerived(static_cast<ErasedDerived const&>(*this));
+  }
+
+ protected:
+  AbstractVariantData() = default;
+  AbstractVariantData(const AbstractVariantData&) = default;
+  AbstractVariantData(AbstractVariantData&&) = delete;
+};
+
+// Analogous to `TfLiteTensorRealloc` for allocation of tensors whose
+// data member points to an arbitrary C++ object. `VariantType` refers
+// to the erased type of said object and `VariantArgs` refers to
+// a list of argument types with which to construct a new `VariantType`
+// `VariantArgs` must match constructor in `VariantType`.
+template <class VariantType, class... VariantArgs>
+TfLiteStatus TfLiteTensorVariantRealloc(TfLiteTensor* t,
+                                        VariantArgs&&... args) {
+  if (t->type != kTfLiteVariant) return kTfLiteError;
+  if (t->data.raw) {
+    reinterpret_cast<VariantData*>(t->data.data)->~VariantData();
+    // For now we assume if `t` is already allocated then it was allocated
+    // with the same `VariantType` as templated.
+    t->data.data =
+        new (t->data.raw) VariantType(std::forward<VariantArgs...>(args...));
+  } else {
+    t->data.data = new VariantType(std::forward<VariantArgs...>(args...));
+  }
+  t->allocation_type = kTfLiteVariantObject;
+  return kTfLiteOk;
+}
+
 #endif  // __cplusplus
 #endif  // TENSORFLOW_LITE_CORE_C_COMMON_H_

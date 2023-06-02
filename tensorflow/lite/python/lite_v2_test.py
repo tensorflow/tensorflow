@@ -1855,7 +1855,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter = tf.lite.TFLiteConverter.from_saved_model(tf_saved_model_dir)
     converter.optimizations = [tf.lite.Optimize.DEFAULT]
     tflite_model = converter.convert()
-    # 2. Initialize the Intepreter
+    # 2. Initialize the Interpreter
     interpreter = Interpreter(model_content=tflite_model)
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
@@ -1875,7 +1875,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
     converter.inference_input_type = tf.int8
     converter.inference_output_type = tf.int8
     tflite_model_quant = converter.convert()
-    # 2. Initialize the Intepreter
+    # 2. Initialize the Interpreter
     interpreter = Interpreter(model_content=tflite_model_quant)
     input_details = interpreter.get_input_details()[0]
     output_details = interpreter.get_output_details()[0]
@@ -2692,9 +2692,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testMlirStableHLOPresetQuantizationMethod(
       self, preset_quantization_method
   ):
-    k_num_filters = 38
+    num_filters = 38
     model = tf.keras.models.Sequential(
-        [tf.keras.layers.Conv2D(k_num_filters, (3, 3), activation='relu')]
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
     )
     model.build(input_shape=(1, 5, 5, 3))
     saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
@@ -2704,6 +2704,45 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
         quantization_method=quant_opts_pb2.QuantizationMethod(
             preset_quantization_method=quant_opts_pb2.PresetQuantizationMethod(
                 preset_method=preset_quantization_method
+            )
+        )
+    )
+
+    converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter._experimental_quantization_options = quantization_options
+
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.EXPERIMENTAL_STABLEHLO_OPS
+    ]
+    converter.exclude_conversion_metadata = True
+    converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_stablehlo_model = converter.convert()
+    self.assertIsNotNone(quantized_stablehlo_model)
+
+  @test_util.run_v2_only
+  def testMlirStableHLOCustomQuantizationMethod(self):
+    num_filters = 38
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Conv2D(num_filters, (3, 3), activation='relu')]
+    )
+    model.build(input_shape=(1, 5, 5, 3))
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'conv_saved_model')
+    save(model, saved_model_dir)
+
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            custom_quantization_method=quant_opts_pb2.CustomQuantizationMethod(
+                quantization_component_spec=[
+                    quant_opts_pb2.QuantizationComponentSpec(
+                        quantization_component=quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent.COMPONENT_WEIGHT,
+                        bit_width=quant_opts_pb2.QuantizationComponentSpec.BitWidth.BIT_WIDTH_16,
+                        bit_type=quant_opts_pb2.QuantizationComponentSpec.BitType.BIT_TYPE_FLOAT,
+                    ),
+                    quant_opts_pb2.QuantizationComponentSpec(
+                        quantization_component=quant_opts_pb2.QuantizationComponentSpec.QuantizationComponent.COMPONENT_BIAS,
+                        bit_width=quant_opts_pb2.QuantizationComponentSpec.BitWidth.BIT_WIDTH_16,
+                    ),
+                ]
             )
         )
     )
@@ -3589,6 +3628,49 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     # Check values from converted model.
     expected_value = model.predict(input_data)
     self.assertAllClose(expected_value, actual_value, atol=1e-05)
+
+
+class StridedSliceTest(lite_v2_test_util.ModelTest):
+
+  @test_util.run_v2_only
+  def testStridedSlice(self):
+    input_data = tf.constant(
+        [
+            1.0,
+            2.0,
+            3.0,
+            4.0,
+            5.0,
+            6,
+        ],
+        shape=[6],
+        dtype=tf.float32,
+    )
+    begin = tf.Variable([1], dtype=tf.int32)
+
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=[6], dtype=tf.float32),
+            tf.TensorSpec(shape=[1], dtype=tf.int32),
+        ]
+    )
+    def model(a, begin):
+      return tf.strided_slice(a, begin, begin + 3)
+
+    concrete_func = model.get_concrete_function()
+
+    # Convert model.
+    converter = lite.TFLiteConverterV2.from_concrete_functions(
+        [concrete_func], model
+    )
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = concrete_func(input_data, begin)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data, begin])[
+        0
+    ]
+    self.assertAllClose(expected_value, actual_value)
 
 
 class GrapplerTest(lite_v2_test_util.ModelTest):

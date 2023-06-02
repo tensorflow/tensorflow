@@ -205,12 +205,6 @@ TEST(InterpreterValueTest, ToStringComplex) {
   ASSERT_EQ(value.toString(), "complex<f32>: 0.000000e+00+0.000000e+00i");
 }
 
-TEST(InterpreterValueTest, ToStringDeallocated) {
-  InterpreterValue value{TensorOrMemref<int64_t>::empty({})};
-  value.buffer()->deallocate();
-  ASSERT_EQ(value.toString(), "TensorOrMemref<i64>: <<deallocated>>");
-}
-
 TEST(CastTest, UnpackTensor) {
   InterpreterValue value{TensorOrMemref<int8_t>::empty({1, 1})};
   value.insertElement({0, 0}, {int8_t{1}});

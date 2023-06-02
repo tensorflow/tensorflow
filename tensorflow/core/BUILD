@@ -287,6 +287,7 @@ cc_library(
         ":lib_internal",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/types:optional",
@@ -358,7 +359,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:cancellation.h",
         "//tensorflow/core/framework:collective.h",
         "//tensorflow/core/framework:common_shape_fns.h",
-        "//tensorflow/core/framework:control_flow.h",  # TODO(joshl): Make internal?
+        "//tensorflow/core/framework:control_flow.h",  # TODO(josh11b): Make internal?
         "//tensorflow/core/framework:dataset.h",
         "//tensorflow/core/framework:dataset_stateful_op_allowlist.h",
         "//tensorflow/core/framework:device.h",
@@ -617,6 +618,7 @@ cc_library(
         "//tensorflow/core/kernels:stateless_random_gamma_op",
         "//tensorflow/core/kernels:stateless_random_ops",
         "//tensorflow/core/kernels:stateless_shuffle",
+        "//tensorflow/core/kernels:stochastic_cast_op",
         "//tensorflow/core/kernels:string",
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:sync_ops",
@@ -631,6 +633,7 @@ cc_library(
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_instance_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_layer_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",
@@ -746,7 +749,7 @@ tf_cuda_library(
     hdrs = [
         "//tensorflow/core/common_runtime:testlib_headers",
         "//tensorflow/core/graph:testlib_headers",
-        # TODO(joshl): Drop this once users are depending on
+        # TODO(josh11b): Drop this once users are depending on
         # kernels:ops_testutil instead.
         "//tensorflow/core/kernels:ops_testutil.h",
         # TODO(gonnet): Stop exporting these headers once users depend on
@@ -961,6 +964,7 @@ filegroup(
         "stateful_random_ops_op_lib",
         "stateless_random_ops_op_lib",
         "stateless_random_ops_v2_op_lib",
+        "stochastic_cast_op_op_lib",
         "string_ops_op_lib",
         "summary_ops_op_lib",
         "sync_ops_op_lib",
@@ -1052,6 +1056,7 @@ cc_library(
 #         "@com_google_absl//absl/algorithm:container",
 #         "@com_google_absl//absl/base",
 #         "@com_google_absl//absl/meta:type_traits",
+#         "@com_google_absl//absl/status:statusor",
 #         "@com_google_absl//absl/strings",
 #         "@com_google_absl//absl/types:optional",
 #         "//tensorflow/core:mobile_additional_lib_deps",
@@ -1074,6 +1079,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -1259,6 +1265,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ] + if_static([":lib_internal_impl"]),
 )
@@ -1966,6 +1973,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels/mkl:mkl_conv_op",
         "//tensorflow/core/kernels/mkl:mkl_dequantize_op",
         "//tensorflow/core/kernels/mkl:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels/mkl:mkl_fused_instance_norm_op",
         "//tensorflow/core/kernels/mkl:mkl_matmul_op",
         "//tensorflow/core/kernels/mkl:mkl_pooling_ops",
         "//tensorflow/core/kernels/mkl:mkl_qmatmul_op",

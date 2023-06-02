@@ -28,3 +28,25 @@ message SlicedPrefetchOptions {
   // The minimum size (in bytes) of any slice.
   uint64 min_slice_bytes = 2;
 }
+
+// Options for memory-bound loop optimizations in memory space assignment. If
+// enabled, this pass can optimize memory-bound unrolled loops to maximize the
+// bandwidth utilized and minimize the execution time.
+message MemoryBoundLoopOptimizerOptions {
+  // Enable the memory-bound loop optimizations.
+  optional bool enabled = 1;
+
+  // The desired ratio of overlapped operations that is sufficient to overlap
+  // prefetches with. If this value is 1, the algorithm will try to fully
+  // overlap the prefetches with other compute, if less than 1, the algorithm
+  // may schedule prefetches such that some of the prefetch is not overlapped,
+  // so may become critical. For example, if this value is 0.5, we are willing
+  // for the prefetch time to take up to 2X of the overlapped computation time.
+  optional float desired_copy_ratio = 2;
+
+  // If true, the algorithm allows a fully pipelined prefetch to be scheduled
+  // even if the copy resources haven't reached the desired copy ratio. A fully
+  // pipelined prefetch starts the same time as its counterpart in the previous
+  // iteration finishes.
+  optional bool allow_unsatisfied_fully_pipelined_prefetch = 3;
+}

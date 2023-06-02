@@ -990,7 +990,7 @@ class PriorityQueue(QueueBase):
                                         queue_ref)
 
 
-# TODO(joshl): class BatchQueue(QueueBase):
+# TODO(josh11b): class BatchQueue(QueueBase):
 
 
 class Barrier:

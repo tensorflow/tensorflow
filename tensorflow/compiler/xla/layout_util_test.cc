@@ -363,6 +363,21 @@ TEST_F(LayoutUtilTest, HumanStringWithTiling) {
   EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
             "pred[8,8,8]{0,2,1:T(8,128)}");
 
+  // PRED with element size of 32 bits.
+  shape.mutable_layout()->clear_tiles();
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(8);
+  tile->add_dimensions(128);
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:T(8,128)E(32)}");
+
+  // No tile. PRED with element size of 32 bits.
+  shape.mutable_layout()->clear_tiles();
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:E(32)}");
+
   // Tile with negative dimension size for combining dimensions.
   shape = ShapeUtil::MakeShapeWithDenseLayout(BF16, {2, 3, 1004}, {2, 1, 0});
   tile = shape.mutable_layout()->add_tiles();

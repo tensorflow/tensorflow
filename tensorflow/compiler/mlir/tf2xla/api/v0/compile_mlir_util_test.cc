@@ -77,8 +77,7 @@ TEST(LegalizeMlirTest, FailsLegalizesModule) {
       /*shape_determination_fns=*/{}, &compilation_result);
 
   EXPECT_FALSE(status.ok());
-  // Once for LegalizeTF and once for LegalizeTFModule
-  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 2);
+  EXPECT_EQ(count.Delta("tf.DoesntExist", "Unknown"), 1);
 }
 
 TEST(CompileMlirUtil, CreatesPipeline) {

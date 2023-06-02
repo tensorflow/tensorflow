@@ -121,17 +121,16 @@ class _DumpingCallback(object):
     self._writer = None
 
   def function_callback(self, function):
-    """A callback to be called on creation of Functions."""
+    """A callback to be called on creation of ConcreteFunctions."""
     graph_id = self._get_context_id(function.graph)
     with self._context_lock:
-      # NOTE(cais): We currently store the function (AtomicFunction)
+      # NOTE(cais): We currently store the function (ConcreteFunction)
       # as keys of this dict, because weakrefs to them sometimes become
       # unreferenceable by the time the op callback is called. This approach
       # may cause memory leaks due to the holding of the functions. If that's
       # the case, calling `tf.debugging.disable_dump_debug_info()` should
       # cause GC of this object and this dict.
       self._function_to_graph_id[function] = graph_id
-    return function
 
   @property
   def dump_root(self):
@@ -844,7 +843,7 @@ def enable_dump_debug_info(dump_root,
                                                op_regex,
                                                tensor_dtypes)
     op_callbacks.add_op_callback(_state.dumping_callback.callback)
-    function_lib.add_function_callback(
+    function_lib.CONCRETE_FUNCTION_CALLBACKS.append(
         _state.dumping_callback.function_callback)
 
   if _state.dumping_callback.dump_root != dump_root:
@@ -875,8 +874,13 @@ def disable_dump_debug_info():
     tfdbg_run_id = _state.dumping_callback.tfdbg_run_id
     debug_events_writer.DebugEventsWriter(dump_root, tfdbg_run_id).Close()
     op_callbacks.remove_op_callback(_state.dumping_callback.callback)
-    function_lib.remove_function_callback(
-        _state.dumping_callback.function_callback)
+    if (
+        _state.dumping_callback.function_callback
+        in function_lib.CONCRETE_FUNCTION_CALLBACKS
+    ):
+      function_lib.CONCRETE_FUNCTION_CALLBACKS.remove(
+          _state.dumping_callback.function_callback
+      )
     delattr(_state, "dumping_callback")
     logging.info("Disabled dumping callback in thread %s (dump root: %s)",
                  threading.current_thread().name, dump_root)

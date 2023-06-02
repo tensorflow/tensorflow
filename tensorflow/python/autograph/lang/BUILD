@@ -19,7 +19,7 @@ py_strict_library(
     srcs = ["special_functions.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:data_structures",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_util",
     ],

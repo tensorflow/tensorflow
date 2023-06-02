@@ -77,21 +77,22 @@ template <int chunks>
 __launch_bounds__(kMaxBlockSize) __global__
     void BenchmarkDeviceCopyKernel(const float* __restrict__ in,
                                    float* __restrict__ out, int64_t size) {
+  constexpr int kVecWidth = chunks < 4 ? 1 : 4;
   const int64_t lines = size / (blockDim.x * chunks);
   const int64_t start_line = lines * blockIdx.x / gridDim.x;
   const int64_t end_line = lines * (blockIdx.x + 1) / gridDim.x;
   const int64_t start_offset =
-      start_line * blockDim.x * chunks + 4 * threadIdx.x;
+      start_line * blockDim.x * chunks + kVecWidth * threadIdx.x;
   const int64_t end_offset = end_line * blockDim.x * chunks;
-  Vec<float, 4> buffer[chunks / 4];
+  Vec<float, kVecWidth> buffer[chunks / kVecWidth];
   for (int64_t i = start_offset; i < end_offset; i += blockDim.x * chunks) {
 #pragma unroll
-    for (int j = 0; j < chunks; j += 4) {
-      LoadNc(buffer[j / 4], in + i + blockDim.x * j, 0);
+    for (int j = 0; j < chunks; j += kVecWidth) {
+      LoadNc(buffer[j / kVecWidth], in + i + blockDim.x * j, 0);
     }
 #pragma unroll
-    for (int j = 0; j < chunks; j += 4) {
-      Store(buffer[j / 4], out + i + blockDim.x * j, 0);
+    for (int j = 0; j < chunks; j += kVecWidth) {
+      Store(buffer[j / kVecWidth], out + i + blockDim.x * j, 0);
     }
   }
 }

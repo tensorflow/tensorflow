@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/codegen.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -377,14 +378,16 @@ std::vector<string> BufferInfosToCppExpression(
   std::transform(buffer_infos.begin(), buffer_infos.end(),
                  std::back_inserter(buffer_infos_as_strings),
                  [](const BufferInfo& buffer_info) {
-                   std::pair<uint64, uint64> encoded = buffer_info.Encode();
-                   string encoded_second_as_str =
-                       encoded.second == ~0ULL
-                           ? "~0ULL"
-                           : absl::StrCat(encoded.second, "ULL");
+                   xla::cpu_function_runtime::EncodedBufferInfo encoded =
+                       buffer_info.Encode();
+                   auto param_to_str = [](uint32_t param) -> std::string {
+                     return param == ~0U ? "~0U" : absl::StrCat(param, "U");
+                   };
                    return absl::StrCat(
-                       "::xla::cpu_function_runtime::BufferInfo({",
-                       encoded.first, "ULL, ", encoded_second_as_str, "})");
+                       "::xla::cpu_function_runtime::BufferInfo(",
+                       encoded.packed_kind_and_size, "ULL, ",
+                       param_to_str(encoded.entry_param_number), ", ",
+                       param_to_str(encoded.result_param_number), ")");
                  });
   return buffer_infos_as_strings;
 }
@@ -749,7 +752,7 @@ Status GenerateMetadata(const CodegenOpts& opts,
 
   if (opts.gen_program_shape) {
     program_shape =
-        absl::make_unique<xla::ProgramShapeProto>(compile_result.program_shape);
+        std::make_unique<xla::ProgramShapeProto>(compile_result.program_shape);
 
     // The parameter names are currently meaningless, and redundant with the
     // rest of our metadata, so clear them out to avoid confusion and save

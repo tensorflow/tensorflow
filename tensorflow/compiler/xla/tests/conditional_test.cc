@@ -540,10 +540,6 @@ XLA_TEST_F(ConditionalOpTest, ReturnTupleofPredicateScalarArray) {
 
 // Test true and false computations that return a nested tuple.
 XLA_TEST_F(ConditionalOpTest, ReturnNestedTuple) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Nested tuples not supported by MLIR";
-  }
-
   XlaBuilder true_builder(TestName() + ".true");
   {
     Parameter(&true_builder, 0, empty_tuple_, "tuple");
@@ -761,10 +757,6 @@ XLA_TEST_F(ConditionalOpTest, SwappedInputsInSequentialConditionals) {
 // Test conditional that duplicates tuple elements in the then and else
 // computations. This is a regression test for b/112550242.
 XLA_TEST_F(ConditionalOpTest, DuplicateElementsConditional) {
-  if (IsMlirLoweringEnabled()) {
-    GTEST_SKIP() << "Tuple arguments not supported by MLIR";
-  }
-
   const Shape scalar = ShapeUtil::MakeShape(S32, {});
   const Shape tuple2 = ShapeUtil::MakeTupleShape({scalar, scalar});
   XlaComputation then_comp;

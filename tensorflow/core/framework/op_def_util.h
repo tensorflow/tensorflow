@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// TODO(joshl): Probably not needed for OpKernel authors, so doesn't
+// TODO(josh11b): Probably not needed for OpKernel authors, so doesn't
 // need to be as publicly accessible as other files in framework/.
 
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_

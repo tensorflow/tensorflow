@@ -129,10 +129,11 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CallInliner>();
   pipeline.AddPass<TupleSimplifier>();
 
+  const DebugOptions& debug_options = hlo_module->config().debug_options();
   AlgebraicSimplifierOptions algsimp_options;
   algsimp_options.set_enable_conv_operand_swap(false);
-  algsimp_options.set_unconditionally_simplify_reduce_of_transpose_or_reshape(
-      true);
+  algsimp_options.set_enable_dot_strength_reduction(
+      debug_options.xla_gpu_enable_dot_strength_reduction());
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(algsimp_options);
 
   // CudnnSimplifyPadding gets rid of some padding introduced by
@@ -143,8 +144,16 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
   pipeline.AddPass<CudnnSimplifyPadding>();
 
   // tf2xla bridge, DepthwiseConvolutionConverter, GpuConvRewriter, and
-  // CudnnSimplifyPadding introduce reshapes and transposes.
-  pipeline.AddPass<HloPassFix<ReshapeMover>>();
+  // CudnnSimplifyPadding introduce reshapes and transposes.  Run ReshapeMover
+  // to a fixed point.  Include algsimp because ReshapeMover relies on it.
+  [&, &pipeline = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
+          "reshape_mover_after_conv_canonicalization")] {
+    ReshapeMoverOptions reshape_mover_options;
+    reshape_mover_options.reshape_of_1d_broadcast_is_cheap = true;
+    pipeline.AddPass<HloPassFix<ReshapeMover>>(reshape_mover_options);
+    pipeline.AddPass<AlgebraicSimplifier>(algsimp_options);
+  }();
+
   // The reshapes and transposes can possibly be eliminated using
   // AlgebraicSimplifier. ConvertMover and ReshapeMover fight with each other.
   // ConvertMover wants to move some converts down the graph, but ReshapeMover
@@ -232,6 +241,8 @@ std::optional<bool> CanShareBufferHint(const HloInstruction* user,
         return user_index.size() == 1 && user_index[0] == 0;
       }
       return false;
+    case HloOpcode::kFusion:
+      return GpuCompiler::FusionCanShareBufferHint(user, operand, user_index);
     default:
       return std::nullopt;
   }

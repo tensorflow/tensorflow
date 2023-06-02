@@ -786,6 +786,14 @@ class TFLiteConverterBase:
           "saved_model_exported_names": self._saved_model_exported_names,
       })
 
+    if self._experimental_quantization_options:
+      logging.warning(
+          "Configs from custom methods in experimental_quantization_options"
+          " may not produce a valid tflite model. Note that currently this"
+          " option only supports StableHLO path. Setting this option in TFLite"
+          " path will be a no-op."
+      )
+
     return args
 
   def _contains_function_with_implements_attr(self, saved_model_proto):

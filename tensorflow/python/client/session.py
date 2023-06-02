@@ -39,9 +39,11 @@ from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
+
 
 _python_session_create_counter = monitoring.Counter(
     '/tensorflow/api/python/session_create_counter',
@@ -104,7 +106,7 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
 # feeds of one or more tensors and their corresponding values: `feed_fn1` is
 # used to feed a run, `feed_fn2` to set up a partial run.
 #
-# TODO(mdevin): We could reimplement these as specialized _FeedMapper
+# TODO(touts): We could reimplement these as specialized _FeedMapper
 # implementations after we refactor the feed handling code to use them.
 #
 # Eventually, this registration could be opened up to support custom Tensor
@@ -263,7 +265,7 @@ class _FetchMapper(object):
       raise TypeError(f'Argument `fetch` = {fetch} has invalid type '
                       f'"{type(fetch).__name__}". Cannot be None')
     elif isinstance(fetch, (list, tuple)):
-      # NOTE(mdevin): This is also the code path for namedtuples.
+      # NOTE(touts): This is also the code path for namedtuples.
       return _ListFetchMapper(fetch)
     elif isinstance(fetch, collections_abc.Mapping):
       return _DictFetchMapper(fetch)
@@ -467,7 +469,7 @@ class _FetchHandler(object):
   containing the corresponding results.
   """
 
-  # TODO(mdevin): Make this class also take care of destructuring the feed
+  # TODO(touts): Make this class also take care of destructuring the feed
   # dict instead of doing it in the callers.
 
   def __init__(self, graph, fetches, feeds, feed_handles=None):
@@ -978,8 +980,18 @@ class BaseSession(SessionInterface):
         tf_session.TF_DeleteBuffer(options_ptr)
     return result
 
+  @deprecation.deprecated(
+      '2023-06-01',
+      'This function is deprecated and we do not expect adding new'
+      'functionality to it. Please do not have your code depending'
+      'on this function.',
+  )
   def partial_run(self, handle, fetches, feed_dict=None):
     """Continues the execution with more feeds and fetches.
+
+    NOTE: This function is deprecated and we do not expect adding new
+    functionality to it. Please do not have your code depending on this
+    function.
 
     This is EXPERIMENTAL and subject to change.
 
@@ -1022,11 +1034,21 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses on error.
     """
-    # TODO(mdevin): Support feeding and fetching the same tensor.
+    # TODO(touts): Support feeding and fetching the same tensor.
     return self._run(handle, fetches, feed_dict, None, None)
 
+  @deprecation.deprecated(
+      '2023-06-01',
+      'This function is deprecated and we do not expect adding new'
+      'functionality to it. Please do not have your code depending'
+      'on this function.',
+  )
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up a graph with feeds and fetches for partial run.
+
+    NOTE: This function is deprecated and we do not expect adding new
+    functionality to it. Please do not have your code depending on this
+    function.
 
     This is EXPERIMENTAL and subject to change.
 
@@ -1085,7 +1107,7 @@ class BaseSession(SessionInterface):
           raise e
 
     # Validate and process fetches.
-    # TODO(mdevin): Support feeding and fetching the same tensor.
+    # TODO(touts): Support feeding and fetching the same tensor.
     fetch_handler = _FetchHandler(self._graph, fetches, {})
 
     # Set up a graph with feeds and fetches for partial run.
@@ -1389,7 +1411,7 @@ class BaseSession(SessionInterface):
           node_def = op.node_def
         except KeyError:
           pass
-      message = error_interpolation.interpolate(message, self._graph)
+      message = error_interpolation.interpolate_graph(message, self._graph)
       if 'only supports NHWC tensor format' in message:
         message += ('\nA possible workaround: Try disabling Grappler optimizer'
                     '\nby modifying the config for creating the session eg.'

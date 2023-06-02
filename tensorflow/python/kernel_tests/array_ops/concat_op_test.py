@@ -414,7 +414,7 @@ class ConcatOpTest(test.TestCase):
               x0 = np.random.randn(*(shape0 + (n0,) + shape1))
               x1 = np.random.randn(*(shape0 + (n1,) + shape1))
               correct = np.concatenate([x0, x1], axis=axis)
-              # TODO(geoffreyi): Make tf.concat handle map, then drop list().
+              # TODO(irving): Make tf.concat handle map, then drop list().
               xs = list(map(constant_op.constant, [x0, x1]))
               c = array_ops.concat(xs, axis)
               self.assertAllEqual(self.evaluate(c), correct)
@@ -795,6 +795,18 @@ class ConcatOffsetTest(test.TestCase):
       self.evaluate(
           x_concat
       )  # This test is only meant to check the creation is not crashed
+
+  def testInt64Shape(self):
+    with test_util.use_gpu():
+      cdim = constant_op.constant(1, dtypes.int32)
+      s0 = constant_op.constant([2, 5000000000, 5], dtypes.int64)
+      s1 = constant_op.constant([2, 7, 5], dtypes.int64)
+      s2 = constant_op.constant([2, 20, 5], dtypes.int64)
+      off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
+      ans = self.evaluate(off)
+      self.assertAllEqual(
+          ans, [[0, 0, 0], [0, 5000000000, 0], [0, 5000000007, 0]])
+      self.assertEqual(ans[0].dtype, dtypes.int64)
 
 
 if __name__ == "__main__":

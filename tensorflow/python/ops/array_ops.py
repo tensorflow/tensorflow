@@ -18,6 +18,7 @@
 import numbers
 import numpy as np
 
+from tensorflow.core.config import flags
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
@@ -589,8 +590,10 @@ def broadcast_static_shape(shape_x, shape_y):
 
 @tf_export("shape", v1=[])
 @dispatch.add_dispatch_support
-def shape_v2(input, out_type=dtypes.int32, name=None):
+def shape_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
+  # TODO(b/274626120) Update `tf_shape_default_int64` comment when it is better
+  # supported.
   """Returns a tensor containing the shape of the input tensor.
 
   See also `tf.size`, `tf.rank`.
@@ -630,18 +633,25 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   Args:
     input: A `Tensor` or `SparseTensor`.
     out_type: (Optional) The specified output type of the operation (`int32` or
-      `int64`). Defaults to `tf.int32`.
+      `int64`). Defaults to `tf.int32`. (Note: there is an experimental
+      flag, `tf_shape_default_int64` that changes the default to `tf.int64`.
+      This is an unsupported, experimental setting that causes known breakages.)
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape(input, name, out_type)
 
 
 @tf_export(v1=["shape"])
 @dispatch.add_dispatch_support
-def shape(input, name=None, out_type=dtypes.int32):
+def shape(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
@@ -663,6 +673,11 @@ def shape(input, name=None, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape_internal(input, name, optimize=True, out_type=out_type)
 
 
@@ -5691,7 +5706,10 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     # grid of size B1 x B2.
     batch_dim_list = array_ops_stack.unstack(batch_shape, axis=0)
     dim_ranges = [
-        gen_math_ops.cast(gen_math_ops._range(0, x, 1), indices.dtype)
+        gen_math_ops.cast(
+            gen_math_ops._range(0, gen_math_ops.cast(x, dtypes.int32), 1),
+            indices.dtype,
+        )
         for x in batch_dim_list
     ]
     mesh_list = meshgrid(*dim_ranges, indexing="ij") if dim_ranges else []
@@ -5704,11 +5722,15 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     index_grid_shape = shape(index_grid)
     index_grid = reshape(
         index_grid,
-        concat([
-            index_grid_shape[:1],
-            ones(index_internal_ndims, dtype=dtypes.int32), index_grid_shape[1:]
-        ],
-               axis=0))
+        concat(
+            [
+                index_grid_shape[:1],
+                ones(index_internal_ndims, dtype=index_grid_shape.dtype),
+                index_grid_shape[1:],
+            ],
+            axis=0,
+        ),
+    )
     tile_shape = concat(((1,), indices_internal_shape, (1,)), axis=0)
     index_grid = tile(index_grid, multiples=tile_shape)
     # index_grid now has shape [(B1.B2), i1, ..., iK, 2]

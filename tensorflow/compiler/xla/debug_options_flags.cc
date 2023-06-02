@@ -90,7 +90,11 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_allow_excess_precision(true);
   opts.set_xla_force_host_platform_device_count(1);
   opts.set_xla_gpu_all_reduce_combine_threshold_bytes(30 * 1024 * 1024);
+  opts.set_xla_gpu_all_gather_combine_threshold_bytes(1024 * 1024 * 1024);
+  opts.set_xla_gpu_reduce_scatter_combine_threshold_bytes(30 * 1024 * 1024);
   opts.set_xla_gpu_enable_async_all_reduce(true);
+  opts.set_xla_gpu_enable_reassociation_for_converted_ar(true);
+
   opts.set_xla_cpu_enable_xprof_traceme(false);
   opts.set_xla_gpu_unsafe_fallback_to_driver_on_ptxas_not_found(false);
   opts.set_xla_multiheap_size_constraint_per_heap(-1);
@@ -109,12 +113,14 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_dump_latency_hiding_schedule(false);
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
+  opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
   opts.set_xla_cpu_matmul_tiling_m_dim(8);
   opts.set_xla_cpu_matmul_tiling_n_dim(8);
   opts.set_xla_cpu_matmul_tiling_k_dim(8);
+  opts.set_xla_cpu_enable_mlir_fusion_outlining(true);
   opts.set_xla_cpu_enable_experimental_deallocation(true);
 
   opts.set_xla_partitioning_algorithm(
@@ -124,7 +130,9 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
 
-  // Moving reduce-scatter out of while loops can incrase memory footprint, so
+  opts.set_xla_gpu_enable_dot_strength_reduction(true);
+
+  // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
 
@@ -770,6 +778,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_all_reduce_combine_threshold_bytes(),
       "Size threshold (in bytes) for the GPU all-reduce combiner."));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_all_gather_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_all_gather_combine_threshold_bytes),
+      debug_options->xla_gpu_all_gather_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU all-gather combiner."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_reduce_scatter_combine_threshold_bytes",
+      int64_setter_for(
+          &DebugOptions::set_xla_gpu_reduce_scatter_combine_threshold_bytes),
+      debug_options->xla_gpu_reduce_scatter_combine_threshold_bytes(),
+      "Size threshold (in bytes) for the GPU reduce-scatter combiner."));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_all_reduce_contiguous",
       bool_setter_for(&DebugOptions::set_xla_gpu_all_reduce_contiguous),
       debug_options->xla_gpu_all_reduce_contiguous(),
@@ -798,7 +818,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_collective_inflation_factor(),
       "Inflation factor for collectives. If set to > 1, each XLA/GPU "
       "collective will execute multiple times (will yield incorrect results)"));
-
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_reassociation_for_converted_ar",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_reassociation_for_converted_ar),
+      debug_options->xla_gpu_enable_reassociation_for_converted_ar(),
+      "Enable allreduce reassociation on allreduces that are converted to a "
+      "wider type. "
+      "The reassociated allreduce will be promoted to a wider-typed "
+      "allreduce."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_dump_llvmir",
                 bool_setter_for(&DebugOptions::set_xla_gpu_dump_llvmir),
@@ -957,6 +985,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_enable_latency_hiding_scheduler(),
                 "Enable latency-hiding scheduler for XLA:GPU"));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_pgle_profile_file_or_directory_path",
+      string_setter_for(
+          &DebugOptions::set_xla_gpu_pgle_profile_file_or_directory_path),
+      debug_options->xla_gpu_pgle_profile_file_or_directory_path(),
+      "Directory or file for PGLE profiles in XLA:GPU"));
+  flag_list->push_back(tsl::Flag(
       "xla_gpu_lhs_enable_gpu_async_tracker",
       bool_setter_for(&DebugOptions::set_xla_gpu_lhs_enable_gpu_async_tracker),
       debug_options->xla_gpu_lhs_enable_gpu_async_tracker(),
@@ -984,6 +1018,11 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_dot_strength_reduction",
+      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
+      debug_options->xla_gpu_enable_dot_strength_reduction(),
+      "Enable dot strength reduction-related optimizations on GPU."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more
