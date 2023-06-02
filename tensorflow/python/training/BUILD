@@ -72,6 +72,10 @@ py_library(
         ":deprecated_inclusions_in_training_lib",
     ],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":adadelta",
         ":adagrad",
@@ -129,6 +133,14 @@ py_library(
 py_library(
     name = "training",
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_minigo:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":training_lib",
         "//tensorflow/python/checkpoint",
@@ -821,6 +833,10 @@ py_library(
     name = "saver",
     srcs = ["saver.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":py_checkpoint_reader",
         ":training_util",
@@ -951,6 +967,10 @@ py_library(
     name = "basic_session_run_hooks",
     srcs = ["basic_session_run_hooks.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":session_run_hook",
         ":summary_io",
@@ -973,6 +993,10 @@ py_library(
     name = "session_run_hook",
     srcs = ["session_run_hook.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
@@ -1045,6 +1069,11 @@ py_library(
     name = "training_util",
     srcs = ["training_util.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:cond",
         "//tensorflow/python:dtypes",

@@ -70,6 +70,7 @@ tf_gen_op_wrapper_private_py(
     name = "functional_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -250,6 +251,7 @@ tf_gen_op_wrapper_private_py(
     name = "data_flow_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
         "//tensorflow/python/kernel_tests/control_flow:__pkg__",
@@ -296,6 +298,7 @@ tf_gen_op_wrapper_private_py(
     name = "image_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/image_ops:__pkg__",
         "//tensorflow/python/ops/parallel_for:__pkg__",
@@ -321,6 +324,7 @@ tf_gen_op_wrapper_private_py(
     name = "linalg_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/dtensor:dtensor-internal",
         "//tensorflow/python:__pkg__",
     ],
@@ -475,6 +479,7 @@ tf_gen_op_wrapper_private_py(
     name = "random_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/eager/polymorphic_function:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
@@ -494,6 +499,7 @@ tf_gen_op_wrapper_private_py(
     name = "stateful_random_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/kernel_tests/random:__pkg__",
     ],
@@ -560,6 +566,7 @@ tf_gen_op_wrapper_private_py(
     name = "state_ops_gen",
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/framework:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
@@ -657,6 +664,7 @@ tf_gen_op_wrapper_private_py(
     name = "tpu_ops_gen",
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/tpu:__pkg__",
         "//tensorflow/python/tpu/ops:__pkg__",

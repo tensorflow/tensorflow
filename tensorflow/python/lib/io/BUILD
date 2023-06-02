@@ -38,6 +38,12 @@ py_strict_library(
         "tf_record.py",
     ],
     srcs_version = "PY3",
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_agents:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":_pywrap_file_io",
         ":_pywrap_record_io",

@@ -14,6 +14,10 @@ package(
 
 py_strict_library(
     name = "trackable",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
     deps = [
         ":asset",
         ":autotrackable",
