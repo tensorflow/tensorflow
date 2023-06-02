@@ -52,6 +52,19 @@ cc_library(
 )
 
 cc_library(
+    name = "convolution_ffi",
+    srcs = ["convolution_ffi.cc"],
+    hdrs = ["convolution_ffi.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":convolution",
+        "//tensorflow/compiler/xla/runtime:aot_ffi",
+        "//tensorflow/compiler/xla/runtime:aot_ffi_execution_context",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
+    ],
+)
+
+cc_library(
     name = "convolution_call",
     srcs = ["convolution_call.cc"],
     hdrs = ["convolution_call.h"],
