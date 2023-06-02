@@ -30,14 +30,14 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
-#include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
-#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
-#include "mlir/IR/Matchers.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/ValueRange.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Dialect/Tosa/IR/TosaOps.h"   // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"      // from @llvm-project
+#include "mlir/IR/BuiltinTypes.h"           // from @llvm-project
+#include "mlir/IR/Matchers.h"               // from @llvm-project
+#include "mlir/IR/PatternMatch.h"           // from @llvm-project
+#include "mlir/IR/ValueRange.h"             // from @llvm-project
+#include "mlir/Support/LLVM.h"              // from @llvm-project
+#include "mlir/Support/LogicalResult.h"     // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
@@ -681,7 +681,12 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
 
   Value output;
   if (output_is_qtype && input_lhs_is_qtype && input_rhs_is_qtype) {
-    ShapedType rescale_type = output_type.clone(rewriter.getI32Type());
+    ShapedType rescale_type_output = output_type.clone(rewriter.getI32Type());
+    ShapedType rescale_type_input_left =
+        input_lhs_type.clone(rewriter.getI32Type());
+    ShapedType rescale_type_input_right =
+        input_rhs_type.clone(rewriter.getI32Type());
+
     UniformQuantizedType input_lhs_qtype =
         input_lhs_type.getElementType()
             .dyn_cast<mlir::quant::UniformQuantizedType>();
@@ -743,10 +748,11 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
       Value op1_none_half_scale_intermediate;
       if (output_qtype.getStorageTypeIntegralWidth() == 16) {
         auto tfl_add_lhs_casted = CreateOpAndInfer<tosa::CastOp>(
-            rewriter, op->getLoc(), rescale_type, tfl_add_op.getLhs());
+            rewriter, op->getLoc(), rescale_type_input_left,
+            tfl_add_op.getLhs());
         op1_none_half_scale_intermediate =
             CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
-                rewriter, op->getLoc(), rescale_type,
+                rewriter, op->getLoc(), rescale_type_input_left,
                 tfl_add_lhs_casted.getResult(),
                 getTosaConstTensorSingleI32(rewriter, op, input_shift));
       } else {
@@ -773,10 +779,11 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
       Value op2_none_half_scale_intermediate;
       if (output_qtype.getStorageTypeIntegralWidth() == 16) {
         auto tfl_add_rhs_casted = CreateOpAndInfer<tosa::CastOp>(
-            rewriter, op->getLoc(), rescale_type, tfl_add_op.getRhs());
+            rewriter, op->getLoc(), rescale_type_input_right,
+            tfl_add_op.getRhs());
         op2_none_half_scale_intermediate =
             CreateOpAndInfer<tosa::LogicalLeftShiftOp>(
-                rewriter, op->getLoc(), rescale_type,
+                rewriter, op->getLoc(), rescale_type_input_right,
                 tfl_add_rhs_casted.getResult(),
                 getTosaConstTensorSingleI32(rewriter, op, input_shift));
       } else {
@@ -789,8 +796,9 @@ static LogicalResult matchAndRewriteAddSub(Operation* op,
     }
 
 #endif  // TFLITE_DOUBLE_ROUNDING
-    auto op3_add_op1_op2 = CreateOpAndInfer<TosaOp>(
-        rewriter, op->getLoc(), rescale_type, op1_rescale_lhs, op2_rescale_rhs);
+    auto op3_add_op1_op2 =
+        CreateOpAndInfer<TosaOp>(rewriter, op->getLoc(), rescale_type_output,
+                                 op1_rescale_lhs, op2_rescale_rhs);
     Value op4_rescale_op3 = buildRescaleFromInt32(
         rewriter, op, output_type, op3_add_op1_op2.getResult(),
         output_rescale_scale, output_qtype.getZeroPoint());
