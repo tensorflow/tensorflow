@@ -277,8 +277,7 @@ Status Main(const MainFlags& flags) {
   if (!flags.mlir_components.empty() && flags.mlir_components != "None") {
     for (auto component : absl::StrSplit(flags.mlir_components, ',')) {
       if (component == "HloLowering") {
-        // TODO(ecg): flip to true once the CPU pipeline is updated.
-        codegen_opts.use_xla_runtime = false;
+        codegen_opts.use_xla_runtime = true;
       }
     }
   }
