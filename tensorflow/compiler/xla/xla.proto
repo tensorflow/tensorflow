@@ -436,8 +436,7 @@ message DebugOptions {
   // 0:   Disable CUDA graph capture.
   // 1:   Enable cuda graphs for fusions and memcpy (safest ones).
   // 2:   Enable cuda graphs for gemms and convs.
-  // 3:   Enable cuda graphs for collectives.
-  // 4:   Enable cuda graph parallelization.
+  // 3+   Enable cuda graphs for collectives.
   //
   // Default: 0.
   int32 xla_gpu_cuda_graph_level = 194;
