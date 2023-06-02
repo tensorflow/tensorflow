@@ -160,6 +160,8 @@ class Mesh {
     return local_device_ids_.empty() && !global_device_ids_.empty();
   }
 
+  StatusOr<Mesh> host_mesh() const { return ToDeviceType("CPU"); }
+
   // Device information methods.
   std::string device_type() const;
   // Takes an index in the flattened list of devices and returns a location
@@ -426,6 +428,9 @@ class Layout {
 // dimension returns an error rather than a layout.
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
                                     const Layout& layout_b);
+
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts);
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts);
 
 }  // namespace dtensor
 }  // namespace tensorflow

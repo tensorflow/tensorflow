@@ -62,19 +62,20 @@ class InvalidIfrtCompiler final
     : public llvm::RTTIExtends<InvalidIfrtCompiler, ifrt::Compiler> {
  public:
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> Compile(
-      mlir::ModuleOp mlir_module, CompileOptions options) override {
+      mlir::ModuleOp mlir_module,
+      std::unique_ptr<ifrt::CompileOptions> options) override {
     return Unimplemented("Compile not implemented.");
   }
 
   StatusOr<std::unique_ptr<ifrt::LoadedExecutable>> DeserializeLoadedExecutable(
       absl::string_view serialized,
-      std::optional<CompileOptions> options) override {
+      std::unique_ptr<ifrt::DeserializeOptions> options) override {
     return Unimplemented("DeserializeLoadedExecutable not implemented.");
   }
 
   static char ID;  // NOLINT
 };
-char InvalidIfrtCompiler::ID = 0;
+char InvalidIfrtCompiler::ID = 0;  // NOLINT
 
 class CompileOnlyIfRtClient final
     : public llvm::RTTIExtends<CompileOnlyIfRtClient, ifrt::Client> {
@@ -145,17 +146,6 @@ class CompileOnlyIfRtClient final
         "LookupDevice not available with compile-only client.");
   }
 
-  StatusOr<ifrt::ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    return Unimplemented(
-        "CreateDeviceToHostChannelHandle not available with compile-only "
-        "client.");
-  }
-  StatusOr<ifrt::ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    return Unimplemented(
-        "CreateHostToDeviceChannelHandle not available with compile-only "
-        "client.");
-  }
-
   ifrt::Compiler* GetDefaultCompiler() override { return &default_compiler_; }
 
   static char ID;  // NOLINT
@@ -170,7 +160,7 @@ class CompileOnlyIfRtClient final
   std::vector<PjRtDevice*> devices_;
 };
 
-char CompileOnlyIfRtClient::ID = 0;
+char CompileOnlyIfRtClient::ID = 0;  // NOLINT
 
 class CompileOnlyPyClient : public PyClient {
  public:

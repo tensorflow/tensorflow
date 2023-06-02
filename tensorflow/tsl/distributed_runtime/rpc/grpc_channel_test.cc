@@ -58,8 +58,12 @@ TEST(GrpcChannelTest, IsSameAddressSpace) {
 
 TEST(GrpcChannelTest, HostPorts) {
   GrpcChannelSpec spec;
-  TF_EXPECT_OK(spec.AddHostPortsJob(
-      "mnist", {"a:1", "b:2", "c:3", "d:4", "e:5", "f:6"}));
+  TF_ASSERT_OK(spec.AddHostPortsJob("mnist", {{0, "a:1"},
+                                              {1, "b:2"},
+                                              {2, "c:3"},
+                                              {3, "d:4"},
+                                              {4, "e:5"},
+                                              {5, "f:6"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   std::unique_ptr<GrpcChannelCache> cc(
@@ -68,7 +72,6 @@ TEST(GrpcChannelTest, HostPorts) {
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:6"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
 
   {
     // NOTE(mrry): The gRPC channel doesn't expose the target, so we
@@ -122,7 +125,8 @@ TEST(GrpcChannelTest, HostPorts) {
 
 TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
   GrpcChannelSpec spec;
-  TF_EXPECT_OK(spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3"}));
+  TF_EXPECT_OK(
+      spec.AddHostPortsJob("mnist", {{0, "a:1"}, {1, "b:2"}, {2, "c:3"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   tensorflow::RPCOptions rpc_options;
@@ -133,7 +137,6 @@ TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:3"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
 
   {
     // NOTE(mrry): The gRPC channel doesn't expose the target, so we
@@ -202,8 +205,10 @@ TEST(GrpcChannelTest, HostPortsMultiChannelPerTarget) {
 
 TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
   GrpcChannelSpec spec;
-  TF_EXPECT_OK(spec.AddHostPortsJob("mnist", {"a:1", "b:2", "c:3"}));
-  TF_EXPECT_OK(spec.AddHostPortsJob("mnist2", {"a:1", "b:2", "c:3"}));
+  TF_EXPECT_OK(
+      spec.AddHostPortsJob("mnist", {{0, "a:1"}, {1, "b:2"}, {2, "c:3"}}));
+  TF_EXPECT_OK(
+      spec.AddHostPortsJob("mnist2", {{0, "a:1"}, {1, "b:2"}, {2, "c:3"}}));
   ChannelCreationFunction channel_func =
       ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
   tensorflow::RPCOptions rpc_options;
@@ -214,7 +219,6 @@ TEST(GrpcChannelTest, HostPortsMultiGrpcMultiChannelPerTarget) {
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("invalid_target"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:other/replica:0/task:0"));
   EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:0/task:3"));
-  EXPECT_EQ(nullptr, cc->FindWorkerChannel("/job:mnist/replica:1/task:0"));
   EXPECT_NE(nullptr, cc->FindWorkerChannel("/job:mnist2/replica:0/task:0"));
 
   {

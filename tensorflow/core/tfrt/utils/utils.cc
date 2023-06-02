@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
@@ -21,7 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/device.h"
-#include "tensorflow/core/tfrt/eager/virtual_device.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tensorflow/core/tpu/virtual_device.h"
 #include "tfrt/bef/bef_encoding.h"  // from @tf_runtime
@@ -98,14 +99,6 @@ void CreateDummyTfDevices(
   }
 }
 
-void AddDummyTfrtDevices(const std::vector<std::string>& device_names,
-                         HostContext* host_ctx) {
-  for (const auto& name : device_names) {
-    host_ctx->GetDeviceManager()->MaybeAddDevice(
-        TakeRef(new tfrt::VirtualDevice(name)));
-  }
-}
-
 StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
     const tensorflow::tfrt_stub::Runtime& runtime, const tfrt::BefBuffer& bef) {
   auto* core_runtime = runtime.core_runtime();
@@ -122,6 +115,10 @@ StatusOr<RCReference<tfrt::BEFFile>> CreateBefFileFromBefBuffer(
 int64_t GetUniqueInt() {
   static std::atomic<int64_t> id(0);
   return id.fetch_add(1, std::memory_order_relaxed);
+}
+
+uint64_t GetCpuClockCycle() {
+  return tensorflow::profile_utils::CpuUtils::GetCurrentClockCycle();
 }
 
 }  // namespace tfrt

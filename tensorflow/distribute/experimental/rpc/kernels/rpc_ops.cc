@@ -25,6 +25,7 @@ limitations under the License.
 #include "grpcpp/impl/codegen/status.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 // Needed for encoding and decoding ResourceDeleter Variant.
@@ -761,7 +762,7 @@ void RpcCheckStatusOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         ctx->SetStatus(tensorflow::errors::NotFound(
             absl::StrCat("Future resource no longer exists. Please make sure "
                          "resource is not already deleted.")));
@@ -795,7 +796,7 @@ void RpcGetValueOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   {
     auto status = LookupResource(ctx, handle, &future_resource);
     if (!status.ok()) {
-      if (errors::IsNotFound(status)) {
+      if (absl::IsNotFound(status)) {
         ctx->SetStatus(tensorflow::errors::NotFound(
             absl::StrCat("Future resource no longer exists. Please ensure "
                          "resource is not already deleted.")));

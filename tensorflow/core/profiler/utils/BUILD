@@ -137,10 +137,6 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:internal",
-        "//tensorflow/tsl/profiler/utils:__pkg__",
-    ],
     deps = ["//tensorflow/tsl/profiler/utils:timespan"],
 )
 
@@ -278,10 +274,6 @@ cc_library(
     srcs = ["derived_timeline.cc"],
     hdrs = ["derived_timeline.h"],
     copts = tf_profiler_copts(),
-    visibility = [
-        "//tensorflow/core/profiler:internal",
-        "//tensorflow/tsl/profiler/utils:__pkg__",
-    ],
     deps = [
         ":gpu_event_stats",
         ":group_events",
@@ -512,4 +504,10 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
+)
+
+cc_library(
+    name = "hlo_module_utils",
+    hdrs = ["hlo_module_utils.h"],
+    deps = ["//tensorflow/compiler/xla/hlo/ir:hlo"],
 )

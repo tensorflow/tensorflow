@@ -47,6 +47,8 @@ class ScopedAnnotationStack {
   static constexpr size_t kInvalidActivity = static_cast<size_t>(-1);
 
  public:
+  static bool IsEnabled() { return AnnotationStack::IsEnabled(); }
+
   static int64_t ActivityStart(std::string name) {
 #if !defined(IS_MOBILE_PLATFORM)
 #if GOOGLE_CUDA

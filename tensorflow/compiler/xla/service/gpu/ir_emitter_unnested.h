@@ -201,8 +201,9 @@ class IrEmitterUnnested : public IrEmitter {
   Status EmitCublasLtMatmulThunk(mlir::Operation* op);
   Status EmitCublasLtMatmulThunkF8(mlir::Operation* op);
   Status EmitConvolutionReorderThunk(mlir::Operation* op);
-  Status EmitTritonFusion(mlir::Operation* op,
-                          tensorflow::AutotuneResult::TritonGemmKey& config);
+  Status EmitTritonFusion(
+      mlir::Operation* op,
+      const tensorflow::AutotuneResult::TritonGemmKey& config);
 #endif  // GOOGLE_CUDA
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status EmitCholeskyThunk(mlir::Operation* op);
@@ -226,8 +227,8 @@ class IrEmitterUnnested : public IrEmitter {
 
   template <typename NcclThunkType, typename OpT>
   Status EmitNcclThunk(mlir::Operation* op);
-  template <typename NcclThunkType, typename OpT>
-  Status EmitNcclAsyncDone(mlir::Operation* op);
+  template <typename OpT>
+  Status EmitNcclAsyncDone(Thunk::Kind kind, mlir::Operation* op);
 
   template <typename ThunkType, typename OpT>
   Status EmitReplicaOrPartitionId(mlir::Operation* op);

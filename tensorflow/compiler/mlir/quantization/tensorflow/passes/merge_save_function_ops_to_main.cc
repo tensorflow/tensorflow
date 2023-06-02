@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/constants.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/manipulate_model_attr.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/passes/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
@@ -34,8 +35,6 @@ using ::mlir::tf_executor::GraphOp;
 using ::mlir::tf_executor::IslandOp;
 using ::mlir::tf_saved_model::kTfSavedModelIndexPathAttr;
 using ::tensorflow::kImportModelDefaultGraphFuncName;
-
-constexpr StringRef kTfEntryFunctionAttr = "tf.entry_function";
 
 class MergeSaveFunctionOpsToMainPass
     : public PassWrapper<MergeSaveFunctionOpsToMainPass,
@@ -130,28 +129,7 @@ BlockArgument CreateFilePrefixArg(func::FuncOp main_func_op) {
 
   // Append the "__tf_file_prefix:0" to the "tf.entry_function" attribute's
   // item keyed by "inputs".
-  auto entry_function_attr =
-      main_func_op->getAttrOfType<mlir::DictionaryAttr>(kTfEntryFunctionAttr);
-
-  SmallVector<NamedAttribute> new_entry_function_attr_items;
-  for (NamedAttribute entry_function_attr_item : entry_function_attr) {
-    if (entry_function_attr_item.getName() == "inputs") {
-      auto inputs_attr = entry_function_attr_item.getValue().cast<StringAttr>();
-      const auto new_inputs_value_attr = Twine(inputs_attr.getValue())
-                                             .concat(kTfFilePrefix)
-                                             .concat(":0")
-                                             .str();
-      new_entry_function_attr_items.emplace_back(
-          builder.getNamedAttr(builder.getStringAttr("inputs"),
-                               builder.getStringAttr(new_inputs_value_attr)));
-    } else {
-      new_entry_function_attr_items.emplace_back(entry_function_attr_item);
-    }
-  }
-
-  main_func_op->setAttr(
-      /*name=*/kTfEntryFunctionAttr,
-      /*value=*/builder.getDictionaryAttr(new_entry_function_attr_items));
+  AddEntryFunctionInput(Twine(kTfFilePrefix).concat(":0").str(), main_func_op);
 
   return new_file_prefix_arg;
 }

@@ -348,5 +348,25 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, IotaBF16) {
   RunTest(hlo_text, {});
 }
 
+XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDotBF16) {
+  const char* const hlo_text = R"(
+  HloModule matmul
+
+  ENTRY main {
+    x = bf16[8,16] parameter(0)
+    y = bf16[8,16,32] parameter(1)
+    ROOT dot = bf16[8,32] dot(x, y), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  }
+  )";
+  HloModuleConfig config;
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_enable_dot_strength_reduction(false);
+  config.set_debug_options(debug_options);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-5, 1e-5}));
+}
+
 }  // namespace
 }  // namespace xla

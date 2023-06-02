@@ -234,6 +234,31 @@ class FftLowering : public OpRewritePattern<mhlo::FftOp> {
   };
 };
 
+class InfeedLowering : public OpRewritePattern<mhlo::InfeedOp> {
+  using OpRewritePattern<mhlo::InfeedOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(mhlo::InfeedOp op,
+                                PatternRewriter& rewriter) const override {
+    ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+
+    llvm::SmallVector<Value> dsts;
+    for (const auto& type : op.getResultTypes()) {
+      if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+        dsts.push_back(b.create<tensor::EmptyOp>(
+            op.getLoc(), ranked_type.getShape(), ranked_type.getElementType()));
+      } else {
+        // Last element of result types is expected to be of token type.
+        dsts.push_back(op.getToken());
+      }
+    }
+
+    rewriter.replaceOpWithNewOp<xla_cpu::InfeedOp>(
+        op, op.getResultTypes(), dsts, op.getInfeedConfigAttr(),
+        op.getLayoutAttr());
+    return success();
+  };
+};
+
 class OutfeedLowering : public OpRewritePattern<mhlo::OutfeedOp> {
   using OpRewritePattern<mhlo::OutfeedOp>::OpRewritePattern;
 
@@ -406,7 +431,8 @@ void LegalizeLibraryOpsPass::runOnOperation() {
                   ConvolutionLowering, FftLowering,
                   IdLowering<mhlo::PartitionIdOp, xla_cpu::PartitionIdOp>,
                   IdLowering<mhlo::ReplicaIdOp, xla_cpu::ReplicaIdOp>,
-                  OutfeedLowering, RngBitGeneratorLowering>(ctx);
+                  InfeedLowering, OutfeedLowering, RngBitGeneratorLowering>(
+      ctx);
 
   if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns)))) {
     return signalPassFailure();

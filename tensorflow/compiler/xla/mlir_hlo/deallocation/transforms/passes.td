@@ -27,6 +27,16 @@ def SplitAllocTensorsPass :
   let dependentDialects = ["::mlir::bufferization::BufferizationDialect"];
 }
 
+def AnnotateDeallocationPass :
+    Pass<"hlo-deallocation-annotation", "mlir::ModuleOp"> {
+  let summary = "Annotate ops with deallocation debug information.";
+  let description = [{
+    Adds attributes to annotate ops with debug information about the
+    deallocation analysis.
+  }];
+  let constructor = "::mlir::deallocation::createDeallocationAnnotationPass()";
+}
+
 def DeallocatePass : Pass<"hlo-deallocate", "mlir::ModuleOp"> {
   let summary = "Deallocate buffers by inserting `deallocation.retain` ops.";
   let description = [{

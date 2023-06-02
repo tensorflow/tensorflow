@@ -121,6 +121,11 @@ py_strict_library(
         "timeline.py",
     ],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/mlperf:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":_pywrap_device_lib",
         "//tensorflow/core:protos_all_py",
@@ -154,6 +159,10 @@ py_strict_library(
     name = "device_lib",
     srcs = ["device_lib.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/cleverhans:__subpackages__",
+    ],
     deps = [
         ":_pywrap_device_lib",
         "//tensorflow/core:protos_all_py",
@@ -247,7 +256,11 @@ py_strict_library(
     name = "session",
     srcs = ["session.py"],
     srcs_version = "PY3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":pywrap_tf_session",
         "//tensorflow/core:protos_all_py",
@@ -265,6 +278,7 @@ py_strict_library(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training/experimental:mixed_precision_global_state",
         "//tensorflow/python/util:compat",
+        "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",

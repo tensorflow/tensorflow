@@ -44,25 +44,28 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
-// Returns a numpy-style format descriptor string for `type`.
-StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+// Returns a Python buffer protocol (PEP 3118) format descriptor string for
+// `type`. Return nullptr if there is no suitable choice of format string.
+const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
 StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
 
 struct NumpyScalarTypes {
   pybind11::object np_bool;
+  std::optional<pybind11::object> np_int4;
   pybind11::object np_int8;
   pybind11::object np_int16;
   pybind11::object np_int32;
   pybind11::object np_int64;
+  std::optional<pybind11::object> np_uint4;
   pybind11::object np_uint8;
   pybind11::object np_uint16;
   pybind11::object np_uint32;
   pybind11::object np_uint64;
   pybind11::object np_bfloat16;
   pybind11::object np_float8_e4m3fn;
-  pybind11::object np_float8_e4m3b11fnuz;
+  std::optional<pybind11::object> np_float8_e4m3b11fnuz;
   pybind11::object np_float8_e5m2;
   pybind11::object np_float16;
   pybind11::object np_float32;

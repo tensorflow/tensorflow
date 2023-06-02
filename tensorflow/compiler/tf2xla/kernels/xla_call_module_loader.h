@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -52,12 +53,25 @@ class XlaCallModuleLoader {
   // cause lifetime issues.
   tsl::Status RefineDynamicShapes(llvm::ArrayRef<xla::Shape> input_shapes);
 
-  // Validate that the module represents a statically-shaped StableHLO program,
+  // Validates that the module only contains ops from valid dialects.
+  tsl::Status ValidateDialect();
+
+  // Validates that the module represents a statically-shaped StableHLO program,
   // otherwise all sorts of weirdness might happen in the HLO exporter which is
   // much easier to detect here.
-  tsl::Status ValidateModule();
+  tsl::Status ValidateStaticShapes();
 
+  // Lowers the StableHLO module to MHLO in place.
+  absl::Status LowerModuleToMhlo();
+
+  // Lowers the MHLO module to XlaComputation and returns it.
+  //
+  // REQUIRES: `LowerModuleToMhlo()` is called beforehand.
   tsl::StatusOr<xla::XlaComputation> ToXlaComputation();
+
+  // Returns the deserialized stablehlo module.
+  mlir::ModuleOp module() & { return *module_; }
+  mlir::OwningOpRef<mlir::ModuleOp> module() && { return std::move(module_); }
 
  private:
   XlaCallModuleLoader() = default;

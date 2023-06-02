@@ -183,6 +183,7 @@ class ShapeVerifier : public DfsHloVisitor {
   Status HandleRngGetAndUpdateState(HloInstruction*) override;
   Status HandleReverse(HloInstruction* reverse) override;
   Status HandleSort(HloInstruction* hlo) override;
+  Status HandleTopK(HloInstruction* hlo) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -250,7 +251,7 @@ class ShapeVerifier : public DfsHloVisitor {
   // Helpers that switch on layout_sensitive_.
   bool ShapesSame(const Shape& a, const Shape& b,
                   bool minor_to_major_only = false,
-                  bool ignore_memory_space = false) {
+                  bool ignore_memory_space = false, bool ignore_tiles = false) {
     if (!opts_.layout_sensitive) {
       return ShapeUtil::Compatible(a, b);
     }
@@ -260,6 +261,9 @@ class ShapeVerifier : public DfsHloVisitor {
     }
     if (minor_to_major_only) {
       equal.MinorToMajorOnlyInLayout();
+    }
+    if (ignore_tiles) {
+      equal.IgnoreTilesInLayout();
     }
     return equal(a, b);
   }

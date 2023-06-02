@@ -16,6 +16,11 @@
       2.13 may be used when it is necessary to determine if a value is
       specifically a symbolic tensor.
 
+*   `tf.compat.v1.Session`
+    * `tf.compat.v1.Session.partial_run` and
+      `tf.compat.v1.Session.partial_run_setup` will be deprecated in the
+      next release.
+
 # Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -33,6 +38,22 @@
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
 * <IF A CHANGE CLOSES A GITHUB ISSUE, IT SHOULD BE DOCUMENTED HERE>
 * <NOTES SHOULD BE GROUPED PER AREA>
+
+* `tf.config.experimental.enable_tensor_float_32_execution`
+    * Disabling TensorFloat-32 execution now causes TPUs to use float32
+      precision for float32 matmuls and other ops. TPUs have always used
+      bfloat16 precision for certain ops, like matmul, when such ops had float32
+      inputs. Now, disabling TensorFloat-32 by calling
+      `tf.config.experimental.enable_tensor_float_32_execution(False)` will
+      cause TPUs to use float32 precision for such ops instead of bfloat16.
+
+*  `tf.experimental.dtensor`
+    * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
+      relayouting a tensor according to the layout of another tensor. 
+    * Added `dtensor.get_default_mesh`, for retrieving the current default 
+      mesh under the dtensor context.
+
+*   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
 # Thanks to our Contributors
 
@@ -185,6 +206,9 @@ This release contains contributions from many people at Google, as well as:
         `dataset = dataset.shuffle(dataset.cardinality())`. This will load the
         full dataset into memory so that it can be shuffled, so make sure to
         only use this with datasets of filenames or other small datasets.
+    *   Added a new `tf.data.experimental.pad_to_cardinality` transformation
+        which pads a dataset with zero elements up to a specified cardinality.
+        This is useful for avoiding partial batches while not dropping any data.
 
 *   `tf.math`
 
@@ -243,6 +267,8 @@ This release contains contributions from many people at Google, as well as:
 
 *   `tf.lite`:
     *   Add UINT32 support to tfl.pack
+    *   Add INT64 support to tfl.range
+    *   Add UINT32 support to tfl.concatenation
 
 ## Thanks to our Contributors
 

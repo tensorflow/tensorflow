@@ -1570,7 +1570,7 @@ DTensorDevice::DTensorOperationToModule(
             << ". DTensor is (re-)using its SPMD transformation.";
     result.module = **cached_mlir_module;
     return result;
-  } else if (function_def) {
+  } else if (function_def || VLOG_IS_ON(2)) {
     LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
               << ". DTensor is (re-)computing its SPMD transformation.";
   }
@@ -1595,8 +1595,9 @@ DTensorDevice::DTensorOperationToModule(
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> mlir_module_ref,
       pass_runner_.ImportGraphToMlir(
-          device_set, doperation.is_func(), doperation.default_mesh, *flib_def,
-          *result.graph, result.doperation_cache_key));
+          device_set, absl::string_view{doperation.name}, doperation.is_func(),
+          doperation.default_mesh, *flib_def, *result.graph,
+          result.doperation_cache_key));
 
   tsl::core::WeakPtr<ExecutableManager<mlir::OwningOpRef<mlir::ModuleOp>>>
       manager{module_manager_.get()};
@@ -1638,11 +1639,9 @@ void DTensorDevice::ModuleToExecutionFunctions(
     VLOG(2) << "DTensor cache key lookup found for " << doperation.name
             << ". DTensor is (re-)using its ExecutionFunctions.";
     return;
-  } else {
-    if (doperation.is_func()) {
-      LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
-                << ". DTensor is (re-)computing its ExecutionFunctions.";
-    }
+  } else if (doperation.is_func() || VLOG_IS_ON(2)) {
+    LOG(INFO) << "DTensor cache key lookup missed for " << doperation.name
+              << ". DTensor is (re-)computing its ExecutionFunctions.";
   }
 
   // Transforms ModuleOp and extracts ExecutionFunctions from lowered ModuleOp.

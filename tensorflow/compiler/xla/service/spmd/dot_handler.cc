@@ -472,6 +472,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   auto check_users_sharding = [original_hlo, &call_graph,
                                &options](const HloInstruction* to_loop_over) {
     if (options.skip_checking_windowed_einsum_users) {
+      VLOG(2) << "skip_checking_windowed_einsum_users";
       return true;
     }
     if (to_loop_over->users().size() <= 1) {
@@ -605,18 +606,25 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
           ShapeUtil::ByteSizeOf(dot->shape()), collective->replica_groups());
     }
 
-    VLOG(2) << "collective: " << collective->ToString() << "\n"
-            << "dot: " << dot->ToString() << "\n"
-            << "num_partitions: " << num_partitions << "\n"
-            << "computation_time_in_ms: " << computation_time_in_ms
-            << " communication_time_in_ms: " << communication_time_in_ms;
     double extra_collective_permute_time = 0.0;
     if (communication_time_in_ms != 0.0) {
       extra_collective_permute_time =
           communication_time_in_ms *
           visitor->GetCommunicationMultiplier(collective->replica_groups()) *
           2 / num_partitions;
+      VLOG(2) << "GetCommunicationMultiplier: "
+              << visitor->GetCommunicationMultiplier(
+                     collective->replica_groups());
     }
+    VLOG(2) << "collective: " << collective->ToString() << "\n"
+            << "dot: " << dot->ToString() << "\n"
+            << "num_partitions: " << num_partitions << "\n"
+            << "computation_time_in_ms: " << computation_time_in_ms
+            << " communication_time_in_ms: " << communication_time_in_ms
+            << " extra_collective_permute_time: "
+            << extra_collective_permute_time << "\n"
+            << "lhr_needs_ag: " << lhs_needs_ag
+            << " rhs_needs_ag: " << rhs_needs_ag;
     if (communication_time_in_ms > 1e-5 &&
         (std::max(
              computation_time_in_ms,
@@ -624,6 +632,7 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
                                             collective->replica_groups())) +
          extra_collective_permute_time) >=
             (computation_time_in_ms + communication_time_in_ms)) {
+      VLOG(2) << "Overhead outweighs benefit. Skipping windowed einsum";
       return true;
     } else {
       return false;

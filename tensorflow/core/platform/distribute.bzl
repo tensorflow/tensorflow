@@ -20,6 +20,7 @@ def distribute_py_test(
         disable_v3 = False,
         disable_mlir_bridge = True,
         disable_tpu_use_tfrt = None,
+        test_rule = native.py_test,
         **kwargs):
     """Generates py_test targets for CPU and GPU.
 
@@ -62,6 +63,7 @@ def distribute_py_test(
         shard_count = shard_count,
         tags = tags,
         args = args,
+        test_rule = test_rule,
         **kwargs
     )
 
@@ -81,6 +83,7 @@ def distribute_py_test(
             disable_v3 = disable_v3,
             disable_mlir_bridge = disable_mlir_bridge,
             disable_tfrt = disable_tpu_use_tfrt,
+            test_rule = test_rule,
         )
 
 def distribute_py_strict_test(**kwargs):

@@ -11,7 +11,6 @@ package_group(
     packages = [
         "//learning/brain/experimental/tfrt/native_lowering/kernels/...",
         "//tensorflow/core/runtime_fallback/...",
-        "//tensorflow/core/tfrt/eager/backends/tpu/...",
         "//tensorflow/core/tfrt/utils/...",
     ],
 )

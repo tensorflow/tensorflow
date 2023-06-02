@@ -235,10 +235,11 @@ xla_cc_test(
     srcs = ["hlo_extractor_test.cc"],
     deps = [
         ":hlo_extractor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest",
     ],
 )
 

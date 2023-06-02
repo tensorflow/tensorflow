@@ -2481,6 +2481,21 @@ TEST_F(ShapeInferenceTest, SortManyValues) {
       ShapeUtil::MakeTupleShape({keys, values_s32, values_u32})));
 }
 
+TEST_F(ShapeInferenceTest, GoodTopK) {
+  auto input = ShapeUtil::MakeShape(F32, {3, 4, 5});
+  StatusOr<Shape> s = ShapeInference::InferTopKShape(input, /*k=*/2);
+  ASSERT_IS_OK(s.status());
+  ASSERT_TRUE(ShapeUtil::Equal(
+      *s, ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {3, 4, 2}),
+                                     ShapeUtil::MakeShape(S32, {3, 4, 2})})));
+}
+
+TEST_F(ShapeInferenceTest, FailTopKLargeK) {
+  auto input = ShapeUtil::MakeShape(F32, {3, 4, 5});
+  StatusOr<Shape> statusor = ShapeInference::InferTopKShape(input, /*k=*/10);
+  EXPECT_FALSE(statusor.ok());
+}
+
 TEST_F(ShapeInferenceTest, InferStochasticConvertShape) {
   const Shape operand = ShapeUtil::MakeShape(F32, {4, 3});
   const Shape random = ShapeUtil::MakeShape(U32, {4, 3});

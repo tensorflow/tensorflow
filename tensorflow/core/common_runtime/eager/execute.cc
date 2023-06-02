@@ -1465,7 +1465,8 @@ Status GetOrCreateKernelAndDevice(
           function_outputs_on_op_device, allow_small_function_optimizations,
           allow_control_flow_sync_execution,
           shape_inference_on_tfe_dialect_import, int_args_and_retvals_on_device,
-          xla_compile_device_type, std::move(rendezvous_creator), get_op_id));
+          xla_compile_device_type, ctx.AllowSoftPlacement(),
+          std::move(rendezvous_creator), get_op_id));
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << ". Full node_def=" << ndef.DebugString();

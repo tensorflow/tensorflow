@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/dataset_utils.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/data/compression_utils.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/serialization_utils.h"
+#include "tensorflow/core/data/test_utils.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -192,6 +195,36 @@ TEST(DatasetUtilsTest, BoolConstructor) {
   EXPECT_TRUE(DeterminismPolicy(false).IsNondeterministic());
   EXPECT_FALSE(DeterminismPolicy(false).IsDeterministic());
   EXPECT_FALSE(DeterminismPolicy(false).IsDefault());
+}
+
+class TestSplitProvider : public SplitProvider {
+ public:
+  Status GetNext(Tensor* split, bool* end_of_splits) override {
+    return OkStatus();
+  }
+
+  Status Reset() override { return OkStatus(); }
+
+  Status Save(std::function<std::string(std::string)> key_name_fn,
+              IteratorStateWriter* writer) override {
+    return OkStatus();
+  }
+
+  Status Restore(std::function<std::string(std::string)> key_name_fn,
+                 IteratorStateReader* reader) override {
+    return OkStatus();
+  }
+};
+
+TEST(DatasetUtilsTest, MakeNestedIteratorContext) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<TestContext> test_ctx,
+                          TestContext::Create());
+  IteratorContext::Params params(test_ctx->op_ctx());
+  params.split_providers.push_back(std::make_unique<TestSplitProvider>());
+  IteratorContext iter_ctx(params);
+  IteratorContext nested_ctx = MakeNestedIteratorContext(&iter_ctx);
+  EXPECT_FALSE(iter_ctx.split_providers().empty());
+  EXPECT_TRUE(nested_ctx.split_providers().empty());
 }
 
 REGISTER_DATASET_EXPERIMENT("test_only_experiment_0",

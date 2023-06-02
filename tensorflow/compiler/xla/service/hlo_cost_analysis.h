@@ -488,6 +488,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleScatter(const HloInstruction* hlo) override;
   Status HandleGetDimensionSize(const HloInstruction* get_size) override;
   Status HandleSetDimensionSize(const HloInstruction* set_size) override;
+  Status HandleTopK(const HloInstruction* topk) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;
@@ -602,6 +603,10 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // Traverses a fusion operand to find the actual bytes accessed by the fusion
   // node.
   virtual int64_t FusionParameterReadBytes(const HloInstruction* hlo) const;
+
+  // Same as above but takes in the parameter size as an additional argument.
+  int64_t FusionParameterReadBytes(const HloInstruction* hlo,
+                                   int64_t read_bytes) const;
 
   // Traverses a fusion counting total utilization of every instruction inside.
   // Currently implemented non-trivially only in the GPU cost analysis.

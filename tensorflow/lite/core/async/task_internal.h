@@ -61,6 +61,10 @@ class ExecutionTask {
   TfLiteStatus SetBufferHandle(TfLiteIoType io_type, const char* name,
                                TfLiteBufferHandle handle);
 
+  // Same as SetBufferHandle above but uses tensor index. Callers need to make
+  // sure the index is valid.
+  TfLiteStatus SetBufferHandle(int tensor_index, TfLiteBufferHandle handle);
+
   // Returns the TfLiteSynchronization for input / output tensor `name`.
   // If there's tensor `name` is not found, returns nullptr.
   TfLiteSynchronization* GetSynchronization(TfLiteIoType io_type,
@@ -71,6 +75,11 @@ class ExecutionTask {
   // Sets the TfLiteSynchronization for input / output tensor `name`.
   // If there's tensor `name` is not found, do nothing.
   TfLiteStatus SetSynchronization(TfLiteIoType io_type, const char* name,
+                                  TfLiteSynchronization* sync);
+
+  // Same as TfLiteSynchronization above but uses tensor index. Callers need to
+  // make sure the index is valid.
+  TfLiteStatus SetSynchronization(int tensor_index,
                                   TfLiteSynchronization* sync);
 
   using TensorNameMapT = std::map<std::string, uint32_t>;
@@ -136,6 +145,7 @@ class ExecutionTask {
 
   // Mapping from signature name to tensor index.
   // Not owned. Set and owned by AsyncSignatureRunner.
+  // Can be nullptr if the model does not have signature def.
   const TensorNameMapT* input_name_to_idx_ = nullptr;
   const TensorNameMapT* output_name_to_idx_ = nullptr;
 

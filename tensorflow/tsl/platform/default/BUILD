@@ -557,13 +557,6 @@ cc_library(
     ],
     textual_hdrs = ["status.h"],
     visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
-    deps = [
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 bzl_library(

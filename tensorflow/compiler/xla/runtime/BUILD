@@ -1,5 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
-load("//tensorflow/tsl:tsl.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_cloud")
 load("//tensorflow/tsl/platform:build_config.bzl", "if_llvm_system_z_available", "tf_platform_deps")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -97,6 +97,38 @@ cc_library(
     ],
 )
 
+filegroup(
+    name = "aot_ffi_execution_context_hdrs",
+    srcs = ["aot_ffi_execution_context.h"],
+)
+
+cc_library(
+    name = "aot_ffi_execution_context",
+    hdrs = ["aot_ffi_execution_context.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "aot_ffi",
+    srcs = ["aot_ffi.cc"],
+    hdrs = ["aot_ffi.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":aot_ffi_c_symbols",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
+    ],
+)
+
+cc_library(
+    name = "aot_ffi_c_symbols",
+    srcs = ["aot_ffi_c_symbols.cc"],
+    hdrs = ["aot_ffi_c_symbols.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":aot_ffi_execution_context",
+    ],
+)
+
 cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
@@ -108,6 +140,7 @@ cc_library(
         ":errors",
         ":logical_result",
         ":map_by_type",
+        ":memref_view",
         ":state",
         ":type_id",
         "//tensorflow/compiler/xla:shape_util",
@@ -211,6 +244,7 @@ cc_library(
         ":types",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
         "//tensorflow/compiler/xla/mlir/runtime/utils:c_runner_utils",
+        "//tensorflow/compiler/xla/mlir/runtime/utils:float_16bits",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
@@ -379,6 +413,16 @@ cc_library(
         "memory_mapper",
         platform_dir = "//tensorflow/compiler/xla/runtime/",
     ),
+)
+
+cc_library(
+    name = "memref_view",
+    hdrs = ["memref_view.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 cc_library(

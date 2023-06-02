@@ -463,7 +463,27 @@ func.func @general_convolution_with_zero_sized_dimension_in_output(
 //  CHECK-SAME: %[[ARG0]], %[[ARG1]]
 //       CHECK: return %[[RES]] : tensor<2x5x0x4xi64>
 
-func.func @foo(%0: tensor<3x9x9x8xf32>, %1: tensor<1x7x8x8xf32>) -> tensor<3x9x9x8xf32> {
-  %2 = mhlo.convolution(%0, %1) dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f], window = {stride = [1, 1], pad = [[0, 0], [3, 3]], lhs_dilate = [1, 1], rhs_dilate = [1, 1], reverse = [0, 0]} {batch_group_count = 1 : i64, feature_group_count = 1 : i64, precision_config = [#mhlo<precision DEFAULT>, #mhlo<precision DEFAULT>]} : (tensor<3x9x9x8xf32>, tensor<1x7x8x8xf32>) -> tensor<3x9x9x8xf32>
+func.func @foo(%0: tensor<3x9x9x8xf32>, %1: tensor<1x7x8x8xf32>)
+  -> tensor<3x9x9x8xf32> {
+  %2 = mhlo.convolution(%0, %1)
+    dim_numbers = [b, 0, 1, f]x[0, 1, i, o]->[b, 0, 1, f],
+    window = {stride = [1, 1],
+    pad = [[0, 0], [3, 3]],
+    lhs_dilate = [1, 1],
+    rhs_dilate = [1, 1],
+    reverse = [0, 0]}
+    {batch_group_count = 1 : i64,
+     feature_group_count = 1 : i64,
+     precision_config = [#mhlo<precision DEFAULT>,
+                         #mhlo<precision DEFAULT>]}
+    : (tensor<3x9x9x8xf32>, tensor<1x7x8x8xf32>) -> tensor<3x9x9x8xf32>
   return %2 : tensor<3x9x9x8xf32>
+}
+
+// CHECK-LABEL: @infeed
+//       CHECK: "xla_cpu.infeed"
+func.func @infeed(%token: !mhlo.token) -> tensor<3x3xi32> {
+  %res:3 = "mhlo.infeed"(%token) {infeed_config = "foobar", layout=[[0,1], [0]]}
+    : (!mhlo.token) -> (tensor<3x3xi32>, tensor<i1>, !mhlo.token)
+  func.return %res#0 : tensor<3x3xi32>
 }

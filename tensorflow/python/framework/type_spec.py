@@ -240,13 +240,26 @@ class TypeSpec(
     return self._from_components(component_placeholders)
 
   def _to_tensors(self, value):
-    value_spec = type_spec_from_value(value)
-    assert value_spec.is_subtype_of(self)
-    return [arg for arg in nest.flatten(value, expand_composites=True)
-            if isinstance(arg, core_types.Symbol)]
+    tensors = []
+    nest.map_structure(
+        lambda spec, v: tensors.extend(spec._to_tensors(v)),  # pylint: disable=protected-access
+        self._component_specs,
+        self._to_components(value))
+    return tensors
+
+  def _from_tensors(self, tensors):
+    components = nest.map_structure(
+        lambda spec: spec._from_tensors(tensors),  # pylint: disable=protected-access
+        self._component_specs
+    )
+    return self._from_components(components)
 
   def _flatten(self):
-    return nest.flatten(self._component_specs, expand_composites=True)
+    if not hasattr(self, "_cached_flatten"):
+      self._cached_flatten = nest.flatten(
+          self._component_specs, expand_composites=True
+      )
+    return self._cached_flatten
 
   def _cast(self, value, casting_context):
     if casting_context.allow_specs and isinstance(value, TypeSpec):

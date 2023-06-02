@@ -703,6 +703,7 @@ py_strict_library(
 distribute_py_strict_test(
     name = "random_generator_test",
     srcs = ["random_generator_test.py"],
+    exec_properties = {"mem": "24g"},
     main = "random_generator_test.py",
     shard_count = 12,
     tags = [
@@ -1004,7 +1005,6 @@ py_strict_library(
         "//tensorflow/python/saved_model:save_context",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/types:core",
-        "//tensorflow/python/util:lazy_loader",
         "//third_party/py/numpy",
     ],
 )
@@ -1103,12 +1103,12 @@ py_strict_library(
         "//tensorflow/python:framework_test_combinations_lib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:session",
-        "//tensorflow/python:tf_decorator",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:tf_logging",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
         "@absl_py//absl:app",
         "@six_archive//:six",
@@ -2105,6 +2105,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/283098184)
         "notsan",  # TODO(b/220133218)
     ],
     # b/155301154 broken with XLA:GPU
@@ -2203,6 +2204,7 @@ cuda_py_strict_test(
     python_version = "PY3",
     tags = [
         "multi_and_single_gpu",
+        "no_windows",  # TODO(b/284496291)
         "notsan",  # TODO(b/220133218)
     ],
     # b/141096229: Non-atomic AssignAdd
@@ -2336,7 +2338,10 @@ distribute_py_strict_test(
     disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 2,
-    tags = ["multi_and_single_gpu"],
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/283033375)
+    ],
     xla_enable_strict_auto_jit = True,
     deps = [
         ":collective_all_reduce_strategy",
@@ -2371,6 +2376,7 @@ distribute_py_strict_test(
     tags = [
         "multi_and_single_gpu",
         "no_cuda_asan",  # times out
+        "no_oss",  # TODO(b/283016506)
         "notsan",  # TODO(b/160006974)
     ],
     xla_enable_strict_auto_jit = True,
@@ -2491,7 +2497,6 @@ py_strict_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tf_decorator",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:context",
@@ -2503,6 +2508,7 @@ py_strict_library(
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:keras_deps",
         "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -2586,7 +2592,6 @@ distribute_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_spec",
-        "//tensorflow/python/keras/saving",
         "//tensorflow/python/module",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",

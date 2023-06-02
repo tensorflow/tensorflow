@@ -62,6 +62,14 @@ class SynchronousGraphExecutor {
     return graph_executor_->runtime().core_runtime()->GetHostContext();
   }
 
+  // Compiles graph for `graph_name` and runs any initializers.
+  absl::Status CompileGraph(
+      const std::string& graph_name,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names);
+
  private:
   SynchronousGraphExecutor(
       std::unique_ptr<tensorflow::tfrt_stub::Runtime> runtime,

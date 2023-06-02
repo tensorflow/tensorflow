@@ -143,6 +143,13 @@ config_setting(
 )
 
 config_setting(
+    name = "tvos_x86_64",
+    values = {
+        "cpu": "tvos_x86_64",
+    },
+)
+
+config_setting(
     name = "ios_armv7",
     values = {
         "cpu": "ios_armv7",
@@ -248,6 +255,7 @@ selects.config_setting_group(
         ":darwin_x86_64",
         ":freebsd",
         ":windows",
+        ":tvos_x86_64",
     ],
 )
 
@@ -293,6 +301,7 @@ cc_library(
         "optimized/depthwiseconv_multithread.h",
         "optimized/depthwiseconv_uint8.h",
         "optimized/depthwiseconv_uint8_3x3_filter.h",
+        "optimized/fully_connected_4bit.h",
         "optimized/im2col_utils.h",
         "optimized/integer_ops/add.h",
         "optimized/integer_ops/conv.h",
@@ -324,6 +333,7 @@ cc_library(
         ":compatibility",
         ":cppmath",
         ":cpu_check",
+        ":optimized_4bit",
         ":quantization_util",
         ":reduce_utils",
         ":reference_base",
@@ -397,6 +407,89 @@ cc_library(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/tsl/framework/convolution:eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
+    ],
+)
+
+selects.config_setting_group(
+    name = "linux_x86_64_opt",
+    match_all = [
+        "//tensorflow:linux_x86_64",
+        "//tensorflow:optimized",
+    ],
+)
+
+cc_library(
+    name = "optimized_4bit",
+    srcs = select({
+        ":linux_x86_64_opt": [
+            "optimized/4bit/sse_fully_connected.cc",
+        ],
+        "//tensorflow:android_arm64": [
+            "optimized/4bit/neon_fully_connected.cc",
+            "optimized/4bit/neon_fully_connected_aarch64_nosdot.cc",
+            "optimized/4bit/neon_fully_connected_aarch64_sdot.cc",
+            "optimized/4bit/neon_fully_connected_impl.h",
+        ],
+        "//tensorflow:android_arm": [
+            "optimized/4bit/neon_fully_connected.cc",
+            "optimized/4bit/neon_fully_connected_arm32.cc",
+            "optimized/4bit/neon_fully_connected_impl.h",
+        ],
+        "//conditions:default": [],
+    }) + [
+        "optimized/4bit/fully_connected_common.h",
+        "optimized/4bit/fully_connected_reference.cc",
+        "optimized/4bit/fully_connected_reference_impl.h",
+    ],
+    hdrs = [
+        "optimized/4bit/fully_connected_reference.h",
+        "optimized/fully_connected_4bit.h",
+    ] + select({
+        ":linux_x86_64_opt": [
+            "optimized/4bit/sse_fully_connected.h",
+            "optimized/4bit/sse_fully_connected_impl.h",
+        ],
+        "//tensorflow:android_arm64": [
+            "optimized/4bit/neon_fully_connected.h",
+        ],
+        "//tensorflow:android_arm": [
+            "optimized/4bit/neon_fully_connected.h",
+        ],
+        "//conditions:default": [],
+    }),
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts() + select({
+        "//tensorflow:android_arm64": [
+            "-march=armv8.2-a+dotprod",
+            "-mfpu=neon-fp-armv8",
+        ],
+        "//tensorflow:android_arm": [],
+        "//conditions:default": [],
+    }) + NEON_FLAGS_IF_APPLICABLE,
+    defines = select({
+        ":linux_x86_64_opt": ["FC_4BIT_SSE"],
+        "//tensorflow:android_arm64": [
+            "FC_4BIT_NEON",
+        ],
+        "//tensorflow:android_arm": [
+            "FC_4BIT_NEON",
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":cppmath",
+        ":cpu_check",
+        "@cpuinfo//:cpuinfo_with_unstripped_include_path",
+    ],
+)
+
+cc_test(
+    name = "optimized_4bit_test",
+    srcs = ["optimized/optimized_4bit_test.cc"],
+    deps = [
+        ":common",
+        ":optimized_4bit",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

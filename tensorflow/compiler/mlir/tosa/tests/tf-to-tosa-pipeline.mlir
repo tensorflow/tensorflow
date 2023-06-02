@@ -565,7 +565,7 @@ func.func @test_argmax(%arg0: tensor<13x21x3xf32>) -> tensor<21x3xi32> {
 // -----
 
 // CHECK-LABEL: test_avg_pool2d
-// CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) <{kernel = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}
+// CHECK: %[[VAR0:.*]] = "tosa.avg_pool2d"(%arg0) <{acc_type = f32, kernel = array<i64: 1, 1>, pad = array<i64: 0, 0, 0, 0>, stride = array<i64: 1, 1>}>
 func.func @test_avg_pool2d(%arg0: tensor<1x32x32x8xf32>) -> tensor<1x32x32x8xf32> {
   %2 = "tf.AvgPool"(%arg0)  {data_format = "NHWC", ksize = [1, 1, 1, 1], padding = "SAME", strides = [1, 1, 1, 1]}  : (tensor<1x32x32x8xf32>) -> tensor<1x32x32x8xf32>
   func.return %2 : tensor<1x32x32x8xf32>
@@ -617,8 +617,8 @@ func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<4x11x1xf32> {
 
 // CHECK-LABEL: test_strided_slice
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 9, 21, 2>, start = array<i64: 4, 0, 1>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 9, 1, 7, 3, 2, 1>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) <{size = array<i64: 9, 1, 7, 1, 2, 1>, start = array<i64: 0, 0, 0, 0, 0, 0>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 9, 7, 3, 2>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) <{size = array<i64: 9, 7, 1, 2>, start = array<i64: 0, 0, 0, 0>}
 // CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) <{new_shape = array<i64: 9, 7, 2>}
 func.func @test_strided_slice(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
   %2 = "tf.Const"()  {value = dense<[4, 0, 1]> : tensor<3xi64>}  : () -> tensor<3xi64>

@@ -102,6 +102,11 @@ cc_library(
     name = "custom_call",
     srcs = ["custom_call.cc"],
     hdrs = ["custom_call.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
     deps = [
         ":support",
         ":triangular_solve",
@@ -125,6 +130,7 @@ cc_library(
     deps = [
         ":cholesky",
         ":collectives",
+        ":concurrent_region",
         ":conv",
         ":conv_reorder",
         ":cublas_lt_matmul",
@@ -220,6 +226,7 @@ xla_cc_test(
         ":topk_kernel",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
@@ -325,6 +332,7 @@ cc_library(
     srcs = ["graph_launch.cc"],
     hdrs = ["graph_launch.h"],
     deps = [
+        ":concurrent_region",
         ":conv",
         ":gemm",
         ":kernel_launch",
@@ -337,11 +345,29 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
         "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_graph",
     ]),
+)
+
+cc_library(
+    name = "concurrent_region",
+    srcs = ["concurrent_region.cc"],
+    hdrs = ["concurrent_region.h"],
+    deps = [
+        ":support",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:stream_pool",
+        "//tensorflow/compiler/xla/stream_executor",
+        "//tensorflow/tsl/platform:statusor",
+    ],
 )
 
 cc_library(
@@ -363,6 +389,7 @@ cc_library(
     srcs = ["kernel_launch.cc"],
     hdrs = ["kernel_launch.h"],
     deps = [
+        ":concurrent_region",
         ":support",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/runtime:custom_call",
@@ -431,6 +458,7 @@ cc_library(
 
 cc_library(
     name = "support",
+    srcs = ["support.cc"],
     hdrs = ["support.h"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
@@ -439,6 +467,8 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:matmul_utils",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
+        "//tensorflow/tsl/profiler/lib:scoped_annotation_stack",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
     ],
 )

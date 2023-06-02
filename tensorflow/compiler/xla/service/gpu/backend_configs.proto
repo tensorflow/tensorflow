@@ -4,6 +4,7 @@ package xla.gpu;
 
 import "tensorflow/compiler/xla/stream_executor/dnn.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/tsl/protobuf/autotuning.proto";
 
 // Backend configs for XLA:GPU.
 //
@@ -95,4 +96,21 @@ message BitcastBackendConfig {
 // proto which will have is_sync = false.
 message CollectiveBackendConfig {
   bool is_sync = 1;
+}
+
+message FusionBackendConfig {
+  // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
+  // custom string.
+  //
+  // Don't put "kCustom" in here -- just put a string describing the custom
+  // fusion, like "__triton_gemm".
+  //
+  // This is somewhat redundant with HloInstruction::fusion_kind().  We need it
+  // here because LMHLO does not have the concept of a fusion kind, and we use
+  // this same backend-config proto for both HLO and LMHLO.
+  string kind = 1;
+
+  // Only valid when kind == "__triton_gemm".  Even then it's optional: If not
+  // present, we use the default Triton config.
+  tensorflow.AutotuneResult.TritonGemmKey triton_gemm_config = 2;
 }

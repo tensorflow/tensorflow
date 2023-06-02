@@ -1149,6 +1149,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
         RematerializeBuffer(old_buffer, remat_item, std::move(unplaced_users));
 
     remat_item->buffers_defined.push_back(new_buffer.id);
+    remat_item->buffers_output.push_back(new_buffer.id);
     auto update_buffers = [old_buffer_id, new_buffer_id = new_buffer.id](
                               BufferIdList& to_update) {
       std::replace(to_update.begin(), to_update.end(), old_buffer_id,
@@ -1910,10 +1911,19 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
     HloComputation* computation, HloSchedule* schedule,
     int64_t memory_limit_bytes, int64_t min_remat_size,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const auto peak_memory_usage = computation_peak_memory_.at(computation);
+  if (peak_memory_usage <= memory_limit_bytes) {
+    // Nothing to do.
+    VLOG(1) << "Asked to rematerialize computation of size "
+            << peak_memory_usage
+            << " but it already fits within the given memory limit ("
+            << memory_limit_bytes << ")";
+    return false;
+  }
   VLOG(1) << "Rematerializing computation " << computation->name()
           << " with limit " << HumanReadableNumBytes(memory_limit_bytes);
   VLOG(1) << "peak memory usage is "
-          << HumanReadableNumBytes(computation_peak_memory_.at(computation));
+          << HumanReadableNumBytes(peak_memory_usage);
   CHECK(!ContainsKey(rematerialized_computations_, computation));
 
   InstructionList instruction_list(schedule->sequence(computation));

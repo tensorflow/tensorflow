@@ -1373,6 +1373,38 @@ ENTRY e {
   EXPECT_EQ(analysis.bytes_accessed(), 10000 + 1);
 }
 
+TEST_F(FusionCostAnalysis, BitcastPadAndSlice) {
+  absl::string_view hlo_string = R"(
+HloModule m
+
+f {
+  p0 = s8[1000] parameter(0)
+  p1 = s8[] parameter(1)
+  bitcast = s8[1000,1] bitcast(p0)
+  c = s8[] constant(0)
+  pad = s8[1000,2] pad(bitcast, c), padding=0_0x1_0
+  ds = s8[100,2] dynamic-slice(pad, p1, c), dynamic_slice_sizes={100,2}
+  ROOT negate = s8[100,2] negate(ds)
+}
+
+ENTRY e {
+  param0 = s8[1000] parameter(0)
+  param1 = s8[] parameter(1)
+  ROOT r0 = s8[100,2] fusion(param0, param1), kind=kInput, calls=f
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(root->Accept(&analysis));
+
+  EXPECT_EQ(analysis.operand_bytes_accessed(*root, 0), 100);
+}
+
 TEST_F(FusionCostAnalysis, RevisitModifiedFusion) {
   Shape r2f32 = ShapeUtil::MakeShape(F32, {2, 2});
   HloComputation::Builder builder(TestName());

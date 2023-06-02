@@ -34,7 +34,7 @@ class PjRtCApiClient;
 
 class PjRtCApiDeviceDescription : public PjRtDeviceDescription {
  public:
-  PjRtCApiDeviceDescription(const PJRT_Api* c_api_,
+  PjRtCApiDeviceDescription(const PJRT_Api* c_api,
                             PJRT_DeviceDescription* device_description);
 
   int id() const override;
@@ -511,9 +511,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const {
-    LOG(FATAL) << "PJRT C API DeviceDescription not implemented.";
-  }
+      const;
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;

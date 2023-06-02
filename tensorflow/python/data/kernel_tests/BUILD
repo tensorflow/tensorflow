@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 # Definitions are loaded separately so that copybara can pattern match (and modify) each definition.
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
@@ -155,7 +155,7 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "checkpoint_test_base",
     srcs = ["checkpoint_test_base.py"],
     srcs_version = "PY3",
@@ -356,6 +356,9 @@ tf_py_strict_test(
     srcs = ["flat_map_test.py"],
     grpc_enabled = True,
     shard_count = 8,
+    tags = [
+        "nomac",  # b/284304023
+    ],
     deps = [
         ":checkpoint_test_base",
         ":test_base",
@@ -368,6 +371,7 @@ tf_py_strict_test(
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
@@ -1183,7 +1187,7 @@ tf_py_strict_test(
 
 tf_py_strict_test(
     name = "take_test",
-    size = "small",
+    size = "medium",
     srcs = ["take_test.py"],
     shard_count = 4,
     deps = [
@@ -1221,7 +1225,7 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "test_base",
     srcs = ["test_base.py"],
     srcs_version = "PY3",
@@ -1252,7 +1256,7 @@ py_library(
 
 tf_py_strict_test(
     name = "text_line_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["text_line_dataset_test.py"],
     shard_count = 4,
     deps = [
@@ -1287,7 +1291,7 @@ tf_py_strict_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "tf_record_test_base",
     srcs = [
         "tf_record_test_base.py",

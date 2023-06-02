@@ -72,6 +72,10 @@ py_library(
         ":deprecated_inclusions_in_training_lib",
     ],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":adadelta",
         ":adagrad",
@@ -117,7 +121,6 @@ py_library(
         "//tensorflow/python/trackable:base_delegate",
         "//tensorflow/python/training/experimental:loss_scale_optimizer",
         "//tensorflow/python/training/experimental:mixed_precision",
-        "//tensorflow/python/training/tracking:base_delegate",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
@@ -130,14 +133,19 @@ py_library(
 py_library(
     name = "training",
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_minigo:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":training_lib",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/trackable:base",
         "//tensorflow/python/trackable:python_state",
-        "//tensorflow/python/training/tracking:base",
-        "//tensorflow/python/training/tracking:python_state",
-        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -367,6 +375,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":slot_creator",
+        "//tensorflow/python:cond",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
@@ -506,6 +515,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:cond",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:ref_variable",
         "//tensorflow/python:resource_variable_ops",
@@ -823,6 +833,10 @@ py_library(
     name = "saver",
     srcs = ["saver.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":py_checkpoint_reader",
         ":training_util",
@@ -953,6 +967,10 @@ py_library(
     name = "basic_session_run_hooks",
     srcs = ["basic_session_run_hooks.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":session_run_hook",
         ":summary_io",
@@ -975,6 +993,10 @@ py_library(
     name = "session_run_hook",
     srcs = ["session_run_hook.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
@@ -1047,7 +1069,13 @@ py_library(
     name = "training_util",
     srcs = ["training_util.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
+        "//tensorflow/python:cond",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
@@ -1136,6 +1164,7 @@ TRAINING_TEST_DEPS = [
     "//tensorflow/python:array_ops",
     "//tensorflow/python:client",
     "//tensorflow/python:client_testlib",
+    "//tensorflow/python:cond",
     "//tensorflow/python:control_flow_ops",
     "//tensorflow/python:data_flow_ops",
     "//tensorflow/python:data_flow_ops_gen",

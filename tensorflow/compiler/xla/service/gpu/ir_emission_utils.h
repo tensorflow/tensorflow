@@ -31,11 +31,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// If the most minor dimension in the transpose operand is smaller than this,
-// untiled transposition may be more efficient.
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
-// But if the product of the dimensions to be swapped is larger than this, tiled
-// transposition may be more efficient.
+// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
+// and the product of the dimensions to be swapped is larger than
+// 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
@@ -53,9 +56,8 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
-// this string. TritonAutotuner replaces it with TritonGemmKey proto.
-inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
+// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //

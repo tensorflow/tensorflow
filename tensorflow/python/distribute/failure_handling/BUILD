@@ -1,5 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library", "tf_py_strict_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_strict_library", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -137,7 +137,7 @@ tf_py_strict_test(
     ],
 )
 
-tf_custom_op_py_library(
+tf_custom_op_py_strict_library(
     name = "check_preemption_py",
     kernels = [
         "//tensorflow/core/distributed_runtime/preemption:check_preemption_op_kernel",

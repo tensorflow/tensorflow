@@ -329,6 +329,7 @@ py_strict_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:array_ops_stack",
         "//tensorflow/python:cond",
+        "//tensorflow/python:map_fn",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:string_ops_gen",
         "//tensorflow/python/framework:constant_op",

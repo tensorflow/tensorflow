@@ -46,7 +46,9 @@ pytype_strict_library(
         ":dtensor_device",
         ":gen_dtensor_ops",
         ":layout",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
     ],
@@ -77,7 +79,6 @@ pytype_strict_library(
     name = "layout",
     srcs = ["layout.py"],
     deps = [
-        ":config",
         "//tensorflow/dtensor/proto:layout_proto_py_pb2",
         "//tensorflow/python:_pywrap_dtensor_device",
         "//tensorflow/python:device",

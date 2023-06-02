@@ -599,6 +599,7 @@ def _features(cpu, compiler, ctx):
         ]
     elif cpu == "x64_windows":
         return [
+            feature(name = "compiler_param_file"),
             feature(name = "no_legacy_features"),
             feature(
                 name = "common_flags",
@@ -623,12 +624,6 @@ def _features(cpu, compiler, ctx):
                     flag_set(
                         actions = all_compile_actions(),
                         flag_groups = [
-                            flag_group(
-                                flags = [
-                                    "-B",
-                                    "external/local_config_cuda/crosstool/windows/msvc_wrapper_for_nvcc.py",
-                                ],
-                            ),
                             _nologo(),
                             flag_group(
                                 flags = [

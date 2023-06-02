@@ -32,6 +32,7 @@ limitations under the License.
 #include "llvm/Support/ErrorOr.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/c_runner_utils.h"
+#include "tensorflow/compiler/xla/mlir/runtime/utils/float_16bits.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
 #include "tensorflow/compiler/xla/runtime/errors.h"
@@ -48,6 +49,7 @@ using llvm::dyn_cast;
 
 // ExecutionContext encapsulates all the data that is required to implement XLA
 // Runtime <-> XLA Executable integration API.
+// LINT.IfChange
 struct ExecutionContext {
   // Results memory layout is owned by the executable, and stays alive after the
   // function execution completes.
@@ -67,6 +69,7 @@ struct ExecutionContext {
   // User-defined diagnostic engine for reporting diagnostics.
   const DiagnosticEngine* diagnostic_engine = nullptr;
 };
+// LINT.ThenChange(//tensorflow/compiler/xla/runtime/aot_ffi_execution_context.h)
 
 void DestroyExecutionContext::operator()(ExecutionContext* ctx) { delete ctx; }
 
@@ -130,6 +133,8 @@ ExecutionEngine::SymbolsBinding RuntimeSymbolsBinding(
        AsyncRuntimeMemoryAllocationSymbolMap,
        // Register Runtime API intrinsics (returning results and errors).
        RuntimeApiSymbolMap,
+       // Register LLVM f16 and bf16 API intrinsics (defined in Float16bits).
+       Float16bitsSymbolMap,
        // Register any additional user-defined symbol bindings
        std::move(custom_binding)});
 }

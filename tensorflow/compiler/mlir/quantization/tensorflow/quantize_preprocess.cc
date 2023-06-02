@@ -57,7 +57,7 @@ absl::Status RunPassesOnModuleOp(const absl::string_view mlir_dump_file_name,
   }
 
   if (failed(pass_manager.run(module_op))) {
-    return tsl::ToAbslStatus(statusHandler.ConsumeStatus());
+    return statusHandler.ConsumeStatus();
   }
 
   return absl::OkStatus();
@@ -106,7 +106,7 @@ absl::Status PreprocessAndFreezeGraph(
 
   if (session.has_value() && failed(mlir::tf_saved_model::FreezeVariables(
                                  module_op, session.value()))) {
-    return tsl::ToAbslStatus(statusHandler.ConsumeStatus());
+    return statusHandler.ConsumeStatus();
   }
 
   return RunPassesOnModuleOp(

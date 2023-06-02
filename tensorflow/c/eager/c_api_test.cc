@@ -47,10 +47,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
-#ifdef PLATFORM_GOOGLE
-#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#endif
-
 using tensorflow::string;
 
 namespace {
@@ -1262,16 +1258,6 @@ TEST(CAPI, RunAddFunctionWithGrappler) {
   RunAddFunction(/*use_tfrt=*/false, /*enable_grappler=*/true);
 }
 
-#ifdef PLATFORM_GOOGLE
-TEST(CAPI, RunAddFunction_TFRT) {
-  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/false);
-}
-
-TEST(CAPI, RunAddFunctionWithGrappler_TFRT) {
-  RunAddFunction(/*use_tfrt=*/true, /*enable_grappler=*/true);
-}
-#endif
-
 void BM_ExecuteFunction(::testing::benchmark::State& state) {
   const int async = state.range(0);
   state.SetLabel(async ? "ExecuteFunctionAsync" : "ExecuteFunction");
@@ -1802,23 +1788,9 @@ void TestOpAddAttrs(bool use_tfrt) {
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   tensorflow::AttrValueMap attr_values;
-  if (use_tfrt) {
-#ifdef PLATFORM_GOOGLE
-    auto* op = tensorflow::down_cast<tfrt::tf::OperationInterface*>(
-        tensorflow::unwrap(copy_op));
-    auto* tfrt_op_attrs =
-        tensorflow::down_cast<const tfrt::tf::OpAttrsInterface*>(
-            op->GetOpAttrs());
-    tensorflow::DataType result;
-    tfrt_op_attrs->GetType("dtype", &result);
-    EXPECT_EQ(tensorflow::DT_FLOAT, result);
-    tfrt_op_attrs->GetFallbackAttrs()->FillAttrValueMap(&attr_values);
-#endif
-  } else {
-    tensorflow::EagerOperation* op =
-        tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
-    op->Attrs().FillAttrValueMap(&attr_values);
-  }
+  tensorflow::EagerOperation* op =
+      tensorflow::OperationFromInterface(tensorflow::unwrap(copy_op));
+  op->Attrs().FillAttrValueMap(&attr_values);
   EXPECT_EQ(tensorflow::DT_FLOAT, attr_values.find("dtype")->second.type());
 
   TF_DeleteStatus(status);
@@ -1828,11 +1800,6 @@ void TestOpAddAttrs(bool use_tfrt) {
 }
 
 TEST(CAPI, TestTFE_OpAddAttrs) { TestOpAddAttrs(/*use_tfrt=*/false); }
-
-#ifdef PLATFORM_GOOGLE
-TEST(CAPI, TestTFE_OpAddAttrs_TFRT) { TestOpAddAttrs(/*use_tfrt=*/true); }
-
-#endif
 
 TEST(CAPI, TestTFE_OpAttrsSerialize) {
   TF_Status* status = TF_NewStatus();

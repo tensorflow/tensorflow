@@ -18,7 +18,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/hlo_to_tools_data.h"
@@ -31,33 +33,60 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/preprocess_single_host_xplane.h"
 #include "tensorflow/core/profiler/convert/repository.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
+#include "tensorflow/core/profiler/convert/trace_viewer/trace_events_to_json.h"
 #include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 #include "tensorflow/core/profiler/convert/xplane_to_tool_names.h"
+#include "tensorflow/core/profiler/convert/xplane_to_trace_container.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
-#include "tensorflow/core/profiler/protobuf/pod_viewer.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_data_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #include "tensorflow/tsl/profiler/convert/xplane_to_trace_events.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
 
 namespace {
 
+struct TraceViewOption {
+  uint64_t resolution = 0;
+  double start_time_ms = 0.0;
+  double end_time_ms = 0.0;
+};
+
+absl::StatusOr<TraceViewOption> GetTraceViewOption(const ToolOptions& options) {
+  TraceViewOption trace_options;
+  auto start_time_ms_opt =
+      GetParamWithDefault<std::string>(options, "start_time_ms", "0.0");
+  auto end_time_ms_opt =
+      GetParamWithDefault<std::string>(options, "end_time_ms", "0.0");
+  auto resolution_opt =
+      GetParamWithDefault<std::string>(options, "resolution", "0");
+
+  if (!absl::SimpleAtoi(resolution_opt, &trace_options.resolution) ||
+      !absl::SimpleAtod(start_time_ms_opt, &trace_options.start_time_ms) ||
+      !absl::SimpleAtod(end_time_ms_opt, &trace_options.end_time_ms)) {
+    return errors::InvalidArgument("wrong arguments");
+  }
+  return trace_options;
+}
+
 StatusOr<std::string> ConvertXSpaceToTraceEvents(
-    const SessionSnapshot& session_snapshot) {
+    const SessionSnapshot& session_snapshot, const absl::string_view tool_name,
+    const ToolOptions& options) {
   if (session_snapshot.XSpaceSize() != 1) {
     return errors::InvalidArgument(
         "Trace events tool expects only 1 XSpace path but gets ",
@@ -69,8 +98,38 @@ StatusOr<std::string> ConvertXSpaceToTraceEvents(
   PreprocessSingleHostXSpace(xspace.get(), /*step_grouping=*/true,
                              /*derived_timeline=*/true);
   std::string content;
-  tsl::profiler::ConvertXSpaceToTraceEventsString(*xspace, &content);
-  return content;
+  if (tool_name == "trace_viewer") {
+    tsl::profiler::ConvertXSpaceToTraceEventsString(*xspace, &content);
+    return content;
+  } else {  // streaming trace viewer.
+    std::string host_name = session_snapshot.GetHostname(0);
+    auto sstable_path = session_snapshot.GetFilePath(tool_name, host_name);
+    if (!sstable_path) {
+      return errors::Unimplemented(
+          "streaming trace viewer hasn't been supported in Cloud AI");
+    }
+    if (!Env::Default()->FileExists(*sstable_path).ok()) {
+      TraceEventsContainer trace_container;
+      ConvertXSpaceToTraceEventsContainer(host_name, *xspace, &trace_container);
+      TF_RETURN_IF_ERROR(trace_container.StoreAsLevelDbTable(*sstable_path));
+    }
+    TF_ASSIGN_OR_RETURN(TraceViewOption trace_option,
+                        GetTraceViewOption(options));
+    auto visibility_filter = std::make_unique<TraceVisibilityFilter>(
+        MilliSpan(trace_option.start_time_ms, trace_option.end_time_ms),
+        trace_option.resolution);
+    TraceEventsContainer trace_container;
+    // Trace smaller than threshold will be disabled from streaming.
+    constexpr int64_t kDisableStreamingThreshold = 500000;
+    TF_RETURN_IF_ERROR(trace_container.LoadFromLevelDbTable(
+        *sstable_path, /*filter=*/nullptr, std::move(visibility_filter),
+        kDisableStreamingThreshold));
+    JsonTraceOptions options;
+    IOBufferAdapter adapter(&content);
+    TraceEventsToJson<IOBufferAdapter, TraceEventsContainer, RawData>(
+        options, trace_container, &adapter);
+    return content;
+  }
 }
 
 StatusOr<std::string> ConvertMultiXSpacesToOverviewPage(
@@ -236,8 +295,8 @@ StatusOr<std::string> ConvertMultiXSpacesToToolData(
     const ToolOptions& options) {
   LOG(INFO) << "serving tool: " << tool_name
             << " with options: " << DebugString(options);
-  if (tool_name == "trace_viewer") {
-    return ConvertXSpaceToTraceEvents(session_snapshot);
+  if (tool_name == "trace_viewer" || tool_name == "trace_viewer@") {
+    return ConvertXSpaceToTraceEvents(session_snapshot, tool_name, options);
   } else if (tool_name == "overview_page") {
     return ConvertMultiXSpacesToOverviewPage(session_snapshot);
   } else if (tool_name == "input_pipeline_analyzer") {

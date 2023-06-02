@@ -78,14 +78,17 @@ class DistributedRuntimeClient {
                     << "Terminating process because the coordinator detected "
                        "missing heartbeats. This most likely indicates that "
                        "another task died; see the other task logs for more "
-                       "details. Status: "
+                       "details. Disable Python buffering, i.e. `python -u`, "
+                       "to be sure to see all the previous output. Status: "
                     << status;
               } else {
                 LOG(QFATAL)
                     << "Terminating process because of missing heartbeat "
                        "response from the coordinator. This most likely "
                        "indicates that the coordinator task died; see the "
-                       "coordinator's task logs for more details. Status: "
+                       "coordinator's task logs for more details. "
+                       "Disable Python buffering, i.e. `python -u`, to be "
+                       "sure to see all the previous output. Status: "
                     << status;
               }
             };

@@ -376,8 +376,10 @@ message DebugOptions {
   bool xla_gpu_enable_async_reduce_scatter = 200;
   bool xla_gpu_enable_async_all_to_all = 201;
 
-  // Size threshold (in bytes) for the GPU all-reduce combiner.
+  // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+  int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
+  int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
 
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
@@ -501,7 +503,7 @@ message DebugOptions {
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
-  string xla_gpu_pgle_profile_directory = 210;
+  string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -518,7 +520,15 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 211
+  // Whether to enable dot strength reduction-related algebraic simplifications
+  // on GPU.
+  bool xla_gpu_enable_dot_strength_reduction = 211;
+
+  // Enables experimental heuristic of choosing block size for launching a
+  // kernel on GPU.
+  bool xla_gpu_enable_experimental_block_size = 214;
+
+  // Next id: 215
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
