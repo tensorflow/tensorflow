@@ -2,6 +2,16 @@
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
+#### _Read this in other languages:_ 
+
+ العربية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](README_ar.md)</kbd>
+ الألمانية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/de.svg" width="30">](README_ar.md)</kbd>
+ الفرنسية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](README_ar.md)</kbd>
+ الايرانية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](README_ar.md)</kbd>
+
+---------------------------------------------------------------------------------------
+
+
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
@@ -16,6 +26,7 @@
 
 **`Documentation`** |
 ------------------- |
+
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
