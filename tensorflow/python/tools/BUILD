@@ -290,6 +290,9 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        # copybara:comment_begin(oss-only)
+        "//tensorflow/python",  # to fix libtensorflow_framework.so.2 import error.
+        # copybara:comment_end
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
