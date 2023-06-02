@@ -37,21 +37,31 @@ cc_library(
 )
 
 cc_library(
-    name = "convolution_call",
-    srcs = ["convolution_call.cc"],
-    hdrs = ["convolution_call.h"],
+    name = "convolution",
+    srcs = ["convolution.cc"],
+    hdrs = ["convolution.h"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/compiler/xla:xla_proto_cc",
-        "//tensorflow/compiler/xla/runtime:custom_call",
-        "//tensorflow/compiler/xla/runtime:custom_call_registry",
-        "//tensorflow/compiler/xla/runtime:executable",
-        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/runtime:memref_view",
         "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
         "//tensorflow/compiler/xla/service/cpu:runtime_conv3d",
         "//tensorflow/compiler/xla/service/cpu:runtime_fft",
         "@com_google_absl//absl/status",
-        "@llvm-project//llvm:Support",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "convolution_call",
+    srcs = ["convolution_call.cc"],
+    hdrs = ["convolution_call.h"],
+    deps = [
+        ":convolution",
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
