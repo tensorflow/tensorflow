@@ -18,14 +18,12 @@
 معرف الكائن الرقمي 'دي او اي' [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
 
 برنامج لتحسينات أمن البرمجيات ذات الشفره المفتوحة او المسمية ب  Open-source Software   [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/1486/badge)](https://bestpractices.coreinfrastructure.org/projects/1486)
-مبادرة لتحسين امان البرمجيات مفتوحة المصدر
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
 
-نظام تحقق ومعالجة  
-[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
+مبادرة لتحسين امان البرمجيات مفتوحة المصدر [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow/badge)](https://api.securityscorecards.dev/projects/github.com/tensorflow/tensorflow)
 
-نظام تنقيح 'oss fuzz'
-[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+نظام تحقق ومعالجة  [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
+
+نظام تنقيح 'oss fuzz' [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
 
 [![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 
@@ -63,7 +61,8 @@ to
 [announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
 See all the [mailing lists](https://www.tensorflow.org/community/forums).
 
-## Install
+
+ ## تثبيت tensorflow
 
 See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
 [pip package](https://www.tensorflow.org/install/pip), to
@@ -114,7 +113,7 @@ For more examples, see the
 [TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
-
+## إرشادات المساهمة في tensorFlow 
 **If you want to contribute to TensorFlow, be sure to review the
 [contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
 [code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
@@ -130,6 +129,7 @@ The TensorFlow project strives to abide by generally accepted best practices in
 open-source software development.
 
 ## Patching guidelines
+## إرشادات التصحيح 
 
 Follow these steps to patch a specific version of TensorFlow, for example, to
 apply fixes to bugs or security vulnerabilities:
@@ -167,7 +167,7 @@ Build Type                    | Status                                          
 **Libtensorflow Windows GPU** | Status Temporarily Unavailable                                                                                                                                                   | [Nightly Binary](https://storage.googleapis.com/libtensorflow-nightly/prod/tensorflow/release/windows/latest/gpu/windows_gpu_libtensorflow_binaries.tar.gz) [Official GCS](https://storage.googleapis.com/tensorflow/)
 
 ## Resources
-
+## المصادر
 *   [TensorFlow.org](https://www.tensorflow.org)
 *   [TensorFlow Tutorials](https://www.tensorflow.org/tutorials/)
 *   [TensorFlow Official Models](https://github.com/tensorflow/models/tree/master/official)
@@ -186,7 +186,7 @@ Learn more about the
 [TensorFlow community](https://www.tensorflow.org/community) and how to
 [contribute](https://www.tensorflow.org/community/contribute).
 
-## Courses
+## الدورات التعليمية 
 
 *   [Deep Learning with Tensorflow from Edx](https://www.edx.org/course/deep-learning-with-tensorflow)
 *   [DeepLearning.AI TensorFlow Developer Professional Certificate from Coursera](https://www.coursera.org/specializations/tensorflow-in-practice)
@@ -199,6 +199,6 @@ Learn more about the
 *   [Intro to TensorFlow for Deep Learning from Udacity](https://www.udacity.com/course/intro-to-tensorflow-for-deep-learning--ud187)
 *   [Introduction to TensorFlow Lite from Udacity](https://www.udacity.com/course/intro-to-tensorflow-lite--ud190)
 
-## License
+## الترخيصات وصلاحية الاستخدام 
 
 [Apache License 2.0](LICENSE)
