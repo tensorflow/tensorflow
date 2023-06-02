@@ -288,9 +288,11 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
