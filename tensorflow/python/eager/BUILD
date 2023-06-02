@@ -466,7 +466,6 @@ cuda_py_strict_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
@@ -484,6 +483,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -868,9 +868,9 @@ tf_py_strict_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops:nn_grad",
     ],
 )
 

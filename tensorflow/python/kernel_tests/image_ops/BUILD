@@ -58,8 +58,8 @@ tf_py_strict_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:io_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
     ],
 )
@@ -91,8 +91,8 @@ tf_py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:image_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/ops:nn_grad",
     ],
 )
 

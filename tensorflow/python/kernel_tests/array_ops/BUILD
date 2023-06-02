@@ -589,10 +589,10 @@ cuda_py_strict_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:io_ops_gen",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
     ],
 )

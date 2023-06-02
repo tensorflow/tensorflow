@@ -266,9 +266,9 @@ tf_py_strict_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
     ],
 )
@@ -324,7 +324,6 @@ cuda_py_strict_test(
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:tensor_spec",
@@ -338,6 +337,7 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
     ],
 )

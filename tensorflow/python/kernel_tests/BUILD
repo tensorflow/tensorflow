@@ -244,12 +244,12 @@ tf_py_strict_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:metrics",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
     ],
 )
@@ -282,7 +282,6 @@ tf_py_strict_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:template",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
@@ -292,6 +291,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
     ],
 )
 

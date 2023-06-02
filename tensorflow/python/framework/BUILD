@@ -2278,12 +2278,12 @@ tf_py_strict_test(
         "//tensorflow/python:cond",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python:while_loop",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
     ],
 )
