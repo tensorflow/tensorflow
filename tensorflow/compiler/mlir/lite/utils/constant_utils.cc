@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 
 #include <string>
+#include <vector>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"

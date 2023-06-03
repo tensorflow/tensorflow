@@ -31,6 +31,8 @@ limitations under the License.
 // resulting graph is free of illegal complex tensors.
 
 #include <iterator>
+#include <memory>
+#include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -55,7 +57,7 @@ namespace {
 class LowerComplexTypes
     : public impl::TosaLowerComplexTypesPassBase<LowerComplexTypes> {
  public:
-  explicit LowerComplexTypes() {}
+  explicit LowerComplexTypes() = default;
   void runOnOperation() override;
 };
 
