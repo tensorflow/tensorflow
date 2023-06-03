@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/types.h"

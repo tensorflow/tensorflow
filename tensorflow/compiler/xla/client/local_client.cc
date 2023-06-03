@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "llvm/TargetParser/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
