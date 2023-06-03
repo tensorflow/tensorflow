@@ -5,6 +5,7 @@ load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -41,6 +42,7 @@ cc_library(
     visibility = ["//tensorflow/compiler/xla/pjrt:friends"],
     deps = [
         ":gpu_helpers",
+        ":gpu_topology",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:client_library",
@@ -144,5 +146,21 @@ xla_cc_test(
         "//tensorflow/compiler/xla/pjrt:pjrt_client_test_common",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/tsl/platform:test_main",
+    ],
+)
+
+tf_proto_library(
+    name = "gpu_topology_proto",
+    srcs = ["gpu_topology.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "gpu_topology",
+    srcs = ["gpu_topology.cc"],
+    hdrs = ["gpu_topology.h"],
+    deps = [
+        ":gpu_topology_proto_cc",
     ],
 )

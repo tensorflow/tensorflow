@@ -458,7 +458,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
 #define STRINGIFY2(X) #X
 #define STRINGIFY(X) STRINGIFY2(X)
 #if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
-    // TF_ROCM_VERSION fomrat may change in future. Use it
+    // TF_ROCM_VERSION format may change in future. Use it
     // cautiously
     return "rocm " STRINGIFY(TF_ROCM_VERSION);
 #elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda

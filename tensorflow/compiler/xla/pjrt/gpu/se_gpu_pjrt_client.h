@@ -24,21 +24,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
 #include "tensorflow/compiler/xla/pjrt/gpu/gpu_helpers.h"
+#include "tensorflow/compiler/xla/pjrt/gpu/gpu_topology.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
-class GpuTopology {
- public:
-  explicit GpuTopology(const std::vector<int>& gpu_device_ids)
-      : devices_ids_(gpu_device_ids) {}
-
-  int number_of_devices() const { return devices_ids_.size(); }
-  const std::vector<int>& device_ids() const { return devices_ids_; }
-
- private:
-  const std::vector<int> devices_ids_;
-};
 
 class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
  public:
