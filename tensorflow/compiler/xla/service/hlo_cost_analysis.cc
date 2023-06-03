@@ -165,73 +165,52 @@ int64_t HloCostAnalysis::GetShapeSize(const Shape& shape) const {
   return options_.shape_size(shape);
 }
 
-int64_t HloCostAnalysis::FusionParameterReadBytes(const HloInstruction* hlo,
-                                                  int64_t read_bytes) const {
+int64_t HloCostAnalysis::FusionParameterReadBytes(
+    const HloInstruction* hlo) const {
   int64_t size = 0;
   bool seen_trivial_user = false;
+  CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
+                           hlo->opcode() == HloOpcode::kGetTupleElement));
   for (const HloInstruction* user : hlo->users()) {
     switch (user->opcode()) {
-      case HloOpcode::kBitcast:
-      case HloOpcode::kPad:
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kReshape:
-        // We just propagate the read_bytes into these ops' users.
-        size += FusionParameterReadBytes(user, read_bytes);
-        break;
       case HloOpcode::kFusion: {
         for (int64_t idx : user->OperandIndices(hlo)) {
-          size +=
-              FusionParameterReadBytes(user->fused_parameter(idx), read_bytes);
+          size += FusionParameterReadBytes(user->fused_parameter(idx));
         }
         break;
       }
-      case HloOpcode::kSlice: {
-        // Multiply output/input size ratio with read_bytes.
-        int64_t in_bytes = GetShapeSize(hlo->shape());
-        if (in_bytes > 0) {
-          size += read_bytes *
-                  (static_cast<double>(GetShapeSize(user->shape())) / in_bytes);
-        }
+      case HloOpcode::kSlice:
+        size += GetShapeSize(user->shape());
         break;
-      }
       case HloOpcode::kDynamicSlice:
         if (hlo == user->operand(0)) {
-          // Multiply output/input size ratio with read_bytes.
-          int64_t in_bytes = GetShapeSize(hlo->shape());
-          if (in_bytes > 0) {
-            size +=
-                read_bytes *
-                (static_cast<double>(GetShapeSize(user->shape())) / in_bytes);
-          }
+          size += GetShapeSize(user->shape());
         } else if (!seen_trivial_user) {
           seen_trivial_user = true;
-          size += read_bytes;
+          size += GetShapeSize(hlo->shape());
         }
         break;
       case HloOpcode::kDynamicUpdateSlice:
         // Operand 0 is aliased to the output.
         if (hlo != user->operand(0) && !seen_trivial_user) {
           seen_trivial_user = true;
-          size += read_bytes;
+          size += GetShapeSize(hlo->shape());
         }
+        break;
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kReshape:
+        size += GetShapeSize(hlo->shape());
         break;
       default:
         // Other instructions reading this parameter are assumed to be able to
         // share the read from memory.
         if (!seen_trivial_user) {
           seen_trivial_user = true;
-          size += read_bytes;
+          size += GetShapeSize(hlo->shape());
         }
     }
   }
-  return std::min(read_bytes, size);
-}
-
-int64_t HloCostAnalysis::FusionParameterReadBytes(
-    const HloInstruction* hlo) const {
-  CHECK(hlo->IsFused() && (hlo->opcode() == HloOpcode::kParameter ||
-                           hlo->opcode() == HloOpcode::kGetTupleElement));
-  return FusionParameterReadBytes(hlo, GetShapeSize(hlo->shape()));
+  return size;
 }
 
 Status HloCostAnalysis::FusionCalculateUtilizations(
