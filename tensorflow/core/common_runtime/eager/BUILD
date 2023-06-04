@@ -75,6 +75,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "@com_google_absl//absl/container:flat_hash_map",
         ],
     }),
 )
@@ -119,6 +120,7 @@ tf_cuda_library(
         "//tensorflow/core/distributed_runtime:worker_env",
         "//tensorflow/core/nccl:collective_communicator",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_tensorflow_lib_lite",
