@@ -1600,12 +1600,15 @@ TF_CAPI_EXPORT extern void TF_ClearAttr(TF_Graph* graph, TF_Operation* op,
 TF_CAPI_EXPORT extern void TF_SetFullType(TF_Graph* graph, TF_Operation* op,
                                            const tensorflow::FullTypeDef& full_type);
 
+// Set the requested device for `graph`.
 TF_CAPI_EXPORT extern void TF_SetRequestedDevice(TF_Graph* graph,
                                                   TF_Operation* op,
                                                   const char* device);
 
+// Remove all the control inputs from `op` in `graph`.
 TF_CAPI_EXPORT extern void TF_RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
 
+// Set if `graph` requires shape inference functions.
 TF_CAPI_EXPORT extern void TF_SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
 
 // Extends `session` with any new operations added to its associated graph.
