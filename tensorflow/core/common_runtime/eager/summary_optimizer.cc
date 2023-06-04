@@ -124,7 +124,7 @@ FunctionDef StripSummary(const FunctionDef& fdef_with_summaries) {
       v.set_s(StrippedFunctionName(v.s()));
     }
     // Disable summary stripping on functions that have already been stripped.
-    if (k == kDisableSummariesAtRuntime) v.clear_s();
+    if (k == kDisableSummariesAtRuntime) v.clear_list();
   }
   return fdef;
 }
@@ -145,17 +145,23 @@ std::string NormalizeEdgeName(absl::string_view name) {
 
 }  // namespace internal
 
-absl::string_view GetDisableSummariesInputArg(const FunctionDef& fdef) {
+std::pair<absl::string_view, bool> GetDisableSummariesInputArg(
+    const FunctionDef& fdef) {
   auto it = fdef.attr().find(kDisableSummariesAtRuntime);
-  if (it == fdef.attr().end()) return kEmptyString;
-  if (it->second.has_s()) return it->second.s();
-  return kEmptyString;
+  if (it == fdef.attr().end()) return {kEmptyString, false};
+  if (it->second.has_list()) {
+    const auto& list = it->second.list();
+    if (list.s_size() == 1 && list.b_size() == 1) {
+      return {list.s(0), list.b(0)};
+    }
+  }
+  return {kEmptyString, false};
 }
 
 std::vector<FunctionDef> StripSummaries(const FunctionDef& fdef,
                                         const FunctionLibraryDefinition& flib) {
   std::vector<FunctionDef> results;
-  if (GetDisableSummariesInputArg(fdef).empty()) return results;
+  if (GetDisableSummariesInputArg(fdef).first.empty()) return results;
 
   // Strip the summaries from the provided `fdef`.
   results.push_back(StripSummary(fdef));

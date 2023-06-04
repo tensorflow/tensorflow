@@ -134,6 +134,7 @@ pytype_strict_library(
     visibility = [
         "//learning/brain/experimental/tfq:__pkg__",
         "//tensorflow/core/function/transform:__subpackages__",
+        "//tensorflow/python/eager:__subpackages__",
     ],
     deps = [
         ":runtime_client_pybind",

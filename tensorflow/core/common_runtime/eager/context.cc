@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/eager/summary_optimizer.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -949,6 +950,13 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   auto fdefs_to_add =
       small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
   for (const auto& fdef_to_add : fdefs_to_add) {
+    TF_RETURN_IF_ERROR(
+        AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
+  }
+
+  auto stripped_fdefs_to_add =
+      summary_optimizer::StripSummaries(fdef, func_lib_def_);
+  for (const auto& fdef_to_add : stripped_fdefs_to_add) {
     TF_RETURN_IF_ERROR(
         AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
   }

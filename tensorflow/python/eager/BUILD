@@ -398,6 +398,33 @@ cuda_py_strict_test(
     ],
 )
 
+py_strict_test(
+    name = "summary_optimizer_test",
+    srcs = ["summary_optimizer_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/219089812)
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/runtime_client:runtime_client_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:summary_ops_v2",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/platform:gfile",
+        "@absl_py//absl/flags",
+    ],
+)
+
 py_strict_library(
     name = "tape",
     srcs = ["tape.py"],

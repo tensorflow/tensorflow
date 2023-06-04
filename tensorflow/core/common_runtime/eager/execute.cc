@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/arg_ret_placement.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/eager/summary_optimizer.h"
 #include "tensorflow/core/common_runtime/int32_fulltype.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -1110,11 +1111,67 @@ StatusOr<BoolTensorInputs> RemoveBoolInputs(EagerOperation* op) {
   return result;
 }
 
+// Returns the value of the `op`'s input `arg_name`.
+// Returns `std::nullopt` by default in the following cases:
+// - `arg_name` is not a boolean tensor.
+// - `op` does nat have an input `arg_name`.
+// - `arg_name` is not on HOST.
+// - any issues with the `FunctionDef` in the `EagerContext`.
+std::optional<bool> GetBoolArgumentValue(const EagerOperation& op,
+                                         const absl::string_view arg_name) {
+  if (!op.is_function()) return std::nullopt;
+  // Extract tensor inputs.
+  const absl::InlinedVector<TensorHandle*, 4>* inputs;
+  if (!op.TensorHandleInputs(&inputs).ok()) return std::nullopt;
+  // Extract the FunctionDef.
+  const FunctionDef* fdef = op.EagerContext().GetFunctionDef(op.Name());
+  if (fdef == nullptr) return std::nullopt;
+  // Ensure the number of inputs matches the specification in the FunctionDef.
+  if (fdef->signature().input_arg_size() != inputs->size()) return std::nullopt;
+
+  // Identify the value of the boolean input.
+  for (int32_t i = 0; i < fdef->signature().input_arg_size(); ++i) {
+    const auto& input_arg = fdef->signature().input_arg(i);
+    if (input_arg.name() != arg_name) continue;
+    if (input_arg.type() != DT_BOOL) return std::nullopt;
+
+    // If the input is not on host returns std::nullopt.
+    const TensorHandle* handle = inputs->at(i);
+    Status s;
+    const char* input_device = handle->DeviceType(&s);
+    if (!s.ok() || !absl::StrContains(input_device, "CPU")) return std::nullopt;
+
+    // If there was an error reading the input value returns std::nullopt.
+    const Tensor* tensor;
+    auto read_tensor_status = handle->Tensor(&tensor);
+    if (!read_tensor_status.ok()) return std::nullopt;
+
+    // Return the input value `arg_name` passed to the `op`.
+    const bool input_value = tensor->scalar<bool>()();
+    return input_value;
+  }
+
+  // Could not find `arg_name` return std::nullopt by default.
+  return std::nullopt;
+}
+
 bool IsSmallConstantOptimizationEnabled(const EagerOperation& op) {
   if (!op.is_function()) return false;
   const FunctionDef* fdef = op.EagerContext().GetFunctionDef(op.Name());
   if (fdef == nullptr) return false;
   return small_constants_optimizer::IsSmallConstantOptimizationEnabled(*fdef);
+}
+
+bool IsSummaryOptimizerEnabled(const EagerOperation* op) {
+  if (!op->is_function()) return false;
+  const FunctionDef* fdef = op->EagerContext().GetFunctionDef(op->Name());
+  if (fdef == nullptr) return false;
+  const auto include_summary_arg =
+      summary_optimizer::GetDisableSummariesInputArg(*fdef);
+  if (include_summary_arg.first.empty()) return false;
+  const auto arg_value = GetBoolArgumentValue(*op, include_summary_arg.first);
+  if (!arg_value.has_value()) return false;
+  return arg_value.value() == include_summary_arg.second;
 }
 
 StatusOr<Fprint128> GetKernelCacheKey(
@@ -1276,6 +1333,12 @@ Status GetOrCreateKernelAndDevice(
           folded_name, input_name, input_value);
     }
     op->UpdateName(folded_name);
+  }
+
+  // Update the EagerOperation with information about the boolean input tensors
+  // when the summary_optimizer is enabled.
+  if (IsSummaryOptimizerEnabled(op)) {
+    op->UpdateName(summary_optimizer::StrippedFunctionName(op->Name()));
   }
 
   // Set the EagerOperation's device prior to extracting the input_device_ptrs
