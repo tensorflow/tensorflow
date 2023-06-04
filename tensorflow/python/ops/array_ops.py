@@ -19,6 +19,7 @@ import numbers
 import numpy as np
 
 from tensorflow.core.config import flags
+from tensorflow.python.autograph.lang import directives
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
 from tensorflow.python.framework import common_shapes
@@ -3412,7 +3413,8 @@ def pad_v2(tensor, paddings, mode="CONSTANT", constant_values=0, name=None):
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or 
+    "SYMMETRIC".
   """
   return pad(tensor, paddings, mode, name, constant_values)
 
@@ -3476,7 +3478,8 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
     A `Tensor`. Has the same type as `tensor`.
 
   Raises:
-    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or "SYMMETRIC".
+    ValueError: When mode is not one of "CONSTANT", "REFLECT", "WRAP" or 
+    "SYMMETRIC".
   """
 
   # Convert lower/mixed case to upper for NumPy compatibility
@@ -3552,69 +3555,107 @@ def _wrap_pad(tensor, paddings, name=None):
 
   See `pad` for more info on how this function works.
   """
-  # use constant padding to create a tensor with final shape and original values.
-  padded = gen_array_ops.pad_v2(input=tensor, paddings=paddings, name=name)
-  # store the begin and end of original slice area
-  slice_area_to_copy = [
-    _BaseSlice(dim - paddings.numpy()[index][1] - tensor.shape[index], 
-          dim - paddings.numpy()[index][1]) 
-          for index, dim in enumerate(padded.shape)]
-  # add wraps for each dimension
-  start_coords = [slices.start for slices in slice_area_to_copy]
+  # Use constant padding to create a tensor with final shape and original values.
+  padded = gen_array_ops.pad(input=tensor, paddings=paddings, name=name)
+  start_coords, end_coords = [
+    shape(padded) - paddings[:,1] - shape(tensor), 
+    shape(padded) - paddings[:,1]
+    ]
   tensor_to_copy = tensor
-  strides = [1 for i in padded.shape]
-  for dim, idxs in enumerate(paddings.numpy()):
-    lower_idx, upper_idx = idxs
-    # add the lower wrap
-    lower_begin = start_coords.copy()
-    upper_begin = start_coords.copy()
+  strides = ones(rank(padded))
+  # Add wraps for each dimension.
+  for i in range(shape(paddings)[0]):
+    # The shape of `tensor_to_copy` can change in iterations. 
+    # Set the loop options to avoid an error in graph 
+    # mode.
+    directives.set_loop_options(
+                shape_invariants=[(tensor_to_copy, 
+                                   tensor_shape.TensorShape(None))]
+            )
+    lower_idx, upper_idx = paddings[i][0], paddings[i][1]
+    lower_begin = identity(start_coords)
+    upper_begin = identity(start_coords)
+    # Add the lower wrap.
     while lower_idx > 0:
-      # check for partial wraps
-      partial_slice = [_BaseSlice(None, None) for i in padded.shape]
-      partial_slice[dim] = _BaseSlice(-lower_idx, None)
-      length_to_update, value  = (
-        [lower_idx, tensor_to_copy[partial_slice]] 
-        if lower_idx < tensor.shape[dim] 
-        else [tensor.shape[dim], tensor_to_copy])
-      # work out begin and end tensors
-      lower_begin[dim] -= length_to_update
-      end = np.add(lower_begin, value.shape)
-      # pad tensor with one iteration
+      # Check for partial wrap.
+      if lower_idx < shape(tensor)[i]:
+        partial_slice_begin = zeros(rank(tensor_to_copy), dtype=dtypes.int32)
+        partial_slice_begin = gen_array_ops.tensor_scatter_nd_add(
+          partial_slice_begin, 
+          reshape(i, [1,1]), 
+          (shape(tensor_to_copy)[i] - lower_idx)[..., None]
+          )
+        lower_size = fill(reshape(rank(tensor_to_copy), [-1]),-1)
+        length_to_update, value  = [
+          lower_idx, 
+          slice(tensor_to_copy, partial_slice_begin, lower_size)
+          ]
+      else:
+        length_to_update, value = [shape(tensor)[i], tensor_to_copy]
+      lower_begin = gen_array_ops.tensor_scatter_nd_sub(
+        lower_begin, 
+        reshape(i, [1,1]), 
+        length_to_update[...,None]
+        )
+      end = lower_begin + shape(value)
+      # Pad tensor with one iteration.
       padded = gen_array_ops.tensor_strided_slice_update(
         input=padded, 
-        begin=constant(lower_begin, dtype=padded.dtype), 
-        end=constant(end, dtype=padded.dtype), 
-        strides=constant(strides, dtype=padded.dtype), 
-        value=value
+        begin=gen_math_ops.cast(lower_begin, dtype=dtypes.int32), 
+        end=gen_math_ops.cast(end, dtype=dtypes.int32), 
+        strides=gen_math_ops.cast(strides, dtype=dtypes.int32), 
+        value=gen_math_ops.cast(value, dtype=padded.dtype)
         )
-      # update idx
-      lower_idx -= value.shape[dim]
-    # add upper wrap
+      # Update lower_idx.
+      lower_idx -= shape(value)[i]
     while upper_idx > 0:
-      #check for partial wraps
-      partial_slice = [_BaseSlice(None, None) for i in padded.shape]
-      partial_slice[dim] = _BaseSlice(None, upper_idx)
-      length_to_update, value  = (
-        [upper_idx, tensor_to_copy[partial_slice]] 
-        if upper_idx < tensor.shape[dim] 
-        else [tensor.shape[dim], tensor_to_copy])
-      # work out begin and end tensors
-      upper_begin[dim] += tensor.shape[dim]
-      end = np.add(upper_begin, value.shape) 
-      # pad tensor with one iteration
+      # Check for partial wrap.
+      if upper_idx < shape(tensor)[i]:
+        partial_slice_begin = zeros(rank(tensor_to_copy), dtype=dtypes.int32)
+        upper_size = fill(reshape(rank(tensor_to_copy), [-1]),-1)
+        upper_size = gen_array_ops.tensor_scatter_update(
+          upper_size,  
+          reshape(i, [1,1]), 
+          upper_idx[...,None]
+          )
+        length_to_update, value  = [
+          upper_idx, 
+          slice(tensor_to_copy, partial_slice_begin, size)
+          ]
+      else:
+        length_to_update, value = [shape(tensor)[i], tensor_to_copy]
+      upper_begin = gen_array_ops.tensor_scatter_nd_add(
+        upper_begin,  
+        reshape(i, [1,1]), 
+        shape(tensor)[i][...,None]
+        )
+      end = upper_begin + shape(value)
+      # Pad tensor with one iteration.
       padded = gen_array_ops.tensor_strided_slice_update(
         input=padded, 
-        begin=constant(upper_begin, dtype=padded.dtype), 
-        end=constant(end, dtype=padded.dtype), 
-        strides=constant(strides, dtype=padded.dtype), 
-        value=value
+        begin=gen_math_ops.cast(upper_begin, dtype=dtypes.int32), 
+        end=gen_math_ops.cast(end, dtype=dtypes.int32), 
+        strides=gen_math_ops.cast(strides, dtype=dtypes.int32), 
+        value=gen_math_ops.cast(value, dtype=padded.dtype)
         )
-      # update idx
-      upper_idx -= value.shape[dim]
-    #update start_coords so the whole tensor is copied (eg in 2D end up in cross-like situation)
-    start_coords[dim] = 0 
-    slice_area_to_copy[dim] = _BaseSlice(None, None)
-    tensor_to_copy = padded[slice_area_to_copy]
+      # Update upper_idx.
+      upper_idx -= shape(value)[i]
+    # Update tensor_to_copy to include newly wrap padded slice.
+    start_coords = gen_array_ops.tensor_scatter_update(
+      start_coords, 
+      reshape(i, [1,1]), 
+      constant(0)[...,None]
+      )
+    end_coords = gen_array_ops.tensor_scatter_update(
+      end_coords, 
+      reshape(i, [1,1]), 
+      constant(-1)[...,None]
+      )
+    tensor_to_copy = slice(
+      padded, 
+      gen_math_ops.cast(start_coords, dtypes.int32), 
+      gen_math_ops.cast(end_coords - start_coords, dtypes.int32)
+      )
   return padded
 
 @tf_export("meshgrid")
