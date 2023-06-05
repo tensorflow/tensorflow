@@ -211,6 +211,7 @@ py_strict_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
     ],
     deps = [
