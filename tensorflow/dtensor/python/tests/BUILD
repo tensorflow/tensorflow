@@ -11,6 +11,8 @@ load(
     "dtensor_test",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 # File used by internal tests.
 exports_files([
     "spmd_test.py",
