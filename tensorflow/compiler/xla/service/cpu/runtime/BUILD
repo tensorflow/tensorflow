@@ -151,3 +151,16 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:executable",
     ],
 )
+
+cc_library(
+    name = "rng_ffi",
+    srcs = ["rng_ffi.cc"],
+    hdrs = ["rng_ffi.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":rng",
+        "//tensorflow/compiler/xla/runtime:aot_ffi",
+        "//tensorflow/compiler/xla/runtime:aot_ffi_execution_context",
+        "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
+    ],
+)
