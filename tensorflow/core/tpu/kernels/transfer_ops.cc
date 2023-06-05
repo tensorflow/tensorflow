@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
 
+#include <deque>
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
