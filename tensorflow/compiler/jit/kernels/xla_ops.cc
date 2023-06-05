@@ -592,19 +592,23 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                              compilation_result, done, inputs,
                              resources = resources_]() {
       auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
-      std::vector<VariableInfo> variable_infos;
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
-                              &variable_infos),
-          done);
-      OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                           done);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
-                            *compilation_result, pjrt_executable, ctx),
-          done);
+      // Separate scope so that VariableInfo locks are released before done() is
+      // called.
+      {
+        std::vector<VariableInfo> variable_infos;
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                                &variable_infos),
+            done);
+        OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                             done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
+                              *compilation_result, pjrt_executable, ctx),
+            done);
+      }
       VLOG(2) << "Done executing with PJRT.";
       done();
     };
