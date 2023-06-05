@@ -674,6 +674,16 @@ std::vector<AutotuneResult::TritonGemmKey> GetPossibleMatmulAutotuneConfigs(
             GemmKey(16, 64, 256, 8, 1, 4),   GemmKey(256, 256, 128, 1, 3, 8)},
         std::back_inserter(configs));
   }
+  if (compute_capability.IsAtLeast(se::CudaComputeCapability::HOPPER)) {
+    configs.erase(
+        std::remove_if(configs.begin(), configs.end(),
+                       [](const AutotuneResult::TritonGemmKey& config) {
+                         return (config.block_m() * config.block_n() / 256) %
+                                    config.num_warps() !=
+                                0;
+                       }),
+        configs.end());
+  }
   return configs;
 }
 
