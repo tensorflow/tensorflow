@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <initializer_list>
 #include <vector>
 
@@ -34,6 +35,17 @@ class ElementWiseOpBaseModel : public SingleOpModel {
  protected:
   int input_;
   int output_;
+};
+
+class ElementWiseOpIntModel : public ElementWiseOpBaseModel {
+ public:
+  ElementWiseOpIntModel(BuiltinOperator op,
+                        std::initializer_list<int> input_shape) {
+    input_ = AddInput(TensorType_INT32);
+    output_ = AddOutput(TensorType_INT32);
+    SetBuiltinOp(op, BuiltinOptions_NONE, 0);
+    BuildInterpreter({input_shape});
+  }
 };
 
 class ElementWiseOpFloatModel : public ElementWiseOpBaseModel {
@@ -159,6 +171,19 @@ TEST(ElementWise, Abs) {
                                                       0.f, 6.2f, 2.f, 4.f,  //
                                                       3.f, 2.f, 10.f, 1.f,  //
                                                   }));
+}
+
+TEST(ElementWise, AbsInt32) {
+  ElementWiseOpIntModel m(BuiltinOperator_ABS, {1, 2, 4, 1});
+  m.PopulateTensor<int32_t>(m.input(), {
+                                           0, -6, 2, 4,   //
+                                           3, -2, 10, 1,  //
+                                       });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<int32_t>(m.output()), ElementsAreArray({
+                                                        0, 6, 2, 4,   //
+                                                        3, 2, 10, 1,  //
+                                                    }));
 }
 
 TEST(ElementWise, AbsInt8) {

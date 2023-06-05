@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/cpu_function_runtime.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 
 namespace xla {
@@ -26,7 +27,7 @@ namespace cpu {
 // information from `buffer_assignment`.
 std::vector<cpu_function_runtime::BufferInfo>
 CreateBufferInfosFromBufferAssignment(
-    const BufferAssignment& buffer_assignment);
+    const HloModule& module, const BufferAssignment& buffer_assignment);
 
 // Creates and returns a table containing the mapping from entry computation
 // parameters to buffer allocation indices.
@@ -34,6 +35,9 @@ CreateBufferInfosFromBufferAssignment(
 // If this function returns V then entry parameter i has buffer allocation index
 // V[i].
 std::vector<int32_t> CreateArgIndexTableFromBufferInfos(
+    absl::Span<const cpu_function_runtime::BufferInfo> buffer_infos);
+
+std::vector<int32_t> CreateResultIndexTableFromBufferInfos(
     absl::Span<const cpu_function_runtime::BufferInfo> buffer_infos);
 }  // namespace cpu
 }  // namespace xla

@@ -19,6 +19,7 @@ import os
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint as tracking_util
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import options as options_lib
@@ -424,7 +425,11 @@ class CheckpointTestBase(test.TestCase):
           with self.assertRaises(StopIteration):
             next(iterator)
         if save_checkpoint_at_end or i < len(break_points):
-          ckpt_path = ckpt.save(self._ckpt_path())
+          # TODO(b/275117275): Verify if TF2 async checkpoint works.
+          ckpt_options = checkpoint_options.CheckpointOptions()
+          ckpt_options.experimental_enable_async_checkpoint = False
+          ckpt_options.enable_async = False
+          ckpt_path = ckpt.save(self._ckpt_path(), options=ckpt_options)
           ckpt_saved = True
     else:
       def get_ops():
@@ -504,8 +509,8 @@ class CheckpointTestBase(test.TestCase):
       self.match(expected, actual)
 
   def gen_break_points(self, num_outputs, num_samples=10):
-    """Generates `num_samples` breaks points in [0, num_outputs]."""
-    return np.linspace(0, num_outputs, num_samples, dtype=int)
+    """Generates `num_samples` unique break points in [0, num_outputs]."""
+    return np.unique(np.linspace(0, num_outputs, num_samples, dtype=int))
 
   def _build_graph(self, ds_fn, sparse_tensors=False):
     dataset = ds_fn()

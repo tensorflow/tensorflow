@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_simplifier.h"
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
@@ -164,44 +164,46 @@ StatusOr<bool> IdentityReshapeRemoving(HloInstruction* reshape) {
 
 }  // namespace
 
-StatusOr<bool> DynamicDimensionSimplifier::Run(HloModule* module) {
+StatusOr<bool> DynamicDimensionSimplifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   XLA_VLOG_LINES(
       2, "DynamicDimensionSimplifier::Run(), before:\n" + module->ToString());
   bool changed = false;
 
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool local_changed, ConcatForwarding(inst));
       changed |= local_changed;
     }
   }
 
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool local_changed, SliceConcatForwarding(inst));
       changed |= local_changed;
     }
   }
 
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool local_changed, ReshapeBroadcastForwarding(inst));
       changed |= local_changed;
     }
   }
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool local_changed, ReshapeReshapeForwarding(inst));
       changed |= local_changed;
     }
   }
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool local_changed, IdentityConvertRemoving(inst));
       changed |= local_changed;
     }
   }
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     for (auto* inst : comp->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool local_changed, IdentityReshapeRemoving(inst));
       changed |= local_changed;

@@ -28,7 +28,9 @@ from tensorflow.python.platform import test as test_lib
 class BroadcastToTest(test_util.TensorFlowTestCase):
 
   def testBroadcastToBasic(self):
-    for dtype in [np.uint8, np.uint16, np.int8, np.int16, np.int32, np.int64]:
+    for dtype in [np.uint8, np.uint16, np.int8, np.int16, np.int32, np.int64,
+                  np.float16, np.float32, np.float64,
+                  dtypes.bfloat16.as_numpy_dtype]:
       with self.session():
         x = np.array([1, 2, 3], dtype=dtype)
         v_tf = array_ops.broadcast_to(constant_op.constant(x), [3, 3])

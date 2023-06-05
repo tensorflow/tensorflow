@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_MUL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_INTEGER_OPS_MUL_H_
 
+#include <algorithm>
+
 #include "fixedpoint/fixedpoint.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -22,10 +24,10 @@ limitations under the License.
 namespace tflite {
 namespace reference_integer_ops {
 
-template <typename T>
-inline void MulElementwise(int size, const ArithmeticParams& params,
-                           const T* input1_data, const T* input2_data,
-                           T* output_data) {
+template <typename InputType, typename OutputType>
+void MulElementwise(int size, const ArithmeticParams& params,
+                    const InputType* input1_data, const InputType* input2_data,
+                    OutputType* output_data) {
   for (int i = 0; i < size; ++i) {
     const int32_t input1_val = params.input1_offset + input1_data[i];
     const int32_t input2_val = params.input2_offset + input2_data[i];
@@ -37,7 +39,7 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     const int32_t clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
-    output_data[i] = static_cast<T>(clamped_output);
+    output_data[i] = static_cast<OutputType>(clamped_output);
   }
 }
 

@@ -20,8 +20,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/delegates/coreml/builders/op_validator.h"
 #include "tensorflow/lite/delegates/coreml/builders/util.h"
 #include "tensorflow/lite/delegates/coreml/coreml_delegate_kernel.h"
@@ -175,6 +175,14 @@ class CoreMlDelegate : public TfLiteDelegate {
       if (params_.min_nodes_per_partition <= 0) {
         params_.min_nodes_per_partition = kMinNodesPerCoreMlDelegate;
       }
+#ifdef TFLITE_DEBUG_DELEGATE
+      if (params_.first_delegate_node_index < 0) {
+        params_.first_delegate_node_index = 0;
+      }
+      if (params->last_delegate_node_index <= 0) {
+        params_.last_delegate_node_index = std::numeric_limits<int>::max();
+      }
+#endif
     }
   }
 
@@ -242,7 +250,12 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   };
 
   delegates::FP16GraphPartitionHelper partition_helper(context, node_supported_fn);
+#ifndef TFLITE_DEBUG_DELEGATE
   TF_LITE_ENSURE_STATUS(partition_helper.Partition(nullptr));
+#else
+  TF_LITE_ENSURE_STATUS(partition_helper.Partition(nullptr, params->first_delegate_node_index,
+                                                   params->last_delegate_node_index));
+#endif
 
   std::vector<int> delegated_nodes = partition_helper.GetNodesOfFirstNLargestPartitions(
       params->max_delegated_partitions, params->min_nodes_per_partition);

@@ -7,13 +7,21 @@ import "tensorflow/core/profiler/protobuf/kernel_stats.proto";
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
 import "tensorflow/core/profiler/protobuf/steps_db.proto";
 import "tensorflow/core/profiler/protobuf/tf_function.proto";
+import "tensorflow/core/profiler/protobuf/topology.proto";
 
 // Performance environment, e.g the peak performance capabilities of the device.
 message PerfEnv {
   // Peak performance of a TPU core or a GPU in TFLOP/s.
   double peak_tera_flops_per_second = 1;
   // Peak memory bandwidth of a TPU core or a GPU in GiBs/s.
+  double peak_bw_giga_bytes_per_second = 4;
+  // Peak off-chip memory bandwidth of a TPU core or a GPU in GiBs/s.
   double peak_hbm_bw_giga_bytes_per_second = 2;
+  // Peak memory bandwidths of a TPU core or a GPU in GiBs/s.
+  // Index into array using MemBwType enum.
+  // TODO: remove the 2 above fields and bump up the proto version to maintain
+  // backwards compatibility.
+  repeated double peak_bws_giga_bytes_per_second = 5;
   // The ridge point of roofline model in FLOP/Byte. (i.e., minimum operational
   // intensity required to achieve maximum performance).
   double ridge_point = 3;
@@ -83,7 +91,9 @@ message RunEnvironment {
   // If there is no model parallelism, then num_cores_per_replica = 1
   int32 num_cores_per_replica = 10;
   // The chip interconnection topology.
-  SystemTopology topology = 11;
+  SystemTopology topology = 11 [deprecated = true];
+  // The chip and host interconnection topology.
+  Topology system_topology = 13;
   // Host trace level.
   uint32 host_trace_level = 12;
   reserved 6;
@@ -99,7 +109,13 @@ message CoreDetails {
   uint32 global_core_id = 6;  // unique within mesh, TPU core only
 }
 
-// Next ID: 13
+// Metrics based on hardware performance counters.
+message PerformanceCounterResult {
+  // Overall matrix unit utilization in percentage.
+  double matrix_unit_utilization_percent = 1;
+}
+
+// Next ID: 14
 // Operator Statistics.
 message OpStats {
   // The database for the op metrics collected from the host over the entire
@@ -126,5 +142,7 @@ message OpStats {
   Diagnostics diagnostics = 9;
   // A map from program ID to program name.
   map<uint64, string> program_id_to_name_map = 12;
+  // Performance counters.
+  PerformanceCounterResult performance_counter_result = 13;
   reserved 7;
 }

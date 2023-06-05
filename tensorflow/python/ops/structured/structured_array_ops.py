@@ -22,11 +22,28 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.ragged import dynamic_ragged_shape
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.ops.structured.structured_tensor import StructuredTensor
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+
+
+@dispatch.dispatch_for_api(array_ops.shape_v2)
+def shape_v2(input: StructuredTensor, out_type=dtypes.int32,  # pylint: disable=redefined-builtin
+             name=None) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return input._ragged_shape.with_dtype(out_type)  # pylint: disable=protected-access
+
+
+@dispatch.dispatch_for_api(array_ops.shape)
+def shape_v1(input: StructuredTensor, name=None,  # pylint: disable=redefined-builtin
+             out_type=dtypes.int32) -> dynamic_ragged_shape.DynamicRaggedShape:
+  """Returns a DynamicRaggedShape containing the shape of the input."""
+  del name
+  return input._ragged_shape.with_dtype(out_type)  # pylint: disable=protected-access
 
 
 @dispatch.dispatch_for_types(array_ops.expand_dims, StructuredTensor)

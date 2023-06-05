@@ -141,27 +141,15 @@ from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
 
 if tf2.enabled():
-  from tensorflow.python.keras.layers.recurrent_v2 import GRU
-  from tensorflow.python.keras.layers.recurrent_v2 import GRUCell
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTM
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTMCell
   from tensorflow.python.keras.layers.recurrent import GRU as GRUV1
   from tensorflow.python.keras.layers.recurrent import GRUCell as GRUCellV1
   from tensorflow.python.keras.layers.recurrent import LSTM as LSTMV1
   from tensorflow.python.keras.layers.recurrent import LSTMCell as LSTMCellV1
-  GRUV2 = GRU
-  GRUCellV2 = GRUCell
-  LSTMV2 = LSTM
-  LSTMCellV2 = LSTMCell
 else:
   from tensorflow.python.keras.layers.recurrent import GRU
   from tensorflow.python.keras.layers.recurrent import GRUCell
   from tensorflow.python.keras.layers.recurrent import LSTM
   from tensorflow.python.keras.layers.recurrent import LSTMCell
-  from tensorflow.python.keras.layers.recurrent_v2 import GRU as GRUV2
-  from tensorflow.python.keras.layers.recurrent_v2 import GRUCell as GRUCellV2
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTM as LSTMV2
-  from tensorflow.python.keras.layers.recurrent_v2 import LSTMCell as LSTMCellV2
   GRUV1 = GRU
   GRUCellV1 = GRUCell
   LSTMV1 = LSTM
@@ -169,10 +157,6 @@ else:
 
 # Convolutional-recurrent layers.
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D
-
-# CuDNN recurrent layers.
-from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNLSTM
-from tensorflow.python.keras.layers.cudnn_recurrent import CuDNNGRU
 
 # # RNN Cell wrappers.
 from tensorflow.python.keras.layers.rnn_cell_wrapper_v2 import DeviceWrapper

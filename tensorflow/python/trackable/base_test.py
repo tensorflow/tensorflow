@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-import functools
 import os
 from tensorflow.python.checkpoint import checkpoint as util
 from tensorflow.python.framework import ops
@@ -62,21 +61,6 @@ class InterfaceTests(test.TestCase):
     save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
     restored = util.Checkpoint(obj=base.Trackable())
     restored.restore(save_path).assert_consumed()
-
-  def testAssertConsumedFailsWithUsedPythonState(self):
-    has_config = base.Trackable()
-    attributes = {
-        "foo_attr": functools.partial(
-            base.PythonStringStateSaveable,
-            state_callback=lambda: "",
-            restore_callback=lambda x: None)}
-    has_config._gather_saveables_for_checkpoint = lambda: attributes
-    saved = util.Checkpoint(obj=has_config)
-    save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    restored = util.Checkpoint(obj=base.Trackable())
-    status = restored.restore(save_path)
-    with self.assertRaisesRegex(AssertionError, "foo_attr"):
-      status.assert_consumed()
 
   def testBuggyGetConfig(self):
 

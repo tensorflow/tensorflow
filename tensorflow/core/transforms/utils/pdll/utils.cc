@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
 #include "tensorflow/core/transforms/utils/utils.h"
 
@@ -26,13 +27,14 @@ namespace {
 #include "tensorflow/core/transforms/utils/pdll/PDLLUtils.h.inc"
 }  // namespace
 
-static LogicalResult NodeIsOnCpuImpl(PatternRewriter &rewriter, Operation *op) {
-  return success(util::NodeIsOnCpu(op));
+static LogicalResult OpHasCpuDeviceImpl(PatternRewriter &rewriter,
+                                        Operation *op) {
+  return success(util::OpHasDevice(op, tensorflow::DEVICE_CPU));
 }
 
 void RegisterPDLLUtils(RewritePatternSet &patterns) {
-  patterns.getPDLPatterns().registerConstraintFunction("NodeIsOnCpu",
-                                                       NodeIsOnCpuImpl);
+  patterns.getPDLPatterns().registerConstraintFunction("OpHasCpuDevice",
+                                                       OpHasCpuDeviceImpl);
 }
 
 }  // namespace tfg

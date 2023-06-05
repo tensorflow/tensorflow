@@ -18,16 +18,16 @@ limitations under the License.
 
 #include <optional>
 
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace xla {
 namespace gpu {
@@ -72,7 +72,7 @@ class TriangularSolveThunk : public Thunk {
   const int64_t b_batch_stride_;
 };
 
-Status RunTriangulatSolve(se::DeviceMemoryBase a_data,
+Status RunTriangularSolve(se::DeviceMemoryBase a_data,
                           se::DeviceMemoryBase b_data,
                           se::DeviceMemoryBase temp_data,
                           se::GpuAsmOpts asm_opts, se::blas::UpperLower uplo,

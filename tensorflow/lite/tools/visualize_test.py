@@ -35,7 +35,7 @@ class VisualizeTest(test_util.TensorFlowTestCase):
     model_dict = visualize.CreateDictFromFlatbuffer(model)
     self.assertEqual(test_utils.TFLITE_SCHEMA_VERSION, model_dict['version'])
     self.assertEqual(1, len(model_dict['subgraphs']))
-    self.assertEqual(1, len(model_dict['operator_codes']))
+    self.assertEqual(2, len(model_dict['operator_codes']))
     self.assertEqual(3, len(model_dict['buffers']))
     self.assertEqual(3, len(model_dict['subgraphs'][0]['tensors']))
     self.assertEqual(0, model_dict['subgraphs'][0]['tensors'][0]['buffer'])

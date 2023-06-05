@@ -24,7 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-// Returns the default protocol to use for tf.data service servers and clients.
+// Returns the default protocol to use for tf.data service control flow.
 std::string DefaultProtocol();
 
 }  // namespace data

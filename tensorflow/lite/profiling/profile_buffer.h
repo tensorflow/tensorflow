@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -77,28 +78,7 @@ class ProfileBuffer {
   // buffer is disabled this has no affect.
   // The tag of the event should remain valid till the buffer is valid.
   uint32_t BeginEvent(const char* tag, ProfileEvent::EventType event_type,
-                      int64_t event_metadata1, int64_t event_metadata2) {
-    if (!enabled_) {
-      return kInvalidEventHandle;
-    }
-    uint64_t timestamp = time::NowMicros();
-    const auto next_index = GetNextEntryIndex();
-    if (next_index.second) {
-      return next_index.first;
-    }
-    const int index = next_index.first;
-    event_buffer_[index].tag = tag;
-    event_buffer_[index].event_type = event_type;
-    event_buffer_[index].event_metadata = event_metadata1;
-    event_buffer_[index].extra_event_metadata = event_metadata2;
-    event_buffer_[index].begin_timestamp_us = timestamp;
-    event_buffer_[index].elapsed_time = 0;
-    if (event_type != Profiler::EventType::OPERATOR_INVOKE_EVENT) {
-      event_buffer_[index].begin_mem_usage = memory::GetMemoryUsage();
-    }
-    current_index_++;
-    return index;
-  }
+                      int64_t event_metadata1, int64_t event_metadata2);
 
   // Sets the enabled state of buffer to |enabled|
   void SetEnabled(bool enabled) { enabled_ = enabled; }
@@ -107,52 +87,11 @@ class ProfileBuffer {
   // If the buffer is disabled or previous event has been overwritten this
   // operation has not effect.
   void EndEvent(uint32_t event_handle, const int64_t* event_metadata1 = nullptr,
-                const int64_t* event_metadata2 = nullptr) {
-    if (!enabled_ || event_handle == kInvalidEventHandle ||
-        event_handle > current_index_) {
-      return;
-    }
-    const uint32_t max_size = event_buffer_.size();
-    if (current_index_ > (max_size + event_handle)) {
-      // Ignore, buffer has already overflowed.
-      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
-      return;
-    }
-
-    int event_index = event_handle % max_size;
-    event_buffer_[event_index].elapsed_time =
-        time::NowMicros() - event_buffer_[event_index].begin_timestamp_us;
-    if (event_buffer_[event_index].event_type !=
-        Profiler::EventType::OPERATOR_INVOKE_EVENT) {
-      event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
-    }
-    if (event_metadata1) {
-      event_buffer_[event_index].event_metadata = *event_metadata1;
-    }
-    if (event_metadata2) {
-      event_buffer_[event_index].extra_event_metadata = *event_metadata2;
-    }
-  }
+                const int64_t* event_metadata2 = nullptr);
 
   void AddEvent(const char* tag, ProfileEvent::EventType event_type,
                 uint64_t elapsed_time, int64_t event_metadata1,
-                int64_t event_metadata2) {
-    if (!enabled_) {
-      return;
-    }
-    const auto next_index = GetNextEntryIndex();
-    if (next_index.second) {
-      return;
-    }
-    const int index = next_index.first;
-    event_buffer_[index].tag = tag;
-    event_buffer_[index].event_type = event_type;
-    event_buffer_[index].event_metadata = event_metadata1;
-    event_buffer_[index].extra_event_metadata = event_metadata2;
-    event_buffer_[index].begin_timestamp_us = 0;
-    event_buffer_[index].elapsed_time = elapsed_time;
-    current_index_++;
-  }
+                int64_t event_metadata2);
 
   // Returns the size of the buffer.
   size_t Size() const {
@@ -169,37 +108,12 @@ class ProfileBuffer {
   // Returns the profile event at the given index. If the index is invalid a
   // nullptr is returned. The return event may get overwritten if more events
   // are added to buffer.
-  const struct ProfileEvent* At(size_t index) const {
-    size_t size = Size();
-    if (index >= size) {
-      return nullptr;
-    }
-    const uint32_t max_size = event_buffer_.size();
-    uint32_t start =
-        (current_index_ > max_size) ? current_index_ % max_size : max_size;
-    index = (index + start) % max_size;
-    return &event_buffer_[index];
-  }
+  const struct ProfileEvent* At(size_t index) const;
 
  private:
   // Returns a pair of values. The 1st element refers to the next buffer id,
   // the 2nd element refers to whether the buffer reaches its allowed capacity.
-  std::pair<int, bool> GetNextEntryIndex() {
-    int index = current_index_ % event_buffer_.size();
-    if (current_index_ == 0 || index != 0) {
-      return std::make_pair(index, false);
-    }
-
-    // Current buffer is full
-    if (!allow_dynamic_expansion_) {
-      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
-      return std::make_pair(current_index_, true);
-    } else {
-      fprintf(stderr, "Warning: Doubling internal profiling buffer.\n");
-      event_buffer_.resize(current_index_ * 2);
-      return std::make_pair(current_index_, false);
-    }
-  }
+  std::pair<int, bool> GetNextEntryIndex();
 
   bool enabled_;
   uint32_t current_index_;

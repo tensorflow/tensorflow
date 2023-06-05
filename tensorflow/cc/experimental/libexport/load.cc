@@ -47,7 +47,7 @@ tensorflow::StatusOr<TFPackage> TFPackage::Load(const std::string& path) {
     RETURN_IF_ERROR(ReadTextProto(Env::Default(), saved_model_pbtxt_path,
                                   &tf_package.saved_model_proto_));
   } else {
-    return Status(error::Code::NOT_FOUND,
+    return Status(absl::StatusCode::kNotFound,
                   "Could not find SavedModel .pb or .pbtxt at supplied export "
                   "directory path: " +
                       path);
@@ -101,7 +101,7 @@ tensorflow::StatusOr<std::string> TFPackage::GetVariableCheckpointKey(
     }
   }
   if (serialized_tensor == nullptr) {
-    return tensorflow::Status(error::INTERNAL,
+    return tensorflow::Status(absl::StatusCode::kInternal,
                               "Failed to find variable value field.");
   }
   return serialized_tensor->checkpoint_key();
@@ -115,7 +115,7 @@ tensorflow::StatusOr<const tensorflow::NodeDef*> TFPackage::GetGraphDefNode(
     std::string name) {
   const auto& iter = graph_def_nodes_by_name_.find(name);
   if (iter == graph_def_nodes_by_name_.end()) {
-    return tensorflow::Status(error::INTERNAL,
+    return tensorflow::Status(absl::StatusCode::kInternal,
                               absl::StrCat("Failed to find node named ", name));
   }
   return iter->second;

@@ -27,7 +27,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
@@ -51,11 +53,14 @@ namespace mlir {
 namespace tosa {
 namespace {
 
+#define GEN_PASS_DEF_TOSACONVERTTFLUINT8PASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
 // Performs lowering to TOSA dialect.
 class ConvertUint8ToInt8
-    : public TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
+    : public impl::TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
-  explicit ConvertUint8ToInt8() {}
+  explicit ConvertUint8ToInt8() = default;
   void runOnOperation() override;
 };
 
@@ -86,7 +91,7 @@ struct ConvertUint8QConstOp : public RewritePattern {
     }
 
     mlir::DenseElementsAttr src_dense_attr =
-        tfl_qconst_op.value().cast<DenseElementsAttr>();
+        tfl_qconst_op.getValue().cast<DenseElementsAttr>();
 
     double type_range_min =
         static_cast<double>(output_element_type.getStorageTypeMin() -
@@ -192,9 +197,9 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           function.getLoc(), int8_type, arg,
           builder.getI32IntegerAttr(uint8_zp),
           builder.getI32IntegerAttr(int8_zp),
-          builder.getI32ArrayAttr({1 << 30}), builder.getI32ArrayAttr({30}),
-          builder.getBoolAttr(true), builder.getBoolAttr(false),
-          builder.getBoolAttr(false));
+          builder.getDenseI32ArrayAttr({1 << 30}),
+          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_front(op_rescale_op);
@@ -310,9 +315,9 @@ LogicalResult convert_graph_uint8_tensor(mlir::MLIRContext &context,
           function.getLoc(), uint8_output_type, input_val,
           builder.getI32IntegerAttr(int8_zp),
           builder.getI32IntegerAttr(uint8_zp),
-          builder.getI32ArrayAttr({1 << 30}), builder.getI32ArrayAttr({30}),
-          builder.getBoolAttr(true), builder.getBoolAttr(false),
-          builder.getBoolAttr(false));
+          builder.getDenseI32ArrayAttr({1 << 30}),
+          builder.getDenseI32ArrayAttr({30}), builder.getBoolAttr(true),
+          builder.getBoolAttr(false), builder.getBoolAttr(false));
 
       Operation *op_rescale_op = static_cast<Operation *>(rescale_op);
       bb.push_back(op_rescale_op);

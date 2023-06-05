@@ -22,6 +22,9 @@ limitations under the License.
 namespace mlir {
 namespace tfg {
 
+#define GEN_PASS_DECL_CONSTANTFOLDINGPASS
+#include "tensorflow/core/transforms/passes.h.inc"
+
 // Create a constant folding pass.
 std::unique_ptr<Pass> CreateConstantFoldingPass();
 

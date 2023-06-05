@@ -62,10 +62,9 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
     StatusScopedDiagnosticHandler ssdh(&context);
     Status s = ssdh.Combine(function());
     ASSERT_TRUE(tensorflow::errors::IsInternal(s));
-    EXPECT_THAT(s.error_message(), HasSubstr("Passed in error"));
-    EXPECT_THAT(s.error_message(), HasSubstr("Diagnostic message reported"));
-    EXPECT_THAT(s.error_message(),
-                HasSubstr("Second diagnostic message reported"));
+    EXPECT_THAT(s.message(), HasSubstr("Passed in error"));
+    EXPECT_THAT(s.message(), HasSubstr("Diagnostic message reported"));
+    EXPECT_THAT(s.message(), HasSubstr("Second diagnostic message reported"));
   }
 }
 
@@ -111,11 +110,11 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithFilter) {
   emitError(callsite_loc3) << "Error 3";
   Status s_filtered = ssdh_filter.ConsumeStatus();
   // Check for the files that should not be filtered.
-  EXPECT_THAT(s_filtered.error_message(), HasSubstr("keras"));
-  EXPECT_THAT(s_filtered.error_message(), HasSubstr("test.py"));
-  EXPECT_THAT(s_filtered.error_message(), HasSubstr("show_file"));
+  EXPECT_THAT(s_filtered.message(), HasSubstr("keras"));
+  EXPECT_THAT(s_filtered.message(), HasSubstr("test.py"));
+  EXPECT_THAT(s_filtered.message(), HasSubstr("show_file"));
   // Verify the filtered files are not present.
-  EXPECT_THAT(s_filtered.error_message(), Not(HasSubstr("filtered_file")));
+  EXPECT_THAT(s_filtered.message(), Not(HasSubstr("filtered_file")));
 }
 
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithoutFilter) {
@@ -151,10 +150,10 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandlerWithoutFilter) {
   emitError(callsite_loc2) << "Error 2";
   Status s_no_filter = ssdh_no_filter.ConsumeStatus();
   // All files should be present, especially the 'filtered' ones.
-  EXPECT_THAT(s_no_filter.error_message(), HasSubstr("keras"));
-  EXPECT_THAT(s_no_filter.error_message(), HasSubstr("my_op"));
-  EXPECT_THAT(s_no_filter.error_message(), HasSubstr("filtered_file_A"));
-  EXPECT_THAT(s_no_filter.error_message(), HasSubstr("filtered_file_B"));
+  EXPECT_THAT(s_no_filter.message(), HasSubstr("keras"));
+  EXPECT_THAT(s_no_filter.message(), HasSubstr("my_op"));
+  EXPECT_THAT(s_no_filter.message(), HasSubstr("filtered_file_A"));
+  EXPECT_THAT(s_no_filter.message(), HasSubstr("filtered_file_B"));
 }
 
 }  // namespace

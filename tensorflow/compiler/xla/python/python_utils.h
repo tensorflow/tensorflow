@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PYBIND11_UTILS_H_
-#define TENSORFLOW_COMPILER_XLA_PYTHON_PYBIND11_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_UTILS_H_
+#define TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_UTILS_H_
 
 #include <Python.h>
 
 #include <optional>
 #include <string>
 
-#include "pybind11/pybind11.h"
-#include "pybind11/pytypes.h"
+#include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11/pytypes.h"  // from @pybind11
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -57,4 +57,4 @@ pybind11::object def_static(Constructor&& constructor) {
 
 }  // namespace jax
 
-#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PYBIND11_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_PYTHON_PYTHON_UTILS_H_

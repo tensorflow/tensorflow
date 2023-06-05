@@ -107,6 +107,21 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
     with self.assertRaises((errors.InvalidArgumentError, ValueError)):
       source.with_values([[5.0, 1.0]])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testIsEager(self):
+    st = sparse_tensor.SparseTensor([[0, 0], [0, 1]], [1.0, 3.0], [2, 2])
+    if context.executing_eagerly():
+      self.assertTrue(st._is_eager())
+
+  @test_util.run_in_graph_and_eager_modes
+  def testNumpy(self):
+    st1 = sparse_tensor.SparseTensor([[0, 0], [0, 1]], [1.0, 3.0], [2, 2])
+    if not context.executing_eagerly():
+      with self.assertRaises(ValueError):
+        st1._numpy()
+    else:
+      self.assertAllEqual(st1._numpy(), [[1.0, 3.0], [0.0, 0.0]])
+
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):
 
@@ -287,6 +302,16 @@ class SparseTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(st.indices, st_reconstructed.indices)
     self.assertAllEqual(st.values, st_reconstructed.values)
     self.assertAllEqual(st.dense_shape, st_reconstructed.dense_shape)
+
+  def testFromComponentsDynamicDenseShapeTensor(self):
+    @def_function.function(input_signature=[
+        sparse_tensor.SparseTensorSpec([None, 10, 100])])
+    def sparse_fun(st):
+      self.assertEqual(st.get_shape().as_list(), [None, 10, 100])
+      return st.dense_shape
+
+    # Force tracing the TF function.
+    _ = sparse_fun.get_concrete_function()
 
   @test_util.run_v1_only("SparseTensorValue is deprecated in v2")
   def testFromNumpyComponents(self):

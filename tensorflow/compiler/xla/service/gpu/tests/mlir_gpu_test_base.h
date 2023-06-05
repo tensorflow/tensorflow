@@ -46,6 +46,10 @@ class MlirGpuTestBase : public HloTestBase {
                                span.size() / sizeof(T));
   }
 
+  StreamPool::Ptr BorrowStream();
+
+  xla::DebugOptions* mutable_debug_options() { return &debug_options_; }
+
  private:
   StatusOr<std::vector<std::vector<uint8_t>>> RunMlirModuleWithHostBuffers(
       mlir::ModuleOp module, std::vector<absl::Span<uint8_t>> arguments);
@@ -61,6 +65,7 @@ class MlirGpuTestBase : public HloTestBase {
       absl::string_view module_text, mlir::MLIRContext& context);
 
   std::unique_ptr<xla::Backend> backend_;
+  xla::DebugOptions debug_options_ = GetDebugOptionsFromFlags();
 };
 
 }  // namespace gpu

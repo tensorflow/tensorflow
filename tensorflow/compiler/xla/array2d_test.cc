@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 
 #include <initializer_list>
+#include <string>
 
 #include "tensorflow/compiler/xla/test.h"
 

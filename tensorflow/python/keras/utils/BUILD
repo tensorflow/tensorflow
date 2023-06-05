@@ -2,6 +2,7 @@
 #   Contains the Keras Utilities (internal TensorFlow version).
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     # TODO(scottzhu): Remove non-keras deps from TF.
     default_visibility = [
         "//tensorflow/python/feature_column:__pkg__",
@@ -72,6 +73,7 @@ py_library(
     deps = [
         ":data_utils",
         ":io_utils",
+        "//tensorflow/python/framework:tensor_conversion",
         "//tensorflow/python/keras:backend",
     ],
 )
@@ -88,16 +90,16 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":object_identity",
-        "//tensorflow/python:composite_tensor",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:smart_cond",
-        "//tensorflow/python:tensor_shape",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
         "//tensorflow/python/distribute/coordinator:cluster_coordinator",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:composite_tensor",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:smart_cond",
+        "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -110,7 +112,8 @@ py_library(
     deps = [
         ":tf_contextlib",
         ":tf_inspect",
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:nest",
+        "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
@@ -135,8 +138,8 @@ py_library(
     srcs_version = "PY3",
     deps = [
         ":engine_utils",
-        "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
     ],
 )
@@ -150,20 +153,21 @@ py_library(
     deps = [
         ":generic_utils",
         ":tf_utils",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:check_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/distribute",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_conversion",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:weights_broadcast_ops",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/tpu:tpu_lib",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )
 
@@ -174,8 +178,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
+        "//tensorflow/python/framework:ops",
     ],
 )
 
@@ -186,7 +189,6 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )
@@ -203,7 +205,7 @@ py_library(
     srcs = ["tf_contextlib.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )
 
@@ -212,7 +214,7 @@ py_library(
     srcs = ["tf_inspect.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:tf_decorator",
     ],
 )
 
@@ -223,7 +225,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/util:nest",
     ],
 )
 
@@ -234,7 +236,7 @@ py_library(
     ],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:util",
+        "//tensorflow/python/types:data",
         "//tensorflow/python/util:tf_export",
     ],
 )

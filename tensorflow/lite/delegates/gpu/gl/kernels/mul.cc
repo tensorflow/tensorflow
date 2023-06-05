@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/mul.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -81,11 +85,11 @@ absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
 
 absl::Status GenerateMultiplyScalarCode(
     const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
-  const auto& attr = absl::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
+  const auto& attr = std::any_cast<const ElementwiseAttributes&>(ctx.op_attr);
 
-  if (absl::holds_alternative<float>(attr.param)) {
+  if (std::holds_alternative<float>(attr.param)) {
     *generated_code = {
-        /*parameters=*/{{"scalar", absl::get<float>(attr.param)}},
+        /*parameters=*/{{"scalar", std::get<float>(attr.param)}},
         /*objects=*/{},
         /*shared_variables=*/{},
         /*workload=*/uint3(),
@@ -97,13 +101,13 @@ absl::Status GenerateMultiplyScalarCode(
     return absl::OkStatus();
   }
 
-  if (absl::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(attr.param)) {
+  if (std::holds_alternative<Tensor<Linear, DataType::FLOAT32>>(attr.param)) {
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/
         {{"mul_buffer",
           MakeReadonlyObject(
-              absl::get<Tensor<Linear, DataType::FLOAT32>>(attr.param).data)}},
+              std::get<Tensor<Linear, DataType::FLOAT32>>(attr.param).data)}},
         /*shared_variables=*/{},
         // Declare workload explicitly because shader depends on gid.z.
         /*workload=*/
@@ -118,7 +122,7 @@ absl::Status GenerateMultiplyScalarCode(
     return absl::OkStatus();
   }
 
-  if (absl::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(attr.param)) {
+  if (std::holds_alternative<Tensor<HWC, DataType::FLOAT32>>(attr.param)) {
     *generated_code = {
         /*parameters=*/{},
         /*objects=*/
@@ -128,7 +132,7 @@ absl::Status GenerateMultiplyScalarCode(
                     static_cast<int>(ctx.input_shapes[0][1]),
                     DivideRoundUp(static_cast<int>(ctx.input_shapes[0][3]), 4)),
               ConvertToPHWC4(
-                  absl::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
+                  std::get<Tensor<HWC, DataType::FLOAT32>>(attr.param)))}},
         /*shared_variables=*/{},
         // Declare workload explicitly because shader depends on gid.z.
         /*workload=*/
@@ -161,7 +165,7 @@ class Multiply : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewMultiplyNodeShader() {
-  return absl::make_unique<Multiply>();
+  return std::make_unique<Multiply>();
 }
 
 }  // namespace gl

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/testutil.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -241,7 +243,7 @@ TEST(CCOpTest, InvalidFinalize) {
       ops::ReaderReadUpTo(root, Variable(root, {}, DT_STRING),
                           Variable(root, {}, DT_STRING), static_cast<int32>(2));
   EXPECT_FALSE(root.status().ok());
-  auto err_msg = root.status().error_message();
+  auto err_msg = std::string(root.status().message());
   EXPECT_NE(err_msg.find("'num_records' passed int32 expected int64"),
             string::npos);
 }

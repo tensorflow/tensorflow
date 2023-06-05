@@ -32,49 +32,56 @@ func.func @main(tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT:       name: "arg0",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 2,
   // CHECK-NEXT:       name: "Const",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 3,
   // CHECK-NEXT:       name: "squared_difference",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 4,
   // CHECK-NEXT:       name: "mul",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 5,
   // CHECK-NEXT:       name: "div",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 6,
   // CHECK-NEXT:       name: "exp",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       buffer: 7,
   // CHECK-NEXT:       name: "neg",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     } ],
   // CHECK-NEXT:     inputs: [ 0 ],
   // CHECK-NEXT:     outputs: [ 6 ],

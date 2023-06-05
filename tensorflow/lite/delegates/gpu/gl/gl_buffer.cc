@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
 
+#include <utility>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {

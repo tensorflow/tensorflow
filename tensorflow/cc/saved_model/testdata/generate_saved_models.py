@@ -17,6 +17,7 @@
 import os
 
 from absl import app
+from keras.optimizers.optimizers_v2 import adam
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
@@ -31,7 +32,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
-from tensorflow.python.training.tracking import tracking
+from tensorflow.python.trackable import asset
 
 
 class VarsAndArithmeticObjectGraph(module.Module):
@@ -71,7 +72,7 @@ class CyclicModule(module.Module):
 class AssetModule(module.Module):
 
   def __init__(self):
-    self.asset = tracking.Asset(
+    self.asset = asset.Asset(
         test.test_src_dir_path("cc/saved_model/testdata/test_asset.txt"))
 
   @def_function.function(input_signature=[])
@@ -83,7 +84,7 @@ class StaticHashTableModule(module.Module):
   """A module with an Asset, StaticHashTable, and a lookup function."""
 
   def __init__(self):
-    self.asset = tracking.Asset(
+    self.asset = asset.Asset(
         test.test_src_dir_path(
             "cc/saved_model/testdata/static_hashtable_asset.txt"))
     self.table = lookup_ops.StaticHashTable(
@@ -99,6 +100,18 @@ class StaticHashTableModule(module.Module):
     return self.table.lookup(word)
 
 
+class OptimizerSlotVariableModule(module.Module):
+  """A module with an optimizer with a slot variable."""
+
+  def __init__(self):
+    self.v = variables.Variable(5.0)
+    loss = lambda: 3 * self.v
+    self.opt = adam.Adam()  # Should be tf.keras.optimizers.legacy.Adam. The
+                            # new Keras optimizers do not have slot variables.
+
+    self.opt.minimize(loss, var_list=[self.v])
+
+
 def get_simple_session():
   ops.disable_eager_execution()
   sess = session_lib.Session()
@@ -112,7 +125,8 @@ MODULE_CTORS = {
     "CyclicModule": (CyclicModule, 2),
     "AssetModule": (AssetModule, 2),
     "StaticHashTableModule": (StaticHashTableModule, 2),
-    "SimpleV1Model": (get_simple_session, 1)
+    "SimpleV1Model": (get_simple_session, 1),
+    "OptimizerSlotVariableModule": (OptimizerSlotVariableModule, 2)
 }
 
 

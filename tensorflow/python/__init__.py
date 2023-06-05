@@ -39,7 +39,6 @@ from tensorflow.python.eager import context
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
-from tensorflow.python import data
 from tensorflow.python import distribute
 # from tensorflow.python import keras
 from tensorflow.python.feature_column import feature_column_lib as feature_column
@@ -54,7 +53,6 @@ from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
-from tensorflow.python.ops import numpy_ops
 from tensorflow.python.ops import ragged
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
@@ -86,6 +84,7 @@ from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import gen_rnn_ops
 from tensorflow.python.ops import gen_sendrecv_ops
 from tensorflow.python.ops import gen_tpu_ops
+from tensorflow.python.ops import gen_uniform_quant_ops
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train

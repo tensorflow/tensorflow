@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/util/overflow.h"
 
 namespace tensorflow {
 
@@ -198,18 +199,20 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   return OkStatus();
 }
 
-// Converts an int32 or int64 scalar literal to an int64.
+// Converts an int16, int32 or int64 scalar literal to an int64.
 static Status LiteralToInt64Scalar(const xla::LiteralSlice& literal,
                                    int64_t* out) {
   if (literal.shape().rank() != 0) {
     return errors::InvalidArgument("value is not a scalar");
   }
-  if (literal.shape().element_type() == xla::S32) {
+  if (literal.shape().element_type() == xla::S16) {
+    *out = literal.Get<int16>({});
+  } else if (literal.shape().element_type() == xla::S32) {
     *out = literal.Get<int32>({});
   } else if (literal.shape().element_type() == xla::S64) {
     *out = literal.Get<int64_t>({});
   } else {
-    return errors::InvalidArgument("value must be either int32 or int64");
+    return errors::InvalidArgument("value must be int16, int32, or int64");
   }
   return OkStatus();
 }
@@ -243,6 +246,13 @@ Status XlaOpKernelContext::ConstantInputAsIntScalar(
   return ConstantInputAsIntScalar(index, out, mode);
 }
 
+StatusOr<int64_t> XlaOpKernelContext::ConstantInputAsIntScalar(
+    absl::string_view name, xla::ValueInferenceMode mode) {
+  int64_t out;
+  TF_RETURN_IF_ERROR(ConstantInputAsIntScalar(name, &out, mode));
+  return out;
+}
+
 Status XlaOpKernelContext::ConstantInputAsFloatScalar(
     int index, double* out, xla::ValueInferenceMode mode) {
   xla::Literal literal;
@@ -269,8 +279,7 @@ static Status LiteralToPredVector(const xla::LiteralSlice& literal,
 Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
   xla::Literal literal;
   XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
   if (!dynamism_or_status.ok()) {
     // When failed to resolve dynamism, conservatively consider the value
     // dynamic. This could happen if the input depends on some ops like
@@ -281,7 +290,7 @@ Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
     *out = true;
     return OkStatus();
   }
-  Tensor dynamism = dynamism_or_status.ValueOrDie();
+  Tensor dynamism = dynamism_or_status.value();
 
   Tensor temp(dynamism.dtype());
   TensorShape tensor_shape({});
@@ -312,8 +321,7 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
     int index, absl::Span<const int64_t> new_dims,
     xla::Literal* dynamism_literal) {
   XlaExpression e = InputExpression(index);
-  auto* client = compiler() ? compiler()->client() : nullptr;
-  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism();
   if (!dynamism_or_status.ok()) {
     xla::Literal true_literal = xla::LiteralUtil::CreateR0<bool>(true);
     // When failed to resolve dynamism, conservatively consider the value
@@ -322,11 +330,11 @@ Status XlaOpKernelContext::ResolveInputDynamismReshaped(
     *dynamism_literal =
         true_literal
             .Broadcast(xla::ShapeUtil::MakeShape(xla::PRED, new_dims), {})
-            .ValueOrDie();
+            .value();
 
     return OkStatus();
   }
-  Tensor dynamism = dynamism_or_status.ValueOrDie();
+  Tensor dynamism = dynamism_or_status.value();
 
   Tensor temp(dynamism.dtype());
   if (!temp.CopyFrom(dynamism, TensorShape(new_dims))) {
@@ -443,6 +451,16 @@ Status XlaOpKernelContext::ConstantInputAsShape(int index, TensorShape* shape,
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal, mode));
   std::vector<int64_t> dims;
   TF_RETURN_IF_ERROR(LiteralToInt64Vector(literal, &dims));
+
+  int64_t num_elements = 1;
+  for (auto i = dims.begin(); i != dims.end(); ++i) {
+    num_elements = MultiplyWithoutOverflow(num_elements, *i);
+    if (num_elements < 0)
+      return errors::InvalidArgument(
+          "The total elements specified by orig_input_shape is too large.",
+          "Encountered overflow after multiplying", *i,
+          ", result: ", num_elements);
+  }
   *shape = TensorShape(dims);
   return OkStatus();
 }
@@ -508,7 +526,7 @@ StatusOr<Tensor> XlaOpKernelContext::ConstantInputTensor(
                             " operator as a compile-time constant.");
     return status;
   }
-  std::optional<Tensor> constant = constant_or_status.ValueOrDie();
+  std::optional<Tensor> constant = constant_or_status.value();
   if (!constant.has_value()) {
     return errors::InvalidArgument(
         "Input ", index, " to node `", context_->op_kernel().name(),
@@ -698,8 +716,7 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
     return shape_or_status.status();
   }
   TensorShape shape;
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(shape_or_status.ValueOrDie(), &shape));
+  TF_RETURN_IF_ERROR(XLAShapeToTensorShape(shape_or_status.value(), &shape));
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
@@ -739,8 +756,7 @@ Status XlaOpKernelContext::AssignVariable(absl::string_view name, DataType type,
 static Status GetStatusWithStackTrace(const Status& s,
                                       const XlaOpKernelContext* ctx) {
   if (s.code() == error::INVALID_ARGUMENT) {
-    return Status{s.code(),
-                  absl::StrCat(s.error_message(), "\n", ctx->StackTrace())};
+    return Status{s.code(), absl::StrCat(s.message(), "\n", ctx->StackTrace())};
   }
   return s;
 }
@@ -774,6 +790,11 @@ const xla::XlaComputation* XlaOpKernelContext::GetOrCreateMin(
 const xla::XlaComputation* XlaOpKernelContext::GetOrCreateAdd(
     const DataType type) {
   return xla_context()->GetOrCreateAdd(type);
+}
+
+const xla::XlaComputation* XlaOpKernelContext::GetOrCreateLogAddExp(
+    const DataType type) {
+  return xla_context()->GetOrCreateLogAddExp(type);
 }
 
 const xla::XlaComputation* XlaOpKernelContext::GetOrCreateMul(

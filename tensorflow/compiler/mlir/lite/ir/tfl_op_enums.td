@@ -45,8 +45,11 @@ def TFL_DimensionType : I32EnumAttr<
   let genSpecializedAttr = 0;
   let cppNamespace = "::mlir::TFL";
 }
+
 def TFL_DimensionTypeAttr : EnumAttr<TFL_Dialect, TFL_DimensionType,
-    "dimension_type_attr">;
+    "dimension_type_attr"> {
+  let convertFromStorage = "$_self";
+}
 
 // Allowed activation function cases
 // These should match the ActivationFunctionType enum in TFLite schema.
@@ -147,6 +150,20 @@ def SparsityParameterAttr : AttrDef<TFL_Dialect, "SparsityParameter"> {
   );
   let summary = "Sparsity parameter.";
   let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def TFL_ConstBytesAttr : AttrDef<TFL_Dialect, "ConstBytes"> {
+  let summary = "A string attribute representation of compiled bytes";
+  let description = [{
+    Syntax Examples:
+
+    ```mlir
+    #tfl<const_bytes : "0xDEADBEEF">
+    ```
+  }];
+  let mnemonic = "const_bytes";
+  let parameters = (ins StringRefParameter<"">:$value);
+  let hasCustomAssemblyFormat = 1;
 }
 
 #endif // TFL_OP_ENUMS

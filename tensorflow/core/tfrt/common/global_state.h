@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_TFRT_GLOBAL_GLOBAL_STATE_H_
-#define TENSORFLOW_CORE_TFRT_GLOBAL_GLOBAL_STATE_H_
+#ifndef TENSORFLOW_CORE_TFRT_COMMON_GLOBAL_STATE_H_
+#define TENSORFLOW_CORE_TFRT_COMMON_GLOBAL_STATE_H_
 
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -29,7 +30,11 @@ class GlobalHostContext {
   static ::tfrt::HostContext* host_ctx_;
 };
 
+// A global resource manager in TF core framework. It can be used to store
+// resources that are per host.
+ResourceMgr* GetTFGlobalResourceMgr();
+
 }  // namespace tfrt_global
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_TFRT_GLOBAL_GLOBAL_STATE_H_
+#endif  // TENSORFLOW_CORE_TFRT_COMMON_GLOBAL_STATE_H_

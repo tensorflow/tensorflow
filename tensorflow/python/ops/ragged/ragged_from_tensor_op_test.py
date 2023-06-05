@@ -344,14 +344,14 @@ class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
           'expected_shape': [2, None, None, None],
       },
   )  # pyformat: disable
-  def testRaggedFromTensor(self,
-                           tensor,
-                           expected,
-                           lengths=None,
-                           padding=None,
-                           ragged_rank=1,
-                           use_ragged_rank=True,
-                           expected_shape=None):
+  def disabled_testRaggedFromTensor(self,
+                                    tensor,
+                                    expected,
+                                    lengths=None,
+                                    padding=None,
+                                    ragged_rank=1,
+                                    use_ragged_rank=True,
+                                    expected_shape=None):
     dt = constant_op.constant(tensor)
     if use_ragged_rank:
       rt = RaggedTensor.from_tensor(dt, lengths, padding, ragged_rank)

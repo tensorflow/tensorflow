@@ -108,6 +108,7 @@ typedef struct TP_OptimizerConfigs {
   TF_TriState constant_folding;
   TF_TriState shape_optimization;
   TF_TriState auto_mixed_precision;
+  TF_TriState auto_mixed_precision_onednn_bfloat16;
   TF_TriState auto_mixed_precision_mkl;
   TF_TriState pin_to_host_optimization;
   TF_TriState layout_optimizer;
@@ -166,8 +167,7 @@ typedef struct TP_OptimizerRegistrationParams {
 
 // TF_InitGraph is used to do graph optimizer registration.
 // Plugin should implement TF_InitGraph to register graph optimizers.
-TF_CAPI_EXPORT extern void TF_InitGraph(TP_OptimizerRegistrationParams* params,
-                                        TF_Status* status);
+void TF_InitGraph(TP_OptimizerRegistrationParams* params, TF_Status* status);
 
 // Get a set of node names that must be preserved. They can not be transformed
 // or removed during the graph transformation. This includes feed and fetch
@@ -274,7 +274,7 @@ typedef struct TF_FunctionLibraryDefinition TF_FunctionLibraryDefinition;
 
 // Create NewFunctionLibraryDefinition.
 TF_CAPI_EXPORT extern TF_FunctionLibraryDefinition*
-TF_NewFunctionLibraryDefinition(TF_Buffer* graph_buf, TF_Status* status);
+TF_NewFunctionLibraryDefinition(const TF_Buffer* graph_buf, TF_Status* status);
 
 // Delete NewFunctionLibraryDefinition.
 TF_CAPI_EXPORT extern void TF_DeleteFunctionLibraryDefinition(

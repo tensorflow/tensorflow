@@ -16,9 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 
 #include <memory>
+#include <utility>
 
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -31,9 +32,9 @@ WhileThunk::WhileThunk(
     : Thunk(Kind::kWhile, thunk_info),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_thunk_sequence_(std::make_unique<SequentialThunk>(
-          ThunkInfo(), std::move(*condition_thunk_sequence))),
+          ThunkInfo(thunk_info.op), std::move(*condition_thunk_sequence))),
       body_thunk_sequence_(std::make_unique<SequentialThunk>(
-          ThunkInfo(), std::move(*body_thunk_sequence))) {}
+          ThunkInfo(thunk_info.op), std::move(*body_thunk_sequence))) {}
 
 Status WhileThunk::Initialize(const GpuExecutable& executable,
                               se::StreamExecutor* executor) {
@@ -63,7 +64,7 @@ Status WhileThunk::ExecuteOnStream(const ExecuteParams& params) {
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s", &stream,
-          block_status.error_message());
+          block_status.message());
     }
 
     if (!condition_result) {

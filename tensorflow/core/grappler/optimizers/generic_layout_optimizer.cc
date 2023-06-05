@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer_transposer_factory.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -37,8 +38,8 @@ namespace {
 
 constexpr char kNHWC[] = "NHWC";
 constexpr char kNCHW[] = "NCHW";
-constexpr float kVoltaGPURatioThreshold = 0.5;
-constexpr float kConvGPUFP16Threshold = 0.5;
+constexpr float kGPURatioThreshold = 0.5;
+constexpr float kConvGPUExpectedDtypeThreshold = 0.5;
 
 struct MutableNodeViewFormatter {
   void operator()(std::string* out, utils::MutableNodeView* node_view) const {
@@ -46,34 +47,88 @@ struct MutableNodeViewFormatter {
   }
 };
 
-inline std::pair<int, int> GetNumGPUs(const Cluster& cluster) {
+struct GpuStats {
+  int num_gpus;
+  int num_voltas;
+  int num_amperes;
+};
+
+inline GpuStats GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
-  int num_gpus = 0;
-  int num_volta = 0;
+  GpuStats gpu_stats{};
   for (const auto& device : devices) {
     if (device.second.type() != kGPU) {
       continue;
     }
-    num_gpus++;
+    gpu_stats.num_gpus++;
     auto compute_capability_it =
         device.second.environment().find("architecture");
     if (compute_capability_it == device.second.environment().end()) {
       continue;
     }
     double compute_capability = 0.0;
-    if (absl::SimpleAtod(compute_capability_it->second, &compute_capability) &&
-        compute_capability >= 7.0) {
-      num_volta++;
+    if (absl::SimpleAtod(compute_capability_it->second, &compute_capability)) {
+      if (compute_capability >= 7.0) gpu_stats.num_voltas++;
+      if (compute_capability >= 8.0) gpu_stats.num_amperes++;
     }
   }
-  return {num_gpus, num_volta};
+  return gpu_stats;
 }
 
-inline bool NumConvOnDeviceWithDataTypeOverThreshold(
-    const TransposeContext& context, absl::string_view device,
-    const DataType& data_type) {
+inline bool ConvBackpropExists(const TransposeContext& context,
+                               absl::string_view device,
+                               const DataType& data_type) {
+  for (const auto& node : context.graph_view->GetNodes()) {
+    const auto* node_def = node.node();
+    if (!IsConv2DBackpropFilter(*node_def) &&
+        !IsConv2DBackpropInput(*node_def) &&
+        !IsConv3DBackpropFilterV2(*node_def) &&
+        !IsConv3DBackpropInputV2(*node_def)) {
+      continue;
+    }
+
+    const string& device_name = GetDeviceName(*node_def);
+    string device_type;
+    string task;
+    if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
+        !absl::StrContains(absl::AsciiStrToLower(device_type),
+                           absl::AsciiStrToLower(device))) {
+      continue;
+    }
+
+    const auto* t_attr = node.GetAttr("T");
+    if (t_attr == nullptr) {
+      continue;
+    }
+    if (t_attr->type() == data_type) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline std::pair<string, string> GetSrcAndDstDataFormats(
+    const TransposeContext& context, GpuStats gpu_stats) {
+  string src_format = kNHWC;
+  string dst_format = kNCHW;
+
+  const bool is_NHWC_enforced =
+      (!context.enforced_layout.empty() && context.enforced_layout == "NHWC");
+  const bool volta_ready =
+      (static_cast<float>(gpu_stats.num_voltas) /
+       static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
+  const bool ampere_ready =
+      (static_cast<float>(gpu_stats.num_amperes) /
+       static_cast<float>(gpu_stats.num_gpus)) >= kGPURatioThreshold;
+
+  // We swap the src_format and dst_format when >= 50% of gpu conv nodes are
+  //   (1): half-dtype and we are tuning for Volta+ GPUs
+  //   (2): TF32-dtype with TensorCores enabled and tuning for Ampere+ GPUs
+  //        (but only if no backward conv in fp32 exists)
+  //   (3): blfoat16-dtype and tuning for Ampere+ GPUs
   int num_conv_gpu = 0;
-  int num_conv_gpu_fp16 = 0;
+  int num_conv_gpu_prefer_swap = 0;
+  bool fp32_backprop = ConvBackpropExists(context, kGPU, DT_FLOAT);
 
   for (const auto& node : context.graph_view->GetNodes()) {
     const auto* node_def = node.node();
@@ -85,7 +140,7 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     string task;
     if (!DeviceNameUtils::SplitDeviceName(device_name, &task, &device_type) ||
         !absl::StrContains(absl::AsciiStrToLower(device_type),
-                           absl::AsciiStrToLower(device))) {
+                           absl::AsciiStrToLower(kGPU))) {
       continue;
     }
     num_conv_gpu++;
@@ -93,33 +148,29 @@ inline bool NumConvOnDeviceWithDataTypeOverThreshold(
     if (t_attr == nullptr) {
       continue;
     }
-    if (t_attr->type() == data_type) {
-      num_conv_gpu_fp16++;
+    const DataType dtype = t_attr->type();
+    if ((volta_ready && dtype == DT_HALF) ||
+        (ampere_ready && dtype == DT_BFLOAT16) ||
+        (ampere_ready && dtype == DT_FLOAT &&
+         tsl::tensor_float_32_execution_enabled() && !fp32_backprop)) {
+      num_conv_gpu_prefer_swap++;
     }
   }
 
-  if (num_conv_gpu == 0) return false;
-
-  return (static_cast<float>(num_conv_gpu_fp16) /
-          static_cast<float>(num_conv_gpu)) >= kConvGPUFP16Threshold;
-}
-
-inline std::pair<string, string> GetSrcAndDstDataFormats(
-    const TransposeContext& context, int num_gpus, int num_voltas) {
-  string src_format = kNHWC;
-  string dst_format = kNCHW;
-
-  const bool is_NHWC_enforced =
-      (!context.enforced_layout.empty() && context.enforced_layout == "NHWC");
+  // Check ratio of ops preferring swap.
   const bool should_swap =
-      ((static_cast<float>(num_voltas) / static_cast<float>(num_gpus)) >=
-       kVoltaGPURatioThreshold) &&
-      NumConvOnDeviceWithDataTypeOverThreshold(context, kGPU, DT_HALF);
+      num_conv_gpu > 0 &&
+      (static_cast<float>(num_conv_gpu_prefer_swap) /
+       static_cast<float>(num_conv_gpu)) >= kConvGPUExpectedDtypeThreshold;
+
   // We swap only if NHWC is enforced or no layout is enforced and the devices
   // config meet the thresholds
   if (is_NHWC_enforced || (context.enforced_layout.empty() && should_swap)) {
     std::swap(src_format, dst_format);
   }
+
+  VLOG(2) << "Layout conversion of " << src_format << " to " << dst_format
+          << " will take place.";
 
   return {src_format, dst_format};
 }
@@ -135,7 +186,7 @@ Status ExpandLayoutSensitiveOp(TransposeContext* context,
           transposer_factory->GetTransposer(*node_def);
       if (transposer == nullptr) {
         return Status(
-            error::NOT_FOUND,
+            absl::StatusCode::kNotFound,
             absl::StrCat(
                 "Layout sensitive operation should have a transposer. Node: ",
                 node_def->DebugString()));
@@ -156,7 +207,7 @@ Status ExpandLayoutAgnosticOp(TransposeContext* context,
       const auto& transposer = transposer_factory->GetTransposer(*node_def);
       if (transposer == nullptr) {
         return Status(
-            error::NOT_FOUND,
+            absl::StatusCode::kNotFound,
             absl::StrCat(
                 "Layout agnostic operation should have a transposer. Node: ",
                 node_def->DebugString()));
@@ -418,24 +469,22 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   if (!enforced_layout_.empty() && enforced_layout_ != "NHWC" &&
       enforced_layout_ != "NCHW") {
     return Status(
-        tensorflow::error::Code::INVALID_ARGUMENT,
+        absl::StatusCode::kInvalidArgument,
         absl::StrCat("Invalid value for enforced_layout: ", enforced_layout_,
                      ". Supported layouts: 'NHWC', 'NCHW'."));
   }
-  const auto num_gpus_and_num_volta = GetNumGPUs(*cluster);
-  const int num_gpus = num_gpus_and_num_volta.first;
+  const auto gpu_stats = GetNumGPUs(*cluster);
 
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   TransposeContext context;
   context.enforced_layout = enforced_layout_;
 
-  if (num_gpus > 0) {
+  if (gpu_stats.num_gpus > 0) {
     TF_RETURN_IF_ERROR(TransposeContext::InitializeTransposeContext(
         /*assume_valid_feeds=*/is_aggressive, item, cluster, &context));
 
-    const auto src_dst_formats = GetSrcAndDstDataFormats(
-        context, num_gpus, num_gpus_and_num_volta.second);
+    const auto src_dst_formats = GetSrcAndDstDataFormats(context, gpu_stats);
     context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
                                        src_dst_formats.second);
   } else {

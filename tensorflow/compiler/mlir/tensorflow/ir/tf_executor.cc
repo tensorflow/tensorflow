@@ -69,7 +69,7 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   // Override the inlining hook to determine if 'src' can be inlined into
   // 'dest'.
   bool isLegalToInline(Region *dest, Region *src, bool wouldBeCloned,
-                       BlockAndValueMapping &value_mapping) const final {
+                       IRMapping &value_mapping) const final {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.
     return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&
@@ -433,13 +433,13 @@ ParseResult SwitchOp::parse(OpAsmParser &parser, OperationState &result) {
 void SwitchOp::print(OpAsmPrinter &p) {
   p << ' ';
   p.printOperands(getOperands());
-  Type data_operand_ty = data().getType();
+  Type data_operand_ty = getData().getType();
   // If the types aren't perfectly matching, print the functional type syntax
   // else print the shorter single type.
   p << " : ";
-  if (trueOutput().getType() != data_operand_ty ||
-      falseOutput().getType() != data_operand_ty ||
-      predicate().getType().isa<UnrankedTensorType>()) {
+  if (getTrueOutput().getType() != data_operand_ty ||
+      getFalseOutput().getType() != data_operand_ty ||
+      getPredicate().getType().isa<UnrankedTensorType>()) {
     p.printFunctionalType(getOperation());
   } else {
     p << getType(0);
@@ -511,9 +511,9 @@ void SwitchNOp::print(OpAsmPrinter &p) {
   p.printOperands(operands.begin(), std::next(operands.begin(), 2));
   p << " of " << (getNumResults() - 1);
   // print control dependencies if any
-  if (!llvm::empty(controlInputs())) {
+  if (!getControlInputs().empty()) {
     p << " (";
-    p.printOperands(controlInputs());
+    p.printOperands(getControlInputs());
     p << ")";
   }
   p << " : " << getType(0);
@@ -577,7 +577,7 @@ LogicalResult MergeOp::verify() {
     return merge.emitOpError() << "expects a non-control input";
 
   // Check that each operand can be individually broadcasted to the output type.
-  Type output_type = merge.output().getType();
+  Type output_type = merge.getOutput().getType();
   TensorType output_tensor_ty = output_type.dyn_cast<TensorType>();
   if (!output_tensor_ty) {
     return merge.emitOpError()
@@ -622,7 +622,7 @@ void MergeOp::print(OpAsmPrinter &p) {
   bool use_short_form = true;
   int num_data_operands = 0;
 
-  Type output_type = output().getType();
+  Type output_type = getOutput().getType();
   for (Type operand_type : getOperandTypes()) {
     if (operand_type.isa<ControlType>()) break;
     num_data_operands++;
@@ -693,16 +693,16 @@ void EnterOp::print(OpAsmPrinter &p) {
   p.printOperands(getOperands());
 
   p << " frame \"";
-  printEscapedString(frame_name(), p.getStream());
+  printEscapedString(getFrameName(), p.getStream());
   p << "\"";
-  if (parallel_iterations() != kDefaultParallelIterations)
-    p << " parallel_iterations " << parallel_iterations();
-  if (is_constant()) p << " constant ";
+  if (getParallelIterations() != kDefaultParallelIterations)
+    p << " parallel_iterations " << getParallelIterations();
+  if (getIsConstant()) p << " constant ";
 
   // If the types aren't perfectly matching, print the functional type syntax
   // else print the shorter single type.
   p << " : ";
-  if (data().getType() != output().getType()) {
+  if (getData().getType() != getOutput().getType()) {
     p.printFunctionalType(getOperation());
   } else {
     p << getType(0);
@@ -775,7 +775,7 @@ ParseResult EnterOp::parse(OpAsmParser &parser, OperationState &result) {
 
 LogicalResult NextIterationSourceOp::verify() {
   NextIterationSourceOp source = *this;
-  Value token = source.token();
+  Value token = source.getToken();
   if (!token.hasOneUse())
     return source.emitOpError() << "expects a single user for produced token";
   if (!isa<NextIterationSinkOp>(*token.user_begin()))
@@ -789,7 +789,7 @@ LogicalResult NextIterationSourceOp::verify() {
 
 LogicalResult NextIterationSinkOp::verify() {
   NextIterationSinkOp sink = *this;
-  Value token = sink.token();
+  Value token = sink.getToken();
   Operation *definingOp = token.getDefiningOp();
   if (!definingOp)
     return sink.emitOpError() << "expects a token directly produced by a "
@@ -798,16 +798,16 @@ LogicalResult NextIterationSinkOp::verify() {
   if (!source)
     return sink.emitOpError() << "expects a token produced by a "
                                  "tf_executor.NextIteration.Source op: ";
-  if (source.output().getType() != sink.input().getType())
+  if (source.getOutput().getType() != sink.getInput().getType())
     return sink.emitOpError()
-           << "input type " << sink.input().getType()
+           << "input type " << sink.getInput().getType()
            << " mismatch the tf_executor.NextIteration.Source output type: "
-           << source.output().getType();
+           << source.getOutput().getType();
   return success();
 }
 
 NextIterationSourceOp NextIterationSinkOp::GetSource() {
-  return cast<NextIterationSourceOp>(token().getDefiningOp());
+  return cast<NextIterationSourceOp>(getToken().getDefiningOp());
 }
 
 //===----------------------------------------------------------------------===//
@@ -851,11 +851,11 @@ void LoopCondOp::print(OpAsmPrinter &p) {
   p.printOperands(getOperands());
 
   // If the types aren't matching (broadcast), print the functional type syntax.
-  if (input().getType() != output().getType()) {
+  if (getInput().getType() != getOutput().getType()) {
     p << " : ";
     p.printFunctionalType(getOperation());
   } else {
-    p << " : " << input().getType();
+    p << " : " << getInput().getType();
   }
 
   p.printOptionalAttrDict(getOperation()->getAttrs());
@@ -933,7 +933,7 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
     if (&block.front() != &block.back()) return failure();
 
     // Map graph results to fetch operands.
-    rewriter.replaceOp(op, op.GetFetch().fetches());
+    rewriter.replaceOp(op, op.GetFetch().getFetches());
 
     return success();
   }
@@ -957,7 +957,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
 
     // Map graph results to inner ops results of single island.
     llvm::SmallVector<Value, 8> new_rets;
-    for (Value operand : fetch_op.fetches()) {
+    for (Value operand : fetch_op.getFetches()) {
       // Control results should not be propagated out.
       if (operand.getType().isa<ControlType>()) break;
 
@@ -1007,7 +1007,7 @@ struct DropEmptyIslandNoOperandNoDataResult
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
       return failure();
 
-    for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
+    for (auto &use : llvm::make_early_inc_range(op.getControl().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
@@ -1027,7 +1027,7 @@ struct DropEmptyIslandNoOperandOneDataResult
   LogicalResult matchAndRewrite(IslandOp op,
                                 PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
-        !op.control().use_empty() ||
+        !op.getControl().use_empty() ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
       return failure();
 
@@ -1062,7 +1062,7 @@ struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
                                 PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0) return failure();
 
-    for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
+    for (auto &use : llvm::make_early_inc_range(op.getControl().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
@@ -1085,7 +1085,7 @@ void ControlTriggerOp::getCanonicalizationPatterns(RewritePatternSet &results,
 // tf_executor.island
 //===----------------------------------------------------------------------===//
 
-LogicalResult IslandOp::fold(llvm::ArrayRef<Attribute> operands,
+LogicalResult IslandOp::fold(FoldAdaptor,
                              llvm::SmallVectorImpl<OpFoldResult> &results) {
   // This folds IslandOps with no inner ops, one control operand and no data
   // results. The single control operand is forwarded to the IslandOp control

@@ -14,42 +14,35 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 
+#include <array>
+#include <cmath>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/client/padding.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
 namespace gpu {
 
-// Returns the square root of the input rounded up to the nearest square.
-static int64_t SqrtOfRoundUpToSquare(int64_t input) {
-  return static_cast<int64_t>(std::ceil(std::sqrt(input)));
-}
-
 class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit ReductionRewriterVisitor(
-      se::CudaComputeCapability cuda_compute_capability)
-      : cuda_compute_capability_(cuda_compute_capability) {}
+  explicit ReductionRewriterVisitor(GpuVersion gpu_version)
+      : gpu_version_(gpu_version) {}
 
   Status HandleReduce(HloInstruction *hlo) override {
     if (IsMinMaxReduction(hlo)) {
@@ -79,8 +72,6 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
   Status RewriteReduction(HloInstruction *hlo) {
     ReductionDimensions reduction_dimensions =
         GetReductionKindAndContiguousComponents(*hlo);
-    std::array<int64_t, 3> reduction_tiling =
-        GetReductionTiling(reduction_dimensions, cuda_compute_capability_);
     VLOG(5) << "Input: " << hlo->ToString();
     auto *reduce = Cast<HloReduceInstruction>(hlo);
     absl::Span<int64_t const> input_shape_dims =
@@ -108,25 +99,51 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
 
     // Base case: everything fits.
-    if (ReductionIsRaceFree(reduction_dimensions, reduction_tiling)) {
+    if (ReductionIsRaceFree(reduction_dimensions)) {
       VLOG(3) << "Base case: dimensions fit";
       return OkStatus();
     }
 
     VLOG(1) << "Input: " << hlo->ToString();
-    int64_t reduced_dim_size = input_shape_dims[reduced_input_dimension];
-    VLOG(3) << "reduced_dim_size = " << reduced_dim_size;
+    int64_t n = input_shape_dims[reduced_input_dimension];
+    VLOG(3) << "n = " << n;
 
-    // We pad to a nearest square (ceil(sqrt(x)))^2.  Given that:
+    // We will do this reduction in two stages.  The first will reduce from n
+    // elements to k elements in the reduction dimension.  The second will
+    // reduce further, from k to 1 element.
     //
-    // (n + 1)^2 = n^2 + (2n+1)
+    // We do this by splitting the input shape [a, n, b] into [a, k, n / k, b].
     //
-    // it can be seen that the distance to the nearest square is at most twice
-    // the square root of the input number.
-    int64_t num_fit = SqrtOfRoundUpToSquare(reduced_dim_size);
+    // We want to choose k to be roughly equal to sqrt(n) so that we process
+    // "most of" the reduction in the first step.  We also want k to be a power
+    // of 2, so that the GPU kernel doesn't spend all its time doing slow
+    // integer divmods to compute indices into the shape [a,k,n/k,b].  This
+    // means we may need to pad n so that n is divisible by k.
+    //
+    // Thus we consider two options for k:
+    //
+    //   k1 = round_up_pow2(sqrt(n))
+    //   k2 = round_down_pow2(sqrt(n))
+    //
+    // and we choose the value of k that results in the least amount of padding.
+    int64_t k1 = absl::bit_ceil(static_cast<uint64_t>(std::ceil(std::sqrt(n))));
+    int64_t k2 =
+        absl::bit_floor(static_cast<uint64_t>(std::floor(std::sqrt(n))));
+    int64_t padded_n_k1 = RoundUpTo(n, k1);
+    int64_t padded_n_k2 = RoundUpTo(n, k2);
+
+    int64_t k;
+    int64_t padded_n;
+    if (padded_n_k1 < padded_n_k2) {
+      k = k1;
+      padded_n = padded_n_k1;
+    } else {
+      k = k2;
+      padded_n = padded_n_k2;
+    }
 
     // Pad reduced dimension to the required number of elements.
-    bool no_padding_necessary = reduced_dim_size % num_fit == 0;
+    bool no_padding_necessary = n == padded_n;
     using InstructionVector = absl::InlinedVector<HloInstruction *, 2>;
     auto padded = [&]() -> InstructionVector {
       if (no_padding_necessary) {
@@ -134,14 +151,13 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
                                  reduce->inputs().end());
       }
 
-      int64_t padded_num_elements = num_fit * num_fit;
       PaddingConfig padding_config =
           MakeNoPaddingConfig(input_shape_dims.size());
       padding_config.mutable_dimensions(reduced_input_dimension)
-          ->set_edge_padding_high(padded_num_elements - reduced_dim_size);
+          ->set_edge_padding_high(padded_n - n);
       std::vector<int64_t> padded_dimensions(input_shape_dims.begin(),
                                              input_shape_dims.end());
-      padded_dimensions[reduced_input_dimension] = padded_num_elements;
+      padded_dimensions[reduced_input_dimension] = padded_n;
 
       absl::InlinedVector<HloInstruction *, 2> out;
       out.reserve(reduce->input_count());
@@ -150,8 +166,10 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
         Shape padded_shape =
             ShapeUtil::MakeShape(in->shape().element_type(), padded_dimensions);
         VLOG(3) << "Generated padded shape: " << padded_shape.ToString();
-        out.push_back(hlo->parent()->AddInstruction(HloInstruction::CreatePad(
-            padded_shape, in, reduce->init_values()[i], padding_config)));
+        out.push_back(hlo->parent()->AddInstruction(
+            HloInstruction::CreatePad(padded_shape, in,
+                                      reduce->init_values()[i], padding_config),
+            &in->metadata()));
       }
       return out;
     }();
@@ -161,13 +179,8 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     for (int64_t dim_idx = 0; dim_idx < padded[0]->shape().dimensions_size();
          dim_idx++) {
       if (dim_idx == reduced_input_dimension) {
-        if (no_padding_necessary) {
-          reshaped_dimensions.push_back(reduced_dim_size / num_fit);
-        } else {
-          reshaped_dimensions.push_back(num_fit);
-        }
-
-        reshaped_dimensions.push_back(num_fit);
+        reshaped_dimensions.push_back(k);
+        reshaped_dimensions.push_back(padded_n / k);
       } else {
         reshaped_dimensions.push_back(padded[0]->shape().dimensions(dim_idx));
       }
@@ -175,9 +188,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     absl::InlinedVector<int64_t, 3> inner_reduce_dimensions =
         reshaped_dimensions;
+    // We split reduced_input_dimension into two new dims.  We have the choice
+    // of reducing along either of them.  We choose to reduce along the second,
+    // more-minor dimension, because this should use the GPU caches better.
     int64_t inner_reduced_dimension = is_row_reduction
                                           ? inner_reduce_dimensions.size() - 1
-                                          : reduced_input_dimension;
+                                          : reduced_input_dimension + 1;
     VLOG(2) << "inner_reduced_dimension = " << inner_reduced_dimension;
     inner_reduce_dimensions.erase(inner_reduce_dimensions.begin() +
                                   inner_reduced_dimension);
@@ -197,7 +213,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       Shape reshaped_shape =
           ShapeUtil::MakeShape(p->shape().element_type(), reshaped_dimensions);
       HloInstruction *reshaped_padded_input = hlo->parent()->AddInstruction(
-          HloInstruction::CreateBitcast(reshaped_shape, p));
+          HloInstruction::CreateBitcast(reshaped_shape, p), &p->metadata());
       VLOG(2) << "Generated reshape: " << reshaped_padded_input->ToString();
       reshaped_padded_inputs.push_back(reshaped_padded_input);
       Shape inner_reduce_shape = ShapeUtil::MakeShape(p->shape().element_type(),
@@ -205,11 +221,12 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
       inner_reduce_shapes.push_back(inner_reduce_shape);
     }
 
-    HloInstruction *inner_reduce =
-        hlo->parent()->AddInstruction(HloInstruction::CreateReduce(
+    HloInstruction *inner_reduce = hlo->parent()->AddInstruction(
+        HloInstruction::CreateReduce(
             ShapeUtil::MakeMaybeTupleShape(inner_reduce_shapes),
             reshaped_padded_inputs, reduce->init_values(), dims_to_reduce,
-            hlo->to_apply()));
+            hlo->to_apply()),
+        &reduce->metadata());
     VLOG(1) << "Generated inner reduction: " << inner_reduce->ToString();
     absl::InlinedVector<int64_t, 3> outer_reduce_dimensions =
         inner_reduce_dimensions;
@@ -258,14 +275,16 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     return ReplaceWithNewInstruction(hlo, std::move(out));
   }
 
-  se::CudaComputeCapability cuda_compute_capability_;
+  GpuVersion gpu_version_;
 };
 
-StatusOr<bool> GpuTreeReductionRewriter::Run(HloModule *module) {
+StatusOr<bool> GpuTreeReductionRewriter::Run(
+    HloModule *module,
+    const absl::flat_hash_set<absl::string_view> &execution_threads) {
   VLOG(5) << "Rewriter input: " << module->ToString();
-  TF_ASSIGN_OR_RETURN(
-      bool changed,
-      ReductionRewriterVisitor(cuda_compute_capability_).RunOnModule(module));
+  TF_ASSIGN_OR_RETURN(bool changed,
+                      ReductionRewriterVisitor(gpu_version_)
+                          .RunOnModule(module, execution_threads));
   VLOG(5) << "Rewriter output: " << module->ToString();
   return changed;
 }

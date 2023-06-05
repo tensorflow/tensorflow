@@ -14,35 +14,4 @@
 # ==============================================================================
 """DTensor Python API."""
 
-from tensorflow.dtensor.python import gen_dtensor_ops as ops
-from tensorflow.dtensor.python import mesh_util
-from tensorflow.dtensor.python import tpu_util
-
-from tensorflow.dtensor.python.api import call_with_layout
-from tensorflow.dtensor.python.api import check_layout
-from tensorflow.dtensor.python.api import client_id
-from tensorflow.dtensor.python.api import copy_to_mesh
-from tensorflow.dtensor.python.api import device_name
-from tensorflow.dtensor.python.api import fetch_layout
-from tensorflow.dtensor.python.api import full_job_name
-from tensorflow.dtensor.python.api import heartbeat_enabled
-from tensorflow.dtensor.python.api import job_name
-from tensorflow.dtensor.python.api import jobs
-from tensorflow.dtensor.python.api import local_devices
-from tensorflow.dtensor.python.api import num_clients
-from tensorflow.dtensor.python.api import num_global_devices
-from tensorflow.dtensor.python.api import num_local_devices
-from tensorflow.dtensor.python.api import pack
-from tensorflow.dtensor.python.api import relayout
-from tensorflow.dtensor.python.api import run_on
-from tensorflow.dtensor.python.api import unpack
-from tensorflow.dtensor.python.d_checkpoint import DTensorCheckpoint
-from tensorflow.dtensor.python.d_variable import DVariable
-from tensorflow.dtensor.python.layout import Layout
-from tensorflow.dtensor.python.layout import MATCH
-from tensorflow.dtensor.python.layout import Mesh
-from tensorflow.dtensor.python.layout import UNSHARDED
-from tensorflow.dtensor.python.save_restore import enable_save_as_bf16
-from tensorflow.dtensor.python.save_restore import name_based_restore
-from tensorflow.dtensor.python.save_restore import name_based_save
-from tensorflow.dtensor.python.save_restore import sharded_save
+# This file is left empty intentionally.

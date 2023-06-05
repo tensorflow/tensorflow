@@ -1784,6 +1784,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
 
 
 @tf_export("lookup.experimental.MutableHashTable")
+@saveable_compat.legacy_saveable_name("table")
 class MutableHashTable(LookupInterface):
   """A generic mutable hash table implementation.
 
@@ -2039,7 +2040,6 @@ class MutableHashTable(LookupInterface):
             self.resource_handle, self._key_dtype, self._value_dtype)
     return exported_keys, exported_values
 
-  @saveable_compat.legacy_saveable_name("table")
   def _serialize_to_tensors(self):
     """Implements checkpointing protocols for `Trackable`."""
     tensors = self.export()
@@ -2079,6 +2079,7 @@ class MutableHashTable(LookupInterface):
 
 
 @tf_export("lookup.experimental.DenseHashTable")
+@saveable_compat.legacy_saveable_name("table")
 class DenseHashTable(LookupInterface):
   """A mutable hash table with faster lookups and higher memory usage.
 
@@ -2374,7 +2375,6 @@ class DenseHashTable(LookupInterface):
 
     return exported_keys, exported_values
 
-  @saveable_compat.legacy_saveable_name("table")
   def _serialize_to_tensors(self):
     """Implements checkpointing interface in `Trackable`."""
     tensors = self.export()

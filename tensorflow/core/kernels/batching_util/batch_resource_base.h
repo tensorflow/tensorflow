@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
 
+#include <functional>
 #include <map>
+#include <memory>
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/cost_measurement_registry.h"
@@ -46,13 +48,6 @@ class BatchResourceBase : public ResourceBase {
   // concatenating tensors along the 2nd dimension gives a output tensor.
   typedef std::vector<std::vector<Tensor>> TensorMatrix;
 
-  // Ingests data from one invocation of the batch op. The data is enqueued to
-  // be combined with others into a batch, asynchronously.
-  Status RegisterInput(int64_t guid, OpKernelContext* context,
-                       const string& batcher_queue_name,
-                       AsyncOpKernel::DoneCallback done_callback);
-
- public:
   // One task to be batched, corresponds to a `slice` of input from one batch-op
   // invocation.
   //
@@ -133,9 +128,9 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         batcher_(std::move(batcher)),
         batcher_queue_options_(batcher_queue_options),
-        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {
-    allowed_batch_sizes_str_ = absl::StrJoin(allowed_batch_sizes_, ",");
-  }
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)),
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
+        disable_padding_(batcher_queue_options.disable_padding) {}
 
   BatchResourceBase(bool has_process_batch_function,
                     std::shared_ptr<AdaptiveBatcherT> batcher,
@@ -144,18 +139,30 @@ class BatchResourceBase : public ResourceBase {
       : has_process_batch_function_(has_process_batch_function),
         adaptive_batcher_(std::move(batcher)),
         adaptive_batcher_queue_options_(batcher_queue_options),
-        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)),
+        allowed_batch_sizes_str_(absl::StrJoin(allowed_batch_sizes_, ",")),
+        disable_padding_(batcher_queue_options.disable_padding) {}
+
+  using CreateBatchTaskFn =
+      std::function<StatusOr<std::unique_ptr<BatchTask>>()>;
+
+  // Ingests data from one invocation of the batch op. The data is enqueued to
+  // be combined with others into a batch, asynchronously.
+  Status RegisterInput(int64_t guid, OpKernelContext* context,
+                       const string& batcher_queue_name,
+                       const CreateBatchTaskFn& create_batch_task_fn,
+                       AsyncOpKernel::DoneCallback done_callback);
 
   static BatcherT::QueueOptions GetBatcherQueueOptions(
       int32_t num_batch_threads, int32_t max_batch_size,
       int32_t batch_timeout_micros, int32_t max_enqueued_batches,
       const std::vector<int32>& allowed_batch_sizes,
-      bool enable_large_batch_splitting);
+      bool enable_large_batch_splitting, bool disable_padding);
 
   static AdaptiveBatcherT::QueueOptions GetAdaptiveBatcherQueueOptions(
       int32_t max_batch_size, int32_t batch_timeout_micros,
       int32_t max_enqueued_batches, bool enable_large_batch_splitting,
-      const std::vector<int32>& allowed_batch_sizes);
+      const std::vector<int32>& allowed_batch_sizes, bool disable_padding);
 
   // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
   // 'output_tasks'.
@@ -202,11 +209,6 @@ class BatchResourceBase : public ResourceBase {
       const BatchResourceBase::BatchTask& last_task,
       absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
       std::function<void(const Status&)> done) const = 0;
-
-  // Factory method for creating a BatchTask, overridable by subclasses.
-  virtual Status CreateBatchTask(
-      OpKernelContext* context,
-      std::unique_ptr<BatchResourceBase::BatchTask>* output) const;
 
   // Validates that it's legal to combine the tasks in 'batch' into a batch.
   // Assumes the batch is non-empty.
@@ -264,6 +266,9 @@ class BatchResourceBase : public ResourceBase {
   // A concatenated string of <allowed_batch_sizes_>, separated by ",". This is
   // used to record batching parameter.
   string allowed_batch_sizes_str_;
+
+  // If true, the padding will not be appended.
+  bool disable_padding_;
 };
 
 }  // namespace serving

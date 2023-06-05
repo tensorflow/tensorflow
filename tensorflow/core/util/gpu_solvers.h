@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================
 */
 
-#ifndef TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
-#define TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
+#ifndef TENSORFLOW_CORE_UTIL_GPU_SOLVERS_H_
+#define TENSORFLOW_CORE_UTIL_GPU_SOLVERS_H_
 
 // This header declares the class GpuSolver, which contains wrappers of linear
 // algebra solvers in the cuBlas/cuSolverDN or rocmSolver libraries for use in
@@ -33,8 +33,12 @@ limitations under the License.
 #else
 #include "rocm/include/hip/hip_complex.h"
 #include "rocm/include/rocblas.h"
-#include "tensorflow/stream_executor/blas.h"
-#include "tensorflow/stream_executor/rocm/rocsolver_wrapper.h"
+#include "rocm/rocm_config.h"
+#include "tensorflow/compiler/xla/stream_executor/blas.h"
+#if TF_ROCM_VERSION >= 40500
+#include "tensorflow/compiler/xla/stream_executor/rocm/hipsolver_wrapper.h"
+#endif
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocsolver_wrapper.h"
 #endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -283,13 +287,12 @@ class GpuSolver {
   // Uses LU factorization to solve A * X = B.
   template <typename Scalar>
   Status Getrs(const gpuSolverOp_t trans, int n, int nrhs, Scalar* A, int lda,
-               const int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
+               int* dev_pivots, Scalar* B, int ldb, int* dev_lapack_info);
 
   template <typename Scalar>
   Status GetrfBatched(int n, Scalar** dev_A, int lda, int* dev_pivots,
                       DeviceLapackInfo* info, const int batch_count);
 
-  // No GetrsBatched for HipSolver yet.
   template <typename Scalar>
   Status GetrsBatched(const rocblas_operation trans, int n, int nrhs,
                       Scalar** A, int lda, int* dev_pivots, Scalar** B,
@@ -309,7 +312,7 @@ class GpuSolver {
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
-  // Returns Status::OK() if the kernel was launched successfully. Uses
+  // Returns OkStatus() if the kernel was launched successfully. Uses
   // GetrfBatched and GetriBatched
   template <typename Scalar>
   Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
@@ -325,10 +328,40 @@ class GpuSolver {
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info, int batch_size);
 
+  // See
+  // https://rocblas.readthedocs.io/en/latest/API_Reference_Guide.html#trsm_batched
+  // trsm_batched performs the following batched operation:
+  // op(A_i)*X_i = alpha*B_i or
+  // X_i*op(A_i) = alpha*B_i, for i = 1, ..., batch_count,
+  // where alpha is a scalar, X and B are batched m by n matrices,
+  // A is triangular batched matrix and op(A) is one of
+  // op( A ) = A   or
+  // op( A ) = A^T   or
+  // op( A ) = A^H.
+  // Each matrix X_i is overwritten on B_i for i = 1, ..., batch_count.
+  template <typename Scalar>
+  Status TrsmBatched(rocblas_side side, rocblas_fill uplo,
+                     rocblas_operation trans, rocblas_diagonal diag, int m,
+                     int n, const Scalar* alpha,
+                     const Scalar* const dev_Aarray[], int lda,
+                     Scalar* dev_Barray[], int ldb, int batch_size);
+
+  template <typename Scalar>
+  Status Trsv(rocblas_fill uplo, rocblas_operation trans, rocblas_diagonal diag,
+              int n, const Scalar* A, int lda, Scalar* x, int intcx);
+
   template <typename Scalar>
   Status Trsm(rocblas_side side, rocblas_fill uplo, rocblas_operation trans,
               rocblas_diagonal diag, int m, int n, const Scalar* alpha,
               const Scalar* A, int lda, Scalar* B, int ldb);
+
+  // Singular value decomposition.
+  // See: https://hipsolver.readthedocs.io/en/latest/api_lapackfunc.html#svds
+  // No GesvdjBatched yet.
+  template <typename Scalar>
+  Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
+               int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
+               int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
@@ -364,8 +397,9 @@ class GpuSolver {
 #if TF_ROCM_VERSION >= 40500
   // Hermitian (Symmetric) Eigen decomposition.
   template <typename Scalar>
-  Status Heevd(gpuSolverOp_t jobz, gpuSolverFill_t uplo, int n, Scalar* dev_A,
-               int lda, typename Eigen::NumTraits<Scalar>::Real* dev_W,
+  Status Heevd(hipsolverEigMode_t jobz, gpuSolverFill_t uplo, int n,
+               Scalar* dev_A, int lda,
+               typename Eigen::NumTraits<Scalar>::Real* dev_W,
                int* dev_lapack_info);
 #endif
 
@@ -380,7 +414,7 @@ class GpuSolver {
 
   // This function performs the matrix-matrix addition/transposition
   //   C = alpha * op(A) + beta * op(B).
-  // Returns Status::OK() if the kernel was launched successfully.  See:
+  // Returns OkStatus() if the kernel was launched successfully.  See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
   // NOTE(ebrevdo): Does not support in-place transpose of non-square
   // matrices.
@@ -394,23 +428,21 @@ class GpuSolver {
               int ldc) const TF_MUST_USE_RESULT;
 
   // Computes the Cholesky factorization A = L * L^H for a single matrix.
-  // Returns Status::OK() if the kernel was launched successfully. See:
+  // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
   Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
                int* dev_lapack_info) TF_MUST_USE_RESULT;
 
-#if CUDA_VERSION >= 9020
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
-  // Returns Status::OK() if the kernel was launched successfully. See:
+  // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/index.html#cuds-lt-t-gt-potrfBatched
   template <typename Scalar>
   Status PotrfBatched(cublasFillMode_t uplo, int n,
                       const Scalar* const host_a_dev_ptrs[], int lda,
                       DeviceLapackInfo* dev_lapack_info,
                       int batch_size) TF_MUST_USE_RESULT;
-#endif  // CUDA_VERSION >= 9020
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
@@ -426,7 +458,7 @@ class GpuSolver {
                int* dev_lapack_info) const TF_MUST_USE_RESULT;
 
   // Computes partially pivoted LU factorizations for a batch of small matrices.
-  // Returns Status::OK() if the kernel was launched successfully. See:
+  // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
   template <typename Scalar>
   Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
@@ -445,7 +477,7 @@ class GpuSolver {
                       int batch_size) TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs
-  // from GetrfBatched. Returns Status::OK() if the kernel was launched
+  // from GetrfBatched. Returns OkStatus() if the kernel was launched
   // successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
   template <typename Scalar>
@@ -456,7 +488,7 @@ class GpuSolver {
                       int batch_size) TF_MUST_USE_RESULT;
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
-  // Returns Status::OK() if the kernel was launched successfully. See:
+  // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-matinvbatched
   template <typename Scalar>
   Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
@@ -466,7 +498,7 @@ class GpuSolver {
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
-  // Returns Status::OK() if the kernel was launched successfully.
+  // Returns OkStatus() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-geqrf
   template <typename Scalar>
   Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
@@ -478,7 +510,7 @@ class GpuSolver {
   // Notice: If Scalar is real, only trans=CUBLAS_OP_N or trans=CUBLAS_OP_T is
   // supported. If Scalar is complex, trans=CUBLAS_OP_N or trans=CUBLAS_OP_C is
   // supported.
-  // Returns Status::OK() if the kernel was launched successfully.
+  // Returns OkStatus() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-ormqr
   template <typename Scalar>
   Status Unmqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n,
@@ -489,7 +521,7 @@ class GpuSolver {
   // matrix Q. On input, the Householder matrix Q is represented by the output
   // from Geqrf in dev_a and dev_tau. On output, dev_a is overwritten with the
   // first n columns of Q. Requires m >= n >= 0.
-  // Returns Status::OK() if the kernel was launched successfully.
+  // Returns OkStatus() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-orgqr
   template <typename Scalar>
   Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
@@ -504,7 +536,7 @@ class GpuSolver {
                int* dev_lapack_info) TF_MUST_USE_RESULT;
 
   // Singular value decomposition.
-  // Returns Status::OK() if the kernel was launched successfully.
+  // Returns OkStatus() if the kernel was launched successfully.
   // TODO(rmlarsen, volunteers): Add support for complex types.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-gesvd
   template <typename Scalar>
@@ -518,7 +550,7 @@ class GpuSolver {
                        int batch_size);
 
   // Triangular solve
-  // Returns Status::OK() if the kernel was launched successfully.
+  // Returns OkStatus() if the kernel was launched successfully.
   // See https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-trsm
   template <typename Scalar>
   Status Trsm(cublasSideMode_t side, cublasFillMode_t uplo,
@@ -550,6 +582,9 @@ class GpuSolver {
 #else  // TENSORFLOW_USE_ROCM
   hipStream_t hip_stream_;
   rocblas_handle rocm_blas_handle_;
+#if TF_ROCM_VERSION >= 40500
+  hipsolverHandle_t hipsolver_handle_;
+#endif
 #endif
 
   std::vector<TensorReference> scratch_tensor_refs_;
@@ -673,4 +708,4 @@ inline DeviceLapackInfo GpuSolver::GetDeviceLapackInfo(
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_CORE_KERNELS_LINALG_GPU_SOLVERS_H_
+#endif  // TENSORFLOW_CORE_UTIL_GPU_SOLVERS_H_

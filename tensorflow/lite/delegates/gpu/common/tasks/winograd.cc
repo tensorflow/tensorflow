@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/tasks/winograd.h"
 
 #include <cstring>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -52,13 +53,21 @@ std::string GetKernelWinograd4x4To36(const GpuInfo& gpu_info,
                                      const OperationDef& op_def) {
   std::string c;
   const auto src_desc = op_def.src_tensors[0];
+  c += "MAIN_FUNCTION($0) {\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int X = (linear_id / args.dst_tensor.Batch()) * 4;\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int X = GLOBAL_ID_0 * 4;\n";
+  }
   c += R"(
-MAIN_FUNCTION($0) {
-  int X = GLOBAL_ID_0 * 4;
   int Y = GLOBAL_ID_1 * 4;
   int S = GLOBAL_ID_2;
 
-  if (GLOBAL_ID_0 >= args.tiles_x || GLOBAL_ID_1 >= args.tiles_y) return;
+  if (X / 4 >= args.tiles_x || Y / 4 >= args.tiles_y) return;
 
   FLT4 I[6][6];
   for (int y = 0; y < 6; ++y) {
@@ -67,9 +76,6 @@ MAIN_FUNCTION($0) {
     }
   }
 )";
-  if (src_desc.IsLinear()) {
-    c += "  args.src_tensor.GetAddress(src_base, 0, 0, S);\n";
-  }
   for (int y = 0; y < 6; ++y) {
     const std::string s_y = std::to_string(y);
     c += "  {\n";
@@ -78,10 +84,6 @@ MAIN_FUNCTION($0) {
       c += "    bool in_y = coord_y >= 0 && coord_y < "
            "args.src_tensor.Height();\n";
       c += "    coord_y = clamp(coord_y, 0, args.src_tensor.Height() - 1);\n";
-    }
-    if (src_desc.IsLinear()) {
-      c += "    int src_adress_y = src_base + coord_y * "
-           "args.src_tensor.Width();\n";
     }
     for (int x = 0; x < 6; ++x) {
       const std::string s_x = std::to_string(x);
@@ -101,13 +103,8 @@ MAIN_FUNCTION($0) {
       } else if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         multiplier = " * INIT_FLT(in_y)";
       }
-      if (src_desc.IsLinear()) {
-        c += "      FLT4 src = args.src_tensor.Read(src_adress_y + coord_x)" +
-             multiplier + ";\n";
-      } else {
-        c += "      FLT4 src = args.src_tensor.Read(coord_x, coord_y, S)" +
-             multiplier + ";\n";
-      }
+      c += "      FLT4 src = args.src_tensor.Read(coord_x, coord_y, S)" +
+           multiplier + ";\n";
       c += "      I[0][" + s_x + "] += args.Bt.Read(" + std::to_string(y) +
            ") * src;\n";
       c += "      I[1][" + s_x + "] += args.Bt.Read(" + std::to_string(y + 6) +
@@ -125,37 +122,8 @@ MAIN_FUNCTION($0) {
     c += "  }\n";
   }
 
-  const auto dst_desc = op_def.dst_tensors[0];
-
-  if (dst_desc.IsLinear()) {
-    c += R"(
-  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
-  args.dst_tensor.GetAddress(dst_adress, dst_x, 0, S);
-  for (int y = 0; y < 6; ++y) {
-    FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(7) * I[y][1] + args.Bt.Read(8) * I[y][2] + args.Bt.Read(9) * I[y][3] + args.Bt.Read(10) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(13) * I[y][1] + args.Bt.Read(14) * I[y][2] + args.Bt.Read(15) * I[y][3] + args.Bt.Read(16) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(19) * I[y][1] + args.Bt.Read(20) * I[y][2] + args.Bt.Read(21) * I[y][3] + args.Bt.Read(22) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(25) * I[y][1] + args.Bt.Read(26) * I[y][2] + args.Bt.Read(27) * I[y][3] + args.Bt.Read(28) * I[y][4];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-    value = args.Bt.Read(31) * I[y][1] + args.Bt.Read(33) * I[y][3] + I[y][5];
-    args.dst_tensor.WriteLinear(value, dst_adress);
-    dst_adress += args.dst_tensor.Width();
-  }
-}
-)";
-  } else {
-    c += R"(
-  int dst_x = GLOBAL_ID_1 * args.tiles_x + GLOBAL_ID_0;
+  c += R"(
+  int dst_x = Y / 4 * args.tiles_x + X / 4;
   for (int y = 0; y < 6; ++y) {
     FLT4 value = I[y][0] + args.Bt.Read(2) * I[y][2] + args.Bt.Read(4) * I[y][4];
     args.dst_tensor.Write(value, dst_x, y * 6 + 0, S);
@@ -172,17 +140,23 @@ MAIN_FUNCTION($0) {
   }
 }
 )";
-  }
   return c;
 }
 
 std::string GetKernelWinograd36To4x4(const OperationDef& op_def) {
   std::string c;
   const auto src_desc = op_def.src_tensors[0];
-
+  c += "MAIN_FUNCTION($0) {\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int tile_id = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int tile_id = GLOBAL_ID_0;\n";
+  }
   c += R"(
-MAIN_FUNCTION($0) {
-  int tile_id = GLOBAL_ID_0;
   int Z = GLOBAL_ID_2;
   int tiles_count_x = (args.dst_tensor.Width() + 3) / 4;
   int tile_x = (tile_id % tiles_count_x) * 4;
@@ -195,22 +169,6 @@ MAIN_FUNCTION($0) {
       I[y][x] = INIT_FLT4(0.0f);
     }
   }
-)";
-  if (src_desc.IsLinear()) {
-    c += R"(
-  args.src_tensor.GetAddress(src_adress, tile_id, 0, Z);
-  for (int y = 0; y < 6; ++y) {
-    for (int x = 0; x < 6; ++x, src_adress += args.src_tensor.Width()) {
-      FLT4 src = args.src_tensor.Read(src_adress);
-      I[0][x] += src * args.At.Read(y);
-      I[1][x] += src * args.At.Read(y + 6);
-      I[2][x] += src * args.At.Read(y + 12);
-      I[3][x] += src * args.At.Read(y + 18);
-    }
-  }
-)";
-  } else {
-    c += R"(
   for (int y = 0; y < 6; ++y) {
     for (int x = 0; x < 6; ++x) {
       FLT4 src = args.src_tensor.Read(tile_id, y * 6 + x, Z);
@@ -220,9 +178,6 @@ MAIN_FUNCTION($0) {
       I[3][x] += src * args.At.Read(y + 18);
     }
   }
-)";
-  }
-  c += R"(
 
   FLT4 bias_val = args.biases.Read(Z);
   for (int y = 0; y < 4; ++y) {
@@ -260,7 +215,7 @@ int3 Winograd4x4To36::GetGridSize() const {
       src_[0]->Height() + padding_.prepended.h + padding_.appended.h - 2;
   int tiles_x = DivideRoundUp(new_width, 4);
   int tiles_y = DivideRoundUp(new_height, 4);
-  return int3(tiles_x, tiles_y, src_[0]->Slices());
+  return int3(tiles_x * dst_[0]->Batch(), tiles_y, src_[0]->Slices());
 }
 
 absl::Status Winograd4x4To36::BindArguments(ArgumentsBinder* args) {
@@ -293,7 +248,7 @@ Winograd4x4To36 CreateWinograd4x4To36(const OperationDef& definition,
   VectorToKernelBufferDesc(BtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "Bt", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "Bt", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(8, 4, 1);
   return desc;
@@ -326,7 +281,15 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   args_.AddInt("tiles_x");
 
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int DST_X = GLOBAL_ID_0;\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int DST_X = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int DST_X = GLOBAL_ID_0;\n";
+  }
   c += "  int DST_Y = GLOBAL_ID_1;\n";
   c += "  int DST_Z = GLOBAL_ID_2;\n";
   c += "  if (DST_X >= args.tiles_total || DST_Y >= 6 || DST_Z >= "
@@ -348,17 +311,13 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
   c += "  bt_ar[5] = t1.y;\n";
   auto read_src = [&](const std::string& src, const std::string& xs) {
     std::string read_statement;
-    if (src_desc.IsLinear()) {
-      read_statement = "args.src_tensor.Read(src_a_" + xs + " + offset)";
-    } else {
-      read_statement = "args.src_tensor.Read(xc" + xs + ", yc, DST_Z)";
-    }
+    read_statement = "args.src_tensor.Read(xc" + xs + ", yc, DST_Z)";
     std::string multiplier;
     if (!src_desc.SupportsZeroClamp(Axis::WIDTH, gpu_info)) {
-      if (!(src_desc.IsLinear() &&
-            src_desc.ReturnsZeroForNegOneRead(gpu_info))) {
-        multiplier = " * m" + xs + "_x";
-      }
+      multiplier += " * m" + xs + "_x";
+    }
+    if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
+      multiplier += " * INIT_FLT(iny)";
     }
     c += "    FLT4 " + src + " = " + read_statement + multiplier + ";\n";
   };
@@ -372,16 +331,6 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       c += "  xc" + xs + " = clamp(xc" + xs +
            ", 0, args.src_tensor.Width() - 1);\n";
     }
-    if (src_desc.IsLinear()) {
-      c += "  args.src_tensor.GetAddress(src_a_" + xs + ", xc" + xs +
-           ", 0, DST_Z);\n";
-      if (src_desc.ReturnsZeroForNegOneRead(gpu_info)) {
-        c += "  src_a_" + xs +
-             " = select(-args.src_tensor.Width() * args.src_tensor.Height(), "
-             "src_a_" +
-             xs + ", inx" + xs + ");\n";
-      }
-    }
   }
   const bool manual_unroll =
       !(op_def.precision == CalculationsPrecision::F32 && gpu_info.IsMali());
@@ -391,7 +340,6 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
-      c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
       c += "    FLT bt = bt_ar[0] * INIT_FLT(iny);\n";
     } else {
       c += "    FLT bt = bt_ar[0];\n";
@@ -410,7 +358,6 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
       if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
         c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
         c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
-        c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
         c += "    FLT bt = bt_ar[" + ys + "] * INIT_FLT(iny);\n";
       } else {
         c += "    FLT bt = bt_ar[" + ys + "];\n";
@@ -435,7 +382,6 @@ std::string Winograd4x4To36TileX6::GetWinograd4x4To36TileX6Code(
     if (!src_desc.SupportsZeroClamp(Axis::HEIGHT, gpu_info)) {
       c += "    bool iny = (yc >= 0 && yc < args.src_tensor.Height());\n";
       c += "    yc = clamp(yc, 0, args.src_tensor.Height() - 1);\n";
-      c += "    int offset = select(0, yc * args.src_tensor.Width(), iny);\n";
       c += "    FLT bt = bt_ar[y] * INIT_FLT(iny);\n";
     } else {
       c += "    FLT bt = bt_ar[y];\n";
@@ -499,17 +445,16 @@ void Winograd4x4To36TileX6::UploadBt() {
     bt_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition_.GetDataType();
-  desc.UploadLinearData(bt_aligned);
-  args_.AddObject("bt_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bt_tensor_desc = CreateConstantLinearTensorDescriptor(
+      definition_.src_tensors[0].GetDataType(),
+      definition_.src_tensors[0].GetStorageType(), bt_aligned);
+  args_.AddObject("bt_non_uniform", std::make_unique<TensorDescriptor>(
+                                        std::move(bt_tensor_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(bt_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("Bt",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd4x4To36TileX6::SelectBestWorkGroup(
@@ -568,7 +513,7 @@ Winograd4x4To36TileX6 CreateWinograd4x4To36TileX6(
 }
 
 int3 Winograd36To4x4::GetGridSize() const {
-  return int3(src_[0]->Width(), 1, src_[0]->Slices());
+  return int3(src_[0]->Width() * dst_[0]->Batch(), 1, src_[0]->Slices());
 }
 
 Winograd36To4x4 CreateWinograd36To4x4(
@@ -580,18 +525,17 @@ Winograd36To4x4 CreateWinograd36To4x4(
   desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
   desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
-  TensorLinearDescriptor bias_desc;
-  bias_desc.storage_type = LinearStorageType::BUFFER;
-  bias_desc.element_type = definition.GetDataType();
-  bias_desc.UploadLinearData(biases);
-  desc.args_.AddObject("biases", absl::make_unique<TensorLinearDescriptor>(
-                                     std::move(bias_desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      definition.src_tensors[0].GetDataType(),
+      definition.src_tensors[0].GetStorageType(), biases);
+  desc.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                     std::move(bias_tensor_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(AtMatrixForWinograd4x4To6x6(),
                            definition.GetDataType(), &buffer_desc);
   desc.args_.AddObject(
-      "At", absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+      "At", std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 
   desc.work_group_size_ = int3(32, 1, 1);
   return desc;
@@ -617,7 +561,16 @@ std::string Winograd36To4x4Tile4x1::GetWinograd36To4x4Tile4x1Code(
   args_.AddInt("tiles_x");
 
   c += "MAIN_FUNCTION($0) {\n";
-  c += "  int tile_id = GLOBAL_ID_0;\n";
+  if (op_def.dst_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  int linear_id = GLOBAL_ID_0;\n";
+    c += "  int tile_id = linear_id / args.dst_tensor.Batch();\n";
+    c += "  int B = linear_id % args.dst_tensor.Batch();\n";
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  } else {
+    c += "  int tile_id = GLOBAL_ID_0;\n";
+  }
+
   c += "  int DST_Y = GLOBAL_ID_1;\n";
   c += "  int DST_Z = GLOBAL_ID_2;\n";
   c += "  int tile_x = (tile_id % args.tiles_x) * 4;\n";
@@ -724,17 +677,16 @@ void Winograd36To4x4Tile4x1::UploadAt() {
     at_aligned.data[y * 8 + 7] = 0.0f;
   }
 
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition_.GetDataType();
-  desc.UploadLinearData(at_aligned);
-  args_.AddObject("at_non_uniform",
-                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor at_tensor_desc = CreateConstantLinearTensorDescriptor(
+      definition_.src_tensors[0].GetDataType(),
+      definition_.src_tensors[0].GetStorageType(), at_aligned);
+  args_.AddObject("at_non_uniform", std::make_unique<TensorDescriptor>(
+                                        std::move(at_tensor_desc)));
 
   BufferDescriptor buffer_desc;
   VectorToKernelBufferDesc(at_mat, definition_.GetDataType(), &buffer_desc);
   args_.AddObject("At",
-                  absl::make_unique<BufferDescriptor>(std::move(buffer_desc)));
+                  std::make_unique<BufferDescriptor>(std::move(buffer_desc)));
 }
 
 int3 Winograd36To4x4Tile4x1::SelectBestWorkGroup(
@@ -783,12 +735,10 @@ Winograd36To4x4Tile4x1 CreateWinograd36To4x4Tile4x1(
     const GpuInfo& gpu_info, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
   Winograd36To4x4Tile4x1 result(definition, gpu_info);
-  TensorLinearDescriptor desc;
-  desc.storage_type = LinearStorageType::TEXTURE_2D;
-  desc.element_type = definition.GetDataType();
-  desc.UploadLinearData(biases);
-  result.args_.AddObject(
-      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  TensorDescriptor bias_tensor_desc = CreateConstantLinearTensorDescriptor(
+      gpu_info, definition.src_tensors[0].GetDataType(), biases);
+  result.args_.AddObject("biases", std::make_unique<TensorDescriptor>(
+                                       std::move(bias_tensor_desc)));
   result.UploadAt();
   return result;
 }

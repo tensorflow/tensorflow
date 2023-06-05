@@ -132,12 +132,6 @@ Status GetWindowedOutputSizeVerboseV2(int64_t input_size, int64_t filter_size,
 // is padded with zeros, as well as for 3D avg/max pooling, where the input data
 // is padded with invalid values that are not considered for pooling. EXPLICIT
 // padding is not supported.
-Status Get3dOutputSize(const std::array<int64_t, 3>& input,
-                       const std::array<int64_t, 3>& window,
-                       const std::array<int64_t, 3>& strides,
-                       Padding padding_type, std::array<int64_t, 3>* output_ptr,
-                       std::array<int64_t, 3>* padding_ptr);
-
 // The V2 version computes the same outputs with arbitrary dilation_rate. For
 // detailed equations, refer to the comments for GetWindowedOutputSizeV2().
 Status Get3dOutputSizeV2(const std::array<int64_t, 3>& input,

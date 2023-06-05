@@ -102,14 +102,14 @@ void OptionalGetValueOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->input("optional", &optional_input));
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(optional_input->shape()),
               errors::InvalidArgument(
-                  "Input to OptionalHasValue must be a scalar tensor "
+                  "Input to OptionalGetValue must be a scalar tensor "
                   "containing an OptionalVariant object."));
   const OptionalVariant* optional =
       optional_input->scalar<Variant>()().get<OptionalVariant>();
   OP_REQUIRES(
       ctx, optional != nullptr,
       errors::InvalidArgument(
-          "Input to OptionalHasValue must be an OptionalVariant object."));
+          "Input to OptionalGetValue must be an OptionalVariant object."));
   OP_REQUIRES(
       ctx, optional->has_value(),
       errors::InvalidArgument("The given optional does not have a value."));

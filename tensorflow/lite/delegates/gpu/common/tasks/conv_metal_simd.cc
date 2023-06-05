@@ -24,23 +24,19 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/task/util.h"
-#include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
-#include "tensorflow/lite/delegates/gpu/common/task/weights_layout.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
-#include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 namespace tflite {
 namespace gpu {
 namespace {
 std::string GenerateDstCoords(const int3& work_group_launch_order,
-                              bool linear_spatial, bool need_depth) {
+                              bool linear_spatial, bool need_depth,
+                              bool need_batch) {
   std::string c;
   int3 launch_remap;
   launch_remap[work_group_launch_order.x] = 0;
@@ -52,6 +48,10 @@ std::string GenerateDstCoords(const int3& work_group_launch_order,
     } else {
       c += "  int linear_spatial = GROUP_ID_" +
            std::to_string(launch_remap[0]) + " * GROUP_SIZE_0 + LOCAL_ID_0;\n";
+    }
+    if (need_batch) {
+      c += "  int B = linear_spatial % args.dst_tensor.Batch();\n";
+      c += "  linear_spatial = linear_spatial / args.dst_tensor.Batch();\n";
     }
     if (need_depth) {
       c += "  int DST_X = linear_spatial % args.dst_tensor.Width();\n";
@@ -74,6 +74,10 @@ std::string GenerateDstCoords(const int3& work_group_launch_order,
     } else {
       c += "  int DST_X = GROUP_ID_" + std::to_string(launch_remap[0]) +
            " * GROUP_SIZE_0 + LOCAL_ID_0;\n";
+    }
+    if (need_batch) {
+      c += "  int B = DST_X % args.dst_tensor.Batch();\n";
+      c += "  DST_X = DST_X / args.dst_tensor.Batch();\n";
     }
     std::string global_id_1;
     if (work_group_launch_order[1] == 1) {
@@ -110,7 +114,12 @@ std::string GenerateConvolution(
   c += "MAIN_FUNCTION($0) {\n";
   c += GenerateDstCoords(conv_params.work_group_launch_order,
                          conv_params.linear_spatial,
-                         definition.src_tensors[0].HasAxis(Axis::DEPTH));
+                         definition.src_tensors[0].HasAxis(Axis::DEPTH),
+                         definition.src_tensors[0].HasAxis(Axis::BATCH));
+  if (definition.src_tensors[0].HasAxis(Axis::BATCH)) {
+    c += "  args.src_tensor.SetBatchRef(B);\n";
+    c += "  args.dst_tensor.SetBatchRef(B);\n";
+  }
   if (conv_params.slices_per_thread != 1) {
     c += "  DST_S *= " + std::to_string(conv_params.slices_per_thread) + ";\n";
   }
@@ -168,7 +177,8 @@ std::string GenerateConvolution(
   int c_y = min(DST_Y, args.src_tensor.Height() - 1);
 )";
   if (definition.src_tensors[0].IsLinear()) {
-    c += "  args.src_tensor.GetAddress(src_address, c_x, c_y, slice_id);\n";
+    c +=
+        "  int src_address = args.src_tensor.GetAddress(c_x, c_y, slice_id);\n";
   }
   c += R"(
   int tid2 = 0;
@@ -465,16 +475,8 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
   desc.params_.z_kernel_is_1 = true;
   desc.code_ = GenerateConvolution(definition, desc.params_);
 
-  auto src_desc = definition.src_tensors[0];
-  if (definition.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  desc.AddSrcTensor("src_tensor", src_desc);
-  auto dst_desc = definition.dst_tensors[0];
-  if (definition.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  desc.AddDstTensor("dst_tensor", dst_desc);
+  desc.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  desc.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
 
   auto weights_type = DeduceDataTypeFromPrecision(definition.precision);
 
@@ -483,7 +485,7 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
   if (definition.src_tensors.size() == 2) {
     // dynamic weights
     BufferDescriptor weights_desc;
-    weights_desc.element_type = definition.src_tensors[1].data_type;
+    weights_desc.element_type = definition.src_tensors[1].GetDataType();
     weights_desc.element_size = 4;
     weights_desc.memory_type = mem_type;
     desc.AddSrcBuffer("weights", weights_desc);
@@ -495,8 +497,8 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
     weights_desc.data = ReorderWeightsForConv(
         attr.weights, weights_type, desc.params_.slices_per_thread / 2);
     weights_desc.size = weights_desc.data.size();
-    desc.args_.AddObject("weights", absl::make_unique<BufferDescriptor>(
-                                        std::move(weights_desc)));
+    desc.args_.AddObject(
+        "weights", std::make_unique<BufferDescriptor>(std::move(weights_desc)));
   }
 
   BufferDescriptor bias_desc;
@@ -507,7 +509,7 @@ ConvolutionMetalSimd CreateConvolutionMetalSimd(
                                         AlignByN(attr.weights.shape.o, 4 * 4));
   bias_desc.size = bias_desc.data.size();
   desc.args_.AddObject(
-      "biases", absl::make_unique<BufferDescriptor>(std::move(bias_desc)));
+      "biases", std::make_unique<BufferDescriptor>(std::move(bias_desc)));
 
   desc.work_group_size_ = desc.params_.work_group_size;
   desc.work_group_launch_order_ = desc.params_.work_group_launch_order;

@@ -353,19 +353,19 @@ class QuantizationDebugger:
 
       # Collect the statistics of this invoke result.
       for tensor_detail in self._get_numeric_verify_tensor_details():
-        tensor_name = tensor_detail['name']
-        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])
+        tensor_name = tensor_detail['name']  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+        diffs = self._quant_interpreter.get_tensor(tensor_detail['index'])  # pytype: disable=unsupported-operands  # dynamic-method-lookup
         for metric_name, metric_fn in self._layer_debug_metrics.items():
           layer_statistics[tensor_name][metric_name].append(metric_fn(diffs))
 
       if self._debug_options.layer_direct_compare_metrics is not None:
         for tensor_detail in self._get_numeric_verify_tensor_details():
-          tensor_name = tensor_detail['name']
-          op_idx = self._defining_op[tensor_detail['index']]
+          tensor_name = tensor_detail['name']  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+          op_idx = self._defining_op[tensor_detail['index']]  # pytype: disable=unsupported-operands  # dynamic-method-lookup
           op_detail = self._quant_interpreter._get_op_details(op_idx)  # pylint: disable=protected-access
           q_idx, f_idx = op_detail['inputs']
           quant_input_detail = self._quant_interpreter._get_tensor_details(  # pylint: disable=protected-access
-              q_idx)
+              q_idx, subgraph_index=0)
           for (metric_name, metric_fn
               ) in self._debug_options.layer_direct_compare_metrics.items():
             layer_statistics[tensor_name][metric_name].append(
@@ -494,7 +494,7 @@ class QuantizationDebugger:
         if op_info['op_name'] == _NUMERIC_VERIFY_OP_NAME:
           self._numeric_verify_tensor_details.append(
               self._quant_interpreter._get_tensor_details(
-                  op_info['outputs'][0]))
+                  op_info['outputs'][0], subgraph_index=0))
           tensor_name = self._numeric_verify_tensor_details[-1]['name']
           self._numeric_verify_op_details[tensor_name] = op_info
     # pylint: enable=protected-access
@@ -537,7 +537,8 @@ class QuantizationDebugger:
       data['tensor_idx'] = self._numeric_verify_op_details[name]['inputs'][0]
       data['op_name'] = self._quant_interpreter._get_op_details(  # pylint: disable=protected-access
           self._defining_op[data['tensor_idx']])['op_name']
-      details = self._quant_interpreter._get_tensor_details(data['tensor_idx'])  # pylint: disable=protected-access
+      details = self._quant_interpreter._get_tensor_details(  # pylint: disable=protected-access
+          data['tensor_idx'], subgraph_index=0)
       data['scale'], data['zero_point'] = (
           details['quantization_parameters']['scales'][0],
           details['quantization_parameters']['zero_points'][0])

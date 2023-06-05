@@ -17,6 +17,7 @@
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.linalg.sparse import sparse_csr_matrix_ops
@@ -177,7 +178,7 @@ def _PrunedDenseMatrixMultiplication(a,
   elif rank == 3:
     dense_shape = (a.shape[0],) + dense_shape
     rows = indices[:, :2]
-    cols = array_ops.stack([indices[:, 0], indices[:, 2]], axis=1)
+    cols = array_ops_stack.stack([indices[:, 0], indices[:, 2]], axis=1)
     transpose = lambda x: array_ops.transpose(x, perm=[0, 2, 1])
     gather_op = array_ops.gather_nd
 

@@ -24,10 +24,11 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/android_info.h"
-#include "tensorflow/lite/experimental/acceleration/configuration/configuration_generated.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/big_little_affinity.h"
 #include "tensorflow/lite/experimental/acceleration/mini_benchmark/validator.h"
+#include "tensorflow/lite/tools/model_loader.h"
 #ifdef ENABLE_NNAPI_SL_TEST
 #include "tensorflow/lite/nnapi/sl/include/SupportLibrary.h"
 #endif /* ENABLE_NNAPI_SL_TEST */
@@ -106,11 +107,15 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
     struct stat stat_buf = {0};
     ASSERT_EQ(fstat(fd, &stat_buf), 0);
     auto validator =
-        std::make_unique<Validator>(fd, 0, stat_buf.st_size, settings);
+        std::make_unique<Validator>(std::make_unique<tools::MmapModelLoader>(
+                                        fd, /*offset=*/0, stat_buf.st_size),
+                                    settings);
     close(fd);
 
     Validator::Results results;
-    EXPECT_EQ(validator->RunValidation(&results), kMinibenchmarkSuccess);
+    Validator::Status validation_run = validator->RunValidation(&results);
+    EXPECT_EQ(validation_run.status, kMinibenchmarkSuccess);
+    EXPECT_EQ(validation_run.stage, BenchmarkStage_UNKNOWN);
     EXPECT_TRUE(results.ok);
     EXPECT_EQ(results.delegate_error, 0);
     if (accelerator_name != "CPU") {
@@ -130,10 +135,10 @@ class LocalizerValidationRegressionTest : public ::testing::Test {
       }
       std::cerr << "\n";
     }
-    std::cerr << "Compilation time us " << results.compilation_time_us
+    std::cerr << "Delegate prep time us " << results.delegate_prep_time_us
               << std::endl;
-    RecordProperty(accelerator_name + " Compilation time us",
-                   results.compilation_time_us);
+    RecordProperty(accelerator_name + " Delegate prep time us",
+                   results.delegate_prep_time_us);
     std::cerr << "Execution time us";
     int test_case = 0;
     int64_t total_execution_time_us = 0;
@@ -179,8 +184,16 @@ TEST_F(LocalizerValidationRegressionTest, Nnapi) {
 TEST_F(LocalizerValidationRegressionTest, NnapiSl) {
   const char* accelerator_name = getenv("TEST_ACCELERATOR_NAME");
 
-  std::string support_library_file = GetTestTmpDir() + "/libnnapi_sl_driver.so";
-  auto nnapi_sl_handle = nnapi::loadNnApiSupportLibrary(support_library_file);
+  auto nnapi_sl_handle = nnapi::loadNnApiSupportLibrary(
+      GetTestTmpDir() + "/libnnapi_sl_driver.so");
+
+  ASSERT_NE(nnapi_sl_handle.get(), nullptr);
+  int res;
+  uint32_t count;
+  res = nnapi_sl_handle->getFL5()->ANeuralNetworks_getDeviceCount(&count);
+  ASSERT_EQ(res, ANEURALNETWORKS_NO_ERROR);
+  ASSERT_GE(count, 1);
+
   fbb_.Finish(CreateComputeSettings(
       fbb_, ExecutionPreference_ANY,
       CreateTFLiteSettings(

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 
 #include <limits>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -27,7 +28,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using bfloat16 = tensorflow::bfloat16;
+using bfloat16 = tsl::bfloat16;
 
 template <typename NativeT>
 std::vector<NativeT> GenerateInput() {

@@ -57,10 +57,11 @@ to integrate object detection models in just a few lines of code. You can also
 build your own custom inference pipeline using the
 [TensorFlow Lite Interpreter Java API](../../guide/inference#load_and_run_a_model_in_java).
 
-The Android example below demonstrates the implementation for both methods as
-[lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)
+The Android example below demonstrates the implementation for both methods
+using
+[Task library](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android_play_services)
 and
-[lib_interpreter](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_interpreter),
+[interpreter API](https://github.com/tensorflow/examples/tree/eb925e460f761f5ed643d17f0c449e040ac2ac45/lite/examples/object_detection/android/lib_interpreter),
 respectively.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android">View
@@ -347,7 +348,7 @@ The scripts linked above perform this step.
 Both the
 [TF1](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
 &
-[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
+[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md)
 exporting scripts have parameters that can enable a larger number of output
 objects or slower, more-accurate post processing. Please use `--help` with the
 scripts to see an exhaustive list of supported arguments.
@@ -395,4 +396,4 @@ training your own models with the TensorFlow Object Detection API:
 Once trained, they can be converted to a TFLite-friendly format with the
 instructions here:
 [TF1](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md),
-[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md)
+[TF2](https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tf2.md)

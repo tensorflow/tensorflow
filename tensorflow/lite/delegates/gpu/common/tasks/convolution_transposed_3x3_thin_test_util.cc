@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/convolution_transposed_3x3_thin_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -53,7 +54,7 @@ absl::Status ConvolutionTransposed3x3ThinSimpleWeightsTest(
           CreateConvolutionTransposed3x3Thin(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(operation)),
+          std::make_unique<ConvolutionTransposed3x3Thin>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 1.0f, 1.0f, 1.0f, 2.0f, 6.0f, 4.0f, 4.0f, 2.0f,
@@ -91,7 +92,7 @@ absl::Status ConvolutionTransposed3x3ThinTest(TestExecutionEnvironment* env) {
           CreateConvolutionTransposed3x3Thin(env->GetGpuInfo(), op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<ConvolutionTransposed3x3Thin>(std::move(operation)),
+          std::make_unique<ConvolutionTransposed3x3Thin>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {0.5f, 4.5f, 5.5f, 6.5f, 4.5f, 16.5f, 14.5f, 18.5f, 10.5f, 24.5f,

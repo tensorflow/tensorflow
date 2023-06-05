@@ -17,10 +17,13 @@
 #include <utility>
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_pipeline.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/runtime/executable.h"
+#include "tensorflow/compiler/xla/runtime/jit_executable.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tfrt/jitrt/jitrt.h"  // from @tf_runtime
 #include "tfrt/jitrt/jitrt_compiler.h"  // from @tf_runtime
 
 namespace tensorflow {
@@ -57,12 +60,14 @@ static const char* mlir_module = R"(
 
 static const char* entrypoint = "compute";
 
-using ::tfrt::jitrt::CompilationOptions;
 using ::tfrt::jitrt::CompilationPipelineOptions;
 using ::tfrt::jitrt::CreateDefaultJitRtCompilationPipeline;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::JitExecutableCache;
 using ::tfrt::jitrt::RegisterDefaultJitRtDialects;
+
+using ::xla::runtime::AsyncValuesCache;
+using ::xla::runtime::JitExecutable;
+
+using JitExecutableCache = AsyncValuesCache<size_t, JitExecutable>;
 
 static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
   // Options for the default JitRt compilation pipeline (lowering to LLVM).
@@ -72,41 +77,47 @@ static void BM_InstantiateExecutable(::testing::benchmark::State& state) {
   copts.cost_driven_async_parallel_for = false;
 
   // Options for the JitRt JitExecutable compilation.
-  CompilationOptions opts;
-  opts.specialization = CompilationOptions::Specialization::kEnabled;
+  JitExecutable::Options opts;
+  opts.specialization = JitExecutable::Specialization::kEnabled;
 
   // Register dialects and interfaces required for the compilation pipeline.
-  opts.register_dialects = [](mlir::DialectRegistry& registry) {
-    mlir::RegisterAllTensorFlowDialects(registry);
-    RegisterDefaultJitRtDialects(registry);
-  };
+  opts.compiler.register_dialects =
+      [](xla::runtime::DialectRegistry& dialects) {
+        mlir::RegisterAllTensorFlowDialects(*dialects);
+        RegisterDefaultJitRtDialects(dialects);
+      };
 
   // Register a custom pipeline for lowering from Tensorflow dialect to LLVM.
-  opts.create_compilation_pipeline = [&](mlir::PassManager& pm) {
-    TfJitRtPipelineOptions opts;
+  opts.compiler.create_compilation_pipeline =
+      [&](xla::runtime::PassManager& passes) {
+        TfJitRtPipelineOptions opts;
+        opts.vectorize = tensorflow::GetJitRtFlags().vectorize;
 
-    // Lower from Tensorflow to Linalg on buffers.
-    CreateTfJitRtPipeline(pm, opts);
+        // Lower from Tensorflow to Linalg on buffers.
+        CreateTfJitRtPipeline(*passes, opts);
 
-    // Use default JitRt compilation pipeline to lower to LLVM.
-    CreateDefaultJitRtCompilationPipeline(pm, copts);
-  };
+        // Use default JitRt compilation pipeline to lower to LLVM.
+        CreateDefaultJitRtCompilationPipeline(passes, copts);
+      };
 
   // Register a custom pipeline to propagate specialization information.
-  opts.create_specialization_pipeline = [&](mlir::PassManager& pm) {
-    CreateJitRtSpecializationPipeline(pm);
-  };
+  opts.compiler.create_specialization_pipeline =
+      [&](xla::runtime::PassManager& passes) {
+        CreateJitRtSpecializationPipeline(passes);
+      };
 
   // When lowering Tensorflow functions to JitRt we convert all input and
   // result tensors to memrefs, and add a kernel context input.
-  opts.calling_convention = CompilationOptions::DefaultCallingConvention(
+  opts.compiler.calling_convention = xla::runtime::DefaultCallingConvention(
       mlir::bufferization::BufferizeTypeConverter());
 
   for (auto _ : state) {
-    llvm::Expected<JitExecutable> jit_executable =
+    absl::StatusOr<JitExecutable> jit_executable =
         JitExecutable::Instantiate(mlir_module, entrypoint, opts, "benchmark");
-    if (auto err = jit_executable.takeError())
-      LOG(FATAL) << "Failed to compile the kernel: " << tfrt::StrCat(err);
+    if (!jit_executable.ok()) {
+      LOG(FATAL) << "Failed to compile the kernel: "
+                 << jit_executable.status().message();
+    }
   }
 }
 

@@ -19,8 +19,10 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
+#include "tensorflow/cc/ops/nn_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -4070,6 +4072,51 @@ TEST_F(ArithmeticOptimizerTest,
   ASSERT_EQ(tensors.size(), 1);
   test::ExpectTensorEqual<int>(tensors[0], tensors_expected[0]);
   test::ExpectTensorEqual<int>(tensors[0], Tensor(-2));
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWiseDoNotChangeSegmentMaxOrMinOps) {
+  constexpr absl::string_view kSegmentMaxOpName = "SegmentMax";
+  constexpr absl::string_view kUnsortedSegmentMaxOpName = "UnsortedSegmentMax";
+  constexpr absl::string_view kSegmentMinOpName = "SegmentMin";
+  constexpr absl::string_view kUnsortedSegmentMinOpName = "UnsortedSegmentMin";
+  constexpr absl::string_view segment_max_or_min_op_names[] = {
+      kSegmentMaxOpName, kUnsortedSegmentMaxOpName, kSegmentMinOpName,
+      kUnsortedSegmentMinOpName};
+  for (const absl::string_view segment_op_name : segment_max_or_min_op_names) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Input x = ops::Const(s.WithOpName("x"), {-1.0f, 2.0f, -3.0f, 4.0f}, {2, 2});
+    Input segment_ids = ops::Const(s.WithOpName("x"), {0, 2}, {2});
+    Output relu = ops::Relu(s.WithOpName("relu"), x);
+    Output segment_op;
+    if (segment_op_name == kSegmentMaxOpName) {
+      segment_op =
+          ops::SegmentMax(s.WithOpName(segment_op_name), relu, segment_ids);
+    } else if (segment_op_name == kUnsortedSegmentMaxOpName) {
+      segment_op = ops::UnsortedSegmentMax(s.WithOpName(segment_op_name), relu,
+                                           segment_ids, 3);
+    } else if (segment_op_name == kSegmentMinOpName) {
+      segment_op =
+          ops::SegmentMin(s.WithOpName(segment_op_name), relu, segment_ids);
+    } else {
+      segment_op = ops::UnsortedSegmentMin(s.WithOpName(segment_op_name), relu,
+                                           segment_ids, 3);
+    }
+    Output final_out = ops::Identity(s.WithOpName("final_out"), segment_op);
+
+    GrapplerItem item;
+    item.fetch = {"relu", "final_out"};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+    EXPECT_EQ(tensors_expected.size(), 2);
+
+    GraphDef output;
+    ArithmeticOptimizer optimizer;
+    EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+    OptimizeTwice(&optimizer, &item, &output);
+
+    VerifyGraphsMatch(item.graph, output, __LINE__);
+  }
 }
 
 TEST_F(ArithmeticOptimizerTest,

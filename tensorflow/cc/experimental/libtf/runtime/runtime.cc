@@ -60,7 +60,7 @@ TaggedValue MakeCallable(const std::string& fn_name, Function fn,
                                    TaggedValue kwargs_) -> TaggedValue {
     std::cout << "Calling " << fn_name << std::endl;
     tensorflow::StatusOr<TaggedValue> v = fn.Execute(ctx, args_);
-    return v.ValueOrDie();
+    return v.value();
   };
   return TaggedValue(CallFn);
 }
@@ -167,7 +167,7 @@ Runtime::Runtime(AbstractContext* ctx) {
       });
   Set(String("ctx"), Handle(ctx_capsule));
   auto Load = [](Object self, String name) -> Object {
-    auto ctx_capsule = self.Get<internal::Capsule>(String("ctx")).ValueOrDie();
+    auto ctx_capsule = self.Get<internal::Capsule>(String("ctx")).value();
     auto ctx = ctx_capsule.cast<AbstractContext*>();
     // TODO(b/191689645): This needs to do error handling better.
     return *Cast<Object>(Handle(*ImportModule(name, ctx)));

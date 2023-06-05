@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -99,7 +98,7 @@ TEST(DTensorGroupAssignmentTest, InputOutput) {
   EXPECT_EQ(group_assignment_attr_out, group_assignment_attr_in);
 
   group_assignment_attr_out =
-      group_assignment.SliceToMLIR(context, /*slice_id=*/0).ValueOrDie();
+      group_assignment.SliceToMLIR(context, /*slice_id=*/0).value();
   EXPECT_EQ(group_assignment_attr_out, group_assignment_attr_in);
 }
 

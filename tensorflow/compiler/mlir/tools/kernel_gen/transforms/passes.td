@@ -111,12 +111,6 @@ def PropagateShapeKnowledgeToKernels
   let constructor = "transforms::CreatePropagateShapeKnowledgeToKernels()";
 }
 
-def EmbedMemRefPrintsPass : Pass<"embed-memref-prints", "mlir::ModuleOp"> {
-  let summary = "Pass to print content of memrefs";
-  let constructor = "transforms::CreateEmbedMemRefPrintsPass()";
-  let dependentDialects = ["LLVM::LLVMDialect"];
-}
-
 def FuseInnerParallelLoopsPass
     : Pass<"fuse-inner-parallel-loops", "mlir::func::FuncOp"> {
   let summary = "Limited pass to forward stores to loads.";
@@ -125,25 +119,6 @@ def FuseInnerParallelLoopsPass
     Directs parallel loop fusion to the inner loops. This cannot be done with
     a passmanager alone ATM, as nested pass managers require operations to
     be closed from above.
-  }];
-}
-
-def VectorizationPass : Pass<"vectorization", "mlir::func::FuncOp"> {
-  let summary = "Pass to create vectorized operations for CPU.";
-  let constructor = "transforms::CreateVectorizationPass()";
-  let description = [{
-    Takes linalg loops on buffers and vectorizes the loads/stores and operations
-    in between. This is intended for the CPU backend.
-  }];
-}
-
-def VectorizationCleanupPass : Pass<"vectorization-cleanup", "mlir::func::FuncOp"> {
-  let summary = "Pass to remove dead code in VectorizationPass.";
-  let constructor = "transforms::CreateVectorizationCleanupPass()";
-  let description = [{
-    VectorizationPass creates some memory transfers that are unneeded but cannot
-    be safely removed by current generic infrastructure. This removes the
-    specific operations.
   }];
 }
 

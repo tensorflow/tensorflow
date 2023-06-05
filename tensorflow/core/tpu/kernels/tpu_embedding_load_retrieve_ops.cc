@@ -25,22 +25,20 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/tpu/optimization_parameters.pb.h"
 #include "tensorflow/core/tpu/ops/tpu_embedding_shape_util.h"
-#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_embedding_configuration_proto_rewrite.h"
 #include "tensorflow/core/tpu/tpu_embedding_optimization_parameters_utils.h"
-#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
-
 
 using tensorflow::tpu::TPUEmbeddingConfiguration;
 using tensorflow::tpu::TpuEmbeddingShapeUtil;
-
 
 namespace tensorflow {
 
@@ -90,7 +88,6 @@ void LogRangeStatistics(int32 table_id, int32 state_variable_index,
   }
 }
 
-
 LoadAllTPUEmbeddingParametersOp::LoadAllTPUEmbeddingParametersOp(
     OpKernelConstruction* ctx)
     : OpKernel(ctx) {
@@ -120,13 +117,12 @@ LoadAllTPUEmbeddingParametersOp::LoadAllTPUEmbeddingParametersOp(
 void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
     OpKernelContext* ctx,
     std::array<std::vector<absl::Span<const float>>,
-               tpu::kMaxAuxiliaryParameterCount + 1> &state_variable_vector) {
-    std::array<OpInputList, tpu::kMaxAuxiliaryParameterCount + 1>
-      state_variable;
+               tpu::kMaxAuxiliaryParameterCount + 1>& state_variable_vector) {
+  std::array<OpInputList, tpu::kMaxAuxiliaryParameterCount + 1> state_variable;
   OP_REQUIRES_OK(ctx, ctx->input_list("parameters", &state_variable[0]));
   for (int i = 1; i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
-    OP_REQUIRES_OK(ctx, ctx->input_list(absl::StrCat("auxiliary", i),
-                                        &state_variable[i]));
+    OP_REQUIRES_OK(
+        ctx, ctx->input_list(absl::StrCat("auxiliary", i), &state_variable[i]));
   }
   const int num_tables = state_variable[0].size();
   // This should be enforced by Tensorflow's type system.
@@ -154,8 +150,8 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
     OP_REQUIRES(
         ctx, state_variable[0][table_id].shape() == table_shapes_[table_id],
         errors::InvalidArgument(
-            "LoadAllTPUEmbeddingParametersOp: Embeddings for table ",
-            table_id, " (named ", table_descriptor.name(), ") has shape ",
+            "LoadAllTPUEmbeddingParametersOp: Embeddings for table ", table_id,
+            " (named ", table_descriptor.name(), ") has shape ",
             state_variable[0][table_id].shape().DebugString(),
             " but config specifies table shape ",
             table_shapes_[table_id].DebugString()));
@@ -174,20 +170,19 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
             << ") has shape: " << table_shapes_[table_id].DebugString()
             << ", number of elements: " << num_elements;
     for (int i = 0; i < state_variable_specs.size(); ++i) {
-      OP_REQUIRES(
-          ctx, state_variable[i][table_id].NumElements() == num_elements,
-          errors::InvalidArgument(
-              "LoadAllTPUEmbeddingParametersOp: Embeddings/auxiliary ", i,
-              " for table ", table_id, " has element count ",
-              state_variable[i][table_id].NumElements(),
-              " but config requires count ", num_elements));
+      OP_REQUIRES(ctx,
+                  state_variable[i][table_id].NumElements() == num_elements,
+                  errors::InvalidArgument(
+                      "LoadAllTPUEmbeddingParametersOp: Embeddings/auxiliary ",
+                      i, " for table ", table_id, " has element count ",
+                      state_variable[i][table_id].NumElements(),
+                      " but config requires count ", num_elements));
       const float* state_variable_i_ptr =
           state_variable[i][table_id].flat<float>().data();
       state_variable_vector[i].push_back(absl::MakeConstSpan(
           state_variable_i_ptr, static_cast<size_t>(num_elements)));
       LogRangeStatistics(
-          table_id, i,
-          absl::MakeConstSpan(state_variable_i_ptr, num_elements));
+          table_id, i, absl::MakeConstSpan(state_variable_i_ptr, num_elements));
     }
     for (int i = state_variable_specs.size();
          i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
@@ -203,40 +198,40 @@ void LoadAllTPUEmbeddingParametersOp::GetStateVariables(
 }
 
 void LoadAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
-    VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute";
+  VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute";
 
   std::array<std::vector<absl::Span<const float>>,
-             tpu::kMaxAuxiliaryParameterCount + 1> state_variable_vector;
+             tpu::kMaxAuxiliaryParameterCount + 1>
+      state_variable_vector;
 
   GetStateVariables(ctx, state_variable_vector);
   const int num_tables = state_variable_vector[0].size();
 
   std::unique_ptr<ApiConverter::TpuEmbeddingEngineParametersData> params =
-    ApiConverter::Create(num_tables);
-  std::array<std::vector<FloatListRef>,
-             tpu::kMaxAuxiliaryParameterCount + 1> params_data;
+      ApiConverter::Create(num_tables);
+  std::array<std::vector<FloatListRef>, tpu::kMaxAuxiliaryParameterCount + 1>
+      params_data;
   for (size_t i = 0; i < tpu::kMaxAuxiliaryParameterCount + 1; i++) {
     params_data[i] = std::vector<FloatListRef>(num_tables);
     for (size_t table_id = 0; table_id < num_tables; table_id++) {
       params->c_params.parameters[i][table_id] = &(params_data[i][table_id]);
       params->c_params.parameters[i][table_id]->size =
           state_variable_vector[i][table_id].size();
-      params->c_params.parameters[i][table_id]->ptr = const_cast<float_t*>(
-          state_variable_vector[i][table_id].data());
+      params->c_params.parameters[i][table_id]->ptr =
+          const_cast<float*>(state_variable_vector[i][table_id].data());
     }
   }
   StatusHelper status;
-  tpu::OpsApiFn()->TpuEmbeddingEngine_WriteParametersFn(&(params->c_params),
-                                                        status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_WriteParametersFn(
+      &(params->c_params), status.c_status);
   OP_REQUIRES_OK(ctx, status.status());
 
   VLOG(1) << "LoadAllTPUEmbeddingParameters::Compute done";
 }
 
-
 RetrieveAllTPUEmbeddingParametersOp::RetrieveAllTPUEmbeddingParametersOp(
     OpKernelConstruction* ctx)
-      : OpKernel(ctx) {
+    : OpKernel(ctx) {
   string config_string;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string));
 
@@ -264,10 +259,9 @@ RetrieveAllTPUEmbeddingParametersOp::RetrieveAllTPUEmbeddingParametersOp(
 void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
     OpKernelContext* ctx,
     std::array<std::vector<absl::Span<float>>,
-               tpu::kMaxAuxiliaryParameterCount + 1> &state_variable_vector,
-    std::vector<int> & num_state_variables) {
-  std::array<OpOutputList, tpu::kMaxAuxiliaryParameterCount + 1>
-      state_variable;
+               tpu::kMaxAuxiliaryParameterCount + 1>& state_variable_vector,
+    std::vector<int>& num_state_variables) {
+  std::array<OpOutputList, tpu::kMaxAuxiliaryParameterCount + 1> state_variable;
   OP_REQUIRES_OK(ctx, ctx->output_list("parameters", &state_variable[0]));
   for (int i = 1; i <= tpu::kMaxAuxiliaryParameterCount; ++i) {
     OP_REQUIRES_OK(ctx, ctx->output_list(absl::StrCat("auxiliary", i),
@@ -321,8 +315,8 @@ void RetrieveAllTPUEmbeddingParametersOp::GetStateVariables(
       TensorShape shape;
       std::array<int32, 2> dims = {{0, 0}};
       OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(dims, &shape));
-      OP_REQUIRES_OK(ctx, state_variable[i].allocate(table_id, shape,
-                                                     &auxiliary_tensor));
+      OP_REQUIRES_OK(
+          ctx, state_variable[i].allocate(table_id, shape, &auxiliary_tensor));
       state_variable_vector[i][table_id] = absl::Span<float>();
     }
   }
@@ -332,22 +326,21 @@ void RetrieveAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "RetrieveAllTPUEmbeddingParameters::Compute";
 
   std::array<std::vector<absl::Span<float>>,
-             tpu::kMaxAuxiliaryParameterCount + 1> state_variable_vector;
+             tpu::kMaxAuxiliaryParameterCount + 1>
+      state_variable_vector;
   std::vector<int> num_state_variables;
 
   GetStateVariables(ctx, state_variable_vector, num_state_variables);
   const int num_tables = state_variable_vector[0].size();
 
-
   std::unique_ptr<ApiConverter::TpuEmbeddingEngineParametersData> params =
       ApiConverter::Create(num_tables);
-  std::array<std::vector<FloatListRef>,
-             tpu::kMaxAuxiliaryParameterCount + 1> params_data;
+  std::array<std::vector<FloatListRef>, tpu::kMaxAuxiliaryParameterCount + 1>
+      params_data;
   for (size_t i = 0; i < tpu::kMaxAuxiliaryParameterCount + 1; i++) {
     params_data[i] = std::vector<FloatListRef>(num_tables);
     for (size_t table_id = 0; table_id < num_tables; table_id++) {
-      params->c_params.parameters[i][table_id] =
-          &(params_data[i][table_id]);
+      params->c_params.parameters[i][table_id] = &(params_data[i][table_id]);
       params->c_params.parameters[i][table_id]->size =
           state_variable_vector[i][table_id].size(),
       params->c_params.parameters[i][table_id]->ptr =
@@ -355,8 +348,8 @@ void RetrieveAllTPUEmbeddingParametersOp::Compute(OpKernelContext* ctx) {
     }
   }
   StatusHelper status;
-  tpu::OpsApiFn()->TpuEmbeddingEngine_ReadParametersFn(&(params->c_params),
-                                                       status.c_status);
+  stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_ReadParametersFn(
+      &(params->c_params), status.c_status);
   OP_REQUIRES_OK(ctx, status.status());
 
   if (VLOG_IS_ON(5)) {

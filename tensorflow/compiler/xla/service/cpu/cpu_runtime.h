@@ -28,8 +28,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 namespace cpu {
@@ -49,9 +47,13 @@ extern const char* const kEigenMatMulF64SymbolName;
 extern const char* const kEigenMatMulC64SymbolName;
 extern const char* const kEigenMatMulC128SymbolName;
 extern const char* const kEigenMatMulS32SymbolName;
+extern const char* const kEigenBatchMatMulF32SymbolName;
 extern const char* const kMKLConv2DF32SymbolName;
+extern const char* const kACLConv2DF32SymbolName;
 extern const char* const kMKLMatMulF32SymbolName;
 extern const char* const kMKLMatMulF64SymbolName;
+extern const char* const kACLMatMulF32SymbolName;
+extern const char* const kACLBatchMatMulF32SymbolName;
 extern const char* const kMKLSingleThreadedMatMulF32SymbolName;
 extern const char* const kMKLSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenConv2DF16SymbolName;

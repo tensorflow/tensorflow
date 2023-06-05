@@ -37,6 +37,11 @@ mlir::RankedTensorType EffectivelyScalarR1Type(mlir::Type element_type);
 mlir::Value ReshapeSizeTypeToScalar(mlir::OpBuilder builder, mlir::Location loc,
                                     mlir::Value tensor);
 
+// Retuns a int64 array representing the TensorFlow shape given the MLIR type.
+// If the type is a resource, returns the underlying shape of the resource
+// instead. Returns an error if the type is not a RankedTensorType.
+StatusOr<llvm::SmallVector<int64_t>> GetTFShapeFromType(mlir::Type type);
+
 // Return a 1-D int32 constant array with the given values.
 mlir::Value IntConst(mlir::OpBuilder& builder, mlir::Location loc,
                      llvm::ArrayRef<int32> values);
@@ -49,6 +54,14 @@ mlir::Value FloatConst(mlir::OpBuilder& builder, mlir::Location loc,
 // Returns a 1-D tf.string constant array with given values.
 mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
                         llvm::ArrayRef<llvm::StringRef> values);
+// Returns a tf.string scalar constant with given value.
+mlir::Value StringScalarConst(mlir::OpBuilder& builder, mlir::Location loc,
+                              llvm::StringRef value);
+// Returns a Int constant with the matching type.
+mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
+                                     mlir::Location loc,
+                                     llvm::ArrayRef<int64_t> values,
+                                     mlir::Type type);
 
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value);
 Status ExtractConstVectorFromValue(mlir::Value value,
@@ -59,9 +72,9 @@ mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
                                  mlir::Location loc, bool use_int64 = true);
 
 // Returns a scalar constant with 'value' of 'type'.
-absl::optional<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
-                                                  mlir::Location loc,
-                                                  mlir::Type type);
+StatusOr<mlir::Value> CreateZeroScalarConst(mlir::OpBuilder& builder,
+                                            mlir::Location loc,
+                                            mlir::Type type);
 
 // Selects a scalar tensor value from a 1D array in specified index.
 StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
@@ -72,6 +85,9 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
 // Returns the type that value holds. If value holds a Type that has a subtype,
 // then it returns the subtype.
 mlir::Type GetSubtypeOrSelf(mlir::Value value);
+
+// Returns whether `val` is of resource type.
+bool IsResourceType(mlir::Value val);
 
 }  // namespace dtensor
 }  // namespace tensorflow

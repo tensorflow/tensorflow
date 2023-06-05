@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/resampler.h"
 
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -72,17 +74,17 @@ absl::Status ResamplerIdentityTest(const BHWC& shape) {
 
 TEST(ResamplerTest, Identity_2_2_1) {
   auto status = ResamplerIdentityTest(BHWC(1, 2, 2, 1));
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST(ResamplerTest, Identity_3_5_3) {
   auto status = ResamplerIdentityTest(BHWC(1, 3, 5, 3));
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 TEST(ResamplerTest, Identity_6_1_7) {
   auto status = ResamplerIdentityTest(BHWC(1, 6, 1, 7));
-  ASSERT_TRUE(status.ok()) << status.error_message();
+  ASSERT_TRUE(status.ok()) << status.message();
 }
 
 }  // namespace

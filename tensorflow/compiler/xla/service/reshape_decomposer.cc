@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/reshape_decomposer.h"
 
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/status.h"
 
@@ -49,7 +49,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
       HloInstruction* copied_result = MakeCopyHlo(r, s);
       VLOG(3) << "Decomposing reshape into reshape-bitcast and a physical "
-                 "transposition on the operand: "
+                 "transposition on the result: "
               << copied_result->ToString();
       TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, copied_result));
     } else {
@@ -71,8 +71,10 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
 
 }  // namespace
 
-StatusOr<bool> ReshapeDecomposer::Run(HloModule* module) {
-  return ReshapeDecomposerVisitor{}.RunOnModule(module);
+StatusOr<bool> ReshapeDecomposer::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  return ReshapeDecomposerVisitor{}.RunOnModule(module, execution_threads);
 }
 
 }  // namespace xla

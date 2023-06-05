@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment_utils.h"
 
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 
 namespace xla {
 
@@ -65,13 +65,16 @@ bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
       return false;
     }
 
-    if (auto* custom_call =
-            DynCast<HloCustomCallInstruction>(position.instruction)) {
-      for (const auto& pair : custom_call->output_to_operand_aliasing()) {
+    // WARNING (b/259460539): output_to_operand_aliasing was moved from
+    // HloCustomCallInstruction to HloCallableInstruction so that fusions can
+    // also be annotated with this aliasing. This feature might not be complete.
+    if (auto* callable =
+            DynCast<HloCallableInstruction>(position.instruction)) {
+      for (const auto& pair : callable->output_to_operand_aliasing()) {
         if (position.index == pair.first) {
           VLOG(4) << "Keeping value " << value->ToShortString()
-                  << " in default mem because it is a custom-call output that "
-                     "aliases an operand buffer.";
+                  << " in default mem because it is a custom-call/fusion output"
+                     " that aliases an operand buffer.";
           return false;
         }
       }
@@ -85,101 +88,6 @@ bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval) {
   return IsValueAllowedInAlternateMemory(interval.buffer) &&
          absl::c_all_of(interval.colocations, IsValueAllowedInAlternateMemory);
-}
-
-/*static*/ void MemorySpaceAssignmentUtils::HoistParameters(HloModule& module) {
-  CHECK(module.has_schedule());
-  HloSchedule& schedule = module.schedule();
-  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
-    CHECK(schedule.is_computation_scheduled(computation));
-    if (computation->num_parameters() == 0) {
-      continue;
-    }
-    const HloInstructionSequence& sequence = schedule.sequence(computation);
-    bool hoisting_needed = false;
-    int parameters_found = 0;
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() == HloOpcode::kParameter) {
-        ++parameters_found;
-      }
-      if (parameters_found == computation->num_parameters()) {
-        break;
-      }
-      if (instruction->opcode() != HloOpcode::kGetTupleElement &&
-          instruction->opcode() != HloOpcode::kTuple &&
-          instruction->opcode() != HloOpcode::kConstant &&
-          instruction->opcode() != HloOpcode::kBitcast &&
-          instruction->opcode() != HloOpcode::kParameter) {
-        hoisting_needed = true;
-        break;
-      }
-    }
-
-    if (!hoisting_needed) {
-      continue;
-    }
-    HloInstructionSequence new_sequence;
-    for (HloInstruction* parameter : computation->parameter_instructions()) {
-      TF_CHECK_OK(parameter->DropAllControlDeps());
-      new_sequence.push_back(parameter);
-    }
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() != HloOpcode::kParameter) {
-        new_sequence.push_back(instruction);
-      }
-    }
-    CHECK_EQ(new_sequence.size(), sequence.size());
-    schedule.set_sequence(computation, new_sequence);
-  }
-}
-
-/*static*/ void MemorySpaceAssignmentUtils::HoistConstantOperations(
-    HloModule& module) {
-  CHECK(module.has_schedule());
-  HloSchedule& schedule = module.schedule();
-  for (const HloComputation* computation : module.MakeNonfusionComputations()) {
-    CHECK(schedule.is_computation_scheduled(computation));
-    const HloInstructionSequence& sequence = schedule.sequence(computation);
-    // Conservatively don't modify the schedule if any instruction has a control
-    // successor or predecessor on a constant op. Computations with these
-    // dependencies should be very rare anyway.
-    bool contains_constant_successor_or_predecessors = false;
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() == HloOpcode::kConstant) {
-        contains_constant_successor_or_predecessors |=
-            !instruction->control_predecessors().empty();
-        contains_constant_successor_or_predecessors |=
-            !instruction->control_successors().empty();
-      } else {
-        auto is_constant = [](const HloInstruction* inst) {
-          return inst->opcode() == HloOpcode::kConstant;
-        };
-        contains_constant_successor_or_predecessors |=
-            absl::c_find_if(instruction->control_predecessors(), is_constant) !=
-            instruction->control_predecessors().end();
-        contains_constant_successor_or_predecessors |=
-            absl::c_find_if(instruction->control_successors(), is_constant) !=
-            instruction->control_successors().end();
-      }
-    }
-    if (contains_constant_successor_or_predecessors) {
-      continue;
-    }
-    HloInstructionSequence new_sequence;
-
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() == HloOpcode::kConstant) {
-        new_sequence.push_back(instruction);
-      }
-    }
-    for (HloInstruction* instruction : sequence.instructions()) {
-      if (instruction->opcode() != HloOpcode::kConstant) {
-        new_sequence.push_back(instruction);
-      }
-    }
-    CHECK_EQ(new_sequence.size(), sequence.size());
-    schedule.set_sequence(computation, new_sequence);
-  }
 }
 
 }  // namespace xla

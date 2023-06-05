@@ -71,8 +71,8 @@ class MultiplexOpRank1Test(tf.test.TestCase):
     with self.assertRaisesRegex(
         (errors_impl.InvalidArgumentError, ValueError),
         # Eager mode raises InvalidArgumentError with the following message
-        r'(a_values and b_values must have the same shape. '
-        r'a_values shape: \[5\] b_values shape: \[2\](?s).* '
+        r'(?s)(a_values and b_values must have the same shape. '
+        r'a_values shape: \[5\] b_values shape: \[2\].* '
         r'\[Op:Examples1>MultiplexDense\]'
         r')|('
         # Graph mode raises ValueError with the following message

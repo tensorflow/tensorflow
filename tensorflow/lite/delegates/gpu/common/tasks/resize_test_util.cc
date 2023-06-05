@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/resize_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -46,7 +47,7 @@ absl::Status ResizeBilinearAlignedTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {0.0f, 0.666667f, 1.33333f, 2.0f, 1.0f, 1.66667f, 2.33333f, 3.0f,
@@ -78,7 +79,7 @@ absl::Status ResizeBilinearNonAlignedTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 4, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({0.0f, 0.75f, 1.5f, 2.0f, 1.5f, 2.25f, 3.0f, 3.5f, 3.0f,
@@ -111,7 +112,7 @@ absl::Status ResizeBilinearWithoutHalfPixelTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear({1.0f, 1.666666f, 2.0f, 2.333333f, 3.0f,
                                      3.333333f, 3.0f, 3.666666f, 4.0f},
@@ -143,7 +144,7 @@ absl::Status ResizeBilinearWithHalfPixelTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f, 1.5f, 2.0f, 2.0f, 2.5f, 3.0f, 3.0f, 3.5f, 4.0f},
@@ -175,7 +176,7 @@ absl::Status ResizeNearestTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 2, 4, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({1.0f, 1.0f, 2.0f, 2.0f, 1.0f, 1.0f, 2.0f, 2.0f},
@@ -207,7 +208,7 @@ absl::Status ResizeNearestAlignCornersTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},
@@ -239,7 +240,7 @@ absl::Status ResizeNearestHalfPixelCentersTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       Resize operation = CreateResize(op_def, attr);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<Resize>(std::move(operation)),
+          src_tensor, std::make_unique<Resize>(std::move(operation)),
           BHWC(1, 3, 3, 1), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f, 9.0f, 12.0f, 12.0f},

@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
+import org.tensorflow.lite.acceleration.ValidatedAccelerationConfig;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * Interface to TensorFlow Lite model interpreter, excluding experimental methods.
@@ -57,11 +59,26 @@ import org.tensorflow.lite.InterpreterApi.Options.TfLiteRuntime;
  *
  * <pre>{@code
  * String[] input = {"foo", "bar"};  // Input tensor shape is [2].
- * String[] output = new String[3][2];  // Output tensor shape is [3, 2].
+ * String[][] output = new String[3][2];  // Output tensor shape is [3, 2].
  * try (InterpreterApi interpreter =
  *     new InterpreterApi.create(file_of_a_tensorflowlite_model)) {
  *   interpreter.runForMultipleInputsOutputs(input, output);
  * }
+ * }</pre>
+ *
+ * <p>Note that there's a distinction between shape [] and shape[1]. For scalar string tensor
+ * outputs:
+ *
+ * <pre>{@code
+ * String[] input = {"foo"};  // Input tensor shape is [1].
+ * ByteBuffer outputBuffer = ByteBuffer.allocate(OUTPUT_BYTES_SIZE);  // Output tensor shape is [].
+ * try (Interpreter interpreter = new Interpreter(file_of_a_tensorflowlite_model)) {
+ *   interpreter.runForMultipleInputsOutputs(input, outputBuffer);
+ * }
+ * byte[] outputBytes = new byte[outputBuffer.remaining()];
+ * outputBuffer.get(outputBytes);
+ * // Below, the `charset` can be StandardCharsets.UTF_8.
+ * String output = new String(outputBytes, charset);
  * }</pre>
  *
  * <p>Orders of inputs and outputs are determined when converting TensorFlow model to TensorFlowLite
@@ -87,8 +104,10 @@ public interface InterpreterApi extends AutoCloseable {
 
   /** An options class for controlling runtime interpreter behavior. */
   class Options {
+
     public Options() {
       this.delegates = new ArrayList<>();
+      this.delegateFactories = new ArrayList<>();
     }
 
     public Options(Options other) {
@@ -96,7 +115,10 @@ public interface InterpreterApi extends AutoCloseable {
       this.useNNAPI = other.useNNAPI;
       this.allowCancellation = other.allowCancellation;
       this.delegates = new ArrayList<>(other.delegates);
+      this.delegateFactories = new ArrayList<>(other.delegateFactories);
       this.runtime = other.runtime;
+      this.validatedAccelerationConfig = other.validatedAccelerationConfig;
+      this.useXNNPACK = other.useXNNPACK;
     }
 
     /**
@@ -166,21 +188,56 @@ public interface InterpreterApi extends AutoCloseable {
       return allowCancellation != null && allowCancellation;
     }
 
-    /** Adds a {@link Delegate} to be applied during interpreter creation. */
+    /**
+     * Adds a {@link Delegate} to be applied during interpreter creation.
+     *
+     * <p>Delegates added here are applied before any delegates created from a {@link
+     * DelegateFactory} that was added with {@link #addDelegateFactory}.
+     *
+     * <p>Note that TF Lite in Google Play Services (see {@link #setRuntime}) does not support
+     * external (developer-provided) delegates, and adding a {@link Delegate} other than {@link
+     * NnApiDelegate} here is not allowed when using TF Lite in Google Play Services.
+     */
     public Options addDelegate(Delegate delegate) {
       delegates.add(delegate);
       return this;
     }
 
     /**
-     * Returns the list of delegates intended to be applied during interpreter creation (that have
-     * been registered via {@code addDelegate}).
+     * Returns the list of delegates intended to be applied during interpreter creation that have
+     * been registered via {@code addDelegate}.
      */
     public List<Delegate> getDelegates() {
       return Collections.unmodifiableList(delegates);
     }
 
-    /** Enum to represent where to get the TensorFlow Lite runtime implementation from. */
+    /**
+     * Adds a {@link DelegateFactory} which will be invoked to apply its created {@link Delegate}
+     * during interpreter creation.
+     *
+     * <p>Delegates from a delegated factory that was added here are applied after any delegates
+     * added with {@link #addDelegate}.
+     */
+    public Options addDelegateFactory(DelegateFactory delegateFactory) {
+      delegateFactories.add(delegateFactory);
+      return this;
+    }
+
+    /**
+     * Returns the list of delegate factories that have been registered via {@code
+     * addDelegateFactory}).
+     */
+    public List<DelegateFactory> getDelegateFactories() {
+      return Collections.unmodifiableList(delegateFactories);
+    }
+
+    /**
+     * Enum to represent where to get the TensorFlow Lite runtime implementation from.
+     *
+     * <p>The difference between this class and the RuntimeFlavor class: This class specifies a
+     * <em>preference</em> which runtime to use, whereas {@link RuntimeFlavor} specifies which exact
+     * runtime <em>is</em> being used.
+     */
     public enum TfLiteRuntime {
       /**
        * Use a TF Lite runtime implementation that is linked into the application. If there is no
@@ -232,13 +289,53 @@ public interface InterpreterApi extends AutoCloseable {
       return runtime;
     }
 
+    /** Specify the acceleration configuration. */
+    public Options setAccelerationConfig(ValidatedAccelerationConfig config) {
+      this.validatedAccelerationConfig = config;
+      return this;
+    }
+
+    /** Return the acceleration configuration. */
+    public ValidatedAccelerationConfig getAccelerationConfig() {
+      return this.validatedAccelerationConfig;
+    }
+
+    /**
+     * Enable or disable an optimized set of CPU kernels (provided by XNNPACK). Enabled by default.
+     */
+    public Options setUseXNNPACK(boolean useXNNPACK) {
+      this.useXNNPACK = useXNNPACK;
+      return this;
+    }
+
+    public boolean getUseXNNPACK() {
+      // A null value indicates the default behavior, which is currently to apply the delegate.
+      return useXNNPACK == null || useXNNPACK.booleanValue();
+    }
+
     TfLiteRuntime runtime = TfLiteRuntime.FROM_APPLICATION_ONLY;
     int numThreads = -1;
     Boolean useNNAPI;
-    Boolean allowCancellation;
 
-    // See InterpreterApi.Options#addDelegate(boolean).
+    /**
+     * Note: the initial "null" value indicates default behavior (XNNPACK delegate will be applied
+     * by default whenever possible).
+     *
+     * <p>Disabling this flag will disable use of a highly optimized set of CPU kernels provided via
+     * the XNNPACK delegate. Currently, this is restricted to a subset of floating point operations.
+     * See
+     * https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+     * for more details.
+     */
+    Boolean useXNNPACK;
+
+    Boolean allowCancellation;
+    ValidatedAccelerationConfig validatedAccelerationConfig;
+
+    // See InterpreterApi.Options#addDelegate.
     final List<Delegate> delegates;
+    // See InterpreterApi.Options#addDelegateFactory.
+    private final List<DelegateFactory> delegateFactories;
   }
 
   /**
@@ -270,8 +367,7 @@ public interface InterpreterApi extends AutoCloseable {
    *     direct {@code ByteBuffer} of nativeOrder.
    */
   @SuppressWarnings("StaticOrDefaultInterfaceMethod")
-  static InterpreterApi create(
-      @NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
+  static InterpreterApi create(@NonNull ByteBuffer byteBuffer, InterpreterApi.Options options) {
     TfLiteRuntime runtime = (options == null ? null : options.getRuntime());
     InterpreterFactoryApi factory = TensorFlowLite.getFactory(runtime);
     return factory.create(byteBuffer, options);
@@ -370,15 +466,14 @@ public interface InterpreterApi extends AutoCloseable {
    * execution if any input tensors have been resized. This call is most useful in determining the
    * shapes for any output tensors before executing the graph, e.g.,
    *
-   * <pre>{@code
+   * <pre> {@code
    * interpreter.resizeInput(0, new int[]{1, 4, 4, 3}));
    * interpreter.allocateTensors();
    * FloatBuffer input = FloatBuffer.allocate(interpreter.getInputTensor(0).numElements());
    * // Populate inputs...
    * FloatBuffer output = FloatBuffer.allocate(interpreter.getOutputTensor(0).numElements());
    * interpreter.run(input, output)
-   * // Process outputs...
-   * }</pre>
+   * // Process outputs...}</pre>
    *
    * <p>Note: Some graphs have dynamically shaped outputs, in which case the output shape may not
    * fully propagate until inference is executed.

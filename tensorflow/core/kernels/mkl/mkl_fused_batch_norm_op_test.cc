@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
@@ -35,9 +35,6 @@ limitations under the License.
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
-
-// Helper class for converting MKL tensors to TF tensors and comparing to
-// expected values
 
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
@@ -162,7 +159,8 @@ class CommonTestUtilities : public OpsTestBase {
     ASSERT_EQ(offset_backprop.shape(), mkl_offset_backprop.shape());
 
     test::ExpectClose(output, mkl_output, 1e-5);
-    test::ExpectClose(scale_backprop, mkl_scale_backprop, 1e-5);
+    test::ExpectClose(scale_backprop, mkl_scale_backprop, /*atol=*/1e-5,
+                      /*rtol=*/1e-5);
     test::ExpectClose(offset_backprop, mkl_offset_backprop, 1e-5);
   }
 
@@ -175,29 +173,23 @@ class Conv2DOpTest : public OpsTestBase {
   void TestBody() {}
 
  public:
-  void RunConv2D(const Tensor& input, const Tensor& filter, Tensor* output,
-                 Tensor* meta_output) {
+  void RunConv2D(const Tensor& input, const Tensor& filter, Tensor* output) {
     DataType dtype = DataTypeToEnum<T>::v();
 
-    TF_EXPECT_OK(NodeDefBuilder("MklConv2D", "_MklConv2D")
+    TF_EXPECT_OK(NodeDefBuilder("MklConv2D", "_MklNativeConv2D")
                      .Input(FakeInput(dtype))
                      .Input(FakeInput(dtype))
-                     .Input(FakeInput(DT_UINT8))
-                     .Input(FakeInput(DT_UINT8))
                      .Attr("strides", {1, 1, 1, 1})
                      .Attr("padding", "SAME")
                      .Attr("data_format", "NHWC")
-                     .Attr("_kernel", "MklLayoutDependentOp")
+                     .Attr("_kernel", "MklNameChangeOp")
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
     AddInputFromArray<T>(input.shape(), input.flat<T>());
     AddInputFromArray<T>(filter.shape(), filter.flat<T>());
-    for (int i = 0; i < 2; ++i)
-      AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
     TF_ASSERT_OK(RunOpKernel());
 
     *output = *GetOutput(0);
-    *meta_output = *GetOutput(2);
   }
 };
 
@@ -259,18 +251,18 @@ class FusedBatchNormOpTest : public OpsTestBase {
                                        const bool is_training, Tensor* output,
                                        Tensor* batch_mean, Tensor* batch_var) {
       DataType dtype = DataTypeToEnum<T>::v();
-      TF_EXPECT_OK(NodeDefBuilder("MklNativeFusedBatchNorm",
-                                  "_MklNativeFusedBatchNorm")
-                       .Input(FakeInput(dtype))
-                       .Input(FakeInput(DT_FLOAT))
-                       .Input(FakeInput(DT_FLOAT))
-                       .Input(FakeInput(DT_FLOAT))
-                       .Input(FakeInput(DT_FLOAT))
-                       .Attr("exponential_avg_factor", exponential_avg_factor)
-                       .Attr("epsilon", 0.001)
-                       .Attr("is_training", is_training)
-                       .Attr("_kernel", "MklNameChangeOp")
-                       .Finalize(node_def()));
+      TF_EXPECT_OK(
+          NodeDefBuilder("MklNativeFusedBatchNorm", "_MklNativeFusedBatchNorm")
+              .Input(FakeInput(dtype))
+              .Input(FakeInput(DT_FLOAT))
+              .Input(FakeInput(DT_FLOAT))
+              .Input(FakeInput(DT_FLOAT))
+              .Input(FakeInput(DT_FLOAT))
+              .Attr("exponential_avg_factor", exponential_avg_factor)
+              .Attr("epsilon", 0.001)
+              .Attr("is_training", is_training)
+              .Attr("_kernel", "MklNameChangeOp")
+              .Finalize(node_def()));
       TF_EXPECT_OK(InitOp());
 
       AddInputFromArray<T>(input.shape(), input.flat<T>());
@@ -330,4 +322,4 @@ INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedBatchNormOpTest,
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3

@@ -49,15 +49,18 @@ namespace xla {
 // below the threshold because backends likely want to allow merging a "small"
 // dot into a "large" dot while preventing two large dots from being merged.)
 //
-// Assumes DotDecomposer has already canonicalized the gemms and will skip
-// noncanonical gemms.
+// Will skip gemms with more than one non-contracting dimension in the dot
+// operands to be concatenated.
 class DotMerger : public HloModulePass {
  public:
   explicit DotMerger(int64_t max_size_to_merge)
       : max_size_to_merge_(max_size_to_merge) {}
 
   absl::string_view name() const override { return "dot-merger"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   int64_t max_size_to_merge_;

@@ -17,7 +17,7 @@ if(TARGET opencl_headers OR opencl_headers_POPULATED)
   return()
 endif()
 
-include(FetchContent)
+include(OverridableFetchContent)
 
 OverridableFetchContent_Declare(
   opencl_headers

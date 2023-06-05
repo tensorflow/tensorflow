@@ -50,7 +50,34 @@ CreateRemoveVariablesInSessionInitializerPass();
 // Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateDedupBoundInputBindingPass();
 
+// Create a pass that removes function arguments that map to global tensors.
+std::unique_ptr<Pass> CreateLowerGlobalsToMlProgramPass();
+
+// Create a pass that lowers variable read/write ops to ml_program ops.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateLowerVariableOpsToMlProgramPass();
+
+// Strips saved_model attributes from a module and its functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreateStripSavedModuleMetadataPass();
+
+// Convert the session initializer to a function.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateConvertSessionInitializerToFunctionPass();
+
+// Creates forwarding functions for 'exported_names'.
+std::unique_ptr<OperationPass<ModuleOp>>
+CreateAddFunctionsForExportedNamesPass();
+
 #define GEN_PASS_REGISTRATION
+#define GEN_PASS_DECL_DEDUPBOUNDINPUTBINDINGPASS
+#define GEN_PASS_DECL_FREEZEASSETSPASS
+#define GEN_PASS_DECL_FREEZEGLOBALTENSORSPASS
+#define GEN_PASS_DECL_LOWERGLOBALSTOMLPROGRAMPASS
+#define GEN_PASS_DECL_LOWERVARIABLEOPSTOMLPROGRAMPASS
+#define GEN_PASS_DECL_OPTIMIZEGLOBALTENSORSPASS
+#define GEN_PASS_DECL_REMOVEVARIABLESINSESSIONINITIALIZERPASS
+#define GEN_PASS_DECL_STRIPSAVEDMODULEMETADATAPASS
+#define GEN_PASS_DECL_ADDFUNCTIONSFOREXPORTEDNAMESPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_savedmodel_passes.h.inc"
 
 }  // namespace tf_saved_model

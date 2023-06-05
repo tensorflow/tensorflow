@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "tensorflow/core/data/service/auto_shard_rewriter.h"
 #include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/common.pb.h"
@@ -75,14 +74,11 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64_t dataset_id, int64_t fingerprint,
+    explicit Dataset(const std::string& dataset_id,
                      const DataServiceMetadata& metadata)
-        : dataset_id(dataset_id),
-          fingerprint(fingerprint),
-          metadata(metadata) {}
+        : dataset_id(dataset_id), metadata(metadata) {}
 
-    const int64_t dataset_id;
-    const int64_t fingerprint;
+    const std::string dataset_id;
     const DataServiceMetadata metadata;
   };
 
@@ -90,13 +86,14 @@ class DispatcherState {
   struct Worker {
     explicit Worker(const RegisterWorkerUpdate& register_worker)
         : address(register_worker.worker_address()),
-          transfer_address(register_worker.transfer_address()),
+          transfer_servers({register_worker.transfer_servers().begin(),
+                            register_worker.transfer_servers().end()}),
           tags(register_worker.worker_tags().begin(),
                register_worker.worker_tags().end()),
           uid(register_worker.worker_uid()) {}
 
     const std::string address;
-    const std::string transfer_address;
+    const std::vector<DataTransferServerInfo> transfer_servers;
     const std::vector<std::string> tags;
     const int64_t uid;
   };
@@ -152,7 +149,7 @@ class DispatcherState {
   };
 
   struct Job {
-    explicit Job(int64_t id, int64_t dataset_id,
+    explicit Job(int64_t id, const std::string& dataset_id,
                  const ProcessingModeDef& processing_mode, std::string job_name,
                  std::optional<int64_t> num_consumers,
                  bool use_cross_trainer_cache, TargetWorkers target_workers)
@@ -165,10 +162,10 @@ class DispatcherState {
           target_workers(target_workers) {}
 
     const int64_t id;
-    const int64_t dataset_id;
+    const std::string dataset_id;
     const ProcessingModeDef processing_mode;
     const std::string job_name;
-    const absl::optional<int64_t> num_consumers;
+    const std::optional<int64_t> num_consumers;
     const bool use_cross_trainer_cache;
     const TargetWorkers target_workers;
   };
@@ -192,7 +189,7 @@ class DispatcherState {
     const int64_t iteration_id;
     const IterationKey iteration_key;
     const std::shared_ptr<Job> job;
-    absl::optional<DistributedEpochState> distributed_epoch_state;
+    std::optional<DistributedEpochState> distributed_epoch_state;
     std::queue<PendingTask> pending_tasks;
     int64_t num_clients = 0;
     int64_t last_client_released_micros = -1;
@@ -208,7 +205,8 @@ class DispatcherState {
         : task_id(create_task_update.task_id()),
           iteration(iteration),
           worker_address(create_task_update.worker_address()),
-          transfer_address(create_task_update.transfer_address()),
+          transfer_servers(create_task_update.transfer_servers().begin(),
+                           create_task_update.transfer_servers().end()),
           worker_tags(create_task_update.worker_tags().begin(),
                       create_task_update.worker_tags().end()),
           worker_uid(create_task_update.worker_uid()) {}
@@ -216,7 +214,7 @@ class DispatcherState {
     const int64_t task_id;
     const std::shared_ptr<Iteration> iteration;
     const std::string worker_address;
-    const std::string transfer_address;
+    const std::vector<DataTransferServerInfo> transfer_servers;
     const std::vector<std::string> worker_tags;
     const int64_t worker_uid;
     int64_t starting_round = 0;
@@ -226,15 +224,12 @@ class DispatcherState {
 
   using TasksById = absl::flat_hash_map<int64_t, std::shared_ptr<Task>>;
 
-  // Returns the next available dataset id.
-  int64_t NextAvailableDatasetId() const;
+  // Returns the next available dataset ID.
+  std::string NextAvailableDatasetId() const;
+
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
-  Status DatasetFromId(int64_t id,
+  Status DatasetFromId(const std::string& id,
                        std::shared_ptr<const Dataset>& dataset) const;
-  // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
-  // dataset.
-  Status DatasetFromFingerprint(uint64 fingerprint,
-                                std::shared_ptr<const Dataset>& dataset) const;
 
   // Gets a worker by address. Returns NOT_FOUND if there is no such worker.
   Status WorkerFromAddress(const std::string& address,
@@ -294,6 +289,12 @@ class DispatcherState {
   // deterministically sharding a dataset among a fixed set of workers.
   StatusOr<int64_t> GetWorkerIndex(absl::string_view worker_address) const;
 
+  // Returns the paths of all snapshots inititated during the lifetime of this
+  // journal.
+  const absl::flat_hash_set<std::string>& ListSnapshotPaths() const {
+    return snapshot_paths_;
+  }
+
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
@@ -311,13 +312,14 @@ class DispatcherState {
   void ClientHeartbeat(const ClientHeartbeatUpdate& client_heartbeat);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
+  void Snapshot(const SnapshotUpdate& snapshot);
+
+  // Updates the next available dataset ID.
+  void UpdateNextAvailableDatasetId();
 
   int64_t next_available_dataset_id_ = 1000;
   // Registered datasets, keyed by dataset ids.
-  absl::flat_hash_map<int64_t, std::shared_ptr<Dataset>> datasets_by_id_;
-  // Registered datasets, keyed by dataset fingerprints.
-  absl::flat_hash_map<uint64, std::shared_ptr<Dataset>>
-      datasets_by_fingerprint_;
+  absl::flat_hash_map<std::string, std::shared_ptr<Dataset>> datasets_by_id_;
 
   // Registered workers, keyed by address.
   absl::flat_hash_map<std::string, std::shared_ptr<Worker>> workers_;
@@ -353,6 +355,8 @@ class DispatcherState {
   // Tasks, keyed by worker addresses. The values are a map from task id to
   // task.
   absl::flat_hash_map<std::string, TasksById> tasks_by_worker_;
+  // Paths for all snapshots initiated during the lifetime of this journal.
+  absl::flat_hash_set<std::string> snapshot_paths_;
 };
 
 }  // namespace data

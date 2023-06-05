@@ -24,7 +24,6 @@ namespace toco {
 namespace tflite {
 namespace {
 
-using flatbuffers::FlatBufferBuilder;
 using flatbuffers::Offset;
 using flatbuffers::Vector;
 

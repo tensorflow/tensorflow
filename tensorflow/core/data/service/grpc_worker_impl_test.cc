@@ -50,7 +50,6 @@ using ::grpc::Channel;
 using ::grpc::ChannelArguments;
 using ::grpc::ChannelCredentials;
 using ::grpc::ClientContext;
-using ::tensorflow::data::testing::RangeSquareDataset;
 
 constexpr const char kHostAddress[] = "localhost";
 constexpr const char kProtocol[] = "grpc";

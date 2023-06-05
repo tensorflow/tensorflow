@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <utility>
 
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"  // from @llvm-project
@@ -29,7 +30,7 @@ namespace kernel_gen {
 namespace tf_framework {
 namespace {
 
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_EMBEDTFFRAMEWORKPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 bool IsNotInsideTfEntryFunction(Operation* op) {
@@ -39,7 +40,7 @@ bool IsNotInsideTfEntryFunction(Operation* op) {
 
 template <typename OpTy>
 bool HasInitializedOpKernelContextOperand(OpTy op) {
-  return op.ctx() != nullptr;
+  return op.getCtx() != nullptr;
 }
 
 // The pass rewrites the function marked with `tf_entry` attribute.
@@ -47,7 +48,7 @@ bool HasInitializedOpKernelContextOperand(OpTy op) {
 // * std.alloc becomes tf_framework.alloc_raw,
 // * std.dealloc becomes tf_framework.dealloc_raw.
 class EmbedTFFrameworkPass
-    : public EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
+    : public impl::EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
   }

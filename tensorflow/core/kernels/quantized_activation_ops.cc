@@ -32,8 +32,21 @@ class QuantizedReluOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const float min_input = context->input(1).flat<float>()(0);
-    const float max_input = context->input(2).flat<float>()(0);
+    const Tensor& min_input_tensor = context->input(1);
+    const Tensor& max_input_tensor = context->input(2);
+
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
+                                min_input_tensor.dims()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
+                                max_input_tensor.dims()));
+
+    const float min_input = min_input_tensor.scalar<float>()();
+    const float max_input = max_input_tensor.scalar<float>()();
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
@@ -65,8 +78,21 @@ class QuantizedRelu6Op : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    const float min_input = context->input(1).flat<float>()(0);
-    const float max_input = context->input(2).flat<float>()(0);
+    const Tensor& min_input_tensor = context->input(1);
+    const Tensor& max_input_tensor = context->input(2);
+
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
+        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
+                                min_input_tensor.dims()));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
+        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
+                                max_input_tensor.dims()));
+
+    const float min_input = min_input_tensor.scalar<float>()();
+    const float max_input = max_input_tensor.scalar<float>()();
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));

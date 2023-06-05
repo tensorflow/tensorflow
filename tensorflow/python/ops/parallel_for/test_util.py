@@ -60,4 +60,17 @@ class PForTestCase(test.TestCase):
     loop_fn_dtypes = nest.map_structure(lambda x: x.dtype, t1)
     t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters,
                                         parallel_iterations=parallel_iterations)
+
+    def _check_shape(a, b):
+      msg = (
+          "Inferred static shapes are different between two loops:"
+          f" {a.shape} vs {b.shape}."
+      )
+      # TODO(b/268146947): should assert bool(a.shape) == bool(b.shape),
+      # since both should be either defined or undefined. But it does not work.
+      if b.shape:
+        self.assertEqual(a.shape.as_list()[0], b.shape.as_list()[0], msg)
+        # TODO(b/268146947): self.assertShapeEqual(a, b, msg) does not work.
+
+    nest.map_structure(_check_shape, t1, t2)
     self.run_and_assert_equal(t1, t2, rtol=rtol, atol=atol)

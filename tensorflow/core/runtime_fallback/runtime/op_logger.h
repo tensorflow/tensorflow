@@ -15,8 +15,8 @@ limitations under the License.
 
 // This file defines a logger for op names.
 
-#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
-#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
+#ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
+#define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
 
 #include <memory>
 
@@ -44,7 +44,8 @@ class OpLogger : public tfrt::SharedContext {
   }
 
   tfrt::ArrayRef<std::string> GetLoggedOps() const {
-    return op_names_->ToArrayRef();
+    absl::Span<const std::string> span = op_names_->ToConstSpan();
+    return tfrt::ArrayRef<std::string>(span.data(), span.size());
   }
 
   // Cannot be called concurrently with any API in this class.
@@ -59,4 +60,4 @@ class OpLogger : public tfrt::SharedContext {
 }  // namespace tfd
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_KERNEL_H_
+#endif  // TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_

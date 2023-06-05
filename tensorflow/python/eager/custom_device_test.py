@@ -23,6 +23,10 @@ from tensorflow.python.platform import test
 
 class CustomDeviceTest(test.TestCase):
 
+  def setUp(self):
+    super().setUp()
+    context._reset_context()
+
   def testRegisterCustomDevice(self):
     device_name = '/job:localhost/replica:0/task:0/device:CUSTOM:0'
     device, device_info, arrived_flag, executed_flag = (
@@ -39,6 +43,15 @@ class CustomDeviceTest(test.TestCase):
     self.assertFalse(custom_device_testutil.FlagValue(arrived_flag))
     with self.assertRaisesRegex(errors.InternalError, 'Trying to copy'):
       y.numpy()
+
+  def testIsCustomDevice(self):
+    device_name = '/job:localhost/replica:0/task:0/device:CUSTOM:0'
+    device, device_info, _, _ = (
+        custom_device_testutil.GetLoggingDeviceCapsules(device_name))
+    context.register_custom_device(device, device_name, device_info)
+
+    self.assertTrue(context.is_custom_device(device_name))
+    self.assertFalse(context.is_custom_device('cpu:0'))
 
 
 if __name__ == '__main__':

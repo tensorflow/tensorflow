@@ -18,7 +18,7 @@
 from google.protobuf import text_format
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.python.eager import function as eager_function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -416,10 +416,10 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
 
   def testAttrFuncWithFuncWithAttrs(self):
     with ops.Graph().as_default():
-      @eager_function.defun_with_attributes(
+      @def_function.function(
           input_signature=(tensor_spec.TensorSpec(None, dtypes.float32),),
           autograph=False,
-          attributes={"_dummy_attr": 15})
+          experimental_attributes={"_implements": 15})
       def fn(x):
         return 2 + x
 
@@ -433,7 +433,7 @@ class OpDefLibraryTest(test_util.TensorFlowTestCase):
           value {
             func {
               name: '%s'
-              attr { key: "_dummy_attr" value { i: 15 } }
+              attr { key: "_implements" value { i: 15 } }
             }
           }
         }

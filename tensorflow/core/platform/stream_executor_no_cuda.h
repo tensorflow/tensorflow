@@ -13,23 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
-#define TENSORFLOW_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
+#ifndef TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
+#define TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
 
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/dnn.h"
+#include "tensorflow/compiler/xla/stream_executor/event.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
+#include "tensorflow/compiler/xla/stream_executor/platform/dso_loader.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/scratch_allocator.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/core/platform/platform.h"
 
-#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/dnn.h"
-#include "tensorflow/stream_executor/event.h"
-#include "tensorflow/stream_executor/host/host_platform_id.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
-#include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/stream_executor/scratch_allocator.h"
-#include "tensorflow/stream_executor/stream.h"
-#include "tensorflow/stream_executor/stream_executor.h"
-
-#endif  // TENSORFLOW_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_STREAM_EXECUTOR_NO_CUDA_H_

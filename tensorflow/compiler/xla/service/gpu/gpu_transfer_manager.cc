@@ -30,12 +30,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/multi_platform_manager.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/multi_platform_manager.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace gpu {
@@ -83,7 +86,7 @@ void GpuTransferManager::EnsurePinnedBuffersAllocated(
 }
 
 Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
-                                             ShapedBuffer* device_buffer,
+                                             const ShapedBuffer* device_buffer,
                                              Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
@@ -97,8 +100,8 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
   // DeviceMemoryBase into the Shape*'s dimensions.
   std::vector<std::pair<se::DeviceMemoryBase, Shape*>> copies;
 
-  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachMutableElementWithStatus(
-      [&](const ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
+      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -119,7 +122,7 @@ Status GpuTransferManager::ReadDynamicShapes(se::Stream* stream,
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
 
-        auto buffer_8 = se::DeviceMemory<uint8_t>(*buffer);
+        auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
         auto metadata_buffer =
             stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
         copies.push_back(std::make_pair(metadata_buffer, &device_sub_shape));

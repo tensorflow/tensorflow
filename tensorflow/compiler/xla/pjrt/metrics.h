@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_METRICS_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_METRICS_H_
 
-#include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/tsl/lib/monitoring/counter.h"
 
 // Simplified version of tensorflow/core/framework/metrics.h for JAX.
 
 namespace xla {
 
-void ReportExecutableEnqueueTime(const uint64_t running_time_usecs);
-
+void ReportExecutableEnqueueTime(uint64_t running_time_usecs);
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_METRICS_H_

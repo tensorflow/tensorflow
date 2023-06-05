@@ -22,8 +22,8 @@ syntax = "proto3";
 
 package tensorflow;
 
+import "tensorflow/compiler/xla/stream_executor/dnn.proto";
 import "tensorflow/core/framework/types.proto";
-import "tensorflow/stream_executor/dnn.proto";
 
 // LINT.IfChange
 
@@ -76,4 +76,27 @@ message ConvParametersProto {
 
 //  LINT.ThenChange(
 //  "conv_parameters.h:conv_parameters_version"
+//  )
+
+// LINT.IfChange
+
+message MatmulParametersProto {
+  tensorflow.DataType ab_dtype = 1;
+  tensorflow.DataType c_dtype = 2;
+  bool trans_a = 3;
+  bool trans_b = 4;
+  uint64 m = 5;
+  uint64 n = 6;
+  uint64 k = 7;
+  int64 lda = 8;
+  int64 ldb = 9;
+  int64 ldc = 10;
+  stream_executor.dnn.ActivationMode activation_mode = 11;
+
+  string device_identifier = 12;
+  int32 version = 14;
+}
+
+//  LINT.ThenChange(
+//  "conv_parameters.h:matmul_parameters_version"
 //  )

@@ -22,7 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.eager import test
 from tensorflow.python.saved_model import registration
-from tensorflow.python.training.tracking import base
+from tensorflow.python.trackable import base
 
 
 @registration.register_serializable()

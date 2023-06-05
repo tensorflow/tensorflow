@@ -12,7 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -47,7 +50,7 @@ void RunResolveSum(const std::vector<float>& input,
 
   *output.mutable_shape()->mutable_dims() = output_shape;
 
-  auto sum_op = absl::make_unique<TensorFlowSumOperator>();
+  auto sum_op = std::make_unique<TensorFlowSumOperator>();
   sum_op->keep_dims = true;
   sum_op->inputs = {"input0", "input1"};
   sum_op->outputs = {output_name};

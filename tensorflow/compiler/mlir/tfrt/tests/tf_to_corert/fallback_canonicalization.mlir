@@ -1,4 +1,4 @@
-// RUN: tf-tfrt-opt %s -pass-pipeline='func.func(canonicalize)' | FileCheck %s
+// RUN: tf-tfrt-opt %s -pass-pipeline='builtin.module(func.func(canonicalize))' | FileCheck %s
 
 // CHECK-LABEL: func @test_const_tensor_canonicalization_single_denst_tensor_operand
 func.func @test_const_tensor_canonicalization_single_denst_tensor_operand() -> !tfrt_fallback.tf_tensor {

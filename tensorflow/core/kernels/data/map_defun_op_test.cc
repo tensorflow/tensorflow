@@ -283,7 +283,7 @@ TEST_F(MapDefunOpTest, InvalidArguments) {
     TF_ASSERT_OK(
         CreateMapDefunContext(map_defun_kernel.get(), &input_values, &context));
     EXPECT_EQ(RunOpKernel(map_defun_kernel.get(), context.get()).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

@@ -38,6 +38,9 @@ message ServerDef {
   // that matches this name.
   string job_name = 2;
 
+  // Replica this server manages.
+  int32 replica = 8;
+
   // The task index of this server in its job.
   //
   // NOTE: The `cluster` field must contain a `JobDef` with a matching `name`

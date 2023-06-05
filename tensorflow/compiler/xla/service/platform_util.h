@@ -21,14 +21,22 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
 
 // Utilities for querying platforms and devices used by XLA.
 class PlatformUtil {
  public:
+  // Returns the canonical name of the underlying platform.
+  //
+  // This is needed to differentiate if for given platform like GPU or CPU
+  // there are multiple implementations. For example, GPU platform may be
+  // cuda(Nvidia) or rocm(AMD)
+  static StatusOr<std::string> CanonicalPlatformName(
+      const std::string& platform_name);
+
   // Returns the platforms present on the system and supported by XLA.
   //
   // Note that, even if a platform is present with zero devices, if we *do* have

@@ -5,7 +5,10 @@ load(
     "tf_cc_test",
 )
 
-package(default_visibility = ["//visibility:private"])
+package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//visibility:private"],
+)
 
 licenses(["notice"])
 
@@ -17,6 +20,10 @@ cc_library(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:tf_jitrt_pipeline",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
+        "//tensorflow/compiler/xla/runtime:arguments",
+        "//tensorflow/compiler/xla/runtime:jit_executable",
+        "//tensorflow/compiler/xla/runtime:types",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:logging",
@@ -30,8 +37,9 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
         "@tf_runtime//:tensor",
-        "@tf_runtime//backends/jitrt",
+        "@tf_runtime//backends/jitrt:async_task_runner",
         "@tf_runtime//backends/jitrt:jitrt_compiler",
+        "@tf_runtime//backends/jitrt:results",
     ],
 )
 
@@ -42,6 +50,7 @@ cc_library(
     hdrs = ["benchmark_mlir_function.h"],
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
         "//tensorflow/compiler/mlir/tfrt:runtime_fallback_executor",
@@ -59,7 +68,6 @@ cc_library(
         "@tf_runtime//:befexecutor",
         "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
-        "@tf_runtime//backends/jitrt",
     ],
 )
 
@@ -82,6 +90,16 @@ tf_cc_test(
     testonly = 1,
     srcs = ["cwise_op_expm1_benchmark.cc"],
     deps = [":cwise_op_unary_benchmark"],
+)
+
+tf_cc_test(
+    name = "concat_benchmark",
+    testonly = 1,
+    srcs = ["concat_benchmark.cc"],
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
 )
 
 tf_cc_binary(
@@ -160,7 +178,31 @@ tf_cc_binary(
     ]),
     deps = [
         ":benchmark",
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "fused_matmul_op_benchmark",
+    testonly = 1,
+    srcs = [
+        "fused_matmul_op_benchmark.cc",
+        "fused_matmul_op_benchmark.h",
+    ],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        "//tensorflow/compiler/jit:flags",
+        "//tensorflow/compiler/mlir/tfrt:host_context_util",
+        "//tensorflow/core/kernels:fused_eigen_output_kernels",
+        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -199,6 +241,54 @@ tf_cc_binary(
         ":benchmark",
         ":benchmark_mlir_function",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "map_op_benchmark",
+    testonly = 1,
+    srcs = ["map_op_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
+)
+
+tf_cc_binary(
+    name = "fused_map_bcast_benchmark",
+    testonly = 1,
+    srcs = ["fused_map_bcast_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+    ],
+)
+
+tf_cc_binary(
+    name = "scatter_op_benchmark",
+    testonly = 1,
+    srcs = ["scatter_op_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
     ],
 )
 
@@ -291,6 +381,23 @@ tf_cc_binary(
     name = "fused_reduction_benchmark",
     testonly = 1,
     srcs = ["fused_reduction_benchmark.cc"],
+    # Args() not supported. Enable when we got rid of tf benchmark and use the
+    # standard gunit benchmark.
+    tags = if_oss([
+        "no_oss",
+        "manual",
+    ]),
+    deps = [
+        ":benchmark",
+        ":benchmark_mlir_function",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "reverse_op_benchmark",
+    testonly = 1,
+    srcs = ["reverse_op_benchmark.cc"],
     # Args() not supported. Enable when we got rid of tf benchmark and use the
     # standard gunit benchmark.
     tags = if_oss([

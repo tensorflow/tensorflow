@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_ROUNDTRIP_H_
-#define TENSORFLOW_CORE_IR_IMPORTEXPORT_ROUNDTRIP_H_
+#ifndef TENSORFLOW_CORE_IR_IMPORTEXPORT_TESTS_ROUNDTRIP_ROUNDTRIP_H_
+#define TENSORFLOW_CORE_IR_IMPORTEXPORT_TESTS_ROUNDTRIP_ROUNDTRIP_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 void NormalizeTensorData(GraphDef& graphdef, bool add_fulltype);
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_ROUNDTRIP_H_
+#endif  // TENSORFLOW_CORE_IR_IMPORTEXPORT_TESTS_ROUNDTRIP_ROUNDTRIP_H_

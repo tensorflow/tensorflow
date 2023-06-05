@@ -25,12 +25,15 @@ namespace {
 
 int GetPlatformSeverity(LogSeverity severity) {
   switch (severity) {
+    case TFLITE_LOG_VERBOSE:
     case TFLITE_LOG_INFO:
       return ANDROID_LOG_INFO;
     case TFLITE_LOG_WARNING:
       return ANDROID_LOG_WARN;
     case TFLITE_LOG_ERROR:
       return ANDROID_LOG_ERROR;
+    case TFLITE_LOG_SILENT:
+      return ANDROID_LOG_SILENT;
     default:
       return ANDROID_LOG_DEBUG;
   }
@@ -38,21 +41,25 @@ int GetPlatformSeverity(LogSeverity severity) {
 
 }  // namespace
 
+LogSeverity MinimalLogger::minimum_log_severity_ = TFLITE_LOG_VERBOSE;
+
 void MinimalLogger::LogFormatted(LogSeverity severity, const char* format,
                                  va_list args) {
-  // First log to Android's explicit log(cat) API.
-  va_list args_copy;
-  va_copy(args_copy, args);
-  __android_log_vprint(GetPlatformSeverity(severity), "tflite", format,
-                       args_copy);
-  va_end(args_copy);
+  if (severity >= MinimalLogger::minimum_log_severity_) {
+    // First log to Android's explicit log(cat) API.
+    va_list args_copy;
+    va_copy(args_copy, args);
+    __android_log_vprint(GetPlatformSeverity(severity), "tflite", format,
+                         args_copy);
+    va_end(args_copy);
 
-  // Also print to stderr for standard console applications.
-  fprintf(stderr, "%s: ", GetSeverityName(severity));
-  va_copy(args_copy, args);
-  vfprintf(stderr, format, args_copy);
-  va_end(args_copy);
-  fputc('\n', stderr);
+    // Also print to stderr for standard console applications.
+    fprintf(stderr, "%s: ", GetSeverityName(severity));
+    va_copy(args_copy, args);
+    vfprintf(stderr, format, args_copy);
+    va_end(args_copy);
+    fputc('\n', stderr);
+  }
 }
 
 }  // namespace logging_internal

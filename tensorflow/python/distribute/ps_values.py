@@ -16,6 +16,7 @@
 
 import contextlib
 import copy
+import functools
 import threading
 import weakref
 
@@ -23,13 +24,14 @@ import numpy as np
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute import values_util
 from tensorflow.python.distribute.coordinator import coordinator_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion_registry
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -38,12 +40,11 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.trackable import base as trackable
 from tensorflow.python.types import core
-from tensorflow.python.util.lazy_loader import LazyLoader
 
-load_context = LazyLoader(
-    "load_context", globals(),
-    "tensorflow.python.keras.saving.saved_model.load_context"
-)
+
+TRACKABLE_RESOURCE_METHODS = [
+    "_create_resource", "_initialize", "_destroy_resource"
+]
 
 
 # Variable used in PSStrategy TF 1, TF2 and CentralStorageStrategy.
@@ -77,7 +78,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     Raises:
       RuntimeError: If trying to deepcopy into a different strategy.
     """
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       v = copy.deepcopy(self._v, memo)
 
     copied_variable = type(self)(
@@ -100,9 +101,9 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
     return getattr(self._v, name)
 
   def _assign_func(self, *args, **kwargs):
-    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+    with distribute_lib.enter_or_assert_strategy(self._distribute_strategy):
       f = kwargs.pop("f")
-      if ds_context.in_cross_replica_context():
+      if distribute_lib.in_cross_replica_context():
         if distribute_lib.get_update_replica_id() is not None:
           # We are calling an assign function in an update context.
           return f(self._v, *args, **kwargs)
@@ -112,7 +113,7 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
         return self._distribute_strategy.extended.update(
             self, f, args=args, kwargs=kwargs)
       else:
-        replica_context = ds_context.get_replica_context()
+        replica_context = distribute_lib.get_replica_context()
         assert replica_context
         # We are calling an assign function in replica context.
         # We reduce the value we want to assign/add/sub. More details about how
@@ -220,13 +221,15 @@ class AggregatingVariable(resource_variable_ops.BaseResourceVariable,
       return self._v._gather_saveables_for_checkpoint()  # pylint:disable=protected-access
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
     # By delegating this method to the wrapped variable, SavedModel with
     # AggregatingVariable are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
-    obj_map[self] = obj_map[self._v]
-    return obj_map, resource_map
+    resource_list = self._v._export_to_saved_model_graph(object_map, tensor_map,  # pylint:disable=protected-access
+                                                         options, **kwargs)
+    object_map[self] = object_map[self._v]
+    return resource_list
 
   # pylint: disable=multiple-statements
   def __add__(self, o):
@@ -509,13 +512,15 @@ class CachingVariable(resource_variable_ops.BaseResourceVariable, core.Tensor):
   def _gather_saveables_for_checkpoint(self):
     return {trackable.VARIABLE_VALUE_KEY: self._v}
 
-  def _map_resources(self, save_options):
+  def _export_to_saved_model_graph(self, object_map, tensor_map,
+                                   options, **kwargs):
     """For implementing `Trackable`."""
     # By delegating this method to the wrapped variable, SavedModel with
     # AggregatingVariable are identical to SavedModel with normal variables.
-    obj_map, resource_map = self._v._map_resources(save_options)  # pylint:disable=protected-access
-    obj_map[self] = obj_map[self._v]
-    return obj_map, resource_map
+    resource_list = self._v._export_to_saved_model_graph(object_map, tensor_map,  # pylint:disable=protected-access
+                                                         options, **kwargs)
+    object_map[self] = object_map[self._v]
+    return resource_list
 
 
 # Register a conversion function which reads the value of the variable,
@@ -524,8 +529,8 @@ def _tensor_conversion_aggregate(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(AggregatingVariable,
-                                        _tensor_conversion_aggregate)
+tensor_conversion_registry.register_tensor_conversion_function(
+    AggregatingVariable, _tensor_conversion_aggregate)
 
 
 # Register a conversion function which reads the value of the variable,
@@ -534,10 +539,94 @@ def _tensor_conversion_caching(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype, name, as_ref)  # pylint: disable=protected-access
 
 
-ops.register_tensor_conversion_function(CachingVariable,
-                                        _tensor_conversion_caching)
+tensor_conversion_registry.register_tensor_conversion_function(
+    CachingVariable, _tensor_conversion_caching)
 
 CachingVariable._overload_overloadable_operators()  # pylint: disable=protected-access
+
+
+class PerWorkerVariable(resource_variable_ops.BaseResourceVariable):
+  """A wrapper around unsynced variables created on workers.
+
+  Overrides the Variable's handle to use the appropriate worker's variable
+  handle at call time. In doing so this class can support the built-in
+  `Variable` methods, but it is experimental.
+
+  All per-worker values can be read and retrieved as a list via
+  `PerWorkerVariable.read_all()`.
+  """
+
+  def __init__(self, strategy, next_creator, **kwargs):
+    self._coordinator = strategy._cluster_coordinator
+    self._per_worker_vars = None
+    self._next_creator = functools.partial(next_creator, **kwargs)
+
+    self._coordinator_instance = next_creator(**kwargs)
+
+    # Set ResourceVariable attributes based on kwargs
+    if kwargs.get("in_graph_mode") is None:
+      with ops.init_scope():
+        self._in_graph_mode = not context.executing_eagerly()
+    else:
+      self._in_graph_mode = kwargs["in_graph_mode"]
+
+    self._cached_value = None
+    self._shape = (
+        tensor_shape.as_shape(kwargs["shape"]) if kwargs.get("shape") else None
+    )
+    self._dtype = (
+        dtypes.as_dtype(kwargs["dtype"]) if kwargs.get("dtype") else None
+    )
+    self._trainable = False  # not supported
+    self._unique_id = kwargs.get("unique_id")
+    if kwargs.get("handle_name") is None:
+      self._handle_name = "Variable:0"
+    else:
+      self._handle_name = kwargs["handle_name"] + ":0"
+
+  @classmethod
+  def _variable_call(cls, *args, **kwargs):
+    """Override to be a no-op to avoid metaclass creating ResourceVariables."""
+    return None
+
+  @property
+  def handle(self):
+    self._maybe_create_per_worker_vars()
+    closure, spec = self.handle_call_time_value()
+    return ops.get_default_graph().capture_call_time_value(
+        closure,
+        spec)
+
+  def handle_call_time_value(self):
+    """Returns a closure to run for a handle at call time and its spec.
+
+    This function is called in self.handle to create a placeholder
+    which returns a handle on some worker or on the coordinator.
+    """
+
+    def closure():
+      dispatch_context = coordinator_context.get_current_dispatch_context()
+      if dispatch_context:
+        remote_value = self._per_worker_vars._values[  # pylint: disable=protected-access
+            dispatch_context.worker_index]
+        ret = dispatch_context.maybe_get_remote_value(remote_value)
+        return ret.handle
+      else:
+        # Only needed for tracing
+        return self._coordinator_instance.handle
+
+    return closure, tensor_spec.TensorSpec(
+        shape=self.shape, dtype=dtypes.resource)
+
+  def _maybe_create_per_worker_vars(self):
+    """Create variable on each worker if it hasn't been created."""
+    if not self._per_worker_vars:
+      self._per_worker_vars = (
+          self._coordinator._create_per_worker_resources(self._next_creator))  # pylint: disable=protected-access
+
+  def read_all(self):
+    """Synchronously read variables from all workers into a list of Tensors."""
+    return [wv.get() for wv in self._per_worker_vars._values]  # pylint: disable=protected-access
 
 
 class DistributedTable(lookup_ops.StaticHashTable):
@@ -613,7 +702,6 @@ class DistributedTable(lookup_ops.StaticHashTable):
       if dispatch_context:
         remote_value = self._distributed_table._values[  # pylint: disable=protected-access
             dispatch_context.worker_index]
-        dispatch_context.maybe_rebuild_remote_values(remote_value)
         ret = dispatch_context.maybe_get_remote_value(remote_value)
         return ret
 
@@ -701,6 +789,11 @@ class LocalResourceRestoreContext(object):
 class RestoredDistributedTable(DistributedTable):
   """A restored and distributed StaticHashTable for ParameterServerStrategy."""
 
+  def __init__(self, strategy, wrapped_creator):
+    # Wait for all resource functions to have been set before building the table
+    self._has_resource_functions = threading.Condition()
+    super().__init__(strategy, wrapped_creator)
+
   def resource_handle_call_time_value(self):
     """Returns a closure to run for a resource handle at call time and its spec.
 
@@ -734,7 +827,6 @@ class RestoredDistributedTable(DistributedTable):
           remote_value = self._distributed_table._values[  # pylint: disable=protected-access
               dispatch_context.worker_index]
 
-        dispatch_context.maybe_rebuild_remote_values(remote_value)
         ret = dispatch_context.maybe_get_remote_value(remote_value)
         return ret
 
@@ -745,7 +837,7 @@ class RestoredDistributedTable(DistributedTable):
     return closure, tensor_spec.TensorSpec(shape=(), dtype=dtypes.resource)
 
   def __setattr__(self, name, value):
-    if name in ["_create_resource", "_initialize", "_destroy_resource"]:
+    if name in TRACKABLE_RESOURCE_METHODS:
       # When a StaticHashTable is loaded with `tf.saved_model.load`, it becomes
       # a RestoredResource with dummy `_create_resource`, `_initialize`, and
       # `_destroy_resource" methods. Similarly, when loaded with
@@ -761,6 +853,10 @@ class RestoredDistributedTable(DistributedTable):
       if not hasattr(self, "_restored_function"):
         self._restored_function = {}
       self._restored_function[name] = value
+      if all(method in self._restored_function
+             for method in TRACKABLE_RESOURCE_METHODS):
+        with self._has_resource_functions:
+          self._has_resource_functions.notify_all()
       return self._coordinator_instance.__setattr__(name, value)
     else:
       return super(RestoredDistributedTable, self).__setattr__(name, value)
@@ -784,6 +880,13 @@ class RestoredDistributedTable(DistributedTable):
 
         def create_copy():
           new_table = self._wrapped_creator()
+          # Wait until all resource functions are available before setting them
+          # on new_table.
+          with self._has_resource_functions:
+            while not hasattr(self, "_restored_function") or any(
+                method not in self._restored_function
+                for method in TRACKABLE_RESOURCE_METHODS):
+              self._has_resource_functions.wait()
 
           if hasattr(self, "_restored_function"):
             with with_local_resource_restore_context(new_table):

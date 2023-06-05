@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_IMAGEADJUST_CONTRAST_OP_H_
-#define TENSORFLOW_CORE_KERNELS_IMAGEADJUST_CONTRAST_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_IMAGE_ADJUST_CONTRAST_OP_H_
+#define TENSORFLOW_CORE_KERNELS_IMAGE_ADJUST_CONTRAST_OP_H_
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 
@@ -124,4 +124,4 @@ struct AdjustContrastv2 {
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_IMAGEADJUST_CONTRAST_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_IMAGE_ADJUST_CONTRAST_OP_H_

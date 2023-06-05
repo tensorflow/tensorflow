@@ -28,8 +28,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/notification.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/notification.h"
 
 using absl::StrCat;
 
@@ -45,31 +45,12 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
-TransferManager::TransferMetadata::~TransferMetadata() {}
-
 StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
     const TransferMetadata* transfer_metadata) {
-  StatusOr<Literal> ret;
-
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  substream->ThenWaitFor(stream);
-  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
-
-  tensorflow::Notification n;
-  Status s;
   Literal literal(device_buffer.on_host_shape());
-  TransferLiteralFromDevice(
-      substream, device_buffer, &literal,
-      [&](Status status) {
-        s = status;
-        n.Notify();
-      },
-      transfer_metadata);
-  n.WaitForNotification();
-  if (!s.ok()) {
-    return s;
-  }
+  TF_RETURN_IF_ERROR(TransferLiteralFromDevice(stream, device_buffer, &literal,
+                                               transfer_metadata));
   return std::move(literal);
 }
 
@@ -78,10 +59,11 @@ Status TransferManager::TransferLiteralFromDevice(
     const MutableBorrowingLiteral& literal,
     const TransferMetadata* transfer_metadata) {
   se::Stream* substream = stream->GetOrCreateSubStream();
+  substream->ThenWaitFor(stream);
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
 
   Status ret;
-  tensorflow::Notification n;
+  tsl::Notification n;
   TransferLiteralFromDevice(
       substream, device_buffer, literal,
       [&](Status status) {
@@ -111,27 +93,14 @@ Status TransferManager::TransferLiteralToDevice(
 StatusOr<Literal> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
     const TransferMetadata* transfer_metadata) {
-  StatusOr<Literal> ret;
-  // Implement the synchronous version by waiting on the asynchronous version.
-  // Use a substream so that if we are called from a HostCallback we don't
-  // deadlock.
-  se::Stream* substream = stream->GetOrCreateSubStream();
-  absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
-
-  tensorflow::Notification n;
+  TF_RET_CHECK(shape.IsArray());
+  TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+      HostShapeToDeviceShape(shape), shape));
   Literal literal(shape);
-  Status s;
-  TransferArrayFromDevice(
-      substream, shape, source, &literal,
-      [&](Status status) {
-        s = status;
-        n.Notify();
-      },
-      transfer_metadata);
-  n.WaitForNotification();
-  if (!s.ok()) {
-    return s;
-  }
+  ShapedBuffer shaped_buffer(shape, stream->parent()->device_ordinal());
+  shaped_buffer.set_buffer(source, /*index=*/{});
+  TF_RETURN_IF_ERROR(TransferLiteralFromDevice(stream, shaped_buffer, &literal,
+                                               transfer_metadata));
   return std::move(literal);
 }
 
@@ -143,6 +112,7 @@ Status TransferManager::TransferArrayToDevice(
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
   se::Stream* substream = stream->GetOrCreateSubStream();
+  substream->ThenWaitFor(stream);
   absl::Cleanup cleanup = [&]() { stream->ReturnSubStream(substream); };
   TF_RETURN_IF_ERROR(
       TransferArrayToDeviceAsync(substream, literal, dest, transfer_metadata));
@@ -153,49 +123,16 @@ Status TransferManager::TransferArrayToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest,
     const TransferMetadata* transfer_metadata) {
-  const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
-  TF_RET_CHECK(on_device_shape.IsArray())
-      << "On-device representation of "
-      << ShapeUtil::HumanString(literal.shape())
-      << " is not an array: " << ShapeUtil::HumanString(on_device_shape);
-  if (dest.size() < GetByteSizeRequirement(on_device_shape)) {
-    return FailedPrecondition(
-        "Allocation on device not large enough for array: "
-        "%d < %d",
-        dest.size(), GetByteSizeRequirement(on_device_shape));
-  }
-  ShapedBuffer shaped_buffer(on_device_shape,
+  TF_RET_CHECK(literal.shape().IsArray());
+  ShapedBuffer shaped_buffer(HostShapeToDeviceShape(literal.shape()),
                              stream->parent()->device_ordinal());
   shaped_buffer.set_buffer(dest, /*index=*/{});
-  return TransferLiteralToDevice(stream, literal, shaped_buffer,
-                                 transfer_metadata);
-}
-
-void TransferManager::TransferArrayFromDevice(
-    se::Stream* stream, const Shape& shape, const se::DeviceMemoryBase& source,
-    const MutableBorrowingLiteral& literal, std::function<void(Status)> done,
-    const TransferMetadata* transfer_metadata) {
-  if (!Shape::Equal().MinorToMajorOnlyInLayout()(HostShapeToDeviceShape(shape),
-                                                 shape)) {
-    auto error = StrCat("Shape ", ShapeUtil::HumanString(shape),
-                        " has a differently shaped representation on-device: ",
-                        ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));
-    return done(FailedPrecondition("%s", error));
-  }
-  if (source.size() < GetByteSizeRequirement(shape)) {
-    return done(
-        FailedPrecondition("Allocation on device not large enough for array: "
-                           "%d < %d",
-                           source.size(), GetByteSizeRequirement(shape)));
-  }
-  ShapedBuffer shaped_buffer(shape, stream->parent()->device_ordinal());
-  shaped_buffer.set_buffer(source, /*index=*/{});
-  return TransferLiteralFromDevice(stream, shaped_buffer, literal,
-                                   std::move(done), transfer_metadata);
+  return TransferLiteralToDeviceAsync(stream, literal, shaped_buffer,
+                                      transfer_metadata);
 }
 
 Status TransferManager::ReadDynamicShapes(se::Stream* stream,
-                                          ShapedBuffer* device_buffer,
+                                          const ShapedBuffer* device_buffer,
                                           Shape* device_shape) {
   DCHECK(device_shape->is_dynamic());
   Shape original_device_shape = *device_shape;
@@ -203,8 +140,8 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
 
   TF_ASSIGN_OR_RETURN(auto compiler,
                       Compiler::GetForPlatform(stream->parent()->platform()));
-  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachMutableElementWithStatus(
-      [&](const ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+  TF_RETURN_IF_ERROR(device_buffer->buffers().ForEachElementWithStatus(
+      [&](const ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
         const Shape& buffer_shape =
             ShapeUtil::GetSubshape(*device_shape, index);
         if (buffer_shape.IsTuple()) {
@@ -225,7 +162,7 @@ Status TransferManager::ReadDynamicShapes(se::Stream* stream,
         if (metadata_size == 0) {
           return InvalidArgument("Dynamic shape metadata size should not be 0");
         }
-        auto buffer_8 = se::DeviceMemory<uint8_t>(*buffer);
+        auto buffer_8 = se::DeviceMemory<uint8_t>(buffer);
         auto metadata_buffer =
             stream->parent()->GetSubBuffer(&buffer_8, offset, metadata_size);
         TF_ASSIGN_OR_RETURN(
@@ -405,7 +342,7 @@ StatusOr<ScopedShapedBuffer> TransferManager::AllocateScopedShapedBuffer(
                         allocator->Allocate(shaped_buffer.device_ordinal(),
                                             GetByteSizeRequirement(subshape),
                                             /*retry_on_failure=*/true,
-                                            subshape.layout().memory_space()));
+                                            LayoutUtil::MemorySpace(subshape)));
     // Move the allocated buffer into the ScopedShapedBuffer, which owns it.
     memory_base = memory.Release();
   }

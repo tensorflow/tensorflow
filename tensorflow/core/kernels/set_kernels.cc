@@ -70,8 +70,12 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
                                sparse::SparseTensor* tensor) {
   // Assume row-major order.
   TensorShape shape;
-  TF_RETURN_IF_ERROR(TensorShape::BuildTensorShape(
-      ctx->input(base_index + 2).vec<int64_t>(), &shape));
+  const Tensor& shape_tensor = ctx->input(base_index + 2);
+  if (shape_tensor.dims() != 1) {
+    return errors::InvalidArgument("Shape must be a 1D tensor.");
+  }
+  TF_RETURN_IF_ERROR(
+      TensorShape::BuildTensorShape(shape_tensor.vec<int64_t>(), &shape));
   CheckRankAtLeast2(ctx, shape);
   std::vector<int64_t> order(shape.dims());
   std::iota(order.begin(), order.end(), 0);
@@ -83,10 +87,10 @@ Status SparseTensorFromContext(OpKernelContext* ctx, const int32_t base_index,
   return tensor->IndicesValid();
 }
 
-// TODO(ptucker): CheckGroup is just a sanity check on the result of
+// TODO(ptucker): CheckGroup is just a redundant check on the result of
 // SparseTensor.group, consider removing.
 // `sparse_tensor_shape` is the shape of the `SparseTensor` from which group
-// was created, and is used to sanity check the indices in `group'.
+// was created, and is used to validate the indices in `group'.
 template <typename T>
 void CheckGroup(OpKernelContext* ctx, const sparse::Group& group,
                 const VarDimArray& sparse_tensor_shape) {
@@ -284,6 +288,9 @@ void SetSizeOp<T>::Compute(OpKernelContext* ctx) {
     const auto group_key = group.group();
     const auto output_index = std::inner_product(
         group_key.begin(), group_key.end(), output_strides.begin(), 0LL);
+    OP_REQUIRES(ctx, output_index < out.size(),
+                errors::InvalidArgument("Index out of range, ", group.indices(),
+                                        " vs ", output_shape_ts.DebugString()));
     out(output_index) = group_set.size();
   }
 }
@@ -506,7 +513,7 @@ void SetOperationOp<T>::ComputeDenseToDense(OpKernelContext* ctx) const {
 
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
-  output_shape.AddDim(max_set_size);
+  OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 
@@ -587,7 +594,7 @@ void SetOperationOp<T>::ComputeDenseToSparse(OpKernelContext* ctx) const {
 
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
-  output_shape.AddDim(max_set_size);
+  OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 
@@ -705,7 +712,7 @@ void SetOperationOp<T>::ComputeSparseToSparse(OpKernelContext* ctx) const {
 
   TensorShape output_shape;
   OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(group_shape, &output_shape));
-  output_shape.AddDim(max_set_size);
+  OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(max_set_size));
   OutputSparseTensor<T>(ctx, output_shape, num_result_values, group_sets);
 }
 

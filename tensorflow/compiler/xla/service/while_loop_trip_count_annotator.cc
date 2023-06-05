@@ -19,9 +19,11 @@ limitations under the License.
 
 namespace xla {
 
-StatusOr<bool> WhileLoopTripCountAnnotator::Run(HloModule* module) {
+StatusOr<bool> WhileLoopTripCountAnnotator::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (const HloComputation* comp : module->computations()) {
+  for (const HloComputation* comp : module->computations(execution_threads)) {
     for (HloInstruction* instr : comp->instructions()) {
       if (instr->opcode() != HloOpcode::kWhile) {
         continue;

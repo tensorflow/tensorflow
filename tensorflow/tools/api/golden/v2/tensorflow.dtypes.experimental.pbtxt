@@ -1,0 +1,11 @@
+path: "tensorflow.dtypes.experimental"
+tf_module {
+  member {
+    name: "float8_e4m3fn"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+  member {
+    name: "float8_e5m2"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+  }
+}

@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_GTL_INLINED_VECTOR_H_
 #define TENSORFLOW_CORE_LIB_GTL_INLINED_VECTOR_H_
 
-#include "absl/container/inlined_vector.h"  // IWYU pragma: export
+#include "tensorflow/tsl/lib/gtl/inlined_vector.h"  // IWYU pragma: export
 // TODO(kramerb): This is kept only because lots of targets transitively depend
 // on it. Remove all targets' dependencies.
 #include "tensorflow/core/platform/macros.h"
@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 namespace gtl {
 
-using absl::InlinedVector;
+using ::tsl::gtl::InlinedVector;  // NOLINT(misc-unused-using-decls)
 
 }  // namespace gtl
 }  // namespace tensorflow

@@ -48,7 +48,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
       // aliasing properties in these cases.
       return;
     }
-    buffer_slice = unique_slice.ValueOrDie();
+    buffer_slice = unique_slice.value();
   }
 
   if (module_.config().debug_options().xla_llvm_enable_alias_scope_metadata()) {

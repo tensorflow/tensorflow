@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
-#include "tensorflow/core/platform/denormal.h"
+#include "tensorflow/tsl/platform/denormal.h"
 
 #ifdef __FAST_MATH__
 #error "Don't build XLA with -ffast-math"
@@ -36,7 +36,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
   // In theory enabling these shouldn't matter since the compiler should ideally
   // not leak its environment into generated code, but we turn off DAZ and FTZ
   // to get some defense-in-depth.
-  tensorflow::port::ScopedDontFlushDenormal dont_flush_denormals;
+  tsl::port::ScopedDontFlushDenormal dont_flush_denormals;
 
   std::vector<std::unique_ptr<Executable>> result;
   std::vector<std::unique_ptr<HloModule>> modules =

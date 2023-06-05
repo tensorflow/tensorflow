@@ -122,7 +122,7 @@ class TridiagonalMatMulOpGpu : public OpKernel {
                                      tensor.dim_size(ndims - 1), " and ",
                                      rhs.dim_size(ndims - 2));
     }
-    return Status::OK();
+    return OkStatus();
   }
 };
 

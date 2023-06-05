@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_init.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
@@ -241,7 +241,7 @@ TEST(TensorrtTest, BasicFunctions) {
 #endif
 
   // Handle the case where the test is run on machine with no gpu available.
-  if (CHECK_NOTNULL(GPUMachineManager())->VisibleDeviceCount() <= 0) {
+  if (CHECK_NOTNULL(se::GPUMachineManager())->VisibleDeviceCount() <= 0) {
     LOG(WARNING) << "No gpu device available, probably not being run on a gpu "
                     "machine. Skipping...";
     return;

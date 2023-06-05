@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/import_tensorflow.h"
-#include "tensorflow/lite/toco/toco_port.h"
+
+#include <memory>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -25,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 
@@ -243,7 +246,7 @@ TEST_P(ShapeImportTest, ShapeElementIsNegative) {
   BuildConstNode({1, -2, 10}, GetParam(), 0, &node);
   auto status = ImportNode(node);
   EXPECT_EQ(
-      status.error_message(),
+      status.message(),
       "Tensor shape should not include negative values\n\t (while processing "
       "node 'Node1')");
 }
@@ -279,7 +282,7 @@ TEST_P(ShapeImportTest, ShapeElementTooLarge) {
   NodeDef node;
   BuildConstNode({3000000000}, GetParam(), 0, &node);
   auto status = ImportNode(node);
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "Shape element overflows\n\t (while processing node 'Node1')");
 }
 
@@ -287,7 +290,7 @@ TEST_P(ShapeImportTest, ShapeTooLarge) {
   NodeDef node;
   BuildConstNode({1000000, 2000000, 2000000, 2000000}, GetParam(), 0, &node);
   auto status = ImportNode(node);
-  EXPECT_EQ(status.error_message(),
+  EXPECT_EQ(status.message(),
             "Tensor shape is too large\n\t (while processing node 'Node1')");
 }
 
@@ -304,7 +307,7 @@ class ContentImportTest : public ::testing::Test {
   std::vector<DataType<T>> ImportAndGetData(const NodeDef& node) {
     Model model;
     auto status = ImportNode(node, &model);
-    CHECK(status.ok()) << status.error_message();
+    CHECK(status.ok()) << status.message();
     const auto& array = model.GetArray("Node1");
     return array.GetBuffer<T>().data;
   }
@@ -447,7 +450,7 @@ class TensorContentTest : public ::testing::Test {
   std::vector<DataType<T>> ImportAndGetData(const NodeDef& node) {
     Model model;
     auto status = ImportNode(node, &model);
-    CHECK(status.ok()) << status.error_message();
+    CHECK(status.ok()) << status.message();
     const auto& nodearray = model.GetArray("Node1");
     return nodearray.GetBuffer<T>().data;
   }

@@ -19,7 +19,7 @@ include "mlir/IR/OpBase.td"
 include "mlir/IR/PatternBase.td"
 include "mlir/Dialect/Func/IR/FuncOps.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
-include "mlir/Dialect/Quant/QuantOps.td"
+include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.td"
 include "mlir/Dialect/Tosa/IR/TosaOps.td"
 
 //===----------------------------------------------------------------------===//
@@ -31,12 +31,11 @@ def ConvertTFLCeilOp : Pat<(TFL_CeilOp $arg), (Tosa_CeilOp $arg)>;
 def ConvertTFLFloorOp : Pat<(TFL_FloorOp $arg), (Tosa_FloorOp $arg)>;
 def ConvertTFLExpOp : Pat<(TFL_ExpOp $arg), (Tosa_ExpOp $arg)>;
 def ConvertTFLLogOp : Pat<(TFL_LogOp $arg), (Tosa_LogOp $arg)>;
-def ConvertTFLRsqrtOp : Pat<(TFL_RsqrtOp $arg), (Tosa_RsqrtOp $arg)>;
 def ConvertTFLLogicalNotOp : Pat<(TFL_LogicalNotOp $arg), (Tosa_LogicalNotOp $arg)>;
 def ConvertTFLCastOp: Pat<(TFL_CastOp $in), (Tosa_CastOp $in)>;
 
 // Removing the quant.stats op for unquantized models.
-def ConvertQuantStatOp : Pat<(quant_StatisticsOp $value, $layer_stats, $axis_stats, $axis),
+def ConvertQuantStatOp : Pat<(quantfork_StatisticsOp $value, $layer_stats, $axis_stats, $axis),
                          (replaceWithValue $value)>;
 
 //===----------------------------------------------------------------------===//

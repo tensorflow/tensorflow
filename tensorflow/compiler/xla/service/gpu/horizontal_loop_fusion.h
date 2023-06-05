@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_LOOP_FUSION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_HORIZONTAL_LOOP_FUSION_H_
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
@@ -59,8 +59,22 @@ namespace gpu {
 //   v       v
 //  (ROOT) tuple
 //
-// We horizontally fuse them into the below pattern.
+// We fuse into one of two possible patterns, depending on whether all the
+// fused operations have the same shape or not.
 //
+// case 1: if Mul and Add's output shape and type are the same, then we fuse
+// them into the below pattern: i0 i1   i2 i3
+//  | |     | |
+//  v v     v v
+//  Mul     Add
+//   |       |
+//   v       v
+//  (ROOT) tuple
+// the fused kernel will be kLoop type, i.e, GPU code is emitted through
+// IrEmitterUnnested::EmitLoopFusion
+//
+// case 2: if Mul and Add's output shape are diffent, then we fuse them into
+// the below pattern that adds extra indexing:
 // i0 i1   i2 i3       +++ (Slice) Input Fusion
 //  | |     | |          +
 //  v v     v v          +
@@ -81,30 +95,44 @@ namespace gpu {
 //   v       v
 //  (ROOT) tuple
 //
-// Note that this fusion style provides an important advantage that kernels of
-// different shapes can be horizontally fused. The first pair of reshapes
-// (i.e., Reshape0 and Reshape1) reshape the dims to 1 dimension, so that the
-// outputs of the fused kernels can (always) be concatenated. The second pair
-// of reshapes (Reshape2 and Reshape3) restore the original shapes to the
-// output tensors.
+// the fused kernel will be kInput type, and, the GPU code is emitted through
+// IrEmitterUnnested::EmitInputFusibleNonStridedSlices
+//
+// In theory, the pattern in case 1 could also be fused into the case2 target
+// graph, but we prefer to fuse into kLoop type, because the codegen for it does
+// not have the slicing range check cost introduced by case 2 pattern.
+//
+// Note that the fusion style by case 2 provides an important advantage that
+// kernels of different shapes can be horizontally fused. The first pair of
+// reshapes (i.e., Reshape0 and Reshape1) reshape the dims to 1 dimension, so
+// that the outputs of the fused kernels can (always) be concatenated. The
+// second pair of reshapes (Reshape2 and Reshape3) restore the original shapes
+// to the output tensors.
 //
 // No extra copies are introduced by the horizontal fusion. Besides Reshape2
 // and Reshape3, the other instructions are fused into an input fusion; the
 // output dims of the concatenate will be used as the kernel launch dims.
 // Instruction bitcasts can be used for Reshape2 and Reshape3 as long as the
 // outputs of Mul and Add are row-major.
+//
+// Note, reshapes are added only if the tensors isn't already a vector.
 class GpuHorizontalLoopFusion : public HloModulePass {
  public:
   GpuHorizontalLoopFusion() {}
+  GpuHorizontalLoopFusion(absl::string_view prefix) : prefix_(prefix) {}
 
   absl::string_view name() const override {
     return "gpu_horizontal_loop_fusion";
   }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation*);
+  std::string prefix_;
 };
 
 }  // namespace gpu

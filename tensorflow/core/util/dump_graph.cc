@@ -187,6 +187,8 @@ Status WriteTextProtoToUniqueFile(
   return file->Close();
 }
 
+}  // anonymous namespace
+
 string DumpToFile(const string& name, const string& dirname,
                   const string& suffix, const string& type_name,
                   std::function<Status(WritableFile*)> dumper) {
@@ -206,8 +208,6 @@ string DumpToFile(const string& name, const string& dirname,
   LOG(INFO) << "Dumped " << type_name << " to " << filepath;
   return filepath;
 }
-
-}  // anonymous namespace
 
 void SetGraphDumper(
     std::function<Status(const Graph& graph,

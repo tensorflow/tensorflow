@@ -54,6 +54,9 @@ using ops::SelectV2;
 using ops::SquaredDifference;
 using ops::Sub;
 using ops::Sum;
+using ops::UnsortedSegmentMax;
+using ops::UnsortedSegmentMin;
+using ops::UnsortedSegmentSum;
 using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
@@ -463,7 +466,7 @@ TEST_F(CWiseUnaryGradTest, Asin_Complex) {
   };
   // TODO(kbsriram)
   // Enable test when the asin kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ASIN, x_fn);
   }
 }
@@ -479,7 +482,7 @@ TEST_F(CWiseUnaryGradTest, Acos_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the acos kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ACOS, x_fn);
   }
 }
@@ -507,7 +510,7 @@ TEST_F(CWiseUnaryGradTest, Atan_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the atan kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ATAN, x_fn);
   }
 }
@@ -558,7 +561,7 @@ TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the lgamma kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(LGAMMA, x_fn);
   }
 }
@@ -576,7 +579,7 @@ TEST_F(CWiseUnaryGradTest, Erf_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the erf kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ERF, x_fn);
   }
 }
@@ -1056,6 +1059,51 @@ TEST_F(NaryGradTest, Atan2Grad) {
       Div(scope_, x1, Add(scope_, Const<float>(scope_, 1), Abs(scope_, x1)));
   auto y = Atan2(scope_, x1, x2);
   RunTest({x1}, {shape}, {y}, {shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_Int64Ids) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0ll, 0ll, 1ll});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMaxGrad_NegativeIds) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, -1});
+  auto y = UnsortedSegmentMax(scope_, x, segment_ids, /*num_segments=*/1);
+  TensorShape y_shape({1, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentMinGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentMin(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
+}
+
+TEST_F(NaryGradTest, UnsortedSegmentSumGrad) {
+  TensorShape shape({3, 2, 5});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto segment_ids = Const(scope_, {0, 0, 1});
+  auto y = UnsortedSegmentSum(scope_, x, segment_ids, /*num_segments=*/2);
+  TensorShape y_shape({2, 2, 5});
+  RunTest({x}, {shape}, {y}, {y_shape});
 }
 
 }  // namespace

@@ -442,7 +442,7 @@ class XlaConcatNDOp : public XlaConcatNDBaseOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto output_or = this->CompileInternal(ctx);
     OP_REQUIRES_OK(ctx, output_or.status());
-    ctx->SetOutput(/*index=*/0, output_or.ValueOrDie());
+    ctx->SetOutput(/*index=*/0, output_or.value());
   }
 };
 
@@ -456,8 +456,8 @@ class AssignVariableXlaConcatNDOp : public XlaConcatNDBaseOp {
   void Compile(XlaOpKernelContext* ctx) override {
     auto output_or = this->CompileInternal(ctx);
     OP_REQUIRES_OK(ctx, output_or.status());
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable("resource", dtype_,
-                                            output_or.ConsumeValueOrDie()));
+    OP_REQUIRES_OK(ctx,
+                   ctx->AssignVariable("resource", dtype_, output_or.value()));
   }
 };
 

@@ -2,6 +2,7 @@
 syntax = "proto2";
 
 package compare_test;
+
 option cc_enable_arenas = true;
 
 enum Enum {
@@ -12,7 +13,7 @@ enum Enum {
 
 message Small {
   repeated string strings = 1;
-};
+}
 
 message Medium {
   repeated int32 int32s = 1;
@@ -23,7 +24,7 @@ message Medium {
     }
   }
   repeated float floats = 6;
-};
+}
 
 message Large {
   optional string string_ = 1;
@@ -36,7 +37,7 @@ message Large {
   optional Small small = 8;
   optional double double_ = 9;
   optional WithMap with_map = 10;
-};
+}
 
 message Labeled {
   required int32 required = 1;
@@ -46,4 +47,22 @@ message Labeled {
 message WithMap {
   map<int32, Small> value_message = 1;
   map<string, string> value_string = 2;
+}
+
+message Floats {
+  optional float float_ = 1;
+  optional double double_ = 2;
+}
+
+message RepeatedFloats {
+  repeated float float_ = 1 [packed = true];
+  repeated double double_ = 2 [packed = true];
+}
+
+message NestedFloats {
+  optional Floats floats = 1;
+}
+
+message MapFloats {
+  map<int64, Floats> int_to_floats = 1;
 }

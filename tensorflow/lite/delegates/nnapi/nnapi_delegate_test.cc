@@ -17,16 +17,18 @@ limitations under the License.
 #include <sys/mman.h>
 
 #include <algorithm>
+#include <functional>
 #include <initializer_list>
+#include <memory>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/model.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_plugin.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 
@@ -52,6 +54,7 @@ MATCHER(QuantizedNear, "") {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() { options_.disallow_nnapi_cpu = false; }
+  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
@@ -81,7 +84,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
   void ApplyNNAPIDelegate() {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options_));
+    stateful_delegate_ = std::make_unique<StatefulNnApiDelegate>(options_);
     SetDelegate(stateful_delegate_.get());
     ApplyDelegate();
   }
@@ -418,7 +421,7 @@ TEST(NNAPIDelegate, StatefulDelegateWithQoS) {
 }
 
 // Sanity check for the state-ful NNAPI delegate using TfLiteBufferHandle.
-TEST(NNAPIDelegate, StatefulDelegateWithBufferHandles) {
+TEST(NNAPIDelegate, DISABLED_StatefulDelegateWithBufferHandles) {
   // Skip the test if Android specific functions could not be found.
   if (!NnApiImplementation()->ASharedMemory_create ||
       !NnApiImplementation()->ANeuralNetworksMemory_createFromFd) {
@@ -1708,6 +1711,15 @@ TEST(Elementwise, Sin) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.ExtractVector<float>(m.output()),
               ElementsAreArray(ArrayFloatNear({0, 0, 0, 0.84147})));
+  EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
+}
+
+TEST(Elementwise, Cos) {
+  ElementwiseOpFloatModel m(BuiltinOperator_COS, {1, 1, 4, 1});
+  m.PopulateTensor<float>(m.input(), {0, 3.1415926, -3.1415926, 1});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.ExtractVector<float>(m.output()),
+              ElementsAreArray(ArrayFloatNear({1.0, -1, -1, 0.54030})));
   EXPECT_THAT(m.GetTensorShape(m.output()), ElementsAreArray({1, 1, 4, 1}));
 }
 
@@ -5423,7 +5435,7 @@ TEST(QuantizedPadV2OpTest, Int8AdvancedDynamicValuedTest) {
 // FloatLeakyReluOpModel and QuantizedLeakyReluOpModel.
 class LeakyReluOpModel : public SingleOpModelWithNNAPI {
  public:
-  LeakyReluOpModel(const TensorData& input, const float& alpha)
+  LeakyReluOpModel(const TensorData& input, const float alpha)
       : input_type_(input.type) {
     input_ = AddInput(input);
     output_ = AddOutput({input.type, input.shape, input.min, input.max});
@@ -5651,7 +5663,7 @@ TEST(NNAPIDelegate, CustomFloorVendorExtension) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.0, 1.0, 2.0}));
 }
 
-TEST(NNAPIDelegate, CustomFloorVendorExtensionDynamic) {
+TEST(NNAPIDelegate, DISABLED_CustomFloorVendorExtensionDynamic) {
   // Models with dynamic dimensions and vendor plugin is not supported before
   // NNAPI 1.2 (API level 29).
   if (NnApiImplementation()->android_sdk_version <

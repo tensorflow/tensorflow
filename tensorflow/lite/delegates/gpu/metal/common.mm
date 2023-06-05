@@ -230,6 +230,8 @@ MTLPixelFormat DataTypeToRGBAPixelFormat(DataType type, bool normalized) {
       return MTLPixelFormatRGBA32Sint;
     case DataType::UINT32:
       return MTLPixelFormatRGBA32Uint;
+    case DataType::BOOL:
+      return MTLPixelFormatRGBA8Uint;
     default:
       return MTLPixelFormatInvalid;
   }

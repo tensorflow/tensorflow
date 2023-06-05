@@ -116,8 +116,14 @@ def bincount(arr,
   """
   name = "bincount" if name is None else name
   with ops.name_scope(name):
-    # Somehow forward compatible needs to be False.
-    if not binary_output and axis is None:
+    # TODO(b/255381064) Remove the following block which uses older kernels for
+    # backwards compatibility for certain cases once all tests pass with the
+    # newer (dense_bincount, ragged_bincount and sparse_bincount) kernels.
+    if (
+        not isinstance(arr, ragged_tensor.RaggedTensor)
+        and not binary_output
+        and axis is None
+    ):
       arr = ops.convert_to_tensor(arr, name="arr", dtype=dtypes.int32)
       array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
       output_size = math_ops.cast(array_is_nonempty, dtypes.int32) * (
@@ -134,6 +140,7 @@ def bincount(arr,
         weights = ops.convert_to_tensor(weights, name="weights")
         return gen_math_ops.unsorted_segment_sum(weights, arr, output_size)
       weights = constant_op.constant([], dtype)
+      arr = array_ops.reshape(arr, [-1])
       return gen_math_ops.bincount(arr, output_size, weights)
 
     if not isinstance(arr, sparse_tensor.SparseTensor):
@@ -156,10 +163,7 @@ def bincount(arr,
       raise ValueError(f"Unsupported value for argument axis={axis}. Only 0 and"
                        " -1 are currently supported.")
 
-    if isinstance(arr, ragged_tensor.RaggedTensor):
-      array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr.values)) > 0
-    else:
-      array_is_nonempty = math_ops.reduce_prod(array_ops.shape(arr)) > 0
+    array_is_nonempty = array_ops.size(arr) > 0
     if isinstance(arr, sparse_tensor.SparseTensor):
       output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (
           math_ops.reduce_max(arr.values) + 1)
@@ -181,9 +185,12 @@ def bincount(arr,
           weights = validate_sparse_weights(arr, weights, dtype)
         arr = arr.values
       elif isinstance(arr, ragged_tensor.RaggedTensor):
-        if weights is not None:
-          weights = validate_ragged_weights(arr, weights, dtype)
-        arr = arr.values
+        # Flatten RaggedTensors with multiple ragged dimensions which use a
+        # nested RaggedTensor for the values tensor.
+        while isinstance(arr, ragged_tensor.RaggedTensor):
+          if weights is not None:
+            weights = validate_ragged_weights(arr, weights, dtype)
+          arr = arr.values
       else:
         if weights is not None:
           weights = array_ops.reshape(weights, [-1])

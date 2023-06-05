@@ -19,7 +19,7 @@ import contextlib
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_replication
 
 
 def enclosing_tpu_context():
@@ -33,7 +33,7 @@ def enclosing_tpu_context_and_graph():
   while graph is not None:
     ctx = graph._get_control_flow_context()  # pylint: disable=protected-access
     while ctx is not None:
-      if isinstance(ctx, tpu.TPUReplicateContext):
+      if isinstance(ctx, tpu_replication.TPUReplicateContext):
         return ctx, graph
       ctx = ctx.outer_context
     # This may be a FuncGraph due to defuns or v2 control flow. We need to

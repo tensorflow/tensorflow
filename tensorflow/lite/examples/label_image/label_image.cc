@@ -33,6 +33,7 @@ limitations under the License.
 #include <sstream>
 #include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -310,7 +311,7 @@ void RunInference(Settings* settings,
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-  auto profiler = absl::make_unique<profiling::Profiler>(
+  auto profiler = std::make_unique<profiling::Profiler>(
       settings->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
 

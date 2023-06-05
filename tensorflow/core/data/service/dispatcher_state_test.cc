@@ -14,21 +14,21 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/dispatcher_state.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/data/service/common.pb.h"
-#include "tensorflow/core/data/service/journal.h"
 #include "tensorflow/core/data/service/journal.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/random.h"
-#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/service_config.pb.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace tensorflow {
 namespace data {
@@ -40,44 +40,36 @@ using IterationKey = DispatcherState::IterationKey;
 using Job = DispatcherState::Job;
 using Iteration = DispatcherState::Iteration;
 using Task = DispatcherState::Task;
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::IsEmpty;
 using ::testing::SizeIs;
 using ::testing::UnorderedElementsAre;
+using ::tsl::testing::StatusIs;
 
-Status RegisterDataset(int64_t id, uint64 fingerprint, DispatcherState& state) {
+Status RegisterDataset(const std::string& dataset_id, DispatcherState& state) {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
-  register_dataset->set_dataset_id(id);
-  register_dataset->set_fingerprint(fingerprint);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
-}
-
-Status RegisterDataset(int64_t id, DispatcherState& state) {
-  return RegisterDataset(id, /*fingerprint=*/1, state);
+  register_dataset->set_dataset_id(dataset_id);
+  return state.Apply(update);
 }
 
 Status RegisterWorker(std::string worker_address, DispatcherState& state) {
   Update update;
   update.mutable_register_worker()->set_worker_address(worker_address);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
+  return state.Apply(update);
 }
 
-Status CreateJob(int64_t job_id, int64_t dataset_id,
+Status CreateJob(int64_t job_id, const std::string& dataset_id,
                  const std::string& job_name, DispatcherState& state) {
   Update update;
   CreateJobUpdate* create_job = update.mutable_create_job();
   create_job->set_job_id(job_id);
   create_job->set_dataset_id(dataset_id);
   create_job->set_job_name(job_name);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return Status::OK();
+  return state.Apply(update);
 }
 
-Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
+Status CreateIteration(int64_t iteration_id, const std::string& dataset_id,
                        const IterationKey& named_iteration_key,
                        DispatcherState& state) {
   int64_t job_id = state.NextAvailableJobId();
@@ -88,11 +80,10 @@ Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
   create_iteration->set_job_id(job_id);
   create_iteration->set_iteration_id(iteration_id);
   create_iteration->set_repetition(named_iteration_key.repetition);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
+  return state.Apply(update);
 }
 
-Status CreateIteration(int64_t iteration_id, int64_t dataset_id,
+Status CreateIteration(int64_t iteration_id, const std::string& dataset_id,
                        DispatcherState& state) {
   IterationKey key(/*name=*/absl::StrCat(random::New64()), /*repetition=*/0);
   return CreateIteration(iteration_id, dataset_id, key, state);
@@ -106,8 +97,7 @@ Status AcquireIterationClientId(int64_t iteration_id,
       update.mutable_acquire_iteration_client();
   acquire_iteration_client->set_iteration_id(iteration_id);
   acquire_iteration_client->set_iteration_client_id(iteration_client_id);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
+  return state.Apply(update);
 }
 
 Status ReleaseIterationClientId(int64_t iteration_client_id,
@@ -117,8 +107,7 @@ Status ReleaseIterationClientId(int64_t iteration_client_id,
       update.mutable_release_iteration_client();
   release_iteration_client->set_iteration_client_id(iteration_client_id);
   release_iteration_client->set_time_micros(release_time);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
+  return state.Apply(update);
 }
 
 Status CreateTask(int64_t task_id, int64_t iteration_id,
@@ -128,47 +117,61 @@ Status CreateTask(int64_t task_id, int64_t iteration_id,
   create_task->set_task_id(task_id);
   create_task->set_iteration_id(iteration_id);
   create_task->set_worker_address(worker_address);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
+  return state.Apply(update);
 }
 
 Status FinishTask(int64_t task_id, DispatcherState& state) {
   Update update;
   FinishTaskUpdate* finish_task = update.mutable_finish_task();
   finish_task->set_task_id(task_id);
-  TF_RETURN_IF_ERROR(state.Apply(update));
-  return OkStatus();
+  return state.Apply(update);
 }
+
+Status Snapshot(const std::string& path, DispatcherState& state) {
+  Update update;
+  SnapshotUpdate* snapshot = update.mutable_snapshot();
+  snapshot->set_path(path);
+  return state.Apply(update);
+}
+
 }  // namespace
 
 TEST(DispatcherState, RegisterDataset) {
-  uint64 fingerprint = 20;
   DispatcherState state;
-  int64_t id = state.NextAvailableDatasetId();
-  TF_EXPECT_OK(RegisterDataset(id, fingerprint, state));
-  EXPECT_EQ(state.NextAvailableDatasetId(), id + 1);
+  std::string dataset_id = state.NextAvailableDatasetId();
+  int64_t dataset_id_int;
+  ASSERT_TRUE(absl::SimpleAtoi(dataset_id, &dataset_id_int));
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
+  EXPECT_EQ(state.NextAvailableDatasetId(), absl::StrCat(dataset_id_int + 1));
+  std::shared_ptr<const Dataset> dataset;
+  TF_EXPECT_OK(state.DatasetFromId(dataset_id, dataset));
+  EXPECT_TRUE(dataset->metadata.element_spec().empty());
+  EXPECT_EQ(dataset->metadata.compression(),
+            DataServiceMetadata::COMPRESSION_UNSPECIFIED);
+}
 
-  {
-    std::shared_ptr<const Dataset> dataset;
-    TF_EXPECT_OK(state.DatasetFromFingerprint(fingerprint, dataset));
-    EXPECT_EQ(dataset->dataset_id, id);
-    EXPECT_TRUE(dataset->metadata.element_spec().empty());
-    EXPECT_EQ(dataset->metadata.compression(),
-              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
-  }
-  {
-    std::shared_ptr<const Dataset> dataset;
-    TF_EXPECT_OK(state.DatasetFromId(id, dataset));
-    EXPECT_EQ(dataset->fingerprint, fingerprint);
-    EXPECT_TRUE(dataset->metadata.element_spec().empty());
-    EXPECT_EQ(dataset->metadata.compression(),
-              DataServiceMetadata::COMPRESSION_UNSPECIFIED);
-  }
+TEST(DispatcherState, RegisterDatasetWithExplicitID) {
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDataset("dataset_id", state));
+  std::shared_ptr<const Dataset> dataset;
+  TF_EXPECT_OK(state.DatasetFromId("dataset_id", dataset));
+  EXPECT_EQ(dataset->dataset_id, "dataset_id");
+}
+
+TEST(DispatcherState, RegisterDatasetsWithDifferentIDs) {
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDataset("dataset_id1", state));
+  TF_EXPECT_OK(RegisterDataset("dataset_id2", state));
+  std::shared_ptr<const Dataset> dataset;
+  TF_EXPECT_OK(state.DatasetFromId("dataset_id1", dataset));
+  EXPECT_EQ(dataset->dataset_id, "dataset_id1");
+  TF_EXPECT_OK(state.DatasetFromId("dataset_id2", dataset));
+  EXPECT_EQ(dataset->dataset_id, "dataset_id2");
 }
 
 TEST(DispatcherState, RegisterDatasetCompression) {
   DispatcherState state;
-  const int64_t dataset_id = state.NextAvailableDatasetId();
+  const std::string dataset_id = state.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
@@ -185,11 +188,10 @@ TEST(DispatcherState, RegisterDatasetCompression) {
 
 TEST(DispatcherState, RegisterDatasetElementSpec) {
   DispatcherState state;
-  const int64_t dataset_id = state.NextAvailableDatasetId();
+  const std::string dataset_id = state.NextAvailableDatasetId();
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(dataset_id);
-  register_dataset->set_fingerprint(20);
   register_dataset->mutable_metadata()->set_element_spec(
       "encoded_element_spec");
   TF_ASSERT_OK(state.Apply(update));
@@ -203,23 +205,19 @@ TEST(DispatcherState, RegisterDatasetElementSpec) {
 TEST(DispatcherState, MissingDatasetId) {
   DispatcherState state;
   std::shared_ptr<const Dataset> dataset;
-  Status s = state.DatasetFromId(0, dataset);
-  EXPECT_EQ(s.code(), error::NOT_FOUND);
-}
-
-TEST(DispatcherState, MissingDatasetFingerprint) {
-  DispatcherState state;
-  std::shared_ptr<const Dataset> dataset;
-  Status s = state.DatasetFromFingerprint(0, dataset);
+  Status s = state.DatasetFromId("missing_dataset_id", dataset);
   EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
 TEST(DispatcherState, NextAvailableDatasetId) {
   DispatcherState state;
-  int64_t id = state.NextAvailableDatasetId();
-  uint64 fingerprint = 20;
-  TF_EXPECT_OK(RegisterDataset(id, fingerprint, state));
-  EXPECT_NE(state.NextAvailableDatasetId(), id);
+  std::string dataset_id = state.NextAvailableDatasetId();
+  int64_t dataset_id_int;
+  ASSERT_TRUE(absl::SimpleAtoi(dataset_id, &dataset_id_int));
+
+  TF_EXPECT_OK(RegisterDataset(dataset_id, state));
+  EXPECT_NE(state.NextAvailableDatasetId(), dataset_id);
+  EXPECT_EQ(state.NextAvailableDatasetId(), absl::StrCat(dataset_id_int + 1));
   EXPECT_EQ(state.NextAvailableDatasetId(), state.NextAvailableDatasetId());
 }
 
@@ -308,7 +306,7 @@ TEST(DispatcherState, UnknownUpdate) {
 
 TEST(DispatcherState, JobName) {
   DispatcherState state;
-  int64_t dataset_id = state.NextAvailableDatasetId();
+  std::string dataset_id = state.NextAvailableDatasetId();
   int64_t job_id = state.NextAvailableJobId();
   std::string job_name = "test_name";
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
@@ -322,7 +320,7 @@ TEST(DispatcherState, JobName) {
 
 TEST(DispatcherState, JobData) {
   DispatcherState state;
-  int64_t dataset_id = state.NextAvailableDatasetId();
+  std::string dataset_id = state.NextAvailableDatasetId();
   int64_t job_id = state.NextAvailableJobId();
   int64_t num_consumers = 8;
   bool use_cross_trainer_cache = true;
@@ -342,7 +340,7 @@ TEST(DispatcherState, JobData) {
 
 TEST(DispatcherState, CrossTrainerCacheTask) {
   DispatcherState state;
-  int64_t dataset_id = state.NextAvailableDatasetId();
+  std::string dataset_id = state.NextAvailableDatasetId();
   std::string worker_address = "test_worker_address";
   TF_ASSERT_OK(RegisterDataset(dataset_id, state));
 
@@ -373,8 +371,8 @@ TEST(DispatcherState, CrossTrainerCacheTask) {
 }
 
 TEST(DispatcherState, CreateTask) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
   int64_t task_id = state.NextAvailableTaskId();
@@ -403,8 +401,8 @@ TEST(DispatcherState, CreateTask) {
 }
 
 TEST(DispatcherState, CreateTasksForSameIteration) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address = "test_worker_address";
@@ -421,9 +419,9 @@ TEST(DispatcherState, CreateTasksForSameIteration) {
 }
 
 TEST(DispatcherState, CreateTasksForDifferentIterations) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id_1 = 3;
   int64_t iteration_id_2 = 4;
-  int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address = "test_worker_address";
@@ -446,8 +444,8 @@ TEST(DispatcherState, CreateTasksForDifferentIterations) {
 }
 
 TEST(DispatcherState, CreateTasksForSameWorker) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address = "test_worker_address";
@@ -464,8 +462,8 @@ TEST(DispatcherState, CreateTasksForSameWorker) {
 }
 
 TEST(DispatcherState, CreateTasksForDifferentWorkers) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t task_id_1 = 8;
   int64_t task_id_2 = 9;
   std::string worker_address_1 = "test_worker_address_1";
@@ -499,8 +497,8 @@ TEST(DispatcherState, GetTasksForWorkerEmpty) {
 }
 
 TEST(DispatcherState, FinishTask) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t task_id = 4;
   std::string worker_address = "test_worker_address";
   DispatcherState state;
@@ -517,8 +515,8 @@ TEST(DispatcherState, FinishTask) {
 }
 
 TEST(DispatcherState, FinishMultiTaskIteration) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t task_id_1 = 4;
   int64_t task_id_2 = 5;
   std::string worker_address = "test_worker_address";
@@ -544,10 +542,10 @@ TEST(DispatcherState, FinishMultiTaskIteration) {
 }
 
 TEST(DispatcherState, AcquireIterationClientId) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
   int64_t iteration_client_id_1 = 1;
   int64_t iteration_client_id_2 = 2;
-  int64_t dataset_id = 10;
   DispatcherState state;
   TF_EXPECT_OK(RegisterDataset(dataset_id, state));
   TF_EXPECT_OK(CreateIteration(iteration_id, dataset_id, state));
@@ -576,8 +574,8 @@ TEST(DispatcherState, AcquireIterationClientId) {
 }
 
 TEST(DispatcherState, ReleaseIterationClientId) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t iteration_client_id = 6;
   int64_t release_time = 100;
   DispatcherState state;
@@ -596,8 +594,8 @@ TEST(DispatcherState, ReleaseIterationClientId) {
 }
 
 TEST(DispatcherState, ListActiveClientsEmpty) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t iteration_client_id = 6;
   int64_t release_time = 100;
   DispatcherState state;
@@ -612,8 +610,8 @@ TEST(DispatcherState, ListActiveClientsEmpty) {
 }
 
 TEST(DispatcherState, ListActiveClients) {
+  std::string dataset_id = "dataset_id";
   int64_t iteration_id = 3;
-  int64_t dataset_id = 10;
   int64_t iteration_client_id_1 = 6;
   int64_t iteration_client_id_2 = 7;
   int64_t iteration_client_id_3 = 8;
@@ -630,6 +628,15 @@ TEST(DispatcherState, ListActiveClients) {
   TF_EXPECT_OK(
       AcquireIterationClientId(iteration_id, iteration_client_id_3, state));
   EXPECT_THAT(state.ListActiveClientIds(), UnorderedElementsAre(6, 8));
+}
+
+TEST(DispatcherState, ListSnapshotPaths) {
+  DispatcherState state;
+  absl::flat_hash_set<std::string> snapshot_paths = {"p1", "p2"};
+  for (const auto& snapshot_path : snapshot_paths) {
+    TF_EXPECT_OK(Snapshot(snapshot_path, state));
+  }
+  EXPECT_EQ(state.ListSnapshotPaths(), snapshot_paths);
 }
 
 }  // namespace data

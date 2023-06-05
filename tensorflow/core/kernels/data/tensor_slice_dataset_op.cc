@@ -84,10 +84,6 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64_t CardinalityInternal() const override {
-    return tensors_[0].dim_size(0);
-  }
-
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return tensors_[0].dim_size(0);
   }
@@ -150,6 +146,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
+
+    bool SymbolicCheckpointCompatible() const override { return true; }
 
     Status Initialize(IteratorContext* ctx) override {
       if (ctx->split_providers().empty() || dataset()->replicate_on_split_) {

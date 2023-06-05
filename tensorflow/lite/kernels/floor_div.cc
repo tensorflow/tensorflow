@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -74,6 +74,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (type) {
     case kTfLiteFloat32:
     case kTfLiteInt32:
+    case kTfLiteInt16:
+    case kTfLiteInt8:
       break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by floor_div.",
@@ -138,6 +140,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     GetOutputSafe(context, node, kOutputTensor, &output));
 
   switch (input1->type) {
+    case kTfLiteInt8: {
+      return EvalImpl<int8_t>(context, data->requires_broadcast, input1, input2,
+                              output);
+    }
+    case kTfLiteInt16: {
+      return EvalImpl<int16_t>(context, data->requires_broadcast, input1,
+                               input2, output);
+    }
     case kTfLiteInt32: {
       return EvalImpl<int32_t>(context, data->requires_broadcast, input1,
                                input2, output);

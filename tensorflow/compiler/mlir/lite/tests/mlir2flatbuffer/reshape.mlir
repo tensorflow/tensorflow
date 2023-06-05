@@ -17,7 +17,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK-NEXT:       name: "arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       type: INT32,
@@ -25,7 +26,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK-NEXT:       name: "Const",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 6 ],
 // CHECK-NEXT:       type: INT32,
@@ -33,7 +35,8 @@ func.func @main(tensor<3x2xi32>) -> tensor<6xi32> {
 // CHECK-NEXT:       name: "tfl.reshape",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:      },
+// CHECK-NEXT:      has_rank: true
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     inputs: [ 0 ],
 // CHECK-NEXT:     outputs: [ 2 ],

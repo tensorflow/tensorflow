@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/resource/static_hashtable.h"
 
 #include <memory>
+#include <string>
+
 #include "tensorflow/lite/experimental/resource/lookup_interfaces.h"
 
 namespace tflite {

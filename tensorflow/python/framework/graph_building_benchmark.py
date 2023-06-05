@@ -15,17 +15,17 @@
 r"""Benchmarks for low-level graph building primitives.
 
 To run CPU benchmarks:
-  bazel run -c opt graph_building_benchmarks -- --benchmarks=.
+  bazel run -c opt graph_building_benchmarks -- --benchmark_filter=.
 
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" graph_building_benchmarks -- \
-    --benchmarks=.
+    --benchmark_filter=.
 
 To run a subset of benchmarks using --benchmarks flag.
 --benchmarks: the list of benchmarks to run. The specified value is interpreted
 as a regular expression and any benchmark whose name contains a partial match
 to the regular expression is executed.
-e.g. --benchmarks=".*MatMul.*" will run all matmul related benchmarks.
+e.g. --benchmark_filter=".*MatMul.*" will run all matmul related benchmarks.
 
 """
 import time

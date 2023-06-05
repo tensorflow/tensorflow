@@ -126,7 +126,7 @@ class Conv3DTransposeTest(test.TestCase):
     x_value = np.random.random_sample(x_shape).astype(np.float64)
     f_value = np.random.random_sample(f_shape).astype(np.float64)
     nn_ops.conv3d_transpose(
-        x_value, f_value, y_shape, strides, data_format='NCDHW')
+        x_value, f_value, y_shape, strides, data_format="NCDHW")
 
   def testConv3DTransposeOutputShapeType(self):
     # Test case for GitHub issue 18887
@@ -200,6 +200,7 @@ class Conv3DTransposeTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
+    self.skipTest("b/262851489: Fix nightly build for GPU.")
     x_shape = [2, 3, 4, 3, 2]
     f_shape = [3, 3, 3, 2, 2]
     y_shape = [2, 6, 8, 6, 2]
@@ -218,6 +219,20 @@ class Conv3DTransposeTest(test.TestCase):
     err_tolerance = 0.00055
     self.assertLess(err, err_tolerance)
 
+  def testConv3DTransposeZeroShapeDoNotRaiseError(self):
+    with self.cached_session():
+      x_value = np.zeros([10, 0, 2, 3, 3])
+      f_value = np.ones((3, 3, 3, 3, 3))
+      y_shape = np.stack([10, 0, 2, 3, 3])
+      output = nn_ops.conv3d_transpose(
+          x_value,
+          f_value,
+          y_shape,
+          strides=(1, 1, 1),
+          data_format="NDHWC",
+          padding="SAME",
+      )
+      _ = self.evaluate(output)
 
 if __name__ == "__main__":
   test.main()

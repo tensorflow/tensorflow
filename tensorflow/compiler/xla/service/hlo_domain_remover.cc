@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_domain_remover.h"
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_verifier.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -30,7 +30,8 @@ class HloDomainRemover::RunContext {
   RunContext(HloModule* module, HloDomainRemover* remover)
       : module_(module), remover_(remover) {}
 
-  StatusOr<bool> Run();
+  StatusOr<bool> Run(
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // Verifies the consistency of the domain, and normalizes the instructions
@@ -57,10 +58,11 @@ Status HloDomainRemover::RunContext::VerifyAndNormalizeDomain(
   return OkStatus();
 }
 
-StatusOr<bool> HloDomainRemover::RunContext::Run() {
+StatusOr<bool> HloDomainRemover::RunContext::Run(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Processing metadata domain: '" << remover_->kind_ << "'";
   int64_t removed_domains = 0;
-  for (HloComputation* computation : module_->computations()) {
+  for (HloComputation* computation : module_->computations(execution_threads)) {
     // First create the domain instruction sets. A domain instruction set is
     // the set of instructions whose edges never cross a kDomain instruction.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDomainMap> domain_map,
@@ -118,9 +120,11 @@ StatusOr<int64_t> HloDomainRemover::RemoveExitDomains(
   return removed_domains;
 }
 
-StatusOr<bool> HloDomainRemover::Run(HloModule* module) {
+StatusOr<bool> HloDomainRemover::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  return run_context.Run();
+  return run_context.Run(execution_threads);
 }
 
 }  // namespace xla

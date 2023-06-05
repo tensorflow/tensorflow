@@ -48,6 +48,9 @@ int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type) {
       return NPY_UINT16;
     case kTfLiteInt16:
       return NPY_INT16;
+    case kTfLiteInt4:
+      // TODO(b/246806634): NPY_INT4 currently doesn't exist
+      return NPY_BYTE;
     case kTfLiteUInt8:
       return NPY_UINT8;
     case kTfLiteInt8:
@@ -164,6 +167,13 @@ bool FillStringBufferFromPyString(PyObject* value,
 
 bool FillStringBufferWithPyArray(PyObject* value,
                                  DynamicBuffer* dynamic_buffer) {
+  if (!PyArray_Check(value)) {
+    PyErr_Format(PyExc_ValueError,
+                 "Passed in value type is not a numpy array, got type %s.",
+                 value->ob_type->tp_name);
+    return false;
+  }
+
   PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
   switch (PyArray_TYPE(array)) {
     case NPY_OBJECT:

@@ -378,7 +378,7 @@ TEST(CrossTrainerCacheTest, Cancel) {
             if (!tensor.status().ok()) {
               return;
             }
-            test::ExpectEqual(*tensor.ValueOrDie(), Tensor("Test Tensor"));
+            test::ExpectEqual(*tensor.value(), Tensor("Test Tensor"));
           }
         })));
   }

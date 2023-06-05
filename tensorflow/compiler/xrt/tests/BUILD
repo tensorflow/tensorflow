@@ -6,10 +6,8 @@ load(
 )
 
 package(
-    default_visibility = [
-        "//learning/brain:__subpackages__",
-        "//tensorflow/compiler:__subpackages__",
-    ],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//learning/brain:__subpackages__"],
     licenses = ["notice"],
 )
 
@@ -46,7 +44,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
     ],
 )

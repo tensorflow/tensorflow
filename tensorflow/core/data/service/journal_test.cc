@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/journal.h"
 
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/journal.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -59,7 +62,7 @@ Update MakeFinishTaskUpdate() {
 Update MakeRegisterDatasetUpdate() {
   Update update;
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
-  register_dataset->set_dataset_id(2);
+  register_dataset->set_dataset_id("dataset_id");
   register_dataset->set_fingerprint(3);
   return update;
 }
@@ -119,7 +122,7 @@ TEST(Journal, MissingFile) {
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(result, end_of_journal);
-  EXPECT_TRUE(errors::IsNotFound(s));
+  EXPECT_TRUE(absl::IsNotFound(s));
 }
 
 TEST(Journal, NonRecordData) {
@@ -138,7 +141,7 @@ TEST(Journal, NonRecordData) {
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(result, end_of_journal);
-  EXPECT_THAT(s.error_message(), HasSubstr("corrupted record"));
+  EXPECT_THAT(s.message(), HasSubstr("corrupted record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }
 
@@ -159,7 +162,7 @@ TEST(Journal, InvalidRecordData) {
   Update result;
   bool end_of_journal = true;
   Status s = reader.Read(result, end_of_journal);
-  EXPECT_THAT(s.error_message(), HasSubstr("Failed to parse journal record"));
+  EXPECT_THAT(s.message(), HasSubstr("Failed to parse journal record"));
   EXPECT_EQ(s.code(), error::DATA_LOSS);
 }
 }  // namespace data

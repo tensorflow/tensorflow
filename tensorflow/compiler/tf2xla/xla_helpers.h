@@ -23,32 +23,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
+#include "tensorflow/compiler/xla/translate/mhlo_to_hlo/layout_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 
 namespace tensorflow {
 
-// XLA Layout preferences. Currently, when it comes to TPU, there are two
-// primary layout choices for any XLA argumetns (parameter or resource): (1)
-// CompactChunkPadded and (2) Linear. CompactChunkPadded is the native TPU
-// layout while Linear is native host (CPU) layout.
-// This enum allows the caller of XLA to progogate layout preference to the XLA
-// compiler.
-//   kNoPreference: the generic layout where the XLA compiler has the freedom
-//                  to assign any layout.
-//   kTpuPreferCompactChunkPaddedLayout: use native TPU layout on TPU.
-//   kTpuPreferLinearLayout: use native CPU layout on TPU. The compiler may
-//                           insert transformation TPU kernels.
-// As the layout of any argument will change from a native host layout to a
-// native TPU layout either on host or on device, XLA compiler and TPU runtime
-// must be in coordination to transform the parameters in a consistent way.
-enum class XlaLayoutPreference {
-  kNoPreference = 0,
-  kTpuPreferCompactChunkPaddedLayout = 1,
-  kTpuPreferLinearLayout = 2
-};
+using XlaLayoutPreference = mlir::XlaLayoutPreference;
 
 // Helper methods for building XLA computations.
 class XlaHelpers {
@@ -85,8 +68,8 @@ class XlaHelpers {
   // respectively.
   static Status OneHot(xla::XlaBuilder* builder, int64_t depth, int axis,
                        DataType index_type, const TensorShape& indices_shape,
-                       const xla::XlaOp& indices, const xla::XlaOp& on_value,
-                       const xla::XlaOp& off_value, xla::XlaOp* one_hot);
+                       xla::XlaOp indices, xla::XlaOp on_value,
+                       xla::XlaOp off_value, xla::XlaOp* one_hot);
 
   // Certain DataTypes should use increased precision DataTypes when performing
   // reductions.  This function remaps a given DataType to a higher precision
@@ -95,7 +78,7 @@ class XlaHelpers {
 
   // A helper for creating a ConvertElementType xla op given a DataType rather
   // than the xla::PrimitiveType.
-  static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
+  static xla::XlaOp ConvertElementType(xla::XlaOp operand,
                                        const DataType new_element_type);
 
   typedef std::function<StatusOr<xla::Shape>(const TensorShape&, DataType, bool,
@@ -105,8 +88,6 @@ class XlaHelpers {
 
 // Creates an identity shape representation function.
 XlaHelpers::ShapeRepresentationFn IdentityShapeRepresentationFn();
-
-
 
 struct XlaOutputDescription {
   // Type and shape of the output. The shape is the unflattened shape.
@@ -184,6 +165,18 @@ struct XlaCompilationResult {
     int group_key;
     int group_size;
     int next_id;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const CollectiveInfo& info) {
+      return H::combine(std::move(h), info.group_key, info.group_size,
+                        info.next_id);
+    }
+
+    friend bool operator==(const CollectiveInfo& lhs,
+                           const CollectiveInfo& rhs) {
+      return lhs.group_key == rhs.group_key &&
+             lhs.group_size == rhs.group_size && lhs.next_id == rhs.next_id;
+    }
   };
 
   // Information of the collectives encountered during the translation.

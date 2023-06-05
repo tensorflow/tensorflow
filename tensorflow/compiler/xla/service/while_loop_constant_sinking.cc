@@ -126,13 +126,15 @@ StatusOr<bool> WhileLoopConstantSinking::TrySinkingConstantsIntoWhileLoop(
   return changed;
 }
 
-StatusOr<bool> WhileLoopConstantSinking::Run(HloModule* module) {
+StatusOr<bool> WhileLoopConstantSinking::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(2) << "HLO module before WhileLoopConstantSinking:";
   XLA_VLOG_LINES(2, module->ToString());
 
   bool changed = false;
   std::vector<HloInstruction*> while_instrs;
-  for (auto* comp : module->MakeNonfusionComputations()) {
+  for (auto* comp : module->MakeNonfusionComputations(execution_threads)) {
     // Right now we don't particularly care about optimizing while-of-while
     // patterns.  If/When we do, we'll want to visit the outer while (while_0)
     // before we visit the inner while (while_1):
@@ -155,9 +157,7 @@ StatusOr<bool> WhileLoopConstantSinking::Run(HloModule* module) {
     // This will let us sink the constant into the outer while first and then
     // into the inner while in a single run of this pass.
     absl::c_copy_if(comp->instructions(), std::back_inserter(while_instrs),
-                    [](const HloInstruction* instr) {
-                      return instr->opcode() == HloOpcode::kWhile;
-                    });
+                    HloPredicateIsOp<HloOpcode::kWhile>);
   }
 
   for (HloInstruction* while_instr : while_instrs) {

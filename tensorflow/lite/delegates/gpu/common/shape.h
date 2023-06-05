@@ -41,7 +41,7 @@ enum class Axis {
   DEPTH = 8,
 };
 
-std::string ToString(Axis t);
+std::string ToString(Axis axis);
 
 // Layout represents axis order.
 enum class Layout {

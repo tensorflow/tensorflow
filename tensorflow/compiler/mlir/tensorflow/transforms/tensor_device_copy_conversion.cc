@@ -26,7 +26,6 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
 namespace mlir {
@@ -37,8 +36,11 @@ namespace {
 constexpr const char *kDeviceAttr = "device";
 constexpr const char *kTFDeviceAttr = "tf.device";
 
+#define GEN_PASS_DEF_TENSORDEVICECOPYCONVERSIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct TensorDeviceCopyConversionPass
-    : public TensorDeviceCopyConversionPassBase<
+    : public impl::TensorDeviceCopyConversionPassBase<
           TensorDeviceCopyConversionPass> {
   void runOnOperation() override;
 };

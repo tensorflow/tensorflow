@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/value_inference.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -131,7 +131,7 @@ class XlaExpression {
 
   // ResolveDynamism computes where a value inside this op is dynamic or can be
   // inferred at compile time.
-  StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+  StatusOr<Tensor> ResolveDynamism() const;
 
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),

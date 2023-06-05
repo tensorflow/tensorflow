@@ -121,7 +121,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   auto ry = xla::Parameter(&r, 1, xla::ShapeUtil::MakeShape(type, {}), "y");
   // Call virtual method to build the reduction lambda.
   BuildReducer(&r, rx, ry);
-  xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
+  xla::XlaComputation reduction_computation = r.Build().value();
 
   auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
   auto finalized = BuildFinalizer(b, data, reduce, xla_axes);

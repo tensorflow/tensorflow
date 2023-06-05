@@ -185,16 +185,6 @@ void ComputeTask::Init(std::unique_ptr<GPUOperation>&& operation) {
   operation_ = std::move(operation);
 }
 
-const OperationDef& ComputeTask::GetDefinition() const {
-  return operation_->GetDefinition();
-}
-
-bool ComputeTask::IsLinkable() const { return operation_->IsLinkable(); }
-
-absl::Status ComputeTask::AddTask(ComputeTask* task) {
-  return operation_->AddOperation(task->operation_.get());
-}
-
 absl::Status ComputeTask::Compile(MetalDevice* device) {
   RETURN_IF_ERROR(metal_args_.Init(use_arguments_buffer_, device,
                                    &operation_->args_, &operation_->code_));
@@ -206,7 +196,7 @@ absl::Status ComputeTask::Compile(MetalDevice* device) {
   ReplaceAllWords("half16", "half4x4", &operation_->code_);
   ReplaceAllWords("float8", "float2x4", &operation_->code_);
   ReplaceAllWords("half8", "half2x4", &operation_->code_);
-  defines_ = GetMetalDefines(device, operation_->GetDefinition().precision);
+  defines_ = GetMetalDefines(device, operation_->GetPrecision());
   return CompileProgram(device, operation_->code_, defines_);
 }
 

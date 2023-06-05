@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_STACKTRACE_HANDLER_H_
 #define TENSORFLOW_CORE_PLATFORM_STACKTRACE_HANDLER_H_
 
+#include "tensorflow/tsl/platform/stacktrace_handler.h"
+
 namespace tensorflow {
 namespace testing {
 
@@ -23,7 +25,7 @@ namespace testing {
 // Although GoogleTest has support for generating stacktraces with abseil via
 // https://github.com/google/googletest/pull/1653, this doesn't cover our use
 // case of getting C++ stacktraces in our python tests.
-void InstallStacktraceHandler();
+using tsl::testing::InstallStacktraceHandler;
 
 }  // namespace testing
 }  // namespace tensorflow

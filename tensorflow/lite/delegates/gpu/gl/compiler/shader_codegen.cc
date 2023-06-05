@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/shader_codegen.h"
 
 #include <algorithm>
+#include <string>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -25,17 +27,35 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/variable_accessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
+#ifdef __ANDROID__
+#include <sys/system_properties.h>
+#endif  // __ANDROID__
+
 namespace tflite {
 namespace gpu {
 namespace gl {
 
 ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
                              const GpuInfo& gpu_info)
-    : options_(options), gpu_type_(gpu_info.vendor) {}
+    : options_(options),
+      gpu_type_(gpu_info.vendor),
+      inline_parameters_(options.inline_parameters) {
+#ifdef __ANDROID__
+  if (gpu_info.IsAdreno() &&
+      gpu_info.adreno_info.adreno_gpu == AdrenoGpu::kAdreno730) {
+    char sdk_version[PROP_VALUE_MAX];
+    __system_property_get("ro.build.version.sdk", sdk_version);
+    if (!strcmp(sdk_version, "31")) inline_parameters_ = false;
+  } else if (gpu_info.IsPowerVR() &&
+             !gpu_info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx)) {
+    inline_parameters_ = false;
+  }
+#endif  // __ANDROID__
+}
 
 absl::Status ShaderCodegen::Build(CompiledNodeAttributes attr,
                                   ShaderCode* shader_code) const {
-  VariableAccessor variable_accessor(options_.inline_parameters,
+  VariableAccessor variable_accessor(inline_parameters_,
                                      options_.vulkan_support);
   ObjectAccessor object_accessor(gpu_type_ == GpuVendor::kMali,
                                  options_.sampler_textures, &variable_accessor);
@@ -153,7 +173,7 @@ absl::Status ShaderCodegen::Build(CompiledNodeAttributes attr,
     RETURN_IF_ERROR(preprocessor.Rewrite(main_source_code, &main_source_code));
   }
 
-  if (options_.inline_parameters) {
+  if (inline_parameters_) {
     main_source_code = absl::StrCat(variable_accessor.GetConstDeclarations(),
                                     main_source_code);
   }

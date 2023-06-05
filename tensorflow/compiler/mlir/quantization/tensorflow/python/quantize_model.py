@@ -13,28 +13,29 @@
 # limitations under the License.
 # ==============================================================================
 """Defines TF Quantization API from SavedModel to SavedModel."""
-
+import collections.abc
 import tempfile
-from typing import Dict, Iterable, List, Mapping, Optional, Set, Tuple
+from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
-import warnings
 
+from absl import logging
 import numpy as np
 
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
-
-from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model as quantize_model_wrapper
-from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
 from tensorflow.compiler.mlir.quantization.tensorflow import quantization_options_pb2 as quant_opts_pb2
+from tensorflow.compiler.mlir.quantization.tensorflow.python import pywrap_quantize_model
+from tensorflow.compiler.mlir.quantization.tensorflow.python import representative_dataset as repr_dataset
+from tensorflow.compiler.mlir.quantization.tensorflow.python import save_model
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
-from tensorflow.python.framework import importer
+from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import loader_impl as saved_model_loader
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
@@ -42,17 +43,20 @@ from tensorflow.python.saved_model.load import load as saved_model_load
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.types import core
 
-# The signature key of the saved model init op.
-_INIT_OP_SIGNATURE_KEY = '__saved_model_init_op'
-
 # Type aliases for quant_opts_pb2 messages.
 _Method = quant_opts_pb2.QuantizationMethod.Method
 _ExperimentalMethod = quant_opts_pb2.QuantizationMethod.ExperimentalMethod
 
+# Mapping of signature def key -> SignatureDef.
+_SignatureDefMap = Mapping[str, meta_graph_pb2.SignatureDef]
 
-def _legalize_tensor_name(tensor_name: str) -> str:
-  """Converts tensor name from 'name:index' to 'name__index' format."""
-  return tensor_name.replace(':', '__')
+# Default minimum number of elements in the weights for them to be quantized
+# during dynamic range quantization (DRQ) and weight-only quantization.
+_DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
+
+# Name of the saved model assets directory.
+_ASSETS_DIR = 'assets'
+_ASSETS_EXTRA_DIR = 'assets.extra'
 
 
 def _is_qat_saved_model(saved_model_path: str):
@@ -60,7 +64,8 @@ def _is_qat_saved_model(saved_model_path: str):
   saved_model_proto = saved_model_loader.parse_saved_model(saved_model_path)
   for meta_graph in saved_model_proto.meta_graphs:
     if any(
-        node.op.startswith('FakeQuant') for node in meta_graph.graph_def.node):
+        node.op.startswith('FakeQuant') for node in meta_graph.graph_def.node
+    ):
       return True
     for function in meta_graph.graph_def.library.function:
       if any(node.op.startswith('FakeQuant') for node in function.node_def):
@@ -68,179 +73,286 @@ def _is_qat_saved_model(saved_model_path: str):
   return False
 
 
-def _get_signatures_from_saved_model(saved_model_path: str,
-                                     signature_keys=None,
-                                     tags=None):
-  """Gets a map from signature keys to their SignatureDef from a saved model."""
-  if tags is None:
-    tags = set([tag_constants.SERVING])
-
-  loader = saved_model_loader.SavedModelLoader(saved_model_path)
-  try:
-    meta_graphdef = loader.get_meta_graph_def_from_tags(tags)
-  except RuntimeError as runtime_error:
-    raise RuntimeError(
-        f'Failed to retrieve MetaGraphDef with tags {tags}'
-        f' from a SavedModel in {saved_model_path}.') from runtime_error
-
-  signatures = {}
-  for key, signature_def in meta_graphdef.signature_def.items():
-    if key == _INIT_OP_SIGNATURE_KEY:
-      continue
-    if signature_keys is not None and key not in signature_keys:
-      continue
-    signatures[key] = signature_def
-
-  return signatures
-
-
-def _fix_tensor_names(signatures, exported_graph):
-  """Tries fixing tensor names in the signatures to match the exported graph.
-
-  The output tensor names in the original graph usually become names of the
-  return nodes in the exported graph. This function tries to fix that and checks
-  if the input tensor names are found in the exported graph.
+def _create_sample_validator(
+    expected_input_keys: Collection[str],
+) -> Callable[
+    [repr_dataset.RepresentativeSample], repr_dataset.RepresentativeSample
+]:
+  """Creates a validator function for a representative sample.
 
   Args:
-    signatures: the signatures of the original graph.
-    exported_graph: The PTQ-exported GraphDef.
+    expected_input_keys: Input keys (keyword argument names) that the function
+      the sample will be used for is expecting to receive.
 
   Returns:
-    Fixed signatures or None if it couldn't be fixed.
+    A callable that validates a `RepresentativeSample`.
   """
-  if signatures is None:
-    return None
 
-  # The InsertMainFunctionPass populates input and output nodes of the newly
-  # inserted main function with "tf_saved_model.index_path" attributes. These
-  # attributes can be used to identify outputs in the exported graph.
-  output_index_path_map = {}
-  for op in exported_graph.get_operations():
-    if (op.type == '_Retval' and
-        op.get_attr('tf_saved_model.index_path') is not None):
-      index_path_name = op.get_attr('tf_saved_model.index_path')[0]
-      index_path_name = index_path_name.decode('utf-8')
-      output_index_path_map[index_path_name] = op.inputs[0].name
+  def validator(
+      sample: repr_dataset.RepresentativeSample,
+  ) -> repr_dataset.RepresentativeSample:
+    """Validates a single instance of representative sample.
 
-  for signature_def in signatures.values():
-    for tensor_info in signature_def.inputs.values():
-      try:
-        exported_graph.get_tensor_by_name(tensor_info.name)
-      except KeyError:
-        # If input tensors are not found, the signatures can't be used for the
-        # exported graph.
-        warnings.warn('Cannot find the tensor with name %s in the graph.' %
-                      tensor_info.name)
-        return None
+    This provides a simple check for `sample` that this is a mapping of
+    {input_key: input_value}.
 
-    for tensor_info in signature_def.outputs.values():
-      try:
-        if tensor_info.name in output_index_path_map:
-          tensor_info.name = output_index_path_map[tensor_info.name]
-        else:
-          # Tries to find the return node with the given name and use its input
-          # as the output tensor name.
-          return_node = exported_graph.get_operation_by_name(
-              _legalize_tensor_name(tensor_info.name))
-          tensor_info.name = return_node.inputs[0].name
-      except KeyError:
-        warnings.warn(
-            'Cannot find the tensor or node with name %s in the graph.' %
-            tensor_info.name)
-        return None
+    Args:
+      sample: A `RepresentativeSample` to validate.
 
-  return signatures
+    Returns:
+      `sample` iff it is valid.
+
+    Raises:
+      ValueError: iff the sample isn't an instance of `Mapping`.
+      KeyError: iff the sample does not have the set of input keys that match
+        the input keys of the function.
+    """
+    if not isinstance(sample, collections.abc.Mapping):
+      raise ValueError(
+          'Invalid representative sample type. Provide a mapping '
+          '(usually a dict) of {input_key: input_value}. '
+          f'Got type: {type(sample)} instead.'
+      )
+
+    if set(sample.keys()) != expected_input_keys:
+      raise KeyError(
+          'Invalid input keys for representative sample. The function expects '
+          f'input keys of: {set(expected_input_keys)}. '
+          f'Got: {set(sample.keys())}. Please provide correct input keys for '
+          'representative samples.'
+      )
+
+    return sample
+
+  return validator
 
 
-def _get_signature_key_and_input(
-    representative_sample: repr_dataset.RepresentativeSample,
-    signature_keys: List[str],
-) -> Tuple[str, Mapping[str, core.Tensor]]:
-  """Gets the signature key and input data from `representative_sample`.
+def _validate_representative_dataset(
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    signature_keys: Collection[str],
+) -> None:
+  """Validates the representative dataset, based on the signature keys.
 
-  The `representative_sample` can be in two formats:
+  Representative dataset can be provided in two different forms: a single
+  instance of `RepresentativeDataset` or a map of signature key to the
+  corresponding `RepresentativeDataset`. These have a relationship with
+  `signature_keys`.
 
-  1. A tuple of: (signature_key, {input_name -> input_tensor})
-  2. A dict: {input_name -> input_tensor}.
-
-  (2) assumes the signature_key to be the default signature key (first item in
-  `signature_keys`).
+  This function validates the following conditions:
+  * If `len(signature_keys) > 1`, then `representative_dataset` should be a
+    mapping where the keys exactly match the elements in `signature_keys`.
+  * If `len(signature_keys) == 1`, then both a mapping and a single instance of
+    `RepresentativeDataset` are allowed.
+  * This function also assumes `len(signature_keys) > 0`.
 
   Args:
-    representative_sample: A single sample from the representative dataset, used
-      for calibration.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with. When the `representative_sample` is provided as a
-      `dict`, it should have a single item.
-
-  Returns:
-    signature_key: Signature key that indicates the function to be used for the
-      returned input data.
-    input data: A input_name -> input_tensor mapping (dict).
+    representative_dataset: A `RepresentativeDataset` or a map of string to
+      `RepresentativeDataset` to be validated.
+    signature_keys: A collection of strings that contains the signature keys,
+      each identifying a `SignatureDef`.
 
   Raises:
-    ValueError: When the format of `representative_sample` is invalid, or when
-    the length of `signature_keys` not 1 when `representative_sample` is `dict`.
+    ValueError: Iff `representative_dataset` does not satisfy the conditions
+      above.
   """
-  if isinstance(representative_sample, tuple):
-    if (not isinstance(representative_sample[1], dict) or
-        len(representative_sample) != 2):
-      raise ValueError('You need to provide a dictionary with input '
-                       'names and values in the second argument in the '
-                       'tuple')
-    return representative_sample
-  elif isinstance(representative_sample, dict):
-    if len(signature_keys) > 1:
-      raise ValueError('When the model has multiple signatures, you need '
-                       'to provide a tuple with signature key and a '
-                       'dictionary with input names and values')
-    return signature_keys[0], representative_sample
+  if isinstance(representative_dataset, collections.abc.Mapping):
+    if set(signature_keys) != set(representative_dataset.keys()):
+      raise ValueError(
+          'The signature keys and the keys of representative dataset map '
+          f'do not match. Signature keys: {set(signature_keys)}, '
+          f'representative dataset map: {set(representative_dataset.keys())}.'
+      )
   else:
-    raise ValueError('You need to provide either a dictionary with input '
-                     'names and values or a tuple with signature key and a '
-                     'dictionary with input names and values')
+    if len(signature_keys) > 1:
+      raise ValueError(
+          'Representative dataset is not a mapping '
+          f'(got: {type(representative_dataset)}), '
+          'but there is more than one signature key provided. '
+          'Please provide a map of {signature_key -> dataset} '
+          'with more than one signature key.'
+      )
+
+
+def _convert_values_to_tf_tensors(
+    sample: repr_dataset.RepresentativeSample,
+) -> Mapping[str, core.Tensor]:
+  """Converts TensorLike values of `sample` to Tensors.
+
+  Creates a copy of `sample`, where each value is converted to Tensors
+  unless it is already a Tensor.
+  The values are not converted in-place (i.e. `sample` is not mutated).
+
+  Args:
+    sample: A representative sample, which is a map of {name -> tensorlike
+      value}.
+
+  Returns:
+    Converted map of {name -> tensor}.
+  """
+  tensor_mapping = {}
+  for name, tensorlike_value in sample.items():
+    if isinstance(tensorlike_value, core.Tensor):
+      tensor_value = tensorlike_value
+    else:
+      tensor_value = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          tensorlike_value
+      )
+
+    tensor_mapping[name] = tensor_value
+
+  return tensor_mapping
 
 
 def _create_feed_dict_from_input_data(
-    input_data: Mapping[str, core.Tensor],
-    signature_def: meta_graph_pb2.SignatureDef) -> Dict[str, np.ndarray]:
+    input_data: repr_dataset.RepresentativeSample,
+    signature_def: meta_graph_pb2.SignatureDef,
+) -> Dict[str, np.ndarray]:
   """Constructs a feed_dict from input data.
 
   Note: This function should only be used in graph mode.
 
-  This is a helper function that converts an 'input key -> input tensor' mapping
-  to a feed dict. A feed dict is an 'input tensor name -> input data' mapping
+  This is a helper function that converts an 'input key -> input value' mapping
+  to a feed dict. A feed dict is an 'input tensor name -> input value' mapping
   and can be directly passed to the `feed_dict` argument of `sess.run()`.
 
   Args:
-    input_data: Input key -> input tensor mapping. The input keys should match
+    input_data: Input key -> input value mapping. The input keys should match
       the input keys of `signature_def`.
     signature_def: A SignatureDef representing the function that `input_data` is
       an input to.
 
-  Raises:
-    KeyError: When the input key provided from `input_data` does not exist as
-      one of `signature_def`'s input keys.
-
   Returns:
     Feed dict, which is intended to be used as input for `sess.run`. It is
-    essentially a mapping: input tensor name -> tensor data.
+    essentially a mapping: input tensor name -> input value. Note that the input
+    value in the feed dict is not a `Tensor`.
   """
   feed_dict = {}
-  for input_key, input_tensor in input_data.items():
-    if input_key not in signature_def.inputs:
-      raise KeyError(f"Invalid input key '{input_key}'. Available input keys"
-                     f' are: {list(signature_def.inputs.keys())}.')
-
+  for input_key, input_value in input_data.items():
     input_tensor_name = signature_def.inputs[input_key].name
-    feed_dict[input_tensor_name] = input_tensor.eval()
+
+    value = input_value
+    if isinstance(input_value, core.Tensor):
+      # Take the data out of the tensor.
+      value = input_value.eval()
+
+    feed_dict[input_tensor_name] = value
 
   return feed_dict
 
 
+# TODO(b/249918070): Implement a progress bar.
+def _log_sample_num_for_calibration(
+    representative_dataset: repr_dataset.RepresentativeDataset,
+) -> repr_dataset.RepresentativeDataset:
+  """Logs the sample number for calibration.
+
+  If in debug logging level, the "sample number / total num samples" is logged
+  for every 5 iterations.
+
+  This is often useful when tracking the progress of the calibration step which
+  is often slow and may look stale if there's no logs being printed.
+
+  Args:
+    representative_dataset: The representative dataset.
+
+  Yields:
+    The representative samples from `representative_dataset` without any
+    modification.
+  """
+  num_samples: Optional[int] = repr_dataset.get_num_samples(
+      representative_dataset
+  )
+  if num_samples is None:
+    total_num_samples = '?'
+    logging.info('Representative dataset size unknown.')
+  else:
+    total_num_samples = str(num_samples)
+    logging.info('Using representative dataset of size: %s', total_num_samples)
+
+  sample_num = 0
+  for sample in representative_dataset:
+    sample_num += 1
+
+    # Log the sample number for every 5 iterations.
+    logging.log_every_n(
+        logging.DEBUG,
+        'Running representative sample for calibration: %d / %s',
+        5,
+        sample_num,
+        total_num_samples,
+    )
+    yield sample
+
+  logging.info(
+      'Running representative samples complete: %d / %s',
+      sample_num,
+      total_num_samples,
+  )
+
+
+def _run_function_for_calibration_graph_mode(
+    sess: session.Session,
+    signature_def: meta_graph_pb2.SignatureDef,
+    representative_dataset: repr_dataset.RepresentativeDataset,
+) -> None:
+  """Runs the representative dataset through a function for calibration.
+
+  NOTE: This is intended to be run in graph mode (TF1).
+
+  The function is identified by the SignatureDef.
+
+  Args:
+    sess: The Session object to run the function in.
+    signature_def: A SignatureDef that identifies a function by specifying the
+      inputs and outputs.
+    representative_dataset: The representative dataset to run through the
+      function.
+  """
+  output_tensor_names = [
+      output_tensor_info.name
+      for output_tensor_info in signature_def.outputs.values()
+  ]
+
+  sample_validator = _create_sample_validator(
+      expected_input_keys=signature_def.inputs.keys()
+  )
+
+  for sample in map(
+      sample_validator, _log_sample_num_for_calibration(representative_dataset)
+  ):
+    # Create a mapping from input tensor name to the input tensor value.
+    # ex) "Placeholder:0" -> [0, 1, 2]
+    feed_dict = _create_feed_dict_from_input_data(sample, signature_def)
+    sess.run(output_tensor_names, feed_dict=feed_dict)
+
+
+def _replace_tensors_by_numpy_ndarrays(
+    repr_ds_map: repr_dataset.RepresentativeDatasetMapping,
+) -> None:
+  """Replaces tf.Tensors by their evaluated numpy arrays.
+
+  This assumes that tf.Tensors in representative samples are created in the
+  default Graph. It will raise an error if tensors are created in a different
+  graph.
+
+  Args:
+    repr_ds_map: SignatureDef key -> RepresentativeDataset mapping.
+  """
+  with session.Session() as sess:
+    for signature_def_key in repr_ds_map:
+      # Replaces the dataset with a new dataset where tf.Tensors are replaced
+      # by their evaluated values.
+      ds = repr_ds_map[signature_def_key]
+      repr_ds_map[signature_def_key] = (
+          repr_dataset.replace_tensors_by_numpy_ndarrays(ds, sess)
+      )
+
+
 def _run_graph_for_calibration_graph_mode(
-    model_dir: str, signature_keys: List[str], tags: Set[str],
-    representative_dataset: repr_dataset.RepresentativeDataset) -> None:
+    model_dir: str,
+    tags: Collection[str],
+    representative_dataset_map: repr_dataset.RepresentativeDatasetMapping,
+) -> None:
   """Runs the graph for calibration in graph mode.
 
   This function assumes _graph mode_ (used when legacy TF1 is used or when eager
@@ -250,42 +362,75 @@ def _run_graph_for_calibration_graph_mode(
 
   Args:
     model_dir: Path to SavedModel directory.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel.
-    representative_dataset: Representative dataset used for calibration.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel.
+    representative_dataset_map: A map where signature keys are mapped to
+      corresponding representative datasets.
 
   Raises:
-    ValueError: When the samples in representative dataset is invalid.
+    ValueError: When running the function with the representative dataset fails.
   """
-  with session.Session() as sess:
+  # Replace tf.Tensors by numpy ndarrays in order to reuse the samples in a
+  # different graph when running the calibration.
+  _replace_tensors_by_numpy_ndarrays(representative_dataset_map)
+
+  # Run the calibration in a new graph to avoid name collision, which could
+  # happen when the same model is loaded multiple times in the default graph.
+  with ops.Graph().as_default(), session.Session() as sess:
     meta_graph: meta_graph_pb2.MetaGraphDef = saved_model_loader.load(
-        sess, tags, export_dir=model_dir)
+        sess, tags, export_dir=model_dir
+    )
 
-    for sample in representative_dataset:
-      signature_key, input_data = _get_signature_key_and_input(
-          sample, signature_keys)
-
+    for signature_key, repr_ds in representative_dataset_map.items():
       sig_def = meta_graph.signature_def[signature_key]
-      output_tensor_names = [
-          output_tensor_info.name
-          for output_tensor_info in sig_def.outputs.values()
-      ]
 
-      # Create a mapping from input tensor name to the input tensor value.
-      # ex) "Placeholder:0" -> [0, 1, 2]
       try:
-        feed_dict = _create_feed_dict_from_input_data(input_data, sig_def)
-      except KeyError as key_error:
-        raise ValueError(f'Invalid input data for signature: {signature_key}.'
-                        ) from key_error
+        _run_function_for_calibration_graph_mode(
+            sess, signature_def=sig_def, representative_dataset=repr_ds
+        )
+      except Exception as ex:
+        raise ValueError(
+            'Failed to run representative dataset through the '
+            f'function with the signature key: {signature_key}.'
+        ) from ex
 
-      sess.run(output_tensor_names, feed_dict=feed_dict)
+
+def _run_function_for_calibration_eager_mode(
+    func: wrap_function.WrappedFunction,
+    representative_dataset: repr_dataset.RepresentativeDataset,
+) -> None:
+  """Runs the representative dataset through a function for calibration.
+
+  NOTE: This is intended to be run in eager mode (TF2).
+
+  Args:
+    func: The function to run the representative samples through.
+    representative_dataset: Representative dataset used for calibration. The
+      input keys and input values of the representative samples should match the
+      keyword arguments of `func`.
+  """
+  _, keyword_args = func.structured_input_signature
+  sample_validator = _create_sample_validator(
+      expected_input_keys=keyword_args.keys()
+  )
+
+  for sample in map(
+      sample_validator, _log_sample_num_for_calibration(representative_dataset)
+  ):
+    # Convert any non-Tensor values from the sample to Tensors.
+    # This conversion is required because the model saved in `model_dir` is
+    # saved using TF1 SavedModelBuilder, which doesn't save the
+    # SavedObjectGraph.
+    # TODO(b/236795224): Remove the need for this conversion by keeping the
+    # FunctionSpec (object graph) in the SavedModel. Related: b/213406917.
+    func_kwargs = _convert_values_to_tf_tensors(sample)
+    func(**func_kwargs)
 
 
 def _run_graph_for_calibration_eager_mode(
-    model_dir: str, signature_keys: List[str], tags: Set[str],
-    representative_dataset: repr_dataset.RepresentativeDataset) -> None:
+    model_dir: str,
+    tags: Collection[str],
+    representative_dataset_map: repr_dataset.RepresentativeDatasetMapping,
+) -> None:
   """Runs the graph for calibration in eager mode.
 
   This function assumes _eager mode_ (enabled in TF2 by default) when running
@@ -295,51 +440,386 @@ def _run_graph_for_calibration_eager_mode(
 
   Args:
     model_dir: Path to SavedModel directory.
-    signature_keys: A list of signature keys that identifies a function to run
-      the data samples with.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel.
-    representative_dataset: Representative dataset used for calibration.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel.
+    representative_dataset_map: A map where signature keys are mapped to
+      corresponding representative datasets.
 
   Raises:
-    ValueError: When the samples in representative dataset is invalid.
+    ValueError: When running the function with the representative dataset fails.
   """
   root: autotrackable.AutoTrackable = saved_model_load(model_dir, tags)
-  for sample in representative_dataset:
-    signature_key, input_data = _get_signature_key_and_input(
-        sample, signature_keys)
-
-    func = root.signatures[signature_key]
+  for signature_key, repr_ds in representative_dataset_map.items():
     try:
-      func(**input_data)
+      _run_function_for_calibration_eager_mode(
+          func=root.signatures[signature_key], representative_dataset=repr_ds
+      )
     except Exception as ex:
       raise ValueError(
-          f'Failed to run the function with signature key: {signature_key}'
+          'Failed to run representative dataset through the '
+          f'function with the signature key: {signature_key}.'
       ) from ex
+
+
+def _run_graph_for_calibration(
+    float_model_dir: str,
+    signature_keys: Sequence[str],
+    tags: Collection[str],
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    force_graph_mode_calibration: bool,
+) -> None:
+  """Runs the graph for calibration using representative datasets.
+
+  Args:
+    float_model_dir: Path to the model to calibrate.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
+      to analyze.
+    representative_dataset: An iterator that returns a dictionary of {input_key:
+      input_value} or a mapping from signature keys to such iterators. When
+      `signature_keys` contains more than one signature key,
+      `representative_datsaet` should be a mapping that maps each signature keys
+      to the corresponding representative dataset.
+    force_graph_mode_calibration: If set to true, it forces calibration in graph
+      model instead of eager mode when the context is in eager mode.
+
+  Raises:
+    ValueError iff:
+      * The representative dataset format is invalid.
+      * It fails to run the functions using the representative datasets.
+  """
+  try:
+    _validate_representative_dataset(representative_dataset, signature_keys)
+  except Exception as ex:
+    raise ValueError('Invalid representative dataset.') from ex
+
+  # If `representative_dataset` is not a mapping, convert to a mapping for the
+  # following functions to handle representative datasets more conveniently.
+  representative_dataset_map = representative_dataset
+  if not isinstance(representative_dataset, collections.abc.Mapping):
+    # `signature_keys` is guaranteed to have only one element after the
+    # validation.
+    representative_dataset_map = {signature_keys[0]: representative_dataset}
+
+  try:
+    if context.executing_eagerly() and not force_graph_mode_calibration:
+      logging.info('Calibration step is executed in eager mode.')
+      _run_graph_for_calibration_eager_mode(
+          float_model_dir, tags, representative_dataset_map
+      )
+    else:
+      logging.info('Calibration step is executed in graph mode.')
+      _run_graph_for_calibration_graph_mode(
+          float_model_dir, tags, representative_dataset_map
+      )
+  except Exception as ex:
+    raise ValueError(
+        'Failed to run graph for post-training quantization calibration.'
+    ) from ex
+
+  logging.info('Calibration step complete.')
+
+
+def _copy_assets(src_path: str, dst_path: str) -> None:
+  """Copies the assets directory of the saved model.
+
+  Clones the contents of the assets/ directory from the source saved model
+  directory to the destination saved model directory. Nothing will be copied if
+  there are no assets directory in the source directory.
+
+  Args:
+    src_path: Source saved model directory.
+    dst_path: Destination saved model directory. This directory must exist.
+  """
+  for assets_dir_name in [_ASSETS_DIR, _ASSETS_EXTRA_DIR]:
+    src_assets_path = file_io.join(src_path, assets_dir_name)
+    if not file_io.file_exists_v2(src_assets_path):
+      # Do nothing if the source assets path does not exist.
+      continue
+
+    dst_assets_path = file_io.join(dst_path, assets_dir_name)
+    file_io.create_dir_v2(dst_assets_path)
+
+    for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+      for asset_file_name in files:
+        src_asset_file = file_io.join(curr_dir, asset_file_name)
+
+        # Construct the destination assets file path.
+        curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+        dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+
+        file_io.copy_v2(src_asset_file, dst_asset_file)
+        logging.info(
+            'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+        )
+
+
+def _run_static_range_qat(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    signature_def_keys: Sequence[str],
+    tags: Collection[str],
+    quant_opts: quant_opts_pb2.QuantizationOptions,
+    signature_def_map: _SignatureDefMap,
+) -> None:
+  """Runs static-range quantization for a Quantization-Aware Trained model.
+
+  Runs the quantization for a model trained using QAT.
+
+  Args:
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
+    signature_def_keys: Keys of the signatures of the functions that are the
+      target for quantization.
+    tags: Tags identifying the MetaGraphDef.
+    quant_opts: Quantization options.
+    signature_def_map: Signature def key -> SignatureDef mapping.
+  """
+  logging.info('Running static-range quantization for QAT model.')
+
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
+  exported_model_serialized = pywrap_quantize_model.quantize_qat_model(
+      src_saved_model_path,
+      list(signature_def_keys),
+      set(tags),
+      quant_opts.SerializeToString(),
+      dict(function_aliases),
+  )
+
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+
+  _copy_assets(src_saved_model_path, dst_saved_model_path)
+
+
+def _add_calibration_statistics(graph_def: graph_pb2.GraphDef) -> None:
+  """Adds calibration statistics to the graph def.
+
+  This function must be run after running the graph with a representative
+  dataset. Retrieves calibration statistics from the global calibrator and adds
+  them to the corresponding nodes as attributes.
+
+  Args:
+    graph_def: GraphDef to add calibration statistics to.
+  """
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op != 'CustomAggregator':
+        continue
+
+      node_id = node_def.attr['id'].s
+      try:
+        min_val = pywrap_quantize_model.get_min_from_calibrator(node_id)
+        max_val = pywrap_quantize_model.get_max_from_calibrator(node_id)
+        pywrap_quantize_model.clear_data_from_calibrator(node_id)
+        node_def.attr['min'].f = float(min_val)
+        node_def.attr['max'].f = float(max_val)
+      except ValueError:
+        logging.warn(
+            (
+                'CustomAggregator id "%s" from FunctionDef "%s" does not have '
+                'min or max values. Parts of this function are not quantized.'
+            ),
+            node_id.decode('utf-8'),
+            function_def.signature.name,
+        )
+
+
+def _get_saver_def_or_none(
+    exported_model: exported_model_pb2.ExportedModel,
+) -> Optional[saver_pb2.SaverDef]:
+  """Returns the SaverDef from ExportedModel, None otherwise.
+
+  Args:
+    exported_model: ExportedModel to take the SaverDef from.
+
+  Returns:
+    SaverDef instance if the field `saver_def` is set. None otherwise.
+  """
+  if exported_model.HasField('saver_def'):
+    return exported_model.saver_def
+  return None
+
+
+def _run_static_range_ptq(
+    src_saved_model_path: str,
+    dst_saved_model_path: str,
+    signature_def_keys: Sequence[str],
+    tags: Collection[str],
+    quant_opts: quant_opts_pb2.QuantizationOptions,
+    representative_dataset: repr_dataset.RepresentativeDatasetOrMapping,
+    signature_def_map: _SignatureDefMap,
+) -> None:
+  """Runs static-range Post-Training Quantization.
+
+  Runs static-range PTQ for the model. Runs the calibration step with
+  `representative_dataset` to collect statistics required for quantization. This
+  produces the quantized GraphDef along with the SignatureDefs which might have
+  been modified according to the changes in the graph.
+
+  Args:
+    src_saved_model_path: Path to the source SavedModel directory.
+    dst_saved_model_path: Path to the destination SavedModel directory.
+    signature_def_keys: Keys of the signature defs of the functions that are the
+      target for quantization.
+    tags: Tags to identify the MetaGraphDef to be used for quantization.
+    quant_opts: Quantization options.
+    representative_dataset: Representative dataset used for the calibration
+      step. Representative datasets should exist for each signature def key in
+      `signature_def_keys`.
+    signature_def_map: Signature def key -> SignatureDef mapping.
+
+  Raises:
+    ValueError if the graph doesn't contain a valid signature.
+  """
+  logging.info('Running post-training quantization pre-calibration step.')
+
+  loader = saved_model_loader.SavedModelLoader(src_saved_model_path)
+  function_aliases = loader.get_meta_graph_def_from_tags(
+      tags
+  ).meta_info_def.function_aliases
+
+  exported_model_serialized = (
+      pywrap_quantize_model.quantize_ptq_model_pre_calibration(
+          src_saved_model_path,
+          list(signature_def_keys),
+          set(tags),
+          quant_opts.SerializeToString(),
+          dict(function_aliases),
+      )
+  )
+
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+
+  graph_def = exported_model.graph_def
+  for function_def in graph_def.library.function:
+    for node_def in function_def.node_def:
+      if node_def.op == 'CustomAggregator':
+        node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
+
+  pre_calib_output_model_path = tempfile.mkdtemp()
+  save_model.save_model_v1(
+      graph_def,
+      pre_calib_output_model_path,
+      signature_def_map,
+      tags,
+      exported_model.init_node_name,
+      _get_saver_def_or_none(exported_model),
+      exported_model.checkpoint_dir,
+      exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+
+  _copy_assets(src_saved_model_path, pre_calib_output_model_path)
+
+  # Uses the representative dataset to collect statistics for calibration.
+  # Handles the graph mode execution separately in case TF2 is disabled or
+  # eager execution is disabled. The min & max values are stored separately
+  # in a global CalibratorSingleton instance.
+  _run_graph_for_calibration(
+      pre_calib_output_model_path,
+      signature_def_keys,
+      tags,
+      representative_dataset,
+      quant_opts.force_graph_mode_calibration,
+  )
+  _add_calibration_statistics(graph_def)
+
+  calibrated_model_path = tempfile.mkdtemp()
+  save_model.save_model_v1(
+      graph_def,
+      calibrated_model_path,
+      signature_def_map,
+      tags,
+      exported_model.init_node_name,
+      _get_saver_def_or_none(exported_model),
+      exported_model.checkpoint_dir,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+
+  _copy_assets(pre_calib_output_model_path, calibrated_model_path)
+
+  logging.info('Running post-training quantization post-calibration step.')
+  exported_model_serialized = (
+      pywrap_quantize_model.quantize_ptq_model_post_calibration(
+          calibrated_model_path,
+          list(signature_def_keys),
+          set(tags),
+          quant_opts.SerializeToString(),
+          dict(exported_model.function_aliases),
+      )
+  )
+
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      dst_saved_model_path,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+
+  _copy_assets(calibrated_model_path, dst_saved_model_path)
 
 
 def _static_range_quantize(
     saved_model_path: str,
-    signature_keys: List[str],
-    tags: Set[str],
+    signature_keys: Sequence[str],
+    tags: Collection[str],
     output_directory: str,
-    representative_dataset: Optional[repr_dataset.RepresentativeDataset] = None
-) ->...:
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+    representative_dataset: Optional[
+        repr_dataset.RepresentativeDatasetOrMapping
+    ] = None,
+) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via static range quantization.
+
+  If the model is not trained with Quantization-Aware Training (QAT) technique,
+  it requires `representative_dataset` to collect statistics required for
+  quantization. If non-None `representative_dataset` is provided with a QAT
+  model input, `representative_dataset` will be ignored.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
-    signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze.
-    output_directory: The path to save the output SavedModel (must be an empty
-      directory).
-    representative_dataset: a generator that returns a dictionary in
-      {input_name: input_tensor} format or a tuple with signature key and a
-      dictionary in {input_name: input_tensor} format that feeds calibration
-      data for quantizing model. This should be provided when the model is not a
-      QAT model.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
+      to analyze.
+    output_directory: The path to save the output SavedModel. The directory will
+      be overwritten if not empty.
+    quantization_options: QuantizationOptions proto describing quantization
+      related config.
+    representative_dataset: a generator that returns a dictionary in {input_key:
+      input_value} format or a tuple with signature key and a dictionary in
+      {input_key: input_value} format that feeds calibration data for quantizing
+      model. This should be provided when the model is not a QAT model.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -349,145 +829,75 @@ def _static_range_quantize(
     RuntimeError: When a MetaGraphDef could not be found associated with `tags`
       in the SavedModel.
   """
+  logging.info(
+      'Running static range quantization on model: %s', saved_model_path
+  )
+  logging.info('Using SignatureDef keys: %s', signature_keys)
+  logging.info('Using tags: %s', tags)
+  logging.info('QuantizationOptions: \n%s', quantization_options)
+
   is_qat_saved_model = _is_qat_saved_model(saved_model_path)
-  signatures = _get_signatures_from_saved_model(saved_model_path,
-                                                signature_keys, tags)
+  signature_def_map = save_model.get_signatures_from_saved_model(
+      saved_model_path, signature_keys, tags
+  )
 
   # Checks if the model is from QAT
   if representative_dataset is None and not is_qat_saved_model:
     raise ValueError(
         'When `representative_dataset` is not provided, the model should be '
-        'trained with quantization-aware training (QAT).')
+        'trained with quantization-aware training (QAT).'
+    )
+  if quantization_options.min_num_elements_for_weights > 0:
+    logging.warn(
+        'min_num_elements_for_weights is set but is not supported for the '
+        'Post-training static range quantization. '
+        'The flag is ignored.'
+    )
 
   if is_qat_saved_model:
-    # Handle QAT models are supported.
-    graph_def_serialized = (
-        quantize_model_wrapper.quantize_qat_model(saved_model_path,
-                                                  ','.join(signature_keys),
-                                                  ','.join(tags)))
+    _run_static_range_qat(
+        saved_model_path,
+        output_directory,
+        signature_keys,
+        tags,
+        quantization_options,
+        signature_def_map,
+    )
   else:
-    # Handle PTQ models are supported with mocking calibration.
-    graph_def_serialized = (
-        quantize_model_wrapper.quantize_ptq_model_pre_calibration(
-            saved_model_path, ','.join(signature_keys), ','.join(tags)))
-
-    graph_def = graph_pb2.GraphDef()
-    graph_def.ParseFromString(graph_def_serialized)
-
-    float_model_dir = tempfile.mkdtemp()
-    v1_builder = builder.SavedModelBuilder(float_model_dir)
-
-    with session.Session(graph=ops.Graph()) as sess:
-      for function_def in graph_def.library.function:
-        for node_def in function_def.node_def:
-          if node_def.op == 'CustomAggregator':
-            node_def.attr['id'].s = uuid.uuid4().hex.encode('ascii')
-
-      importer.import_graph_def(graph_def, name='')
-      working_graph = ops.get_default_graph()
-      graph_def = working_graph.as_graph_def()
-
-      signatures = _fix_tensor_names(signatures, working_graph)
-      if signatures is None:
-        raise ValueError(
-            "The input SavedModel doesn't contain a valid signature")
-
-      v1_builder.add_meta_graph_and_variables(
-          sess, tags, signature_def_map=signatures)
-
-    v1_builder.save()
-
-    # Uses the representative dataset to collect statistics for calibration.
-    # Handles the graph mode execution separately in case TF2 is disabled or
-    # eager execution is disabled. The min & max values are stored separately
-    # in a global CalibratorSingleton instance.
-    try:
-      if context.executing_eagerly():
-        _run_graph_for_calibration_eager_mode(float_model_dir, signature_keys,
-                                              tags, representative_dataset)
-      else:
-        _run_graph_for_calibration_graph_mode(float_model_dir, signature_keys,
-                                              tags, representative_dataset)
-    except Exception as ex:
-      raise ValueError(
-          'Failed to run graph for post-training quantization calibration.'
-      ) from ex
-
-    for function_def in graph_def.library.function:
-      for node_def in function_def.node_def:
-        if node_def.op == 'CustomAggregator':
-          node_id = node_def.attr['id'].s
-          try:
-            min_val = quantize_model_wrapper.get_min_from_calibrator(node_id)
-            max_val = quantize_model_wrapper.get_max_from_calibrator(node_id)
-            quantize_model_wrapper.clear_data_from_calibrator(node_id)
-            node_def.attr['min'].f = float(min_val)
-            node_def.attr['max'].f = float(max_val)
-          except ValueError:
-            warnings.warn(
-                f'CustomAggregator id "{node_id.decode("utf-8")}" from '
-                f'FunctionDef "{function_def.signature.name}" does not have '
-                'min or max values. This function may not be quantized.')
-
-    calibrated_model_dir = tempfile.mkdtemp()
-    v1_builder = builder.SavedModelBuilder(calibrated_model_dir)
-
-    with session.Session(graph=ops.Graph()) as sess:
-      importer.import_graph_def(graph_def, name='')
-      working_graph = ops.get_default_graph()
-      graph_def = working_graph.as_graph_def()
-
-      v1_builder.add_meta_graph_and_variables(
-          sess, tags, signature_def_map=signatures)
-
-    v1_builder.save()
-    signatures = _get_signatures_from_saved_model(calibrated_model_dir,
-                                                  signature_keys, tags)
-
-    graph_def_serialized = (
-        quantize_model_wrapper.quantize_ptq_model_post_calibration(
-            calibrated_model_dir,
-            ','.join(signature_keys),
-            ','.join(tags),
-        ))
-
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
-
-  if output_directory is None:
-    output_directory = tempfile.mkdtemp()
-  v1_builder = builder.SavedModelBuilder(output_directory)
-
-  with session.Session(graph=ops.Graph()) as sess:
-    importer.import_graph_def(graph_def, name='')
-    working_graph = ops.get_default_graph()
-
-    signatures = _fix_tensor_names(signatures, working_graph)
-    if signatures is None:
-      raise ValueError("The input SavedModel doesn't contain a valid signature")
-
-    v1_builder.add_meta_graph_and_variables(
-        sess, tags, signature_def_map=signatures)
-
-  v1_builder.save()
+    _run_static_range_ptq(
+        saved_model_path,
+        output_directory,
+        signature_keys,
+        tags,
+        quantization_options,
+        representative_dataset,
+        signature_def_map,
+    )
 
   return saved_model_load(output_directory)
 
 
-def _dynamic_range_quantize(saved_model_path: str,
-                            signature_keys: List[str],
-                            tags: Set[str],
-                            output_directory: str = ''):
+def _dynamic_range_quantize(
+    saved_model_path: str,
+    signature_keys: Sequence[str],
+    tags: Collection[str],
+    output_directory: str,
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel via post-training dynamic range quantization.
+
+  Weight-only quantization also uses this path.
 
   Args:
     saved_model_path: Path to the saved model.
-    signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs.
-    tags: Set of tags identifying the MetaGraphDef within the SavedModel to
-      analyze.
-    output_directory: The path to save the output SavedModel (must be an empty
-      directory).
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs.
+    tags: Collection of tags identifying the MetaGraphDef within the SavedModel
+      to analyze.
+    output_directory: The path to save the output SavedModel. The directory will
+      be overwritten if not empty.
+    quantization_options: QuantizationOptions proto describing quantization
+      related config.
 
   Returns:
     A SavedModel object with TF quantization applied.
@@ -495,69 +905,192 @@ def _dynamic_range_quantize(saved_model_path: str,
   Raises:
     ValueError: when the model is QAT model.
   """
-  is_qat_saved_model = _is_qat_saved_model(saved_model_path)
-  signatures = _get_signatures_from_saved_model(saved_model_path,
-                                                signature_keys, tags)
-
-  # Checks if the model is from QAT.
-  if is_qat_saved_model:
+  if (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
+  ):
+    mode_str = 'weight-only quantization'
+  else:
+    mode_str = 'dynamic-range quantization'
+  if _is_qat_saved_model(saved_model_path):
     raise ValueError(
         'The models trained with quantization-aware training (QAT) is not '
-        'supported.')
+        'supported for %s.' % mode_str
+    )
+
+  logging.info(
+      'Running post-training %s on model: %s', mode_str, saved_model_path
+  )
+  logging.info('Using SignatureDef keys: %s', signature_keys)
+  logging.info('Using tags: %s', tags)
+  logging.info('QuantizationOptions: \n%s', quantization_options)
+
+  # Check default quantization option values for post-training dynamic range
+  # quantization case.
+  # TODO(b/242805842): Find good minimum_elements_for_weights number for server.
+  # please also update default value in tflite converter:
+  # tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.cc;l=201
+  if quantization_options.min_num_elements_for_weights == 0:
+    quantization_options.min_num_elements_for_weights = (
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS
+    )
+    logging.warn(
+        (
+            'QuantizationOptions.min_num_elements_for_weights is not set (0). '
+            'Setting to the default value: %s.'
+        ),
+        _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS,
+    )
 
   # Apply post-training dynamic range quantization to the model.
-  graph_def_serialized = (
-      quantize_model_wrapper.quantize_ptq_dynamic_range(
-          saved_model_path, ','.join(signature_keys), ','.join(tags)))
+  exported_model_serialized = pywrap_quantize_model.quantize_ptq_dynamic_range(
+      saved_model_path,
+      list(signature_keys),
+      set(tags),
+      quantization_options.SerializeToString(),
+  )
 
-  graph_def = graph_pb2.GraphDef()
-  graph_def.ParseFromString(graph_def_serialized)
+  exported_model = exported_model_pb2.ExportedModel.FromString(
+      exported_model_serialized
+  )
+  signature_def_map = save_model.get_signatures_from_saved_model(
+      saved_model_path, signature_keys, tags
+  )
 
-  if not output_directory:
-    output_directory = tempfile.mkdtemp()
-  v1_builder = builder.SavedModelBuilder(output_directory)
-
-  with session.Session(graph=ops.Graph()) as sess:
-    importer.import_graph_def(graph_def, name='')
-    working_graph = ops.get_default_graph()
-
-    signatures = _fix_tensor_names(signatures, working_graph)
-    if signatures is None:
-      raise ValueError("The input SavedModel doesn't contain a valid signature")
-
-    v1_builder.add_meta_graph_and_variables(
-        sess, [tag_constants.SERVING], signature_def_map=signatures)
-
-  v1_builder.save()
+  save_model.save_model_v1(
+      exported_model.graph_def,
+      output_directory,
+      signature_def_map,
+      tags,
+      init_op_name=exported_model.init_node_name,
+      saver_def=_get_saver_def_or_none(exported_model),
+      checkpoint_dir=exported_model.checkpoint_dir,
+      function_aliases=exported_model.function_aliases,
+      asset_file_defs=exported_model.asset_file_defs,
+  )
+  _copy_assets(saved_model_path, output_directory)
 
   return saved_model_load(output_directory)
 
 
+def _verify_output_dir(output_dir: Optional[str], overwrite: bool) -> None:
+  """Verifies the output directory.
+
+  Raises an error if `output_dir` is not suitable for writing the output saved
+  model.
+
+  Args:
+    output_dir: Output directory.
+    overwrite: An option allowing to overwrite the existing output directory if
+      set to true. Does not actually create or modify the `output_dir` in this
+      function.
+
+  Raises:
+    FileExistsError: Iff `output_dir` is not empty and `overwrite` is false.
+  """
+  dir_not_empty = (
+      output_dir is not None
+      and file_io.file_exists_v2(output_dir)
+      and file_io.list_directory_v2(output_dir)
+  )
+
+  if dir_not_empty and not overwrite:
+    raise FileExistsError(
+        f'Output directory already exists: {output_dir} . '
+        'Please set overwrite_output_directory to true to '
+        'overwrite the existing directory.'
+    )
+
+
+def _populate_quantization_options_default_values(
+    quantization_options: quant_opts_pb2.QuantizationOptions,
+) -> None:
+  """Populates default values for QuantizationOptions.
+
+  Populates unspecified or unset fields of QuantizationOptions with the default
+  values.
+
+  * If `op_set` is unspecified, it defaults to `OpSet.TF`.
+  * If `freeze_all_variables` is not set, it defaults to `True`.
+  * Check if configurations are set correctly:
+    - Per-channel quantization is supported for Uniform Quantized opset only.
+
+  Args:
+    quantization_options: An instance of QuantizationOptions.
+  """
+  if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
+    quantization_options.op_set = quant_opts_pb2.OpSet.XLA
+
+  if not quantization_options.HasField('freeze_all_variables'):
+    quantization_options.freeze_all_variables.enabled = True
+
+  # TODO(b/281595329): Implement static range quantization per-channel support
+  if quantization_options.enable_per_channel_quantization and not (
+      quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+      or quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
+  ):
+    raise ValueError(
+        'Currently, per-channel quantization is supported for Uniform '
+        'Quantized opset and Weight-only.'
+    )
+
+  if (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.WEIGHT_ONLY
+      and (
+          quantization_options.op_set == quant_opts_pb2.OpSet.UNIFORM_QUANTIZED
+          or quantization_options.op_set == quant_opts_pb2.OpSet.TF
+      )
+  ):
+    raise ValueError('TF/Uniform quantized opset does not support weight-only.')
+
+  # Converter assumes options are specified. So set SRQ explicitly.
+  if (
+      quantization_options.quantization_method.experimental_method
+      == _ExperimentalMethod.EXPERIMENTAL_METHOD_UNSPECIFIED
+  ):
+    logging.debug(
+        '"experimental_method" for QuantizationMethod is not specified.'
+        'Static range quantization is used by default.'
+    )
+    quantization_options.quantization_method.experimental_method = (
+        _ExperimentalMethod.STATIC_RANGE
+    )
+
+
 def quantize(
     saved_model_path: str,
-    signature_keys: Optional[List[str]] = None,
-    tags: Optional[Iterable[str]] = None,
+    signature_keys: Optional[Sequence[str]] = None,
+    tags: Optional[Collection[str]] = None,
     output_directory: Optional[str] = None,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
-    representative_dataset: Optional[repr_dataset.RepresentativeDataset] = None,
-) ->...:
+    representative_dataset: Optional[
+        repr_dataset.RepresentativeDatasetOrMapping
+    ] = None,
+    *,
+    overwrite_output_directory: bool = False,
+) -> autotrackable.AutoTrackable:
   """Quantizes the given SavedModel.
 
   Args:
     saved_model_path: Path to the saved model. When representative_dataset is
       not provided, this should be a model trained with QAT.
-    signature_keys: List of keys identifying SignatureDef containing inputs and
-      outputs. If None, ["serving_default"] is used.
-    tags: (TF1 SavedModel only) Set of tags identifying the MetaGraphDef within
-      the SavedModel to analyze. If None, {"serve"} is used.
-    output_directory: The path to save the output SavedModel (must be an empty
-      directory).
-    quantization_options: A set of options for quantization.
-    representative_dataset: a generator that returns a dictionary in
-      {input_name: input_tensor} format or a tuple with signature key and a
-      dictionary in {input_name: input_tensor} format that feeds calibration
-      data for quantizing model. This should be provided when the model is a PTQ
-      model.
+    signature_keys: Sequence of keys identifying SignatureDef containing inputs
+      and outputs. If None, ["serving_default"] is used.
+    tags: (TF1 SavedModel only) Collection of tags identifying the MetaGraphDef
+      within the SavedModel to analyze. If None, {"serve"} is used.
+    output_directory: The path to save the output SavedModel. Set
+      `overwrite_output_directory` to `True` to overwrite any existing contents
+      in the directory if not empty.
+    quantization_options: A set of options for quantization. If None, it uses
+      post-training static range quantization with TF opset by default.
+    representative_dataset: an iterator that returns a dictionary of {input_key:
+      input_value} or a tuple with signature key and a dictionary of {input_key:
+      input_value} that feeds calibration data for quantizing model. This should
+      be provided when the model is a PTQ model.
+    overwrite_output_directory: If set to true, overwrites the output directory
+      iff it isn't empty. The default value is false.
 
   Returns:
     A SavedModel object with TF quantization applied, or None if no quantization
@@ -570,31 +1103,53 @@ def quantize(
     NotImplementedError: When the specified quantization method is not yet
       implemented.
   """
-  if tags is None:
-    tags = {tag_constants.SERVING}
-  if signature_keys is None:
-    signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+  _verify_output_dir(output_directory, overwrite_output_directory)
+
+  # Set default values for None arguments.
+  if output_directory is None:
+    output_directory = tempfile.mkdtemp()
 
   if quantization_options is None:
     quantization_options = quant_opts_pb2.QuantizationOptions()
 
-  method: quant_opts_pb2.QuantizationMethod = quantization_options.quantization_method
+  _populate_quantization_options_default_values(quantization_options)
+
+  if tags is None:
+    tags = {tag_constants.SERVING}
+
+  if signature_keys is None:
+    signature_keys = [signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY]
+
+  method: quant_opts_pb2.QuantizationMethod = (
+      quantization_options.quantization_method
+  )
   if method.HasField('method'):
     raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')
   elif method.HasField('experimental_method'):
     if method.experimental_method == _ExperimentalMethod.STATIC_RANGE:
-      return _static_range_quantize(saved_model_path, signature_keys, tags,
-                                    output_directory, representative_dataset)
-    elif method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE:
-      return _dynamic_range_quantize(saved_model_path, signature_keys, tags,
-                                     output_directory)
+      return _static_range_quantize(
+          saved_model_path,
+          signature_keys,
+          tags,
+          output_directory,
+          quantization_options,
+          representative_dataset,
+      )
+    elif (
+        method.experimental_method == _ExperimentalMethod.DYNAMIC_RANGE
+        or method.experimental_method == _ExperimentalMethod.WEIGHT_ONLY
+    ):
+      return _dynamic_range_quantize(
+          saved_model_path,
+          signature_keys,
+          tags,
+          output_directory,
+          quantization_options,
+      )
     else:
       raise NotImplementedError(
           'Experimental quantization method {method.experimental_method}'
-          ' is not implemented.')
+          ' is not implemented.'
+      )
   else:
-    logging.debug(
-        'Neither "method" nor "experimental_method" for QuantizationMethod '
-        'is specified. Static range quantization is used by default.')
-    return _static_range_quantize(saved_model_path, signature_keys, tags,
-                                  output_directory, representative_dataset)
+    raise ValueError(f'Invalid value for QuantizationMethod: {method.method}.')

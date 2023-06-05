@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_port.h"
 
 #include <cstring>
+#include <string>
 
 #include "absl/status/status.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -73,9 +74,8 @@ namespace file {
 // Conversion to our wrapper Status.
 tensorflow::Status ToStatus(const absl::Status& uts) {
   if (!uts.ok()) {
-    return tensorflow::Status(
-        tensorflow::errors::Code(::util::RetrieveErrorCode(uts)),
-        uts.error_message());
+    return tensorflow::Status(absl::StatusCode(::util::RetrieveErrorCode(uts)),
+                              uts.message());
   }
   return ::tensorflow::OkStatus();
 }
@@ -182,7 +182,7 @@ tensorflow::Status Writable(const string& filename) {
   FILE* f = fopen(filename.c_str(), "w");
   if (f) {
     fclose(f);
-    return tensorflow::Status::OK();
+    return tensorflow::OkStatus();
   }
   return tensorflow::errors::NotFound("not writable");
 }
@@ -192,7 +192,7 @@ tensorflow::Status Readable(const string& filename,
   FILE* f = fopen(filename.c_str(), "r");
   if (f) {
     fclose(f);
-    return tensorflow::Status::OK();
+    return tensorflow::OkStatus();
   }
   return tensorflow::errors::NotFound("not readable");
 }
@@ -204,7 +204,7 @@ tensorflow::Status Exists(const string& filename,
   if (ret == -1) {
     return tensorflow::errors::NotFound("file doesn't exist");
   }
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
 }
 
 tensorflow::Status GetContents(const string& path, string* output,
@@ -224,7 +224,7 @@ tensorflow::Status GetContents(const string& path, string* output,
     if (size == 0) {
       // Done.
       close(fd);
-      return tensorflow::Status::OK();
+      return tensorflow::OkStatus();
     } else if (size == -1) {
       // Error.
       close(fd);
@@ -257,7 +257,7 @@ tensorflow::Status SetContents(const string& filename, const string& contents,
   }
   close(fd);
 
-  return tensorflow::Status::OK();
+  return tensorflow::OkStatus();
 }
 
 string JoinPath(const string& base, const string& filename) {

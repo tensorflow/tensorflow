@@ -17,15 +17,19 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 
-RecentRequestIds::RecentRequestIds(int num_tracked_request_ids)
-    : circular_buffer_(num_tracked_request_ids) {
-  set_.reserve(num_tracked_request_ids);
+RecentRequestIds::RecentRequestIds(int num_tracked_request_ids, int num_shards)
+    : index_buckets_(num_shards > 0 ? num_shards : 1) {
+  DCHECK(num_tracked_request_ids >= num_shards);
+  const int per_bucket_size = num_tracked_request_ids / index_buckets_.size();
+  for (auto& bucket : index_buckets_) {
+    mutex_lock l(bucket.mu);
+    bucket.circular_buffer.resize(per_bucket_size);
+    bucket.set.reserve(per_bucket_size);
+  }
 }
 
 bool RecentRequestIds::Insert(int64_t request_id) {
@@ -34,8 +38,11 @@ bool RecentRequestIds::Insert(int64_t request_id) {
     return true;
   }
 
-  mutex_lock l(mu_);
-  const bool inserted = set_.insert(request_id).second;
+  const int bucket_index = request_id % index_buckets_.size();
+  auto& bucket = index_buckets_[bucket_index];
+
+  mutex_lock l(bucket.mu);
+  const bool inserted = bucket.set.insert(request_id).second;
   if (!inserted) {
     // Note: RecentRequestIds is not strict LRU because we don't update
     // request_id's age in the circular_buffer_ if it's tracked again. Strict
@@ -47,9 +54,9 @@ bool RecentRequestIds::Insert(int64_t request_id) {
   // Remove the oldest request_id from the set_. circular_buffer_ is
   // zero-initialized, and zero is never tracked, so it's safe to do this even
   // when the buffer is not yet full.
-  set_.erase(circular_buffer_[next_index_]);
-  circular_buffer_[next_index_] = request_id;
-  next_index_ = (next_index_ + 1) % circular_buffer_.size();
+  bucket.set.erase(bucket.circular_buffer[bucket.next_index]);
+  bucket.circular_buffer[bucket.next_index] = request_id;
+  bucket.next_index = (bucket.next_index + 1) % bucket.circular_buffer.size();
   return true;
 }
 

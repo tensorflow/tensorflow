@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 #define TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"
@@ -45,7 +48,6 @@ class RootDataset : public DatasetBase {
   const DataTypeVector& output_dtypes() const override;
   const std::vector<PartialTensorShape>& output_shapes() const override;
 
-  int64_t CardinalityInternal() const override;
   int64_t CardinalityInternal(CardinalityOptions options) const override;
   Status Get(OpKernelContext* ctx, int64 index,
              std::vector<Tensor>* out_tensors) const override;

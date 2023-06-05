@@ -13,11 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
-#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
+#define TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_
 
+#include <array>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 #include "tensorflow/compiler/mlir/tfrt/utils/host_context.h"
 
@@ -27,6 +31,11 @@ namespace tensorflow {
 // used only to build benchmarks for different functions in this folder, so
 // it is ok to put convenience using-declarations here.
 
+std::string GetMatmulIR(std::array<int64_t, 2> lhs_shape,
+                        std::array<int64_t, 2> rhs_shape,
+                        std::array<int64_t, 2> out_shape,
+                        llvm::StringRef element_type);
+
 using ::tfrt::AsyncValue;
 using ::tfrt::AsyncValuePtr;
 using ::tfrt::HostContext;
@@ -34,19 +43,19 @@ using ::tfrt::RCReference;
 using ::tfrt::RemainingResults;
 using ::tfrt::RequestContext;
 using ::tfrt::RequestContextBuilder;
-using ::tfrt::jitrt::Executable;
 using ::tfrt::jitrt::HostContextAsyncTaskRunner;
-using ::tfrt::jitrt::JitExecutable;
-using ::tfrt::jitrt::MemrefDesc;
-using ::tfrt::jitrt::ReturnValueConverter;
+using ::tfrt::jitrt::RemainingResultsConverter;
+using ::xla::runtime::Executable;
+using ::xla::runtime::JitExecutable;
+using ::xla::runtime::MemrefDesc;
 
 // -------------------------------------------------------------------------- //
 // Run benchmark by compiling MLIR function using TFRT JitRt API.
 // -------------------------------------------------------------------------- //
 
-template <typename T>
+template <typename T, bool dynamic>
 void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
-                            llvm::StringRef mlir_input,
+                            std::string output_name, llvm::StringRef type_name,
                             llvm::StringRef function_name) {
   // MatMul: [m, k] x [k, n]
   ssize_t m = state.range(0);
@@ -56,6 +65,13 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   std::unique_ptr<HostContext> host = CreateSingleThreadedHostContext();
 
   TfJitRtPipelineOptions tf_jitrt_opts;
+  tf_jitrt_opts.vectorize = true;
+  tf_jitrt_opts.lower_to_mmt4d = state.range(3);
+
+  auto mlir_input =
+      dynamic ? GetMatmulIR({kDynSize, kDynSize}, {kDynSize, kDynSize},
+                            {kDynSize, kDynSize}, type_name)
+              : GetMatmulIR({m, k}, {k, n}, {m, n}, type_name);
   JitExecutable& jit_executable =
       CreateJitExecutable(*host, mlir_input, function_name,
                           /*lower_from_tensorflow=*/true, tf_jitrt_opts);
@@ -86,7 +102,7 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
 
   // Free memory owned by the returned memrefs.
   ResultConversionCtx result_ctx(std::move(input_ptrs));
-  ReturnValueConverter<ResultConversionCtx> converter(results, result_ctx);
+  RemainingResultsConverter<ResultConversionCtx> converter(results, result_ctx);
   converter.AddConversion(FreeReturnedMemref);
 
   // Execute async tasks in the HostContext work queue.
@@ -95,26 +111,42 @@ void RunMatMulMlirBenchmark(::testing::benchmark::State& state,
   opts.async_task_runner = &async_task_runner;
 
   // Get an executable that might be specialized to the operands.
-  llvm::Expected<AsyncValuePtr<Executable>> executable =
+  absl::StatusOr<AsyncValuePtr<Executable>> executable =
       jit_executable.GetExecutable(operands);
-  if (auto err = executable.takeError())
-    LOG(FATAL) << "Failed to specialize executable";
+  if (!executable.ok()) LOG(FATAL) << "Failed to specialize executable";
+
+#if defined(DEBUG_XLA_RUNTIME_COMPILER)
+  std::string dump_path = "/tmp/";
+  std::unique_ptr<llvm::MemoryBuffer> obj = (*executable)->obj_file();
+  CHECK(obj) << "Failed to get executable obj file";
+  std::string object_filename = output_name;
+  if (tf_jitrt_opts.lower_to_mmt4d) object_filename += "_packed";
+  object_filename += ".o";
+  std::error_code ec;
+  llvm::raw_fd_ostream dump_stream(dump_path + object_filename, ec);
+  CHECK(!ec) << "Failed to dump object file: " << ec.message();
+  dump_stream.write(obj->getBufferStart(), obj->getBufferSize());
+#else
+  (void)output_name;
+#endif
 
   // Wait for the compilation completion.
   host->Await({executable->CopyRef()});
 
   CHECK(!executable->IsError())
-      << "Failed to get executable: " << StrCat(executable->GetError());
+      << "Failed to get executable: " << executable->GetError().message();
   CHECK(!(*executable)->IsAsync()) << "async results are not supported";
 
   // Initialize call frame with MemrefDesc operands.
   Executable::CallFrame call_frame;
-  if (auto err = (*executable)->InitializeCallFrame(operands, &call_frame))
+  if (auto st = (*executable)->InitializeCallFrame(operands, &call_frame);
+      !st.ok())
     LOG(FATAL) << "Failed to initialize call frame";
 
   for (auto _ : state) {
     (*executable)->Execute(call_frame, opts);
-    if (auto err = (*executable)->ReturnResults(converter, &call_frame))
+    if (auto st = (*executable)->ReturnResults(converter, &call_frame);
+        !st.ok())
       LOG(FATAL) << "Failed to return compiled kernel results";
   }
 
@@ -142,6 +174,8 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
   using Device = Eigen::DefaultDevice;
   Device d;
 
+  CHECK(d.numThreads() == 1) << "Executing Eigen in multi-threaded";
+
   Eigen::Tensor<T, 2, Eigen::RowMajor> dst(m, n);
   dst.setZero();
 
@@ -165,16 +199,16 @@ void RunMatMulEigenBenchmark(::testing::benchmark::State& state) {
 // Macros to dispatch to different MatMul shapes.
 // -------------------------------------------------------------------------- //
 
-#define BM_TFMlir(NAME, MLIR_INPUT, FN, TYPE)                               \
-  static void BM_mlir_##NAME##_##TYPE(::testing::benchmark::State& state) { \
-    RunMatMulMlirBenchmark<TYPE>(state, MLIR_INPUT, FN);                    \
-  }                                                                         \
-  BENCHMARK(BM_mlir_##NAME##_##TYPE)
+#define BM_TFMlir(NAME, DYNAMIC, FN, TYPE)                          \
+  static void NAME(::testing::benchmark::State& state) {            \
+    RunMatMulMlirBenchmark<TYPE, DYNAMIC>(state, #NAME, #TYPE, FN); \
+  }                                                                 \
+  BENCHMARK(NAME)
 
-#define BM_Eigen(NAME, TYPE)                                                 \
-  static void BM_eigen_##NAME##_##TYPE(::testing::benchmark::State& state) { \
-    RunMatMulEigenBenchmark<TYPE>(state);                                    \
-  }                                                                          \
-  BENCHMARK(BM_eigen_##NAME##_##TYPE)
+#define BM_Eigen(NAME, TYPE)                             \
+  static void NAME(::testing::benchmark::State& state) { \
+    RunMatMulEigenBenchmark<TYPE>(state);                \
+  }                                                      \
+  BENCHMARK(NAME)
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_BENCHMARK_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TFRT_BENCHMARKS_MATMUL_OP_BENCHMARK_H_

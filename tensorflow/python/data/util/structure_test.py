@@ -102,11 +102,15 @@ def _test_is_compatible_with_structure_combinations():
   cases = [
       ("Tensor", lambda: constant_op.constant(37.0), lambda: [
           constant_op.constant(38.0),
-          array_ops.placeholder(dtypes.float32),
-          variables.Variable(100.0), 42.0,
+          array_ops.placeholder(dtypes.float32), 42.0,
           np.array(42.0, dtype=np.float32)
       ], lambda: [constant_op.constant([1.0, 2.0]),
                   constant_op.constant(37)]),
+      # TODO(b/209081027): add Python constant and TF constant to the
+      # incompatible branch after ResourceVariable becoming a CompositeTensor.
+      ("Variable", lambda: variables.Variable(100.0),
+       lambda: [variables.Variable(99.0)],
+       lambda: [1]),
       ("TensorArray", lambda: tensor_array_ops.TensorArray(
           dtype=dtypes.float32, element_shape=(3,), size=0), lambda: [
               tensor_array_ops.TensorArray(

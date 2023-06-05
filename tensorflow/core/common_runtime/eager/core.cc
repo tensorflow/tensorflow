@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <utility>
+#include <variant>
+
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/abstract_function.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -52,12 +55,9 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
-    // AbstractTensorInterface
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(*t, status);
-    AbstractTensorInterface* retval = tf_tensor->tensor;
+
+    AbstractTensorInterface* retval = TensorInterfaceFromTensor(*t, status);
     h_cpu->Unref();
-    delete tf_tensor;
     return retval;
   } else if (Type() == LOCAL) {
     tensorflow::Tensor tensor;
@@ -90,15 +90,12 @@ AbstractTensorInterface* TensorHandle::Resolve(Status* status) {
         tensor = *src;
       }
     }
-    // TODO(b/153052876): Change TF_TensorFromTensor to just return an
-    // AbstractTensorInterface
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
-    AbstractTensorInterface* retval = tf_tensor->tensor;
-    delete tf_tensor;
+
+    AbstractTensorInterface* retval = TensorInterfaceFromTensor(tensor, status);
     return retval;
   } else {
     *status = errors::InvalidArgument(
-        "Resolve() is not supoorted on packed TensorHandles.");
+        "Resolve() is not supported on packed TensorHandles.");
     return nullptr;
   }
 }
@@ -149,25 +146,11 @@ ImmediateExecutionTensorHandle* EagerContext::CreateLocalHandleFromTFTensor(
                                          /*op_device=*/nullptr, this);
 }
 
-ImmediateExecutionTensorHandle* EagerContext::TFTensorHandleFromInterface(
-    ImmediateExecutionTensorHandle* handle) {
-  return handle;
-}
-
 // TODO(b/152902651): We have to keep this function here since EagerOperation
 // depends on EagerContext. Thus, the context build target can't depend on
 // EagerOperation.
 ImmediateExecutionOperation* EagerContext::CreateOperation() {
   return new EagerOperation(this);
-}
-
-Status EagerContext::RegisterFunction(AbstractFunction* f) {
-  FunctionDef* fdef;
-  TF_RETURN_IF_ERROR(f->GetFunctionDef(&fdef));
-  if (!fdef) {
-    return errors::InvalidArgument("GetFunctionDef returned nullptr.");
-  }
-  return AddFunctionDef(*fdef);
 }
 
 // TODO(b/152902651): Once we move many execute.cc functions into
@@ -181,7 +164,7 @@ Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
   }
 
   // Run eager placement logic.
-  class Device* device = absl::get<class Device*>(Device());
+  class Device* device = std::get<class Device*>(Device());
   if (device == nullptr) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }

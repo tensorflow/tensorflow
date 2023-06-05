@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/prelu.h"
 
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -28,14 +30,13 @@ namespace gpu {
 namespace gl {
 namespace {
 
-TEST(PReluTest, LinearAlphaNoClip) {
+TEST(PReluTest, LinearAlpha) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 1);
 
   PReLUAttributes attr;
-  attr.clip = 0;
   Tensor<Linear, DataType::FLOAT32> alpha;
   alpha.shape.v = 1;
   alpha.id = 1;
@@ -54,33 +55,7 @@ TEST(PReluTest, LinearAlphaNoClip) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 2}));
 }
 
-TEST(PReluTest, LinearAlphaWithClip) {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 2, 2, 1);
-
-  PReLUAttributes attr;
-  attr.clip = 1.0;
-  Tensor<Linear, DataType::FLOAT32> alpha;
-  alpha.shape.v = 1;
-  alpha.id = 1;
-  alpha.data = {2};
-  attr.alpha = std::move(alpha);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 2;
-  output.shape = BHWC(1, 2, 2, 1);
-
-  SingleOpModel model({ToString(OperationType::PRELU), attr}, {input},
-                      {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {-1.0, -2.0, 1.0, 2.0}));
-  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
-  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, -4, 1, 1}));
-}
-
-TEST(PReluTest, 2DAlphaNoClip) {
+TEST(PReluTest, 2DAlpha) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -88,7 +63,6 @@ TEST(PReluTest, 2DAlphaNoClip) {
 
   OperationType op_type = OperationType::PRELU;
   PReLUAttributes attr;
-  attr.clip = 0;
   Tensor<HWC, DataType::FLOAT32> alpha;
   alpha.shape = HWC(2, 2, 1);
   alpha.id = 1;
@@ -106,32 +80,6 @@ TEST(PReluTest, 2DAlphaNoClip) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 2, -6}));
 }
 
-TEST(PReluTest, 2DAlphaWithClip) {
-  TensorRef<BHWC> input;
-  input.type = DataType::FLOAT32;
-  input.ref = 0;
-  input.shape = BHWC(1, 2, 2, 1);
-
-  OperationType op_type = OperationType::PRELU;
-  PReLUAttributes attr;
-  attr.clip = 1.0;
-  Tensor<HWC, DataType::FLOAT32> alpha;
-  alpha.shape = HWC(2, 2, 1);
-  alpha.id = 1;
-  alpha.data = {1, 2, 2, 2};
-  attr.alpha = std::move(alpha);
-
-  TensorRef<BHWC> output;
-  output.type = DataType::FLOAT32;
-  output.ref = 2;
-  output.shape = BHWC(1, 2, 2, 1);
-
-  SingleOpModel model({ToString(op_type), attr}, {input}, {output});
-  ASSERT_TRUE(model.PopulateTensor(0, {0.0, -1.0, 2.0, -3.0}));
-  ASSERT_OK(model.Invoke(*NewPReLUNodeShader()));
-  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {0, -2, 1, -6}));
-}
-
 TEST(PReluTest, 2DAlphaWidthNotEqualHeight) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
@@ -140,7 +88,6 @@ TEST(PReluTest, 2DAlphaWidthNotEqualHeight) {
 
   OperationType op_type = OperationType::PRELU;
   PReLUAttributes attr;
-  attr.clip = 0;
   Tensor<HWC, DataType::FLOAT32> alpha;
   alpha.shape = HWC(2, 1, 1);
   alpha.id = 1;
@@ -158,7 +105,7 @@ TEST(PReluTest, 2DAlphaWidthNotEqualHeight) {
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-1, -1}));
 }
 
-TEST(PReluTest, 3DAlphaNoClip) {
+TEST(PReluTest, 3DAlpha) {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
@@ -166,7 +113,6 @@ TEST(PReluTest, 3DAlphaNoClip) {
 
   OperationType op_type = OperationType::PRELU;
   PReLUAttributes attr;
-  attr.clip = 0;
   Tensor<HWC, DataType::FLOAT32> alpha;
   alpha.shape = HWC(2, 2, 2);
   alpha.id = 1;

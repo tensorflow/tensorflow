@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace data {
@@ -54,6 +55,7 @@ constexpr const char kTestdataDir[] =
     "tensorflow/core/data/service/testdata";
 constexpr const char kInterleaveTextlineDatasetFile[] =
     "interleave_textline_dataset.pbtxt";
+constexpr const char kChooseFromDatasetsFile[] = "choose_from_datasets.pbtxt";
 
 NodeDef GetMapNode(absl::string_view name, absl::string_view input_node_name,
                    absl::string_view function_name) {
@@ -87,6 +89,12 @@ Status CreateTestFiles(const std::vector<tstring>& filenames,
   return OkStatus();
 }
 }  // namespace
+
+std::string LocalTempFilename() {
+  std::string path;
+  CHECK(Env::Default()->LocalTempFilename(&path));
+  return path;
+}
 
 DatasetDef RangeDataset(int64_t range) {
   DatasetDef dataset_def;
@@ -149,6 +157,51 @@ DatasetDef RangeDatasetWithShardHint(const int64_t range) {
             {{"T", DT_VARIANT}, {"index", 0}})},
       /*funcs=*/{});
   return dataset_def;
+}
+
+DatasetDef InfiniteDataset() {
+  DatasetDef dataset_def;
+  *dataset_def.mutable_graph() = GDef(
+      {NDef("start", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(0)}, {"dtype", DT_INT64}}),
+       NDef("stop", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(100000000)}, {"dtype", DT_INT64}}),
+       NDef("step", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(1)}, {"dtype", DT_INT64}}),
+       NDef("range", "RangeDataset", /*inputs=*/{"start", "stop", "step"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
+             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
+       NDef("count", "Const", /*inputs=*/{},
+            {{"value", AsScalar<int64_t>(-1)}, {"dtype", DT_INT64}}),
+       NDef("repeat", "RepeatDataset", /*inputs=*/{"range", "count"},
+            {{"output_shapes", gtl::ArraySlice<TensorShape>{TensorShape()}},
+             {"output_types", gtl::ArraySlice<DataType>{DT_INT64}}}),
+       NDef("dataset", "_Retval", /*inputs=*/{"repeat"},
+            {{"T", DT_VARIANT}, {"index", 0}})},
+      {});
+  return dataset_def;
+}
+
+StatusOr<DatasetDef> ChooseFromDatasets() {
+  DatasetDef dataset;
+  std::string graph_file = io::JoinPath(kTestdataDir, kChooseFromDatasetsFile);
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), graph_file, dataset.mutable_graph()));
+  return dataset;
+}
+
+experimental::DistributedSnapshotMetadata
+CreateDummyDistributedSnapshotMetadata() {
+  StructuredValue decoded_spec;
+  TensorShapeProto::Dim* dim =
+      decoded_spec.mutable_tensor_shape_value()->add_dim();
+  dim->set_size(1);
+  dim->set_name(absl::StrCat("dim"));
+
+  experimental::DistributedSnapshotMetadata metadata;
+  metadata.set_element_spec(decoded_spec.SerializeAsString());
+  metadata.set_compression("");
+  return metadata;
 }
 
 StatusOr<DatasetDef> InterleaveTextlineDataset(

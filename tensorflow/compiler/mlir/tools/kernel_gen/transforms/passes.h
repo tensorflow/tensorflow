@@ -17,12 +17,27 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_TRANSFORMS_PASSES_H_
 
 #include <memory>
+#include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+
+#define GEN_PASS_DECL_TFKERNELTOLLVMPASS
+#define GEN_PASS_DECL_EMBEDTFFRAMEWORKPASS
+#define GEN_PASS_DECL_REWRITETFFRAMEWORKASSERT
+#define GEN_PASS_DECL_TFTOJITINVOCATIONPASS
+#define GEN_PASS_DECL_BUFFERREUSEPASS
+#define GEN_PASS_DECL_SHAPETODESCRIPTORSPASS
+#define GEN_PASS_DECL_KERNELGENFINALBUFFERIZEPASS
+#define GEN_PASS_DECL_GPUKERNELTOBLOBPASS
+#define GEN_PASS_DECL_PARALLELLOOPSTOSEQUENTIAL
+#define GEN_PASS_DECL_PROPAGATETFABIKNOWLEDGETOKERNELS
+#define GEN_PASS_DECL_PROPAGATESHAPEKNOWLEDGETOKERNELS
+#define GEN_PASS_DECL_FUSEINNERPARALLELLOOPSPASS
+#define GEN_PASS_DECL_COPYCLEANUPPASS
 
 namespace mlir {
 namespace kernel_gen {
@@ -80,9 +95,6 @@ CreatePropagateTfAbiKnowledgeToKernels();
 std::unique_ptr<OperationPass<func::FuncOp>>
 CreatePropagateShapeKnowledgeToKernels();
 
-// Pass to print content of memrefs.
-std::unique_ptr<OperationPass<ModuleOp>> CreateEmbedMemRefPrintsPass();
-
 /// Greedily maps loops to GPU hardware dimensions.
 std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();
 
@@ -91,12 +103,6 @@ std::unique_ptr<mlir::OperationPass<func::FuncOp>> CreateMapParallelLoopsPass();
 /// be closed from above.
 std::unique_ptr<mlir::OperationPass<func::FuncOp>>
 CreateFuseInnerParallelLoopsPass();
-
-// Pass to create vectorized code for CPU.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationPass();
-
-// Pass to remove unneeded code generated in VectorizationPass.
-std::unique_ptr<OperationPass<func::FuncOp>> CreateVectorizationCleanupPass();
 
 // Pass to remove copies which are consumed by a GenericOp.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateCopyCleanupPass();

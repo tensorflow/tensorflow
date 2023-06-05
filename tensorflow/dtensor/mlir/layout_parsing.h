@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/proto/layout.pb.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -85,6 +84,12 @@ StatusOr<absl::optional<Mesh>> ExtractDeviceMeshFromOp(mlir::Operation* op);
 // Extracts default layout information from function return attribute.
 StatusOr<absl::optional<Layout>> ExtractLayoutFromFunctionReturnAttr(
     mlir::func::ReturnOp return_op, const int return_index);
+
+// Extract element layouts from the iterator resource operand of an op that uses
+// that iterator (e.g. IteratorGetNext, OptionalGetValue, etc.). The layouts are
+// extracted from the `tf._element_layouts` attribute of that resource tensor.
+StatusOr<llvm::SmallVector<Layout, 4>> ExtractElementLayoutsFromOperand(
+    mlir::OpOperand& input_value);
 
 }  // namespace dtensor
 }  // namespace tensorflow

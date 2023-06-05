@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "llvm/Support/CommandLine.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 namespace llvm_ir {

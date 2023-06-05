@@ -13,57 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_BLOCK_BUILDER_H_
-#define TENSORFLOW_LIB_IO_BLOCK_BUILDER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_BLOCK_BUILDER_H_
+#define TENSORFLOW_CORE_LIB_IO_BLOCK_BUILDER_H_
 
-#include <vector>
-
-#include <stdint.h>
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/tsl/lib/io/block_builder.h"
 
 namespace tensorflow {
 namespace table {
-
-struct Options;
-
-class BlockBuilder {
- public:
-  explicit BlockBuilder(const Options* options);
-
-  // Reset the contents as if the BlockBuilder was just constructed.
-  void Reset();
-
-  // REQUIRES: Finish() has not been called since the last call to Reset().
-  // REQUIRES: key is larger than any previously added key
-  void Add(const StringPiece& key, const StringPiece& value);
-
-  // Finish building the block and return a slice that refers to the
-  // block contents.  The returned slice will remain valid for the
-  // lifetime of this builder or until Reset() is called.
-  StringPiece Finish();
-
-  // Returns an estimate of the current (uncompressed) size of the block
-  // we are building.
-  size_t CurrentSizeEstimate() const;
-
-  // Return true iff no entries have been added since the last Reset()
-  bool empty() const { return buffer_.empty(); }
-
- private:
-  const Options* options_;
-  string buffer_;                 // Destination buffer
-  std::vector<uint32> restarts_;  // Restart points
-  int counter_;                   // Number of entries emitted since restart
-  bool finished_;                 // Has Finish() been called?
-  string last_key_;
-
-  // No copying allowed
-  BlockBuilder(const BlockBuilder&);
-  void operator=(const BlockBuilder&);
-};
-
-}  // namespace table
+using tsl::table::BlockBuilder;  // NOLINT(misc-unused-using-decls)
+}
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_BLOCK_BUILDER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_BLOCK_BUILDER_H_

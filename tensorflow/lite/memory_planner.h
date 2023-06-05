@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -65,6 +65,10 @@ class MemoryPlanner {
   // Dumps the memory planning information against the specified op node
   // execution plan (i.e. `execution_plan`) for the purpose of debugging.
   virtual void DumpDebugInfo(const std::vector<int>& execution_plan) const = 0;
+
+  // Returns a map of allocation information. It's only used for debugging.
+  virtual void GetAllocInfo(size_t *arena_size,
+                            size_t *arena_persist_size) const = 0;
 };
 
 }  // namespace tflite

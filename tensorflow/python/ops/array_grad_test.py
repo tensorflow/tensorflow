@@ -114,7 +114,6 @@ class ArrayGradTest(test.TestCase):
 
     self._testGrad(f, x)
 
-  @test_util.disable_xla("b/206689921")  # XLA does not support DT_INT64
   def test_broadcast_to_int64(self):
     x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
     y = constant_op.constant([2, 3], dtype=dtypes.int64)
@@ -123,6 +122,16 @@ class ArrayGradTest(test.TestCase):
       return array_ops.broadcast_to(
           x,
           y)
+
+    self._testGrad(f, x)
+
+  def test_slice_int64(self):
+    x = constant_op.constant([1., 2., 3.], dtype=dtypes.float64)
+    begin = constant_op.constant([1], dtype=dtypes.int64)
+    size = constant_op.constant([1], dtype=dtypes.int64)
+
+    def f(x):
+      return array_ops.slice(x, begin, size)
 
     self._testGrad(f, x)
 

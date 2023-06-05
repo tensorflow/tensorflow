@@ -78,7 +78,7 @@ tensorflow::Status SimpleDevice::MakeTensorFromProto(
 LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
                                 tensorflow::ResourceMgr *resource_mgr, TFOp op,
                                 ArrayRef<ElementsAttr> operands,
-                                SmallVectorImpl<Attribute> &results) {
+                                SmallVectorImpl<TypedAttr> &results) {
   assert(cpu_device && "cpu device can't be null");
   assert(resource_mgr && "ResourceMgr can't be null");
 
@@ -115,14 +115,14 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
       "CPU", cpu_device, cpu_device->GetAllocator({}), node_def,
       TF_GRAPH_DEF_VERSION, &status);
   if (!status.ok()) {
-    VLOG(3) << status.error_message();
+    VLOG(3) << status.message();
     return failure();
   }
 
   tensorflow::OpKernelContext::Params params;
   params.device = cpu_device;
   params.frame_iter = tensorflow::FrameAndIter(0, 0);
-  params.inputs = &input_tensor_values;
+  params.inputs = input_tensor_values;
   params.op_kernel = op_kernel.get();
   params.resource_manager = resource_mgr;
 
@@ -135,7 +135,7 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
   tensorflow::OpKernelContext op_context(&params);
   op_kernel->Compute(&op_context);
   if (!op_context.status().ok()) {
-    VLOG(3) << op_context.status().error_message();
+    VLOG(3) << op_context.status().message();
     return failure();
   }
 
@@ -149,13 +149,12 @@ LogicalResult EvaluateOperation(tensorflow::DeviceBase *cpu_device,
     }
 
     tensorflow::StatusOr<ElementsAttr> attr_or =
-        ConvertTensor(*(op_context.mutable_output(i)), builder,
-                      cast<TFGraphDialect>(op->getDialect()));
+        ConvertTensor(*(op_context.mutable_output(i)), builder);
     if (!attr_or.status().ok()) {
-      VLOG(3) << attr_or.status().error_message();
+      VLOG(3) << attr_or.status().message();
       return failure();
     }
-    results.push_back(attr_or.ValueOrDie());
+    results.push_back(attr_or.value());
   }
 
   return success();

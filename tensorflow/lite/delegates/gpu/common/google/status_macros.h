@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_STATUS_MACROS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_STATUS_MACROS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_OSS_STATUS_MACROS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_OSS_STATUS_MACROS_H_
 
 #define RETURN_IF_ERROR(s) \
   {                        \
@@ -22,4 +22,4 @@ limitations under the License.
     if (!c.ok()) return c; \
   }
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_STATUS_MACROS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_GOOGLE_OSS_STATUS_MACROS_H_

@@ -52,51 +52,74 @@ class ReduceOpModel : public SingleOpModelWithHexagon {
 };
 
 template <TensorType Tensor_Type, typename input_type>
-void TestMeanImpl() {
+void TestMeanImpl(bool full_input_dims = true) {
   float kQuantizedTolerance = 2.0 / 255;
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  ReduceOpModel m(BuiltinOperator_MEAN, {Tensor_Type, {1, 1, 3, 2}, -1.0, 1.0},
-                  {Tensor_Type, {2}, -1.0, 1.0}, {1}, {2}, false);
+  ReduceOpModel m(BuiltinOperator_MEAN,
+                  {Tensor_Type,
+                   // if !full_input_dims, input dimension will be less than 4.
+                   (full_input_dims ? std::vector<int>({1, 1, 3, 2})
+                                    : std::vector<int>({1, 3, 2})),
+                   -1.0, 1.0},
+                  {Tensor_Type, {2}, -1.0, 1.0}, {1}, {full_input_dims ? 2 : 1},
+                  false);
   m.QuantizeAndPopulate<input_type>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<input_type>();
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 2}));
+  if (full_input_dims) {
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 2}));
+  } else {
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  }
   EXPECT_THAT(
       m.GetDequantizedOutput<input_type>(),
       ElementsAreArray(ArrayFloatNear(reference_output, kQuantizedTolerance)));
 }
 
 TEST(ReduceOpModel, MeanNotKeepDims_Uint8) {
-  TestMeanImpl<TensorType_UINT8, uint8_t>();
+  TestMeanImpl<TensorType_UINT8, uint8_t>(true);
+  TestMeanImpl<TensorType_UINT8, uint8_t>(false);
 }
 
 TEST(ReduceOpModel, MeanNotKeepDims_Int8) {
-  TestMeanImpl<TensorType_INT8, int8_t>();
+  TestMeanImpl<TensorType_INT8, int8_t>(true);
+  TestMeanImpl<TensorType_INT8, int8_t>(false);
 }
 
 template <TensorType Tensor_Type, typename input_type>
-void TestMeanKeppDimsImpl() {
+void TestMeanKeppDimsImpl(bool full_input_dims = true) {
   float kQuantizedTolerance = 2.0 / 255;
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  ReduceOpModel m(BuiltinOperator_MEAN, {Tensor_Type, {1, 1, 3, 2}, -1.0, 1.0},
-                  {Tensor_Type, {3}, -1.0, 1.0}, {1}, {3}, true);
+  ReduceOpModel m(BuiltinOperator_MEAN,
+                  {Tensor_Type,
+                   (full_input_dims ? std::vector<int>({1, 1, 3, 2})
+                                    : std::vector<int>({1, 3, 2})),
+                   -1.0, 1.0},
+                  {Tensor_Type, {3}, -1.0, 1.0}, {1}, {full_input_dims ? 3 : 2},
+                  true);
   m.QuantizeAndPopulate<input_type>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   auto reference_output = m.GetDequantizedOutput<input_type>();
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 1}));
+  if (full_input_dims) {
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 3, 1}));
+  } else {
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 1}));
+  }
   EXPECT_THAT(
       m.GetDequantizedOutput<input_type>(),
       ElementsAreArray(ArrayFloatNear(reference_output, kQuantizedTolerance)));
 }
 
 TEST(ReduceOpModel, MeanKeepDims_Int8) {
-  TestMeanKeppDimsImpl<TensorType_INT8, int8_t>();
+  TestMeanKeppDimsImpl<TensorType_INT8, int8_t>(true);
+  TestMeanKeppDimsImpl<TensorType_INT8, int8_t>(false);
 }
 
 TEST(ReduceOpModel, MeanKeepDims_Uint8) {
-  TestMeanKeppDimsImpl<TensorType_UINT8, uint8_t>();
+  TestMeanKeppDimsImpl<TensorType_UINT8, uint8_t>(true);
+  TestMeanKeppDimsImpl<TensorType_UINT8, uint8_t>(false);
 }
 
 TEST(ReduceOpModel, DISABLED_SumNotKeepDims) {

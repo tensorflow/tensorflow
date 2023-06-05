@@ -202,7 +202,7 @@ tf_module {
   }
   member_method {
     name: "embedding_lookup_sparse"
-    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'partition_strategy\', \'name\', \'combiner\', \'max_norm\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'partition_strategy\', \'name\', \'combiner\', \'max_norm\', \'allow_fast_lookup\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "erosion2d"
@@ -338,7 +338,7 @@ tf_module {
   }
   member_method {
     name: "safe_embedding_lookup_sparse"
-    argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'name\', \'partition_strategy\', \'max_norm\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'div\', \'None\'], "
+    argspec: "args=[\'embedding_weights\', \'sparse_ids\', \'sparse_weights\', \'combiner\', \'default_id\', \'name\', \'partition_strategy\', \'max_norm\', \'allow_fast_lookup\'], varargs=None, keywords=None, defaults=[\'None\', \'mean\', \'None\', \'None\', \'div\', \'None\', \'False\'], "
   }
   member_method {
     name: "sampled_softmax_loss"
@@ -362,7 +362,7 @@ tf_module {
   }
   member_method {
     name: "sigmoid_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "silu"
@@ -374,7 +374,7 @@ tf_module {
   }
   member_method {
     name: "softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'dim\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'-1\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'dim\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'-1\', \'None\', \'None\'], "
   }
   member_method {
     name: "softmax_cross_entropy_with_logits_v2"
@@ -398,7 +398,7 @@ tf_module {
   }
   member_method {
     name: "sparse_softmax_cross_entropy_with_logits"
-    argspec: "args=[\'_sentinel\', \'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'labels\', \'logits\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "static_bidirectional_rnn"
@@ -426,7 +426,7 @@ tf_module {
   }
   member_method {
     name: "top_k"
-    argspec: "args=[\'input\', \'k\', \'sorted\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \'None\'], "
+    argspec: "args=[\'input\', \'k\', \'sorted\', \'index_type\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'True\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
     name: "uniform_candidate_sampler"

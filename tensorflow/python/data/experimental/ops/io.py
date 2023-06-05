@@ -16,16 +16,11 @@
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_GZIP = "GZIP"
 COMPRESSION_SNAPPY = "NONE"
 DATASET_SPEC_FILENAME = "dataset_spec.pb"
-# TODO(b/176933539): Use the regular import.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("data.experimental.save", v1=[])
@@ -58,7 +53,7 @@ def save(dataset,
   ```python
   dataset = make_dataset()
   def custom_shard_func(element):
-    return 0
+    return np.int64(0)
   dataset = tf.data.experimental.save(
       path="/path/to/data", ..., shard_func=custom_shard_func)
   ```
@@ -99,10 +94,15 @@ def save(dataset,
       then checkpointing will not be performed. The `save()` implementation
       creates a `tf.train.Checkpoint` object internally, so users should not
       set the `checkpoint` argument in `checkpoint_args`.
+
+  Returns:
+    An operation which when executed performs the save. When writing
+    checkpoints, returns None. The return value is useful in unit tests.
+
   Raises:
     ValueError if `checkpoint` is passed into `checkpoint_args`.
   """
-  dataset.save(path, compression, shard_func, checkpoint_args)
+  return dataset.save(path, compression, shard_func, checkpoint_args)
 
 
 @tf_export("data.experimental.load", v1=[])
@@ -123,11 +123,6 @@ def load(path, element_spec=None, compression=None, reader_func=None):
   tf.Tensor(0, shape=(), dtype=int64)
   tf.Tensor(1, shape=(), dtype=int64)
 
-
-  Note that to load a previously saved dataset, you need to specify
-  `element_spec` -- a type signature of the elements of the saved dataset, which
-  can be obtained via `tf.data.Dataset.element_spec`. This requirement exists so
-  that shape inference of the loaded dataset does not need to perform I/O.
 
   If the default option of sharding the saved dataset was used, the element
   order of the saved dataset will be preserved when loading it.
@@ -152,8 +147,8 @@ def load(path, element_spec=None, compression=None, reader_func=None):
     element_spec: Optional. A nested structure of `tf.TypeSpec` objects matching
       the structure of an element of the saved dataset and specifying the type
       of individual element components. If not provided, the nested structure of
-      `tf.TypeSpec` saved with the saved dataset is used. This argument needs to
-      be provided if the method is executed in graph mode.
+      `tf.TypeSpec` saved with the saved dataset is used. Note that this
+      argument is required in graph mode.
     compression: Optional. The algorithm to use to decompress the data when
       reading it. Supported options are `GZIP` and `NONE`. Defaults to `NONE`.
     reader_func: Optional. A function to control how to read data from shards.

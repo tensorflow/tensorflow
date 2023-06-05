@@ -16,11 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/spmd/schedule_aware_collective_ops_cse.h"
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -156,9 +156,11 @@ StatusOr<bool> RunOnComputation(HloComputation* comp, bool for_replicas,
 
 }  // namespace
 
-StatusOr<bool> ScheduleAwareCollectiveOpsCSE::Run(HloModule* module) {
+StatusOr<bool> ScheduleAwareCollectiveOpsCSE::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
-  for (auto comp : module->computations()) {
+  for (auto comp : module->computations(execution_threads)) {
     TF_ASSIGN_OR_RETURN(
         auto comp_changed,
         RunOnComputation(comp, for_replicas_, distance_threshold_));

@@ -21,8 +21,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/macros.h"
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 #include "tensorflow/lite/delegates/flex/kernel.h"
@@ -49,6 +49,10 @@ TfLiteDelegateUniquePtr FlexDelegate::Create(
         ->CopyFromBufferHandle(context, buffer_handle, tensor);
   };
   flex_delegate->flags |= kTfLiteDelegateFlagsAllowDynamicTensors;
+  // NOMUTANTS -- this flag has effects in profiler that disable the profiling
+  // of the macro operator "TfLiteFlexDelegate", which only shows in profiler
+  // output string. Adding flag check in Flex tests is currently not necessary.
+  flex_delegate->flags |= kTfLiteDelegateFlagsPerOperatorProfiling;
   reinterpret_cast<FlexDelegate*>(flex_delegate->data_)->base_delegate_ =
       flex_delegate.get();
   return flex_delegate;
@@ -72,14 +76,13 @@ TfLiteStatus FlexDelegate::Initialize(TfLiteContext* context) {
       base_delegate_);
   if (!status.ok()) {
     TF_LITE_KERNEL_LOG(context, "Failed to initialize TensorFlow context: %s",
-                       status.error_message().c_str());
+                       tsl::NullTerminatedMessage(status));
     return kTfLiteError;
   }
 
   // Initializes the cancellation manager.
   if (!cancellation_manager_) {
-    cancellation_manager_ =
-        absl::make_unique<tensorflow::CancellationManager>();
+    cancellation_manager_ = std::make_unique<tensorflow::CancellationManager>();
     delegate_data_.SetCancellationManager(cancellation_manager_.get());
   }
 
@@ -145,7 +148,7 @@ TfLiteStatus FlexDelegate::CopyFromBufferHandle(
   // The life cycle of the pointer will be managed by the reference counting in
   // the TensorFlow world and the pointer will be freed when all the buffer
   // maps, who own it, are gone.
-  if (flex::IsResourceOrVariant(output)) {
+  if (IsResourceOrVariant(output)) {
     const size_t required_bytes = sizeof(tensorflow::Tensor**);
     const tensorflow::Tensor** tf_tensor_ptr =
         reinterpret_cast<const tensorflow::Tensor**>(malloc(required_bytes));

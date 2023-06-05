@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace sparse_utils {
@@ -307,10 +309,11 @@ void FillIndicesWithRandomTuples(const TensorShape& shape, Tensor& indices) {
 }
 
 // Populates components of a sparse random tensor with provided number of
-// non-zeros `max_nnz` and tensor shape `shape`.
+// non-zeros `max_nnz` and tensor shape `shape`.  If `ordered`, output indices
+// are ordered lexicographically.
 void GenerateRandomSparseTensor(int64_t max_nnz, const TensorShape& shape,
-                                Tensor& output_indices, Tensor& output_values,
-                                Tensor& output_shape) {
+                                bool ordered, Tensor& output_indices,
+                                Tensor& output_values, Tensor& output_shape) {
   const int64_t ndims = shape.dims();
   // We cannot generate more elements than the total in the tensor, so
   // potentially reduce nnz.
@@ -319,9 +322,15 @@ void GenerateRandomSparseTensor(int64_t max_nnz, const TensorShape& shape,
   output_values = Tensor(DT_FLOAT, TensorShape({nnz}));
   output_shape = Tensor(DT_INT64, TensorShape({ndims}));
 
-  // Generate random unique unordered sparse indices.
-  FillIndicesWithRandomTuples<absl::flat_hash_set<std::vector<int64_t>>>(
-      shape, output_indices);
+  // Generate random unique sparse indices.
+  if (ordered) {
+    // NOTE: absl::btree_set does not seem to be available in TF OSS.
+    FillIndicesWithRandomTuples<std::set<std::vector<int64_t>>>(shape,
+                                                                output_indices);
+  } else {
+    FillIndicesWithRandomTuples<absl::flat_hash_set<std::vector<int64_t>>>(
+        shape, output_indices);
+  }
 
   auto values_vec = output_values.vec<float>();
   values_vec.setRandom();
@@ -332,59 +341,63 @@ void GenerateRandomSparseTensor(int64_t max_nnz, const TensorShape& shape,
   }
 }
 
-TEST(ValidateSparseTensorTest, ValidSparseTensorPasses) {
+using ValidateSparseTensorTest = ::testing::TestWithParam<IndexValidation>;
+
+TEST_P(ValidateSparseTensorTest, ValidSparseTensorPasses) {
   constexpr int kNumNonZeros = 1000;
-  constexpr bool kValidateIndices = true;
   const TensorShape kTensorShapes[] = {
       {}, {3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
-  for (const TensorShape& tshape : kTensorShapes) {
+  const IndexValidation index_validation = GetParam();
+  const bool ordered = (index_validation == IndexValidation::kOrdered);
+  for (const TensorShape& test_shape : kTensorShapes) {
     Tensor indices, values, shape;
-    GenerateRandomSparseTensor(kNumNonZeros, tshape, indices, values, shape);
+    GenerateRandomSparseTensor(kNumNonZeros, test_shape, ordered, indices,
+                               values, shape);
     TF_EXPECT_OK((ValidateSparseTensor<int64_t>(indices, values, shape,
-                                                kValidateIndices)));
+                                                index_validation)));
   }
 }
 
-TEST(ValidateSparseTensorTest, InvalidIndicesRankFails) {
+TEST_P(ValidateSparseTensorTest, InvalidIndicesRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
-  constexpr bool kValidateIndices = false;
   // Indices tensor must be rank 2, so try rank 0, 1, 3.
   const TensorShape kInvalidIndicesShapes[] = {
       {}, {kNumNonZeros}, {kNumNonZeros, kNumDims, 4}};
+  const IndexValidation index_validation = GetParam();
   for (const TensorShape& invalid_shape : kInvalidIndicesShapes) {
     const Tensor indices = Tensor(DT_INT64, invalid_shape);
     const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
-                                               kValidateIndices)),
+                                               index_validation)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse indices must be rank 2 .*")));
   }
 }
 
-TEST(ValidateSparseTensorTest, InvalidValuesRankFails) {
+TEST_P(ValidateSparseTensorTest, InvalidValuesRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
-  constexpr bool kValidateIndices = false;
   // Values tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidValuesShapes[] = {{}, {kNumNonZeros, 2}};
+  const IndexValidation index_validation = GetParam();
   for (const TensorShape& invalid_shape : kInvalidValuesShapes) {
     const Tensor indices =
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims}));
     const Tensor values = Tensor(DT_FLOAT, invalid_shape);
     const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
-                                               kValidateIndices)),
+                                               index_validation)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse values must be rank 1 .*")));
   }
 }
 
-TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
+TEST_P(ValidateSparseTensorTest, InvalidShapeRankFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
-  constexpr bool kValidateIndices = false;
+  const IndexValidation index_validation = GetParam();
   // Shape tensor must be rank 1, so try rank 0, 2.
   const TensorShape kInvalidShapeShapes[] = {{}, {kNumDims, 2}};
   for (const TensorShape& invalid_shape : kInvalidShapeShapes) {
@@ -393,16 +406,16 @@ TEST(ValidateSparseTensorTest, InvalidShapeRankFails) {
     const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
     const Tensor shape = Tensor(DT_INT64, invalid_shape);
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
-                                               kValidateIndices)),
+                                               index_validation)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Sparse shape must be rank 1 .*")));
   }
 }
 
-TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
+TEST_P(ValidateSparseTensorTest, IncompatibleShapesFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumDims = 3;
-  constexpr bool kValidateIndices = false;
+  const IndexValidation index_validation = GetParam();
 
   const Tensor values = Tensor(DT_FLOAT, TensorShape({kNumNonZeros}));
   const Tensor shape = Tensor(DT_INT64, TensorShape({kNumDims}));
@@ -412,7 +425,7 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
     const Tensor indices =
         Tensor(DT_INT64, TensorShape({kNumNonZeros + 1, kNumDims}));
     EXPECT_THAT((ValidateSparseTensor<int64_t>(indices, values, shape,
-                                               kValidateIndices)),
+                                               index_validation)),
                 StatusIs(error::INVALID_ARGUMENT,
                          MatchesRegex("Number of elements in indices .* and "
                                       "values .* do not match")));
@@ -425,21 +438,24 @@ TEST(ValidateSparseTensorTest, IncompatibleShapesFails) {
         Tensor(DT_INT64, TensorShape({kNumNonZeros, kNumDims + 1}));
     EXPECT_THAT(
         (ValidateSparseTensor<int64_t>(indices, values, shape,
-                                       kValidateIndices)),
+                                       index_validation)),
         StatusIs(error::INVALID_ARGUMENT,
                  MatchesRegex("Index rank .* and shape rank .* do not match")));
   }
 }
 
-TEST(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
+TEST_P(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
   constexpr int kNumNonZeros = 1000;
   constexpr int kNumTests = 100;
-  constexpr bool kValidateIndices = true;
+  const IndexValidation index_validation = GetParam();
+  const bool ordered = (index_validation == IndexValidation::kOrdered);
 
   const TensorShape kTensorShapes[] = {{3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
-  for (const TensorShape& tshape : kTensorShapes) {
+
+  for (const TensorShape& test_shape : kTensorShapes) {
     Tensor indices, values, shape;
-    GenerateRandomSparseTensor(kNumNonZeros, tshape, indices, values, shape);
+    GenerateRandomSparseTensor(kNumNonZeros, test_shape, ordered, indices,
+                               values, shape);
     // Access tensor values.
     auto indices_mat = indices.matrix<int64_t>();
     for (int test = 0; test < kNumTests; ++test) {
@@ -448,25 +464,125 @@ TEST(ValidateSparseTensorTest, IndexOutOfBoundsFails) {
       int64_t dim = RandomPhilox().Uniform64(indices.dim_size(1));
       int64_t old_val = indices_mat(row, dim);
 
-      indices_mat(row, dim) = -1;
-      EXPECT_THAT(
-          (ValidateSparseTensor<int64_t>(indices, values, shape,
-                                         kValidateIndices)),
-          StatusIs(error::INVALID_ARGUMENT,
-                   MatchesRegex("Sparse index tuple .* is out of bounds")));
-
-      indices_mat(row, dim) = tshape.dim_size(dim);
-      EXPECT_THAT(
-          (ValidateSparseTensor<int64_t>(indices, values, shape,
-                                         kValidateIndices)),
-          StatusIs(error::INVALID_ARGUMENT,
-                   MatchesRegex("Sparse index tuple .* is out of bounds")));
+      for (int64_t val : {static_cast<int64_t>(-1), test_shape.dim_size(dim)}) {
+        indices_mat(row, dim) = val;
+        Status indices_valid = ValidateSparseTensor<int64_t>(
+            indices, values, shape, index_validation);
+        if (index_validation == IndexValidation::kNone) {
+          TF_EXPECT_OK(indices_valid);
+        } else {
+          EXPECT_THAT(
+              indices_valid,
+              StatusIs(error::INVALID_ARGUMENT,
+                       MatchesRegex("Sparse index tuple .* is out of bounds")))
+              << indices_mat;
+        }
+      }
 
       // Restore index for next test.
       indices_mat(row, dim) = old_val;
     }
   }
 }
+
+TEST_P(ValidateSparseTensorTest, IndexOutOfOrderFailsForOrderedValidation) {
+  constexpr int kNumNonZeros = 1000;
+  constexpr int kNumTests = 100;
+  const TensorShape kTensorShapes[] = {{3}, {4, 5}, {6, 7, 8}, {9, 10, 11, 12}};
+  const IndexValidation index_validation = GetParam();
+  const bool ordered = (index_validation == IndexValidation::kOrdered);
+
+  for (const TensorShape& test_shape : kTensorShapes) {
+    Tensor indices, values, shape;
+    GenerateRandomSparseTensor(kNumNonZeros, test_shape, ordered, indices,
+                               values, shape);
+    // Access tensor values.
+    auto indices_mat = indices.matrix<int64_t>();
+    const int64_t nnz = indices.dim_size(0);
+    const int64_t ndims = indices.dim_size(1);
+    for (int test = 0; test < kNumTests; ++test) {
+      // Pick two random index entries to swap.
+      int64_t row1 = RandomPhilox().Uniform64(nnz);
+      int64_t row2;
+      do {
+        row2 = RandomPhilox().Uniform64(nnz);
+      } while (row1 == row2);
+      for (int dim = 0; dim < ndims; ++dim) {
+        std::swap(indices_mat(row1, dim), indices_mat(row2, dim));
+      }
+
+      Status indices_valid = ValidateSparseTensor<int64_t>(
+          indices, values, shape, index_validation);
+      if (ordered) {
+        EXPECT_THAT(
+            indices_valid,
+            StatusIs(error::INVALID_ARGUMENT,
+                     MatchesRegex("Sparse index tuple .* is out of order")));
+      } else {
+        TF_EXPECT_OK(indices_valid);
+      }
+
+      // Restore index for next test.
+      for (int dim = 0; dim < ndims; ++dim) {
+        std::swap(indices_mat(row1, dim), indices_mat(row2, dim));
+      }
+    }
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ValidateSparseTensorTestSuite, ValidateSparseTensorTest,
+    ::testing::Values(IndexValidation::kNone, IndexValidation::kOrdered,
+                      IndexValidation::kUnordered),
+    [](const ::testing::TestParamInfo<ValidateSparseTensorTest::ParamType>&
+           info) {
+      switch (info.param) {
+        case IndexValidation::kNone:
+          return "None";
+        case IndexValidation::kUnordered:
+          return "Unordered";
+        case IndexValidation::kOrdered:
+          return "Ordered";
+      }
+    });
+
+//==============================================================================
+// BENCHMARKS
+//==============================================================================
+
+// Benchmark time to validate a valid sparse tensor (the common case, worst-case
+// latency).
+void BM_ValidateSparseTensor(::testing::benchmark::State& state,
+                             TensorShape dense_shape,
+                             IndexValidation index_validation) {
+  Tensor indices, values, shape;
+  const int64_t nnz = state.range(0);
+  GenerateRandomSparseTensor(nnz, dense_shape, /*ordered=*/true, indices,
+                             values, shape);
+  for (auto s : state) {
+    ::benchmark::DoNotOptimize(ValidateSparseTensor<int64_t>(
+        indices, values, shape, index_validation));
+  }
+}
+
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Ordered1024, TensorShape({1024}),
+                  IndexValidation::kOrdered)
+    ->Range(8, 512);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Unordered1024, TensorShape({1024}),
+                  IndexValidation::kUnordered)
+    ->Range(8, 512);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Ordered1024x1024,
+                  TensorShape({1024, 1024}), IndexValidation::kOrdered)
+    ->Range(8, 1024);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Unordered1024x1024,
+                  TensorShape({1024, 1024}), IndexValidation::kUnordered)
+    ->Range(8, 1024);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Ordered1024x1024x1024,
+                  TensorShape({1024, 1024, 1024}), IndexValidation::kOrdered)
+    ->Range(8, 1024 * 32);
+BENCHMARK_CAPTURE(BM_ValidateSparseTensor, Unordered1024x1024x1024,
+                  TensorShape({1024, 1024, 1024}), IndexValidation::kUnordered)
+    ->Range(8, 1024 * 32);
 
 }  // namespace
 }  // namespace sparse_utils

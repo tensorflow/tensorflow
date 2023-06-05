@@ -50,7 +50,7 @@ TEST(EvalUtilsTest, InvalidInputs) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
   Operation *const_1 = &*iter++;
@@ -60,7 +60,7 @@ TEST(EvalUtilsTest, InvalidInputs) {
   auto cpu_device = std::make_unique<util::SimpleDevice>();
   auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
 
-  llvm::SmallVector<Attribute> result;
+  llvm::SmallVector<TypedAttr> result;
 
   // The operand 1 of SwitchOp is not scalar.
   EXPECT_TRUE(failed(
@@ -88,7 +88,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   Operation *const_1 = &*iter++;
   Operation *add = &*iter++;
@@ -96,7 +96,7 @@ TEST(EvalUtilsTest, EvaluateOperation) {
   auto cpu_device = std::make_unique<util::SimpleDevice>();
   auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
 
-  llvm::SmallVector<Attribute> result;
+  llvm::SmallVector<TypedAttr> result;
 
   ASSERT_TRUE(succeeded(util::EvaluateOperation(
       cpu_device.get(), resource_mgr.get(), const_0,
@@ -149,7 +149,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   GraphFuncOp func = module->lookupSymbol<GraphFuncOp>("test");
   ASSERT_TRUE(func);
 
-  auto iter = func.body().begin()->begin();
+  auto iter = func.getBody().begin()->begin();
   Operation *const_0 = &*iter++;
   ASSERT_TRUE(tfg_dialect->IsConstant(const_0));
   Operation *const_1 = &*iter++;
@@ -159,7 +159,7 @@ TEST(EvalUtilsTest, OutputInvalidation) {
   auto cpu_device = std::make_unique<util::SimpleDevice>();
   auto resource_mgr = std::make_unique<tensorflow::ResourceMgr>();
 
-  llvm::SmallVector<Attribute> result;
+  llvm::SmallVector<TypedAttr> result;
 
   ASSERT_TRUE(succeeded(
       util::EvaluateOperation(cpu_device.get(), resource_mgr.get(), switch_op,

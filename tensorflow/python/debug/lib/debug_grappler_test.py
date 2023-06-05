@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -60,7 +61,9 @@ class SessionDebugGrapplerInteractionTest(test_util.TensorFlowTestCase):
   def testArithmeticOptimizationActive(self):
     """Tests that tfdbg can dump the tensor from nodes created by Grappler."""
     with session.Session(config=_grappler_enabled_session_config()) as sess:
-      u = variables.VariableV1([[1, 2], [3, 4]], name="u", dtype=dtypes.float32)
+      u = variable_v1.VariableV1([[1, 2], [3, 4]],
+                                 name="u",
+                                 dtype=dtypes.float32)
       # The next two ops should be optimized by Grappler into a single op:
       # either an AddN op or a Mul op.
       x = math_ops.add(u, u)

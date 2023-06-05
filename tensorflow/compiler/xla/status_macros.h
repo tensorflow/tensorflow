@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <memory>
 #include <ostream>  // NOLINT
+#include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
 namespace status_macros {
@@ -67,8 +68,10 @@ class MakeErrorStream {
 
     // Implicit cast operators to Status and StatusOr.
     // Exactly one of these must be called exactly once before destruction.
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator Status() { return wrapped_error_stream_->GetStatus(); }
     template <typename T>
+    // NOLINTNEXTLINE(google-explicit-constructor)
     operator xla::StatusOr<T>() {
       return wrapped_error_stream_->GetStatus();
     }
@@ -87,8 +90,7 @@ class MakeErrorStream {
 
   // Make an error with the given code.
   template <typename ERROR_CODE_TYPE>
-  MakeErrorStream(const char* file, int line, ERROR_CODE_TYPE code)
-      : impl_(new Impl(file, line, code, this, true)) {}
+  MakeErrorStream(const char* file, int line, ERROR_CODE_TYPE code);
 
   template <typename T>
   MakeErrorStreamWithOutput& operator<<(const T& value) {
@@ -104,15 +106,12 @@ class MakeErrorStream {
   }
 
   // Adds RET_CHECK failure text to error message.
-  MakeErrorStreamWithOutput& add_ret_check_failure(const char* condition) {
-    return *this << "RET_CHECK failure (" << impl_->file_ << ":" << impl_->line_
-                 << ") " << condition << " ";
-  }
+  MakeErrorStreamWithOutput& add_ret_check_failure(const char* condition);
 
  private:
   class Impl {
    public:
-    Impl(const char* file, int line, tensorflow::error::Code code,
+    Impl(const char* file, int line, tsl::error::Code code,
          MakeErrorStream* error_stream, bool is_logged_by_default = true);
     Impl(const Status& status, PriorMessageHandling prior_message_handling,
          const char* file, int line, MakeErrorStream* error_stream);
@@ -127,7 +126,7 @@ class MakeErrorStream {
    private:
     const char* file_;
     int line_;
-    tensorflow::error::Code code_;
+    absl::StatusCode code_;
 
     PriorMessageHandling prior_message_handling_ = kAppendToPriorMessage;
     std::string prior_message_;
@@ -162,6 +161,12 @@ class MakeErrorStream {
   MakeErrorStream& operator=(const MakeErrorStream&) = delete;
 };
 
+template <typename ERROR_CODE_TYPE>
+TF_ATTRIBUTE_NOINLINE MakeErrorStream::MakeErrorStream(const char* file,
+                                                       int line,
+                                                       ERROR_CODE_TYPE code)
+    : impl_(new Impl(file, line, code, this, true)) {}
+
 // Provides a conversion to bool so that it can be used inside an if statement
 // that declares a variable.
 class StatusAdaptorForMacros {
@@ -182,11 +187,11 @@ class StatusAdaptorForMacros {
 }  // namespace status_macros
 }  // namespace xla
 
-#define TF_RET_CHECK(condition)                                             \
-  while (ABSL_PREDICT_FALSE(!(condition)))                                  \
-  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,            \
-                                             ::tensorflow::error::INTERNAL) \
-      .with_log_stack_trace()                                               \
+#define TF_RET_CHECK(condition)                                      \
+  while (ABSL_PREDICT_FALSE(!(condition)))                           \
+  return xla::status_macros::MakeErrorStream(__FILE__, __LINE__,     \
+                                             ::tsl::error::INTERNAL) \
+      .with_log_stack_trace()                                        \
       .add_ret_check_failure(#condition)
 
 #endif  // TENSORFLOW_COMPILER_XLA_STATUS_MACROS_H_

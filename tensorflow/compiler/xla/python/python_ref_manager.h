@@ -18,12 +18,14 @@ limitations under the License.
 
 #include <atomic>
 #include <deque>
+#include <memory>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 
 namespace xla {
 

@@ -19,12 +19,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -46,6 +46,11 @@ constexpr int kBeginTensor = 1;
 constexpr int kEndTensor = 2;
 constexpr int kStridesTensor = 3;
 constexpr int kOutputTensor = 0;
+
+struct OpData {
+  // Indicates that 'Eval' is a noop as the output as written during 'Prepare'.
+  bool noop;
+};
 
 struct StridedSliceContext {
   StridedSliceContext(TfLiteContext* context, TfLiteNode* node) {
@@ -69,8 +74,9 @@ struct StridedSliceContext {
   int input_dims;
 };
 
-StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
-  StridedSliceParams op_params;
+StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context,
+                                           bool start_and_end_indices) {
+  StridedSliceParams op_params{};
 
   // The ellipsis_mask and new_axis_mask in op_params are not used. Those masks
   // are processed here to update begin_mask, end_mask and the index range.
@@ -79,6 +85,7 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   op_params.end_mask = 0;
   op_params.new_axis_mask = 0;
   op_params.shrink_axis_mask = 0;
+  op_params.offset = op_context->params->offset;
 
   // Count indexes where the new_axis_mask is set but the ellipsis_mask is not.
   const int begin_count = GetTensorShape(op_context->begin).Dims(0);
@@ -157,8 +164,10 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
           i, input_shape.Dims(i - added_axises));
     } else {
       const int orig_idx = i - added_ellipsis;
-      op_params.start_indices[i] = begin_data[orig_idx];
-      op_params.stop_indices[i] = end_data[orig_idx];
+      if (start_and_end_indices) {
+        op_params.start_indices[i] = begin_data[orig_idx];
+        op_params.stop_indices[i] = end_data[orig_idx];
+      }
       op_params.strides[i] = strides_data[orig_idx];
       if (op_context->params->begin_mask & (1 << orig_idx)) {
         op_params.begin_mask |= (1 << i);
@@ -186,36 +195,35 @@ StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 StridedSliceContext* op_context) {
   std::vector<int> output_shape_vector;
-  StridedSliceParams op_params = BuildStridedSliceParams(op_context);
+  StridedSliceParams op_params =
+      BuildStridedSliceParams(op_context, !op_context->params->offset);
   const RuntimeShape effective_input_shape = op_context->effective_input_shape;
   TF_LITE_ENSURE_MSG(
       context, effective_input_shape.DimensionsCount() <= 5,
       "StridedSlice op only supports up to 5D output including added axis.");
 
+  const int32_t* end_data = GetTensorData<int32_t>(op_context->end);
   for (int idx = effective_input_shape.DimensionsCount() - 1; idx >= 0; --idx) {
     int32_t stride = op_params.strides[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
-    int32_t begin = ::tflite::strided_slice::StartForAxis(
-        op_params, effective_input_shape, idx);
-    int32_t end = ::tflite::strided_slice::StopForAxis(
-        op_params, effective_input_shape, idx, begin);
-
-    // When shrinking an axis, the end position does not matter (and can be
-    // incorrect when negative indexing is used, see Issue #19260). Always use
-    // begin + 1 to generate a length 1 slice, since begin has
-    // already been adjusted for negative indices by GetBeginValueAtIndex.
+    int32_t dim_shape = 0;
     const bool shrink_axis = op_params.shrink_axis_mask & (1 << idx);
-    if (shrink_axis) {
-      end = begin + 1;
-    }
+    if (shrink_axis) continue;
+    if (op_params.offset) {
+      dim_shape = end_data[idx];
+    } else {
+      int32_t begin = ::tflite::strided_slice::StridedSliceStartForAxis(
+          op_params, effective_input_shape, idx);
+      int32_t end = ::tflite::strided_slice::StridedSliceEndForAxis(
+          op_params, effective_input_shape, idx, begin);
 
-    // This is valid for both positive and negative strides
-    int32_t dim_shape = std::ceil((end - begin) / static_cast<float>(stride));
-    dim_shape = dim_shape < 0 ? 0 : dim_shape;
-    if (!shrink_axis) {
-      output_shape_vector.push_back(dim_shape);
+      // This is valid for both positive and negative strides
+      dim_shape = end - begin;
     }
+    dim_shape = std::ceil((dim_shape) / static_cast<float>(stride));
+    dim_shape = dim_shape < 0 ? 0 : dim_shape;
+    output_shape_vector.push_back(dim_shape);
   }
 
   TfLiteIntArray* output_shape =
@@ -230,7 +238,75 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   return kTfLiteOk;
 }
 
+template <KernelType kernel_type>
+TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
+  StridedSliceContext op_context(context, node);
+
+  if (IsDynamicTensor(op_context.output)) {
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+  }
+  StridedSliceParams op_params = BuildStridedSliceParams(&op_context, true);
+
+  switch (op_context.input->type) {
+    case kTfLiteFloat32:
+      reference_ops::StridedSlice<float>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteInt32:
+      reference_ops::StridedSlice<int32_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteInt64:
+      reference_ops::StridedSlice<int64_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteUInt8:
+      reference_ops::StridedSlice<uint8_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteUInt32:
+      reference_ops::StridedSlice<uint32_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteInt8:
+      reference_ops::StridedSlice<int8_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteInt16:
+      reference_ops::StridedSlice<int16_t>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteBool:
+      reference_ops::StridedSlice<bool>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    case kTfLiteString:
+      reference_ops::StridedSlice<string>(
+          op_params, op_context.effective_input_shape, op_context.input,
+          GetTensorShape(op_context.output), op_context.output);
+      break;
+    default:
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s is currently not supported "
+                         "by StridedSlice.",
+                         TfLiteTypeGetName(op_context.input->type));
+      return kTfLiteError;
+  }
+#undef TF_LITE_STRIDED_SLICE
+  return kTfLiteOk;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  op_data->noop = false;
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 4);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
@@ -245,7 +321,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
   // Only INT32 begin/end/strides are supported
-  // TODO(b/175642009): add support for INT64
+  // TODO(b/253465311): add support for INT64
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
   TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);
@@ -254,11 +330,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
-  if (!(IsConstantTensor(op_context.begin) &&
-        IsConstantTensor(op_context.end) &&
-        IsConstantTensor(op_context.strides))) {
+  bool offset = op_context.params->offset;
+  bool output_shape_known = IsConstantOrPersistentTensor(op_context.strides);
+  output_shape_known &=
+      offset || (IsConstantOrPersistentTensor(op_context.begin) &&
+                 IsConstantOrPersistentTensor(op_context.end));
+  if (!output_shape_known) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
+  }
+  if (IsConstantOrPersistentTensor(op_context.input) &&
+      IsConstantOrPersistentTensor(op_context.begin) &&
+      IsConstantOrPersistentTensor(op_context.end)) {
+    SetTensorToPersistentRo(op_context.output);
+    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+    op_data->noop = true;
+    return EvalImpl<kGenericOptimized>(context, node);
   }
   return ResizeOutputTensor(context, &op_context);
 }
@@ -266,73 +353,32 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   StridedSliceContext op_context(context, node);
-
-  if (IsDynamicTensor(op_context.output)) {
-    TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
+  OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
+  if (op_data->noop) {
+    return kTfLiteOk;
   }
-  StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
-
-#define TF_LITE_STRIDED_SLICE(data_type)                                 \
-  {                                                                      \
-    if (kernel_type == kGenericOptimized) {                              \
-      optimized_ops::StridedSlice<data_type>(                            \
-          op_params, op_context.effective_input_shape, op_context.input, \
-          GetTensorShape(op_context.output), op_context.output);         \
-    } else {                                                             \
-      reference_ops::StridedSlice<data_type>(                            \
-          op_params, op_context.effective_input_shape, op_context.input, \
-          GetTensorShape(op_context.output), op_context.output);         \
-    }                                                                    \
-  }
-
-  switch (op_context.input->type) {
-    case kTfLiteFloat32:
-      TF_LITE_STRIDED_SLICE(float);
-      break;
-    case kTfLiteInt32:
-      TF_LITE_STRIDED_SLICE(int32_t);
-      break;
-    case kTfLiteInt64:
-      TF_LITE_STRIDED_SLICE(int64_t);
-      break;
-    case kTfLiteUInt8:
-      TF_LITE_STRIDED_SLICE(uint8_t);
-      break;
-    case kTfLiteInt8:
-      TF_LITE_STRIDED_SLICE(int8_t);
-      break;
-    case kTfLiteInt16:
-      TF_LITE_STRIDED_SLICE(int16_t);
-      break;
-    case kTfLiteBool:
-      TF_LITE_STRIDED_SLICE(bool);
-      break;
-    case kTfLiteString:
-      TF_LITE_STRIDED_SLICE(string);
-      break;
-    default:
-      TF_LITE_KERNEL_LOG(context,
-                         "Type %s is currently not supported "
-                         "by StridedSlice.",
-                         TfLiteTypeGetName(op_context.input->type));
-      return kTfLiteError;
-  }
-#undef TF_LITE_STRIDED_SLICE
-  return kTfLiteOk;
+  return EvalImpl<kernel_type>(context, node);
 }
 
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  return new OpData;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
 }  // namespace strided_slice
 
 TfLiteRegistration* Register_STRIDED_SLICE_REF() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
       strided_slice::Eval<strided_slice::kReference>};
   return &r;
 }
 
 TfLiteRegistration* Register_STRIDED_SLICE() {
   static TfLiteRegistration r = {
-      nullptr, nullptr, strided_slice::Prepare,
+      strided_slice::Init, strided_slice::Free, strided_slice::Prepare,
       strided_slice::Eval<strided_slice::kGenericOptimized>};
   return &r;
 }

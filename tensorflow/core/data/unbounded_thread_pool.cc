@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/data/unbounded_thread_pool.h"
 
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/core/notification.h"
@@ -58,7 +62,7 @@ class UnboundedThreadPool::LogicalThreadFactory : public ThreadFactory {
                                       std::function<void()> fn) override {
     auto done = std::make_shared<Notification>();
     pool_->ScheduleOnWorkQueue(std::move(fn), done);
-    return absl::make_unique<LogicalThreadWrapper>(std::move(done));
+    return std::make_unique<LogicalThreadWrapper>(std::move(done));
   }
 
  private:

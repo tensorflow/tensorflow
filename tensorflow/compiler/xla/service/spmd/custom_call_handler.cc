@@ -15,19 +15,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/spmd/custom_call_handler.h"
 
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/custom_call_sharding_helper.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding.h"
-#include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner_util.h"
@@ -80,11 +83,6 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   const int64_t batch_dim = 0;
   const int64_t sort_dim = 1;
   const int64_t shard_count = sharding.tile_assignment().dim(sort_dim);
-
-  if (shard_count <= 1) {
-    return DefaultAction(hlo);
-  }
-
   const int64_t batch_dim_partition = sharding.tile_assignment().dim(batch_dim);
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t batch_size = hlo->shape().tuple_shapes(0).dimensions(batch_dim);
@@ -111,7 +109,9 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
         partitioned_input.state(), sharding_grouped.device_groups,
         partitioned_input.state().b);
     auto reshape_tile_assignment = sharding.tile_assignment();
-    auto reshape_dimensions = reshape_tile_assignment.dimensions();
+    std::vector<int64_t> reshape_dimensions(
+        reshape_tile_assignment.dimensions().begin(),
+        reshape_tile_assignment.dimensions().end());
     reshape_dimensions.push_back(reshape_dimensions.back());
     reshape_dimensions[sort_dim] = 1;
     reshape_tile_assignment.Reshape(reshape_dimensions);
@@ -125,7 +125,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
                             {batch_size, k * shard_count}),
        ShapeUtil::MakeShape(S32, {batch_size, k * shard_count})});
   auto custom_call_sharding =
-      sharding.GetTupleSharding(replicated_shape).ValueOrDie();
+      sharding.GetTupleSharding(replicated_shape).value();
   auto shard_shape =
       MakePartitionedShape(replicated_shape, custom_call_sharding);
   auto topk = b_.AddInstruction(
@@ -168,7 +168,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   index_gte = b_.AddInstruction(HloInstruction::CreateBinary(
       index_offset->shape(), HloOpcode::kAdd, index_gte, index_offset));
   index_gte->set_sharding(sharding);
-  // Parttion GetTupleElement of index.
+  // Partition GetTupleElement of index.
   PartitionedHlo index_partitioned_gte(
       index_gte, partitioned_topk.base_shape().tuple_shapes(1),
       MakePartitioningState());
@@ -205,7 +205,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
       sort_shape, sort_dim, {replicated_value_gte, replicated_index_gte},
       compare_computation, true));
   sort->set_sharding(
-      replicated_sharding.GetTupleSharding(sort->shape()).ValueOrDie());
+      replicated_sharding.GetTupleSharding(sort->shape()).value());
   PartitionedHlo replicated_sort(sort, replicated_shape,
                                  MakePartitioningState());
 
@@ -227,7 +227,7 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
   auto create_tuple = b_.AddInstruction(
       HloInstruction::CreateTuple({slice_sort_value, slice_index_value}));
   create_tuple->set_sharding(
-      replicated_sharding.GetTupleSharding(create_tuple->shape()).ValueOrDie());
+      replicated_sharding.GetTupleSharding(create_tuple->shape()).value());
   SetPartitionedHlo(
       hlo, PartitionedHlo(create_tuple, hlo->shape(), MakePartitioningState())
                .Reshard(hlo->sharding()));
@@ -372,6 +372,9 @@ std::unique_ptr<HloInstruction> CreateCustomCallSPMDInternal_RotateRight(
 }
 
 Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
+  if (auto* partitioner = GetCustomCallPartitioner(hlo->custom_call_target())) {
+    return partitioner->Partition(this, hlo);
+  }
   if (hlo->custom_call_target() == "SPMDFullToShardShape") {
     // This op switches from auto partitioning to manual partitioning.
     auto input_partitioned = GetPartitionedHlo(hlo->operand(0));
@@ -406,6 +409,34 @@ Status SpmdPartitioningVisitor::HandleCustomCall(HloInstruction* hlo) {
 
   if (hlo->custom_call_target() == kSPMDOpRotateRight) {
     return HandleCustomCallSPMDInternal_RotateRight(hlo);
+  }
+
+  if (hlo->sharding().HasUniqueDevice()) {
+    return HandleSingleDevice(hlo);
+  }
+
+  if (hlo->sharding().IsManual()) {
+    // Handle manual custom calls by just cloning it and apply as sharding what
+    // the system expects, which is UniqueDevice(0).
+    std::vector<HloInstruction*> new_operands;
+    new_operands.reserve(hlo->operands().size());
+    for (HloInstruction* operand : hlo->operands()) {
+      new_operands.push_back(GetPartitionedHlo(operand).hlo());
+    }
+    SetPartitionedHlo(hlo, [&] {
+      auto* instr = b_.AddInstruction(
+          hlo->CloneWithNewOperands(hlo->shape(), new_operands));
+      if (hlo->shape().IsTuple()) {
+        std::vector<HloSharding> subshardings(
+            hlo->sharding().tuple_elements().size(),
+            HloSharding::AssignDevice(0));
+        instr->set_sharding(HloSharding::Tuple(hlo->shape(), subshardings));
+      } else {
+        instr->set_sharding(HloSharding::AssignDevice(0));
+      }
+      return instr;
+    });
+    return OkStatus();
   }
 
   return DefaultAction(hlo);

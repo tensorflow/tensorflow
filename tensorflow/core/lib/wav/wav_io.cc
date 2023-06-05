@@ -85,26 +85,30 @@ inline float Int16SampleToFloat(int16_t data) {
 
 // Handles moving the data index forward, validating the arguments, and avoiding
 // overflow or underflow.
-Status IncrementOffset(int old_offset, size_t increment, size_t max_size,
+Status IncrementOffset(int old_offset, int64_t increment, size_t max_size,
                        int* new_offset) {
   if (old_offset < 0) {
     return errors::InvalidArgument("Negative offsets are not allowed: ",
                                    old_offset);
   }
+  if (increment < 0) {
+    return errors::InvalidArgument("Negative increment is not allowed: ",
+                                   increment);
+  }
   if (old_offset > max_size) {
     return errors::InvalidArgument("Initial offset is outside data range: ",
                                    old_offset);
   }
-  *new_offset = old_offset + increment;
-  if (*new_offset > max_size) {
+  int64_t sum = old_offset + increment;
+  if (sum > max_size) {
     return errors::InvalidArgument("Data too short when trying to read string");
   }
   // See above for the check that the input offset is positive. If it's negative
   // here then it means that there's been an overflow in the arithmetic.
-  if (*new_offset < 0) {
-    return errors::InvalidArgument("Offset too large, overflowed: ",
-                                   *new_offset);
+  if (sum < 0) {
+    return errors::InvalidArgument("Offset too large, overflowed: ", sum);
   }
+  *new_offset = sum;
   return OkStatus();
 }
 

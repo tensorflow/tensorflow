@@ -20,11 +20,13 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/dtensor/mlir/dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/dtensor_mlir_passes_classes.h"
 
 namespace tensorflow {
 namespace dtensor {
+
 namespace {
+#define GEN_PASS_DEF_DTENSORCONSTANTFOLDING
+#include "tensorflow/dtensor/mlir/dtensor_passes.h.inc"
 
 constexpr int kMaxIteration = 10;
 
@@ -45,10 +47,7 @@ mlir::LogicalResult FoldConstantOp(mlir::OperationFolder& folder,
 
     // Try to fold this op.
     bool inPlaceUpdate;
-    if (succeeded(folder.tryToFold(op,
-                                   /*processGeneratedConstants=*/nullptr,
-                                   /*preReplaceAction=*/nullptr,
-                                   &inPlaceUpdate))) {
+    if (succeeded(folder.tryToFold(op, &inPlaceUpdate))) {
       changed = true;
       if (!inPlaceUpdate) {
         return mlir::success();
@@ -60,7 +59,7 @@ mlir::LogicalResult FoldConstantOp(mlir::OperationFolder& folder,
 
 // MLIR pass that folds constants that can be removed or deduplicated away.
 struct DTensorConstantFolding
-    : public DTensorConstantFoldingBase<DTensorConstantFolding> {
+    : public impl::DTensorConstantFoldingBase<DTensorConstantFolding> {
   void runOnOperation() override {
     mlir::MLIRContext& context = getContext();
     mlir::OperationFolder helper(&context);

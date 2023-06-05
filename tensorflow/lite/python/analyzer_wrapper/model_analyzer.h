@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_PYTHON_MODEL_ANALYZER_WRAPPER_ANALYZER_H_
-#define TENSORFLOW_LITE_PYTHON_MODEL_ANALYZER_WRAPPER_ANALYZER_H_
+#ifndef TENSORFLOW_LITE_PYTHON_ANALYZER_WRAPPER_MODEL_ANALYZER_H_
+#define TENSORFLOW_LITE_PYTHON_ANALYZER_WRAPPER_MODEL_ANALYZER_H_
 
 #include <string>
 
@@ -27,4 +27,4 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
 
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_PYTHON_MODEL_ANALYZER_WRAPPER_ANALYZER_H_
+#endif  // TENSORFLOW_LITE_PYTHON_ANALYZER_WRAPPER_MODEL_ANALYZER_H_

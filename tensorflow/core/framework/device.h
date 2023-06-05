@@ -59,11 +59,16 @@ class Device : public DeviceBase {
   Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
+  // A compare function that orders devices by their parsed name.
+  static bool LessByParsedName(const Device& a, const Device& b) {
+    return a.parsed_name() < b.parsed_name();
+  }
+
   // Full name of this device (see top comment).
   const std::string& name() const override { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName& parsed_name() const {
+  const DeviceNameUtils::ParsedName& parsed_name() const override {
     return parsed_name_;
   }
 

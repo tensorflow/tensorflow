@@ -122,13 +122,13 @@ void ReshapeSparseTensor(OpKernelContext *context,
                                   "not both ",
                                   unknown_index, " and ", d));
       unknown_index = d;
-      output_shape.AddDim(1);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(1));
     } else {
       OP_REQUIRES(context, size >= 0,
                   errors::InvalidArgument("size ", d,
                                           " must be non-negative, not ", size));
       product *= size;
-      output_shape.AddDim(size);
+      OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(size));
     }
   }
   if (unknown_index != -1) {

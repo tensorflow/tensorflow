@@ -29,6 +29,7 @@ from tensorflow.python.framework import config as tf_config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
@@ -283,7 +284,9 @@ class RNNCell(base_layer.Layer):
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     if inputs is not None:
       # Validate the given batch_size and dtype against inputs if provided.
-      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs, name="inputs")
+      inputs = tensor_conversion.convert_to_tensor_v2_with_dispatch(
+          inputs, name="inputs"
+      )
       if batch_size is not None:
         if tensor_util.is_tf_type(batch_size):
           static_batch_size = tensor_util.constant_value(

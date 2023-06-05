@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/depthwise_conv_3x3_stride_h2_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -54,7 +55,7 @@ absl::Status DepthWiseConv3x3StrideH2SimpleWeightsTest(
           CreateDepthWiseConv3x3StrideH2(op_def, attr, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           src_tensor,
-          absl::make_unique<DepthWiseConv3x3StrideH2>(std::move(operation)),
+          std::make_unique<DepthWiseConv3x3StrideH2>(std::move(operation)),
           BHWC(1, 2, 2, 1), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({8.0f, 12.0f, 20.0f, 24.0f}, dst_tensor.data, eps));

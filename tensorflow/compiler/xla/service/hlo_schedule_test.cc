@@ -13,23 +13,24 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/algorithm/container.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -336,5 +337,84 @@ ENTRY %WhileLoop () -> s32[] {
   TF_ASSERT_OK(schedule.Verify());
 }
 
+TEST_F(HloScheduleTest, UpdateScheduleComputationRemovedWithMultiThreads) {
+  // Remove computations from a module main thread and verify the schedule can
+  // be updated while the other threads are remaining unchanged.
+  const std::string module_str = R"(
+HloModule UpdateScheduleWithMultipleComputations
+
+%Body (param.1: (s32[], token[])) -> (s32[], token[]) {
+  %param.1 = (s32[], token[]) parameter(0)
+  %get-tuple-element.1 = s32[] get-tuple-element((s32[], token[]) %param.1), index=0
+  %constant.1 = s32[] constant(1)
+  %add = s32[] add(s32[] %get-tuple-element.1, s32[] %constant.1)
+  %get-tuple-element.2 = token[] get-tuple-element((s32[], token[]) %param.1), index=1
+  %after-all = token[] after-all(token[] %get-tuple-element.2)
+  ROOT %tuple = (s32[], token[]) tuple(s32[] %add, token[] %after-all)
+}
+
+%Cond (param: (s32[], token[])) -> pred[] {
+  %param = (s32[], token[]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element((s32[], token[]) %param), index=0
+  %constant = s32[] constant(42)
+  ROOT %less-than = pred[] compare(s32[] %get-tuple-element, s32[] %constant), direction=LT
+}
+
+%async_builder {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  ROOT %foo = add(%p0, %p1)
+}, execution_thread="parallel_thread"
+
+ENTRY %WhileLoop () -> (s32[], f32[10]) {
+  %p0 = f32[10] parameter(0)
+  %p1 = f32[10] parameter(1)
+  %zero = s32[] constant(0)
+  %init_token = token[] after-all()
+  %init_tuple = (s32[], token[]) tuple(s32[] %zero, token[] %init_token)
+  %while = (s32[], token[]) while((s32[], token[]) %init_tuple), condition=%Cond, body=%Body
+  %async-start = ((f32[10], f32[10]), f32[10], s32[]) async-start(f32[10] %p0, f32[10] %p1), async_execution_thread="parallel_thread",calls=%async_builder
+  %async-done = f32[10]{0} async-done(((f32[10], f32[10]), f32[10], s32[]) %async-start), async_execution_thread="parallel_thread", calls=%async_builder
+  %main_res = s32[] get-tuple-element((s32[], token[]) %while), index=0
+  ROOT %res = tuple(%main_res, %async-done)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(),
+                     [](const BufferValue& buffer) {
+                       return ShapeUtil::ByteSizeOf(
+                           buffer.shape(),
+                           /*pointer_size=*/sizeof(void*));
+                     },
+                     /*algorithm=*/{}, {HloInstruction::kMainExecutionThread}));
+
+  HloInstruction* xla_while = module->entry_computation()
+                                  ->root_instruction()
+                                  ->mutable_operand(0)
+                                  ->mutable_operand(0);
+  HloInstruction* init = xla_while->mutable_operand(0);
+
+  // Replace the while with its init value. The conditional and body
+  // computations should then be dead.
+  TF_ASSERT_OK(xla_while->ReplaceAllUsesWith(init));
+
+  // DCE the dead code in the body.
+  HloDCE dce;
+  ASSERT_EQ(module->computation_count(), 4);
+  TF_ASSERT_OK(dce.Run(module.get()).status());
+  ASSERT_EQ(module->computation_count(), 2);
+
+  ASSERT_IS_NOT_OK(schedule.Verify());
+  TF_ASSERT_OK(schedule.Update({HloInstruction::kMainExecutionThread}));
+  TF_ASSERT_OK(schedule.Verify());
+
+  ASSERT_EQ(module->MakeNonfusionComputations({"parallel_thread"}).size(), 1);
+  ASSERT_FALSE(schedule.is_computation_scheduled(
+      module->MakeNonfusionComputations({"parallel_thread"}).front()));
+}
 }  // namespace
 }  // namespace xla

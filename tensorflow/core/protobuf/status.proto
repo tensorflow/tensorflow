@@ -1,22 +1,11 @@
 syntax = "proto3";
 
-package tensorflow;
+// Add a dummy package name. Having no package like
+// core/lib/core/error_codes.proto, or having tensorflow like
+// tsl/protobuf/error_codes.proto, results in name collision errors in generated
+// code for some users that use JS through J2CL.
+package tensorflow.dummy;
+
+import public "tensorflow/tsl/protobuf/status.proto";
 
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
-
-// If included as a payload, this message flags the Status to be a "derived"
-// Status. Used by StatusGroup to ignore certain Statuses when reporting
-// errors to end users.
-message DerivedStatus {}
-
-// If included as a payload, this message contains associated source location
-// for the error Status.
-message StackTracePayload {
-  message StackFrame {
-    string file_name = 1;
-    int32 line_number = 2;
-    string function_name = 3;
-  }
-
-  repeated StackFrame stack_frames = 1;
-}

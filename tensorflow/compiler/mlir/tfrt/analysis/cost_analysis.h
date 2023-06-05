@@ -19,6 +19,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/op_cost_map.pb.h"
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -34,15 +37,15 @@ namespace tfrt_compiler {
 //
 class CostAnalysis {
  public:
-  explicit CostAnalysis(mlir::func::FuncOp func_op) {
+  explicit CostAnalysis(
+      mlir::func::FuncOp func_op,
+      const tfrt_stub::CostRecorder* cost_recorder = nullptr) {
+    cost_recorder_ = cost_recorder;
     AnalyzeArguments(func_op);
     AnalyzeBlock(&func_op.front());
   }
 
-  int64_t GetCost(mlir::Operation* op) const {
-    assert(cost_map_.count(op) > 0);
-    return cost_map_.lookup(op);
-  }
+  int64_t GetCost(mlir::Operation* op) const;
 
  private:
   void AnalyzeArguments(mlir::func::FuncOp func_op);
@@ -51,6 +54,7 @@ class CostAnalysis {
 
   int64_t max_arg_size_ = 1;
   llvm::DenseMap<mlir::Operation*, int64_t> cost_map_;
+  const tfrt_stub::CostRecorder* cost_recorder_;
 };
 
 struct CostContext {
@@ -79,6 +83,8 @@ struct CostFunctionRegistration {
     RegisterCostFunction<OpType>(std::move(cost_function));
   }
 };
+
+bool HasCostFunctionRegistered(absl::string_view op_name);
 
 }  // namespace tfrt_compiler
 }  // namespace tensorflow

@@ -25,22 +25,22 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/executable.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -173,7 +173,8 @@ LocalService::CompileExecutables(
         BuildExecutable(computation.proto(), std::move(module_config),
                         execute_backend_.get(), executor,
                         {build_options.device_allocator(),
-                         build_options.compile_thread_pool()},
+                         build_options.compile_thread_pool(),
+                         build_options.layout_canonicalization_callback()},
                         build_options.run_backend_only()));
     std::vector<std::unique_ptr<Executable>> executables;
     executables.push_back(std::move(executable));
@@ -189,8 +190,10 @@ LocalService::CompileExecutables(
     return BuildExecutables(
         /*module_protos=*/{&computation.proto()}, std::move(module_configs),
         execute_backend_.get(), {executors},
-        Compiler::CompileOptions{build_options.device_allocator(),
-                                 build_options.compile_thread_pool()},
+        Compiler::CompileOptions{
+            build_options.device_allocator(),
+            build_options.compile_thread_pool(),
+            build_options.layout_canonicalization_callback()},
         build_options.run_backend_only());
   }
 }

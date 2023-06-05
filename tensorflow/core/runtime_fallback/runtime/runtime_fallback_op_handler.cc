@@ -90,11 +90,9 @@ using tfrt::AsyncValueRef;
 using tfrt::Chain;
 using tfrt::CoreRuntime;
 using tfrt::CoreRuntimeOp;
-using tfrt::DenseHostTensor;
 using tfrt::ExecutionContext;
 using tfrt::Expected;
 using tfrt::OpAttrsRef;
-using tfrt::OpHandler;
 using tfrt::OpInvocation;
 using tfrt::OpMetadataFn;
 using tfrt::raw_ostream;
@@ -131,7 +129,7 @@ static Expected<tfrt::RCReference<tfrt::Device>> GetDeviceFromFallbackTensor(
   const char* tf_device_name =
       result_tensor.GetTensorHandle()->DeviceName(&status);
   if (!status.ok()) {
-    return tfrt::MakeStringError(status.error_message());
+    return tfrt::MakeStringError(status.message());
   }
 
   // TODO(b/165872892): Unify device name for tests.
@@ -184,14 +182,13 @@ struct RuntimeFallbackOpHandlerTraits {
       if (!expected_device) {
         return tfrt::AsyncValueRef<tfrt::RCReference<tfrt::Device>>(
             tfrt::MakeErrorAsyncValueRef(
-                exec_ctx.host(), tfrt::StrCat(expected_device.takeError())));
+                tfrt::StrCat(expected_device.takeError())));
       }
       return std::move(expected_device.get());
     }
 
     auto result_device =
-        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>(
-            exec_ctx.host());
+        tfrt::MakeUnconstructedAsyncValueRef<tfrt::RCReference<tfrt::Device>>();
 
     result_tensor_av.AndThen([result_tensor_av_ref = result_tensor_av.CopyRef(),
                               result_device = result_device.CopyRef(),
@@ -202,8 +199,10 @@ struct RuntimeFallbackOpHandlerTraits {
       }
       auto expected_device = GetDeviceFromFallbackTensor(
           result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx);
-      result_device.emplace(GetDeviceFromFallbackTensor(
-          result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
+      tfrt::Emplace(
+          result_device,
+          GetDeviceFromFallbackTensor(
+              result_tensor_av_ref.get<RuntimeFallbackTensor>(), exec_ctx));
     });
     return std::move(result_device);
   }
@@ -311,8 +310,8 @@ llvm::Error RuntimeFallbackOpHandler::Initialize() {
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   Status status = InjectTfGpuResources();
   if (!status.ok()) {
-    return tfrt::MakeStringError(tfrt::StrCat("error injecting GPU resources: ",
-                                              status.error_message()));
+    return tfrt::MakeStringError(
+        tfrt::StrCat("error injecting GPU resources: ", status.message()));
   }
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

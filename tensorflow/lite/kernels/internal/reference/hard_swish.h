@@ -12,8 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ACTIVATIONS_H_
-#define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_ACTIVATIONS_H_
+#ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_HARD_SWISH_H_
+#define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_HARD_SWISH_H_
+
+#include <algorithm>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -163,4 +165,4 @@ inline void HardSwish(const HardSwishParams& params,
 }  // namespace reference_ops
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONV_H_
+#endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_HARD_SWISH_H_

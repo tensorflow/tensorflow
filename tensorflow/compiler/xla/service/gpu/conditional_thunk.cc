@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -62,7 +62,7 @@ Status ConditionalThunk::ExecuteOnStream(const ExecuteParams& params) {
   if (!block_status.ok()) {
     return InternalError(
         "Failed to retrieve branch_index value on stream %p: %s.", &stream,
-        block_status.error_message());
+        block_status.message());
   }
   if (config_.branch_index_is_bool) {
     branch_index = pred ? 0 : 1;

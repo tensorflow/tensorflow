@@ -69,7 +69,6 @@ import collections as _collections
 import copy as _copy
 import json as _json
 import uuid as _uuid
-import six as _six
 
 from tensorflow.core.framework import attr_value_pb2 as _attr_value_pb2
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
@@ -93,7 +92,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
     "https://www.tensorflow.org/lite/convert/operation_fusion for operation"
     "fusion in tflite."
 )
-class OpHint(object):
+class OpHint:
   """A class that helps build tflite function invocations.
 
   It allows you to take a bunch of TensorFlow ops and annotate the construction
@@ -155,7 +154,7 @@ class OpHint(object):
   # static rnn.
   AGGREGATE_LAST = "last"
 
-  class OpHintArgumentTracker(object):
+  class OpHintArgumentTracker:
     """Conceptually tracks indices of arguments of "OpHint functions".
 
     The inputs and arguments of these functions both use an instance
@@ -464,7 +463,7 @@ class OpHint(object):
       return [self._outputs.add(arg) for arg in args]
 
 
-class _LiteOperand(object):
+class _LiteOperand:
   """Abstract operand for a tflite hint function._dynamic_rnn_loop.
 
   This is a base class that handles representing arguments to an OpHint.
@@ -560,7 +559,7 @@ class _LiteAggregateOperand(_LiteOperand):
     """Return a list of all the node protos in aggregation sorted order."""
     if not self.flattened:
       self.flattened = [None] * len(self.nodes)
-      for idx, node in _six.iteritems(self.nodes):
+      for idx, node in self.nodes.items():
         self.flattened[idx] = node
       for n in self.nodes:
         if n is None:
@@ -663,7 +662,7 @@ class _LiteAggregateOperand(_LiteOperand):
     return s
 
 
-class _LiteFuncCall(object):
+class _LiteFuncCall:
   """Represent a TensorFlow Lite custom function.
 
   This is uses to accumulate found hints in the graphdef into a single
@@ -815,7 +814,7 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
   children_hints = _find_all_hints_in_nodes(new_nodes)
   children_hints_q = []
   # Ordered by the outputs.
-  for hint in _six.itervalues(children_hints):
+  for hint in children_hints.values():
     _, output_names = hint.flattened_inputs_and_outputs()
     seq = name_to_seq_num[output_names[0]]
     for output_name in output_names:
@@ -1181,7 +1180,7 @@ def _convert_op_hints_to_stubs_helper(
   hints = _find_all_hints_in_nodes(graph_def.node)
 
   hints_q = []
-  for hint in _six.itervalues(hints):
+  for hint in hints.values():
     hints_q.append((hint.level, hint.uuid))
 
   hints_q.sort(key=lambda tup: tup[0])
@@ -1272,7 +1271,7 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
     hints = _find_all_hints_in_nodes(session.graph_def.node)
   elif graph_def is not None:
     hints = _find_all_hints_in_nodes(graph_def.node)
-  for hint in _six.itervalues(hints):
+  for hint in hints.values():
     _, output_nodes = hint.flattened_inputs_and_outputs()
     hinted_outputs_nodes.extend(output_nodes)
   return hinted_outputs_nodes

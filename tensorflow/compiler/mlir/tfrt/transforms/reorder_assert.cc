@@ -83,8 +83,7 @@ class ReorderTfAssertPass
   bool IsFunctionNonSideEffectingOrAssert(mlir::func::FuncOp func_op) {
     auto& block = func_op.front();
     for (mlir::Operation& op : block) {
-      if (!llvm::isa<mlir::TF::AssertOp>(&op) &&
-          !mlir::MemoryEffectOpInterface::hasNoEffect(&op))
+      if (!llvm::isa<mlir::TF::AssertOp>(&op) && !mlir::isMemoryEffectFree(&op))
         return false;
     }
     return true;

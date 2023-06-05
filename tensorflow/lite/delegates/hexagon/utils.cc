@@ -17,8 +17,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -318,9 +318,15 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
           conv_params->depth_multiplier == 1 ||
           (!dilation && input.dims->size == 4 && input.dims->data[3] == 1);
 
+      // Hexagon only supports filter height >= 2.
+      const auto& weights = context->tensors[node->inputs->data[1]];
+      const bool filter_height_not_supported =
+          (weights.dims->size >= 2 && weights.dims->data[1] < 2);
+
       return (IsActivationReluOrNone(conv_params->activation) &&
               conv_params->stride_height <= 3 &&
-              conv_params->stride_width <= 3 && supported_depth_multiplier);
+              conv_params->stride_width <= 3 && supported_depth_multiplier &&
+              !filter_height_not_supported);
     }
     case kTfLiteBuiltinReshape: {
       if (node->inputs->size > 2 ||

@@ -185,7 +185,7 @@ int GetOptimalSizeForApple(int grid_size) {
   return 1;
 }
 
-int3 GetWorkGroupSizeForApple(const uint3& grid_size) {
+int3 GetWorkGroupSizeForApple(const int3& grid_size) {
   int x_size = GetOptimalSizeForApple(grid_size.x);
   int y_size = GetOptimalSizeForApple(grid_size.y);
   int z_size = std::max(1, 32 / (x_size * y_size));

@@ -13,6 +13,15 @@
 // limitations under the License.
 // =============================================================================
 
+#include <atomic>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
+
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -23,8 +32,8 @@
 #include "tensorflow/compiler/xla/python/tpu_driver/grpc_tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/tsl/platform/env.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace tpu_driver {
 namespace {
@@ -245,7 +254,7 @@ class PodTpuDriver : public TpuDriver {
                         std::shared_ptr<::grpc::ChannelCredentials> creds)
       : config_(config),
         creds_(creds),
-        event_thread_(tensorflow::Env::Default(), "grpc_pod_event_thread") {
+        event_thread_(tsl::Env::Default(), "grpc_pod_event_thread") {
     std::vector<std::string> workers = absl::StrSplit(
         absl::StripPrefix(config.worker(), kPodTpuDriverPrefix), ',');
 
@@ -559,14 +568,15 @@ class PodTpuDriver : public TpuDriver {
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
       const xla::HloProto& source, int32_t num_replicas,
-      absl::Span<Event* const> wait_for) override {
+      absl::Span<Event* const> wait_for,
+      const xla::DebugOptions& debug_options) override {
     int64_t operation_id = GetOperationId();
     auto deps = GetDependencyOperationIds(wait_for);
 
     ScheduleRequest(
         operation_id,
-        [this, operation_id, source,
-         num_replicas]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        [this, operation_id, source, num_replicas,
+         debug_options]() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
           auto cph_iterator =
               underlying_cph_
                   .insert(
@@ -576,8 +586,8 @@ class PodTpuDriver : public TpuDriver {
 
           std::vector<std::shared_ptr<Event>> collected_events;
           for (int i = 0; i < drivers_.size(); ++i) {
-            auto current_cph =
-                drivers_[i]->CompileProgram(source, num_replicas, {});
+            auto current_cph = drivers_[i]->CompileProgram(source, num_replicas,
+                                                           {}, debug_options);
             cph_iterator->second.push_back(std::move(current_cph));
             collected_events.push_back(cph_iterator->second[i]->OnReady());
           }
@@ -938,8 +948,8 @@ class PodTpuDriver : public TpuDriver {
     if (container.count(target_op_id) == 0) {
       return std::make_shared<ErrorEvent>(
           this, operation_id,
-          tensorflow::errors::InvalidArgument("Handle ", target_op_id,
-                                              " does not exist."));
+          tsl::errors::InvalidArgument("Handle ", target_op_id,
+                                       " does not exist."));
     }
     return nullptr;
   }

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/logdet.h"
 
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -30,7 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -67,7 +68,7 @@ SignAndLogDet SLogDet(XlaOp a) {
     XlaOp error = a.builder()->ReportError(result.status());
     return SignAndLogDet{error, error};
   }
-  return result.ValueOrDie();
+  return result.value();
 }
 
 XlaOp LogDet(XlaOp a) {

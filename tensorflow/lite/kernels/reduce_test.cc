@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <initializer_list>
+#include <numeric>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -36,6 +37,10 @@ using MeanOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_MEAN>;
 
 using SumOpConstModel = BaseConstOpModel<BuiltinOperator_SUM>;
 using SumOpDynamicModel = BaseDynamicOpModel<BuiltinOperator_SUM>;
+
+template <typename T>
+using ProdOpFullyConstModel =
+    BaseFullyConstOpModel<T, BuiltinOperator_REDUCE_PROD, true>;
 
 using ProdOpConstModel = BaseConstOpModel<BuiltinOperator_REDUCE_PROD, true>;
 using ProdOpDynamicModel =
@@ -133,6 +138,19 @@ TYPED_TEST(DynamicReductionIsCopyTestBool, ReduceIsCopy) {
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2}));
   EXPECT_THAT(m.template GetOutput<bool>(), ElementsAreArray(data));
+}
+
+TEST(ConstFloatMeanOpTest, FoldFirstDim) {
+  int count = 1 * 2 * 2 * 3;
+  std::vector<float> data(count);
+  std::iota(data.begin(), data.end(), 0);
+  SumOpConstModel m({TensorType_FLOAT32, {1, 2, 2, 3}},
+                    {TensorType_FLOAT32, {2, 2}}, {2}, {3, 0}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({3, 12, 21, 30})));
 }
 
 TEST(ConstFloatMeanOpTest, Flatten2ReduceDims) {
@@ -295,6 +313,18 @@ TEST(ConstFloatMeanOpTest, ScalarAxis) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.})));
 }
 
+TEST(ConstFloatMeanOpTest, UseOptimzedFloatMean) {
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.1, 0.2,
+                             0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_FLOAT32, {2, 3, 2}}, {TensorType_FLOAT32, {2}},
+                     {2}, {1, 2}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({0.216667, 0.283333})));
+}
+
 TEST(DynamicFloatMeanOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -389,7 +419,11 @@ TEST(ConstUint8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetOutput<uint8_t>(), ElementsAreArray({163, 168, 192}));
+  // Different quantization algorithms in TFLite and NNAPI can give slightly
+  // different results.
+  EXPECT_THAT(m.GetOutput<uint8_t>(),
+              testing::AnyOf(ElementsAreArray({163, 168, 192}),
+                             ElementsAreArray({163, 169, 192})));
 }
 
 TEST(ConstInt8MeanOpTest, Rounding) {
@@ -399,7 +433,11 @@ TEST(ConstInt8MeanOpTest, Rounding) {
   m.QuantizeAndPopulate<int8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({34, 39, 63}));
+  // Different quantization algorithms in TFLite and NNAPI can give slightly
+  // different results.
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              testing::AnyOf(ElementsAreArray({34, 39, 63}),
+                             ElementsAreArray({34, 40, 63})));
 }
 
 template <typename integer_type, TensorType tensor_dtype>
@@ -586,6 +624,67 @@ TEST(ConstUint8MeanOpTest, QuantizedKeepDims) {
 
 // Tests for reduce_sum
 
+TEST(ConstFloatSumOpTest, Size1) {
+  std::vector<float> data = {1.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {1}}, {1},
+                    {0}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({1})));
+}
+
+TEST(ConstFloatSumOpTest, Size1Dims) {
+  std::vector<float> data = {1.0, 2.0};
+  SumOpConstModel m({TensorType_FLOAT32, {2}}, {TensorType_FLOAT32, {1}}, {1},
+                    {0}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), IsEmpty());
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3})));
+}
+
+TEST(ConstFloatSumOpTest, Size1Contiguous) {
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  SumOpConstModel m({TensorType_FLOAT32, {8, 1}}, {TensorType_FLOAT32, {8}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({8}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear(data)));
+}
+
+TEST(ConstFloatSumOpTest, Size1DisContiguous) {
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1, 8}}, {TensorType_FLOAT32, {1}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({36})));
+}
+
+TEST(ConstFloatSumOpTest, RedundantDimension) {
+  std::vector<float> data = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1, 2, 4}}, {TensorType_FLOAT32, {2}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear({6, 8, 10, 12})));
+}
+
+TEST(ConstFloatSumOpTest, AllSize1) {
+  std::vector<float> data = {1.0};
+  SumOpConstModel m({TensorType_FLOAT32, {1, 1, 1}}, {TensorType_FLOAT32, {1}},
+                    {1}, {1}, false);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({1})));
+}
+
 TEST(ConstFloatSumOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,
                              9.0,  10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0,
@@ -711,6 +810,28 @@ TEST(ConstUint8SumOpTest, NotKeepDimsRescaling) {
       ElementsAreArray(ArrayFloatNear({1.2, 1.2}, kQuantizedTolerance)));
 }
 
+TEST(ConstUint8SumOpTest, OffsetZeroPoint) {
+  float kQuantizedTolerance = GetTolerance(0.0, 2.0);
+  std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6,
+                             0.3, 0.1, 0.5, 0.2, 0.4, 0.6};
+  SumOpConstModel m({TensorType_UINT8, {1, 3, 2, 2}, -0.1, 1.0},
+                    {TensorType_UINT8, {2}, 0.0, 2.0}, {1}, {-1}, false);
+  m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.6,
+                      0.7,
+                      1.1,
+                      0.4,
+                      0.7,
+                      1.0,
+                  },
+                  kQuantizedTolerance)));
+}
+
 TEST(ConstUint8SumOpTest, KeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
@@ -772,6 +893,34 @@ TEST(ConstInt8SumOpTest, Rescale) {
 }
 
 // Tests for reduce_prod
+TEST(FullyConstFloatProdOpTest, SmallInput) {
+  const std::vector<int32_t> data = {2, 3, 4};
+  ProdOpFullyConstModel<int32_t> m({TensorType_INT32, {3}}, data,
+                                   {TensorType_INT32, {1}}, {1}, {0}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({24}));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+}
+
+TEST(FullyConstFloatProdOpTest, LargeInput) {
+  const std::vector<int32_t> data = {1, 2, 3, 4, 5, 6, 7, 8, 9};
+  ProdOpFullyConstModel<int32_t> m({TensorType_INT32, {9}}, data,
+                                   {TensorType_INT32, {1}}, {1}, {0}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput<int32_t>(), ElementsAreArray({362880}));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLitePersistentRo);
+}
+
+TEST(ConstFloatProdOpTest, AllInputsAreConstantLargeOutput) {
+  const std::vector<int> data = {1,  2,  3,  4,  5,  6,  7,  8,  9,
+                                 10, 11, 12, 13, 14, 15, 16, 17, 18};
+  ProdOpFullyConstModel<int> m({TensorType_INT32, {2, 1, 3, 3}}, data,
+                               {TensorType_INT32, {1}}, {1}, {1}, false);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 3}));
+  EXPECT_THAT(m.GetOutput<int>(), ElementsAreArray(data));
+  EXPECT_EQ(m.GetOutputTensor(0)->allocation_type, kTfLiteArenaRw);
+}
 
 TEST(ConstFloatProdOpTest, NotKeepDimsLarge) {
   const std::vector<float> data = {
@@ -814,12 +963,81 @@ void ConstIntProdOpTestNotKeepDimsLarge() {
                   {3.162341376e+11, 1.9619905536e+12}, kQuantizedTolerance)));
 }
 
+template <TensorType tensor_type, typename integer_dtype>
+void ConstIntProdOpTestDisContigReduction() {
+  const float input_min = (tensor_type == TensorType_INT16) ? -12.0 : 0.0;
+  const float input_max = 12.0;
+  const float output_min = (tensor_type == TensorType_INT16) ? -57600 : 0.0;
+  const float output_max = 57600;
+
+  const std::vector<float> data = {
+      1.0, 2.0, 3.0, 4.0, 8.0, 7.0, 6.0, 5.0, 10.0, 9.0, 11.0, 12.0,
+      1.0, 2.0, 3.0, 4.0, 8.0, 7.0, 6.0, 5.0, 10.0, 9.0, 11.0, 12.0};
+  ProdOpConstModel m({tensor_type, {3, 2, 2, 2}, input_min, input_max},
+                     {tensor_type, {2}, output_min, output_max}, {2}, {1, 0},
+                     false);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const int reduced_axis_size = 6;
+  const float kQuantizedStep =
+      GetTolerance<integer_dtype>(output_min, output_max);
+  const float kQuantizedTolerance = reduced_axis_size * 2 * kQuantizedStep;
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {6404.31, 15875.7, 39208.7, 57602.2}, kQuantizedTolerance)));
+}
+
+template <TensorType tensor_type, typename integer_dtype>
+void ConstIntProdOpTestContigReduction() {
+  const float input_min = (tensor_type == TensorType_INT16) ? -12.0 : 0.0;
+  const float input_max = 12.0;
+  const float output_min = (tensor_type == TensorType_INT16) ? -11880 : 0.0;
+  const float output_max = 11880;
+
+  const std::vector<float> data = {
+      1.0, 8.0, 13.0, 4.0, 8.0, 7.0, 6.0, 5.0, 10.0, 9.0, 11.0, 12.0,
+      1.0, 6.0, 9.0,  4.0, 8.0, 7.0, 6.0, 5.0, 10.0, 9.0, 11.0, 12.0};
+  ProdOpConstModel m({tensor_type, {3, 2, 2, 2}, input_min, input_max},
+                     {tensor_type, {2}, output_min, output_max}, {2}, {2, 3},
+                     false);
+  m.QuantizeAndPopulate<integer_dtype>(m.Input(), data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  const int reduced_axis_size = 4;
+  const float kQuantizedStep =
+      GetTolerance<integer_dtype>(output_min, output_max);
+  const float kQuantizedTolerance = reduced_axis_size * 2 * kQuantizedStep;
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {383.951, 1680.1, 11879.3, 216.086, 1680.1, 11879.3},
+                  kQuantizedTolerance)));
+}
+
 TEST(ConstInt8ProdOpTest, NotKeepDimsLarge) {
   ConstIntProdOpTestNotKeepDimsLarge<TensorType_INT8, int8_t>();
 }
 
 TEST(ConstInt16ProdOpTest, NotKeepDimsLarge) {
   ConstIntProdOpTestNotKeepDimsLarge<TensorType_INT16, int16_t>();
+}
+
+TEST(ConstInt8ProdOpTest, DisContigProdOpTest) {
+  ConstIntProdOpTestDisContigReduction<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16ProdOpTest, DisContigProdOpTest) {
+  ConstIntProdOpTestDisContigReduction<TensorType_INT16, int16_t>();
+}
+
+TEST(ConstInt8ProdOpTest, ContigProdOpTest) {
+  ConstIntProdOpTestContigReduction<TensorType_INT8, int8_t>();
+}
+
+TEST(ConstInt16ProdOpTest, ContigProdOpTest) {
+  ConstIntProdOpTestContigReduction<TensorType_INT16, int16_t>();
 }
 
 TEST(ConstFloatProdOpTest, NotKeepDimsSmall) {
@@ -1221,6 +1439,21 @@ TEST(DynamicInt16MaxOpTest, Scalar) {
 }
 
 // Tests for reduce_min
+
+TEST(ConstFloatMinOpTest, DiscontiguousReduction) {
+  int count = 3 * 3 * 2 * 4;
+  std::vector<float> data(count);
+  std::iota(data.begin(), data.end(), 0);
+  MinOpConstModel m({TensorType_FLOAT32, {3, 3, 2, 4}},
+                    {TensorType_FLOAT32, {4}}, {1}, {1}, true);
+  m.SetInput(data);
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1, 2, 4}));
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0,  1,  2,  3,  4,  5,  6,  7,  24, 25, 26, 27,
+                   28, 29, 30, 31, 48, 49, 50, 51, 52, 53, 54, 55})));
+}
 
 TEST(ConstFloatMinOpTest, NotKeepDims) {
   std::vector<float> data = {1.0,  2.0,  3.0,  4.0,  5.0,  6.0,  7.0,  8.0,

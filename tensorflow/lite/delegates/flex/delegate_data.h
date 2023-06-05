@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
 #define TENSORFLOW_LITE_DELEGATES_FLEX_DELEGATE_DATA_H_
 
+#include <functional>
+#include <string>
+
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/public/session_options.h"

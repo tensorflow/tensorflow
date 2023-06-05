@@ -93,7 +93,7 @@ def _make_server_def(server_or_cluster_def, job_name, task_index, protocol,
 
 @tf_export("distribute.Server", v1=["distribute.Server", "train.Server"])
 @deprecation.deprecated_endpoints("train.Server")
-class Server(object):
+class Server:
   """An in-process TensorFlow server, for use in distributed training.
 
   A `tf.distribute.Server` instance encapsulates a set of devices and a
@@ -240,7 +240,7 @@ class Server(object):
 
 
 @tf_export("train.ClusterSpec")
-class ClusterSpec(object):
+class ClusterSpec:
   """Represents a cluster as a set of "tasks", organized into "jobs".
 
   A `tf.train.ClusterSpec` represents the set of processes that
@@ -493,7 +493,7 @@ class ClusterSpec(object):
 
 
 @tf_export("config.experimental.ClusterDeviceFilters")
-class ClusterDeviceFilters(object):
+class ClusterDeviceFilters:
   """Represent a collection of device filters for the remote workers in cluster.
 
   NOTE: this is an experimental API and subject to changes.

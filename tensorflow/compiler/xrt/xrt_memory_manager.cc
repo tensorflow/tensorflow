@@ -125,7 +125,7 @@ class XRTMemoryManager::DeviceContext {
         status = swap_result_or.status();
         break;
       }
-      if (swap_result_or.ValueOrDie()) {
+      if (swap_result_or.value()) {
         swapped.push_back(it);
       }
     }
@@ -345,7 +345,7 @@ Status XRTMemoryManager::TryFreeMemoryStep(MemoryReclaimContext* mrctx,
       if (!free_size_or.ok()) {
         return status;
       }
-      size_t size = free_size_or.ValueOrDie();
+      size_t size = free_size_or.value();
       mrctx->free_size += size;
       if (size > 0) {
         return OkStatus();

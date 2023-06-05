@@ -1,0 +1,51 @@
+op 	 {
+  name: "UniformQuantizedClipByValue"
+  input_arg {
+    name: "operand"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "min"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "max"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "scales"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "zero_points"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "quantization_axis"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "quantization_min_val"
+    type: "int"
+  }
+  attr {
+    name: "quantization_max_val"
+    type: "int"
+  }
+}

@@ -47,7 +47,7 @@ class TpuHandleToProtoKeyOp : public OpKernel {
     OP_REQUIRES_OK(ctx, cache->GetKeysFromUid(uid.scalar<int64_t>()(), &keys));
 
     TensorShape output_shape;
-    output_shape.AddDim(keys.size());
+    OP_REQUIRES_OK(ctx, output_shape.AddDimWithStatus(keys.size()));
     Tensor* result = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &result));
     for (int i = 0; i < keys.size(); ++i) {

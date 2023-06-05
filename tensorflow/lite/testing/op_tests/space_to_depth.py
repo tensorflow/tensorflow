@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Test configs for space_to_depth."""
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -40,7 +40,8 @@ def make_space_to_depth_tests(options):
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.space_to_depth(input_tensor, block_size=parameters["block_size"])
+    out = tf.compat.v1.space_to_depth(
+        input=input_tensor, block_size=parameters["block_size"])
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

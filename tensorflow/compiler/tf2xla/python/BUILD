@@ -2,9 +2,10 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_py_clif_cc",
 )
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.default.bzl", "tf_custom_op_py_library")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -32,5 +33,6 @@ tf_custom_op_py_library(
     deps = [
         "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
         "//tensorflow/compiler/xla:xla_data_proto_py",
+        "//tensorflow/python/ops/numpy_ops:np_utils",
     ],
 )

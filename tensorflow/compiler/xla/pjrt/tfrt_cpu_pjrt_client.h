@@ -16,41 +16,84 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_TFRT_CPU_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_TFRT_CPU_PJRT_CLIENT_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/compiler/xla/client/executable_build_options.h"
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/pjrt/abstract_tfrt_cpu_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_tfrt_cpu_device_buffer.h"
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
-#include "tensorflow/compiler/xla/pjrt/worker_thread.h"
+#include "tensorflow/compiler/xla/runtime/cpu_event.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
 #include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_module_util.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
-#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace xla {
 
+class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
+ public:
+  explicit TfrtCpuDeviceDescription(int id);
+
+  int id() const override { return id_; }
+
+  int process_index() const override { return 0; }
+
+  absl::string_view device_kind() const override;
+
+  absl::string_view DebugString() const override;
+
+  absl::string_view ToString() const override;
+
+  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
+      const override {
+    return attributes_;
+  }
+
+ private:
+  int id_;
+  std::string debug_string_;
+  std::string to_string_;
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
+};
+
 class TfrtCpuDevice final : public PjRtDevice {
  public:
-  TfrtCpuDevice(int id, bool asynchronous);
+  explicit TfrtCpuDevice(int id, int max_inflight_computations = 32);
+
+  const TfrtCpuDeviceDescription& description() const override {
+    return description_;
+  }
 
   void SetClient(PjRtClient* client) {
     CHECK(client_ == nullptr);
@@ -63,18 +106,8 @@ class TfrtCpuDevice final : public PjRtDevice {
     return process_index() == client()->process_index();
   }
 
-  int id() const override { return id_; }
-
-  int process_index() const override { return 0; }
-
   // Used as `device_ordinal`.
-  int local_hardware_id() const override { return id_; }
-
-  absl::string_view device_kind() const override;
-
-  std::string DebugString() const override;
-
-  std::string ToString() const override;
+  int local_hardware_id() const override { return id(); }
 
   Status TransferToInfeed(const LiteralSlice& literal) override;
 
@@ -90,29 +123,22 @@ class TfrtCpuDevice final : public PjRtDevice {
     return nullptr;
   }
 
-  const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
-      const override {
-    return attributes_;
-  }
-
  private:
-  int id_;
   PjRtClient* client_ = nullptr;
+  TfrtCpuDeviceDescription description_;
 
   // TODO(zhangqiaorjc): Optimize semaphore related overhead.
   // Semaphore used to limit how many programs can be enqueued by the host
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
-  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes_ = {};
 };
-
-class TfrtCpuExecutable;
 
 class TfrtCpuClient final : public PjRtClient {
  public:
   TfrtCpuClient(int process_index,
                 std::vector<std::unique_ptr<TfrtCpuDevice>> devices,
-                std::unique_ptr<tfrt::HostContext> host_ctx);
+                size_t num_threads);
+  ~TfrtCpuClient() override;
 
   int process_index() const override { return process_index_; }
 
@@ -134,7 +160,7 @@ class TfrtCpuClient final : public PjRtClient {
       int local_hardware_id) const override;
 
   PjRtPlatformId platform_id() const override {
-    return tensorflow::Fingerprint64(CpuName());
+    return tsl::Fingerprint64(CpuName());
   }
 
   absl::string_view platform_name() const override { return CpuName(); }
@@ -146,36 +172,30 @@ class TfrtCpuClient final : public PjRtClient {
   StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
-  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis() override;
+  StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
+      const override;
 
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options) override;
-  StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Compile(
       mlir::ModuleOp module, CompileOptions options) override;
 
   StatusOr<std::optional<std::string>> ExecutableFingerprint(
-      const PjRtExecutable& executable) const override;
+      const PjRtLoadedExecutable& executable) const override;
 
-  StatusOr<std::string> SerializeExecutable(
-      const PjRtExecutable& executable) const override {
-    return Unimplemented("SerializeExecutable not implemented on %s",
-                         platform_name());
-  }
-
-  StatusOr<std::unique_ptr<PjRtExecutable>> DeserializeExecutable(
-      absl::string_view serialized, CompileOptions options) override {
-    return Unimplemented("DeserializeExecutable not implemented on %s",
-                         platform_name());
-  }
+  // For TfrtCpuClient, `options` is mandatory.
+  // This function returns an InvalidArgument error if `std::nullopt` is passed.
+  // TODO(b/237720161): make it actually optional
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> DeserializeExecutable(
+      absl::string_view serialized,
+      std::optional<CompileOptions> options) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> CreateUninitializedBuffer(
       const Shape& shape, PjRtDevice* device) override;
 
-  StatusOr<std::unique_ptr<PjRtClient::AsyncBufferTransferManager>>
-  CreateBuffersForAsyncTransfer(absl::Span<const Shape> shapes,
-                                PjRtDevice* device) override {
-    return Unimplemented("Async transfer to buffers not implemented");
-  };
+  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -220,18 +240,25 @@ class TfrtCpuClient final : public PjRtClient {
     return Unimplemented("Defragment not implemented.");
   }
 
-  tfrt::HostContext* GetHostContext() const { return host_ctx_.get(); }
+  tsl::thread::ThreadPool* pjrt_client_thread_pool() const {
+    return pjrt_client_thread_pool_.get();
+  }
+
+  AsyncWorkRunner* async_work_runner() const {
+    return async_work_runner_.get();
+  }
 
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
   }
 
-  tfrt::AsyncValueRef<CpuEvent> GetLastCollectiveLaunchEvent() {
+  tfrt::AsyncValueRef<runtime::CpuEvent> GetLastCollectiveLaunchEvent() {
     absl::MutexLock lock(&mu_);
     return last_collective_launch_event_.CopyRef();
   }
 
-  void SetLastCollectiveLaunchEvent(tfrt::AsyncValueRef<CpuEvent> event) {
+  void SetLastCollectiveLaunchEvent(
+      tfrt::AsyncValueRef<runtime::CpuEvent> event) {
     absl::MutexLock lock(&mu_);
     last_collective_launch_event_ = std::move(event);
   }
@@ -246,11 +273,14 @@ class TfrtCpuClient final : public PjRtClient {
   absl::flat_hash_map<int, TfrtCpuDevice*> id_to_device_;
   // Addressable devices indexed by core_id.
   std::vector<PjRtDevice*> addressable_devices_;
-  std::unique_ptr<tfrt::HostContext> host_ctx_;
   std::unique_ptr<ComputationPlacer> computation_placer_;
 
+  // Thread pool for running PjRtClient tasks.
+  std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
+
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
-  std::unique_ptr<tensorflow::thread::ThreadPool> eigen_intraop_pool_;
+  std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_intraop_device_;
 
   // Launching collectives are prone to deadlock when we use fixed-sized
@@ -264,7 +294,7 @@ class TfrtCpuClient final : public PjRtClient {
   // TODO(zhangqiaorjc): Explore alternatives that allow multiple concurrent
   // collectives.
   mutable absl::Mutex mu_;
-  tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event_
+  tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event_
       ABSL_GUARDED_BY(mu_);
 
   // A cache for transpose plans. We use transposes to convert
@@ -274,295 +304,40 @@ class TfrtCpuClient final : public PjRtClient {
   TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
 };
 
-class TfrtCpuBuffer final : public PjRtBuffer {
+class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
  public:
-  // Helper class to retain a "hold" on a TfrtCpuBuffer. A ScopedHold may not
-  // outlive its parent TfrtCpuBuffer.
-  //
-  // There are three types of hold, as follows:
-  //
-  // 1) Usage hold: a transient hold while an operation using the buffer is
-  //    being enqueued to the runtime.
-  // A client acquires a usage hold by calling
-  // TfrtCpuBuffer::GetBufferWithHold(kUsage) or the convenience
-  // wrapper GetBufferWithUsageHold(). If the enqueue completes successfully the
-  // hold should be released using a call to ConvertUsageHold. If the ScopedHold
-  // is deleted without ConvertUsageHold being called, e.g., on error, the hold
-  // is dropped. It is legal to drop a usage hold instead of calling
-  // ConvertUsageHold, even if the buffer was successfully enqueued, as long as
-  // the client ensures that all necessary synchronization has been done.
-  //
-  // 2) External hold: a potentially long-lived hold while the buffer is being
-  //    shared by an external framework, e.g., NumPy.
-  // A client acquires an external hold by calling
-  // TfrtCpuBuffer::GetBufferWithHold(kExternal) or the convenience
-  // wrapper GetBufferWithExternalReference and releases it by deleting the
-  // ScopedHold. The external framework should not modify the underlying buffer
-  // unless it is confident via its own synchronization that modifications do
-  // not race with reads from the TfrtCpuBuffer.
-  //
-  // 3) Donation hold: a transient hold while an execution that donates the
-  //    buffer is being enqueued to the runtime.
-  // A client acquires a donation hold by calling
-  // TfrtCpuBuffer::GetBufferWithHold(kDonation). If the enqueue
-  // completes successfully the hold should be released using a call to
-  // ConfirmDonation after which the buffer is invalid. If the ScopedHold is
-  // deleted without ConfirmDonation being called, e.g., on error, the hold is
-  // dropped and the buffer remains valid. If the buffer is successfully
-  // enqueued the client *must* call ConfirmDonation.
-  //
-  // Donation holds behave like exclusive write locks: when a donation hold
-  // has been acquired, any attempt to acquire another hold of any type will
-  // block until the donation hold is dropped or confirmed. Acquiring a donation
-  // hold will fail with an error if there is any outstanding external hold, and
-  // will block if there are any outstanding usage holds until those holds are
-  // dropped or converted.
-  //
-  // Calls to TfrtCpuBuffer::ReleaseDeviceMemoryOwnership (and transitively to
-  // TfrtCpuBuffer::Delete() and ~TfrtCpuBuffer()) will block until all usage
-  // and donation holds are either deleted or converted/confirmed.
-  class ScopedHold {
-   public:
-    enum Type { kUsage = 0, kExternalReference, kDonation, kMaxValue };
-    // Use a State enum instead of encoding the state in an error Status to
-    // avoid creating Status values in non-error cases. Creating a Status
-    // entails several allocations and can add O(us) to every use of a hold.
-    enum State {
-      kUninitialized = 0,
-      kValid,
-      kMoved,
-      kConverted,
-      kReleased,
-      kDonated,
-      kError
-    };
-
-    ~ScopedHold();
-    ScopedHold(ScopedHold&& other);
-
-    ScopedHold(const ScopedHold&) = delete;
-    ScopedHold& operator=(const ScopedHold&) = delete;
-
-    Type type() const { return type_; }
-
-    Status status() const {
-      // Lazily create Status values only when they are requested.
-      switch (state_) {
-        case kUninitialized:
-          return InvalidArgument("Buffer has not been initialized");
-        case kValid:
-          return OkStatus();
-        case kMoved:
-          return InvalidArgument("Buffer has been moved.");
-        case kConverted:
-          return InvalidArgument("Buffer has been converted");
-        case kReleased:
-          return InvalidArgument("Buffer has been released");
-        case kDonated:
-          return InvalidArgument("Buffer has been donated");
-        case kError:
-          return status_;
-        default:
-          CHECK(false) << "Unexpected state value " << state_;
-      }
-    }
-    bool ok() const { return state_ == kValid; }
-
-    // Access to the underlying device buffer storage. Requires this->ok().
-    const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>& buffer() const {
-      CHECK_EQ(state_, kValid);
-      CHECK_NE(buffer_, nullptr);
-      return buffer_;
-    }
-    TrackedTfrtCpuDeviceBuffer* operator->() const { return buffer().get(); }
-    const TrackedTfrtCpuDeviceBuffer& operator*() const { return *buffer(); }
-
-    // Converts the hold into a usage event. Only valid for holds of type
-    // kUsage.
-    void ConvertUsageHold(absl::Span<tfrt::AsyncValueRef<CpuEvent>> events);
-
-    // Confirms that the buffer was successfully donated to an execution.
-    // Only valid for holds of type kDonation. Causes the buffer to become
-    // invalid.
-    void ConfirmDonation();
-
-   private:
-    friend class TfrtCpuClient;
-    friend class TfrtCpuBuffer;
-
-    // Helper struct that makes it possible to move a ScopedHold through a
-    // closure.
-    using ForClosure = std::tuple<TfrtCpuBuffer*, Type, State, Status,
-                                  std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>;
-
-    ScopedHold(TfrtCpuBuffer* parent, Type type)
-        : parent_(parent), type_(type), state_(kUninitialized) {}
-    explicit ScopedHold(const ForClosure& closure_helper)
-        : parent_(std::get<0>(closure_helper)),
-          type_(std::get<1>(closure_helper)),
-          state_(std::get<2>(closure_helper)),
-          status_(std::get<3>(closure_helper)),
-          buffer_(std::get<4>(closure_helper)) {
-      // Check the buffer is not in an error state.
-      CHECK(status_.ok() && buffer_ != nullptr);
-    }
-
-    // Sets buffer state.
-    void SetState(State state) { state_ = state; }
-
-    // Sets buffer_ and status_. Called by parent_ to initialize the hold.
-    void Acquire(
-        StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>&& buffer_or);
-    // Releases the contents of *this, so *this can subsequently be
-    // deleted without releasing the parent's hold. Should be passed to the
-    // appropriate constructor of another ScopedHold, e.g., when a hold must be
-    // passed through a closure that is incompatible with std::move.
-    ForClosure ToClosure();
-
-    TfrtCpuBuffer* const parent_;
-    const Type type_;
-
-    // There is an invariant that if ok() then buffer_ != nullptr.
-    State state_;
-    Status status_;
-    std::shared_ptr<TrackedTfrtCpuDeviceBuffer> buffer_;
-  };
-
   TfrtCpuBuffer(
       Shape on_device_shape,
-      std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
+      std::unique_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer,
       TfrtCpuClient* client, TfrtCpuDevice* device);
-  ~TfrtCpuBuffer() override;
 
   TfrtCpuBuffer(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer(TfrtCpuBuffer&&) = delete;
   TfrtCpuBuffer& operator=(const TfrtCpuBuffer&) = delete;
   TfrtCpuBuffer& operator=(TfrtCpuBuffer&&) = delete;
 
-  const Shape& on_device_shape() const override { return on_device_shape_; }
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
-
-  StatusOr<Shape> logical_on_device_shape() override;
-
-  StatusOr<std::unique_ptr<ExternalReference>> AcquireExternalReference()
-      override;
-
-  StatusOr<std::unique_ptr<ExternalReference>> ReleaseDeviceMemoryOwnership(
-      bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
 
-  StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
-
-  PjRtFuture<Status> CopyRawToHost(void* dst, int64_t offset,
-                                   int64_t transfer_size) override {
-    return PjRtFuture<Status>(Unimplemented("CopyRawToHost not implemented"));
-  }
-
-  void Delete() override;
-
-  bool IsDeleted() override;
-
   StatusOr<std::unique_ptr<PjRtBuffer>> CopyToDevice(
       PjRtDevice* dst_device) override;
 
-  void CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                          RemoteSendCallback on_done) override {
-    on_done(Unimplemented("CopyToRemoteDevice not implemented."),
-            /*sends_were_enqueued=*/false);
-  }
-
-  void CopyToRemoteDeviceScattered(
-      absl::Span<const std::pair<std::string, RemoteSendCallback>>
-          serialized_descriptors_and_callbacks,
-      const ScatterDetails& scatter_details) override {
-    for (const auto& d_and_cb : serialized_descriptors_and_callbacks) {
-      d_and_cb.second(
-          Unimplemented("CopyToRemoteDeviceScattered not implemented."),
-          /*sends_were_enqueued=*/false);
-    }
-  }
-
-  PjRtFuture<Status> GetReadyFuture() override;
-
-  bool IsOnCpu() const override { return true; }
-
-  // Returns a hold on the TrackedTfrtCpuDeviceBuffer holding the device
-  // buffers. See comment on ScopedHold.
-  ScopedHold GetBufferWithHold(ScopedHold::Type type);
-  ScopedHold GetBufferWithUsageHold() {
-    return GetBufferWithHold(ScopedHold::kUsage);
-  }
-  ScopedHold GetBufferWithExternalReference() {
-    return GetBufferWithHold(ScopedHold::kExternalReference);
-  }
-
  private:
-  bool IsEmptyTuple() const {
-    return on_device_shape_.IsTuple() &&
-           on_device_shape_.tuple_shapes_size() == 0;
-  }
-
-  StatusOr<tfrt::AsyncValueRef<Literal>> CopyToHostAsyncInternal(
-      bool discard_cached_copy, std::optional<xla::Layout> layout);
-
-  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
-  // must be called first.)
-  StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> GetBufferForHoldLocked(
-      ScopedHold::Type type) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Requires holds_[kDonation] == 0 (i.e., WaitForOutstandingDonationHolds()
-  // must be called first.)
-  void AcquireHoldLocked(ScopedHold* hold) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  void ConvertUsageHold(TrackedTfrtCpuDeviceBuffer* buffer,
-                        absl::Span<tfrt::AsyncValueRef<CpuEvent>> events);
-
-  void ConfirmDonation(TrackedTfrtCpuDeviceBuffer* device_buffer);
-
-  void DropHold(ScopedHold::Type type, TrackedTfrtCpuDeviceBuffer* buffer);
-
-  void WaitForOutstandingUsageHolds() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  void WaitForOutstandingDonationHold() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  // Similar to Delete, drops the buffer's reference to its associated device
-  // memory, leaving the buffer in an invalid state, but returns the
-  // TrackedTfrtCpuDeviceBuffer rather than freeing the device memory, so that
-  // another framework can take ownership of it. The buffer returned from
-  // Release may be safely dropped at any time even if it still has pending
-  // async operations. The client should call Await before calling Release with
-  // wait_for_operations_to_complete=false, to ensure that the host has
-  // synchronized past any outstanding write operations to the buffer. If
-  // wait_for_operations_to_complete=true the host will block until any
-  // potentially outstanding asynchronous operations have completed before
-  // returning, in which case it is safe to read or mutate the returned buffer.
-  // If the buffer was shared via an external reference it is the client's
-  // responsibility that accesses via that reference do not interfere with
-  // accesses via the buffer returned from Release.
-  StatusOr<std::shared_ptr<TrackedTfrtCpuDeviceBuffer>> Release(
-      bool wait_for_operations_to_complete);
+  absl::string_view buffer_name() const override { return "TfrtCpuBuffer"; }
 
   TfrtCpuClient* client_;
-  const Shape on_device_shape_;
   TfrtCpuDevice* const device_;
-
-  mutable absl::Mutex mu_;
-  std::shared_ptr<TrackedTfrtCpuDeviceBuffer> tracked_device_buffer_
-      ABSL_GUARDED_BY(mu_);
-  // Count of holds on the buffer.
-  std::array<int, ScopedHold::Type::kMaxValue> holds_ ABSL_GUARDED_BY(mu_);
-  // Cached definition event used for constructing PjRtFutures to wait on.
-  tfrt::AsyncValueRef<Status> definition_event_ ABSL_GUARDED_BY(mu_);
 };
 
-class TfrtCpuExecutable final : public PjRtExecutable {
+class TfrtCpuExecutable final : public PjRtLoadedExecutable {
  public:
   TfrtCpuExecutable(
       int num_replicas, int num_partitions,
       std::shared_ptr<DeviceAssignment> device_assignment,
-      bool parameter_is_tupled_arguments,
+      bool parameter_is_tupled_arguments, CompileOptions compile_options,
       std::unique_ptr<Executable> cpu_executable,
       BufferAllocation::Index result_buffer_index,
       absl::InlinedVector<BufferAllocation::Index, 4> result_buffer_indices,
@@ -604,21 +379,33 @@ class TfrtCpuExecutable final : public PjRtExecutable {
         cpu_executable_->shared_module()};
   }
 
-  using PjRtExecutable::Execute;
+  StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override {
+    CompiledMemoryStats memory_stats = CompiledMemoryStats();
+    memory_stats.generated_code_size_in_bytes = SizeOfGeneratedCodeInBytes();
+    const HloProto* proto = cpu_executable_->hlo_proto();
+    if (!proto) {
+      return tsl::errors::FailedPrecondition(
+          "cpu_executable_ has no hlo_proto.");
+    }
+    memory_stats.serialized_hlo_proto = proto->SerializeAsString();
+    return memory_stats;
+  }
+
+  using PjRtLoadedExecutable::Execute;
   StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
       std::optional<std::vector<PjRtFuture<Status>>>& returned_futures)
       override;
 
-  using PjRtExecutable::ExecuteSharded;
+  using PjRtLoadedExecutable::ExecuteSharded;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
       std::optional<PjRtFuture<Status>>& returned_future,
       bool fill_future) override;
 
-  using PjRtExecutable::ExecutePortable;
+  using PjRtLoadedExecutable::ExecutePortable;
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
       const ExecuteOptions& options,
@@ -629,7 +416,13 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 
   bool IsDeleted() override;
 
+  StatusOr<std::string> SerializeExecutable() const override;
+
+  bool IsReturnedFutureSupported() const override { return true; }
+
   StatusOr<std::optional<std::string>> Fingerprint() const;
+
+  std::shared_ptr<Executable> cpu_executable() const { return cpu_executable_; }
 
  private:
   friend class TfrtCpuClient;
@@ -639,13 +432,13 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   // Checks that the input buffers passed in by the user have the correct size
   // on device for the compiled program.
   Status CheckBufferCompatibilities(
-      absl::Span<const std::shared_ptr<TrackedTfrtCpuDeviceBuffer>>
+      absl::Span<std::pair<bool, TrackedTfrtCpuDeviceBuffer*> const>
           input_buffers) const;
 
   StatusOr<Result> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
       int partition, const RunId& run_id, const ExecuteOptions& options,
-      tfrt::AsyncValueRef<CpuEvent> last_collective_launch_event,
+      tfrt::AsyncValueRef<runtime::CpuEvent> last_collective_launch_event,
       bool fill_future, TfrtCpuDevice* device = nullptr);
 
   TfrtCpuClient* client_;
@@ -654,6 +447,7 @@ class TfrtCpuExecutable final : public PjRtExecutable {
   int num_partitions_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
   bool parameter_is_tupled_arguments_;
+  CompileOptions compile_options_;
 
   std::shared_ptr<Executable> cpu_executable_;
 
@@ -696,10 +490,11 @@ class TfrtCpuExecutable final : public PjRtExecutable {
 // the XLA_FLAGS environment variable.
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
 
-// Similar to the function above, but you can set the number of devices
-// explicitly.
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
-                                                       int cpu_device_count);
+// Similar to the function above, but you can set the number of devices and max
+// number of inflight computations per device explicitly.
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+    bool asynchronous, int cpu_device_count,
+    int max_inflight_computations_per_device = 32);
 
 }  // namespace xla
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/lstm_test_util.h"
 
+#include <memory>
+
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/task/testing_util.h"
@@ -60,7 +62,7 @@ absl::Status LstmTest(TestExecutionEnvironment* env) {
       GPUOperation operation = CreateLSTM(op_def, env->GetGpuInfo());
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
           {src_tensor, prev_state},
-          absl::make_unique<GPUOperation>(std::move(operation)),
+          std::make_unique<GPUOperation>(std::move(operation)),
           {BHWC(1, 1, 1, 4), BHWC(1, 1, 1, 4)}, {&new_state, &new_activ}));
       RETURN_IF_ERROR(
           PointWiseNear({7.0 / 15.0, 10.0 / 15.0, 13.0 / 15.0, 16.0 / 15.0},

@@ -18,6 +18,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -80,13 +81,13 @@ def squeeze(input: ragged_tensor.Ragged, axis=None, name=None):  # pylint: disab
     for i, r in enumerate(input.nested_row_lengths()):
       if i + 1 in ragged_dims:
         assertion_list.append(
-            control_flow_ops.Assert(
+            control_flow_assert.Assert(
                 math_ops.reduce_all(math_ops.equal(r, scalar_tensor_one)),
                 ['the given axis (axis = %d) is not squeezable!' % (i + 1)]))
     if 0 in ragged_dims:
       scalar_tensor_two = constant_op.constant(2, dtype=dtypes.int32)
       assertion_list.append(
-          control_flow_ops.Assert(
+          control_flow_assert.Assert(
               math_ops.equal(
                   array_ops.size(input.row_splits), scalar_tensor_two),
               ['the given axis (axis = 0) is not squeezable!']))

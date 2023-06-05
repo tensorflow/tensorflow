@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/strong_hash.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -832,6 +834,10 @@ class SparseCrossV2Op : public OpKernel {
 
     const Tensor* sep_t;
     OP_REQUIRES_OK(context, context->input("sep", &sep_t));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(sep_t->shape()),
+                errors::InvalidArgument("Input separator should be a scalar. "
+                                        "Received: ",
+                                        sep_t->DebugString()));
     const tstring separator = sep_t->scalar<tstring>()();
 
     std::vector<std::unique_ptr<ColumnInterface<tstring>>> columns =
@@ -892,7 +898,6 @@ class SparseCrossHashedOp : public OpKernel {
     OP_REQUIRES_OK(
         context, ValidateInput(indices_list_in, values_list_in, shapes_list_in,
                                dense_list_in, internal_type));
-
     const Tensor* num_buckets_t;
     OP_REQUIRES_OK(context, context->input("num_buckets", &num_buckets_t));
     const int64_t num_buckets = num_buckets_t->scalar<int64_t>()();
@@ -904,6 +909,12 @@ class SparseCrossHashedOp : public OpKernel {
     const Tensor* salt_t;
     OP_REQUIRES_OK(context, context->input("salt", &salt_t));
     const auto salt = salt_t->flat<int64_t>();
+    OP_REQUIRES_OK(
+        context, salt.size() == 2
+                     ? Status()
+                     : errors::InvalidArgument(
+                           "Input \"salt\" must have length 2 but has length ",
+                           salt.size()));
     std::vector<int64_t> key_{salt(0), salt(1)};
 
     std::vector<std::unique_ptr<ColumnInterface<int64_t>>> columns =

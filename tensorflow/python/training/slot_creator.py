@@ -35,12 +35,15 @@ update_mavg = mavg.assign_sub((mavg - var) * (1 - decay))
 """
 # pylint: disable=g-bad-name
 
-from tensorflow.compiler.xla.experimental.xla_sharding import xla_sharding
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.compiler.xla.experimental import xla_sharding
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 
 
@@ -63,7 +66,7 @@ def _create_slot_var(primary,
   shape = shape if callable(val) else None
   if resource_variable_ops.is_resource_variable(primary):
     use_resource = True
-  elif isinstance(primary, variables.RefVariable):
+  elif isinstance(primary, ref_variable.RefVariable):
     use_resource = False
   else:
     use_resource = None
@@ -103,8 +106,13 @@ def _create_slot_var(primary,
               slice_info.var_shape[:n]))
   # pylint: enable=protected-access
 
-  # Copy XLA sharding attributes from primary.
-  if copy_xla_sharding:
+  # Copy XLA sharding attributes from the primary if the slot variable has the
+  # same rank as the primary.
+  def _has_same_rank(primary_shape, slot_shape):
+    return (primary_shape.rank is not None and slot_shape.rank is not None and
+            primary_shape.rank == slot_shape.rank)
+
+  if copy_xla_sharding and _has_same_rank(primary.shape, slot.shape):
     slot = xla_sharding.copy_sharding(primary, slot, use_sharding_op=False)
   return slot
 
@@ -143,7 +151,7 @@ def create_slot(primary,
     prefix = primary.op.name
   with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
-      distribution_strategy = distribution_strategy_context.get_strategy()
+      distribution_strategy = distribute_lib.get_strategy()
       with distribution_strategy.extended.colocate_vars_with(primary):
         return _create_slot_var(
             primary,
@@ -202,7 +210,7 @@ def create_slot_with_initializer(primary,
     prefix = primary.op.name
   with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
-      distribution_strategy = distribution_strategy_context.get_strategy()
+      distribution_strategy = distribute_lib.get_strategy()
       with distribution_strategy.extended.colocate_vars_with(primary):
         return _create_slot_var(
             primary,
@@ -258,7 +266,10 @@ def create_zeros_slot(primary,
         copy_xla_sharding=copy_xla_sharding)
   else:
     if isinstance(primary, variables.Variable):
-      slot_shape = array_ops.shape(primary.initialized_value())
+      slot_shape = array_ops.shape(
+          cond.cond(
+              variable_v1.is_variable_initialized(primary), primary.read_value,
+              lambda: primary.initial_value))
     else:
       slot_shape = array_ops.shape(primary)
     val = array_ops.zeros(slot_shape, dtype=dtype)

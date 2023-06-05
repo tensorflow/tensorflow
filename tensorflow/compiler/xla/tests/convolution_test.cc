@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
@@ -27,15 +26,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
-#include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -1701,6 +1698,22 @@ ENTRY Test {
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }
 
+// CUDNN does not support s8->s32 convs
+XLA_TEST_F(ConvolutionHloTest, DISABLED_ON_GPU(PackedNibbleConvolve)) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY Test {
+  %lhs = s8[5,11,11,7] parameter(1)
+  %rhs = s8[3,3,7,7] parameter(0)
+  ROOT %convolution = s32[5,11,11,7] convolution(lhs, rhs),
+     window={size=3x3 pad=1_1x1_1},
+     dim_labels=b01f_01io->b01f,
+     operand_precision={PACKED_NIBBLE,PACKED_NIBBLE}
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0, 0}));
+}
+
 XLA_TEST_F(ConvolutionHloTest, SwappedOperandConvolveWithStride) {
   constexpr char kHlo[] = R"(
 HloModule TestModule
@@ -1772,6 +1785,19 @@ ENTRY TestComputation {
   %zero = f32[] constant(0)
   %zeros = f32[8,4,5,5,32] broadcast(%zero), dimensions={}
   ROOT relu = f32[8,4,5,5,32] maximum(%zeros, %add)
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestBooleanInput) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  constant.1 = pred[] constant(true)
+  broadcast.2 = pred[3,3,3]{2,1,0} broadcast(constant.1), dimensions={}
+  convolution.3 = pred[3,3,3]{2,1,0} convolution(broadcast.2, broadcast.2), window={size=3 pad=1_1}, dim_labels=bf0_oi0->bf0
+  ROOT tuple.4 = (pred[3,3,3]{2,1,0}) tuple(convolution.3)
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }

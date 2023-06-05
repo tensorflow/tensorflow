@@ -1,6 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrappers_cc")
+load("//tensorflow:tensorflow.default.bzl", "tf_gen_op_wrappers_cc")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )

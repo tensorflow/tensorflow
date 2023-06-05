@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_OVERFLOW_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_OVERFLOW_UTIL_H_
 
+#include <limits>
 #include <optional>
 #include <type_traits>
 
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -71,6 +73,9 @@ inline std::optional<T> OverflowSafeAdd(T x, T y) {
 
 inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
   switch (ty) {
+    case S4:
+      return std::numeric_limits<s4>::min() <= x &&
+             std::numeric_limits<s4>::max() >= x;
     case S8:
       return std::numeric_limits<int8_t>::min() <= x &&
              std::numeric_limits<int8_t>::max() >= x;
@@ -82,6 +87,8 @@ inline bool FitsInIntegralType(int64_t x, PrimitiveType ty) {
              std::numeric_limits<int32_t>::max() >= x;
     case S64:
       return true;
+    case U4:
+      return 0 <= x && std::numeric_limits<u4>::max() >= x;
     case U8:
       return 0 <= x && std::numeric_limits<uint8_t>::max() >= x;
     case U16:

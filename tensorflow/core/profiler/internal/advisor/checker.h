@@ -31,7 +31,7 @@ static const char* const kCheckers[] = {
 
 class Checker {
  public:
-  virtual ~Checker() {}
+  virtual ~Checker() = default;
 
   virtual string name() const = 0;
 

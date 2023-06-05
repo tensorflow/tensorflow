@@ -39,6 +39,9 @@ class MockSupertypes2With3(trace.TraceType):
     else:
       return None
 
+  def placeholder_value(self, placeholder_context=None):
+    raise NotImplementedError
+
   def __eq__(self, other) -> bool:
     return isinstance(other, type(self)) and self._object == other._object
 
@@ -56,6 +59,27 @@ class Mock2AsTopType(MockSupertypes2With3):
       return None
     return self if all(self._object == other._object
                        for other in others) else Mock2AsTopType(2)
+
+
+class TestAttr:
+  """Helps test attrs collections."""
+
+  def __init__(self, name):
+    self.name = name
+
+
+class TestAttrsClass:
+  """Helps test attrs collections."""
+
+  __attrs_attrs__ = (TestAttr('a'), TestAttr('b'))
+
+  def __init__(self, a, b):
+    self.a = a
+    self.b = b
+
+  def __eq__(self, other):
+    return isinstance(
+        other, TestAttrsClass) and self.a == other.a and self.b == other.b
 
 
 class DefaultTypesTest(test.TestCase):
@@ -77,6 +101,7 @@ class DefaultTypesTest(test.TestCase):
     literal_int = default_types.Literal(1)
     literal_float = default_types.Literal(1.2)
     literal_str = default_types.Literal('a')
+    literal_none = default_types.Literal(None)
 
     self.assertEqual(
         serialization.deserialize(serialization.serialize(literal_bool)),
@@ -90,6 +115,9 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(
         serialization.deserialize(serialization.serialize(literal_str)),
         literal_str)
+    self.assertEqual(
+        serialization.deserialize(serialization.serialize(literal_none)),
+        literal_none)
 
   def testListSupertype(self):
     list_a = default_types.List(
@@ -157,6 +185,22 @@ class DefaultTypesTest(test.TestCase):
         default_types.NamedTuple.from_type_and_attributes(
             named_tuple_type, (MockSupertypes2With3(3), MockSupertypes2With3(3),
                                MockSupertypes2With3(3))))
+
+  def testAttrsSupertype(self):
+    attrs_a = default_types.Attrs.from_type_and_attributes(
+        TestAttrsClass, (MockSupertypes2With3(1), MockSupertypes2With3(2),
+                         MockSupertypes2With3(3)))
+    attrs_b = default_types.Attrs.from_type_and_attributes(
+        TestAttrsClass, (MockSupertypes2With3(2), MockSupertypes2With3(2),
+                         MockSupertypes2With3(2)))
+
+    self.assertEqual(attrs_a, attrs_a.most_specific_common_supertype([]))
+    self.assertIsNone(attrs_a.most_specific_common_supertype([attrs_b]))
+    self.assertEqual(
+        attrs_b.most_specific_common_supertype([attrs_a]),
+        default_types.Attrs.from_type_and_attributes(
+            TestAttrsClass, (MockSupertypes2With3(3), MockSupertypes2With3(3),
+                             MockSupertypes2With3(3))))
 
   def testDictTypeSubtype(self):
     dict_type = default_types.Dict
@@ -235,36 +279,6 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(dict_a, dict_c)
     self.assertNotEqual(dict_a, dict_b)
 
-  def testReferenceSubtype(self):
-    original = default_types.Reference(Mock2AsTopType(3), 1)
-    clone = default_types.Reference(Mock2AsTopType(3), 1)
-    different_id = default_types.Reference(Mock2AsTopType(3), 2)
-    supertype = default_types.Reference(Mock2AsTopType(2), 1)
-    different_type = default_types.Literal(1)
-
-    self.assertEqual(original, clone)
-    self.assertFalse(original.is_subtype_of(different_id))
-    self.assertTrue(original.is_subtype_of(supertype))
-    self.assertFalse(supertype.is_subtype_of(original))
-    self.assertFalse(original.is_subtype_of(different_type))
-
-  def testReferenceSupertype(self):
-    original = default_types.Reference(Mock2AsTopType(3), 1)
-    clone = default_types.Reference(Mock2AsTopType(3), 1)
-    different_id = default_types.Reference(Mock2AsTopType(3), 2)
-    supertype = default_types.Reference(Mock2AsTopType(2), 1)
-    different_type = default_types.Literal(1)
-
-    self.assertEqual(supertype.most_specific_common_supertype([]), supertype)
-    self.assertEqual(original.most_specific_common_supertype([clone]), original)
-    self.assertIsNone(original.most_specific_common_supertype([different_id]))
-    self.assertIsNone(original.most_specific_common_supertype([different_type]))
-
-  def testReferencetSerialization(self):
-    ref_original = default_types.Reference(default_types.Literal(3), 1)
-    self.assertEqual(
-        serialization.deserialize(serialization.serialize(ref_original)),
-        ref_original)
 
 if __name__ == '__main__':
   test.main()

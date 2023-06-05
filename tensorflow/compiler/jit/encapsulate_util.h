@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -117,8 +116,7 @@ struct XlaClusterInfo {
 // dependencies and control dependencies. cluster_deps maps the name name of an
 // outside compilation cluster to a set of names of outside compilation clusters
 // that it depends on.
-stream_executor::port::StatusOr<
-    std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+tsl::StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
 OutsideCompilationClusterDependencies(
     const Graph* g, const string& outside_compilation_attr_name);
 

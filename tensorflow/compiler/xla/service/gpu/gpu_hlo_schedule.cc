@@ -17,179 +17,43 @@ limitations under the License.
 
 #include <deque>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "absl/container/flat_hash_map.h"
-#include "tensorflow/compiler/xla/service/buffer_value.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
+#include "tensorflow/compiler/xla/service/gpu/cublas_cudnn.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
-#include "tensorflow/compiler/xla/service/hlo_reachability.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/latency_hiding_scheduler.h"
+#include "tensorflow/compiler/xla/service/profile_guided_latency_estimator.h"
 
 namespace xla {
 namespace gpu {
 
 namespace {
 
-// An HLO partial ordering based on the actual stream assignment and thunk
-// launch order.
-class GpuHloOrdering : public PredecessorHloOrdering {
- public:
-  GpuHloOrdering(const HloModule* module,
-                 const StreamAssignment& stream_assignment,
-                 const std::vector<HloInstruction*>& thunk_launch_order);
-  ~GpuHloOrdering() override = default;
-
-  // Only the entry computation can possibly be sequentially ordered, and only
-  // if we've assigned all instructions to a single stream.
-  const HloInstructionSequence* SequentialOrder(
-      const HloComputation& computation) const override {
-    return &computation == module_->entry_computation() ? entry_sequence_.get()
-                                                        : nullptr;
-  }
-
-  std::string ToString() const override {
-    return ToStringHelper("GpuHloOrdering");
-  }
-
- private:
-  std::unique_ptr<HloInstructionSequence> entry_sequence_;
-};
-
-GpuHloOrdering::GpuHloOrdering(
-    const HloModule* module, const StreamAssignment& stream_assignment,
-    const std::vector<HloInstruction*>& thunk_launch_order)
-    : PredecessorHloOrdering(module) {
-  // The entry computation has a total order when there's only one stream.
-  if (stream_assignment.StreamCount() == 1) {
-    entry_sequence_ =
-        std::make_unique<HloInstructionSequence>(thunk_launch_order);
-  }
-
-  // The ordering of instructions for the entry computation is determined by the
-  // total order of thunk launches, and stream assignment. Instructions are
-  // sequential within a stream and concurrent across streams. In addition, the
-  // GpuExecutable adds cross-stream dependency edges to ensure each instruction
-  // waits for its operands before executing.
-  //
-  // The predecessor map is built incrementally, in thunk launch order. We
-  // record the most-recently seen instructions per stream in
-  // 'last_instruction_per_stream'. This lets us quickly determine the
-  // same-stream predecessors of each instruction.
-
-  // Compute the set of all instructions we will want to set reachability on.
-  auto predecessor_map = std::make_unique<HloReachabilityMap>(
-      module->entry_computation()->MakeInstructionPostOrder());
-
-  // The most recently visited instruction per stream.
-  std::vector<const HloInstruction*> last_instruction_per_stream(
-      stream_assignment.StreamCount(), nullptr);
-
-  for (const HloInstruction* hlo : thunk_launch_order) {
-    predecessor_map->SetReachable(hlo, hlo);
-    if (stream_assignment.HasStreamAssigned(*hlo)) {
-      // Gather all instruction which are immediate predecessors of 'hlo' in the
-      // reachability graph.
-      std::vector<const HloInstruction*> immediate_preds;
-      immediate_preds.insert(immediate_preds.end(), hlo->operands().begin(),
-                             hlo->operands().end());
-      immediate_preds.insert(immediate_preds.end(),
-                             hlo->control_predecessors().begin(),
-                             hlo->control_predecessors().end());
-
-      // All ops already queued on the same instruction stream, and their
-      // transitive predecessors, are predecessors.
-      const int stream_no = stream_assignment.StreamNumberForHlo(*hlo);
-      if (last_instruction_per_stream[stream_no] != nullptr) {
-        immediate_preds.push_back(last_instruction_per_stream[stream_no]);
-      }
-      predecessor_map->FastSetReachabilityToUnion(immediate_preds, hlo);
-      last_instruction_per_stream[stream_no] = hlo;
-    } else {
-      // Only parameters and constants don't have an assigned stream, since they
-      // don't require a thunk. These ops don't have any predecessors.
-      CHECK(hlo->opcode() == HloOpcode::kParameter ||
-            hlo->opcode() == HloOpcode::kConstant);
-      CHECK_EQ(hlo->operand_count(), 0);
-    }
-  }
-  predecessors_.emplace(module->entry_computation(),
-                        std::move(predecessor_map));
-
-  // The ordering of instructions in subcomputations is based solely on control
-  // and data dependencies.
-  //
-  // TODO(toddw): Each subcomputation is actually emitted as a function in DFS
-  // postorder, so we can do better and establish the total order here. We don't
-  // do that yet since it's hard to ensure that the order here is the order used
-  // by IrEmitterNested. And mismatched ordering bugs would be hard to find.
-  for (auto* computation : module->computations()) {
-    if (computation != module->entry_computation() &&
-        !computation->IsFusionComputation()) {
-      predecessors_.emplace(computation,
-                            HloReachabilityMap::Build(computation));
-    }
-  }
+bool IsSyncCollective(const HloInstruction& instr) {
+  auto backend_config = instr.backend_config<CollectiveBackendConfig>().value();
+  return backend_config.is_sync();
 }
 
-// Computes a topological launch_order that is close to a breadth-first
-// order. This heuristic works well for graphs where concurrent kernels are
-// located at the same layer. It can often reduce dependency between concurrent
-// GEMMs due to intra-stream total orders.  E.g. consider the following HLO
-// graph where the numbers in the parens indicate the stream assigned to each
-// HLO.
-//
-//   A(0) -> D(0) -> E(1)
-//    |
-//    v
-//   B(0)
-//    |
-//    v
-//   C(0)
-//
-// If the total order is A,B,C,D,E, then C and E would be sequentialized
-// because C completes before D starts in stream 0, and E depends on D.
-// However, if the total order is A,B,D,C,E, then C and E can run
-// concurrently.
-void BFSLaunchOrder(const HloComputation* computation,
-                    std::vector<HloInstruction*>* launch_order) {
-  // This topological sort uses two data structures:
-  // 1. `incoming_edge_count` which keeps track of the number of incoming
-  // edges to each HLO;
-  // 2. `queue` which contains all HLOs with no incoming edges.
-  //
-  // The sorting algorithm repeatedly pops the top from the queue and deletes
-  // that HLO from the graph, making more HLOs incoming-edge free.
-  std::deque<HloInstruction*> queue;
-  absl::flat_hash_map<const HloInstruction*, int64_t> incoming_edge_count;
-  for (auto* hlo : computation->instructions()) {
-    if (hlo->operand_count() == 0) {
-      queue.push_back(hlo);
-    } else {
-      incoming_edge_count[hlo] =
-          std::set<HloInstruction*>(hlo->operands().begin(),
-                                    hlo->operands().end())
-              .size();
-    }
-  }
-
-  while (!queue.empty()) {
-    HloInstruction* x = queue.front();
-    queue.pop_front();
-    launch_order->push_back(x);
-    for (HloInstruction* y : x->users()) {
-      --incoming_edge_count[y];
-      if (incoming_edge_count[y] == 0) {
-        queue.push_back(y);
-      }
-    }
-  }
+bool IsNopInstruction(const HloInstruction& hlo) {
+  HloOpcode op = hlo.opcode();
+  return op == HloOpcode::kGetTupleElement || op == HloOpcode::kBitcast ||
+         op == HloOpcode::kConstant || op == HloOpcode::kParameter ||
+         hlo.IsEffectiveBitcast();
 }
 
 bool ShouldScheduleAsEarlyAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceStart:
-      return true;
+    case HloOpcode::kCollectivePermuteStart:
+      return !IsSyncCollective(instr);
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() ==
@@ -209,7 +73,8 @@ bool ShouldScheduleSuccessor(const HloInstruction& sussessor,
 bool ShouldScheduleAsLateAsPossible(const HloInstruction& instr) {
   switch (instr.opcode()) {
     case HloOpcode::kAllReduceDone:
-      return true;
+    case HloOpcode::kCollectivePermuteDone:
+      return ShouldScheduleAsEarlyAsPossible(*instr.operand(0));
     case HloOpcode::kCustomCall:
       return static_cast<const HloCustomCallInstruction&>(instr)
                  .custom_call_schedule() == CustomCallSchedule::SCHEDULE_LATEST;
@@ -305,43 +170,297 @@ HloInstructionSequence PostprocessorToScheduleAsEarlyOrLateAsPossible(
   return result;
 }
 
-}  // end namespace
+// Post process to move start/done for synchronous collectives next to each
+// other.
+HloInstructionSequence PostprocessorToScheduleSyncCollectives(
+    const HloInstructionSequence& input) {
+  HloInstructionSequence result;
+  auto is_synchronous_op = [](const HloInstruction* instr) {
+    return hlo_query::IsAsyncCollectiveStartOp(instr->opcode()) &&
+           IsSyncCollective(*instr);
+  };
+  for (HloInstruction* instr : input.instructions()) {
+    if (is_synchronous_op(instr)) {
+      continue;
+    }
+    if (hlo_query::IsAsyncCollectiveDoneOp(instr->opcode())) {
+      // Place the start op just before the done op if its synchronous.
+      HloInstruction* start = instr->mutable_operand(0);
+      if (is_synchronous_op(start)) {
+        result.push_back(start);
+      }
+    }
+    result.push_back(instr);
+  }
+  return result;
+}
 
-GpuHloSchedule::GpuHloSchedule() {}
+StatusOr<HloSchedule> ScheduleGpuModuleWithMemoryScheduler(
+    const HloModule* module, int64_t pointer_size) {
+  return ScheduleModule(
+      module,
+      [pointer_size](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
+      },
+      ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler,
+                                            PostProcessSchedule));
+}
 
-/* static */
-StatusOr<std::unique_ptr<GpuHloSchedule>> GpuHloSchedule::Build(
-    const HloModule* module, const StreamAssignment& stream_assignment,
-    int64_t pointer_size) {
-  std::unique_ptr<GpuHloSchedule> schedule(new GpuHloSchedule);
+// Latency hiding scheduler support.
 
-  // Initialize thunk_launch_order_, the total order of thunk launches.
-  HloComputation* entry_computation = module->entry_computation();
-  if (stream_assignment.StreamCount() == 1) {
-    // All kernels are launched on a single stream, so there's no loss of
-    // concurrency by optimizing for minimal memory usage.
-    TF_ASSIGN_OR_RETURN(
-        HloSchedule sequences,
-        ScheduleModule(
-            module,
-            [pointer_size](const BufferValue& buffer) {
-              return ShapeUtil::ByteSizeOf(buffer.shape(), pointer_size);
-            },
-            ComputationSchedulerToModuleScheduler(
-                DefaultMemoryScheduler,
-                PostprocessorToScheduleAsEarlyOrLateAsPossible)));
-    schedule->thunk_launch_order_ =
-        sequences.sequence(entry_computation).instructions();
-    schedule->hlo_ordering_ =
-        std::make_unique<SequentialHloOrdering>(sequences);
-  } else {
-    // BFS tends to increase concurrency, but also increases memory usage.
-    BFSLaunchOrder(entry_computation, &schedule->thunk_launch_order_);
-    schedule->hlo_ordering_ = std::make_unique<GpuHloOrdering>(
-        module, stream_assignment, schedule->thunk_launch_order_);
+SchedulerConfig GetSchedulerConfig(const GpuDeviceInfo& gpu_info) {
+  SchedulerConfig config;
+  config.all_reduce_overlap_limit = 1;
+  config.collective_permute_overlap_limit = 1;
+  config.use_real_cost_model = false;
+  config.aggressive_scheduling_policies = true;
+
+  // Assume 75% of the total device memory is available for XLA.
+  config.memory_limit = gpu_info.device_memory_size * 0.95;
+  return config;
+}
+
+// GPU specific resources for latency hiding scheduler.
+enum class GpuResourceType {
+  kGpuAsyncStream = 0,  // The async stream for collectives.
+  kNumTargetResources = 1,
+};
+
+// Base GPU async tracker that enables async tracking only for async collectives
+// that are marked for async execution.
+class GpuAsyncTrackerBase : public AsyncTracker {
+ public:
+  using AsyncTracker::AsyncTracker;
+
+  bool IsSupportedAsyncDone(const HloInstruction& hlo) const override {
+    return hlo_query::IsAsyncCollectiveDoneOp(hlo.opcode()) &&
+           !IsSyncCollective(*hlo.operand(0));
   }
 
-  return std::move(schedule);
+  // Returns if this is an Async op start that the scheduler supports.
+  bool IsSupportedAsyncStart(const HloInstruction& hlo) const override {
+    return hlo_query::IsAsyncCollectiveStartOp(hlo.opcode()) &&
+           !IsSyncCollective(hlo);
+  }
+};
+
+// GPU async tracker maps all collectives onto an async stream resource.
+class GpuAsyncTracker : public GpuAsyncTrackerBase {
+ public:
+  explicit GpuAsyncTracker(const SchedulerConfig& config)
+      : GpuAsyncTrackerBase(config) {}
+
+  ResourcesVector GetResourcesFromInstruction(
+      const HloInstruction& instr) const override {
+    CanonicalAsyncOp op = DefaultGetCanonicalAsyncOp(instr);
+    if (op.outer == HloOpcode::kAsyncStart ||
+        op.outer == HloOpcode::kAsyncDone) {
+      ResourceUsageType usage = op.outer == HloOpcode::kAsyncStart
+                                    ? ResourceUsageType::kResourceRelease
+                                    : ResourceUsageType::kResourceOccupy;
+
+      const int64_t gpu_stream_resource =
+          GetFirstTargetDefinedResource() +
+          static_cast<int64_t>(GpuResourceType::kGpuAsyncStream);
+      return {std::make_pair(gpu_stream_resource, usage)};
+    }
+    return GpuAsyncTrackerBase::GetResourcesFromInstruction(instr);
+  }
+
+  int64_t GetNumTargetDefinedResources() const override {
+    return static_cast<int64_t>(GpuResourceType::kNumTargetResources);
+  };
+
+  // Returns how many instructions using the given resource_type we can overlap
+  int64_t GetNumAvailableResources(int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return GpuAsyncTrackerBase::GetNumAvailableResources(resource_type);
+    }
+    CHECK_EQ(resource_type,
+             first_target_resource +
+                 static_cast<int64_t>(GpuResourceType::kGpuAsyncStream));
+
+    // We will allow upto 1 outstanding collective on the async stream. This
+    // controls the number of collectives in flight in the schedule (a
+    // collective is in flight if the start is issued but not done). As an
+    // example, with 1, LHS will generate the schedule: s0,e0,s1,e1, i.e., s1
+    // is not scheduled until e0 is scheduled. With 2, the scheduler can
+    // schedule s0,s1,e0,e1, because it assumes that the 2 instances of the
+    // resources do not interfere with each other. If we do want to support > 1
+    // async stream, we can increase this number and then do a post-pass on the
+    // scheduled code to assign async stream-id to collectives (and actually
+    // support > 1 async stream in the runtime).
+    return 1;
+  }
+
+  absl::string_view GetResourceName(int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return GpuAsyncTrackerBase::GetResourceName(resource_type);
+    }
+    CHECK_LE(resource_type,
+             first_target_resource + GetNumTargetDefinedResources());
+    switch (resource_type - first_target_resource) {
+      case static_cast<int64_t>(GpuResourceType::kGpuAsyncStream):
+        return "kGpuAsyncStream";
+      default:
+        return "kUnsupportedResource";
+    }
+  }
+
+  ResourceHazardType GetResourceHazardType(
+      int64_t resource_type) const override {
+    const int64_t first_target_resource = GetFirstTargetDefinedResource();
+    if (resource_type < first_target_resource) {
+      return GpuAsyncTrackerBase::GetResourceHazardType(resource_type);
+    }
+    CHECK_LE(resource_type,
+             first_target_resource + GetNumTargetDefinedResources());
+    return ResourceHazardType::kUnshareable;
+  }
+};
+
+class GpuLatencyEstimator : public ApproximateLatencyEstimator {
+ public:
+  TimeCost NodeCost(const HloInstruction* instr) const override {
+    if (IsNopInstruction(*instr)) {
+      return 0.0;
+    }
+    // Consider cublas/cuddn/softmax custom calls as medium cost. Since the
+    // latency between async-start and async-done is 5000 and cost of each
+    // custom call is 1000, the LHS will try to schedule approximately 5 of
+    // these in between each start/end pair.
+    if (instr->opcode() == HloOpcode::kCustomCall) {
+      if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
+        return ApproximateLatencyEstimator::kMediumCost;
+      }
+      // consider other custom calls as medium cost for now. Keeping the case
+      // explicitly separate for further tuning.
+      return ApproximateLatencyEstimator::kMediumCost;
+    }
+    return ApproximateLatencyEstimator::NodeCost(instr);
+  }
+};
+
+std::optional<ProfiledInstructionsProto> ReadPGLEProfile(
+    const HloModule* module, const std::string& fingerprint) {
+  const std::string& pgle_profile_file_or_dir_path =
+      module->config()
+          .debug_options()
+          .xla_gpu_pgle_profile_file_or_directory_path();
+  if (pgle_profile_file_or_dir_path.empty()) {
+    return std::nullopt;
+  }
+  tsl::Env* env = tsl::Env::Default();
+  ProfiledInstructionsProto profile;
+  // If its a directory, use fingerprint to look for the profile for this
+  // specific module.
+  if (env->IsDirectory(pgle_profile_file_or_dir_path).ok()) {
+    std::string pgle_profile_path =
+        pgle_profile_file_or_dir_path + "/" + fingerprint + ".pbtxt";
+    Status s =
+        tsl::ReadTextProto(tsl::Env::Default(), pgle_profile_path, &profile);
+    if (!s.ok()) {
+      // Unable to read PGLE using fingerprint.
+      return std::nullopt;
+    }
+    LOG(INFO) << "Found profile for module using fingerprint";
+    return profile;
+  }
+
+  // The pgle_profile_file_or_dir is a file. Read the profile and see if its
+  // applicable for this HLO module (all instruction names in the profile should
+  // be present in the HLO module)
+  Status s = tsl::ReadTextProto(tsl::Env::Default(),
+                                pgle_profile_file_or_dir_path, &profile);
+  if (!s.ok()) {
+    return std::nullopt;
+  }
+  return profile;
+}
+
+}  // end namespace
+
+int64_t GetSizeOfShape(const Shape& shape, int pointer_size) {
+  int64_t size = ShapeUtil::ByteSizeOf(shape, pointer_size);
+  if (shape.is_static() || shape.IsTuple()) {
+    return size;
+  }
+  // Each dynamic dimension size is represented as a S32.
+  int64_t metadata_size = sizeof(int32_t) * shape.dimensions_size();
+  return size + metadata_size;
+}
+
+Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
+                         const GpuDeviceInfo& gpu_info) {
+  TF_ASSIGN_OR_RETURN(
+      HloSchedule schedule,
+      ScheduleGpuModuleWithMemoryScheduler(module, pointer_size));
+  TF_RETURN_IF_ERROR(module->set_schedule(std::move(schedule)));
+
+  // Tag the module with its 128 bit fingeprint. The fingerprint should include
+  // instruction name with ids
+  std::string fingerprint = module->GetFingerprint128(
+      HloPrintOptions::Canonical().set_print_backend_config(true));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  FrontendAttributes attributes;
+  (*attributes.mutable_map())[std::string(kFingerprintBeforeLHS)] = fingerprint;
+  root->add_frontend_attributes(attributes);
+  VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("
+          << module->unique_id() << ") = " << fingerprint;
+
+  const bool enable_latency_hiding_scheduler =
+      module->config()
+          .debug_options()
+          .xla_gpu_enable_latency_hiding_scheduler();
+
+  if (!enable_latency_hiding_scheduler) {
+    return OkStatus();
+  }
+
+  SchedulerConfig config = GetSchedulerConfig(gpu_info);
+  auto gpu_latency_estimator = std::make_unique<GpuLatencyEstimator>();
+
+  std::unique_ptr<LatencyEstimator> latency_estimator;
+  std::optional<ProfiledInstructionsProto> profile =
+      ReadPGLEProfile(module, fingerprint);
+  if (profile.has_value()) {
+    latency_estimator = std::make_unique<ProfileGuidedLatencyEstimator>(
+        config, std::move(gpu_latency_estimator), profile.value());
+    LOG(INFO) << "Found profile, using profile guided latency estimator";
+  } else {
+    latency_estimator = std::move(gpu_latency_estimator);
+  }
+
+  auto async_tracker = [&]() -> std::unique_ptr<AsyncTracker> {
+    return module->config()
+                   .debug_options()
+                   .xla_gpu_lhs_enable_gpu_async_tracker()
+               ? std::make_unique<GpuAsyncTracker>(config)
+               : std::make_unique<GpuAsyncTrackerBase>(config);
+  }();
+
+  auto shape_size_in_bytes = [pointer_size](const Shape& shape) {
+    return GetSizeOfShape(shape, pointer_size);
+  };
+  HloPassPipeline pipeline("latency-hiding-scheduler");
+  auto scheduler_core = std::make_unique<DefaultSchedulerCore>(
+      shape_size_in_bytes, async_tracker.get(), latency_estimator.get(),
+      config);
+
+  pipeline.AddPass<LatencyHidingScheduler>(
+      std::move(latency_estimator), std::move(async_tracker),
+      std::move(scheduler_core), shape_size_in_bytes);
+
+  TF_RETURN_IF_ERROR(pipeline.Run(module).status());
+  return OkStatus();
+}
+
+HloInstructionSequence PostProcessSchedule(
+    const HloInstructionSequence& input) {
+  HloInstructionSequence result = PostprocessorToScheduleSyncCollectives(input);
+  return PostprocessorToScheduleAsEarlyOrLateAsPossible(result);
 }
 
 }  // namespace gpu

@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tooling_util.h"
 
+#include <algorithm>
 #include <functional>
 #include <iterator>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -582,7 +584,7 @@ void DumpGraphvizVideoFrame(const Model& model) {
             dump_options.dump_graphviz,
             toco::port::StringF("toco_video_%05d.dot", dump_id)),
         graphviz_dump, port::file::Defaults());
-    QCHECK(result.ok()) << result.error_message();
+    QCHECK(result.ok()) << result.message();
     dump_id++;
   }
 }
@@ -602,7 +604,7 @@ void LogDump(int log_level, const std::string& message, const Model& model) {
             absl::StrCat("toco_", absl::StrReplaceAll(message, {{" ", "_"}}),
                          ".dot")),
         graphviz_dump, port::file::Defaults());
-    QCHECK(result.ok()) << result.error_message();
+    QCHECK(result.ok()) << result.message();
   }
 
   if (!VLOG_IS_ON(log_level)) {

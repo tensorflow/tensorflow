@@ -115,5 +115,37 @@ TEST(FloorDivModel, BroadcastFloorDivFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(), ElementsAre(-4.0, 2.0, 3.0, -3.0));
 }
+
+TEST(FloorDivModel, SimpleInt16) {
+  FloorDivModel<int16_t> model({TensorType_INT16, {1, 2, 2, 1}},
+                               {TensorType_INT16, {1, 2, 2, 1}},
+                               {TensorType_INT16, {}});
+  model.PopulateTensor<int16_t>(model.input1(), {10, 9, 11, 3});
+  model.PopulateTensor<int16_t>(model.input2(), {2, 2, 3, 4});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(5, 4, 3, 0));
+}
+
+TEST(FloorDivModel, NegativeValueInt16) {
+  FloorDivModel<int16_t> model({TensorType_INT16, {1, 2, 2, 1}},
+                               {TensorType_INT16, {1, 2, 2, 1}},
+                               {TensorType_INT16, {}});
+  model.PopulateTensor<int16_t>(model.input1(), {10, -9, -11, 7});
+  model.PopulateTensor<int16_t>(model.input2(), {2, 2, -3, -4});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(5, -5, 3, -2));
+}
+
+TEST(FloorDivModel, BroadcastFloorDivInt16) {
+  FloorDivModel<int16_t> model({TensorType_INT16, {1, 2, 2, 1}},
+                               {TensorType_INT16, {1}}, {TensorType_INT16, {}});
+  model.PopulateTensor<int16_t>(model.input1(), {10, -9, -11, 7});
+  model.PopulateTensor<int16_t>(model.input2(), {-3});
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
+  EXPECT_THAT(model.GetOutput(), ElementsAre(-4, 3, 3, -3));
+}
 }  // namespace
 }  // namespace tflite

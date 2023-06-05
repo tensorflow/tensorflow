@@ -19,6 +19,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#include <utility>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +37,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 #include "tensorflow/core/util/tensor_format.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -153,7 +156,7 @@ class CTCLossOp : public OpKernel {
     Status labels_sp_valid = labels_sp.IndicesValid();
     OP_REQUIRES(ctx, labels_sp_valid.ok(),
                 errors::InvalidArgument("label SparseTensor is not valid: ",
-                                        labels_sp_valid.error_message()));
+                                        labels_sp_valid.message()));
 
     typename ctc::CTCLossCalculator<T>::LabelSequences labels_t(batch_size);
     for (const auto& g : labels_sp.group({0})) {  // iterate by batch
@@ -331,13 +334,13 @@ class CTCLossOpGPU : public OpKernel {
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, probs_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> probs_desc =
-        probs_desc_s.ConsumeValueOrDie();
+        std::move(probs_desc_s).value();
 
     auto grads_desc_s = executor->createRnnStateTensorDescriptor(
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, grads_desc_s.status());
     std::unique_ptr<RnnStateTensorDescriptor> grads_desc =
-        grads_desc_s.ConsumeValueOrDie();
+        std::move(grads_desc_s).value();
 
     absl::Span<const int32> labels_data(labels_values->flat<int32>().data(),
                                         num_indices);
@@ -357,8 +360,9 @@ class CTCLossOpGPU : public OpKernel {
     bool cudnn_launch_status =
         stream
             ->ThenCtcLoss(*probs_desc, probs_data, labels_data,
-                          labels_lengths_data, input_lengths_data, &costs_data,
-                          *grads_desc, &grads_data, &workspace_allocator)
+                          labels_lengths_data, input_lengths_data,
+                          GetNumericOptions(), &costs_data, *grads_desc,
+                          &grads_data, &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {

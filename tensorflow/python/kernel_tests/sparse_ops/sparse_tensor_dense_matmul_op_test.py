@@ -29,9 +29,9 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 
 
@@ -271,13 +271,13 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_dense(x, y, adjoint_a,
   v0 = constant_op.constant(0.0)
 
   def _timeit(iterations, _):
-    (_, final) = control_flow_ops.while_loop(
+    (_, final) = while_loop.while_loop(
         lambda t, _: t < iterations,
         body, (t0, v0),
         parallel_iterations=1,
         back_prop=False,
-        shape_invariants=(tensor_shape.TensorShape(()),
-                          tensor_shape.TensorShape(None)))
+        shape_invariants=(tensor_shape.TensorShape(
+            ()), tensor_shape.TensorShape(None)))
     return [final]
 
   return _timeit
@@ -298,13 +298,13 @@ def _sparse_tensor_dense_vs_dense_matmul_benchmark_sparse(x_ind, x_val, x_shape,
   v0 = constant_op.constant(0.0)
 
   def _timeit(iterations, _):
-    (_, final) = control_flow_ops.while_loop(
+    (_, final) = while_loop.while_loop(
         lambda t, _: t < iterations,
         body, (t0, v0),
         parallel_iterations=1,
         back_prop=False,
-        shape_invariants=(tensor_shape.TensorShape(()),
-                          tensor_shape.TensorShape(None)))
+        shape_invariants=(tensor_shape.TensorShape(
+            ()), tensor_shape.TensorShape(None)))
     return [final]
 
   return _timeit

@@ -15,9 +15,15 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/op_converter_registry.h"
 
 #include <set>
+#include <string>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/util/env_var.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
@@ -57,7 +63,37 @@ class OpConverterRegistry::Impl {
     return {};
   }
 
-  StatusOr<OpConverter> LookUp(const string& name) {
+  StatusOr<OpConverter> LookUp(string name) {
+    // Fetch the user-provide TF operations denylisted for conversion by TF-TRT.
+    static const absl::flat_hash_set<string> tftrt_op_fakelist = [] {
+      string tftrt_op_fakelist_str;
+      TF_CHECK_OK(ReadStringFromEnvVar("TF_TRT_OP_FAKELIST",
+                                       /*default_value=*/"",
+                                       &tftrt_op_fakelist_str));
+      absl::flat_hash_set<string> tftrt_op_fakelist{};
+      for (const auto& x : str_util::Split(tftrt_op_fakelist_str, ",")) {
+        tftrt_op_fakelist.insert(x);
+      }
+      // Force a rehash of the flat hash set
+      tftrt_op_fakelist.rehash(0);
+      return tftrt_op_fakelist;
+    }();
+
+    // In case the TensorFlow OP `name` matches any of the names passed to
+    // TF_TRT_OP_FAKELIST environment variable, force ::LookUp to resolves to
+    // ConvertFake OP converter.
+    if (tftrt_op_fakelist.contains(name)) {
+      LOG_FIRST_N(INFO, 2) << "Emulating OP Converter: `" << name << "`. It "
+                           << "will cause TRT engine building to fail. This "
+                           << "feature is only intended to be used for "
+                           << "TF-TRT graph segmentation experiments. This "
+                           << "feature is controlled using: "
+                           << "`TF_TRT_OP_FAKELIST=OpName1,OpName2`.";
+      // Forces ::LookUp to resolve to `ConvertFake` registred to `FakeOp`.
+      mutex_lock lock(mu_);
+      return registry_.find("FakeOp")->second.converter;
+    }
+
     mutex_lock lock(mu_);
     auto found = registry_.find(name);
     if (found != registry_.end()) {

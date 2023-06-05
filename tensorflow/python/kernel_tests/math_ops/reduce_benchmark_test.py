@@ -17,7 +17,6 @@
 import time
 
 import numpy as np
-from six.moves import range  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session

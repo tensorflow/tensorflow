@@ -59,6 +59,22 @@ StatusOr<mlir::Operation*> EmitAllReduce(
     const absl::flat_hash_set<std::string>& reduced_dims,
     mlir::Operation* input, absl::string_view reduce_op);
 
+// Emits a barrier used for synchronization purposes and returns
+// a R1 const value using `value`. More precisely, this barrier
+// guarantees that
+//    1. Side-effect Ops before this barrier are complete before this op begins.
+//    2. Side-effect Ops after this barrier start after this barrier completes.
+//
+// Note that the returned operation must be used in the graph. If it is not
+// used, then this op will be removed from the graph from various compiler
+// passes and thus there will be no barrier.
+//
+// Used for introducing a barrier before every Merge op during checkpointing.
+StatusOr<mlir::Operation*> EmitBarrierWithConstValue(mlir::OpBuilder& builder,
+                                                     mlir::Location loc,
+                                                     const Mesh& mesh,
+                                                     int32 value);
+
 // Given input `tensor` that is sharded across spatial dimensions, conduct
 // halo exchange such that each spatially sharded input blocks exchange
 // `halo_size` slice with its neighboring processors.

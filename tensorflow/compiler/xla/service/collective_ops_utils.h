@@ -21,14 +21,15 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/functional/function_ref.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/global_device_id.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/tsl/platform/blocking_counter.h"
 
 namespace xla {
 
@@ -41,6 +42,11 @@ std::optional<ReductionKind> MatchReductionInstruction(
 // Attempts to match computation to one of the possible cases in ReductionKind.
 std::optional<ReductionKind> MatchReductionComputation(
     const HloComputation* computation);
+
+// Returns the reduction identity value for a certain ReductionKind and
+// PrimitiveType.
+std::optional<Literal> GetReductionIdentity(ReductionKind kind,
+                                            PrimitiveType type);
 
 // Figures out which IDs are participating in the collective subgroup.
 // An empty `groups` indicates that all [0, total_participant_count) IDs
@@ -115,6 +121,19 @@ StatusOr<std::vector<std::vector<GlobalDeviceId>>>
 GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
                               absl::Span<const ReplicaGroup> replica_groups,
                               CollectiveOpGroupMode group_mode);
+
+// Same as above, except that it returns the flattened id in the replica groups
+// instead of device id.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    const DeviceAssignment& device_assignment,
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode group_mode);
+
+// Same as above, but take replica/partition count instead of device assignment.
+StatusOr<std::vector<ReplicaGroup>> GetParticipatingFlattenedIdGroups(
+    absl::Span<const ReplicaGroup> replica_groups,
+    CollectiveOpGroupMode replica_group_mode, int replica_count,
+    int partition_count);
 
 // Figures out which devices are participating in the collective subgroup.
 StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
@@ -212,8 +231,7 @@ struct RendezvousKey {
 };
 
 template <typename DescFn>
-void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
-                       const DescFn& desc_fn) {
+void WaitAndLogIfStuck(tsl::BlockingCounter* counter, const DescFn& desc_fn) {
   VLOG(3) << "Begin: " << desc_fn();
   const std::chrono::milliseconds timeout(5000);
   bool ok = counter->WaitFor(timeout);
@@ -224,7 +242,7 @@ void WaitAndLogIfStuck(tensorflow::BlockingCounter* counter,
   LOG(ERROR) << "This thread has been waiting for " << timeout.count()
              << "ms for and may be stuck: " << desc_fn();
   counter->Wait();
-  LOG(ERROR) << "Thread is unstuck!  Warning above was a false-positive.  "
+  LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
                 "Perhaps the timeout is too short: "
              << desc_fn();
 }
@@ -271,6 +289,7 @@ struct AllReduceParticipantData : ParticipantData {
 
   std::string ToString() const override {
     std::vector<std::string> buffer_strs;
+    buffer_strs.reserve(buffers.size());
     for (const Buffer& buffer : buffers) {
       buffer_strs.push_back(
           absl::StrFormat("{element_count=%d}", buffer.element_count));
@@ -304,7 +323,7 @@ class Rendezvous {
   // Submit a participant to the rendezvous. We get the rendezvous from
   // `rendezvous_getter`, which we can then use to drop the existing reference.
   static StatusOr<O> SubmitParticipant(
-      std::function<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
+      absl::FunctionRef<std::shared_ptr<Rendezvous<I, O>>()> rendezvous_getter,
       I participant) {
     std::shared_ptr<Rendezvous<I, O>> rendezvous = rendezvous_getter();
     TF_ASSIGN_OR_RETURN(auto p, rendezvous->SubmitParticipant(participant));
@@ -317,7 +336,7 @@ class Rendezvous {
     // An alternative way of accomplishing this goal would be to implement
     // RefcountingHashMap::erase() and call it during SubmitParticipant.  But
     // erase() is deceptively complex to implement correctly.
-    std::shared_ptr<tensorflow::BlockingCounter> blocking_counter = p.second;
+    std::shared_ptr<tsl::BlockingCounter> blocking_counter = p.second;
     rendezvous.reset();
     blocking_counter->DecrementCount();
     xla::WaitAndLogIfStuck(blocking_counter.get(), [&] {
@@ -357,7 +376,7 @@ class Rendezvous {
   //  - a BlockingCounter initialized to the number of participants, so that
   //    the caller can coordinate with the participants one last time if it
   //    chooses.  This is useful for coordinating destruction of the Rendezvous.
-  StatusOr<std::pair<O, std::shared_ptr<tensorflow::BlockingCounter>>>
+  StatusOr<std::pair<O, std::shared_ptr<tsl::BlockingCounter>>>
   SubmitParticipant(const I& participant) {
     {
       absl::MutexLock lock(&mu_);
@@ -367,7 +386,7 @@ class Rendezvous {
       if (!participants_.empty() &&
           participants_.back().rendezvous_key != participant.rendezvous_key) {
         return InvalidArgument(
-            "Mismatch among all-reduce participants.  Expected same "
+            "Mismatch among all-reduce participants. Expected same "
             "replica-count, element-count, and rendezvous-key but were %s and "
             "%s",
             participants_.back().ToString(), participant.ToString());
@@ -390,13 +409,11 @@ class Rendezvous {
 
   const RendezvousKey key_;
 
-  tensorflow::BlockingCounter all_participants_present_{
-      key_.num_local_participants};
+  tsl::BlockingCounter all_participants_present_{key_.num_local_participants};
 
-  // tensorflow::BlockingCounter returned by SubmitParticipant.
-  std::shared_ptr<tensorflow::BlockingCounter> returned_blocking_counter_{
-      std::make_shared<tensorflow::BlockingCounter>(
-          key_.num_local_participants)};
+  // tsl::BlockingCounter returned by SubmitParticipant.
+  std::shared_ptr<tsl::BlockingCounter> returned_blocking_counter_{
+      std::make_shared<tsl::BlockingCounter>(key_.num_local_participants)};
 };
 
 }  // end namespace xla

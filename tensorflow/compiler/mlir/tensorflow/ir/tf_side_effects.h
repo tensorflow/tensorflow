@@ -94,6 +94,25 @@ struct MustExecute : public ::mlir::SideEffects::Resource::Base<MustExecute> {
   StringRef getName() final { return "MustExecute"; }
 };
 
+struct CollectiveReduceOrdering
+    : public ::mlir::SideEffects::Resource::Base<CollectiveReduceOrdering> {
+  StringRef getName() final { return "CollectiveReduceOrdering"; }
+};
+
+struct NcclAllReduceOrdering
+    : public ::mlir::SideEffects::Resource::Base<NcclAllReduceOrdering> {
+  StringRef getName() final { return "NcclAllReduceOrdering"; }
+};
+
+struct XlaLaunch : public ::mlir::SideEffects::Resource::Base<XlaLaunch> {
+  StringRef getName() final { return "XlaLaunch"; }
+};
+
+struct WriteTrainingPredictions
+    : public ::mlir::SideEffects::Resource::Base<WriteTrainingPredictions> {
+  StringRef getName() final { return "WriteTrainingPredictions"; }
+};
+
 // Returns true iff resource type with given ID is only self-dependent, i.e.,
 // there are no dependencies to other resource types (including unknown resource
 // type).

@@ -22,8 +22,8 @@ limitations under the License.
 #include <string>
 #endif  // TF_LITE_STATIC_MEMORY
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 
@@ -177,6 +177,14 @@ inline int64_t NumElements(const TfLiteTensor* t) {
   return NumElements(t->dims);
 }
 
+inline int64_t NumElements(const int* dims, int num_dims) {
+  int64_t count = 1;
+  for (int i = 0; i < num_dims; ++i) {
+    count *= dims[i];
+  }
+  return count;
+}
+
 // Determines whether tensor is constant.
 // TODO(b/138199592): Introduce new query which checks for constant OR
 // persistent-read-only, which would be useful for most tensor kernels that
@@ -196,22 +204,23 @@ inline bool IsConstantOrPersistentTensor(const TfLiteTensor* tensor) {
 inline bool IsDynamicTensor(const TfLiteTensor* tensor) {
   return tensor->allocation_type == kTfLiteDynamic;
 }
-
+#ifndef TF_LITE_STATIC_MEMORY
 // Sets tensor to dynamic.
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
+    TfLiteTensorDataFree(tensor);
     tensor->allocation_type = kTfLiteDynamic;
-    tensor->data.raw = nullptr;
   }
 }
 
 // Sets tensor to persistent and read-only.
 inline void SetTensorToPersistentRo(TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLitePersistentRo) {
+    TfLiteTensorDataFree(tensor);
     tensor->allocation_type = kTfLitePersistentRo;
-    tensor->data.raw = nullptr;
   }
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Determines whether it is a hybrid op - one that has float inputs and
 // quantized weights.
@@ -289,7 +298,7 @@ TfLiteStatus GetOutputShapeFromInput(TfLiteContext* context,
                                      const TfLiteTensor* input,
                                      TfLiteIntArray** output_shape);
 
-const std::string GetShapeDebugString(const TfLiteIntArray* shape);
+std::string GetShapeDebugString(const TfLiteIntArray* shape);
 
 #endif  // !defined(TF_LITE_STATIC_MEMORY)
 

@@ -28,13 +28,14 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -370,6 +371,8 @@ def map_fn(fn,
         "parallel.", 1)
     parallel_iterations = 1
 
+  # Explicitly read values of ResourceVariables.
+  elems = variable_utils.convert_variables_to_tensors(elems)
   # Flatten the input tensors, and get the TypeSpec for each one.
   elems_flat = nest.flatten(elems)
 
@@ -492,7 +495,7 @@ def map_fn(fn,
       ]
       return (i + 1, tas)
 
-    _, r_a = control_flow_ops.while_loop(
+    _, r_a = while_loop.while_loop(
         lambda i, _: i < n,
         compute, (i, result_batchable_ta),
         parallel_iterations=parallel_iterations,

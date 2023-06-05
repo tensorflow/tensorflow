@@ -218,9 +218,22 @@ def LowerMulNoNanOp : BinaryNoNanPat<TF_MulNoNanOp, TF_MulOp>;
 // TruncateDiv op patterns.
 //===----------------------------------------------------------------------===//
 
-def LowerTruncateDivOp : Pat<
-  (TF_TruncateDivOp $lhs, $rhs),
+def LowerTruncateDivOpOnIntTensors : Pat<
+  (TF_TruncateDivOp TF_IntTensor:$lhs, $rhs),
   (TF_DivOp $lhs, $rhs)>;
+
+// Note: truncation could also be implemented as sign(x) * floor(abs(x)) or
+//       (-1 & x) || floor(abs(x)), based on performance benchmarks.
+def LowerTruncateDivOpOnFloatTensors : Pat<
+  (TF_TruncateDivOp TF_FloatTensor:$lhs, $rhs),
+  (TF_SelectV2Op
+    (TF_LessOp
+      (TF_DivOp:$div $lhs, $rhs),
+      (TF_ConstOp:$zero (GetScalarOfFloatType<"0.0"> $lhs))
+    ),
+    (TF_CeilOp $div),
+    (TF_FloorOp $div)
+  )>;
 
 //===----------------------------------------------------------------------===//
 // Fill op patterns.
@@ -586,3 +599,38 @@ def LowerExp1mOp : Pat<
     (TF_ExpOp $x),
     (TF_ConstOp (GetScalarOfType<1> $x))
   )>;
+
+//===----------------------------------------------------------------------===//
+// MatrixBandPart op patterns.
+//===----------------------------------------------------------------------===//
+
+class GetDimensionSize<int idx> : NativeCodeCall<
+  "GetDimensionSize(&$_builder, $_loc, $0, " # idx # ", $1)">;
+
+// MatrixBandPart(input, num_lower, num_upper) {
+//   m = Shape(input)[-2]
+//   n = Shape(input)[-1]
+//   num_lower_or_m = Select(num_lower < 0, m, num_lower)
+//   num_upper_or_n = Select(num_upper < 0, n, num_upper)
+//   offset = ExpandDims(Range(0, m), -1) - Range(0, n)
+//   indicator = LogicalAnd(offset <= num_lower_or_m, offset >= -num_upper_or_n)
+//   return Select(indicator, input, ZerosLike(Input))
+// }
+def LowerMatrixBandPartOp : Pattern<
+  (TF_MatrixBandPartOp $input, $num_lower, $num_upper),
+  [(TF_ConstOp:$zero (GetScalarOfType<0> $num_lower)),
+   (TF_ConstOp:$one (GetScalarOfType<1> $num_lower)),
+   (TF_ConstOp:$neg_one (GetScalarOfType<-1> $num_lower)),
+   (GetDimensionSize<-2>:$m $input, (IsI32 $num_lower)),
+   (GetDimensionSize<-1>:$n $input, (IsI32 $num_upper)),
+   (TF_SelectV2Op:$num_lower_or_m (TF_LessOp $num_lower, $zero),
+                                  $m, $num_lower),
+   (TF_SelectV2Op:$num_upper_or_n (TF_LessOp $num_upper, $zero),
+                                  $n, $num_upper),
+   (TF_RangeOp:$range_m $zero, $m, $one),
+   (TF_RangeOp:$range_n $zero, $n, $one),
+   (TF_SubOp:$offset (TF_ExpandDimsOp $range_m, $neg_one), $range_n),
+   (TF_LogicalAndOp:$indicator (TF_LessEqualOp $offset, $num_lower_or_m),
+                               (TF_GreaterEqualOp $offset,
+                                                  (TF_NegOp $num_upper_or_n))),
+   (TF_SelectV2Op $indicator, $input, (TF_ZerosLikeOp $input))]>;

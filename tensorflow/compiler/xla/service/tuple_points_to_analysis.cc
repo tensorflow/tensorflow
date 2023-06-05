@@ -25,16 +25,16 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -539,6 +539,40 @@ Status TuplePointsToAnalysis::HandleCustomCall(HloInstruction* custom_call) {
   return OkStatus();
 }
 
+// WARNING:
+// Adding this, which essentially does the same thing as HandleCustomCall
+// Not sure if it is really needed or it will break anything
+Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
+  auto cfusion = Cast<HloFusionInstruction>(fusion);
+  PointsToSet& points_to_set = CreateEmptyPointsToSet(fusion);
+  absl::flat_hash_map<ShapeIndex, std::pair<int64_t, ShapeIndex>>
+      aliased_outputs;
+  for (const auto& pair : cfusion->output_to_operand_aliasing()) {
+    aliased_outputs.emplace(pair.first, pair.second);
+  }
+  points_to_set.ForEachMutableElement([&](const ShapeIndex& index,
+                                          PointsToSet::BufferList* buffers) {
+    auto it = aliased_outputs.find(index);
+    if (it == aliased_outputs.end()) {
+      points_to_set.AddPointedToBuffer(
+          logical_buffer_analysis_->GetBuffer(fusion, index), index);
+    } else {
+      const PointsToSet& input_set =
+          *PerInst(cfusion->operand(it->second.first))->points_to_set;
+      for (const LogicalBuffer* input_buffer :
+           input_set.element(it->second.second)) {
+        points_to_set.AddPointedToBuffer(*input_buffer, index);
+      }
+
+      for (HloInstruction* tuple : input_set.tuple_sources(it->second.second)) {
+        points_to_set.add_tuple_source(index, tuple);
+      }
+    }
+  });
+  points_to_set.add_tuple_source({}, fusion);
+  return OkStatus();
+}
+
 Status TuplePointsToAnalysis::HandleOptimizationBarrier(
     HloInstruction* barrier) {
   // A kOptimizationBarrier instruction is a no-op.
@@ -730,7 +764,7 @@ bool TuplePointsToAnalysis::DoesNotUseOperandBuffer(
     // Iterate through all users of all buffer aliases of the buffer in the
     // points-to set of fusion parameter at 'index'.
     // Return false if any uses are detected at 'index', returns true otherwise.
-    const LogicalBuffer* buffer = GetBufferDefinedAt(*it, index).ValueOrDie();
+    const LogicalBuffer* buffer = GetBufferDefinedAt(*it, index).value();
     for (const BufferAlias& alias : GetBufferAliases(*buffer)) {
       for (HloInstruction* alias_user : alias.instruction()->users()) {
         if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(),

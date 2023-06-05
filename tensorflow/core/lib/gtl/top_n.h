@@ -36,8 +36,8 @@ limitations under the License.
 // NOTE(zhifengc): This class should be redesigned to avoid reallocating a
 // vector for each Extract.
 
-#ifndef TENSORFLOW_LIB_GTL_TOP_N_H_
-#define TENSORFLOW_LIB_GTL_TOP_N_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_TOP_N_H_
+#define TENSORFLOW_CORE_LIB_GTL_TOP_N_H_
 
 #include <stddef.h>
 #include <algorithm>
@@ -333,4 +333,4 @@ void TopN<T, Cmp>::Reset() {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_TOP_N_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_TOP_N_H_

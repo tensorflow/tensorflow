@@ -20,6 +20,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -117,9 +118,9 @@ class ConcatTest(xla_test.XLATestCase):
                               cur_offset + params[p[i]].shape[concat_dim])
       cur_offset += params[p[i]].shape[concat_dim]
       if dtype == dtype_feed:
-        self.assertAllEqual(result[ind], params[p[i]])
+        self.assertAllEqual(result[tuple(ind)], params[p[i]])
       else:
-        self.assertAllClose(result[ind], params[p[i]], 0.01)
+        self.assertAllClose(result[tuple(ind)], params[p[i]], 0.01)
 
   def testRandom(self):
     self._testRandom(dtypes.float32)
@@ -323,7 +324,7 @@ class ConcatTest(xla_test.XLATestCase):
             index[concat_dim] = slice(
                 cur_offset, cur_offset + params[p[i]].shape[concat_dim])
             cur_offset += params[p[i]].shape[concat_dim]
-            self.assertAllEqual(result[index], params[p[i]])
+            self.assertAllEqual(result[tuple(index)], params[p[i]])
 
 
 class ConcatOffsetTest(xla_test.XLATestCase):
@@ -348,7 +349,7 @@ class PackTest(xla_test.XLATestCase):
         s0 = constant_op.constant([2, 3, 5], dtypes.int32)
         s1 = constant_op.constant([2, 7, 5], dtypes.int32)
         s2 = constant_op.constant([2, 20, 5], dtypes.int32)
-        packed = array_ops.stack([s0, s1, s2])
+        packed = array_ops_stack.stack([s0, s1, s2])
         ans = self.evaluate(packed)
         self.assertAllEqual(ans, [[2, 3, 5], [2, 7, 5], [2, 20, 5]])
 
@@ -358,7 +359,7 @@ class PackTest(xla_test.XLATestCase):
         s0 = constant_op.constant(2, dtypes.int32)
         s1 = constant_op.constant(3, dtypes.int32)
         s2 = constant_op.constant(5, dtypes.int32)
-        packed = array_ops.stack([s0, s1, s2])
+        packed = array_ops_stack.stack([s0, s1, s2])
         ans = self.evaluate(packed)
         self.assertAllEqual(ans, [2, 3, 5])
 
@@ -368,7 +369,7 @@ class PackTest(xla_test.XLATestCase):
         s0 = constant_op.constant([[]], dtypes.int32)
         s1 = constant_op.constant([[]], dtypes.int32)
         s2 = constant_op.constant([[]], dtypes.int32)
-        packed = array_ops.stack([s0, s1, s2])
+        packed = array_ops_stack.stack([s0, s1, s2])
         ans = self.evaluate(packed)
         self.assertAllEqual(ans, [[[]], [[]], [[]]])
 

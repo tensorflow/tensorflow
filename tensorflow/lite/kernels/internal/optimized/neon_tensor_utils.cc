@@ -1783,7 +1783,7 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
   const int32_t output_min = std::numeric_limits<int8_t>::min();
   const int32_t output_max = std::numeric_limits<int8_t>::max();
 
-  const int32x4_t output_zp_dup = vdupq_n_s32(-output_zp);
+  const int32x4_t output_zp_dup = vdupq_n_s32(output_zp);
   const int32x4_t max_val_dup = vdupq_n_s32(output_max);
   const int32x4_t min_val_dup = vdupq_n_s32(output_min);
 
@@ -1821,7 +1821,7 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
       const int16_t b = input_2[index];
       int32_t value = static_cast<int32_t>(a) * static_cast<int32_t>(b);
       value = MultiplyByQuantizedMultiplier(value, multiplier, shift);
-      value -= output_zp;
+      value += output_zp;
       value = std::min(std::max(-128, value), 127);
 
       output[index] = static_cast<int8>(value);

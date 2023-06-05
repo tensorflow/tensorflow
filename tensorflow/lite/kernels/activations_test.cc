@@ -30,7 +30,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
@@ -101,7 +101,7 @@ class BaseActivationsOpModel : public SingleOpModel {
       output_ = AddOutput({input.type, {}});
     }
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
+    resolver_ = std::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -129,8 +129,8 @@ class BaseActivationsOpModel : public SingleOpModel {
     }
     SetBuiltinOp(BuiltinOperator_SOFTMAX, BuiltinOptions_SoftmaxOptions,
                  CreateSoftmaxOptions(builder_, softmax_beta).Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_SOFTMAX,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_SOFTMAX,
+                                                   registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -158,8 +158,8 @@ class BaseActivationsOpModel : public SingleOpModel {
     }
     SetBuiltinOp(BuiltinOperator_LEAKY_RELU, BuiltinOptions_LeakyReluOptions,
                  CreateLeakyReluOptions(builder_, alpha).Union());
-    resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_LEAKY_RELU,
-                                                    registration);
+    resolver_ = std::make_unique<SingleOpResolver>(BuiltinOperator_LEAKY_RELU,
+                                                   registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -176,7 +176,7 @@ class BaseActivationsOpModel : public SingleOpModel {
     input_ = AddInput(input);
     output_ = AddOutput(output);
     SetBuiltinOp(type, BuiltinOptions_NONE, 0);
-    resolver_ = absl::make_unique<SingleOpResolver>(type, registration);
+    resolver_ = std::make_unique<SingleOpResolver>(type, registration);
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -2729,16 +2729,22 @@ TEST(FloatActivationsOpTest, Gelu) {
 
 TEST(FloatActivationsOpTest, GeluApproximate) {
   FloatGeluOpModel m({TensorType_FLOAT32, {2, 3}}, /*approximate=*/true);
+  // The OpenCL delegate always uses the accurate version so use a higher
+  // tolerance for validation.
+  constexpr float kEpsilon = 1e-3;
 
   m.SetInput({
       0.0f, 1.0f, 3.0f,    // Row 1
       1.0f, -1.0f, -2.0f,  // Row 2
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
-                                 0.0f, 0.841192f, 2.99636f,           // Row 1
-                                 0.841192f, -0.158808f, -0.0454023f,  // Row 2
-                             })));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 0.841192f, 2.99636f,           // Row 1
+                      0.841192f, -0.158808f, -0.0454023f,  // Row 2
+                  },
+                  kEpsilon)));
 }
 
 TEST(QuantizedGeluOpTest, GeluInt8) {

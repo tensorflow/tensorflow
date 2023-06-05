@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/executable_run_options.h"
 
 #include <atomic>
+#include <string>
 
 namespace xla {
 
@@ -69,6 +70,16 @@ ExecutableRunOptions& ExecutableRunOptions::set_host_to_device_stream(
 
 stream_executor::Stream* ExecutableRunOptions::host_to_device_stream() const {
   return host_to_device_stream_;
+}
+
+ExecutableRunOptions& ExecutableRunOptions::set_device_to_host_stream(
+    stream_executor::Stream* stream) {
+  device_to_host_stream_ = stream;
+  return *this;
+}
+
+stream_executor::Stream* ExecutableRunOptions::device_to_host_stream() const {
+  return device_to_host_stream_;
 }
 
 ExecutableRunOptions& ExecutableRunOptions::set_intra_op_thread_pool(

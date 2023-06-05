@@ -26,7 +26,7 @@ Status ValidateDeviceType(StringPiece type) {
   static const LazyRE2 kTfDeviceTypeRegEx = {"[A-Z][A-Z_]*"};
   bool matches = RE2::FullMatch(type, *kTfDeviceTypeRegEx);
   if (!matches) {
-    return Status(error::FAILED_PRECONDITION,
+    return Status(absl::StatusCode::kFailedPrecondition,
                   strings::StrCat("Device name/type '", type, "' must match ",
                                   kTfDeviceTypeRegEx->pattern(), "."));
   }

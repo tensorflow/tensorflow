@@ -14,7 +14,7 @@
 # ==============================================================================
 """Test configs for while_loop."""
 import numpy as np
-import tensorflow.compat.v1 as tf
+import tensorflow as tf
 from tensorflow.lite.testing import zip_test_utils
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -42,9 +42,9 @@ def make_while_tests(options):
     # to input (1,) tensors and then reshape to scalar.
     # TODO(b/129003347): Remove the workaround after scalar inputs are
     # supported.
-    num_iterations = tf.placeholder(
+    num_iterations = tf.compat.v1.placeholder(
         dtype=tf.int32, name="num_iterations", shape=(1,))
-    increment_value = tf.placeholder(
+    increment_value = tf.compat.v1.placeholder(
         dtype=parameters["dtype"], name="increment_value", shape=(1,))
     num_iterations_scalar = tf.reshape(num_iterations, ())
 
@@ -71,7 +71,8 @@ def make_while_tests(options):
       return [new_counter, new_value, increment_value]
 
     counter, value, result_increment_value = tf.while_loop(
-        cond_fn, body_fn, loop_vars=[1, increment_value, increment_value])
+        cond=cond_fn, body=body_fn,
+        loop_vars=[1, increment_value, increment_value])
     return [num_iterations,
             increment_value], [counter, value, result_increment_value]
 

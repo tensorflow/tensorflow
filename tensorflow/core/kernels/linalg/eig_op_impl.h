@@ -74,10 +74,12 @@ class EigOp : public LinearAlgebraOp<InputScalar, OutputScalar> {
     // This algorithm relies on denormals, so switch them back on locally.
     port::ScopedDontFlushDenormal dont_flush_denormals;
 
-    Eigen::ComplexEigenSolver<OutputMatrix> eig(
-        inputs[0],
-        compute_v_ ? Eigen::ComputeEigenvectors : Eigen::EigenvaluesOnly);
-    // TODO(rmlarsen): Output more detailed error info on failure.
+    using EigenSolver =
+        std::conditional_t<Eigen::NumTraits<InputScalar>::IsComplex,
+                           Eigen::ComplexEigenSolver<InputMatrix>,
+                           Eigen::EigenSolver<InputMatrix>>;
+    EigenSolver eig(inputs[0], /*computeEigenvectors=*/compute_v_);
+
     OP_REQUIRES(
         context, eig.info() == Eigen::Success,
         errors::InvalidArgument("Eigen decomposition was not "

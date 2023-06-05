@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
 
+#include <functional>
+#include <string>
+#include <utility>
+
 namespace xla {
 
-WorkerThread::WorkerThread(tensorflow::Env* env, const std::string& name) {
-  thread_.reset(env->StartThread(tensorflow::ThreadOptions(), name,
-                                 [this]() { WorkLoop(); }));
+WorkerThread::WorkerThread(tsl::Env* env, const std::string& name) {
+  thread_.reset(
+      env->StartThread(tsl::ThreadOptions(), name, [this]() { WorkLoop(); }));
 }
 
 WorkerThread::~WorkerThread() {

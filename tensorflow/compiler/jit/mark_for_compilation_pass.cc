@@ -18,9 +18,17 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <deque>
+#include <iterator>
 #include <limits>
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_map.h"
@@ -120,14 +128,16 @@ class MarkForCompilationPassImpl {
   MarkForCompilationPassImpl(DebugOptions debug_options, Graph* graph,
                              FunctionLibraryDefinition* flib_def, Env* env,
                              OptimizerOptions::GlobalJitLevel global_jit_level,
-                             bool cpu_global_jit)
+                             bool cpu_global_jit,
+                             std::string cluster_name_prefix)
       : debug_options_(debug_options),
         graph_(graph),
         graph_fingerprint_(0),
         flib_def_(flib_def),
         env_(env),
         global_jit_level_(global_jit_level),
-        cpu_global_jit_(cpu_global_jit) {}
+        cpu_global_jit_(cpu_global_jit),
+        cluster_name_prefix_(cluster_name_prefix) {}
 
   Status Run();
 
@@ -449,6 +459,7 @@ class MarkForCompilationPassImpl {
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
   bool cpu_global_jit_;
+  const std::string cluster_name_prefix_;
   absl::flat_hash_map<const Cluster*, bool> should_compile_cluster_cache_;
   jit::DeviceInfoCache device_info_cache_;
 
@@ -967,13 +978,16 @@ Status MarkForCompilationPassImpl::CreateClusters() {
       string& name = cluster_names[cluster->cycles_graph_node_id()];
 
       if (name.empty()) {
-        if (debug_options_.deterministic_cluster_names) {
-          name = absl::StrCat("cluster_", graph_fingerprint_, "_",
-                              GetNextClusterSequenceNumber(graph_fingerprint_));
+        if (!cluster_name_prefix_.empty()) {
+          name = absl::StrCat(cluster_name_prefix_, "_");
         } else {
-          name = absl::StrCat("cluster_",
-                              GetNextClusterSequenceNumber(graph_fingerprint_));
+          name = "cluster_";
         }
+        if (debug_options_.deterministic_cluster_names) {
+          absl::StrAppend(&name, graph_fingerprint_, "_");
+        }
+        absl::StrAppend(&name,
+                        GetNextClusterSequenceNumber(graph_fingerprint_));
       }
 
       n->AddAttr(kXlaClusterAttr, name);
@@ -1189,6 +1203,24 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
+absl::flat_hash_set<string> GetOrCreateClusterExcludeList() {
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  absl::flat_hash_set<string> excludelist;
+  for (auto s : absl::StrSplit(flags->tf_xla_cluster_exclude_ops, ',')) {
+    if (!s.empty()) {
+      excludelist.insert(string(s));
+    }
+  }
+  if (VLOG_IS_ON(2) && !excludelist.empty()) {
+    std::vector<string> vexcludelist(excludelist.begin(), excludelist.end());
+    absl::c_sort(vexcludelist);
+    VLOG(2) << "XLA clustering will exclude following TF operations from auto "
+               "clustering: "
+            << absl::StrJoin(vexcludelist, " ");
+  }
+  return excludelist;
+}
+
 absl::flat_hash_set<string> GetOrCreateAllowlist() {
   absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
       tensorflow::GetAllowlistTable();
@@ -1289,12 +1321,25 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
+    auto cluster_exclude_op_list = GetOrCreateClusterExcludeList();
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
     filter.allow_unique_op = false;
+    filter.allow_where_op = true;
+
+    for (const auto& s : cluster_exclude_op_list) {
+      if (s == "Where") {
+        filter.allow_where_op = false;
+      } else {
+        return errors::InvalidArgument(
+            "The operation '", s,
+            "' passed to --tf_xla_cluster_exclude_ops is not supported by "
+            "XLA.");
+      }
+    }
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});
@@ -1820,7 +1865,12 @@ Status MarkForCompilation(
       GetGlobalJitLevelForGraph(options),
       options.session_options->config.graph_options()
           .optimizer_options()
-          .cpu_global_jit()}
+          .cpu_global_jit(),
+      /*cluster_name_prefix=*/options.session_options != nullptr
+          ? options.session_options->config.experimental()
+                .session_metadata()
+                .name()
+          : ""}
       .Run();
 }
 
@@ -1921,6 +1971,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
            {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3",
             "_FusedBatchNormEx", "FusedBatchNormGrad", "FusedBatchNormGradV2",
             "FusedBatchNormGradV3"}},
+          {"Conv", {"_FusedConv2D"}},
           {"SORT", {"TopKV2"}},  // XLA version much faster then TF version.
           {"MISC",
            // clang-format off
@@ -1968,6 +2019,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "BesselI1e",
       "Betainc",
       "BiasAddV1",
+      "Bincount",
       "Bucketize",
       "Case",
       "CheckNumerics",
@@ -1982,6 +2034,8 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Cross",
       "Cumprod",
       "Cumsum",
+      "CumulativeLogsumexp",
+      "DenseBincount",
       "DataFormatDimMap",
       "DataFormatVecPermute",
       "DepthToSpace",
@@ -2109,6 +2163,10 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "RngSkip",
       "Roll",
       "ScatterNd",
+      "SegmentSumV2",
+      "SegmentProdV2",
+      "SegmentMinV2",
+      "SegmentMaxV2",
       "SelfAdjointEigV2",
       "SoftmaxCrossEntropyWithLogits",
       "SpaceToBatch",
@@ -2175,6 +2233,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "TensorScatterUpdate",
       "ToBool",
       "TridiagonalSolve",
+      "TridiagonalMatMul",
       "TruncatedNormal",
       "Unique",
       "UniqueV2",
@@ -2188,10 +2247,12 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "Where",
       "While",
       "XlaBroadcastHelper",
+      "XlaCallModule",
       "XlaConcatND",
       "XlaConv",
       "XlaConvV2",
       "XlaCustomCall",
+      "XlaCustomCallV2",
       "XlaDequantize",
       "XlaDot",
       "XlaDotV2",
@@ -2205,6 +2266,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
       "XlaPad",
       "XlaRecv",
       "XlaReduce",
+      "XlaReducePrecision",
       "XlaReduceWindow",
       "XlaRemoveDynamicDimensionSize",
       "XlaReplicaId",

@@ -684,9 +684,14 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       num_workers = len(self._cluster_spec.get("chief", [])) + len(
           self._cluster_spec.get("worker", []))
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
+      config = config_pb2.ConfigProto()
+      # Disable coordination service for all tasks except task 0 to avoid
+      # parallel init of the service singleton.
+      if task_id != 0:
+        config.experimental.coordination_config.service_type = ""
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
-         self.cached_session(target=master_target) as sess:
+         self.cached_session(target=master_target, config=config) as sess:
       per_replica = self._get_indexed_slices(devices,
                                              (task_id or 0) * max(num_gpus, 1),
                                              variable_length)

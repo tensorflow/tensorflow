@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/precision.h"
 
+#include <string>
+
 namespace tflite {
 namespace gpu {
 

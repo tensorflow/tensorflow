@@ -16,9 +16,10 @@ limitations under the License.
 // Rewrites ops that require quantized inputs or outputs to ops that allow
 // non-quantized inputs and outputs.
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 
 #define DEBUG_TYPE "tf-lower-quantized"
 
@@ -26,7 +27,11 @@ namespace mlir {
 namespace TF {
 namespace {
 
-class LowerQuantizedPass : public LowerQuantizedPassBase<LowerQuantizedPass> {
+#define GEN_PASS_DEF_LOWERQUANTIZEDPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
+class LowerQuantizedPass
+    : public impl::LowerQuantizedPassBase<LowerQuantizedPass> {
  public:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());

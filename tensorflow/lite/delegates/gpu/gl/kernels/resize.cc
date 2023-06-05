@@ -16,9 +16,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
 
 #include <algorithm>
+#include <any>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -35,11 +38,12 @@ class Resize : public NodeShader {
  public:
   absl::Status GenerateCode(const GenerationContext& ctx,
                             GeneratedCode* generated_code) const final {
-    const auto& attr = absl::any_cast<const Resize2DAttributes&>(ctx.op_attr);
+    const auto& attr = std::any_cast<const Resize2DAttributes&>(ctx.op_attr);
 
     if (ctx.input_shapes[0][2] > ctx.output_shapes[0][2] ||
         ctx.input_shapes[0][1] > ctx.output_shapes[0][1]) {
-      return absl::InvalidArgumentError("Output size is less than input size.");
+      return absl::UnimplementedError(
+          "Downsampling is currently not supported by the resize op on GPU.");
     }
     if (ctx.output_shapes[0][2] != attr.new_shape.w ||
         ctx.output_shapes[0][1] != attr.new_shape.h) {
@@ -140,7 +144,7 @@ class Resize : public NodeShader {
 }  // namespace
 
 std::unique_ptr<NodeShader> NewResizeNodeShader() {
-  return absl::make_unique<Resize>();
+  return std::make_unique<Resize>();
 }
 
 }  // namespace gl

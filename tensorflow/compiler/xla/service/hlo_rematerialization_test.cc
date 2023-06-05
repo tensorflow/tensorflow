@@ -15,19 +15,20 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_rematerialization.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_rematerialization_test_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
@@ -44,10 +45,12 @@ class HloRematerializationTest : public RematerializationTestBase {
                                          HloModule* module,
                                          int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
-    HloMemoryScheduler scheduler(
-        [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-        ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
-    TF_EXPECT_OK(scheduler.Run(module).status());
+    if (!module->has_schedule()) {
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
+          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      TF_EXPECT_OK(scheduler.Run(module).status());
+    }
     HloRematerialization remat(
         ByteSizeOf, memory_limit_bytes,
         /*sizes=*/nullptr,
@@ -582,6 +585,9 @@ class CompressingRematerializationTest : public RematerializationTestBase {
   // Swap the layout of the two most-minor dimensions if the second-minor
   // dimension is bigger than the most-minor dimension.
   static StatusOr<Shape> ChooseCompactLayoutForShape(const Shape& shape) {
+    if (shape.rank() != 2) {
+      return shape;
+    }
     Shape result = shape;
     Layout layout = result.layout();
     int64_t most_minor_index = layout.minor_to_major()[0];
@@ -695,6 +701,44 @@ ENTRY %entry {
       module->entry_computation()->GetInstructionWithName("reduce.1");
   EXPECT_THAT(reduce,
               op::Reduce(op::Copy(op::Copy(broadcast)), op::Constant()));
+}
+
+// Test a pathological case where the peak memory is largely due to a single
+// tensor (broadcast.0) and compressing it would actually increase the peak
+// memory.
+TEST_F(CompressingRematerializationTest, AvoidPathologicalCompress) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%add_float {
+  %x = f32[] parameter(0)
+  %y = f32[] parameter(1)
+  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %constant = f32[] constant(0)
+  %broadcast.0 = f32[63,60]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %broadcast.1 = f32[16,64]{1,0} broadcast(f32[] %param.0), dimensions={}
+  %reduce.0 = f32[] reduce(%broadcast.1, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %reduce.1 = f32[] reduce(%broadcast.0, f32[] %constant), dimensions={1, 0}, to_apply=%add_float
+  %add = f32[] add(f32[] %reduce.0, f32[] %reduce.1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/16 * 1024, module.get()));
+  EXPECT_FALSE(changed);
+  HloInstruction* broadcast =
+      module->entry_computation()->GetInstructionWithName("broadcast.0");
+  HloInstruction* reduce =
+      module->entry_computation()->GetInstructionWithName("reduce.1");
+  EXPECT_THAT(reduce, op::Reduce(broadcast, op::Constant()));
 }
 
 TEST_F(CompressingRematerializationTest, AllUsersUseSameCopy) {
@@ -1154,6 +1198,79 @@ ENTRY %entry {
   ASSERT_THAT(
       root, op::Tuple(op::Reduce(),
                       op::Fusion(AllOf(op::Fusion(), ::testing::Ne(fusion0)))));
+}
+
+TEST_F(HloRematerializationTest, RematFusionUpdateSchedule) {
+  const std::string& hlo_string = R"(
+HloModule fusion, is_scheduled=true
+
+%custom_call_comp {
+  %p = f32[1024]{0} parameter(0)
+  ROOT %n = f32[1024]{0} negate(p)
+}
+
+%add_mul_comp {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+  %x = f32[1024]{0} broadcast(f32[] %p0), dimensions={}
+  %y = f32[1024]{0} broadcast(f32[] %p1), dimensions={}
+  %add = f32[1024] add(%x, %y)
+  %mul = f32[1024] multiply(%x, %y)
+  %c = f32[1024] custom-call(%mul), custom_call_target="SomeCall", called_computations={custom_call_comp}
+  ROOT %out = (f32[1024], f32[1024]) tuple(%add, %c)
+}
+
+ENTRY %entry {
+  %param.0 = f32[] parameter(0)
+  %param.1 = f32[] parameter(1)
+  %fus = (f32[1024]{0}, f32[1024]{0}) fusion(%param.0, %param.1), kind=kLoop,
+    calls=%add_mul_comp
+  %gte.1 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add = f32[1024]{0} add(f32[1024]{0} %gte.1, f32[1024]{0} %gte.1)
+  %broadcast.1 = f32[1024]{0} broadcast(f32[] %param.0), dimensions={}
+  %mul = f32[1024]{0} multiply(f32[1024]{0} %add, f32[1024]{0} %broadcast.1)
+  %gte.2 = f32[1024]{0} get-tuple-element(%fus), index=1
+  %gte.3 = f32[1024]{0} get-tuple-element(%fus), index=0
+  %add.2 = f32[1024]{0} add(f32[1024]{0} %mul, f32[1024]{0} %gte.2)
+  ROOT %mul.2 = f32[1024]{0} multiply(f32[1024]{0} %add.2, f32[1024]{0} %gte.3)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  const HloComputation* computation = module->entry_computation();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          RunHloRematerialization(
+                              /*memory_limit_bytes=*/11 * 1024, module.get()));
+  EXPECT_TRUE(changed);
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* add = computation->root_instruction();
+  const HloInstruction* fusion = add->operand(0)->operand(0);
+  ASSERT_THAT(
+      add,
+      op::Multiply(
+          op::Add(op::Multiply(), op::GetTupleElement(AllOf(
+                                      op::Fusion(), ::testing::Ne(fusion)))),
+          op::GetTupleElement(AllOf(op::Fusion(), ::testing::Ne(fusion)))));
+  // Check that the rematerialized fusion is the same for both ops.
+  const HloInstruction* fusion0 = add->operand(0)->operand(1)->operand(0);
+  const HloInstruction* fusion1 = add->operand(1)->operand(0);
+  auto it = std::find_if(fusion0->fused_instructions().begin(),
+                         fusion0->fused_instructions().end(),
+                         [](const HloInstruction* instr) {
+                           return instr->opcode() == HloOpcode::kCustomCall;
+                         });
+  ASSERT_NE(it, fusion0->fused_instructions().end());
+  auto it2 = std::find_if(fusion1->fused_instructions().begin(),
+                          fusion1->fused_instructions().end(),
+                          [](const HloInstruction* instr) {
+                            return instr->opcode() == HloOpcode::kCustomCall;
+                          });
+  ASSERT_NE(it2, fusion1->fused_instructions().end());
+  EXPECT_TRUE(module->schedule().is_computation_scheduled(
+      (*it)->called_computations()[0]));
+  EXPECT_TRUE(module->schedule().is_computation_scheduled(
+      (*it2)->called_computations()[0]));
 }
 
 }  // namespace

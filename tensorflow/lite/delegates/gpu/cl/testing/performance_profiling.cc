@@ -17,14 +17,15 @@ limitations under the License.
 #include <chrono>  // NOLINT(build/c++11)
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "absl/time/time.h"
+#include "tensorflow/lite/core/kernels/register.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/kernels/register.h"
 
 namespace tflite {
 namespace gpu {
@@ -95,11 +96,11 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   for (int i = 0; i < graph_cl.outputs().size(); ++i) {
     // Assumed that graph outputs have batch size = 1.
     auto data_type = DeduceDataTypeFromPrecision(create_info.precision);
-    RETURN_IF_ERROR(CreateTensor(
-        env.context(), graph_cl.outputs()[i]->tensor.shape,
-        TensorDescriptor{data_type, TensorStorageType::TEXTURE_ARRAY,
-                         Layout::HWC},
-        &outputs[i]));
+    TensorDescriptor required_tensor_desc = TensorDescriptor{
+        data_type, TensorStorageType::TEXTURE_ARRAY, Layout::HWC};
+    required_tensor_desc.SetBHWCShape(graph_cl.outputs()[i]->tensor.shape);
+    RETURN_IF_ERROR(
+        CreateTensor(env.context(), required_tensor_desc, &outputs[i]));
     create_info.external_immutable_tensors[graph_cl.outputs()[i]->id] =
         &outputs[i];
   }
@@ -116,12 +117,10 @@ absl::Status RunExternalImmutableSample(const std::string& model_name) {
   // syncronization.
   RETURN_IF_ERROR(env.queue()->WaitForCompletion());
 
-  const auto dst_shape = BHWC(outputs[0].Batch(), outputs[0].Height(),
-                              outputs[0].Width(), outputs[0].Channels());
+  TensorDescriptor desc;
+  RETURN_IF_ERROR(outputs[0].ToDescriptor(&desc, env.queue()));
   TensorFloat32 cpu_tensor;
-  cpu_tensor.shape = dst_shape;
-  cpu_tensor.data.resize(dst_shape.DimensionsProduct());
-  RETURN_IF_ERROR(outputs[0].ReadData(env.queue(), &cpu_tensor));
+  desc.DownloadData(&cpu_tensor);
   std::cout << "First tensor data at index 0 - " << cpu_tensor.data[0]
             << std::endl;
 
@@ -293,8 +292,12 @@ absl::Status RunModelSample(const std::string& model_name) {
   std::cout << "Storage type: " << ToString(create_info.storage_type)
             << std::endl;
   InferenceContext context;
+  const auto start_init = std::chrono::high_resolution_clock::now();
   RETURN_IF_ERROR(
       context.InitFromGraphWithTransforms(create_info, &graph_cl, &env));
+  const auto end_init = std::chrono::high_resolution_clock::now();
+  std::cout << "Graph initialization time: "
+            << (end_init - start_init).count() * 1e-6f << " ms." << std::endl;
 
   auto* queue = env.profiling_queue();
   ProfilingInfo profiling_info;

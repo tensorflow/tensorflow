@@ -16,15 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_SERVICE_IMPL_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_EAGER_SERVICE_IMPL_H_
 
+#include <memory>
+#include <unordered_map>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
 namespace eager {
@@ -37,7 +36,7 @@ namespace eager {
 // over this (e.g. gRPC).
 class EagerServiceImpl {
  public:
-  explicit EagerServiceImpl(const WorkerEnv* env) : env_(env) {
+  explicit EagerServiceImpl(WorkerEnv* env) : env_(env) {
     gc_thread_.reset(
         env_->env->StartThread({}, "EagerServiceContextGC", [this]() {
           while (true) {
@@ -218,8 +217,11 @@ class EagerServiceImpl {
                           EagerContext* eager_context);
   Status RegisterFunction(const RegisterFunctionOp& register_function,
                           EagerContext* eager_context);
+  Status RemoveFunction(const RemoveFunctionOp& remove_function,
+                        EagerContext* eager_context);
   Status CleanupFunction(const CleanupFunctionOp& cleanup_function);
-  const WorkerEnv* const env_;  // Not owned.
+
+  WorkerEnv* const env_;  // Not owned.
 
   mutex contexts_mu_;
   std::unordered_map<uint64, ServerContext*> contexts_

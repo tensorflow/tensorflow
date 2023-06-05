@@ -23,18 +23,21 @@ import threading
 import time
 import weakref
 
-import six
-
 from tensorflow.core.protobuf import trackable_object_graph_pb2
+from tensorflow.python.checkpoint import async_checkpoint_helper
+from tensorflow.python.checkpoint import checkpoint_context
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.checkpoint import functional_saver
 from tensorflow.python.checkpoint import graph_view as graph_view_lib
+from tensorflow.python.checkpoint import restore as restore_lib
+from tensorflow.python.checkpoint import save_util
+from tensorflow.python.checkpoint import save_util_v1
 from tensorflow.python.checkpoint import util
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import executor
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
@@ -46,16 +49,17 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.saved_model import utils_impl
+from tensorflow.python.saved_model import path_helpers
 from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import base
 from tensorflow.python.trackable import data_structures
 from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import saver as v1_saver_lib
+from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -118,7 +122,7 @@ def _get_checkpoint_size(prefix):
   return size
 
 
-class ObjectGraphProtoPrettyPrinter(object):
+class ObjectGraphProtoPrettyPrinter:
   """Lazily traverses an object graph proto to pretty print names.
 
   If no calls to `node_names` are made this object has no performance
@@ -162,7 +166,7 @@ class ObjectGraphProtoPrettyPrinter(object):
     return node_names
 
 
-class _CheckpointRestoreCoordinatorDeleter(object):
+class _CheckpointRestoreCoordinatorDeleter:
   """Deleter to avoid overriding _CheckpointRestoreCoordinator.__del__()."""
 
   __slots__ = [
@@ -217,7 +221,7 @@ class _CheckpointRestoreCoordinatorDeleter(object):
                f"checkpoint. Object: {node_path}, attribute: {attr}")
 
 
-class _CheckpointRestoreCoordinator(object):
+class _CheckpointRestoreCoordinator:
   """Holds the status of an object-based checkpoint load."""
 
   def __init__(self, object_graph_proto, save_path, save_path_tensor, reader,
@@ -265,9 +269,6 @@ class _CheckpointRestoreCoordinator(object):
     self.all_python_objects = object_identity.ObjectIdentityWeakSet()
     self.save_path_tensor = save_path_tensor
     self.save_path_string = save_path
-    self.reader = reader
-    if self.reader is None:
-      self.reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     self.dtype_map = reader.get_variable_to_dtype_map()
     self.shape_map = reader.get_variable_to_shape_map()
     # A NewCheckpointReader for the most recent checkpoint, for streaming Python
@@ -323,40 +324,41 @@ class _CheckpointRestoreCoordinator(object):
     if self.new_restore_ops_callback:
       self.new_restore_ops_callback(new_ops)  # pylint: disable=not-callable
 
-  def restore_saveables(self,
-                        tensor_saveables,
-                        python_saveables,
-                        registered_savers=None):
+  def restore_saveables(
+      self,
+      tensor_saveables,
+      python_positions,
+      registered_savers=None,
+      reader=None,
+  ):
     """Run or build restore operations for SaveableObjects.
 
     Args:
       tensor_saveables: `SaveableObject`s which correspond to Tensors.
-      python_saveables: `PythonStateSaveable`s which correspond to Python
-        values.
+      python_positions: List of CheckpointPositions bound to `PythonState`
+        objects which must be restored eagerly.
       registered_savers: a dict mapping saver names-> object name -> Trackable.
+      reader: A `CheckpointReader`. If None, a new instance will be created.
 
     Returns:
       When graph building, a list of restore operations, either cached or newly
       created, to restore `tensor_saveables`.
     """
+    if reader is None:
+      reader = py_checkpoint_reader.NewCheckpointReader(self.save_path_string)
+
     restore_ops = []
     # Eagerly run restorations for Python state.
-    for saveable in python_saveables:
-      spec_names = [spec.name for spec in saveable.specs]
-      saveable.python_restore(
-          [self.reader.get_tensor(name) for name in spec_names])
+    for position in python_positions:
+      key = position.object_proto.attributes[0].checkpoint_key
+      position.trackable.deserialize(reader.get_tensor(key))
 
     # If we have new SaveableObjects, extract and cache restore ops.
     if tensor_saveables or registered_savers:
-      validated_saveables = saveable_object_util.validate_and_slice_inputs(
+      flat_saveables = saveable_object_util.validate_and_slice_inputs(
           tensor_saveables)
-      validated_names = set(saveable.name for saveable in validated_saveables)
-      if set(tensor_saveables.keys()) != validated_names:
-        raise AssertionError(
-            "Saveable keys changed when validating. Got back "
-            f"{tensor_saveables.keys()}, was expecting {validated_names}")
-      new_restore_ops = functional_saver.MultiDeviceSaver(
-          validated_saveables,
+      new_restore_ops = functional_saver.MultiDeviceSaver.from_saveables(
+          flat_saveables,
           registered_savers).restore(self.save_path_tensor, self.options)
       if not context.executing_eagerly():
         for name, restore_op in sorted(new_restore_ops.items()):
@@ -366,7 +368,7 @@ class _CheckpointRestoreCoordinator(object):
     return restore_ops
 
 
-class _NameBasedRestoreCoordinator(object):
+class _NameBasedRestoreCoordinator:
   """Keeps the status of a name-based checkpoint restore."""
 
   def __init__(self, save_path, dtype_map=None):
@@ -392,8 +394,12 @@ class _NameBasedRestoreCoordinator(object):
     Yields:
       SaveableObjects for `trackable`'s attributes.
     """
-    for attribute_name, saveable_factory in (
-        trackable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+    for (
+        attribute_name,
+        saveable_factory,
+    ) in saveable_object_util.saveable_objects_from_trackable(
+        trackable, tf1_saver=True,
+    ).items():
       if callable(saveable_factory):
         try:
           # This saveable object factory does not have a default name= argument,
@@ -488,7 +494,7 @@ def _default_getter(name,
                                           shape_list,
                                           dtype=dtype)
 
-    return variables.VariableV1(
+    return variable_v1.VariableV1(
         initial_value=initial_value,
         name=name,
         dtype=variable_dtype,
@@ -680,7 +686,7 @@ def capture_dependencies(template):
     yield
 
 
-class _LoadStatus(object):
+class _LoadStatus:
   """Abstract base for load status callbacks."""
 
   @abc.abstractmethod
@@ -742,7 +748,10 @@ def streaming_restore(status, session=None):
 
 def _objects_with_attributes(full_list):
   """Filters out objects with no direct variable dependencies for assertions."""
-  return [o for o in full_list if o._gather_saveables_for_checkpoint()]  # pylint: disable=protected-access
+  return [
+      o for o in full_list
+      if saveable_object_util.saveable_objects_from_trackable(o)
+  ]
 
 
 class CheckpointLoadStatus(_LoadStatus):
@@ -803,8 +812,7 @@ class CheckpointLoadStatus(_LoadStatus):
           f"Unresolved slot restorations: {self._checkpoint.slot_restorations}")
     if self._checkpoint.unused_attributes:
       unused_attribute_messages = []
-      for node_id, attribute in six.iteritems(
-          self._checkpoint.unused_attributes):
+      for node_id, attribute in self._checkpoint.unused_attributes.items():
         obj = self._checkpoint.object_by_proto_id[node_id]
         unused_attribute_messages.append(
             f"{pretty_printer.node_names[node_id]} ({obj}): {attribute}")
@@ -842,7 +850,8 @@ class CheckpointLoadStatus(_LoadStatus):
       # restoration checks.
       if (isinstance(trackable_object,
                      data_structures.TrackableDataStructure) and
-          not trackable_object._trackable_children()):  # pylint: disable=protected-access
+          not trackable_object._trackable_children(  # pylint: disable=protected-access
+              save_type=base.SaveType.CHECKPOINT)):
         continue
       self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
@@ -1048,11 +1057,11 @@ class NameBasedSaverStatus(_LoadStatus):
         if all(a[0] is not x for x in self._optionally_restored)
     ]
     if unused_attributes:
-      unused_attribute_strings = [
-          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes]
+      unused_attribute_string = "".join(
+          f"\n    {obj}: {attributes}" for obj, attributes in unused_attributes)
       raise AssertionError(
           "Some objects had attributes which were not restored: "
-          f"{unused_attribute_strings}")
+          f"{unused_attribute_string}")
     for trackable in util.list_objects(self._object_graph_view):
       # pylint: disable=protected-access
       trackable._maybe_initialize_trackable()
@@ -1126,7 +1135,7 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
-class TrackableSaver(object):
+class TrackableSaver:
   """Saves and restores a `Trackable` object and its dependencies.
 
   See `Trackable` for details of dependency management. `Saver` wraps
@@ -1158,12 +1167,16 @@ class TrackableSaver(object):
 
     # The following attributes are used when graph building.
 
-    # Saveables caching: A dictionary mapping `Trackable` objects ->
-    # attribute names -> SaveableObjects, used to avoid re-creating
-    # SaveableObjects when graph building.
+    # self._cache: A more generic cache used to cache the serialized tensors and
+    #   TrackableObjectGraph proto attributes.
+    # self._saveables_cache: A dictionary mapping `Trackable` objects ->
+    #   attribute names -> SaveableObjects, used to avoid re-creating
+    #   SaveableObjects when graph building.
     if context.executing_eagerly():
+      self._cache = None
       self._saveables_cache = None
     else:
+      self._cache = object_identity.ObjectIdentityWeakKeyDictionary()
       self._saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
 
     # The file prefix placeholder is created lazily when graph building (and not
@@ -1185,13 +1198,18 @@ class TrackableSaver(object):
     # objects for checkpoint saving.
     self._object_map = None
 
-  def _gather_saveables(self, object_graph_tensor=None):
-    """Wraps _serialize_object_graph to include the object graph proto."""
-    named_saveable_objects, graph_proto, feed_additions, registered_savers = (
-        util.serialize_gathered_objects(
-            graph_view=self._graph_view,
-            object_map=self._object_map,
-            saveables_cache=self._saveables_cache))
+  def _gather_serialized_tensors(self, object_graph_tensor=None):
+    """Gathers tensors to save to ckpt and includes the object graph proto."""
+    serialized_tensors, feed_additions, registered_savers, graph_proto = (
+        save_util.serialize_graph_view(self._graph_view,
+                                       self._object_map,
+                                       cache=self._cache))
+
+    if self._saveables_cache is not None:
+      # Store saveables cache for restoration purposes.
+      self._saveables_cache = (
+          saveable_object_util.serialized_tensors_to_saveable_cache(
+              serialized_tensors))
 
     if object_graph_tensor is None:
       with ops.device("/cpu:0"):
@@ -1200,18 +1218,13 @@ class TrackableSaver(object):
     else:
       feed_additions.update(
           {object_graph_tensor: graph_proto.SerializeToString()})
-    assert base.OBJECT_GRAPH_PROTO_KEY not in named_saveable_objects
-    named_saveable_objects.append(
-        base.NoRestoreSaveable(
-            tensor=object_graph_tensor, name=base.OBJECT_GRAPH_PROTO_KEY))
-    return (named_saveable_objects, graph_proto, feed_additions,
-            registered_savers)
+    assert base.OBJECT_GRAPH_PROTO_KEY not in serialized_tensors.get(None, {})
+    serialized_tensors.setdefault(None, {})[base.OBJECT_GRAPH_PROTO_KEY] = (
+        object_graph_tensor)
+    return serialized_tensors, feed_additions, registered_savers, graph_proto
 
-  def _save_cached_when_graph_building(self,
-                                       file_prefix,
-                                       object_graph_tensor,
-                                       options,
-                                       update_ckpt_state=False):
+  def _save_cached_when_graph_building(self, file_prefix, object_graph_tensor,
+                                       options):
     """Create or retrieve save ops.
 
     Args:
@@ -1219,8 +1232,6 @@ class TrackableSaver(object):
       object_graph_tensor: A `Tensor` to which the current object graph will be
         fed.
       options: `CheckpointOptions` object.
-      update_ckpt_state: Optional bool flag. Indiciate whether the internal
-        checkpoint state needs to be updated.
 
     Returns:
       A two-element tuple with a filename tensor and a feed_dict of tensors to
@@ -1228,81 +1239,29 @@ class TrackableSaver(object):
       current object graph and any Python state to be saved in the
       checkpoint. When executing eagerly only the first argument is meaningful.
     """
-    (named_saveable_objects, graph_proto, feed_additions,
-     registered_savers) = self._gather_saveables(
-         object_graph_tensor=object_graph_tensor)
+    serialized_tensors, feed_additions, registered_savers, graph_proto = (
+        self._gather_serialized_tensors(object_graph_tensor))
 
-    def _run_save():
-      """Create and execute the SaveOp for the checkpoint."""
-      if (self._last_save_object_graph != graph_proto
-          # When executing eagerly, we need to re-create SaveableObjects each
-          # time save() is called so they pick up new Tensors passed to their
-          # constructors. That means the Saver needs to be copied with a new
-          # var_list.
-          or context.executing_eagerly() or ops.inside_function()):
-        saver = functional_saver.MultiDeviceSaver(named_saveable_objects,
-                                                  registered_savers)
-        save_op = saver.save(file_prefix, options=options)
-        with ops.device("/cpu:0"):
-          with ops.control_dependencies([save_op]):
-            self._cached_save_operation = array_ops.identity(file_prefix)
-        self._last_save_object_graph = graph_proto
-      return self._cached_save_operation, feed_additions
+    if (self._last_save_object_graph != graph_proto
+        # When executing eagerly, we need to re-create SaveableObjects each
+        # time save() is called so they pick up new Tensors passed to their
+        # constructors. That means the Saver needs to be copied with a new
+        # var_list.
+        or context.executing_eagerly() or ops.inside_function()):
+      saver = functional_saver.MultiDeviceSaver(serialized_tensors,
+                                                registered_savers)
+      save_op = saver.save(file_prefix, options=options)
+      with ops.device("/cpu:0"):
+        with ops.control_dependencies([save_op]):
+          self._cached_save_operation = array_ops.identity(file_prefix)
+      self._last_save_object_graph = graph_proto
+    return self._cached_save_operation, feed_additions
 
-    def _copy_tensors():
-      """Copy the tensors to the host CPU device."""
-      for saveable in named_saveable_objects:
-        # Pin the device according to the SaveableObject's device location to
-        # avoid unnecessary data copies when reading the variables. This is
-        # aligned with the behavior in MultiDeviceSaver.save().
-        original_device = saveable.device
-        with ops.device(original_device):
-          for spec in saveable.specs:
-            tensor = spec.tensor
-            device = spec.device
-            if tensor is not None:
-              with ops.device(saveable_object_util.set_cpu0(device)):
-                spec._tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
-                # Modify the device info accordingly now that the tensors are
-                # copied to the host CPU device.
-                spec.device = saveable_object_util.set_cpu0(device)
-
-    def _async_save_fn():
-      """The thread function for executing async checkpoint save."""
-      with context.executor_scope(
-          executor.new_executor(
-              enable_async=False, enable_streaming_enqueue=False)):
-        _run_save()
-        # Update the internal checkpoint state if the checkpoint event is
-        # triggered from Checkpoint.save().
-        if update_ckpt_state:
-          _update_checkpoint_state_internal(
-              _convert_file_name_tensor_to_string(file_prefix))
-
-    if options.experimental_enable_async_checkpoint:
-      # Execute async-checkpoint.
-
-      # Step-1: Explicitly copy the tensors to their host CPU device.
-      _copy_tensors()
-
-      # Step-2: Execute the rest of the checkpoint operations on the host device
-      #         using an async executor.
-      global _ASYNC_CHECKPOINT_THREAD
-      if _ASYNC_CHECKPOINT_THREAD is not None:
-        _ASYNC_CHECKPOINT_THREAD.join()
-      _ASYNC_CHECKPOINT_THREAD = threading.Thread(target=_async_save_fn)
-      _ASYNC_CHECKPOINT_THREAD.start()
-
-      # Step-3: Return the expected checkpoint file path though the save op may
-      #         not have finished.
-      self._cached_save_operation = file_prefix
-      return self._cached_save_operation, feed_additions
-
-    # Execute the normal checkpoint, i.e., synchronous.
-    return _run_save()
-
-  def save(self, file_prefix, checkpoint_number=None, session=None,
-           options=None, update_ckpt_state=False):
+  def save(self,
+           file_prefix,
+           checkpoint_number=None,
+           session=None,
+           options=None):
     """Save a training checkpoint.
 
     The saved checkpoint includes variables created by this object and any
@@ -1321,13 +1280,12 @@ class TrackableSaver(object):
         eagerly. If not provided when graph building, the default session is
         used.
       options: Optional `tf.train.CheckpointOptions` object.
-      update_ckpt_state: Optional bool flag. Indiciate whether the internal
-        checkpoint state needs to be updated. Set this to True only if calling
-        from tf.train.Checkpoint.save() to enable updating the checkpoint state.
-        By default this is set to False, i.e., not updating checkpoint state.
 
     Returns:
       The full path to the checkpoint.
+
+    Raises:
+      RuntimeError: if called in V1 Graph mode without a default session.
     """
     options = options or checkpoint_options.CheckpointOptions()
     feed_dict = {}
@@ -1355,7 +1313,7 @@ class TrackableSaver(object):
       file_io.recursive_create_dir(os.path.dirname(file_prefix))
 
     save_path, new_feed_additions = self._save_cached_when_graph_building(
-        file_prefix_tensor, object_graph_tensor, options, update_ckpt_state)
+        file_prefix_tensor, object_graph_tensor, options)
 
     if new_feed_additions:
       feed_dict.update(new_feed_additions)
@@ -1366,6 +1324,10 @@ class TrackableSaver(object):
 
     if session:
       return session.run(save_path, feed_dict=feed_dict)
+    elif use_session:
+      raise RuntimeError(f"Unable to save checkpoint to \"{file_prefix}\" "
+                         "in graph mode without a default session. Please use "
+                         "`with tf.Session():` to create a session.")
     else:
       return save_path
 
@@ -1450,7 +1412,6 @@ class TrackableSaver(object):
     global _ASYNC_CHECKPOINT_THREAD
     if _ASYNC_CHECKPOINT_THREAD is not None:
       _ASYNC_CHECKPOINT_THREAD.join()
-
     reader = py_checkpoint_reader.NewCheckpointReader(save_path)
     graph_building = not context.executing_eagerly()
     if graph_building:
@@ -1497,8 +1458,9 @@ class TrackableSaver(object):
         graph_view=self._graph_view,
         options=options,
         saveables_cache=self._saveables_cache)
-    base.CheckpointPosition(
-        checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root)
+    restore_lib.CheckpointPosition(
+        checkpoint=checkpoint, proto_id=0).restore(self._graph_view.root,
+                                                   reader)
 
     # Attached dependencies are not attached to the root, so should be restored
     # separately.
@@ -1524,8 +1486,9 @@ class TrackableSaver(object):
           # Could not find attached dependency in proto.
           continue
 
-        base.CheckpointPosition(
-            checkpoint=checkpoint, proto_id=proto_id).restore(ref.ref)
+        restore_lib.CheckpointPosition(
+            checkpoint=checkpoint,
+            proto_id=proto_id).restore(ref.ref, reader)
 
     load_status = CheckpointLoadStatus(
         checkpoint,
@@ -1556,10 +1519,10 @@ def frozen_saver(root_trackable):
     the time `frozen_saver` was called.
   """
   named_saveable_objects, registered_savers = (
-      util.frozen_saveables_and_savers(
+      save_util_v1.frozen_saveables_and_savers(
           graph_view_lib.ObjectGraphView(root_trackable)))
-  return functional_saver.MultiDeviceSaver(named_saveable_objects,
-                                           registered_savers)
+  return functional_saver.MultiDeviceSaver.from_saveables(
+      named_saveable_objects, registered_savers)
 
 
 def _assert_trackable(obj, name):
@@ -1592,6 +1555,22 @@ def _convert_file_name_tensor_to_string(tensor):
     # Graph + Session, so we already session.ran it.
     output = compat.as_str(output)
   return output
+
+
+def _copy_single_tensor(tensor):
+  """Copies a single Tensor / SaveSpec onto the CPU device."""
+  device = tensor.device
+  if isinstance(tensor, saveable_object_lib.SaveSpec):
+    # Pin the device according to the tensor's device location to
+    # avoid unnecessary data copies when reading the variables. This is
+    # aligned with the behavior in MultiDeviceSaver.save().
+    with ops.device(device):
+      tensor = tensor.tensor
+
+  if tensor is not None:
+    with ops.device(saveable_object_util.set_cpu0(device)):
+      tensor = array_ops.identity(tensor)  # pylint: disable=protected-access
+  return tensor
 
 
 # Mentions graph building / Sessions. The v2 version is below.
@@ -1669,7 +1648,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
   class Regress(tf.keras.Model):
 
     def __init__(self):
-      super(Regress, self).__init__()
+      super().__init__()
       self.input_transform = tf.keras.layers.Dense(10)
       # ...
 
@@ -1713,7 +1692,7 @@ class CheckpointV1(autotrackable.AutoTrackable):
     Raises:
       ValueError: If objects in `kwargs` are not trackable.
     """
-    super(CheckpointV1, self).__init__()
+    super().__init__()
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
       if _END_TIME_OF_LAST_WRITE is None:
@@ -1769,6 +1748,33 @@ class CheckpointV1(autotrackable.AutoTrackable):
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
+    return self._write(file_prefix, session)
+
+  def _write(self, file_prefix, session=None, write_done_callback=None):
+    """Writes a training checkpoint.
+
+    The checkpoint includes variables created by this object and any
+    trackable objects it depends on at the time `Checkpoint.write()` is
+    called.
+
+    `write` does not number checkpoints, increment `save_counter`, or update the
+    metadata used by `tf.train.latest_checkpoint`. It is primarily intended for
+    use by higher level checkpoint management utilities. `save` provides a very
+    basic implementation of these features.
+
+    Args:
+      file_prefix: A prefix to use for the checkpoint filenames
+        (/path/to/directory/and_a_prefix).
+      session: The session to evaluate variables in. Ignored when executing
+        eagerly. If not provided when graph building, the default session is
+        used.
+      write_done_callback: Optional callback function to be executed once
+        the underlying checkpoint saving is finished. Example usage includes
+        updating the checkpoint internal state.
+
+    Returns:
+      The full path to the checkpoint (i.e. `file_prefix`).
+    """
     start_time = time.time()
     output = self._saver.save(file_prefix=file_prefix, session=session)
     end_time = time.time()
@@ -1783,6 +1789,12 @@ class CheckpointV1(autotrackable.AutoTrackable):
           api_label=_CHECKPOINT_V1,
           microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
                                                   end_time))
+
+      if checkpoint_context.in_preemption_save_context():
+        _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
+            _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
+        )
+
       _END_TIME_OF_LAST_WRITE = end_time
 
     if tensor_util.is_tf_type(output):
@@ -1792,6 +1804,9 @@ class CheckpointV1(autotrackable.AutoTrackable):
     else:
       # Graph + Session, so we already session.ran it.
       output = compat.as_str(output)
+
+    if write_done_callback:
+      write_done_callback(output)
 
     metrics.RecordCheckpointSize(
         api_label=_CHECKPOINT_V1, filesize=_get_checkpoint_size(output))
@@ -2062,7 +2077,7 @@ class Checkpoint(autotrackable.AutoTrackable):
   class Regress(tf.keras.Model):
 
     def __init__(self):
-      super(Regress, self).__init__()
+      super().__init__()
       self.input_transform = tf.keras.layers.Dense(10)
       # ...
 
@@ -2114,11 +2129,25 @@ class Checkpoint(autotrackable.AutoTrackable):
         incompatible).
 
     """
-    super(Checkpoint, self).__init__()
+    super().__init__()
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
       if _END_TIME_OF_LAST_WRITE is None:
         _END_TIME_OF_LAST_WRITE = time.time()
+
+    # Store a reference to root and kwargs if we need to instantiate an
+    # AsyncCheckpointer later.
+    self._root = root
+    self._kwargs = kwargs
+    self._delete_tracking("_kwargs")
+
+    # Don't instantiate the AsyncCheckpointer unless required.
+    self._async_checkpointer_impl = None
+
+    # Store checkpoint options during the save/write calls so that subsequent
+    # read/restore calls are done properly. This is only populated when
+    # async read/write is enabled.
+    self._checkpoint_options = None
 
     attached_dependencies = None
     self._save_counter = None  # Created lazily for restore-on-create.
@@ -2242,49 +2271,92 @@ class Checkpoint(autotrackable.AutoTrackable):
       file_prefix = os.fspath(file_prefix)
     return self._write(file_prefix, options)
 
-  def _write(self, file_prefix, options=None, update_ckpt_state=False):
+  def _async_checkpointer(self):
+    """Returns an instantiated AsyncCheckpointHelper."""
+    if self._async_checkpointer_impl is None:
+      self._async_checkpointer_impl = (
+          async_checkpoint_helper.AsyncCheckpointHelper(
+              Checkpoint,
+              **self._kwargs))
+
+    return self._async_checkpointer_impl
+
+  def _write(self, file_prefix, options=None, write_done_callback=None):
     """Internal method that implements Checkpoint.write().
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
         (/path/to/directory/and_a_prefix).
       options: Optional `tf.train.CheckpointOptions` object.
-      update_ckpt_state: Optional bool flag. Indiciate whether the internal
-        checkpoint state needs to be updated.
+      write_done_callback: Optional callback function to be executed once
+        the underlying checkpoint saving is finished. Example usage includes
+        updating the checkpoint internal state.
 
     Returns:
       The full path to the checkpoint (i.e. `file_prefix`).
     """
-    # TODO(chienchunh): Figure out the better way to measure e2e checkpoint
-    #                   duration and checkpoint size for async checkpoint.
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. running in eager mode
+    if options and options.experimental_enable_async_checkpoint:
+      self._checkpoint_options = options
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
+        return self._async_checkpointer()._write(  # pylint: disable=protected-access
+            file_prefix, options, write_done_callback)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
+
     start_time = time.time()
     options = options or checkpoint_options.CheckpointOptions()
-    output = self._saver.save(
-        file_prefix=file_prefix,
-        options=options,
-        update_ckpt_state=update_ckpt_state)
+    output = self._saver.save(file_prefix=file_prefix, options=options)
+    output = _convert_file_name_tensor_to_string(output)
+
+    if write_done_callback:
+      write_done_callback(output)
+
+    # Ensure save operations have completed when running in eager runtime.
+    if context.executing_eagerly():
+      context.async_wait()
+
     end_time = time.time()
 
-    metrics.AddCheckpointWriteDuration(
-        api_label=_CHECKPOINT_V2,
-        microseconds=_get_duration_microseconds(start_time, end_time))
+    if not checkpoint_context.in_async_metrics_context():
+      # This records the time checkpoint._write() blocks on the main thread.
+      metrics.AddCheckpointWriteDuration(
+          api_label=_CHECKPOINT_V2,
+          microseconds=_get_duration_microseconds(start_time, end_time),
+      )
 
     global _END_TIME_OF_LAST_WRITE
     with _END_TIME_OF_LAST_WRITE_LOCK:
-      metrics.AddTrainingTimeSaved(
-          api_label=_CHECKPOINT_V2,
-          microseconds=_get_duration_microseconds(_END_TIME_OF_LAST_WRITE,
-                                                  end_time))
+      if not checkpoint_context.in_async_metrics_context():
+        metrics.AddTrainingTimeSaved(
+            api_label=_CHECKPOINT_V2,
+            microseconds=_get_duration_microseconds(
+                _END_TIME_OF_LAST_WRITE, end_time)
+        )
+      if checkpoint_context.in_preemption_save_context():
+        _preemption_checkpoint_saved_time_usecs.get_cell().increase_by(
+            _get_duration_microseconds(_END_TIME_OF_LAST_WRITE, end_time)
+        )
       _END_TIME_OF_LAST_WRITE = end_time
 
-    # Convert the file path from tensor to string.
-    output = _convert_file_name_tensor_to_string(output)
-
-    # Async checkpoint may not have finished yet, so we can't measure its
-    # checkpoint size now.
-    if not options.experimental_enable_async_checkpoint:
-      metrics.RecordCheckpointSize(
-          api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output))
+    metrics.RecordCheckpointSize(
+        api_label=_CHECKPOINT_V2, filesize=_get_checkpoint_size(output)
+    )
     return output
 
   @property
@@ -2298,6 +2370,13 @@ class Checkpoint(autotrackable.AutoTrackable):
     """
     self._maybe_create_save_counter()
     return self._save_counter
+
+  def sync(self):
+    """Wait for any outstanding save or restore operations."""
+    # Subclasses of Checkpoint may not have `_async_checkpointer_impl` so use
+    # `getattr` for safer check.
+    if getattr(self, "_async_checkpointer_impl", None) is not None:
+      self._async_checkpointer_impl.sync()
 
   def save(self, file_prefix, options=None):
     # pylint:disable=line-too-long
@@ -2340,17 +2419,35 @@ class Checkpoint(autotrackable.AutoTrackable):
     Returns:
       The full path to the checkpoint.
     """
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. running in eager mode
+    if options and options.experimental_enable_async_checkpoint:
+      self._checkpoint_options = options
+      if checkpoint_context.in_preemption_save_context():
+        # Make sure all in-progress writes have completed before saving the
+        # final preemption checkpoint.
+        if self._async_checkpointer_impl is not None:
+          self._async_checkpointer_impl.sync()
+        # Additional work done will not be saved in a future checkpoint, so
+        # we use regular sync checkpoint to avoid overhead of dispatching
+        # checkpoint write to a new thread.
+        logging.warning(
+            "Switching to regular sync checkpoint for preemption checkpoint."
+        )
+      elif context.executing_eagerly():
+        return self._async_checkpointer().save(file_prefix, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
+
     if isinstance(file_prefix, os.PathLike):
       file_prefix = os.fspath(file_prefix)
     # pylint:enable=line-too-long
     options = options or checkpoint_options.CheckpointOptions()
     graph_building = not context.executing_eagerly()
     if graph_building:
-      # Assert that async checkpoint is not used for non-eager mode.
-      if options.experimental_enable_async_checkpoint:
-        raise NotImplementedError(
-            "Async checkpoint is not supported for non-eager mode. ")
-
       if ops.inside_function():
         raise NotImplementedError(
             "Calling tf.train.Checkpoint.save() from a function is not "
@@ -2377,29 +2474,10 @@ class Checkpoint(autotrackable.AutoTrackable):
     else:
       checkpoint_number = assign_op.numpy()
 
-    file_path = self._write(
+    return self._write(
         "%s-%d" % (file_prefix, checkpoint_number),
         options=options,
-        update_ckpt_state=True)
-
-    # Update internal checkpoint state.
-    if not options.experimental_enable_async_checkpoint:
-      # For synchronous checkpoint, since SaveOp may be run as in graph/session
-      # mode, checkpoint state can only be updated once SaveOp is finished by
-      # TrackableSaver.save().
-      #
-      # If async-checkpoint is enabled, since currently only eager mode is
-      # supported, we can update the checkpoint state in the background as soon
-      # as the eager SaveOp finishes.
-      # See TrackableSaver._save_cached_when_graph_building() for more details.
-      _update_checkpoint_state_internal(file_path)
-
-    # Ensure save operations have completed, only when running in eager runtime
-    # and non-async checkpoint configuration.
-    if not graph_building and not options.experimental_enable_async_checkpoint:
-      context.async_wait()
-
-    return file_path
+        write_done_callback=_update_checkpoint_state_internal)
 
   def read(self, save_path, options=None):
     """Reads a training checkpoint written with `write`.
@@ -2440,6 +2518,21 @@ class Checkpoint(autotrackable.AutoTrackable):
       A load status object, which can be used to make assertions about the
       status of a checkpoint restoration.  See `restore` for details.
     """
+    if options and options.experimental_enable_async_checkpoint:
+      self._checkpoint_options = options
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. there's a preceeding async save/write
+    # 3. running in eager mode
+    if (self._checkpoint_options and
+        self._checkpoint_options.experimental_enable_async_checkpoint):
+      if context.executing_eagerly():
+        return self._async_checkpointer().read(save_path, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
+
     start_time = time.time()
     if isinstance(save_path, os.PathLike):
       save_path = os.fspath(save_path)
@@ -2556,14 +2649,29 @@ class Checkpoint(autotrackable.AutoTrackable):
       NotFoundError: if the a checkpoint or SavedModel cannot be found at
         `save_path`.
     """
+    if options and options.experimental_enable_async_checkpoint:
+      self._checkpoint_options = options
+    # Triggers TF2 async checkpoint handling if:
+    # 1. async checkpoint is enabled in CheckpointOptions
+    # 2. there's a preceeding async save/write
+    # 3. running in eager mode
+    if (self._checkpoint_options and
+        self._checkpoint_options.experimental_enable_async_checkpoint):
+      if context.executing_eagerly():
+        return self._async_checkpointer().restore(save_path, options)
+      else:
+        logging.warning(
+            "Saving async checkpoint in graph mode is currently not supported;"
+            " switching to regular sync checkpoint instead.")
+
     orig_save_path = save_path
     if isinstance(save_path, os.PathLike):
       save_path = os.fspath(save_path)
 
     if save_path is not None and gfile.IsDirectory(save_path) and (
-        (gfile.Exists(utils_impl.get_saved_model_pb_path(save_path)) or
-         gfile.Exists(utils_impl.get_saved_model_pbtxt_path(save_path)))):
-      save_path = utils_impl.get_variables_path(save_path)
+        (gfile.Exists(path_helpers.get_saved_model_pb_path(save_path)) or
+         gfile.Exists(path_helpers.get_saved_model_pbtxt_path(save_path)))):
+      save_path = path_helpers.get_variables_path(save_path)
 
     try:
       status = self.read(save_path, options=options)
@@ -2583,3 +2691,8 @@ class Checkpoint(autotrackable.AutoTrackable):
     if isinstance(status, NameBasedSaverStatus):
       status.add_to_optionally_restored(self.save_counter)
     return status
+
+
+_preemption_checkpoint_saved_time_usecs = monitoring.Counter(
+    "/tensorflow/api/distribution_strategy/preemption_checkpoint_saved_time_usecs",
+    "Training time saved by PreemptionCheckpointHandler (us).")

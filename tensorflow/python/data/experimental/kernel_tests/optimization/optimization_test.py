@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for the static tf.data optimizations."""
 import functools
+import time
 
 from absl.testing import parameterized
 import numpy as np
@@ -32,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -223,8 +225,8 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options = options_lib.Options()
     options.autotune.enabled = autotune
     options.experimental_optimization.map_and_batch_fusion = False
-    if inject_prefetch:
-      options.experimental_optimization.inject_prefetch = True
+    if not inject_prefetch:
+      options.experimental_optimization.inject_prefetch = False
     dataset = dataset.with_options(options)
 
     self.assertDatasetProduces(dataset, expected_output=[np.array([x]) for x in
@@ -245,6 +247,7 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.noop_elimination = True
     options.experimental_optimization.map_and_batch_fusion = True
+    options.experimental_optimization.warm_start = False
     optimized_dataset = unoptimized_dataset.with_options(options)
     optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
@@ -265,6 +268,40 @@ class OptimizationTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.assertEqual(unoptimized, optimized)
       except errors.OutOfRangeError:
         break
+
+  @combinations.generate(
+      combinations.times(
+          test_base.eager_only_combinations(),
+          combinations.combine(warm_start=[True, False]),
+      )
+  )
+  def testOptimizationWarmStart(self, warm_start):
+    dataset = dataset_ops.Dataset.range(10)
+    counter = variables.Variable(0)
+
+    def update_counter(x):
+      counter.assign_add(1)
+      return x
+
+    options = options_lib.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    if warm_start:
+      options.experimental_optimization.warm_start = True
+    else:
+      options.experimental_optimization.warm_start = False
+    dataset = dataset.with_options(options)
+    dataset = dataset.map(update_counter).prefetch(10)
+    unused_iter = iter(dataset)
+
+    if warm_start:
+      for sleep_time_secs in [0.1, 0.2, 0.5, 2, 5, 10]:
+        if counter.numpy() == 0:
+          time.sleep(sleep_time_secs)
+        else:
+          break
+      self.assertGreater(counter.numpy(), 0)
+    else:
+      self.assertEqual(counter.numpy(), 0)
 
 
 if __name__ == "__main__":

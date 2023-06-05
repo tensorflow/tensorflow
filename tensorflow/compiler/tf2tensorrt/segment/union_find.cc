@@ -144,7 +144,7 @@ Status ClusterProperty::Merge(const ClusterProperty& other) {
 
   batch_size_ = std::move(merged_batch_size);
   device_name_ = std::move(merged_device_name.value());
-  return Status::OK();
+  return OkStatus();
 }
 
 }  // namespace segment

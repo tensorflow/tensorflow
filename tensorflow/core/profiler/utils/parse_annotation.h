@@ -19,31 +19,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/tsl/profiler/utils/parse_annotation.h"
 
 namespace tensorflow {
 namespace profiler {
 
-// Parses a string passed to TraceMe or ScopedAnnotation.
-// Expect the format will be "<name>#<metadata>#".
-// <metadata> is a comma-separated list of "<key>=<value>" pairs.
-// If the format does not match, the result will be empty.
-struct Annotation {
-  absl::string_view name;
-  struct Metadata {
-    absl::string_view key;
-    absl::string_view value;
-  };
-  std::vector<Metadata> metadata;
-};
-Annotation ParseAnnotation(absl::string_view annotation);
-
-inline bool HasMetadata(absl::string_view annotation) {
-  constexpr char kUserMetadataMarker = '#';
-  return !annotation.empty() && annotation.back() == kUserMetadataMarker;
-}
-
-std::vector<Annotation> ParseAnnotationStack(
-    absl::string_view annotation_stack);
+using tsl::profiler::Annotation;            // NOLINT
+using tsl::profiler::HasMetadata;           // NOLINT
+using tsl::profiler::ParseAnnotation;       // NOLINT
+using tsl::profiler::ParseAnnotationStack;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow

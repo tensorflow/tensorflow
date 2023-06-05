@@ -16,17 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_PROTO_PROTO_UTILS_H_
 #define TENSORFLOW_CORE_UTIL_PROTO_PROTO_UTILS_H_
 
-#include "google/protobuf/duration.pb.h"
 #include "absl/strings/string_view.h"
-#include "absl/time/time.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/tsl/util/proto/proto_utils.h"
 
 namespace tensorflow {
 namespace proto_utils {
 
 using tensorflow::protobuf::FieldDescriptor;
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::proto_utils::FromDurationProto;
+using tsl::proto_utils::ToDurationProto;
+// NOLINTEND(misc-unused-using-decls)
 
 // Returns true if the proto field type can be converted to the tensor dtype.
 bool IsCompatibleType(FieldDescriptor::Type field_type, DataType dtype);
@@ -60,19 +63,6 @@ class StringErrorCollector : public protobuf::io::ErrorCollector {
   const int index_offset_;
 };
 
-// Converts an absl::Duration to a google::protobuf::Duration.
-inline google::protobuf::Duration ToDurationProto(absl::Duration duration) {
-  google::protobuf::Duration proto;
-  proto.set_seconds(absl::IDivDuration(duration, absl::Seconds(1), &duration));
-  proto.set_nanos(
-      absl::IDivDuration(duration, absl::Nanoseconds(1), &duration));
-  return proto;
-}
-
-// Converts a google::protobuf::Duration to an absl::Duration.
-inline absl::Duration FromDurationProto(google::protobuf::Duration proto) {
-  return absl::Seconds(proto.seconds()) + absl::Nanoseconds(proto.nanos());
-}
 
 }  // namespace proto_utils
 }  // namespace tensorflow

@@ -18,6 +18,7 @@
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
@@ -142,14 +143,17 @@ class Adam(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             lr=lr,
-            epsilon=ops.convert_to_tensor_v2_with_dispatch(
-                self.epsilon, var_dtype),
+            epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype
+            ),
             beta_1_t=beta_1_t,
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
             beta_2_t=beta_2_t,
             beta_2_power=beta_2_power,
-            one_minus_beta_2_t=1 - beta_2_t))
+            one_minus_beta_2_t=1 - beta_2_t,
+        )
+    )
 
   def set_weights(self, weights):
     params = self.weights
@@ -395,14 +399,17 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)].update(
         dict(
             lr=lr,
-            epsilon=ops.convert_to_tensor_v2_with_dispatch(
-                self.epsilon, var_dtype),
+            epsilon=tensor_conversion.convert_to_tensor_v2_with_dispatch(
+                self.epsilon, var_dtype
+            ),
             beta_1_t=beta_1_t,
             beta_1_power=beta_1_power,
             one_minus_beta_1_t=1 - beta_1_t,
             beta_2_t=beta_2_t,
             beta_2_power=beta_2_power,
-            one_minus_beta_2_t=1 - beta_2_t))
+            one_minus_beta_2_t=1 - beta_2_t,
+        )
+    )
 
   def set_weights(self, weights):
     params = self.weights

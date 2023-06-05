@@ -36,14 +36,13 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
  public:
   using ResourceOpKernel::ResourceOpKernel;
 
-  // Must be called by descendants before the first call to Compute()
-  // (typically called during construction).  factory must return a
-  // ReaderInterface descendant allocated with new that ReaderOpKernel
-  // will take ownership of.
+  // Must be called by descendants before the first call to Compute() (typically
+  // called during construction).  factory must return a ReaderInterface
+  // descendant allocated with new that ReaderOpKernel will take ownership of.
   void SetReaderFactory(std::function<ReaderInterface*()> factory)
       TF_LOCKS_EXCLUDED(mu_) {
+    DCHECK(get_resource() == nullptr);
     mutex_lock l(mu_);
-    DCHECK(resource_ == nullptr);
     factory_ = factory;
   }
 

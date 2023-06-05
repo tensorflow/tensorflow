@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
@@ -85,7 +84,7 @@ class SlowOperationAlarm {
 // This is throttled to once-every-power-of-two occurrences, globally.
 //
 // `context` is an additional message prepended to the alarm.
-ABSL_MUST_USE_RESULT std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
+[[nodiscard]] std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
     absl::string_view context);
 
 }  // namespace xla

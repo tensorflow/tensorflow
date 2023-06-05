@@ -18,6 +18,8 @@ import numpy as np
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -287,6 +289,51 @@ class SparseSplitOpTest(test.TestCase):
       self.evaluate(
           sparse_ops.sparse_split(
               sp_input=self._SparseTensor_4x6(), num_split=3, axis=axis))
+
+  def testBig(self):
+    # This test was added after discovering a memory allocation bug in the GPU
+    # kernel that the existing tests did not catch due to being too small.
+    for n in [250, 2500, 25000]:
+      indices = np.zeros([n, 2], dtype=np.int64)
+      indices[:, 0] = np.arange(n)
+      values = np.zeros([n], dtype=np.float32)
+      dense_shape = np.array([n, 3], dtype=np.int64)
+      sp_input = sparse_tensor.SparseTensor(indices, values, dense_shape)
+      sp_tensors = self.evaluate(
+          sparse_ops.sparse_split(sp_input=sp_input, num_split=2, axis=0))
+      self.assertAllEqual(sp_tensors[0].indices, indices[:n // 2])
+      self.assertAllEqual(sp_tensors[1].indices, indices[n // 2:] - [n // 2, 0])
+      self.assertAllEqual(sp_tensors[0].values, values[:n // 2])
+      self.assertAllEqual(sp_tensors[1].values, values[n // 2:])
+      self.assertAllEqual(sp_tensors[0].dense_shape, [n // 2, 3])
+      self.assertAllEqual(sp_tensors[1].dense_shape, [n // 2, 3])
+
+  def testSparseIndexOutOfBounds(self):
+    if test_util.is_gpu_available():
+      # On GPU, out-of-bounds indices are simply ignored.
+      self.evaluate(
+          gen_sparse_ops.sparse_split(
+              split_dim=1,
+              indices=[[0, 0], [1, 10], [-1, 2]],
+              values=[1.0, 2.0, 3.0],
+              shape=[3, 5],
+              num_split=2,
+          )
+      )
+    else:
+      # On CPU, out-of-bounds index raises error.
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), 'out of bounds'
+      ):
+        self.evaluate(
+            gen_sparse_ops.sparse_split(
+                split_dim=1,
+                indices=[[0, 0], [1, 10], [-1, 2]],
+                values=[1.0, 2.0, 3.0],
+                shape=[3, 5],
+                num_split=2,
+            )
+        )
 
 
 if __name__ == '__main__':

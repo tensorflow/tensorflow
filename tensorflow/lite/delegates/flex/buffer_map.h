@@ -18,7 +18,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 
 namespace tflite {
 namespace flex {
@@ -38,11 +38,6 @@ class BufferMap {
   // tensorflow::Tensor.
   bool HasTensor(int tensor_index) const;
 
-  // Returns true if the given 'tensor_index' has a corresponding
-  // tensorflow::Tensor *and* the content is owned by TensorFlow (that is, the
-  // mapping was added by SetFromTensorFlow()).
-  bool IsTensorFlowTensor(int tensor_index) const;
-
   // Returns the tensorflow::Tensor associated with the given 'tensor_index'.
   // Precondition: HasTensor() is true.
   tensorflow::Tensor GetTensor(int tensor_index) const;
@@ -58,21 +53,17 @@ class BufferMap {
   void SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor);
 
   // Same as above but creates a new tensorflow::Tensor with a copy of the
-  // given TfLiteTensor's data.
-  void SetFromTfLite(int tensor_index, const TfLiteTensor* tensor);
+  // given TfLiteTensor's data. If `allow_reusing=false`, then we explicitly
+  // disallow reusing the TF Lite tensor buffer when constructing the new
+  // tensorflow Tensor.
+  void SetFromTfLite(int tensor_index, const TfLiteTensor* tensor,
+                     bool allow_reusing = true);
 
  private:
   // Mapping from TL Lite tensor ID to TensorFlow's Tensor. All tensors that
   // are inputs or outputs of a subgraph will be added here, irrespective of
   // whether their data are managed by TF Lite or TensorFlow.
   std::map<int, tensorflow::Tensor> id_to_tensor_;
-  // A list of tensors that are completely managed by TensorFlow. Most of the
-  // time, TF Lite will populate tensors that are inputs to subgraphs, while
-  // TensorFlow will populate output tensors. Occasionally, however, an input
-  // tensor is coming from a previous subgraph and could have been populated by
-  // TensorFlow. This set keeps track of all input or output tensors that have
-  // been populated by tensorflow.
-  std::set<int> owned_by_tf_;
 };
 
 }  // namespace flex

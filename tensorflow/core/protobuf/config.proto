@@ -6,9 +6,10 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
-import "tensorflow/core/protobuf/coordination_config.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
+import "tensorflow/core/protobuf/rpc_options.proto";
+import "tensorflow/tsl/protobuf/coordination_config.proto";
 
 option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
@@ -17,9 +18,9 @@ option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 message GPUOptions {
-  // Fraction of the available GPU memory to allocate for each process.
+  // Fraction of the total GPU memory to allocate for each process.
   // 1 means to allocate all of the GPU memory, 0.5 means the process
-  // allocates up to ~50% of the available GPU memory.
+  // allocates up to ~50% of the total GPU memory.
   //
   // GPU memory is pre-allocated unless the allow_growth option is enabled.
   //
@@ -238,6 +239,19 @@ message GPUOptions {
     // hopes that another thread will free up memory in the meantime.  Setting
     // this to true disables the sleep; instead we'll OOM immediately.
     bool disallow_retry_on_allocation_failure = 12;
+
+    // Memory limit for "GPU host allocator", aka pinned memory allocator.  This
+    // can also be set via the envvar TF_GPU_HOST_MEM_LIMIT_IN_MB.
+    float gpu_host_mem_limit_in_mb = 13;
+
+    // If true, then the host allocator allocates its max memory all upfront and
+    // never grows.  This can be useful for latency-sensitive systems, because
+    // growing the GPU host memory pool can be expensive.
+    //
+    // You probably only want to use this in combination with
+    // gpu_host_mem_limit_in_mb, because the default GPU host memory limit is
+    // quite high.
+    bool gpu_host_mem_disallow_growth = 14;
   }
 
   // Everything inside experimental is subject to change and is not subject
@@ -374,41 +388,6 @@ message ThreadPoolOptionProto {
   //   value as is specified on this call.
   // - threadpools created this way are never garbage collected.
   string global_name = 2;
-}
-
-message RPCOptions {
-  // If true, always use RPC to contact the session target.
-  //
-  // If false (the default option), TensorFlow may use an optimized
-  // transport for client-master communication that avoids the RPC
-  // stack. This option is primarily for used testing the RPC stack.
-  bool use_rpc_for_inprocess_master = 1;
-
-  // The compression algorithm to be used. One of "deflate", "gzip".
-  string compression_algorithm = 2;
-
-  // If compression_algorithm is set, the compression level to be used.
-  // From 0 (no compression), up to 3.
-  int32 compression_level = 3;
-
-  // Setting cache_rpc_response to true will enable sender side caching of
-  // response for RecvTensorAsync and RecvBufAsync to allow receiver to retry
-  // requests . This is only necessary when the network fabric is experiencing a
-  // significant error rate.  Without it we'll fail a step on an network error,
-  // while with it we'll be able to complete long steps (like complex
-  // initializations) in the face of some network errors during RecvTensor.
-  bool cache_rpc_response = 4;
-
-  // Disables TCP connection sharing when opening a new RPC channel.
-  bool disable_session_connection_sharing = 5;
-
-  // Setting num_channels_per_target > 0 allows uses of multiple channels to
-  // communicate to the same target. This can be used to improve the aggregate
-  // throughput on high speed links (e.g 100G) where single connection is not
-  // sufficient to maximize link utilization. Note that a single RPC only goes
-  // on a single channel, this only helps in situations where there are multiple
-  // transfers to the same target overlapping in time.
-  int32 num_channels_per_target = 6;
 }
 
 // Metadata about the session.
@@ -616,7 +595,8 @@ message ConfigProto {
     // If set, this can be used by the runtime and the Ops for debugging,
     // monitoring, etc.
     //
-    // NOTE: This is currently used and propagated only by the direct session.
+    // NOTE: This is currently used and propagated only by the direct session
+    // and EagerContext.
     SessionMetadata session_metadata = 11;
 
     // If true, the session may treat the graph as being static for optimization
@@ -627,13 +607,10 @@ message ConfigProto {
     // Session::Extend() may not be supported.
     bool optimize_for_static_graph = 12;
 
-    // This field will eventually be deprecated and replaced by
-    // mlir_bridge_rollout (b/166038521).
+    // Whether to enable the MLIR-based TF->XLA bridge. This is only used if set
+    // to true. Default value or false is ignored. Use mlir_bridge_rollout for
+    // finer control.
     //
-    // Whether to enable the MLIR-based TF->XLA bridge.
-    //
-    // This is a replacement to the existing bridge, and not ready for
-    // production usage yet.
     // If this option is set to true when a session is created, MLIR is used to
     // perform the set of graph transformations to put the graph in a form that
     // can be executed with delegation of some computations to an accelerator.
@@ -652,22 +629,10 @@ message ConfigProto {
       MLIR_BRIDGE_ROLLOUT_ENABLED = 1;
       // Disabling the MLIR bridge disables it for all graphs in this session.
       MLIR_BRIDGE_ROLLOUT_DISABLED = 2;
-      // Enable the MLIR bridge on a per graph basis based on an analysis of
-      // the features used in the graph. If the features used by the graph are
-      // supported by the MLIR bridge, the MLIR bridge will be used to run the
-      // graph.
-      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED = 3;
-      // Enable the MLIR bridge in a fallback mode on a per graph basis based
-      // on an analysis of the features used in the graph.
-      // Running the MLIR bridge in the fallback mode means that it is
-      // executed and it commits all the changes to the TF graph in case
-      // of success. And it does not in case of failures and let the old bridge
-      // to process the TF graph.
-      MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED = 4;
+      reserved 3, 4;
+      reserved "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_ENABLED",
+          "MLIR_BRIDGE_ROLLOUT_SAFE_MODE_FALLBACK_ENABLED";
     }
-    // This field is underdevelopment, for now use enable_mlir_bridge
-    // (b/166038521).
-    //
     // Whether to enable the MLIR-based TF->XLA bridge.
     MlirBridgeRollout mlir_bridge_rollout = 17;
 
@@ -715,7 +680,20 @@ message ConfigProto {
     // Distributed coordination service configurations.
     CoordinationServiceConfig coordination_config = 23;
 
-    // Next: 24
+    // If true, the session will treat the graph as being non-static for
+    // optimization purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef will be retained to enable calls to Session::Extend().
+    // Calling Extend() without setting this flag will result in errors.
+    //
+    // This option is meant to replace `optimize_for_static_graph` and it
+    // aims to negate its value.
+    bool disable_optimize_for_static_graph = 24;
+
+    reserved 25;
+
+    // Next: 26
   }
 
   Experimental experimental = 16;

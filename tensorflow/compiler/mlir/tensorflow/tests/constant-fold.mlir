@@ -148,9 +148,9 @@ func.func @testLeakyRelu(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>
 
 // CHECK-LABEL: func @tfConst
 func.func @tfConst() -> (tensor<4xf32>, tensor<1x1x6x2xf32>) {
-  %0 = "tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_FLOAT", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F464C4F41540A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20340A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3030305C3030305C323430405C3030305C30303020405C3030305C303030205C3330315C3030305C3030305C3230305C323737220A"> : tensor<4xf32>} : () -> tensor<4xf32>
+  %0 = "tf.Const"() {device = "", name = "Const", dtype = "tfdtype$DT_FLOAT", value = #tf_type<tensor_proto : "0x746674656E736F722464747970653A2044545F464C4F41540A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20340A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3030305C3030305C323430405C3030305C30303020405C3030305C303030205C3330315C3030305C3030305C3230305C323737220A"> : tensor<4xf32>} : () -> tensor<4xf32>
   %21 = "tf.Const"() {device = "", name = "Const_143", dtype = "tfdtype$DT_FLOAT", value = dense<0.24288677062973696> : tensor<1x1x6x2xf32>} : () -> tensor<1x1x6x2xf32>
-  // CHECK-DAG: value = opaque<"tf"
+  // CHECK-DAG: value = #tf_type<tensor_proto
   // CHECK-DAG: tf.Const{{.*}} dense<0.242886767> : tensor<1x1x6x2xf32>
   func.return %0, %21 : tensor<4xf32>, tensor<1x1x6x2xf32>
 }
@@ -608,7 +608,7 @@ func.func @testBroadcastGradientArgsHigherRank() -> (tensor<2xi32>, tensor<2xi32
   // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 2]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
   func.return %r0, %r1 : tensor<2xi32>, tensor<2xi32>
 }
@@ -621,7 +621,7 @@ func.func @testBroadcastGradientArgsScalar() -> (tensor<2xi32>, tensor<0xi32>) {
   // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
   // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
   func.return %r0, %r1 : tensor<2xi32>, tensor<0xi32>
 }
@@ -634,7 +634,7 @@ func.func @testBroadcastGradientArgI64() -> (tensor<2xi64>, tensor<0xi64>) {
   // CHECK-DAG: %[[R0:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>} : () -> tensor<2xi64>
   // CHECK-DAG: %[[R1:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>} : () -> tensor<0xi64>
   // CHECK-NOT: tf.BroadcastGradientArgs
-  // CEHCK: return [[R0]], [[R1]]
+  // CHECK: return %[[R0]], %[[R1]]
 
   func.return %r0, %r1 : tensor<2xi64>, tensor<0xi64>
 }
@@ -653,7 +653,7 @@ func.func @testEmptyResults(%arg0: tensor<0x2xf32>) -> tensor<0x2xf32> {
 //
 // CHECK-LABEL: func @yieldOp
 func.func @yieldOp(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
-  // CHECK-2: tf.Yield
+  // CHECK-COUNT-2: tf.Yield
   %0 = "tf.IfRegion"(%arg2) ({
       "tf.Yield"(%arg0) : (tensor<f32>) -> ()
     }, {
@@ -696,4 +696,48 @@ func.func @range_float() -> tensor<?xf32> {
   // CHECK: return %[[CST]]
   %0 = "tf.Range"(%cst, %cst_1, %cst_2) : (tensor<f32>, tensor<f32>, tensor<f32>) -> tensor<?xf32>
   func.return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @testLogicalAndFoldsWithConstantFalse
+func.func @testLogicalAndFoldsWithConstantFalse(%arg0: tensor<i1>) -> (tensor<i1>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %cst = arith.constant dense<false> : tensor<i1>
+
+  %0 = "tf.LogicalAnd"(%cst, %arg0) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+
+  // CHECK: return [[CST]]
+  func.return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testLogicalAndFoldsWithConstantFalseSecondArg
+func.func @testLogicalAndFoldsWithConstantFalseSecondArg(%arg0: tensor<i1>) -> (tensor<i1>) {
+  // CHECK: [[CST:%.+]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %cst = arith.constant dense<false> : tensor<i1>
+
+  %0 = "tf.LogicalAnd"(%arg0, %cst) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+
+  // CHECK: return [[CST]]
+  func.return %0: tensor<i1>
+}
+
+// CHECK-LABEL: func @testLogicalAndNoFoldWithConstTrue
+func.func @testLogicalAndNoFoldWithConstTrue(%arg0: tensor<i1>) -> (tensor<i1>) {
+  %cst = arith.constant dense<true> : tensor<i1>
+
+  // CHECK: %[[LOGICAL_AND:.*]] = "tf.LogicalAnd"
+  %0 = "tf.LogicalAnd"(%cst, %arg0) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+
+  // CHECK: return %[[LOGICAL_AND]]
+  func.return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @testLogicalAndDoesntFoldWithConstantFalseBroadcast
+func.func @testLogicalAndDoesntFoldWithConstantFalseBroadcast(%arg0: tensor<2xi1>) -> (tensor<2xi1>) {
+  %cst = arith.constant dense<false> : tensor<i1>
+
+  // CHECK: %[[LOGICAL_AND:.*]] = "tf.LogicalAnd"
+  %0 = "tf.LogicalAnd"(%cst, %arg0) : (tensor<i1>, tensor<2xi1>) -> tensor<2xi1>
+
+  // CHECK: return %[[LOGICAL_AND]]
+  func.return %0: tensor<2xi1>
 }

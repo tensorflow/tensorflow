@@ -39,7 +39,7 @@ Pattern SigmoidAndMul0 {
   // Note that `_` is used to match the control operands.
   let sigmoid_arg = op<tfg.Sigmoid>(arg: Value);
   let root = op<tfg.Mul>(sigmoid_arg.0, arg, controls: ValueRange) { "T" = _: AttrIsF32OrBF16};
-  NodeIsOnCpu(root);
+  OpHasCpuDevice(root);
   replace root with ReplaceMulWith_MklSwish(root, arg, controls);
 }
 
@@ -48,6 +48,6 @@ Pattern SigmoidAndMul1 {
   // Note that `_` is used to match the control operands.
   let sigmoid_arg = op<tfg.Sigmoid>(arg: Value);
   let root = op<tfg.Mul>(arg, sigmoid_arg.0, controls: ValueRange) { "T" = x: AttrIsF32OrBF16};
-  NodeIsOnCpu(root);
+  OpHasCpuDevice(root);
   replace root with ReplaceMulWith_MklSwish(root, arg, controls);
 }

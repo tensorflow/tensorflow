@@ -58,7 +58,7 @@ const uint64 kIdTiers[] = {
     0x7fffffffffffULL,  // 47-bit (5 bytes on disk)
                         // remaining bits for future use
 };
-const int kMaxIdTier = sizeof(kIdTiers) / sizeof(uint64);
+const int kMaxIdTier = sizeof(kIdTiers) / sizeof(uint64) - 1;
 const int kIdCollisionDelayMicros = 10;
 const int kMaxIdCollisions = 21;  // sum(2**i*10µs for i in range(21))~=21s
 const int64_t kAbsent = 0LL;
@@ -894,7 +894,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     Status s = run_.Finish(db_);
     if (!s.ok()) {
       // TODO(jart): Retry on transient errors here.
-      LOG(ERROR) << s.ToString();
+      LOG(ERROR) << s;
     }
     int64_t run_id = meta_.run_id();
     if (run_id == kAbsent) return;
@@ -909,8 +909,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
       s = update.StepAndReset();
     }
     if (!s.ok()) {
-      LOG(ERROR) << "Failed to set Runs[" << run_id
-                 << "].finish_time: " << s.ToString();
+      LOG(ERROR) << "Failed to set Runs[" << run_id << "].finish_time: " << s;
     }
   }
 

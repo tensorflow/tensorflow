@@ -32,7 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.platform import test
@@ -1626,7 +1626,7 @@ class FIFOQueueParallelTests(test.TestCase):
     with self.cached_session() as session:
       q = data_flow_ops.FIFOQueue(10, [dtypes_lib.int32], shapes=[()])
       a = q.dequeue()
-      b = control_flow_ops.Assert(False, ["Before enqueue"])
+      b = control_flow_assert.Assert(False, ["Before enqueue"])
       with ops.control_dependencies([b]):
         c = q.enqueue(33)
       with self.assertRaisesWithPredicateMatch(

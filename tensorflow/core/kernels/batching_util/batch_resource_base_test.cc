@@ -164,6 +164,32 @@ TEST(SplitBatchCostTest, SplitMultiCostTypes) {
                            Pair("test_gcu_no_smear", absl::Milliseconds(90))));
 }
 
+TEST(SplitBatchCostTest, SplitOnlyNonZeroCostTypes) {
+  BatchResourceBase::BatchT batch;
+  RequestCost cost1, cost2;
+  batch.AddTask(MakeBatchTask(/*task_size=*/1, &cost1));
+  batch.AddTask(MakeBatchTask(/*task_size=*/9, &cost2));
+  batch.Close();
+
+  CostMeasurement::Context context{/*is_per_query=*/false};
+  std::vector<std::unique_ptr<CostMeasurement>> batch_cost_measurements;
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("no_op", context));
+  batch_cost_measurements.push_back(
+      CostMeasurementRegistry::CreateByNameOrNull("test_tpu", context));
+  BatchResourceBase::SplitBatchCosts(batch_cost_measurements,
+                                     /*processed_size=*/20, batch);
+
+  EXPECT_THAT(
+      batch.task(0).request_cost->GetCosts(),
+      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(10)),
+                           Pair("test_tpu_no_smear", absl::Milliseconds(5))));
+  EXPECT_THAT(
+      batch.task(1).request_cost->GetCosts(),
+      UnorderedElementsAre(Pair("test_tpu_with_smear", absl::Milliseconds(90)),
+                           Pair("test_tpu_no_smear", absl::Milliseconds(45))));
+}
+
 }  // namespace
 }  // namespace serving
 }  // namespace tensorflow

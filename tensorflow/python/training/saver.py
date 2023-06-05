@@ -91,7 +91,7 @@ def _get_checkpoint_size(prefix):
   return size
 
 
-class BaseSaverBuilder(object):
+class BaseSaverBuilder:
   """Base class for Savers.
 
   Can be extended to create different Ops.
@@ -511,6 +511,9 @@ class BaseSaverBuilder(object):
       raise ValueError("save and restore operations need to be built together "
                        " when eager execution is not enabled.")
 
+    if not isinstance(names_to_saveables, dict):
+      names_to_saveables = saveable_object_util.op_list_to_dict(
+          names_to_saveables)
     saveables = saveable_object_util.validate_and_slice_inputs(
         names_to_saveables)
     if max_to_keep is None:
@@ -636,7 +639,7 @@ def _get_saver_or_default():
 
 
 @tf_export(v1=["train.Saver"])
-class Saver(object):
+class Saver:
   # pylint: disable=line-too-long
   """Saves and restores variables.
 
@@ -1808,6 +1811,8 @@ def saver_from_object_based_checkpoint(checkpoint_path,
   if builder is None:
     builder = BulkSaverBuilder()
 
+  if not isinstance(var_list, dict):
+    var_list = saveable_object_util.op_list_to_dict(var_list)
   saveables = saveable_object_util.validate_and_slice_inputs(var_list)
   current_names = set()
   for saveable in saveables:

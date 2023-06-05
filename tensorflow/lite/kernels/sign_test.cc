@@ -13,13 +13,11 @@
 // limitations under the License.
 
 #include <cmath>
+#include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/kernels/custom_ops_register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -37,13 +35,18 @@ tflite::TensorType GetTTEnum<double>() {
   return tflite::TensorType_FLOAT64;
 }
 
+template <>
+tflite::TensorType GetTTEnum<int32_t>() {
+  return tflite::TensorType_INT32;
+}
+
 class SignModel : public tflite::SingleOpModel {
  public:
   SignModel(tflite::TensorData x,
             tflite::TensorData output) {
     x_ = AddInput(x);
     output_ = AddOutput(output);
-    SetCustomOp("Sign", {}, ops::custom::Register_SIGN);
+    SetBuiltinOp(BuiltinOperator_SIGN, BuiltinOptions_NONE, 0);
     BuildInterpreter({GetShape(x_)});
   }
 
@@ -59,16 +62,16 @@ class SignModel : public tflite::SingleOpModel {
 };
 
 template <typename Float>
-class SignTest : public ::testing::Test {
+class SignTestFloat : public ::testing::Test {
  public:
   using FloatType = Float;
 };
 
 using TestTypes = ::testing::Types<float, double>;
 
-TYPED_TEST_SUITE(SignTest, TestTypes);
+TYPED_TEST_SUITE(SignTestFloat, TestTypes);
 
-TYPED_TEST(SignTest, TestScalar) {
+TYPED_TEST(SignTestFloat, TestScalarFloat) {
   using Float = typename TestFixture::FloatType;
   tflite::TensorData x = {GetTTEnum<Float>(), {}};
   tflite::TensorData output = {GetTTEnum<Float>(), {}};
@@ -81,7 +84,7 @@ TYPED_TEST(SignTest, TestScalar) {
   ASSERT_FLOAT_EQ(m.GetOutput<Float>({-3.0})[0], -1.0);
 }
 
-TYPED_TEST(SignTest, TestBatch) {
+TYPED_TEST(SignTestFloat, TestBatchFloat) {
   using Float = typename TestFixture::FloatType;
   tflite::TensorData x = {GetTTEnum<Float>(), {4, 2, 1}};
   tflite::TensorData output = {GetTTEnum<Float>(), {4, 2, 1}};
@@ -93,6 +96,38 @@ TYPED_TEST(SignTest, TestBatch) {
 
   EXPECT_EQ(got, std::vector<Float>(
       {1.0, -1.0, 1.0, -1.0, 1.0, -1.0, 1.0, 0.0}));
+}
+
+template <typename Int>
+class SignTestInt : public ::testing::Test {
+ public:
+  using IntType = Int;
+};
+using TestTypesInt = ::testing::Types<int32_t>;
+
+TYPED_TEST_SUITE(SignTestInt, TestTypesInt);
+
+TYPED_TEST(SignTestInt, TestScalarInt) {
+  using Int = typename TestFixture::IntType;
+  tflite::TensorData x = {GetTTEnum<Int>(), {}};
+  tflite::TensorData output = {GetTTEnum<Int>(), {}};
+  SignModel m(x, output);
+  auto got = m.GetOutput<Int>({0});
+  ASSERT_EQ(got.size(), 1);
+  EXPECT_EQ(got[0], 0);
+
+  ASSERT_EQ(m.GetOutput<Int>({5})[0], 1);
+  ASSERT_EQ(m.GetOutput<Int>({-3})[0], -1);
+}
+
+TYPED_TEST(SignTestInt, TestBatchInt) {
+  using Int = typename TestFixture::IntType;
+  tflite::TensorData x = {GetTTEnum<Int>(), {4, 2, 1}};
+  tflite::TensorData output = {GetTTEnum<Int>(), {4, 2, 1}};
+  SignModel m(x, output);
+
+  EXPECT_EQ(m.GetOutput<Int>({0, -7, 6, -5, 4, -3, 2, 1}),
+            std::vector<Int>({0, -1, 1, -1, 1, -1, 1, 1}));
 }
 
 }  // namespace

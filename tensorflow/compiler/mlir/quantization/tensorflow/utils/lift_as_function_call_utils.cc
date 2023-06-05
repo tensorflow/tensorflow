@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/quantization/tensorflow/utils/lift_as_function_call_utils.h"
 
+#include <algorithm>
 #include <queue>
 #include <stack>
 #include <string>
@@ -21,17 +22,12 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
+#include "tensorflow/compiler/mlir/quantization/tensorflow/passes/utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
 namespace mlir {
 namespace quant {
-
-constexpr char kAttrMapAttribute[] = "attr_map";
-// This attribute will be set for functions created by this pass.
-constexpr char kFusedFunctionAttr[] = "tf_quant.composite_function";
-// The keyword to detect if this is a `NullAttribute`.
-constexpr char kNullAttributeValue[] = "N/A";
 
 // Checks if the op is inside a lifted function.
 bool IsInLiftedFunc(Operation *op) {
@@ -68,7 +64,7 @@ ValueRange createFusedFnCall(OpBuilder builder, Location location,
       builder.getStringAttr(llvm::StringRef(
           std::string(QuantTraitValues[QuantizationTrait::FullyQuantizable]))));
 
-  return call_op.output();
+  return call_op.getOutput();
 }
 
 // Finds ops in the paths from arguments to results. The ops is listed in an
@@ -193,9 +189,8 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   auto current_func = result_op->getParentOfType<func::FuncOp>();
   auto guard = OpBuilder::InsertionGuard(builder);
   builder.setInsertionPointAfter(current_func);
-  TypeRange arg_types(
-      llvm::ArrayRef<Value>(arguments.begin(), arguments.end()));
-  TypeRange result_types(llvm::ArrayRef<Value>(results.begin(), results.end()));
+  TypeRange arg_types{ValueRange{arguments}};
+  TypeRange result_types{ValueRange{results}};
   auto func_type = FunctionType::get(context, arg_types, result_types);
 
   llvm::SmallVector<Location> arg_locs;
@@ -208,7 +203,7 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   builder.createBlock(&wrap_func.getBody(), wrap_func.begin(), arg_types,
                       arg_locs);
 
-  BlockAndValueMapping mapping;
+  IRMapping mapping;
   for (int32_t i : llvm::seq<int32_t>(0, arguments.size())) {
     mapping.map(arguments[i], wrap_func.getArgument(i));
   }
@@ -243,6 +238,90 @@ llvm::SmallVector<Value, 4> LiftAsFunctionCall(
   llvm::SmallVector<NamedAttribute> attributes;
   return LiftAsFunctionCall(builder, location, func_name, arguments, results,
                             attributes);
+}
+
+llvm::SmallVector<Value> AppendToVector(
+    const llvm::SmallVector<Value> &arguments, Value append) {
+  llvm::SmallVector<Value> ret(arguments);
+  ret.push_back(append);
+  return ret;
+}
+
+// Check if the given einsum equation is supported by XlaDotV2.
+// Conditions:
+// 1. Two inputs & one output.
+// 2. No ... in the equation.
+// 3. Batch dimensions should be the same, or only the left equation should have
+//    the batch dimension. This condition is from the XlaDotV2 specification. It
+//    could process the following equation by setting the attributes properly:
+//    abc,cd->abd.
+// 4. The output should be in the form: [batch dims][lhs dims][rhs dims]
+bool IsEinsumSupportedByXlaDotV2(mlir::StringAttr equation_attr) {
+  StringRef equation = equation_attr.getValue();
+
+  if (!absl::StrContains(equation, "->") || !absl::StrContains(equation, ",") ||
+      absl::StrContains(equation, ".")) {
+    return false;
+  }
+
+  // Parse equation.
+  int idx_arrow = equation.find("->");
+  StringRef calc_eq = equation.substr(0, idx_arrow);
+  StringRef out_eq = equation.substr(idx_arrow + 2);
+
+  int idx_comma = calc_eq.find(',');
+  StringRef lhs_eq = calc_eq.substr(0, idx_comma);
+  StringRef rhs_eq = calc_eq.substr(idx_comma + 1);
+
+  if (absl::StrContains(rhs_eq, ",")) return false;
+
+  int lhs_out_idx_start = out_eq.size();
+  int lhs_out_idx_end = -1;
+  int rhs_out_idx_start = out_eq.size();
+  int rhs_out_idx_end = -1;
+  int lhs_batch_dim_size = 0;
+  int rhs_batch_dim_size = 0;
+  for (const char c : lhs_eq) {
+    if (absl::StrContains(out_eq, c) && absl::StrContains(rhs_eq, c)) {
+      lhs_batch_dim_size++;
+    } else if (absl::StrContains(out_eq, c)) {
+      const int out_idx = out_eq.find(c);
+      if (out_idx < lhs_out_idx_end) {
+        // Left-hand equation is reversed in the output.
+        return false;
+      }
+      lhs_out_idx_start = std::min(lhs_out_idx_start, out_idx);
+      lhs_out_idx_end = std::max(lhs_out_idx_end, out_idx);
+    }
+  }
+
+  for (const char c : rhs_eq) {
+    if (absl::StrContains(out_eq, c) && absl::StrContains(lhs_eq, c)) {
+      rhs_batch_dim_size++;
+    } else if (absl::StrContains(out_eq, c)) {
+      int out_idx = out_eq.find(c);
+      if (out_idx < rhs_out_idx_end) {
+        return false;
+      }
+      if (out_idx < rhs_out_idx_start) rhs_out_idx_start = out_idx;
+      if (out_idx > rhs_out_idx_end) rhs_out_idx_end = out_idx;
+    }
+  }
+
+  if (lhs_batch_dim_size != rhs_batch_dim_size && lhs_batch_dim_size != 0 &&
+      rhs_batch_dim_size != 0) {
+    // Batch dimension does not match.
+    return false;
+  }
+
+  // All the lhs equations should come first.
+  if (lhs_out_idx_end > rhs_out_idx_start) return false;
+
+  // All the lhs out dim and rhs out dim should be larger than the batch dims,
+  // and they should not be mixed.
+  int batch_dim_size = std::max(rhs_batch_dim_size, lhs_batch_dim_size);
+  return lhs_out_idx_start >= batch_dim_size &&
+         rhs_out_idx_start >= batch_dim_size;
 }
 
 }  // namespace quant

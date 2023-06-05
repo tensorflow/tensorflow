@@ -42,6 +42,8 @@ std::string GetGlslPrecisionModifier(DataType data_type) {
     case DataType::INT32:
     case DataType::UINT32:
       return "highp ";
+    case DataType::BOOL:
+      return "";
     default:
       return "";
   }
@@ -52,6 +54,7 @@ size_t SizeOf(DataType data_type) {
   switch (data_type) {
     case DataType::UINT8:
     case DataType::INT8:
+    case DataType::BOOL:
       return 1;
     case DataType::FLOAT16:
     case DataType::INT16:
@@ -95,6 +98,8 @@ std::string ToString(DataType data_type) {
       return "uint64";
     case DataType::UINT8:
       return "uint8";
+    case DataType::BOOL:
+      return "bool";
     case DataType::UNKNOWN:
       return "unknown";
   }
@@ -126,6 +131,8 @@ std::string ToCLDataType(DataType data_type, int vec_size) {
       return "ulong" + postfix;
     case DataType::UINT8:
       return "uchar" + postfix;
+    case DataType::BOOL:
+      return "bool" + postfix;
     case DataType::UNKNOWN:
       return "unknown";
   }
@@ -157,6 +164,8 @@ std::string ToMetalDataType(DataType data_type, int vec_size) {
       return "ulong" + postfix;
     case DataType::UINT8:
       return "uchar" + postfix;
+    case DataType::BOOL:
+      return "bool" + postfix;
     case DataType::UNKNOWN:
       return "unknown";
   }
@@ -175,6 +184,7 @@ DataType ToMetalTextureType(DataType data_type) {
     case DataType::INT8:
       return DataType::INT16;
     case DataType::UINT8:
+    case DataType::BOOL:
       return DataType::UINT16;
     default:
       return DataType::UNKNOWN;
@@ -206,6 +216,8 @@ std::string ToGlslShaderDataType(DataType data_type, int vec_size,
     case DataType::UINT32:
     case DataType::UINT64:
       return precision_modifier + ToGlslType("uint", "uvec", vec_size);
+    case DataType::BOOL:
+      return ToGlslType("bool", "bvec", vec_size);
     case DataType::UNKNOWN:
       return "unknown";
   }

@@ -16,11 +16,16 @@ limitations under the License.
 
 #include <fstream>
 #include <memory>
+#include <string>
+#include <utility>
 
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
+namespace impl {
+class FlatBufferModel;
+}
 namespace optimize {
 namespace {
 
@@ -60,7 +65,7 @@ bool IntermediateTensorExists(ModelT* model) {
 }  // namespace
 
 TfLiteStatus LoadModel(const string& path, ModelT* model) {
-  auto input_model = FlatBufferModel::BuildFromFile(path.c_str());
+  auto input_model = impl::FlatBufferModel::BuildFromFile(path.c_str());
   if (!input_model) {
     return kTfLiteError;
   }

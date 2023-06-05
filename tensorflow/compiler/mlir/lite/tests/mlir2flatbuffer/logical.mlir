@@ -21,7 +21,8 @@ func.func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:       name: "arg0",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       type: BOOL,
@@ -29,7 +30,8 @@ func.func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:       name: "Const1",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       type: BOOL,
@@ -37,7 +39,8 @@ func.func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:       name: "Const2",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       type: BOOL,
@@ -45,7 +48,8 @@ func.func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:       name: "logical_or",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     }, {
   // CHECK-NEXT:       shape: [ 4 ],
   // CHECK-NEXT:       type: BOOL,
@@ -53,7 +57,8 @@ func.func @main(tensor<4xi1>) -> tensor<4xi1> {
   // CHECK-NEXT:       name: "logical_and",
   // CHECK-NEXT:       quantization: {
   // CHECK-EMPTY:
-  // CHECK-NEXT:       }
+  // CHECK-NEXT:       },
+  // CHECK-NEXT:       has_rank: true
   // CHECK-NEXT:     } ],
   // CHECK-NEXT:     inputs: [ 0 ],
   // CHECK-NEXT:     outputs: [ 4 ],

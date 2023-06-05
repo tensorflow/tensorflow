@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 
 #include <set>
+#include <string>
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/lite/delegates/flex/allowlisted_flex_ops_internal.h"
@@ -102,11 +103,13 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Bucketize",
           "CTCBeamSearchDecoder",
           "CTCGreedyDecoder",
+          "Case",
           "Cast",
           "Ceil",
           "CheckNumerics",
           "CheckNumericsV2",
           "Cholesky",
+          "ClipByValue",
           "CombinedNonMaxSuppression",
           "Complex",
           "ComplexAbs",
@@ -607,6 +610,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StackV2",
           "StatelessMultinomial",
           "StatelessRandomGammaV2",
+          "StatelessRandomGammaV3",
           "StatelessRandomGetAlg",
           "StatelessRandomGetKeyCounter",
           "StatelessRandomGetKeyCounterAlg",

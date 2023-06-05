@@ -16,13 +16,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 
 #include <memory>
+#include <optional>
+#include <set>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -125,7 +127,7 @@ ClientLibrary::~ClientLibrary() = default;
 /* static */ LocalClient* ClientLibrary::LocalClientOrDie() {
   auto client_status = GetOrCreateLocalClient();
   TF_CHECK_OK(client_status.status());
-  return client_status.ValueOrDie();
+  return client_status.value();
 }
 
 /* static */ LocalService* ClientLibrary::GetXlaService(

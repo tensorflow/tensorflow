@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute_node.h"
 
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -42,8 +45,10 @@ class TestKernelAndDeviceFunc final : public KernelAndDeviceFunc {
             /*allow_control_flow_sync_execution=*/false,
             /*shape_inference_on_tfe_dialect_import=*/true,
             /*int_args_and_retvals_on_device=*/false,
-            /*xla_compile_device_type=*/absl::nullopt,
-            /*rendezvous_creator=*/nullptr, /*get_op_id=*/nullptr),
+            /*xla_compile_device_type=*/std::nullopt,
+            /*allow_soft_placement=*/false,
+            /*rendezvous_factory=*/Rendezvous::Factory(),
+            /*get_op_id=*/nullptr),
         test_input_devices_(std::move(input_devices)) {}
 
   Device* InputDevice(int i) const override { return test_input_devices_[i]; }
@@ -56,7 +61,7 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   StaticDeviceMgr device_mgr(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
   Device* device0 = device_mgr.ListDevices().at(0);
-  auto remote_device_mgr = absl::make_unique<DynamicDeviceMgr>();
+  auto remote_device_mgr = std::make_unique<DynamicDeviceMgr>();
   std::vector<std::unique_ptr<Device>> remote_devices;
   remote_devices.emplace_back(
       DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:1"));
@@ -73,10 +78,11 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
   auto ctx = new EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
-      &device_mgr, false, nullptr, nullptr);
+      &device_mgr, false, nullptr, nullptr, nullptr,
+      /*run_eager_op_as_function=*/true);
 
   // Set a RemoteMgr to the EagerContext.
-  auto remote_mgr = absl::make_unique<eager::RemoteMgr>(
+  auto remote_mgr = std::make_unique<eager::RemoteMgr>(
       /*is_master=*/true, ctx);
   TF_ASSERT_OK(ctx->InitializeRemoteMaster(
       /*server=*/nullptr, /*worker_env=*/nullptr,

@@ -1618,7 +1618,7 @@ void ProcessPackOperator(Model* model, PackOperator* op) {
 
     Shape shape = input_array.shape();
     if (!packed_shape) {
-      packed_shape.reset(new Shape(shape));
+      packed_shape = std::make_unique<Shape>(shape);
     } else {
       CHECK(*packed_shape == shape) << "All input arrays to Pack operators "
                                        "must have the same shape. Input \""
@@ -1739,6 +1739,7 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
 
   std::vector<int> squeeze_dims;
   const int input_num_dims = input_dims.size();
+  squeeze_dims.reserve(op->squeeze_dims.size());
   for (int i : op->squeeze_dims) {
     squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
   }

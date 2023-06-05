@@ -12,32 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_H_
-#define TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_H_
+#ifndef TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_HOST_TRACER_H_
+#define TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_HOST_TRACER_H_
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/backends/profiler/cpu/host_tracer.h"
 #include "tensorflow/core/profiler/lib/profiler_interface.h"
 
 namespace tensorflow {
 namespace profiler {
 
-struct HostTracerOptions {
-  // Levels of host tracing:
-  // - Level 0 is used to disable host traces.
-  // - Level 1 enables tracing of only user instrumented (or default) TraceMe.
-  // - Level 2 enables tracing of all level 1 TraceMe(s) and instrumented high
-  //           level program execution details (expensive TF ops, XLA ops, etc).
-  //           This is the default.
-  // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
-  //           (low-level) program execution details (cheap TF ops, etc).
-  int trace_level = 2;
-};
+using xla::profiler::HostTracerOptions;  // NOLINT
 
-std::unique_ptr<ProfilerInterface> CreateHostTracer(
-    const HostTracerOptions& options);
+using xla::profiler::CreateHostTracer;  // NOLINT
 
 }  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_CPU_HOST_TRACER_H_
+#endif  // TENSORFLOW_CORE_PROFILER_BACKENDS_CPU_HOST_TRACER_H_

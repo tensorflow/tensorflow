@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/schema/schema_utils.h"
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
@@ -46,18 +46,56 @@ const std::string get_tensor_data_str(const tflite::Tensor* tensor,
     }
     ss << "[";
     if (buffer->data()->size() != 0) {
-      if (tensor->type() == tflite::TensorType_INT32) {
-        auto data = reinterpret_cast<const int32_t*>(buffer->data()->data());
-        int data_cnt = buffer->data()->size() / sizeof(int32_t);
-        for (int i = 0; i < std::min(kMaxContentDumpCnt, data_cnt); ++i) {
-          ss << data[i];
-          if (i != data_cnt - 1) {
-            ss << ", ";
-          }
+      size_t type_size;
+      switch (tensor->type()) {
+        case tflite::TensorType_INT32:
+        case tflite::TensorType_UINT32:
+        case tflite::TensorType_FLOAT32:
+          type_size = 4;
+          break;
+        default:
+          type_size = 1;
+      }
+      int data_cnt = buffer->data()->size() / type_size;
+      for (int i = 0; i < std::min(kMaxContentDumpCnt, data_cnt); ++i) {
+        switch (tensor->type()) {
+          case tflite::TensorType_INT32: {
+            auto data =
+                reinterpret_cast<const int32_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_UINT32: {
+            auto data =
+                reinterpret_cast<const uint32_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_INT8: {
+            auto data = reinterpret_cast<const int8_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_UINT8: {
+            auto data =
+                reinterpret_cast<const uint8_t*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_FLOAT32: {
+            auto data = reinterpret_cast<const float*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          case tflite::TensorType_STRING: {
+            auto data = reinterpret_cast<const char*>(buffer->data()->data());
+            ss << data[i];
+          } break;
+          default:
+            ss << "??";
+            break;
         }
-        if (data_cnt > kMaxContentDumpCnt) {
-          ss << "...";
+        if (i != data_cnt - 1) {
+          ss << ", ";
         }
+      }
+      if (data_cnt > kMaxContentDumpCnt) {
+        ss << "...";
       }
     }
     ss << "]";
@@ -75,9 +113,9 @@ const std::string tensor_str(const int tensor_idx, const int subgraph_idx,
     ss << "T#" << tensor_idx;
   if (model && tensor_idx != -1) {
     const SubGraph* subgraph = model->subgraphs()->Get(subgraph_idx);
-    if (subgraph) {
+    if (subgraph && subgraph->tensors()) {
       auto tensor = subgraph->tensors()->Get(tensor_idx);
-      if (tensor) {
+      if (tensor && tensor->type() == tflite::TensorType_INT32) {
         ss << get_tensor_data_str(tensor, model);
       }
     }
@@ -103,7 +141,9 @@ void dump_tensor_detail(std::stringstream& out_stream,
                         const int subgraph_idx, const tflite::Model* model,
                         ModelStats* stats) {
   out_stream << tensor_str(tensor_idx, subgraph_idx);
-  out_stream << "(" << tensor->name()->str() << ") ";
+  if (tensor->name()) {
+    out_stream << "(" << tensor->name()->str() << ") ";
+  }
   // Prints `shape_signature` instead of `shape` if it's available since it
   // supports dynamic shapes.
   if (tensor->shape_signature()) {
@@ -137,6 +177,7 @@ void dump_tensor_detail(std::stringstream& out_stream,
     auto* buffer = model->buffers()->Get(buffer_idx);
     if (buffer->data() && buffer->data()->size() != 0) {
       out_stream << " RO " << buffer->data()->size() << " bytes";
+      out_stream << ", buffer: " << buffer_idx;
       out_stream << ", data:" << get_tensor_data_str(tensor, model);
       stats->buffer_usage[subgraph_idx] += buffer->data()->size();
     }
@@ -360,6 +401,14 @@ class StreamErrorReporter : public ErrorReporter {
   std::stringstream* out_stream_;
 };
 
+std::string get_printable_string(const std::string& src) {
+  std::stringstream out;
+  for (auto it = src.begin(); it != src.end(); ++it) {
+    out << ((*it == '\n' || isprint(*it)) ? *it : '.');
+  }
+  return out.str();
+}
+
 std::string model_analyzer(const std::string& model_file_or_buffer,
                            bool input_is_filepath,
                            bool check_gpu_compatibility) {
@@ -389,9 +438,9 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
 
   dump_model_summary(out_stream, model);
 
-  bool model_is_gpu_compatibile = true;
+  bool model_is_gpu_compatible = true;
   for (int i = 0; i < subgraphs->Length(); ++i) {
-    std::vector<int> gpu_incompatibile_nodes;
+    std::vector<int> gpu_incompatible_nodes;
     const SubGraph* subgraph = subgraphs->Get(i);
     out_stream << subgraph_str(i);
     if (subgraph->name()) {
@@ -402,27 +451,29 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     out_stream << ") -> [";
     dump_tensor_list(out_stream, subgraph->outputs(), i);
     out_stream << "]\n";
-    for (int j = 0; j < subgraph->operators()->Length(); ++j) {
-      const Operator* op = subgraph->operators()->Get(j);
-      const OperatorCode* op_code =
-          model->operator_codes()->Get(op->opcode_index());
-      out_stream << "  ";  // indents for operators
-      dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
-      if (check_gpu_compatibility) {
-        auto status =
-            CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
-        if (!status.ok()) {
-          gpu_incompatibile_nodes.push_back(j);
-          out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
-                     << "\n";
+    if (subgraph->operators()) {
+      for (int j = 0; j < subgraph->operators()->Length(); ++j) {
+        const Operator* op = subgraph->operators()->Get(j);
+        const OperatorCode* op_code =
+            model->operator_codes()->Get(op->opcode_index());
+        out_stream << "  ";  // indents for operators
+        dump_node(out_stream, /*node_no=*/j, op_code, op, i, model);
+        if (check_gpu_compatibility) {
+          auto status =
+              CheckGpuDelegateCompatibility(op_code, op, subgraph, model);
+          if (!status.ok()) {
+            gpu_incompatible_nodes.push_back(j);
+            out_stream << "GPU COMPATIBILITY WARNING: " << status.message()
+                       << "\n";
+          }
         }
       }
     }
-    if (!gpu_incompatibile_nodes.empty()) {
-      model_is_gpu_compatibile = false;
+    if (!gpu_incompatible_nodes.empty()) {
+      model_is_gpu_compatible = false;
       out_stream << "\nGPU COMPATIBILITY WARNING: Subgraph#" << i
                  << " has GPU delegate compatibility issues at nodes "
-                 << absl::StrJoin(gpu_incompatibile_nodes, ", ")
+                 << absl::StrJoin(gpu_incompatible_nodes, ", ")
                  << " with TFLite runtime version " << TF_VERSION_STRING
                  << "\n";
     }
@@ -430,16 +481,18 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
     // Dump Subgraph Tensors.
     out_stream << "\nTensors of " << subgraph_str(i) << "\n";
     auto tensors = subgraph->tensors();
-    for (int j = 0; j < tensors->Length(); ++j) {
-      auto tensor = tensors->Get(j);
-      out_stream << "  ";  // indents for tensors
-      dump_tensor_detail(out_stream, tensor, j, i, model, &stats);
+    if (tensors) {
+      for (int j = 0; j < tensors->Length(); ++j) {
+        auto tensor = tensors->Get(j);
+        out_stream << "  ";  // indents for tensors
+        dump_tensor_detail(out_stream, tensor, j, i, model, &stats);
+      }
     }
     out_stream << "\n";
   }
-  if (check_gpu_compatibility && model_is_gpu_compatibile) {
+  if (check_gpu_compatibility && model_is_gpu_compatible) {
     out_stream
-        << "\nYour model looks compatibile with GPU delegate"
+        << "\nYour model looks compatible with GPU delegate"
         << " with TFLite runtime version " << TF_VERSION_STRING
         << ".\nBut it doesn't guarantee that your model works well with GPU "
            "delegate.\nThere could be some runtime incompatibililty happen.\n";
@@ -448,7 +501,7 @@ std::string model_analyzer(const std::string& model_file_or_buffer,
   dump_model_signature_defs(out_stream, model);
   dump_model_stats(out_stream, model, fb_model->allocation()->bytes(), &stats);
 
-  return out_stream.str();
+  return get_printable_string(out_stream.str());
 }
 
 }  // namespace tflite

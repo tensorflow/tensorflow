@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_phi_graph.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {

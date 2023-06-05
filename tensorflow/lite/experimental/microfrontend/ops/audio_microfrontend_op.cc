@@ -23,13 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
-using tensorflow::OpKernel;
-using tensorflow::OpKernelConstruction;
-using tensorflow::OpKernelContext;
-using tensorflow::Status;
-using tensorflow::Tensor;
-using tensorflow::TensorShape;
-using tensorflow::TensorShapeUtils;
 using tensorflow::errors::Internal;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::shape_inference::DimensionHandle;

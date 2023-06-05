@@ -64,7 +64,7 @@ class ApproxTopKOpBase : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::Shape op_shape = ctx->InputXlaShape(0).ConsumeValueOrDie();
+    xla::Shape op_shape = ctx->InputXlaShape(0).value();
     xla::PrimitiveType op_type = op_shape.element_type();
 
     int64_t reduction_dim = reduction_dim_;

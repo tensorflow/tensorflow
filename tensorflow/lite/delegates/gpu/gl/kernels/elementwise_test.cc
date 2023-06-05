@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/elementwise.h"
 
+#include <utility>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -115,6 +117,21 @@ TEST(ElementwiseOneArgumentTest, Floor) {
   EXPECT_THAT(model.GetOutput(0),
               Pointwise(FloatNear(1e-6),
                         {-5.0f, -3.0f, -2.0f, 0.0f, 1.0f, 3.0f, 4.0f}));
+}
+
+TEST(ElementwiseOneArgumentTest, Gelu) {
+  OperationType op_type = OperationType::GELU;
+  const BHWC shape(1, 1, 1, 6);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  ASSERT_TRUE(model.PopulateTensor(0, {0.0f, 1.0f, 3.0f, 1.0f, -1.0f, -2.0f}));
+  ASSERT_OK(model.Invoke(*NewElementwiseNodeShader(op_type)));
+  // Matches FloatActivationsOpTest::GeluApproximate since the gpu kernel only
+  // uses the approximate version.
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-5), {0.0f, 0.841192f, 2.99636f, 0.841192f,
+                                          -0.158808f, -0.0454023f}));
 }
 
 TEST(ElementwiseOneArgumentTest, HardSwish) {

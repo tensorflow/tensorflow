@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/c/kernels_experimental.h"
 
 #include <algorithm>
+#include <optional>
+#include <string>
 #include <utility>
 
 #include "tensorflow/c/tf_status_helper.h"
@@ -25,6 +27,16 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/variant.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
+
+#ifndef IS_MOBILE_PLATFORM
+#include "tensorflow/core/kernels/data/optional_ops_util.h"
+#include "tensorflow/core/kernels/tensor_list.h"
+#include "tensorflow/core/kernels/tensor_list_util.h"
+#include "tensorflow/core/kernels/variant_ops_util.h"
+#include "tensorflow/core/platform/abi.h"
+#endif  // IS_MOBILE_PLATFORM
+
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/refcount.h"
@@ -56,12 +68,17 @@ tensorflow::Status EnsureSparseVariableAccess(
     TF_OpKernelContext* ctx, bool variantType,
     void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
                      TF_Tensor* dest),
-    tensorflow::Var* var) {
+    tensorflow::Var* var, bool lock_held = false) {
   auto* context = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   if (var->copy_on_read_mode.load()) {
     return ::tensorflow::OkStatus();
   }
-  mutex_lock ml(*var->mu());
+
+  std::optional<mutex_lock> ml;
+  if (!lock_held) {
+    ml.emplace(*var->mu());
+  }
+
   // Once copy-on-read mode is True the refcount is guaranteed to be 1. This can
   // also happen if there are no concurrent reads of the variable and
   // copy-on-read mode is false.
@@ -134,20 +151,14 @@ tensorflow::Status PrepareToUpdateVariable(
   return ::tensorflow::OkStatus();
 }
 
-tensorflow::mutex* GetTrainingVariableMutex(
-    TF_OpKernelContext* ctx, int32_t input, bool sparse,
-    void (*copyFunc)(TF_OpKernelContext* ctx, TF_Tensor* source,
-                     TF_Tensor* dest),
-    tensorflow::Var** maybe_resource) {
+tensorflow::mutex* GetTrainingVariableMutex(TF_OpKernelContext* ctx,
+                                            int32_t input,
+                                            tensorflow::Var** maybe_resource) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
   *maybe_resource = nullptr;
   if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
     if (LookupResource(cc_ctx, HandleFromInput(cc_ctx, input), maybe_resource)
             .ok()) {
-      if (sparse) {
-        TF_CHECK_OK(
-            EnsureSparseVariableAccess(ctx, false, copyFunc, *maybe_resource));
-      }
       return (*maybe_resource)->mu();
     } else {
       cc_ctx->CtxFailureWithWarning(
@@ -251,7 +262,7 @@ void TF_AssignUpdateVariable(TF_OpKernelContext* ctx, int input_index,
   Status status =
       LookupResource(context, HandleFromInput(context, input_index), &variable);
   if (!status.ok()) {
-    printf("Failed with error: %s\n", status.error_message().c_str());
+    printf("Failed with error: %s\n", tsl::NullTerminatedMessage(status));
     abort();
   }
   const Tensor& value = context->input(value_index);
@@ -299,8 +310,7 @@ void TF_MaybeLockVariableInputMutexesInOrder(
   std::vector<int32_t> acquire_order;
   for (auto input : input_ids) {
     tensorflow::Var* var;
-    tensorflow::mutex* mutex =
-        GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
+    tensorflow::mutex* mutex = GetTrainingVariableMutex(ctx, input, &var);
     if (var) vars.push_back(var);
     // Only lock each mutex once if duplicates exist (n^2 but n is 2 or 3).
     if (std::find(mutexes.begin(), mutexes.end(), mutex) == mutexes.end()) {
@@ -316,11 +326,8 @@ void TF_MaybeLockVariableInputMutexesInOrder(
       absl::make_unique<std::vector<tensorflow::tf_shared_lock>>();
   locks->reserve(acquire_order.size());
 
-  for (auto input : acquire_order) {
-    tensorflow::Var* var;
-    tensorflow::mutex* mu =
-        GetTrainingVariableMutex(ctx, input, sparse, copyFunc, &var);
-    tensorflow::core::ScopedUnref scoped_unref(var);
+  for (auto acquire : acquire_order) {
+    tensorflow::mutex* mu = mutexes[acquire];
     if (mu != nullptr) {
       if (do_lock) {
         locks->emplace_back(*mu);
@@ -329,8 +336,21 @@ void TF_MaybeLockVariableInputMutexesInOrder(
       }
     }
   }
-  *lockHolder = new TF_VariableInputLockHolder(
-      std::move(vars), std::move(locks), std::move(shared_locks));
+  *lockHolder = new TF_VariableInputLockHolder(vars, std::move(locks),
+                                               std::move(shared_locks));
+  if (sparse) {
+    // Enable sparse variables' access.
+    // NOTE: This can not be done before the variable input locks are held,
+    // because a race condition can happen between this and another thread that
+    // turns off some variable's `copy_on_read_mode` after this thread enables
+    // sparse access; when a later function sees `copy_on_read_mode` is off, it
+    // will try to lock the variable again for updating `copy_on_read_mode` and
+    // cause the deadlock, since the variable mutex is non-re-entrant.
+    for (auto* var : vars) {
+      TF_CHECK_OK(EnsureSparseVariableAccess(
+          ctx, /*variantType=*/false, copyFunc, var, /*lock_held=*/true));
+    }
+  }
   TF_SetStatus(status, TF_OK, "");
 }
 
@@ -342,6 +362,11 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
                                                     TF_Tensor* dest),
                                    TF_Tensor** out, TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+
+  auto status_setter = ::tensorflow::gtl::MakeCleanup([cc_ctx, status]() {
+    ::tensorflow::Set_TF_Status_from_Status(status, cc_ctx->status());
+  });
+
   tensorflow::Status s;
   if (cc_ctx->input_dtype(input) == tensorflow::DT_RESOURCE) {
     tensorflow::core::RefCountPtr<tensorflow::Var> var;
@@ -351,19 +376,19 @@ void TF_GetInputTensorFromVariable(TF_OpKernelContext* ctx, int input,
       OP_REQUIRES_OK(cc_ctx, EnsureSparseVariableAccess(ctx, isVariantType,
                                                         copyFunc, var.get()));
       *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-      ::tensorflow::Set_TF_Status_from_Status(status, s);
+      OP_REQUIRES_OK(cc_ctx, s);
       return;
     }
     OP_REQUIRES_OK(cc_ctx, PrepareToUpdateVariable(
                                ctx, var->tensor(),
                                var->copy_on_read_mode.load(), false, copyFunc));
     *out = ::tensorflow::TF_TensorFromTensor(*var->tensor(), &s);
-    ::tensorflow::Set_TF_Status_from_Status(status, s);
+    OP_REQUIRES_OK(cc_ctx, s);
     return;
   }
   *out = ::tensorflow::TF_TensorFromTensor(
       cc_ctx->mutable_input(input, lock_held), &s);
-  ::tensorflow::Set_TF_Status_from_Status(status, s);
+  OP_REQUIRES_OK(cc_ctx, s);
 }
 
 void TF_OpKernelContext_ForwardRefInputToRefOutput(TF_OpKernelContext* ctx,
@@ -434,3 +459,252 @@ bool TF_IsRefInput(TF_OpKernelContext* ctx, int i, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   return cc_ctx->input_is_ref(i);
 }
+
+#ifndef IS_MOBILE_PLATFORM
+template <typename T>
+static Status ValidateVariantType(const Variant& variant) {
+  if (variant.get<T>() == nullptr) {
+    const std::string type_index_name =
+        ::tensorflow::port::MaybeAbiDemangle(variant.TypeId().name());
+
+    return ::tensorflow::errors::Internal(
+        "VariantBinaryOpFn: Could not access object 'a', type_index: ",
+        type_index_name);
+  }
+
+  return ::tensorflow::OkStatus();
+}
+
+static Status VariantBinaryAddFunc(
+    ::tensorflow::OpKernelContext* cc_ctx, const Variant& a, const Variant& b,
+    Variant* out,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out));
+
+static Status CCBinaryAddFunc(
+    ::tensorflow::OpKernelContext* cc_ctx, const Tensor& cc_a,
+    const Tensor& cc_b, Tensor* cc_out,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out)) {
+  if (cc_a.dtype() == ::tensorflow::DT_INVALID) {
+    *cc_out = cc_b;
+    return ::tensorflow::OkStatus();
+  }
+  if (cc_b.dtype() == ::tensorflow::DT_INVALID) {
+    *cc_out = cc_a;
+    return ::tensorflow::OkStatus();
+  }
+
+  Status status;
+  TF_Tensor* a = TF_TensorFromTensor(cc_a, &status);
+  TF_RETURN_IF_ERROR(status);
+
+  TF_Tensor* b = TF_TensorFromTensor(cc_b, &status);
+  if (!status.ok()) {
+    TF_DeleteTensor(a);
+    return status;
+  }
+
+  ::tensorflow::AllocatorAttributes attr;
+  if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
+    attr.set_on_host(true);
+  }
+
+  status = cc_ctx->allocate_temp(cc_a.dtype(), cc_a.shape(), cc_out, attr);
+  if (!status.ok()) {
+    TF_DeleteTensor(a);
+    TF_DeleteTensor(b);
+    return status;
+  }
+
+  TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+  if (!status.ok()) {
+    TF_DeleteTensor(a);
+    TF_DeleteTensor(b);
+    return status;
+  }
+
+  auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
+  if (cc_a.dtype() == ::tensorflow::DT_VARIANT) {
+    return VariantBinaryAddFunc(
+        cc_ctx, cc_a.scalar<Variant>()(), cc_b.scalar<Variant>()(),
+        cc_out->scalar<Variant>().data(), binary_add_func);
+  } else {
+    binary_add_func(ctx, a, b, out);
+    return cc_ctx->status();
+  }
+};
+
+static Status VariantBinaryAddFunc(
+    ::tensorflow::OpKernelContext* cc_ctx, const Variant& a, const Variant& b,
+    Variant* out,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out)) {
+  auto cc_binary_add = [binary_add_func](::tensorflow::OpKernelContext* cc_ctx,
+                                         const Tensor& cc_a, const Tensor& cc_b,
+                                         Tensor* cc_out) {
+    return CCBinaryAddFunc(cc_ctx, cc_a, cc_b, cc_out, binary_add_func);
+  };
+
+  if (out == nullptr) {
+    return ::tensorflow::errors::Internal(
+        "The output variant hasn't been initialized");
+  }
+
+  if (a.TypeId() != b.TypeId()) {
+    return ::tensorflow::errors::Internal(
+        "BinaryOpVariants: Variants a and b have different "
+        "type ids.  Type names: '",
+        a.TypeName(), "' vs. '", b.TypeName(), "'");
+  }
+
+  if (a.TypeId() == tensorflow::TypeIndex::Make<::tensorflow::TensorList>()) {
+    TF_RETURN_IF_ERROR(ValidateVariantType<::tensorflow::TensorList>(a));
+    *out = ::tensorflow::TensorList();
+
+    return ::tensorflow::TensorListBinaryAdd(
+        cc_ctx, *a.get<::tensorflow::TensorList>(),
+        *b.get<::tensorflow::TensorList>(),
+        out->get<::tensorflow::TensorList>(), cc_binary_add);
+  } else if (a.TypeId() == tensorflow::TypeIndex::Make<
+                               ::tensorflow::data::OptionalVariant>()) {
+    TF_RETURN_IF_ERROR(
+        ValidateVariantType<::tensorflow::data::OptionalVariant>(a));
+    *out = ::tensorflow::data::OptionalVariant();
+
+    return ::tensorflow::data::OptionalBinaryAdd(
+        cc_ctx, *a.get<::tensorflow::data::OptionalVariant>(),
+        *b.get<::tensorflow::data::OptionalVariant>(),
+        out->get<::tensorflow::data::OptionalVariant>(), cc_binary_add);
+  }
+
+  const std::string type_index_name =
+      ::tensorflow::port::MaybeAbiDemangle(a.TypeId().name());
+
+  return ::tensorflow::errors::Internal(
+      "No unary variant binary_op function found for op ADD Variant "
+      "type_name: ",
+      type_index_name, " for device type: ", cc_ctx->device()->name());
+}
+
+void TF_AddNVariant(TF_OpKernelContext* ctx,
+                    void (*binary_add_func)(TF_OpKernelContext* ctx,
+                                            TF_Tensor* a, TF_Tensor* b,
+                                            TF_Tensor* out),
+                    TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+
+  auto binary_add_variant =
+      [binary_add_func](::tensorflow::OpKernelContext* cc_ctx, const Variant& a,
+                        const Variant& b, Variant* out) {
+        return VariantBinaryAddFunc(cc_ctx, a, b, out, binary_add_func);
+      };
+  ::tensorflow::AddNVariant(cc_ctx, binary_add_variant);
+  ::tensorflow::Set_TF_Status_from_Status(status, cc_ctx->status());
+}
+
+static Status ZerosLikeVariant(::tensorflow::OpKernelContext* cc_ctx,
+                               const Variant& input, Variant* out,
+                               void (*zeros_like_func)(TF_OpKernelContext* ctx,
+                                                       TF_Tensor* input,
+                                                       TF_Tensor* out)) {
+  auto cc_zeros_like_func = [zeros_like_func](
+                                ::tensorflow::OpKernelContext* cc_ctx,
+                                const Tensor& cc_input, Tensor* cc_out) {
+    AllocatorAttributes attr;
+    if (cc_input.dtype() == ::tensorflow::DT_VARIANT) {
+      attr.set_on_host(true);
+    }
+    TF_RETURN_IF_ERROR(cc_ctx->allocate_temp(cc_input.dtype(), cc_input.shape(),
+                                             cc_out, attr));
+
+    switch (cc_input.dtype()) {
+      case ::tensorflow::DT_INVALID: {
+        *cc_out = Tensor(::tensorflow::DT_INVALID);
+        break;
+      }
+      case ::tensorflow::DT_VARIANT: {
+        // If the wrapped tensor is also a variant, recursively call
+        // ZerosLikeVariant to unwrap it the same way
+        Variant* out_variant = cc_out->scalar<Variant>().data();
+        TF_RETURN_IF_ERROR(ZerosLikeVariant(cc_ctx,
+                                            cc_input.scalar<Variant>()(),
+                                            out_variant, zeros_like_func));
+        break;
+      }
+      default: {
+        Status status;
+        TF_Tensor* input = TF_TensorFromTensor(cc_input, &status);
+        TF_RETURN_IF_ERROR(status);
+
+        TF_Tensor* out = TF_TensorFromTensor(*cc_out, &status);
+        if (!status.ok()) {
+          TF_DeleteTensor(input);
+          return status;
+        }
+
+        auto* ctx = reinterpret_cast<TF_OpKernelContext*>(cc_ctx);
+        zeros_like_func(ctx, input, out);
+      }
+    }
+    return cc_ctx->status();
+  };
+
+  if (out == nullptr) {
+    return ::tensorflow::errors::Internal(
+        "The output variant hasn't been initialized");
+  }
+
+  if (input.TypeId() ==
+      tensorflow::TypeIndex::Make<::tensorflow::TensorList>()) {
+    TF_RETURN_IF_ERROR(ValidateVariantType<::tensorflow::TensorList>(input));
+    *out = ::tensorflow::TensorList();
+
+    return ::tensorflow::TensorListZerosLike(
+        cc_ctx, *input.get<::tensorflow::TensorList>(),
+        out->get<::tensorflow::TensorList>(), cc_zeros_like_func);
+  } else if (input.TypeId() == tensorflow::TypeIndex::Make<
+                                   ::tensorflow::data::OptionalVariant>()) {
+    TF_RETURN_IF_ERROR(
+        ValidateVariantType<::tensorflow::data::OptionalVariant>(input));
+    *out = ::tensorflow::data::OptionalVariant();
+
+    return ::tensorflow::data::OptionalZerosLike(
+        cc_ctx, *input.get<::tensorflow::data::OptionalVariant>(),
+        out->get<::tensorflow::data::OptionalVariant>(), cc_zeros_like_func);
+  }
+
+  const std::string type_index_name =
+      ::tensorflow::port::MaybeAbiDemangle(input.TypeId().name());
+
+  return ::tensorflow::errors::Internal(
+      "No unary variant unary_op function found for op ZEROS_LIKE Variant "
+      "type_name: ",
+      type_index_name, " for device type: ", cc_ctx->device()->name());
+}
+
+void TF_ZerosLikeVariant(TF_OpKernelContext* ctx,
+                         void (*zeros_like_func)(TF_OpKernelContext* ctx,
+                                                 TF_Tensor* input,
+                                                 TF_Tensor* out),
+                         TF_Status* status) {
+  auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);
+
+  const Tensor& input = cc_ctx->input(0);
+  OP_REQUIRES(cc_ctx, input.dims() == 0,
+              InvalidArgument(
+                  "ZerosLike non-scalar Tensor with dtype=DT_VARIANT is not "
+                  "supported."));
+  const Variant& v = input.scalar<Variant>()();
+  // DT_VARIANT tensors must be allocated on CPU since they wrap C++
+  // objects which can not be efficiently represented in GPU memory.
+  int numa_node = cc_ctx->device()->NumaNode();
+  Tensor out(::tensorflow::cpu_allocator(numa_node), ::tensorflow::DT_VARIANT,
+             ::tensorflow::TensorShape({}));
+  Variant* out_v = &(out.scalar<Variant>()());
+  Status cc_status = ZerosLikeVariant(cc_ctx, v, out_v, zeros_like_func);
+  ::tensorflow::Set_TF_Status_from_Status(status, cc_status);
+  OP_REQUIRES_OK(cc_ctx, cc_status);
+  cc_ctx->set_output(0, out);
+}
+#endif  // IS_MOBILE_PLATFORM

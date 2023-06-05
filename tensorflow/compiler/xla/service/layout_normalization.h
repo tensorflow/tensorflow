@@ -16,14 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LAYOUT_NORMALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LAYOUT_NORMALIZATION_H_
 
+#include <functional>
+#include <optional>
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
+
+using CustomCallTransformer =
+    std::function<StatusOr<std::optional<HloInstruction*>>(
+        HloCustomCallInstruction*)>;
 
 // Normalize shapes for some subsets of HLOs.
 //
@@ -34,8 +41,20 @@ namespace xla {
 // normalized ones, e.g. f32[5,1,4]{0,1,2} is converted to f32[4,5]{1,0}.
 class LayoutNormalization : public HloModulePass {
  public:
+  // The provided custom_call_transformer allows backend to specify custom-call
+  // transformation rules.
+  explicit LayoutNormalization(
+      const CustomCallTransformer& custom_call_transformer = nullptr)
+      : custom_call_transformer_(custom_call_transformer) {}
+
   absl::string_view name() const override { return "layout_normalization"; }
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  CustomCallTransformer custom_call_transformer_;
 };
 
 }  // end namespace xla

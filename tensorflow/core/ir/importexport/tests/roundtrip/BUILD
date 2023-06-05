@@ -3,6 +3,7 @@ load(":roundtrip.bzl", "glob_roundtrip_tests")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/core/ir/importexport:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -17,7 +18,6 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:Support",
     ],
 )

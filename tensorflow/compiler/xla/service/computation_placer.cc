@@ -28,14 +28,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/host/host_platform_id.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/stream_executor/cuda/cuda_platform_id.h"
-#include "tensorflow/stream_executor/host/host_platform_id.h"
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
+#include "tensorflow/tsl/platform/status.h"
 
 using absl::StrAppend;
 using absl::StrCat;
@@ -163,7 +163,13 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
     ComputationPlacerCreationFunction creation_function) {
   absl::MutexLock lock(&ComputationPlacer::platform_computation_placer_mutex_);
   auto* computation_placers = GetPlatformComputationPlacers();
-  CHECK(computation_placers->find(platform_id) == computation_placers->end());
+  if (computation_placers->find(platform_id) != computation_placers->end()) {
+    // TODO(b/282059652): Consider logging the platform name using
+    // MultiPlatformManager::PlatformWithId(). No doing that for now to avoid
+    // introducing unwanted dependency.
+    LOG(WARNING) << "computation placer already registered. Please check "
+                    "linkage and avoid linking the same target more than once.";
+  }
   (*computation_placers)[platform_id].creation_function = creation_function;
 }
 

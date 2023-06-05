@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/tile_test_util.h"
 
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -40,7 +41,7 @@ absl::Status TileChannelsTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 6), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(1.0f),
@@ -67,7 +68,7 @@ absl::Status TileChannelsX4Test(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 2, 1, 8), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(7.0f),
@@ -95,7 +96,7 @@ absl::Status TileWidthTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 1, 4, 3), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(4.0f),
@@ -122,7 +123,7 @@ absl::Status TileHeightTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 4, 1, 3), &dst_tensor));
       RETURN_IF_ERROR(
           PointWiseNear({half(1.0f), half(2.0f), half(3.0f), half(4.0f),
@@ -150,7 +151,7 @@ absl::Status TileHWCTest(TestExecutionEnvironment* env) {
       TensorFloat32 dst_tensor;
       GPUOperation operation = CreateTile(op_def, src_tensor.shape.c);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          src_tensor, absl::make_unique<GPUOperation>(std::move(operation)),
+          src_tensor, std::make_unique<GPUOperation>(std::move(operation)),
           BHWC(1, 4, 4, 6), &dst_tensor));
       RETURN_IF_ERROR(PointWiseNear(
           {half(1.0f),  half(2.0f),  half(3.0f),  half(1.0f),  half(2.0f),

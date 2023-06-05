@@ -12,12 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_
-#define TENSORFLOW_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_
+#ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_
+#define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_
 
 #include <stdlib.h>
 
 #include <limits>
+#include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
@@ -25,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "third_party/tensorflow_serving/apis/predict.pb.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
-#include "tfrt/tensor/btf_util.h"  // from @tf_runtime
 
 ABSL_DECLARE_FLAG(bool, enable_optimizer);
 ABSL_DECLARE_FLAG(std::string, force_data_format);
@@ -103,16 +106,16 @@ void ComputeCurrentTFResult(const std::string& saved_model_dir,
                             bool disable_grappler = false);
 
 void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
-                       absl::optional<double> error = absl::nullopt);
+                       std::optional<double> error = std::nullopt);
 
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
-    tensorflow::TfrtTpuInfraTarget tpu_target);
+    tensorflow::TfrtDeviceInfraTarget tpu_target);
 
 tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
 GetWarmupRequests(absl::string_view saved_model_dir);
 
-std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
+void ProcessPredictRequestsAndMaybeProfile(
     const std::vector<tensorflow::serving::PredictRequest>& requests,
     SavedModel* saved_model, const bool profile = false,
     const int32_t num_steps = 1);
@@ -120,4 +123,4 @@ std::vector<tensorflow::Tensor> ProcessPredictRequestsAndMaybeProfile(
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_
+#endif  // TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_TESTUTIL_H_

@@ -45,9 +45,10 @@ class FileIO(object):
   the file line by line is 1024 * 512 bytes.
   """
 
-  def __init__(self, name, mode):
+  def __init__(self, name, mode, encoding="utf-8"):
     self.__name = name
     self.__mode = mode
+    self.__encoding = encoding
     self._read_buf = None
     self._writable_file = None
     self._binary_mode = "b" in mode
@@ -86,9 +87,9 @@ class FileIO(object):
 
   def _prepare_value(self, val):
     if self._binary_mode:
-      return compat.as_bytes(val)
+      return compat.as_bytes(val, encoding=self.__encoding)
     else:
-      return compat.as_str_any(val)
+      return compat.as_str_any(val, encoding=self.__encoding)
 
   def size(self):
     """Returns the size of the file."""
@@ -97,7 +98,8 @@ class FileIO(object):
   def write(self, file_content):
     """Writes file_content to the file. Appends to the end of the file."""
     self._prewrite_check()
-    self._writable_file.append(compat.as_bytes(file_content))
+    self._writable_file.append(
+        compat.as_bytes(file_content, encoding=self.__encoding))
 
   def read(self, n=-1):
     """Returns the contents of a file as a string.

@@ -18,7 +18,7 @@ import time
 import numpy as np
 from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.client import session
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -67,7 +67,7 @@ def _restore_checkpoint_and_maybe_run_saved_model_initializers(
 
 
 @tf_export(v1=["train.SessionManager"])
-class SessionManager(object):
+class SessionManager:
   """Training helper that restores from checkpoint and creates session.
 
   This class is a small wrapper that takes care of session creation and
@@ -210,7 +210,7 @@ class SessionManager(object):
     # This is required to so that we initialize the TPU device before
     # restoring from checkpoint since we'll be placing variables on the device
     # and TPUInitialize wipes out the memory of the device.
-    strategy = distribution_strategy_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
     if strategy and hasattr(strategy.extended,
                             "_experimental_initialize_system"):
       strategy.extended._experimental_initialize_system()  # pylint: disable=protected-access
@@ -572,7 +572,8 @@ def _ready(op, sess, msg):
       return False, str(e)
 
 
-class _CountDownTimer(object):
+class _CountDownTimer:
+  """A timer that tracks a duration since creation."""
 
   __slots__ = ["_start_time_secs", "_duration_secs"]
 

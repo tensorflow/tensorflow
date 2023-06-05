@@ -116,7 +116,7 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
         temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 // TODO(ebrevdo): Write a custom batch-friendly impl of this to update
@@ -234,7 +234,7 @@ Status COOSparseMatrixToSparseTensor<GPUDevice>::operator()(
                                 config.block_count, config.thread_per_block, 0,
                                 d.stream(), coo_row_ind.data(),
                                 coo_col_ind.data(), indices.data(), size));
-    return Status::OK();
+    return OkStatus();
   } else {
     const int batch_size = host_dense_shape(0);
     GpuDeviceArrayOnHost<int> batch_ptr_copy(c, host_batch_ptr.size());
@@ -251,7 +251,7 @@ Status COOSparseMatrixToSparseTensor<GPUDevice>::operator()(
                         config.thread_per_block, shared_memory_size, d.stream(),
                         coo_row_ind.data(), coo_col_ind.data(), indices.data(),
                         batch_ptr_copy.data(), batch_size, size));
-    return Status::OK();
+    return OkStatus();
   }
 }
 
@@ -321,7 +321,7 @@ Status CSRSparseMatrixBatchMulVecImpl(OpKernelContext* ctx,
       config.thread_per_block, shared_memory_size, d.stream(), a_values.data(),
       b.data(), c_values.data(), batch_ptr_copy.data(), batch_size, total_nnz));
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define DEFINE_SPARSE_MUL_VEC_GPU(T)                                        \
@@ -459,7 +459,7 @@ Status CSRSparseMatrixSoftmaxGPUImpl(OpKernelContext* ctx,
                                 logits_values.data(), softmax_values.data()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define DEFINE_SOFTMAX_GPU(T)                                             \
@@ -666,7 +666,7 @@ Status CSRSparseMatrixSoftmaxGradGPUImpl(
         grad_softmax_values.data(), gradient_values.data()));
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 #define DEFINE_SOFTMAX_GRAD_GPU(T)                                          \

@@ -21,9 +21,9 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
 #endif
 #include "absl/cleanup/cleanup.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
-#include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -62,7 +62,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
     entry.size = entry.tpu_program_group->program_size();
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 xla::StatusOr<std::vector<::grpc::Slice>> SerializeCacheEntryToBufferSlices(

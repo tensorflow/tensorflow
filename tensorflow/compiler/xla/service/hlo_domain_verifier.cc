@@ -17,11 +17,11 @@ limitations under the License.
 
 #include <set>
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_map.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
@@ -31,22 +31,25 @@ class HloDomainVerifier::RunContext {
   RunContext(HloModule* module, HloDomainVerifier* verifier)
       : module_(module), verifier_(verifier) {}
 
-  Status Run();
+  Status Run(const absl::flat_hash_set<absl::string_view>& execution_threads);
 
  private:
   // If the verifier caller passed an empty vector for kinds, we collect all the
   // available domain types.
-  Status PopulateDomainKinds();
+  Status PopulateDomainKinds(
+      const absl::flat_hash_set<absl::string_view>& execution_threads);
 
   HloModule* module_;
   HloDomainVerifier* verifier_;
 };
 
-Status HloDomainVerifier::RunContext::PopulateDomainKinds() {
+Status HloDomainVerifier::RunContext::PopulateDomainKinds(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   if (verifier_->kinds_.empty()) {
     // The caller specified no domain kinds, collect all the ones available.
     std::set<std::string> kinds;
-    for (HloComputation* computation : module_->computations()) {
+    for (HloComputation* computation :
+         module_->computations(execution_threads)) {
       for (HloInstruction* instruction : computation->instructions()) {
         if (instruction->opcode() == HloOpcode::kDomain) {
           TF_RET_CHECK(instruction->user_side_metadata().Kind() ==
@@ -62,10 +65,11 @@ Status HloDomainVerifier::RunContext::PopulateDomainKinds() {
   return OkStatus();
 }
 
-Status HloDomainVerifier::RunContext::Run() {
+Status HloDomainVerifier::RunContext::Run(
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   VLOG(4) << "Running HLO Domain Verifier";
-  TF_RETURN_IF_ERROR(PopulateDomainKinds());
-  for (HloComputation* computation : module_->computations()) {
+  TF_RETURN_IF_ERROR(PopulateDomainKinds(execution_threads));
+  for (HloComputation* computation : module_->computations(execution_threads)) {
     for (auto& kind : verifier_->kinds_) {
       // First create the domain instruction sets. A domain instruction set is
       // the set of instructions whose edges never cross a kDomain instruction.
@@ -80,9 +84,11 @@ Status HloDomainVerifier::RunContext::Run() {
   return OkStatus();
 }
 
-StatusOr<bool> HloDomainVerifier::Run(HloModule* module) {
+StatusOr<bool> HloDomainVerifier::Run(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
   RunContext run_context(module, this);
-  TF_RETURN_IF_ERROR(run_context.Run());
+  TF_RETURN_IF_ERROR(run_context.Run(execution_threads));
   return false;
 }
 

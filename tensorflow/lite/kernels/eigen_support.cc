@@ -19,7 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/lite/arena_planner.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 
@@ -68,7 +68,7 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
   explicit EigenThreadPoolWrapper(int num_threads) {
     // Avoid creating any threads for the single-threaded case.
     if (num_threads > 1) {
-      pool_.reset(new Eigen::ThreadPool(num_threads));
+      pool_ = std::make_unique<Eigen::ThreadPool>(num_threads);
     }
   }
   ~EigenThreadPoolWrapper() override {}
@@ -100,10 +100,10 @@ class LazyEigenThreadPoolHolder {
   // Gets the ThreadPoolDevice, creating if necessary.
   const Eigen::ThreadPoolDevice* GetThreadPoolDevice() {
     if (!device_) {
-      thread_pool_wrapper_.reset(
-          new EigenThreadPoolWrapper(target_num_threads_));
-      device_.reset(new Eigen::ThreadPoolDevice(thread_pool_wrapper_.get(),
-                                                target_num_threads_));
+      thread_pool_wrapper_ =
+          std::make_unique<EigenThreadPoolWrapper>(target_num_threads_);
+      device_ = std::make_unique<Eigen::ThreadPoolDevice>(
+          thread_pool_wrapper_.get(), target_num_threads_);
     }
     return device_.get();
   }
@@ -160,8 +160,8 @@ void IncrementUsageCounter(TfLiteContext* context) {
     ptr = new RefCountedEigenContext;
     ptr->type = kTfLiteEigenContext;
     ptr->Refresh = Refresh;
-    ptr->thread_pool_holder.reset(
-        new LazyEigenThreadPoolHolder(context->recommended_num_threads));
+    ptr->thread_pool_holder = std::make_unique<LazyEigenThreadPoolHolder>(
+        context->recommended_num_threads);
     ptr->num_references = 0;
     context->SetExternalContext(context, kTfLiteEigenContext, ptr);
   }

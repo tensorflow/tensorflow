@@ -102,9 +102,9 @@ TEST_F(TestDelegate, TestFallbackWithMultipleDelegates) {
 }
 
 TEST_P(TestFP16Delegation, DelegateInvokeWithCPUFallback) {
-  delegate_ = std::unique_ptr<FP16Delegate>(new FP16Delegate(
+  delegate_ = std::make_unique<FP16Delegate>(
       /**num_delegated_subsets**/ GetParam(), /**fail_node_prepare**/ false,
-      /**fail_node_invoke**/ true));
+      /**fail_node_invoke**/ true);
   ASSERT_EQ(
       interpreter_->ModifyGraphWithDelegate(delegate_->get_tf_lite_delegate()),
       kTfLiteOk);

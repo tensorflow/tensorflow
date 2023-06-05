@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack  # pylint: disable=g-direct-tensorflow-import
 from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.platform import googletest
 
@@ -49,8 +50,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         output = op(*placeholders)
       result = session.run(output, feeds)
       if not equality_fn:
-        equality_fn = self.assertAllClose
-      equality_fn(result, expected, rtol=1e-3)
+        equality_fn = lambda x, y: self.assertAllClose(x, y, rtol=1e-3)
+      equality_fn(result, expected)
 
   def testAdd(self):
     if xla_test.test.is_built_with_rocm():
@@ -288,15 +289,44 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             padding_value=7,
             padding_low=[2, 1],
             padding_high=[1, 2],
-            padding_interior=[1, 0])
+            padding_interior=[1, 0],
+        )
 
       self._assertOpOutputMatchesExpected(
           pad_fn,
           args=(np.arange(4, dtype=np.int32).astype(dtype).reshape([2, 2]),),
           expected=np.array(
-              [[7, 7, 7, 7, 7], [7, 7, 7, 7, 7], [7, 0, 1, 7, 7],
-               [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
-              dtype=dtype))
+              [
+                  [7, 7, 7, 7, 7],
+                  [7, 7, 7, 7, 7],
+                  [7, 0, 1, 7, 7],
+                  [7, 7, 7, 7, 7],
+                  [7, 2, 3, 7, 7],
+                  [7, 7, 7, 7, 7],
+              ],
+              dtype=dtype,
+          ),
+      )
+
+  def testSetDynamicDimensionSize(self):
+    dynamic_size = 7
+
+    # XLA doesn't support this for bfloat16.
+    for dtype in set(self.numeric_types).intersection(
+        set([np.int32, np.float32, np.float64, np.complex64])):
+
+      def xla_set_dynamic_dimension_size_fn(x):
+        # Tell XLA to cut the array to size=dynamic_size.
+        return gen_xla_ops.xla_set_dynamic_dimension_size(
+            x, dim_index=0, size=dynamic_size
+        )
+
+      a = np.arange(10, dtype=np.int32).astype(dtype)
+      expected = a[:dynamic_size]
+
+      self._assertOpOutputMatchesExpected(
+          xla_set_dynamic_dimension_size_fn, args=(a,), expected=expected
+      )
 
   def testPadNegative(self):
     for dtype in self.numeric_types:
@@ -439,7 +469,8 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
               np.exp(1) * 8 / 7 + 1e5 / 3
           ],
                             dtype=dtype))
-      error_term_equality = functools.partial(self.assertAllClose, atol=.005)
+      error_term_equality = functools.partial(
+          self.assertAllClose, rtol=1e-3, atol=.005)
       self._assertOpOutputMatchesExpected(
           kahan_sum_reduction(dims=[0], output_idx=1),
           args=(xs[shuffle_indices],),
@@ -572,6 +603,41 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(values_1, values_2),
           expected=(values_1, values_2))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testScatter(self):
+    test_array = np.arange(9).astype(np.int32).reshape((3, 3))
+    scatter_indices = np.array([0, 2], dtype=np.int32)
+    updates = np.array([[10, 20, 30], [70, 80, 90]], dtype=np.int32)
+
+    dnums = xla_data_pb2.ScatterDimensionNumbers()
+    dnums.update_window_dims.append(1)
+    dnums.inserted_window_dims.append(0)
+    dnums.scatter_dims_to_operand_dims.append(0)
+    dnums.index_vector_dim = 1
+
+    add_numbers = function.Defun(np.int32, np.int32)(lambda x, y: x + y)
+
+    def test_fn(
+        scatter_input,
+        scatter_indices,
+        scatter_updates,
+    ):
+      return gen_xla_ops.xla_scatter(
+          scatter_input,
+          scatter_indices,
+          scatter_updates,
+          add_numbers,
+          dnums.SerializeToString(),
+          indices_are_sorted=False,
+      )
+
+    expected = np.array([[10, 21, 32], [3, 4, 5], [76, 87, 98]], dtype=np.int32)
+    self._assertOpOutputMatchesExpected(
+        test_fn,
+        args=(test_array, scatter_indices, updates),
+        expected=expected,
+    )
+
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -635,7 +701,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'op has mismatched number of slice sizes \(3\) and number of start'
+          (r'has mismatched number of slice sizes \(3\) and number of start'
            r' indices \(2\)'))
 
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
@@ -648,7 +714,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         session.run(output)
       self.assertRegex(
           invalid_arg_error.exception.message,
-          (r'op has mismatched number of slice sizes \(2\) and number of start'
+          (r'has mismatched number of slice sizes \(2\) and number of start'
            r' indices \(3\)'))
 
   def test_optimization_barrier(self):
@@ -657,6 +723,28 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
 
     self._assertOpOutputMatchesExpected(
         xla.optimization_barrier, args=args, expected=args)
+
+  def test_reduce_precision(self):
+    arg = np.array([1 + 2**-2 + 2**-4, 128, 256], dtype=np.float32)
+    expected = np.array([1 + 2**-2, 128, float('Inf')], dtype=np.float32)
+    exponent_bits = 4
+    mantissa_bits = 2
+    self._assertOpOutputMatchesExpected(
+        lambda x: xla.reduce_precision(x, exponent_bits, mantissa_bits),
+        args=(arg,),
+        expected=expected,
+        equality_fn=self.assertAllEqual)
+
+    arg = np.array([4], dtype=np.float32)
+    expected = np.array([4], dtype=np.float32)
+    # Test passing numbers that cannot fit in a 32-bit integer.
+    exponent_bits = 2**33
+    mantissa_bits = 2**33
+    self._assertOpOutputMatchesExpected(
+        lambda x: xla.reduce_precision(x, exponent_bits, mantissa_bits),
+        args=(arg,),
+        expected=expected,
+        equality_fn=self.assertAllEqual)
 
 
 class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
@@ -799,7 +887,8 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
       self.assertEqual(res.shape.as_list(), [1, 2, 4])
 
     # The first two dimension slice sizes are known
-    slice_sizes = array_ops.stack([1, 2, array_ops.placeholder(np.int32, [])])
+    slice_sizes = array_ops_stack.stack(
+        [1, 2, array_ops.placeholder(np.int32, [])])
     for a_shape in [(2, 3, 4), (None, 3, 4), None]:
       a = array_ops.placeholder(np.float32, shape=a_shape)
       res = xla.dynamic_slice(a, start, slice_sizes)

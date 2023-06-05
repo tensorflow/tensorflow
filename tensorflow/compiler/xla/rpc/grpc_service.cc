@@ -14,8 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/rpc/grpc_service.h"
+
+#include <functional>
+#include <memory>
+#include <utility>
+
 #include "tensorflow/compiler/xla/service/platform_util.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
+#include "tensorflow/tsl/distributed_runtime/rpc/grpc_util.h"
 
 namespace xla {
 
@@ -29,7 +34,7 @@ namespace xla {
 
 ::grpc::Status DelegateRPC(std::function<Status()> op) {
   Status s = op();
-  return tensorflow::ToGrpcStatus(s);
+  return tsl::ToGrpcStatus(s);
 }
 
 ::grpc::Status GRPCService::Unregister(::grpc::ServerContext* context,

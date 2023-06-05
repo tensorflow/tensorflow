@@ -518,14 +518,16 @@ def ragged_reduce_aggregate(reduce_op,
   Raises:
     ValueError: If `axis` contains a `Tensor` whose value is not constant.
   """
+  # When separator is not None, We infer that dtype is string and
+  # reduce_join will be called.
+  if separator is None:
+    maybe_separator = {}
+  else:
+    maybe_separator = {'separator': separator}
+
   if not ragged_tensor.is_ragged(rt_input):
-    if separator is None:
-      return reduce_op(rt_input, axis, keepdims=keepdims, name=name)
-    else:
-      # When separator is not None, We infer that dtype is string and
-      # reduce_join will be called.
-      return reduce_op(
-          rt_input, axis, keepdims=keepdims, name=name, separator=separator)
+    return reduce_op(
+        rt_input, axis, keepdims=keepdims, name=name, **maybe_separator)
 
   if isinstance(axis, ops.Tensor):
     axis = tensor_util.constant_value(axis)
@@ -536,7 +538,8 @@ def ragged_reduce_aggregate(reduce_op,
 
   # When reducing all axes, just ignore splits & reduce the inner values.
   if axis is None:
-    result = reduce_op(rt_input.flat_values, None, keepdims=keepdims, name=name)
+    result = reduce_op(rt_input.flat_values, None, keepdims=keepdims,
+                       name=name, **maybe_separator)
     if keepdims:
       # Expand the result to the input number of dimensions.
       for _ in rt_input.shape[1:]:
@@ -1117,6 +1120,23 @@ def dropout_v2(x: ragged_tensor.Ragged,
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
     return x.with_flat_values(
         nn_ops.dropout_v2(x.flat_values, rate=rate, seed=seed))
+
+
+@dispatch.dispatch_for_api(nn_ops.stateless_dropout)
+def stateless_dropout(x: ragged_tensor.Ragged,
+                      rate,
+                      seed,
+                      rng_alg=None,
+                      noise_shape=None,
+                      name=None):
+  """Ragged dispatch target for tf.nn.experimental.stateless_dropout."""
+  if noise_shape is not None:
+    raise ValueError('noise_shape is not supported yet for RaggedTensor x')
+  with ops.name_scope(name, 'RaggedNNStatelessDropout', [x, rate]):
+    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, name='x')
+    return x.with_flat_values(
+        nn_ops.stateless_dropout(
+            x.flat_values, rate=rate, seed=seed, rng_alg=rng_alg))
 
 
 #===============================================================================

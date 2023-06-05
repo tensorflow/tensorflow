@@ -21,8 +21,8 @@ from tensorflow.core.framework import step_stats_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
 from tensorflow.python.profiler import pprof_profiler
 
@@ -143,7 +143,7 @@ comment: 9
       i = constant_op.constant(0)
       c = lambda i: math_ops.less(i, num_iters)
       b = lambda i: math_ops.add(i, 1)
-      r = control_flow_ops.while_loop(c, b, [i])
+      r = while_loop.while_loop(c, b, [i])
       sess.run(r, options=options, run_metadata=run_metadata)
       profiles = pprof_profiler.get_profiles(sess.graph, run_metadata)
       self.assertEqual(1, len(profiles))

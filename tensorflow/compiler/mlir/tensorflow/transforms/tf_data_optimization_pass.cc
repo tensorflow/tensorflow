@@ -15,19 +15,22 @@ limitations under the License.
 
 #include <memory>
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_data_optimization.h"
 
 namespace mlir {
 namespace TF {
 namespace {
 
+#define GEN_PASS_DEF_TFDATAOPTIMIZATIONPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 // Perform tf.data optimizations.
 struct TFDataOptimization
-    : public TFDataOptimizationPassBase<TFDataOptimization> {
+    : public impl::TFDataOptimizationPassBase<TFDataOptimization> {
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
     mlir::TF::PopulateTFDataOptimizationPatterns(&getContext(), &patterns);

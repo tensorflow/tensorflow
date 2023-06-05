@@ -1,9 +1,10 @@
 # DTensor MLIR dialect.
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
-load("//tensorflow:tensorflow.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
         "//tensorflow/dtensor:dtensor-internal",
         # Allow visibility from the mlir language server.
@@ -64,7 +65,7 @@ cc_library(
     deps = [
         ":DialectIncGen",
         ":ir/dtensor_attributes",
-        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
         "//tensorflow/dtensor/cc:tensor_layout",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",

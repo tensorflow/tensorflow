@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/gpu/tests/mlir_gpu_test_base.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace gpu {
@@ -24,6 +24,9 @@ using ::testing::ElementsAreArray;
 class SortingTest : public MlirGpuTestBase {};
 
 TEST_F(SortingTest, SimpleCase1) {
+  // TODO(b/267638219): convert to use new MLIR executables (most likely just
+  // updating the mlir text to use untyped u8 memrefs).
+  mutable_debug_options()->set_xla_gpu_enable_xla_runtime_executable(false);
   const char* mlir_text = R"(
       func.func @main(%arg0: memref<4xf32> {lmhlo.params = 0 : index},
                  %arg1: memref<4xf32> {lmhlo.params = 1 : index},
@@ -35,12 +38,12 @@ TEST_F(SortingTest, SimpleCase1) {
                  } {
           "lmhlo.sort"(%arg0, %arg1, %arg2, %arg3) ({
           ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f32>, %d: tensor<f32>):
-            %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction GT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+            %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction GT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
             "mhlo.return"(%7) : (tensor<i1>) -> ()
           }) {dimension = 0 : i64, is_stable = true} : (memref<4xf32>, memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
           "lmhlo.sort"(%arg0, %arg1, %arg4, %arg5) ({
           ^bb0(%a: tensor<f32>, %b: tensor<f32>, %c: tensor<f32>, %d: tensor<f32>):
-            %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<"comparison_direction LT">} : (tensor<f32>, tensor<f32>) -> tensor<i1>
+            %7 = "mhlo.compare"(%a, %b) {comparison_direction = #mhlo<comparison_direction LT>} : (tensor<f32>, tensor<f32>) -> tensor<i1>
             "mhlo.return"(%7) : (tensor<i1>) -> ()
           }) {dimension = 0 : i64, is_stable = true} : (memref<4xf32>, memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
           "func.return" () : () -> ()

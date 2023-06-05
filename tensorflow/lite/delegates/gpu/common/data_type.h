@@ -35,6 +35,7 @@ enum class DataType {
   INT32 = 9,
   UINT64 = 10,
   INT64 = 11,
+  BOOL = 12,
 };
 
 size_t SizeOf(DataType data_type);

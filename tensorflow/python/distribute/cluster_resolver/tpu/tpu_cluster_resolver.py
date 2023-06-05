@@ -276,6 +276,16 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
   def get_job_name(self):
     return self.task_type
 
+  def get_coordination_service_leader(self):
+    """Returns the location for coordination service.
+
+    The coordination service should be located on TPU worker0.
+
+    Returns:
+      A string indicate the location path.
+    """
+    return '/job:' + self.get_job_name() + '/task:0'
+
   def get_tpu_system_metadata(self):
     """Returns the metadata of the TPU system.
 

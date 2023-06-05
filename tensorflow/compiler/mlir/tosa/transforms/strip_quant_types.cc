@@ -27,9 +27,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <utility>
 
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/quantization/ir/QuantOps.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 #include "tensorflow/compiler/mlir/tosa/transforms/passes.h"
@@ -50,9 +52,13 @@ namespace mlir {
 namespace tosa {
 namespace {
 
-class StripQuantTypes : public TosaStripQuantTypesPassBase<StripQuantTypes> {
+#define GEN_PASS_DEF_TOSASTRIPQUANTTYPESPASS
+#include "tensorflow/compiler/mlir/tosa/transforms/passes.h.inc"
+
+class StripQuantTypes
+    : public impl::TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
-  explicit StripQuantTypes() {}
+  explicit StripQuantTypes() = default;
   void runOnOperation() override;
 };
 
@@ -126,7 +132,7 @@ void StripQuantTypes::runOnOperation() {
   QuantTypeConverter converter;
   ConversionTarget target(getContext());
 
-  target.addIllegalDialect<quant::QuantizationDialect>();
+  target.addIllegalDialect<quantfork::QuantizationForkDialect>();
   // Operations are legal if they don't contain any illegal type.
   target.markUnknownOpDynamicallyLegal([](Operation* op) {
     if (auto funcOp = dyn_cast<func::FuncOp>(op)) {

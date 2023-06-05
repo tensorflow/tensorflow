@@ -17,73 +17,18 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_DENORMAL_H_
 
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/tsl/platform/denormal.h"
 
 namespace tensorflow {
 namespace port {
-
-// State for handling of denormals.
-class DenormalState {
- public:
-  DenormalState(bool flush_to_zero, bool denormals_are_zero)
-      : flush_to_zero_(flush_to_zero),
-        denormals_are_zero_(denormals_are_zero) {}
-
-  // Output denormals of floating-point operations are flushed to zero.
-  inline bool flush_to_zero() const { return flush_to_zero_; }
-
-  // Input denormals to floating-point operations are treated as zero.
-  inline bool denormals_are_zero() const { return denormals_are_zero_; }
-
-  bool operator==(const DenormalState& other) const;
-  bool operator!=(const DenormalState& other) const;
-
- private:
-  bool flush_to_zero_;
-  bool denormals_are_zero_;
-};
-
-// Gets the platform's current state for handling denormals.
-DenormalState GetDenormalState();
-
-// Sets handling of denormals if the platform allows it. Returns `true` if the
-// platform supports setting denormals to the specified state. Otherwise the
-// denormal state remains unmodified and false is returned.
-bool SetDenormalState(const DenormalState& state);
-
-// Remembers the flush denormal state on construction and restores that same
-// state on destruction.
-class ScopedRestoreFlushDenormalState {
- public:
-  ScopedRestoreFlushDenormalState();
-  ~ScopedRestoreFlushDenormalState();
-
- private:
-  DenormalState denormal_state_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedRestoreFlushDenormalState);
-};
-
-// While this class is active, denormal floating point numbers are flushed
-// to zero.  The destructor restores the original flags.
-class ScopedFlushDenormal {
- public:
-  ScopedFlushDenormal();
-
- private:
-  ScopedRestoreFlushDenormalState restore_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedFlushDenormal);
-};
-
-// While this class is active, denormal floating point numbers are not flushed
-// to zero.  The destructor restores the original flags.
-class ScopedDontFlushDenormal {
- public:
-  ScopedDontFlushDenormal();
-
- private:
-  ScopedRestoreFlushDenormalState restore_;
-  TF_DISALLOW_COPY_AND_ASSIGN(ScopedDontFlushDenormal);
-};
-
+// NOLINTBEGIN(misc-unused-using-decls)
+using tsl::port::DenormalState;
+using tsl::port::GetDenormalState;
+using tsl::port::ScopedDontFlushDenormal;
+using tsl::port::ScopedFlushDenormal;
+using tsl::port::ScopedRestoreFlushDenormalState;
+using tsl::port::SetDenormalState;
+// NOLINTEND(misc-unused-using-decls)
 }  // namespace port
 }  // namespace tensorflow
 

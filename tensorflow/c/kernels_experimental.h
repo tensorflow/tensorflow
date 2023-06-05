@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_EXPERIMENTAL_H_
 #define TENSORFLOW_C_KERNELS_EXPERIMENTAL_H_
 
+#include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/kernels.h"
 
 // --------------------------------------------------------------------------
@@ -23,25 +24,6 @@ limitations under the License.
 //
 // The API here is subject to changes in the future.
 // --------------------------------------------------------------------------
-
-// Macro to control visibility of exported symbols in the shared library (.so,
-// .dylib, .dll).
-// This duplicates the TF_EXPORT macro definition in
-// tensorflow/core/platform/macros.h in order to keep this .h file independent
-// of any other includes.
-#ifdef SWIG
-#define TF_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
-#define TF_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TF_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
-#else
-#define TF_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
@@ -146,6 +128,35 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrTensorShape(
 
 TF_CAPI_EXPORT extern bool TF_IsRefInput(TF_OpKernelContext* ctx, int i,
                                          TF_Status* status);
+
+#ifndef IS_MOBILE_PLATFORM
+// Expose higher level AddN operation for Pluggable vendors to implement
+// in the plugin for Variant data types. The API takes in the context and a
+// callback provided by pluggable vendor to do a Binary Add operation on the
+// tensors unwrapped from the Variant tensors. The caller takes ownership of the
+// `a`, `b` and `out` tensors and is responsible for freeing them with
+// TF_DeleteTensor.
+TF_CAPI_EXPORT extern void TF_AddNVariant(
+    TF_OpKernelContext* ctx,
+    void (*binary_add_func)(TF_OpKernelContext* ctx, TF_Tensor* a, TF_Tensor* b,
+                            TF_Tensor* out),
+    TF_Status* status);
+
+// Expose higher level ZerosLike operation for Pluggable vendors to implement
+// in the plugin for Variant data types. The API takes in the context and a
+// callback provided by pluggable vendor to do a ZerosLike operation on the
+// tensors unwrapped from the Variant tensors. The caller takes ownership of the
+// `input` and `out` tensors and is responsible for freeing them with
+// TF_DeleteTensor.
+TF_CAPI_EXPORT extern void TF_ZerosLikeVariant(
+    TF_OpKernelContext* ctx,
+    void (*zeros_like_func)(TF_OpKernelContext* ctx, TF_Tensor* input,
+                            TF_Tensor* out),
+    TF_Status* status);
+
+typedef struct TF_CoordinationServiceAgent TF_CoordinationServiceAgent;
+
+#endif  // IS_MOBILE_PLATFORM
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SPMD_STATEFUL_RNG_SPMD_PARTITIONER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include <utility>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/service/spmd/spmd_partitioner.h"
 
@@ -32,11 +34,12 @@ class StatefulRngSpmdPartitioningVisitor
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, spmd::SpmdLogger* logger,
-      spmd::SpmdPartitionerOptions options, spmd::SpmdPartitioner* partitioner)
+      spmd::SpmdPartitionerOptions options, spmd::SpmdPartitioner* partitioner,
+      const CallGraph& call_graph)
       : spmd::SpmdPartitioningVisitor(computation, num_partitions, num_replicas,
                                       collective_ops_creator, next_channel_id,
-                                      logger, std::move(options), partitioner) {
-  }
+                                      logger, std::move(options), partitioner,
+                                      call_graph) {}
   Status HandleRngGetAndUpdateState(HloInstruction* hlo) override;
 };
 
@@ -51,9 +54,12 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
       HloComputation* computation, int64_t num_partitions, int64_t num_replicas,
       const spmd::SPMDCollectiveOpsCreator& collective_ops_creator,
       int64_t* next_channel_id, spmd::SpmdLogger* logger,
-      spmd::SpmdPartitionerOptions options) override;
+      spmd::SpmdPartitionerOptions options,
+      const CallGraph& call_graph) override;
 
-  Status PreprocessSharding(HloModule* module) override;
+  Status PreprocessSharding(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
   bool CanSideEffectingHaveReplicatedSharding(
       const HloInstruction* hlo) override;
 
@@ -61,6 +67,9 @@ class StatefulRngSpmdPartitioner : public spmd::SpmdPartitioner {
   static spmd::SpmdPartitionerOptions GetSpmdPartitionerOptions() {
     spmd::SpmdPartitionerOptions options;
     options.allow_module_signature_change = true;
+    // Setting windowed einsum threshold to be large to disable it for GPU by
+    // default.
+    options.threshold_for_windowed_einsum_mib = 100000;
     return options;
   }
 };

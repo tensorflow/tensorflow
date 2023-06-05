@@ -14,9 +14,9 @@
 # ==============================================================================
 """Tests for py_builtins module."""
 
+import io
 import sys
 
-import six
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
@@ -34,7 +34,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
 
-class TestBase(object):
+class TestBase:
 
   def overridden_method(self, x):
     return x + 20
@@ -178,7 +178,7 @@ class PyBuiltinsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_print_tensors(self):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       with self.cached_session() as sess:
         sess.run(py_builtins.print_(constant_op.constant('test message'), 1))
@@ -189,7 +189,7 @@ class PyBuiltinsTest(test.TestCase):
   @test_util.run_deprecated_v1
   def test_print_complex(self):
     try:
-      out_capturer = six.StringIO()
+      out_capturer = io.StringIO()
       sys.stdout = out_capturer
       with self.cached_session() as sess:
         sess.run(

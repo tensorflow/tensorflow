@@ -1,7 +1,7 @@
 // RUN: tfg-opt-no-passes %s -split-input-file -verify-diagnostics | FileCheck %s
 
-// expected-error @+1 {{unexpected token}}
-module attributes { tfg.type = !tf_type<"variant>"> } {}
+// expected-error @+1 {{expected '}'}}
+module attributes { tfg.type = !tf_type<variant>> } {}
 
 // -----
 
@@ -49,8 +49,8 @@ module attributes { tfg.type = !tf_type.resourceref} {}
 
 // -----
 
-// expected-error @+1 {{encountered unexpected token}}
-module attributes { tfg.type = !tf_type<"resource>">} {}
+// expected-error @+1 {{expected '}'}}
+module attributes { tfg.type = !tf_type<resource>>} {}
 
 // -----
 

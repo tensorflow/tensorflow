@@ -18,15 +18,16 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_ordinal_selector.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/core/tpu/tpu_ops_c_api.h"
 #include "tensorflow/core/util/reffed_status_callback.h"
 #include "absl/container/flat_hash_map.h"
 
@@ -119,7 +120,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     if (!status.ok()) {
       autotuner_thresh_ = 0;
     }
-    tensorflow::tpu::OpsApiFn()->TfTpu_GetTpuPartitionedCallParamsFn(
+    stream_executor::tpu::OpsApiFn()->TfTpu_GetTpuPartitionedCallParamsFn(
         &runtime_params_);
   }
 
@@ -138,6 +139,12 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
     // graph rewrite when executing `handle`, we need to make sure each
     // `handle` uses a different FLD to avoid races. See b/181149591.
     std::unique_ptr<FunctionLibraryDefinition> flib_def;
+  };
+
+  struct TPUMetadata {
+    tpu::TopologyProto topology;
+    int num_cores_per_replica = 1;
+    std::vector<int> device_assignment;
   };
 
   // This method is thread-safe.
@@ -167,7 +174,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   Status InitializeShardedVarOnTPU(OpKernelContext* ctx,
                                    const core::RefCountPtr<Var>& var,
                                    std::vector<NodeDef>& ndefs, int split_dim,
-                                   int device_ordinal)
+                                   const std::vector<string>& tpu_devices)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Check if any of the immediate successors of node has attribute
@@ -177,18 +184,20 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
   // Replace an _Arg node of type DT_RESOURCE by a VarHandleOp on TPU
   Status ReplaceResourceArgsWithVarHandleOps(Graph* graph, OpKernelContext* ctx,
                                              int device_ordinal,
-                                             int num_cores_per_replica,
-                                             bool enable_spmd_xla_partitioning)
+                                             bool enable_spmd_xla_partitioning,
+                                             const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Replace a _Arg node indicates a variable on CPU host by sharded/replicated
   // variables on all logical TPU devices.
   Status ReplaceAndPartitionXLAShardingVariable(
       Graph* graph, OpKernelContext* ctx, int device_ordinal,
-      ResourceHandle& handle, Node* variable, int num_cores_per_replica)
+      ResourceHandle& handle, Node* variable, const TPUMetadata& tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status ShardInputsWithXlaSharding(Graph* graph, int num_cores_per_replica,
+  Status ShardInputsWithXlaSharding(Graph* graph,
+                                    const std::string& cluster_name,
+                                    int num_cores_per_replica,
                                     OpKernelContext* ctx)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -206,8 +215,8 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
 
   // Copies the graph backing `func_` into `graph`.
   Status GetGraphFromFunction(Graph* graph, int device_ordinal,
-                              int* num_core_per_replica,
-                              bool* use_spmd_for_xla_partitioning)
+                              bool* use_spmd_for_xla_partitioning,
+                              TPUMetadata* tpu_metadata)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Places the graph carried by `optimization_options` and runs graph

@@ -19,7 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -109,6 +110,13 @@ TfLiteStatus ResizeOutputShape(TfLiteContext* context,
   return context->ResizeTensor(context, output, output_shape);
 }
 
+bool ShapeHasRank(const TfLiteIntArray* shape) {
+  // Note that we consider scalar as false here because there is
+  // no differentiation between scalar and dynamic properly supported.
+  if (shape == nullptr || shape->size == 0) return false;
+  return true;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -135,9 +143,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
                      "Slice op only supports 1D-5D input arrays.");
 
+  // If the shape of output is fully specified then resize even if
+  // the input shape is not staticly defined.
+  if (!HasUnspecifiedDimension(output) && ShapeHasRank(output->dims)) {
+    return kTfLiteOk;
+  }
   // Postpone allocation of output if any of the indexing tensors is not
   // constant, or the input tensor has dynamic dimension.
-  if (!(IsConstantTensor(begin) && IsConstantTensor(size)) ||
+  if (!(IsConstantOrPersistentTensor(begin) &&
+        IsConstantOrPersistentTensor(size)) ||
       HasUnspecifiedDimension(input)) {
     SetTensorToDynamic(output);
     return kTfLiteOk;
@@ -230,6 +244,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteUInt8:
       TF_LITE_SLICE(uint8_t);
+      break;
+    case kTfLiteUInt32:
+      TF_LITE_SLICE(uint32_t);
       break;
     case kTfLiteBool:
       TF_LITE_SLICE(bool);

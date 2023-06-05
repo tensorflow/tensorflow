@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "pybind11/pybind11.h"
+#include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/cc/saved_model/constants.h"
 
 namespace tensorflow {
@@ -65,6 +65,8 @@ void DefineConstantsModule(py::module main_module) {
 
   m.attr("VARIABLES_FILENAME") =
       py::str(tensorflow::kSavedModelVariablesFilename);
+
+  m.attr("FINGERPRINT_FILENAME") = py::str(tensorflow::kFingerprintFilenamePb);
 }
 
 }  // namespace python

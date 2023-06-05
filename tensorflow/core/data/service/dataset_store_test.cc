@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"

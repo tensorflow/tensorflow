@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <limits>
 
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -126,7 +126,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // unranked input. Set output tensor to dynamic so output size can be
   // determined in Eval.
   if (NumDimensions(op_context.input) == 0 ||
-      !IsConstantTensor(op_context.paddings)) {
+      !IsConstantOrPersistentTensor(op_context.paddings)) {
     SetTensorToDynamic(op_context.output);
     return kTfLiteOk;
   }

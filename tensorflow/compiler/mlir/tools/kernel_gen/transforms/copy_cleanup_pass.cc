@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -28,7 +29,7 @@ namespace mlir {
 namespace kernel_gen {
 namespace transforms {
 namespace {
-#define GEN_PASS_CLASSES
+#define GEN_PASS_DEF_COPYCLEANUPPASS
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 // A pass to remove memref::AllocOps and memref::CopyOps ops.
@@ -154,7 +155,7 @@ void RemoveCopyIfTargetIsFunctionArg(func::FuncOp func) {
 
 }  // namespace
 
-struct CopyCleanupPass : public CopyCleanupPassBase<CopyCleanupPass> {
+struct CopyCleanupPass : public impl::CopyCleanupPassBase<CopyCleanupPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
     registry.insert<memref::MemRefDialect>();
   }

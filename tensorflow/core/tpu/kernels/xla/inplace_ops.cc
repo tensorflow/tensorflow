@@ -84,7 +84,7 @@ class InplaceUpdateOp : public XlaOpKernel {
     //         [](xla::XlaOp, xla::XlaOp second, xla::XlaBuilder*) { return
     //         second; }, builder);
     //     OP_REQUIRES_OK(ctx, result.status());
-    //     ctx->SetOutput(0, result.ValueOrDie());
+    //     ctx->SetOutput(0, result.value());
   }
 };
 

@@ -14,6 +14,7 @@
 # limitations under the License.
 # ==============================================================================
 
+# Contact c-toolchain-team@ for new releases or new ubuntu versions.
 DIST="$(grep "DISTRIB_RELEASE" /etc/lsb-release |sed 's,.*=,,; s,\.,_,')"
 INSTALL_DIR="/clang_${CLANG_VERSION}"
 STORAGE="https://storage.googleapis.com/clang-builds-stable"

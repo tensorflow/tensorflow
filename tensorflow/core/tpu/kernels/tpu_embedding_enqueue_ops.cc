@@ -20,12 +20,12 @@ limitations under the License.
 
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/c_api_decl.h"
-#include "tensorflow/stream_executor/tpu/status_helper.h"
 
 namespace tensorflow {
 
@@ -92,8 +92,9 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     }
     fixed_state_create_params.combiners_size = c_str_combiners.size();
     fixed_state_create_params.combiners = c_str_combiners.data();
-    fixed_state_ = tpu::OpsApiFn()->TpuEmbeddingTensorBatchFixedState_CreateFn(
-        &fixed_state_create_params);
+    fixed_state_ = stream_executor::tpu::OpsApiFn()
+                       ->TpuEmbeddingTensorBatchFixedState_CreateFn(
+                           &fixed_state_create_params);
 
     OP_REQUIRES_OK(ctx, status.status());
   }
@@ -135,23 +136,17 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
     std::vector<TF_Tensor*> embedding_indices_tensors(num_input_features);
     std::vector<TF_Tensor*> aggregation_weights_tensors(num_input_features);
 
-    {
-      tensorflow::profiler::TraceMe copy_tensors_trace(
-          [] { return "CopyTensors"; },
-          tensorflow::profiler::TraceMeLevel::kInfo);
-
-      for (int i = 0; i < num_input_features; ++i) {
-        Status tf_status;
-        sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensor(
-            sample_indices_or_row_splits_list[i], &tf_status);
-        OP_REQUIRES_OK(ctx, tf_status);
-        embedding_indices_tensors[i] =
-            TF_TensorFromTensor(embedding_indices_list[i], &tf_status);
-        OP_REQUIRES_OK(ctx, tf_status);
-        aggregation_weights_tensors[i] =
-            TF_TensorFromTensor(aggregation_weights_list[i], &tf_status);
-        OP_REQUIRES_OK(ctx, tf_status);
-      }
+    for (int i = 0; i < num_input_features; ++i) {
+      Status tf_status;
+      sample_indices_or_row_splits_tensors[i] = TF_TensorFromTensorShallow(
+          sample_indices_or_row_splits_list[i], &tf_status);
+      OP_REQUIRES_OK(ctx, tf_status);
+      embedding_indices_tensors[i] =
+          TF_TensorFromTensorShallow(embedding_indices_list[i], &tf_status);
+      OP_REQUIRES_OK(ctx, tf_status);
+      aggregation_weights_tensors[i] =
+          TF_TensorFromTensorShallow(aggregation_weights_list[i], &tf_status);
+      OP_REQUIRES_OK(ctx, tf_status);
     }
 
     TpuEmbeddingEngine_EnqueueTensorBatch_Params params;
@@ -173,7 +168,8 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
       tensorflow::profiler::TraceMe enqueue_batch_trace(
           [] { return "EnqueueBatch"; },
           tensorflow::profiler::TraceMeLevel::kInfo);
-      tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(&params);
+      stream_executor::tpu::OpsApiFn()->TpuEmbeddingEngine_EnqueueTensorBatchFn(
+          &params);
       OP_REQUIRES_OK(ctx, status.status());
     }
 
@@ -191,7 +187,8 @@ class EnqueueTPUEmbeddingArbitraryTensorBatchOp : public OpKernel {
   }
 
   ~EnqueueTPUEmbeddingArbitraryTensorBatchOp() override {
-    tpu::OpsApiFn()->TpuEmbeddingTensorBatchFixedState_DestroyFn(fixed_state_);
+    stream_executor::tpu::OpsApiFn()
+        ->TpuEmbeddingTensorBatchFixedState_DestroyFn(fixed_state_);
   }
 
  private:

@@ -15,13 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/data/root_dataset.h"
 
+#include <algorithm>
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/data/dataset_utils.h"
 #include "tensorflow/core/data/name_utils.h"
 #include "tensorflow/core/data/rewrite_utils.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/model.pb.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -44,6 +48,7 @@ constexpr char kPrivateThreadpoolSize[] = "threadpool_size";
 constexpr char kRamBudget[] = "ram_budget_megabytes";
 constexpr char kRamUsage[] = "ram_usage_megabytes";
 constexpr char kMaxBufferBytes[] = "max_buffered_megabytes";
+constexpr char kWarmStart[] = "warm_start";
 
 // If value `x` matches `y`, returns default value `z`. Otherwise, return `x`.
 inline int64_t value_or_default(int64_t x, int64_t y, int64_t z) {
@@ -61,20 +66,36 @@ void SetRootDatasetParams(const Options& options, RootDataset::Params* params) {
   }
   params->autotune = ShouldUseAutotuning(options);
   if (params->autotune) {
-    params->autotune_algorithm =
-        options.autotune_options().optional_autotune_algorithm_case() ==
-                AutotuneOptions::kAutotuneAlgorithm
-            ? options.autotune_options().autotune_algorithm()
-            : model::AutotuneAlgorithm::DEFAULT;
+    params->autotune_algorithm = model::AutotuneAlgorithm::DEFAULT;
+    auto experiments = GetExperiments();
+    if (experiments.contains("stage_based_autotune") ||
+        experiments.contains("stage_based_autotune_v2")) {
+      params->autotune_algorithm = model::AutotuneAlgorithm::STAGE_BASED;
+    }
+    if (options.autotune_options().optional_autotune_algorithm_case() ==
+        AutotuneOptions::kAutotuneAlgorithm) {
+      params->autotune_algorithm =
+          options.autotune_options().autotune_algorithm();
+    }
     params->autotune_cpu_budget = value_or_default(
         options.autotune_options().cpu_budget(), 0, GetCpuBudget());
-    params->autotune_ram_budget =
-        value_or_default(options.autotune_options().ram_budget(), 0,
-                         model::kRamBudgetShare * port::AvailableRam());
+    if (experiments.contains("autotune_buffer_optimization")) {
+      // When running this experiment, increase the ram_budget since it already
+      // takes into account the ram usage in buffer sizing, which is not the
+      // case for prefetch autotuner. Without this, we see degradation in some
+      // jobs for lack of buffers while ram usage is low.
+      params->autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(), 0,
+                           0.90 * port::AvailableRam());
+    } else {
+      params->autotune_ram_budget =
+          value_or_default(options.autotune_options().ram_budget(), 0,
+                           model::kRamBudgetShare * port::AvailableRam());
+    }
   }
 }
 
-void AddTraceMetadata(const RootDataset::Params& params,
+void AddTraceMetadata(const RootDataset::Params& params, const Options& options,
                       TraceMeMetadata* trace_metadata) {
   if (params.autotune) {
     trace_metadata->push_back(std::make_pair(
@@ -106,6 +127,9 @@ void AddTraceMetadata(const RootDataset::Params& params,
     trace_metadata->push_back(
         std::make_pair(kExperiments, absl::StrJoin(experiments, " ")));
   }
+  trace_metadata->push_back(std::make_pair(
+      kWarmStart,
+      options.optimization_options().warm_start() ? "true" : "false"));
 }
 }  // namespace
 
@@ -134,6 +158,13 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       : DatasetIterator<RootDataset>(params) {
     if (dataset()->params_.autotune) {
       model_ = std::make_shared<model::Model>();
+      auto experiments = GetExperiments();
+      if (experiments.contains("stage_based_autotune_v2")) {
+        model_->AddExperiment("stage_based_autotune_v2");
+      }
+      if (experiments.contains("autotune_buffer_optimization")) {
+        model_->AddExperiment("autotune_buffer_optimization");
+      }
     }
     if (dataset()->params_.max_intra_op_parallelism >= 0) {
       max_intra_op_parallelism_ =
@@ -144,27 +175,45 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       threadpool_size_ =
           value_or_default(dataset()->params_.private_threadpool_size, 0,
                            port::MaxParallelism());
-      thread_pool_ = absl::make_unique<thread::ThreadPool>(
+      thread_pool_ = std::make_unique<thread::ThreadPool>(
           Env::Default(), ThreadOptions{}, "data_private_threadpool",
           threadpool_size_);
     }
-    cancellation_manager_ = absl::make_unique<CancellationManager>();
+    cancellation_manager_ = std::make_unique<CancellationManager>();
   }
 
   ~Iterator() override { cancellation_manager_->StartCancel(); }
 
+  bool SymbolicCheckpointCompatible() const override { return true; }
+
   Status Initialize(IteratorContext* ctx) override {
-    return dataset()->input_->MakeIterator(IteratorContext(CreateParams(ctx)),
-                                           this, prefix(), &input_impl_);
+    IteratorContext iter_ctx(CreateParams(ctx));
+    TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(&iter_ctx, this,
+                                                       prefix(), &input_impl_));
+    ctx->MergeCheckpoint(iter_ctx.checkpoint());
+    return OkStatus();
   }
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
+    {
+      tf_shared_lock l(mu_);
+      if (model_ != nullptr && end_time_usec_ > 0) {
+        model_->RecordIteratorGapTime(ctx->env()->NowMicros() - end_time_usec_);
+      }
+    }
     if (dataset()->params_.autotune) {
       TF_RETURN_IF_ERROR(EnsureModelThreadStarted(ctx));
     }
-    return input_impl_->GetNext(IteratorContext(CreateParams(ctx)), out_tensors,
-                                end_of_sequence);
+    IteratorContext iter_ctx(CreateParams(ctx));
+    TF_RETURN_IF_ERROR(
+        input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence));
+    ctx->MergeCheckpoint(iter_ctx.checkpoint());
+    {
+      mutex_lock l(mu_);
+      end_time_usec_ = std::max(ctx->env()->NowMicros(), end_time_usec_);
+    }
+    return OkStatus();
   }
 
  protected:
@@ -181,8 +230,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
 
   Status RestoreInternal(IteratorContext* ctx,
                          IteratorStateReader* reader) override {
-    TF_RETURN_IF_ERROR(
-        RestoreInput(IteratorContext(CreateParams(ctx)), reader, input_impl_));
+    IteratorContext iter_ctx(CreateParams(ctx));
+    TF_RETURN_IF_ERROR(RestoreInput(&iter_ctx, reader, input_impl_));
+    ctx->MergeCheckpoint(iter_ctx.checkpoint());
     return OkStatus();
   }
 
@@ -230,7 +280,6 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
       params.runner =
           RunnerWithMaxParallelism(params.runner, max_intra_op_parallelism_);
     }
-    params.options = &dataset()->options();
     return params;
   }
 
@@ -244,7 +293,7 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
                                  dataset()->params_.autotune_ram_budget,
                                  cancellation_manager_.get());
         if (!status.ok()) {
-          LOG(WARNING) << "Optimization loop failed: " << status.ToString();
+          LOG(WARNING) << "Optimization loop failed: " << status;
         }
       });
     }
@@ -261,6 +310,9 @@ class RootDataset::Iterator : public DatasetIterator<RootDataset> {
   int64_t threadpool_size_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
+  // The end time of the previous `GetNextInternal` call.
+  uint64_t end_time_usec_ TF_GUARDED_BY(mu_) = 0;
+
   // Must be ordered last as its execution may depend on other members.
   std::unique_ptr<IteratorBase> input_impl_;
 };
@@ -270,7 +322,7 @@ RootDataset::RootDataset(const DatasetBase* input, const Params& params)
                                   name_utils::OpName(kDatasetType)})),
       input_(input),
       params_(std::move(params)) {
-  AddTraceMetadata(params_, &traceme_metadata_);
+  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
 RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
@@ -280,14 +332,14 @@ RootDataset::RootDataset(core::RefCountPtr<DatasetBase> input,
       params_(std::move(params)) {
   owned_input_ = std::move(input);
   input_ = owned_input_.get();
-  AddTraceMetadata(params_, &traceme_metadata_);
+  AddTraceMetadata(params_, input_->options(), &traceme_metadata_);
 }
 
-RootDataset::~RootDataset() {}
+RootDataset::~RootDataset() = default;
 
 std::unique_ptr<IteratorBase> RootDataset::MakeIteratorInternal(
     const string& prefix) const {
-  return absl::make_unique<Iterator>(
+  return std::make_unique<Iterator>(
       Iterator::Params{this, name_utils::IteratorPrefix(kDatasetType, prefix)});
 }
 
@@ -301,10 +353,6 @@ const std::vector<PartialTensorShape>& RootDataset::output_shapes() const {
 
 string RootDataset::DebugString() const {
   return name_utils::DatasetDebugString(kDatasetType);
-}
-
-int64_t RootDataset::CardinalityInternal() const {
-  return input_->Cardinality();
 }
 
 int64_t RootDataset::CardinalityInternal(CardinalityOptions options) const {
@@ -367,14 +415,14 @@ Status FinalizeDataset(OpKernelContext* ctx, const DatasetBase* input,
   };
   core::RefCountPtr<DatasetBase> rewritten_output;
   Status s = RewriteDataset(ctx, input, std::move(config_factory),
-                            /*record_fingerprint=*/true, &rewritten_output);
+                            /*record_fingerprint=*/false, &rewritten_output);
 
   *output = rewritten_output.get();
   bool rewritten = (*output != input);
   if (errors::IsDeadlineExceeded(s)) {
     // Ignore DeadlineExceeded as it implies that the attempted rewrite took too
     // long which should not prevent further computation.
-    LOG(WARNING) << s.ToString();
+    LOG(WARNING) << s;
   } else if (!s.ok()) {
     return s;
   }

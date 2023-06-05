@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/depthwise_conv.h"
 
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>

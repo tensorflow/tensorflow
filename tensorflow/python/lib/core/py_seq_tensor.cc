@@ -12,11 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+// Must be included first
+// clang-format off
+#include "tensorflow/tsl/python/lib/core/numpy.h" //NOLINT
+// clang-format on
 
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 
 #include "tensorflow/c/eager/tfe_context_internal.h"
 #include "tensorflow/c/eager/tfe_tensorhandle_internal.h"
+#include "tensorflow/c/safe_ptr.h"
 #include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -29,10 +34,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
-#include "tensorflow/python/lib/core/numpy.h"
 #include "tensorflow/python/lib/core/py_util.h"
-#include "tensorflow/python/lib/core/safe_ptr.h"
-
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 namespace tensorflow {
 namespace {
 
@@ -693,7 +696,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
                         "Failed to convert a NumPy array to a Tensor (",
-                        status.error_message(), ").")
+                        status.message(), ").")
                         .c_str());
     return nullptr;
   }
@@ -722,6 +725,17 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     // The Py_NotImplemented returned from PyArray_FromArrayAttr is not
     // Py_INCREF'ed, so we don't want the Safe_PyObjectPtr to Py_DECREF it.
     array.release();
+
+    // Try __array_interface__ objects (such as PIL Image).
+    array = make_safe(PyArray_FromInterface(obj));
+    if (array == nullptr) {
+      return nullptr;
+    }
+    if (array.get() == Py_NotImplemented) {
+      array.release();
+    } else {
+      obj = array.get();
+    }
   } else {
     // PyArray_FromArrayAttr ensures that `array` is a PyArrayObject, so all
     // we have to do is replace `obj` with it and continue.
@@ -766,7 +780,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   ConverterState state;
   Status status = InferShapeAndType(obj, &state);
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
   DataType requested_dtype = DT_INVALID;
@@ -895,7 +909,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
 

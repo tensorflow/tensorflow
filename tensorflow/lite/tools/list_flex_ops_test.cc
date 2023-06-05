@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
 #include <cstdint>
+#include <string>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

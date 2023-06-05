@@ -1,7 +1,7 @@
 // RUN: tfg-transforms-opt -tfg-constant-folding %s | FileCheck %s
 
 module {
-  tfg.func @test() {
+  tfg.func @test() -> (tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>) {
     %Const, %ctl = Const name("Const/Const") {dtype = i32, value = dense<[3, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
     %RandomStandardNormal, %ctl_0 = RandomStandardNormal(%Const) name("x") {T = i32, dtype = f32, seed = 0 : i64, seed2 = 0 : i64} : (tensor<2xi32>) -> (tensor<*xf32>)
     %Const_1, %ctl_2 = Const name("Const_1/Const") {dtype = i32, value = dense<[3, 5]> : tensor<2xi32>} : () -> (tensor<2xi32>)
@@ -32,6 +32,6 @@ module {
     %Identity_27, %ctl_28 = Identity(%Merge_14#1) name("idx3") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
     %Identity_29, %ctl_30 = Identity(%Merge_16#0) name("out4") {T = f32} : (tensor<*xf32>) -> (tensor<*xf32>)
     %Identity_31, %ctl_32 = Identity(%Merge_16#1) name("idx4") {T = i32} : (tensor<*xi32>) -> (tensor<*xi32>)
-    return
+    return (%Identity, %Identity_19, %Identity_33, %Identity_35, %Identity_21, %Identity_23, %Identity_25, %Identity_27, %Identity_29, %Identity_31) : tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>, tensor<*xf32>, tensor<*xi32>
   }
 }

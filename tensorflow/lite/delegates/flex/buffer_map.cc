@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/flex/buffer_map.h"
 
+#include <utility>
+
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/lite/delegates/flex/buffer_map_util.h"
 #include "tensorflow/lite/delegates/flex/util.h"
@@ -31,10 +33,6 @@ bool BufferMap::HasTensor(int tensor_index) const {
   return id_to_tensor_.count(tensor_index) != 0;
 }
 
-bool BufferMap::IsTensorFlowTensor(int tensor_index) const {
-  return HasTensor(tensor_index) && owned_by_tf_.count(tensor_index) > 0;
-}
-
 tensorflow::Tensor BufferMap::GetTensor(int tensor_index) const {
   return id_to_tensor_.at(tensor_index);
 }
@@ -44,19 +42,15 @@ const tensorflow::Tensor* BufferMap::GetTensorPtr(int tensor_index) const {
   return &tensor;
 }
 
-void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor) {
+void BufferMap::SetFromTfLite(int tensor_index, const TfLiteTensor* tensor,
+                              bool allow_reusing) {
   TFLITE_CHECK(
-      SetTfTensorFromTfLite(tensor, &id_to_tensor_[tensor_index]).ok());
-  if (IsResourceOrVariant(tensor)) {
-    owned_by_tf_.insert(tensor_index);
-    return;
-  }
-  owned_by_tf_.erase(tensor_index);
+      SetTfTensorFromTfLite(tensor, &id_to_tensor_[tensor_index], allow_reusing)
+          .ok());
 }
 
 void BufferMap::SetFromTensorFlow(int tensor_index, tensorflow::Tensor tensor) {
   id_to_tensor_[tensor_index] = std::move(tensor);
-  owned_by_tf_.insert(tensor_index);
 }
 
 }  // namespace flex

@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -25,12 +25,20 @@ class DummyInstruction : public HloInstruction {
  public:
   DummyInstruction()
       : HloInstruction(HloOpcode::kConstant, ShapeUtil::MakeShape(F32, {})) {}
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kConstant;
+  }
 };
 
 class AnotherDummyInstruction : public HloInstruction {
  public:
   AnotherDummyInstruction()
       : HloInstruction(HloOpcode::kParameter, ShapeUtil::MakeShape(F32, {})) {}
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kParameter;
+  }
 };
 
 TEST(HloCastingUtilsTest, CastSucceeds) {

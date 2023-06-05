@@ -29,9 +29,10 @@ import numpy as np
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.checkpoint import checkpoint_management
+from tensorflow.python.checkpoint import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import tpu_strategy
@@ -59,7 +60,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.saved_model import save_options as save_options_lib
-from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
@@ -571,7 +571,7 @@ class CallbackList:
   def _disallow_batch_hooks_in_ps_strategy(self):
     """Error out if batch-level callbacks are passed with PSStrategy."""
     # pylint: disable=protected-access
-    strategy = ds_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
     if strategy._should_use_with_coordinator:
       unsupported_callbacks = []
       for cb in self.callbacks:
@@ -2355,7 +2355,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         of positive integers signify a range of batches to profile.
 
     Raises:
-      ValueError: If profile_batch is not an integer or a comma seperated pair
+      ValueError: If profile_batch is not an integer or a comma separated pair
                   of positive integers.
 
     """

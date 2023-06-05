@@ -16,11 +16,12 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_FLEX_SUBGRAPH_RESOURCE_H_
 
 #include <memory>
+#include <string>
 
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
 
 namespace tflite {

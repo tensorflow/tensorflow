@@ -202,7 +202,7 @@ bool RecursiveCompilabilityChecker::HasXLAKernel(
 
   Status s = FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr);
   if (!s.ok()) {
-    *uncompilable_reason = s.error_message();
+    *uncompilable_reason = s.message();
     return false;
   }
   return true;
@@ -488,6 +488,14 @@ bool RecursiveCompilabilityChecker::IsCompilableNode(
     return false;
   }
 
+  if (!op_filter_.allow_where_op && node.type_string() == "Where") {
+    absl::string_view uncompilable_reason = "Where op";
+    MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
+                              encapsulating_function, uncompilable_nodes);
+    LogNotCompilable(node, uncompilable_reason);
+    return false;
+  }
+
   if (!op_filter_.allow_unique_op && node.type_string() == "Unique") {
     absl::string_view uncompilable_reason = "Unique op";
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
@@ -695,6 +703,7 @@ tensorflow::MemoryTypeVector GetOutputMemoryTypes(
 
 static auto const ops_triggering_xla_compilation =
     new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
+                                         "XlaCallModule",
                                          "XlaConv",
                                          "XlaConvV2",
                                          "XlaDequantize",

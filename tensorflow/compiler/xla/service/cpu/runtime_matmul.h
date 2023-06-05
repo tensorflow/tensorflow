@@ -59,6 +59,10 @@ extern void __xla_cpu_runtime_EigenMatMulS32(
     int32_t* lhs, int32_t* rhs, int64_t m, int64_t n, int64_t k,
     int32_t transpose_lhs, int32_t transpose_rhs);
 
+extern void __xla_cpu_runtime_EigenBatchMatMulF32(
+    const void* /* xla::ExecutableRunOptions* */ run_options_ptr, float* out,
+    float* lhs, float* rhs, int64_t m, int64_t n, int64_t k, int64_t batch_size,
+    int32_t transpose_lhs, int32_t transpose_rhs);
 }  // extern "C"
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_RUNTIME_MATMUL_H_

@@ -450,3 +450,150 @@ func.func @fuse_in_chain_TPUReplicatedOutput() {
   }
   func.return
 }
+
+// -----
+
+// Test inconsistent _replication_info
+func.func @inconsistent_replication_info(%arg0: tensor<2x4xf32>, %arg1: tensor<2x4xf32>) {
+  // expected-error @+1 {{Graph contains op with inconsistent cluster info}}
+  tf_executor.graph {
+    %partitioned_out, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedInput"(%arg0, %arg1) {_XlaSharding = "\08\03\1A\02\02\01\22\02\00\01", device = "", partition_dim = 0 : i64} : (tensor<2x4xf32>, tensor<2x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedInput"(%partitioned_out) {N = 1 : i64, T = i32, device = "", index = 0 : i64, is_mirrored_variable = false} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out1, %add_control1 = tf_executor.island wraps "tf.AddV2"(%partitioned_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster1"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %add_out2, %add_control2 = tf_executor.island wraps "tf.AddV2"(%replicated_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster2"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Check that qualified Identity op can be merged into one Island op with
+// specified `_replication_info`
+// CHECK-LABEL: func @merge_qualified_identity_op
+func.func @merge_qualified_identity_op() {
+  tf_executor.graph {
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %identity_out, %control_identity = tf_executor.island wraps "tf.Identity"(%replicated_out) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%identity_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Check that output of Identity op which does not contain
+// `_replication_info` should not be merged into one Island op
+// CHECK-LABEL: func @exclude_identity_with_unqualified_output()
+func.func @exclude_identity_with_unqualified_output() {
+  tf_executor.graph {
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK: tf_executor.island wraps "tf.Identity"
+// CHECK: tf_executor.island wraps "tf.Identity"
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %identity_out, %control_identity = tf_executor.island wraps "tf.Identity"(%replicated_out) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%identity_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    %identity_out1, %control_identity1 = tf_executor.island wraps "tf.Identity"(%partitioned_out#0) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %identity_out2, %control_identity2 = tf_executor.island wraps "tf.Identity"(%partitioned_out#1) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Check that chains of output of Identity op which does not contain
+// `_replication_info` should not be merged into one Island op
+// CHECK-LABEL: func @exclude_chains_of_identity_with_unqualified_output()
+func.func @exclude_chains_of_identity_with_unqualified_output() {
+  tf_executor.graph {
+// CHECK: tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+// CHECK: tf_executor.island wraps "tf.Identity"
+// CHECK: tf_executor.island wraps "tf.Identity"
+// CHECK: tf_executor.island wraps "tf.Identity"
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %const_out) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %identity_out, %control_identity = tf_executor.island wraps "tf.Identity"(%replicated_out) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%identity_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    %identity_out1, %control_identity1 = tf_executor.island wraps "tf.Identity"(%partitioned_out#0) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %identity_out2, %control_identity2 = tf_executor.island wraps "tf.Identity"(%partitioned_out#1) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    %identity_out3, %control_identity3 = tf_executor.island wraps "tf.Identity"(%identity_out1) {device = ""} : (tensor<2x4xf32>) -> tensor<2x4xf32>
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Check that input of Identity Op which does not contain
+// `_replication_info` should not be merged into one Island op
+// CHECK-LABEL: func @exclude_identity_with_unqualified_input
+func.func @exclude_identity_with_unqualified_input() {
+  tf_executor.graph {
+// CHECK: = tf_executor.island wraps "tf.Const"
+// CHECK-NEXT: = tf_executor.island wraps "tf.Identity"
+// CHECK-NEXT: = tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %const_out0, %const_control0 = tf_executor.island wraps "tf.Const"() {value = dense<1.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %identity_out0, %control_identity0 = tf_executor.island wraps "tf.Identity"(%const_out0) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %identity_out0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %identity_out, %control_identity = tf_executor.island wraps "tf.Identity"(%replicated_out) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%identity_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  func.return
+}
+
+// -----
+
+// Check that chains of input of Identity op which does not contain
+// `_replication_info` should not be merged into one Island op
+// CHECK-LABEL: func @exclude_chains_of_identity_with_unqualified_input
+func.func @exclude_chains_of_identity_with_unqualified_input() {
+  tf_executor.graph {
+// CHECK: = tf_executor.island wraps "tf.Const"
+// CHECK-NEXT: = tf_executor.island wraps "tf.Identity"
+// CHECK-NEXT: = tf_executor.island wraps "tf.Identity"
+// CHECK-NEXT: = tf_executor.island
+// CHECK-NEXT: = "tf.Const"
+// CHECK-NEXT: = "tf.AddV2"
+// CHECK-NEXT: = "tf.TPUReplicatedOutput"
+// CHECK-NEXT: = "tf.TPUPartitionedOutput"
+    %const_out0, %const_control0 = tf_executor.island wraps "tf.Const"() {value = dense<1.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %identity_out0, %control_identity0 = tf_executor.island wraps "tf.Identity"(%const_out0) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %identity_out1, %control_identity2 = tf_executor.island wraps "tf.Identity"(%identity_out0) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %const_out, %const_control = tf_executor.island wraps "tf.Const"() {_xla_compile_device_type = "TPU", _replication_info = "cluster", value = dense<2.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+    %add_out, %add_control = tf_executor.island wraps "tf.AddV2"(%const_out, %identity_out0) {_xla_compile_device_type = "TPU", _replication_info = "cluster"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+    %replicated_out, %replicated_control = tf_executor.island wraps "tf.TPUReplicatedOutput"(%add_out) : (tensor<4x4xf32>) -> (tensor<4x4xf32>)
+    %identity_out, %control_identity = tf_executor.island wraps "tf.Identity"(%replicated_out) {device = ""} : (tensor<4x4xf32>) -> tensor<4x4xf32>
+    %partitioned_out:2, %partitioned_control = tf_executor.island wraps "tf.TPUPartitionedOutput"(%identity_out) {partition_dim = 0 : i64} : (tensor<4x4xf32>) -> (tensor<2x4xf32>, tensor<2x4xf32>)
+    tf_executor.fetch
+  }
+  func.return
+}

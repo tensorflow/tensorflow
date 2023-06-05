@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_sparse_ops
@@ -266,7 +267,7 @@ def sparse_eye(num_rows,
     diag_range = math_ops.range(diag_size, dtype=dtypes.int64)
 
     return sparse_tensor.SparseTensor(
-        indices=array_ops.stack([diag_range, diag_range], axis=1),
+        indices=array_ops_stack.stack([diag_range, diag_range], axis=1),
         values=array_ops.ones(diag_size, dtype=dtype),
         dense_shape=[num_rows, num_columns])
 
@@ -438,7 +439,7 @@ def sparse_concat_v2(axis, sp_inputs, expand_nonconcat_dims=False, name=None):  
     # output_shape tensor value. We update the output._dense_shape_default,
     # which populate output.shape as the best effort.
     output = sparse_tensor.SparseTensor(output_ind, output_val, output_shape)
-    output._dense_shape_default = tensor_shape.TensorShape(static_output_shape)
+    output.set_shape(tensor_shape.TensorShape(static_output_shape))
     return output
 
 
@@ -852,14 +853,19 @@ def sparse_reorder(sp_input, name=None):
 
   if sp_input.get_shape().is_fully_defined():
     dense_shape = sp_input.get_shape().as_list()
+    return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
   else:
     dense_shape = array_ops.identity(sp_input.dense_shape)
-
-  return sparse_tensor.SparseTensor(reordered_ind, reordered_val, dense_shape)
+    sp_output = sparse_tensor.SparseTensor(reordered_ind, reordered_val,
+                                           dense_shape)
+    # propagate the static shape
+    sp_output.set_shape(sp_input.shape)
+    return sp_output
 
 
 @tf_export("sparse.reshape", v1=["sparse.reshape", "sparse_reshape"])
 @deprecation.deprecated_endpoints("sparse_reshape")
+@dispatch.add_dispatch_support
 def sparse_reshape(sp_input, shape, name=None):
   """Reshapes a `SparseTensor` to represent values in a new dense shape.
 
@@ -1061,7 +1067,8 @@ def sparse_split_v2(sp_input=None,
 
   >>> indices = [[0, 2], [0, 4], [0, 5], [1, 0], [1, 1]]
   >>> values = [1, 2, 3, 4, 5]
-  >>> t = tf.SparseTensor(indices=indices, values=values, dense_shape=[2, 7])
+  >>> t = tf.sparse.SparseTensor(indices=indices, values=values,
+  ...                            dense_shape=[2, 7])
   >>> tf.sparse.to_dense(t)
   <tf.Tensor: shape=(2, 7), dtype=int32, numpy=
   array([[0, 0, 1, 0, 2, 3, 0],
@@ -1671,7 +1678,7 @@ def sparse_tensor_to_dense(sp_input,
 
   For this sparse tensor with three non-empty values:
 
-  >>> sp_input = tf.SparseTensor(
+  >>> sp_input = tf.sparse.SparseTensor(
   ...   dense_shape=[3, 5],
   ...   values=[7, 8, 9],
   ...   indices =[[0, 1],
@@ -2672,25 +2679,32 @@ def sparse_softmax(sp_input, name=None):
   Hence, the `SparseTensor` result has exactly the same non-zero indices and
   shape.
 
-  Example:
+  Example using a 3-D SparseTensor:
 
-  ```python
-  # First batch:
-  # [?   e.]
-  # [1.  ? ]
-  # Second batch:
-  # [e   ? ]
-  # [e   e ]
-  shape = [2, 2, 2]  # 3-D SparseTensor
-  values = np.asarray([[[0., np.e], [1., 0.]], [[np.e, 0.], [np.e, np.e]]])
-  indices = np.vstack(np.where(values)).astype(np.int64).T
-
-  result = tf.sparse.softmax(tf.sparse.SparseTensor(indices, values, shape))
-  # ...returning a 3-D SparseTensor, equivalent to:
-  # [?   1.]     [1    ?]
-  # [1.  ? ] and [.5  .5]
-  # where ? means implicitly zero.
-  ```
+    >>> st = tf.sparse.from_dense(
+    ...   [[[0., np.e],
+    ...     [1., 0.]],
+    ...
+    ...    [[np.e, 0.],
+    ...     [np.e, np.e]]])
+    >>> res = tf.sparse.softmax(st)
+    >>> res.indices
+    <tf.Tensor: shape=(5, 3), dtype=int64, numpy=
+    array([[0, 0, 1],
+           [0, 1, 0],
+           [1, 0, 0],
+           [1, 1, 0],
+           [1, 1, 1]])>
+    >>> res.values
+    <tf.Tensor: ... numpy=array([1. , 1. , 1. , 0.5, 0.5], dtype=float32)>
+    >>> res.dense_shape
+    <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 2, 2])>
+    >>> tf.sparse.to_dense(res)
+    <tf.Tensor: shape=(2, 2, 2), dtype=float32, numpy=
+    array([[[0. , 1. ],
+            [1. , 0. ]],
+           [[1. , 0. ],
+            [0.5, 0.5]]], dtype=float32)>
 
   Args:
     sp_input: N-D `SparseTensor`, where `N >= 2`.
@@ -2799,32 +2813,78 @@ def sparse_minimum(sp_a, sp_b, name=None):
 @tf_export("sparse.transpose", v1=["sparse.transpose", "sparse_transpose"])
 @deprecation.deprecated_endpoints("sparse_transpose")
 def sparse_transpose(sp_input, perm=None, name=None):
-  """Transposes a `SparseTensor`
+  """Transposes a `SparseTensor`.
 
-  The returned tensor's dimension i will correspond to the input dimension
-  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is
-  the rank of the input tensor. Hence by default, this operation performs a
-  regular matrix transpose on 2-D input Tensors.
+  Permutes the dimensions according to the value of `perm`.  This is the sparse
+  version of `tf.transpose`.
 
-  For example, if `sp_input` has shape `[4, 5]` and `indices` / `values`:
+  The returned tensor's dimension `i` will correspond to the input dimension
+  `perm[i]`. If `perm` is not given, it is set to (n-1...0), where n is the rank
+  of the input tensor. Hence, by default, this operation performs a regular
+  matrix transpose on 2-D input Tensors.
 
-      [0, 3]: b
-      [0, 1]: a
-      [3, 1]: d
-      [2, 0]: c
+  For example:
 
-  then the output will be a `SparseTensor` of shape `[5, 4]` and
-  `indices` / `values`:
+  >>> x = tf.SparseTensor(indices=[[0, 1], [0, 3], [2, 3], [3, 1]],
+  ...                     values=[1.1, 2.2, 3.3, 4.4],
+  ...                     dense_shape=[4, 5])
+  >>> print('x =', tf.sparse.to_dense(x))
+  x = tf.Tensor(
+  [[0.  1.1 0.  2.2 0. ]
+  [0.  0.  0.  0.  0. ]
+  [0.  0.  0.  3.3 0. ]
+  [0.  4.4 0.  0.  0. ]], shape=(4, 5), dtype=float32)
 
-      [0, 2]: c
-      [1, 0]: a
-      [1, 3]: d
-      [3, 0]: b
+  >>> x_transpose = tf.sparse.transpose(x)
+  >>> print('x_transpose =', tf.sparse.to_dense(x_transpose))
+  x_transpose = tf.Tensor(
+  [[0.  0.  0.  0. ]
+  [1.1 0.  0.  4.4]
+  [0.  0.  0.  0. ]
+  [2.2 0.  3.3 0. ]
+  [0.  0.  0.  0. ]], shape=(5, 4), dtype=float32)
+
+  Equivalently, you could call `tf.sparse.transpose(x, perm=[1, 0])`.  The
+  `perm` argument is more useful for n-dimensional tensors where n > 2.
+
+  >>> x = tf.SparseTensor(indices=[[0, 0, 1], [0, 0, 3], [1, 2, 3], [1, 3, 1]],
+  ...                     values=[1.1, 2.2, 3.3, 4.4],
+  ...                     dense_shape=[2, 4, 5])
+  >>> print('x =', tf.sparse.to_dense(x))
+  x = tf.Tensor(
+  [[[0.  1.1 0.  2.2 0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]]
+  [[0.  0.  0.  0.  0. ]
+    [0.  0.  0.  0.  0. ]
+    [0.  0.  0.  3.3 0. ]
+    [0.  4.4 0.  0.  0. ]]], shape=(2, 4, 5), dtype=float32)
+
+  As above, simply calling `tf.sparse.transpose` will default to `perm=[2,1,0]`.
+
+  To take the transpose of a batch of sparse matrices, where 0 is the batch
+  dimension, you would set `perm=[0,2,1]`.
+
+  >>> x_transpose = tf.sparse.transpose(x, perm=[0, 2, 1])
+  >>> print('x_transpose =', tf.sparse.to_dense(x_transpose))
+  x_transpose = tf.Tensor(
+  [[[0.  0.  0.  0. ]
+    [1.1 0.  0.  0. ]
+    [0.  0.  0.  0. ]
+    [2.2 0.  0.  0. ]
+    [0.  0.  0.  0. ]]
+  [[0.  0.  0.  0. ]
+    [0.  0.  0.  4.4]
+    [0.  0.  0.  0. ]
+    [0.  0.  3.3 0. ]
+    [0.  0.  0.  0. ]]], shape=(2, 5, 4), dtype=float32)
 
   Args:
     sp_input: The input `SparseTensor`.
-    perm: A permutation of the dimensions of `sp_input`.
-    name: A name prefix for the returned tensors (optional)
+    perm: A permutation vector of the dimensions of `sp_input`.
+    name: A name prefix for the returned tensors (optional).
+
   Returns:
     A transposed `SparseTensor`.
 

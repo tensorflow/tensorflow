@@ -23,10 +23,11 @@ import weakref
 
 import numpy as np
 
+from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape as tape_lib
+from tensorflow.python.eager import record
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,19 +37,16 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.lib.core import _pywrap_py_func
+from tensorflow.python.ops import autograph_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util import variable_utils
 from tensorflow.python.util.tf_export import tf_export
-
-autograph = lazy_loader.LazyLoader(
-    "autograph", globals(),
-    "tensorflow.python.autograph.impl.api")
 
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
@@ -132,7 +130,7 @@ class EagerFunc:
   def __call__(self, device, token, args):
     """Calls `self._func` in eager mode, recording the tape if needed."""
     use_tape_cache = (
-        self._support_graph_mode_gradient or tape_lib.could_possibly_record())
+        self._support_graph_mode_gradient or record.could_possibly_record())
 
     if use_tape_cache:
       with backprop.GradientTape() as tape:
@@ -312,7 +310,7 @@ def _internal_py_func(func,
 
   original_func = func
   func = autograph.do_not_convert(func)
-  inp = list(inp)
+  inp = variable_utils.convert_variables_to_tensors(list(inp))
 
   # Normalize Tout.
   is_list_or_tuple = isinstance(Tout, (list, tuple))
@@ -487,7 +485,7 @@ def eager_py_func(func, inp, Tout, name=None):
     operation to a device in that server (e.g. using `with tf.device():`).
 
   * Currently `tf.py_function` is not compatible with XLA. Calling
-    `tf.py_function` inside `tf.function(jit_comiple=True)` will raise an
+    `tf.py_function` inside `tf.function(jit_compile=True)` will raise an
     error.
 
   Args:
@@ -732,7 +730,7 @@ def numpy_function(func, inp, Tout, stateful=True, name=None):
     operation to a device in that server (e.g. using `with tf.device():`).
 
   * Currently `tf.numpy_function` is not compatible with XLA. Calling
-    `tf.numpy_function` inside `tf.function(jit_comiple=True)` will raise an
+    `tf.numpy_function` inside `tf.function(jit_compile=True)` will raise an
     error.
 
   * Since the function takes numpy arrays, you cannot take gradients

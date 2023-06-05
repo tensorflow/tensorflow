@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
-#include "tensorflow/core/lib/monitoring/collection_registry.h"
+#include <memory>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/monitoring/gauge.h"
 
 namespace tensorflow {
@@ -48,17 +52,28 @@ class WorkerFreeListCache : public WorkerCacheInterface {
   }
 
   WorkerInterface* GetOrCreateWorker(const string& target) override {
-    mutex_lock l(mu_);
-    auto p = workers_.find(target);
-    if (p != workers_.end()) {
-      return p->second.worker;
+    {
+      // Fast path if worker has been created.
+      tf_shared_lock l(mu_);
+      auto p = workers_.find(target);
+      if (p != workers_.end()) {
+        return p->second.worker;
+      }
     }
-    WorkerState state;
-    state.worker = wrapped_->GetOrCreateWorker(target);
-    if (state.worker != nullptr) {
-      workers_.insert(std::make_pair(target, state));
+    {
+      // Slow path if worker hasn't been created.
+      mutex_lock l(mu_);
+      auto p = workers_.find(target);
+      if (p != workers_.end()) {
+        return p->second.worker;
+      }
+      WorkerState state;
+      state.worker = wrapped_->GetOrCreateWorker(target);
+      if (state.worker != nullptr) {
+        workers_.insert(std::make_pair(target, state));
+      }
+      return state.worker;
     }
-    return state.worker;
   }
 
   Status GetEagerClientCache(
@@ -113,19 +128,20 @@ WorkerSession::WorkerSession(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     std::unique_ptr<DeviceMgr> device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
-    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
+    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
+    DistributedFunctionLibraryRuntimeCreator cluster_flr_creator)
     : session_name_(session_name),
       worker_name_(worker_name),
       worker_cache_(new WorkerFreeListCache(std::move(worker_cache))),
       graph_mgr_(std::move(graph_mgr)),
-      cluster_flr_(new ClusterFunctionLibraryRuntime(
+      cluster_flr_(cluster_flr_creator(
           this, !session_name.empty(),
           remote_device_mgr ? remote_device_mgr.get() : nullptr)),
       device_mgr_(std::move(device_mgr)),
       borrowed_device_mgr_(nullptr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
 }
@@ -150,28 +166,31 @@ std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
-    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr) {
+    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
+    DistributedFunctionLibraryRuntimeCreator cluster_flr_creator) {
   return std::shared_ptr<WorkerSession>(new WorkerSession(
       session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
-      std::move(graph_mgr), std::move(remote_device_mgr)));
+      std::move(graph_mgr), std::move(remote_device_mgr),
+      std::move(cluster_flr_creator)));
 }
 
 WorkerSession::WorkerSession(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
-    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
+    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr,
+    DistributedFunctionLibraryRuntimeCreator cluster_flr_creator)
     : session_name_(session_name),
       worker_name_(worker_name),
       worker_cache_(new WorkerFreeListCache(std::move(worker_cache))),
       graph_mgr_(std::move(graph_mgr)),
-      cluster_flr_(new ClusterFunctionLibraryRuntime(
-          this, !session_name.empty(), remote_device_mgr.get())),
+      cluster_flr_(cluster_flr_creator(this, !session_name.empty(),
+                                       remote_device_mgr.get())),
       device_mgr_(nullptr),
       borrowed_device_mgr_(borrowed_device_mgr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
   // Starts exporting metrics through a platform-specific monitoring API (if
-  // provided). For builds using "tensorflow/core/platform/default", this is
+  // provided). For builds using "tensorflow/tsl/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
 }

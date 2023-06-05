@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/reader.h"
 
+#include <memory>
+#include <string>
 #include <unordered_set>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/saved_model/constants.h"
@@ -30,50 +33,17 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
-#include "tensorflow/core/util/tensor_bundle/byte_swap.h"
+#include "tensorflow/core/util/tensor_bundle/byte_swap_tensor.h"
+// Placeholder for protosplitter merger include.
+
+#define IS_OSS true
 
 namespace tensorflow {
 namespace {
-
-// Reads the SavedModel proto from saved_model.pb in `export_dir`.
-// Returns a failure status when the SavedModel file does not exist.
-Status ReadSavedModel(absl::string_view export_dir,
-                      SavedModel* saved_model_proto) {
-  LOG(INFO) << "Reading SavedModel from: " << export_dir;
-
-  const std::string saved_model_pb_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePb);
-
-  if (Env::Default()->FileExists(saved_model_pb_path).ok()) {
-    Status result =
-        ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
-    if (result.ok()) {
-      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
-          .IncrementBy(1);
-    }
-    return result;
-  }
-  const std::string saved_model_pbtxt_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  if (Env::Default()->FileExists(saved_model_pbtxt_path).ok()) {
-    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                                  saved_model_proto);
-    if (result.ok()) {
-      metrics::SavedModelRead(saved_model::GetWriteVersion(*saved_model_proto))
-          .IncrementBy(1);
-    }
-    return result;
-  }
-  return Status(
-      error::Code::NOT_FOUND,
-      strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
-                      "export directory path: ",
-                      export_dir,
-                      ". Check that "
-                      "the directory exists and that you have the right "
-                      "permissions for accessing it."));
-}
 
 Status FindMetaGraphDef(const std::unordered_set<string>& tags,
                         SavedModel* saved_model_proto,
@@ -91,13 +61,13 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
       *meta_graph_def = std::move(graph_def);
       // Correct the endiness of Tensor content on big-endian system
       if (!port::kLittleEndian) {
-        TF_RETURN_IF_ERROR(ByteSwapTensorContent(meta_graph_def));
+        TF_RETURN_IF_ERROR(ByteSwapTensorContentInMetaGraphDef(meta_graph_def));
       }
       return OkStatus();
     }
   }
   return Status(
-      error::Code::NOT_FOUND,
+      absl::StatusCode::kNotFound,
       strings::StrCat(
           "Could not find meta graph def matching supplied tags: { ",
           absl::StrJoin(tags, " "),
@@ -105,6 +75,61 @@ Status FindMetaGraphDef(const std::unordered_set<string>& tags,
           "use the SavedModel CLI: `saved_model_cli`"));
 }
 }  // namespace
+
+// Reads the SavedModel proto from saved_model.pb in `export_dir`.
+// Returns a failure status when the SavedModel file does not exist.
+Status ReadSavedModel(absl::string_view export_dir,
+                      SavedModel* saved_model_proto) {
+  LOG(INFO) << "Reading SavedModel from: " << export_dir;
+
+  if (IS_OSS) {
+    const std::string saved_model_pb_path =
+        io::JoinPath(export_dir, kSavedModelFilenamePb);
+    TF_ASSIGN_OR_RETURN(
+        bool saved_model_pb_exists,
+        internal::FileExists(Env::Default(), saved_model_pb_path));
+    if (saved_model_pb_exists) {
+      Status result = ReadBinaryProto(Env::Default(), saved_model_pb_path,
+                                      saved_model_proto);
+      if (result.ok()) {
+        metrics::SavedModelReadCount(
+            saved_model::GetWriteVersion(*saved_model_proto))
+            .IncrementBy(1);
+      }
+      return result;
+    }
+  }
+
+  const std::string saved_model_pbtxt_path =
+      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
+  TF_ASSIGN_OR_RETURN(
+      bool saved_model_pbtxt_exists,
+      internal::FileExists(Env::Default(), saved_model_pbtxt_path));
+  if (saved_model_pbtxt_exists) {
+    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
+                                  saved_model_proto);
+    if (result.ok()) {
+      metrics::SavedModelReadCount(
+          saved_model::GetWriteVersion(*saved_model_proto))
+          .IncrementBy(1);
+    }
+    return result;
+  }
+
+  if (!IS_OSS) {
+    // Only use Merger outside of OSS.
+    // Placeholder for protosplitter merger call.
+  }
+
+  return Status(
+      absl::StatusCode::kNotFound,
+      strings::StrCat("Could not find SavedModel .pb or .pbtxt at supplied "
+                      "export directory path: ",
+                      export_dir,
+                      ". Check that "
+                      "the directory exists and that you have the right "
+                      "permissions for accessing it."));
+}
 
 Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
                                       const std::unordered_set<string>& tags,
@@ -124,12 +149,13 @@ Status ReadSavedModelDebugInfoIfPresent(
 
   const string debug_info_pb_path =
       io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
-  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
+  TF_ASSIGN_OR_RETURN(bool debug_info_pb_exists,
+                      internal::FileExists(Env::Default(), debug_info_pb_path));
+  if (debug_info_pb_exists) {
     GraphDebugInfo debug_info;
     TF_RETURN_IF_ERROR(
         ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
-    *debug_info_proto =
-        absl::make_unique<GraphDebugInfo>(std::move(debug_info));
+    *debug_info_proto = std::make_unique<GraphDebugInfo>(std::move(debug_info));
   }
   return OkStatus();
 }

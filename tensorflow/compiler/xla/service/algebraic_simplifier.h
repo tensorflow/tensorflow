@@ -16,14 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_ALGEBRAIC_SIMPLIFIER_H_
 
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -89,6 +95,14 @@ class AlgebraicSimplifierOptions {
 
   bool enable_dot_to_multiply_rewrite() const {
     return enable_dot_to_multiply_rewrite_;
+  }
+
+  // This platform will not run the DotDecomposer to canonicalize dots.
+  void set_supports_non_canonical_dots(bool supports_non_canonical_dots) {
+    supports_non_canonical_dots_ = supports_non_canonical_dots;
+  }
+  bool supports_non_canonical_dots() const {
+    return supports_non_canonical_dots_;
   }
 
   // Enable convolution simplification on platforms where it is profitable.
@@ -172,14 +186,15 @@ class AlgebraicSimplifierOptions {
 
   bool enable_sink_broadcast() const { return enable_sink_broadcast_; }
 
-  // TODO(b/228984373): Remove this option once BitcastDecomposer lands and
-  // sticks.
-  void set_replace_transpose_with_bitcast(bool replace_transpose_with_bitcast) {
-    replace_transpose_with_bitcast_ = replace_transpose_with_bitcast;
+  // If true, always simplify reduce(transpose(x)) and reduce(reshape(x)), even
+  // if the transpose/reshape has multiple users.  This can be beneficial
+  // on platforms where the extra transpose/reshape isn't as expensive as
+  // the optimization benefits brought about by simplifying the graph.
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape() const {
+    return unconditionally_simplify_reduce_of_transpose_or_reshape_;
   }
-
-  bool replace_transpose_with_bitcast() const {
-    return replace_transpose_with_bitcast_;
+  void set_unconditionally_simplify_reduce_of_transpose_or_reshape(bool val) {
+    unconditionally_simplify_reduce_of_transpose_or_reshape_ = val;
   }
 
   // If true, min(x, NaN) = NaN.  If false, min(x, NaN) = x.
@@ -206,6 +221,7 @@ class AlgebraicSimplifierOptions {
   ConvIsLowerableCallback conv_is_lowerable_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
+  bool supports_non_canonical_dots_{true};
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
@@ -215,7 +231,7 @@ class AlgebraicSimplifierOptions {
   bool enable_reduce_of_reshape_{true};
   bool enable_negative_padding_replacement_{true};
   bool enable_sink_broadcast_{true};
-  bool replace_transpose_with_bitcast_{true};
+  bool unconditionally_simplify_reduce_of_transpose_or_reshape_{false};
   int64_t very_small_gather_size_{4};
   bool minmax_propagate_nan_{true};
   Metadata metadata_;
@@ -233,7 +249,10 @@ class AlgebraicSimplifier : public HloModulePass {
 
   // Run algebraic simplification on the given computation. Returns whether the
   // computation was changed.
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
   // Create constant from literal with tiles and element size updated in the
   // constant's layout.
@@ -379,6 +398,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Allow backend constraints on tiling etc. to invalidate optimizations.
   virtual bool IsValidLayout(const Shape& shape) { return true; }
+  // Allow backend targets to determine whether a layout is inefficient.
+  virtual bool ShouldStrengthReduceDotToReduce(const HloInstruction* hlo) {
+    return true;
+  }
 
  protected:
   // The backend-specific options selected for the algebraic simplifier.
@@ -503,6 +526,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
 
   // Tries to use a kDot in place of the given convolution.
   StatusOr<bool> SimplifyConvToDot(HloInstruction* convolution);
+  // Tries to use a multiplication in place of the given convolution.
+  StatusOr<bool> SimplifyConvToMultiply(HloInstruction* convolution);
 
   // Tries to simplify a slice where the result of the slice is a scalar.
   StatusOr<bool> TrySimplifyScalarSlice(HloInstruction* slice);
@@ -523,6 +548,17 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // Tries to simlplify (bitcast-convert (concat (bitcast-convert A) ...)) where
   // the types of inner and outer bitcast-convert cancel out.
   StatusOr<bool> TrySimplifyTautologicalBitcastConvert(HloInstruction* bitcast);
+
+  // Tries to remove surrounding converts around a binary op where the op has a
+  // more precise type than its inputs and output.
+  //
+  // convert<TS>(bin_op<TL>(convert<TL>(data1<TS>),
+  //                        convert<TL>(data2<TS>)))
+  //  where TS is a smaller point type than TL (ex, TS=fp16, TL=fp32)
+  // ->
+  // bin_op<TS>(data1<TS>, data2<TS>)
+  Status TryRemoveUpcastAndDowncastSurroundingBinaryOp(
+      HloInstruction* convert_instruction);
 
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);

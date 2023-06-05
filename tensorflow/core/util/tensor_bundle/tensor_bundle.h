@@ -62,6 +62,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_TENSOR_BUNDLE_TENSOR_BUNDLE_H_
 
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 
@@ -84,10 +85,9 @@ limitations under the License.
 #include "tensorflow/core/protobuf/tensor_bundle.pb.h"
 #include "tensorflow/core/util/tensor_bundle/naming.h"
 #include "tensorflow/core/util/tensor_slice_set.h"
+#include "tensorflow/tsl/lib/io/buffered_file.h"
 
 namespace tensorflow {
-
-class FileOutputBuffer;
 
 // Versioning of the tensor bundle format.
 // Follows the same rules as 3p/tf/core/public/version.h.
@@ -156,7 +156,7 @@ class BundleWriter {
   string metadata_path_;
   string data_path_;
   bool use_temp_file_;
-  std::unique_ptr<FileOutputBuffer> out_;
+  std::unique_ptr<tsl::BufferedWritableFile> out_;
   int64_t size_;  // Number of bytes written into out_.
   std::map<string, BundleEntryProto> entries_;
   Status status_;
@@ -177,8 +177,18 @@ class BundleWriter {
 //
 // Once merged, makes a best effort to delete the old metadata files.
 // Returns OK iff all bundles are successfully merged.
+//
+// "allow_missing_files": If set to true, merges "prefixes" as long as
+// at least one file exists. (Defaults to false.)
+//
+// Returns an InvalidArgumentError when "allow_missing_files" is set to true
+// and all data files named in "prefixes" do not exist.
+//
+// Returns a NotFoundError when "allow_missing_files" is set to false and
+// any data file named in "prefixes" does not exist.
 Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
-                    StringPiece merged_prefix);
+                    StringPiece merged_prefix,
+                    bool allow_missing_files = false);
 
 // On construction, silently attempts to read the metadata associated with
 // "prefix".  If caller intends to call any function afterwards, "status()"
@@ -186,7 +196,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<tstring> prefixes,
 // All threads accessing the same BundleReader must synchronize.
 class BundleReader {
  public:
-  BundleReader(Env* const env, StringPiece prefix);
+  BundleReader(Env* const env, StringPiece prefix,
+               bool enable_multi_threading_for_testing = false);
   ~BundleReader();
 
   // Is ok() iff the reader construction is successful (completed the read of
@@ -324,42 +335,9 @@ class BundleReader {
 
   friend class TensorBundleAlignmentTest;  // For testing data alignment.
 
+  bool enable_multi_threading_for_testing_ = false;
+
   TF_DISALLOW_COPY_AND_ASSIGN(BundleReader);
-};
-
-// A buffering wrapper for a WritableFile.  Useful if the caller wishes to issue
-// small writes to a file (e.g. writing out a list of small varints).
-// External synchronization must be used in the presence of concurrent callers.
-class FileOutputBuffer {
- public:
-  FileOutputBuffer(WritableFile* file, size_t buffer_size);
-  ~FileOutputBuffer();
-
-  // Buffered append.
-  Status Append(StringPiece data);
-
-  // Returns the running crc32c checksum of all currently appended bytes.
-  uint32 crc32c() { return crc32c_; }
-  // Clears the running crc32c checksum.
-  void clear_crc32c() { crc32c_ = 0; }
-
-  // Appends the buffered data, then closes the underlying file.
-  Status Close();
-
- private:
-  // Appends the buffered data to the underlying file. Does NOT flush the file.
-  Status FlushBuffer(bool closing);
-
-  WritableFile* file_;  // Owned.
-
-  // buffer_ptr_[0, position_) holds the buffered data not yet appended to the
-  // underlying file.
-  size_t position_;
-  const size_t buffer_size_;
-  char* buffer_ptr_;
-
-  // Checksum of all appended bytes since construction or last clear_crc32c().
-  uint32 crc32c_ = 0;
 };
 
 template <class T>

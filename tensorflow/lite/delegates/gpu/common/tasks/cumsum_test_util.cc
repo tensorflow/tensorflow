@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum_test_util.h"
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tasks/cumsum.h"
 
@@ -98,7 +100,7 @@ absl::Status CumsumHWC(TestExecutionEnvironment* env) {
       dst.SetBHWCShape(shape);
       src.UploadData(src_tensor);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {&src}, {&dst}, absl::make_unique<Cumsum>(std::move(operation))));
+          {&src}, {&dst}, std::make_unique<Cumsum>(std::move(operation))));
       TensorFloat32 dst_tensor;
       dst.DownloadData(&dst_tensor);
       RETURN_IF_ERROR(PointWiseNear(expected[axis], dst_tensor.data, 0.0f));
@@ -195,7 +197,7 @@ absl::Status CumsumBHWC(TestExecutionEnvironment* env) {
       dst.SetBHWCShape(shape);
       src.UploadData(src_tensor);
       RETURN_IF_ERROR(env->ExecuteGPUOperation(
-          {&src}, {&dst}, absl::make_unique<Cumsum>(std::move(operation))));
+          {&src}, {&dst}, std::make_unique<Cumsum>(std::move(operation))));
       TensorFloat32 dst_tensor;
       dst.DownloadData(&dst_tensor);
       RETURN_IF_ERROR(PointWiseNear(expected[axis], dst_tensor.data, 0.0f));

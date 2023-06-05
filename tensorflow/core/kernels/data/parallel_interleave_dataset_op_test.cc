@@ -11,7 +11,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/parallel_interleave_dataset_op.h"
 
+#include <algorithm>
+#include <memory>
+
 #include "tensorflow/core/data/dataset_test_base.h"
+#include "tensorflow/core/graph/graph_def_builder.h"
 
 namespace tensorflow {
 namespace data {
@@ -19,6 +23,7 @@ namespace {
 
 constexpr char kNodeName[] = "parallel_interleave_dataset";
 constexpr int kOpVersion = 4;
+constexpr char kParallelInterleaveDatasetV4[] = "ParallelInterleaveDatasetV4";
 
 class ParallelInterleaveDatasetParams : public DatasetParams {
  public:
@@ -374,6 +379,31 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams10() {
       /*node_name=*/kNodeName);
 }
 
+ParallelInterleaveDatasetParams DatasetGraphDefParams() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/{CreateTensor<tstring>(
+          TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
+      /*node_name=*/"tensor_slice");
+  return ParallelInterleaveDatasetParams(
+      tensor_slice_dataset_params,
+      /*other_arguments=*/{},
+      /*cycle_length=*/model::kAutotune,
+      /*block_length=*/1,
+      /*buffer_output_elements=*/model::kAutotune,
+      /*prefetch_input_elements=*/model::kAutotune,
+      /*num_parallel_calls=*/model::kAutotune,
+      /*func=*/
+      MakeTensorSliceDatasetFunc(
+          DataTypeVector({DT_STRING}),
+          std::vector<PartialTensorShape>({PartialTensorShape({1})})),
+      /*func_lib=*/{test::function::MakeTensorSliceDataset()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_STRING},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*deterministic=*/DeterminismPolicy::kNondeterministic,
+      /*node_name=*/kNodeName);
+}
+
 ParallelInterleaveDatasetParams LongCycleDeterministicParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/{CreateTensor<tstring>(
@@ -602,7 +632,102 @@ GetNextTestCases() {
 }
 
 ITERATOR_GET_NEXT_TEST_P(ParallelInterleaveDatasetOpTest,
-                         ParallelInterleaveDatasetParams, GetNextTestCases())
+                         ParallelInterleaveDatasetParams, GetNextTestCases());
+
+// TODO(b/241923343): The next 2 tests are brittle because they directly inspect
+// the GraphDefs to check the value of `cycle_length` when the
+// `ParallelInterleave` is serialized to a graph. Revisit this test when we
+// replace the `MaxParallelism()` call to set `cycle_length` respecting the
+// private threadpool size.
+//
+// Test that the computed cycle length is serialized rather than the input cycle
+// length when the experiment is off.
+TEST_F(ParallelInterleaveDatasetOpTest,
+       InputCycleLengthNotPreservedInGraphDef) {
+  auto dataset_params = DatasetGraphDefParams();
+  TF_ASSERT_OK(InitializeRuntime(dataset_params));
+  std::unique_ptr<TestDataset> dataset;
+  TF_ASSERT_OK(MakeDataset(dataset_params, &dataset));
+  GraphDefBuilder b;
+  DatasetBase::DatasetGraphDefBuilder db(&b);
+  SerializationContext serialization_ctx((SerializationContext::Params()));
+  Node* output_node = nullptr;
+  TF_ASSERT_OK(
+      db.AddInputDataset(&serialization_ctx, dataset->dataset(), &output_node));
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(b.ToGraphDef(&graph_def));
+  const NodeDef* parallel_interleave_node_def = nullptr;
+  for (const auto& node : graph_def.node()) {
+    if (node.op() == kParallelInterleaveDatasetV4) {
+      parallel_interleave_node_def = &node;
+      break;
+    }
+  }
+  ASSERT_NE(nullptr, parallel_interleave_node_def);
+  EXPECT_EQ(6, parallel_interleave_node_def->input_size());
+
+  const int32_t kCycleLengthInput = 1;
+  auto node_iter = std::find_if(
+      graph_def.node().begin(), graph_def.node().end(),
+      [&](const NodeDef& node) {
+        return node.name() ==
+               parallel_interleave_node_def->input(kCycleLengthInput);
+      });
+  ASSERT_NE(node_iter, graph_def.node().end());
+  EXPECT_NE(model::kAutotune,
+            node_iter->attr().at("value").tensor().int64_val(0));
+}
+
+// Test that the input cycle length is serialized rather than the computed cycle
+// length when the experiment is on.
+TEST_F(ParallelInterleaveDatasetOpTest, InputCycleLengthPreservedInGraphDef) {
+  setenv("TF_JOB_NAME", "test_job", /*overwrite=*/1);
+  setenv("TF_TASK_ID", "0", /*overwrite=*/1);
+  setenv("TF_DATA_EXPERIMENT_OPT_IN", "serialize_input_cycle_length",
+         /*overwrite=*/1);
+  auto dataset_params = DatasetGraphDefParams();
+  TF_ASSERT_OK(InitializeRuntime(dataset_params));
+  std::unique_ptr<TestDataset> dataset;
+  TF_ASSERT_OK(MakeDataset(dataset_params, &dataset));
+  GraphDefBuilder b;
+  DatasetBase::DatasetGraphDefBuilder db(&b);
+  SerializationContext serialization_ctx((SerializationContext::Params()));
+  Node* output_node = nullptr;
+  TF_ASSERT_OK(
+      db.AddInputDataset(&serialization_ctx, dataset->dataset(), &output_node));
+
+  GraphDef graph_def;
+  TF_ASSERT_OK(b.ToGraphDef(&graph_def));
+  const NodeDef* parallel_interleave_node_def = nullptr;
+  for (const auto& node : graph_def.node()) {
+    if (node.op() == kParallelInterleaveDatasetV4) {
+      parallel_interleave_node_def = &node;
+      break;
+    }
+  }
+  ASSERT_NE(nullptr, parallel_interleave_node_def);
+  EXPECT_EQ(6, parallel_interleave_node_def->input_size());
+
+  const int32_t kCycleLengthInput = 1;
+  auto node_iter = std::find_if(
+      graph_def.node().begin(), graph_def.node().end(),
+      [&](const NodeDef& node) {
+        return node.name() ==
+               parallel_interleave_node_def->input(kCycleLengthInput);
+      });
+  ASSERT_NE(node_iter, graph_def.node().end());
+  if (GetExperiments().contains("serialize_input_cycle_length")) {
+    EXPECT_EQ(model::kAutotune,
+              node_iter->attr().at("value").tensor().int64_val(0));
+  } else {
+    EXPECT_NE(model::kAutotune,
+              node_iter->attr().at("value").tensor().int64_val(0));
+  }
+  unsetenv("TF_JOB_NAME");
+  unsetenv("TF_TASK_ID");
+  unsetenv("TF_DATA_EXPERIMENT_OPT_IN");
+}
 
 TEST_F(ParallelInterleaveDatasetOpTest, DatasetNodeName) {
   auto dataset_params = ParallelInterleaveDatasetParams1();
@@ -770,7 +895,7 @@ TEST_F(ParallelInterleaveDatasetOpTest, InvalidArguments) {
   };
   for (auto& dataset_params : invalid_params) {
     EXPECT_EQ(Initialize(dataset_params).code(),
-              tensorflow::error::INVALID_ARGUMENT);
+              absl::StatusCode::kInvalidArgument);
   }
 }
 

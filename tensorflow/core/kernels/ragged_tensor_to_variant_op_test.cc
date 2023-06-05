@@ -13,8 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/ragged_tensor_to_variant_op_test.h"
+
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -28,77 +31,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ragged_tensor_variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/status_matchers.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/tsl/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace {
-
-class RaggedTensorToVariantKernelTest : public ::tensorflow::OpsTestBase {
- protected:
-  // Builds the tensorflow test graph for the RaggedTensorToVariant op, and
-  // populates the `splits` input with the given values.
-  template <typename VALUE_TYPE, typename SPLIT_TYPE>
-  void BuildEncodeRaggedTensorGraph(
-      const std::vector<std::vector<SPLIT_TYPE>>& ragged_splits,
-      const TensorShape& ragged_values_shape,
-      const std::vector<VALUE_TYPE>& ragged_values, const bool batched) {
-    const auto values_dtype = DataTypeToEnum<VALUE_TYPE>::v();
-    const auto splits_dtype = DataTypeToEnum<SPLIT_TYPE>::v();
-    int64_t num_splits = ragged_splits.size();
-    TF_ASSERT_OK(
-        NodeDefBuilder("tested_op", "RaggedTensorToVariant")
-            .Input(FakeInput(num_splits, splits_dtype))  // ragged_splits
-            .Input(FakeInput(values_dtype))              // ragged_values
-            .Attr("RAGGED_RANK", num_splits)
-            .Attr("Tvalues", values_dtype)
-            .Attr("Tsplits", splits_dtype)
-            .Attr("batched_input", batched)
-            .Finalize(node_def()));
-    TF_ASSERT_OK(InitOp());
-    for (const auto& splits : ragged_splits) {
-      int64_t splits_size = splits.size();
-      AddInputFromArray<SPLIT_TYPE>(TensorShape({splits_size}), splits);
-    }
-    AddInputFromArray<VALUE_TYPE>(ragged_values_shape, ragged_values);
-  }
-
-  template <typename VALUE_TYPE, typename SPLIT_TYPE>
-  RaggedTensorVariant CreateVariantFromRagged(
-      const std::vector<std::vector<SPLIT_TYPE>>& ragged_splits,
-      const TensorShape& ragged_values_shape,
-      const std::vector<VALUE_TYPE>& ragged_values) {
-    RaggedTensorVariant encoded;
-    for (auto ragged_split : ragged_splits) {
-      int splits_size = ragged_split.size();
-      Tensor splits(DataTypeToEnum<SPLIT_TYPE>::v(),
-                    TensorShape({splits_size}));
-      test::FillValues<SPLIT_TYPE>(&splits, ragged_split);
-      encoded.append_splits(splits);
-    }
-    Tensor values(DataTypeToEnum<VALUE_TYPE>::v(), ragged_values_shape);
-    test::FillValues<VALUE_TYPE>(&values, ragged_values);
-    encoded.set_values(values);
-    return encoded;
-  }
-
-  template <typename VALUE_TYPE, typename SPLIT_TYPE>
-  RaggedTensorVariant CreateVariantFromRagged(
-      const std::vector<std::vector<SPLIT_TYPE>>& ragged_splits,
-      const std::vector<VALUE_TYPE>& ragged_values) {
-    int num_values = ragged_values.size();
-    return CreateVariantFromRagged(ragged_splits, {num_values}, ragged_values);
-  }
-
-  template <typename VALUE_TYPE, typename SPLIT_TYPE>
-  void ExpectRaggedTensorVariantEqual(const RaggedTensorVariant& expected,
-                                      const RaggedTensorVariant& actual) {
-    test::ExpectTensorEqual<VALUE_TYPE>(actual.values(), expected.values());
-    EXPECT_EQ(actual.ragged_rank(), expected.ragged_rank());
-    for (int i = 0; i < actual.ragged_rank(); ++i) {
-      test::ExpectTensorEqual<SPLIT_TYPE>(actual.splits(i), expected.splits(i));
-    }
-  }
-};
 
 TEST_F(RaggedTensorToVariantKernelTest, NoValuesInput) {
   // ragged_tensor=[[[], []], [[]], []]
@@ -443,6 +381,85 @@ TEST_F(RaggedTensorToVariantKernelTest, NonRaggedBatchedInput) {
   ExpectRaggedTensorVariantEqual<int, int64_t>(
       CreateVariantFromRagged<int, int64_t>({}, {3, 2}, {7, 8, 9, 10, 11, 12}),
       *encoded_list(1).get<RaggedTensorVariant>());
+}
+
+TEST_F(RaggedTensorToVariantKernelTest,
+       NestedRowSplitsFirstElementNotZeroError) {
+  const std::vector<int64_t> splits = {1, 2};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({0}), {},
+                                             true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires the first element of "
+                                "nested_row_splits[0] to be 0 but is 1"));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsIncreasingError) {
+  const std::vector<int64_t> splits = {0, 2, -1};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({0}), {},
+                                             true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires splits to be monotonically "
+                                "increasing, but nested_row_splits[0][2]=-1 is "
+                                "smaller than nested_row_splits[0][1]=2"));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsSizeMismatchError) {
+  const std::vector<int64_t> splits = {0, 2, 3};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({5}),
+                                             {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(
+      RunOpKernel(),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "Requires nested_row_splits[0][-1]=3 to be equal with "
+                        "the number of values in this dimension, which is 5."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest,
+       NestedRowSplitsInnerDimensionSizeMismatchError) {
+  const std::vector<int64_t> splits1 = {0, 2, 3};
+  const std::vector<int64_t> splits2 = {0, 3, 3, 4};
+  BuildEncodeRaggedTensorGraph<int, int64_t>(
+      {splits1, splits2}, TensorShape({5}), {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(
+      RunOpKernel(),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "Requires nested_row_splits[1][-1]=4 to be equal with "
+                        "the number of values in this dimension, which is 5."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest,
+       NestedRowSplitsSizeOfSplitsMismatchError) {
+  const std::vector<int64_t> splits1 = {0, 2};
+  const std::vector<int64_t> splits2 = {0, 3, 3, 5};
+  BuildEncodeRaggedTensorGraph<int, int64_t>(
+      {splits1, splits2}, TensorShape({5}), {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(
+      RunOpKernel(),
+      testing::StatusIs(error::INVALID_ARGUMENT,
+                        "Requires nested_row_splits[0][-1]=2 to be equal with "
+                        "the number of values in this dimension, which is 3."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsEmptySplitsError) {
+  const std::vector<int64_t> splits = {};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({5}),
+                                             {0, 1, 2, 3, 4}, true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires nested_row_splits[0] has at least "
+                                "one splits, but is empty."));
+}
+
+TEST_F(RaggedTensorToVariantKernelTest, NestedRowSplitsScalarValueError) {
+  const std::vector<int64_t> splits = {0, 2};
+  BuildEncodeRaggedTensorGraph<int, int64_t>({splits}, TensorShape({}), 1,
+                                             true);
+  EXPECT_THAT(RunOpKernel(),
+              testing::StatusIs(error::INVALID_ARGUMENT,
+                                "Requires flat_values to have rank>=1 when "
+                                "nested_row_splits is not empty, but is 0."));
 }
 
 }  // namespace

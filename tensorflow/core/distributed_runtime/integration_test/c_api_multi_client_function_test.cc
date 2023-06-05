@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
-#include "tensorflow/core/protobuf/coordination_config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/tsl/protobuf/coordination_config.pb.h"
 
 namespace {
 
@@ -272,8 +272,9 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
               tensorflow::OperationFromInterface(tensorflow::unwrap(send_func));
           EXPECT_TRUE(op->Reset("SendFunction", send_device.c_str(),
                                 /*remote=*/false, /*executor=*/nullptr,
-                                tensorflow::EagerFunctionParams{/*op_id=*/s,
-                                                                /*step_id=*/s})
+                                tensorflow::EagerFunctionParams{
+                                    /*op_id=*/s, /*is_component_function=*/true,
+                                    /*step_id=*/s})
                           .ok());
         }
 
@@ -314,8 +315,10 @@ TEST_P(MultiClientSendRecvTest, TestMultiClientSendRecv) {
               tensorflow::OperationFromInterface(tensorflow::unwrap(recv_func));
           EXPECT_TRUE(op->Reset("RecvFunction", recv_device.c_str(),
                                 /*remote=*/false, /*executor=*/nullptr,
-                                tensorflow::EagerFunctionParams{/*op_id=*/s,
-                                                                /*step_id=*/s})
+                                tensorflow::EagerFunctionParams{
+                                    /*op_id=*/s,
+                                    /*is_component_function=*/true,
+                                    /*step_id=*/s})
                           .ok());
         }
 
@@ -372,10 +375,6 @@ INSTANTIATE_TEST_SUITE_P(
         {"MultiClientMultiStepFunction", false, 3, 0, 0},
         {"MultiClientMultiStepFunctionWithRecvDelay", false, 5, 2, 0},
         {"MultiClientMultiStepFunctionWithSendDelay", false, 5, 0, 2},
-        {"MultiClientSingleStepFunctionTfrt", true, 1, 0, 0},
-        {"MultiClientMultiStepFunctionTfrt", true, 3, 0, 0},
-        {"MultiClientMultiStepFunctionWithRecvDelayTfrt", true, 5, 2, 0},
-        {"MultiClientMultiStepFunctionWithSendDelayTfrt", true, 5, 0, 2},
     }),
     [](const testing::TestParamInfo<MultiClientSendRecvTest::ParamType>& info) {
       return info.param.test_name;

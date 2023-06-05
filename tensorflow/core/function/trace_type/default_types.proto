@@ -6,11 +6,14 @@ import "tensorflow/core/function/trace_type/serialization.proto";
 
 // Represents a serialized Literal type.
 message SerializedLiteral {
+  message NoneValue {}
+
   oneof value {
     bool bool_value = 1;
     int64 int_value = 2;
     double float_value = 3;  // Python "float" is double precision.
     string str_value = 4;
+    NoneValue none_value = 5;
   }
 }
 
@@ -42,11 +45,4 @@ message SerializedDict {
   repeated SerializedLiteral keys = 1;
   repeated tensorflow.core.function.trace_type.serialization.SerializedTraceType
       values = 2;
-}
-
-// Represents a serialized Reference type.
-message SerializedReference {
-  optional SerializedLiteral identifier = 1;
-  optional tensorflow.core.function.trace_type.serialization.SerializedTraceType
-      base = 2;
 }

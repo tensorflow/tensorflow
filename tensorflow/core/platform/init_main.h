@@ -16,15 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_INIT_MAIN_H_
 #define TENSORFLOW_CORE_PLATFORM_INIT_MAIN_H_
 
+#include "tensorflow/tsl/platform/init_main.h"
+
 namespace tensorflow {
 namespace port {
-
-// Platform-specific initialization routine that should be invoked by a
-// main() program that uses TensorFlow.
-// This performs necessary initialization on some platforms; TensorFlow
-// may not work unless it has been called.
-void InitMain(const char* usage, int* argc, char*** argv);
-
+using tsl::port::InitMain;
 }  // namespace port
 }  // namespace tensorflow
 

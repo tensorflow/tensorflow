@@ -23,11 +23,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/core/interpreter.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_test_util.h"
 
 namespace tflite {
@@ -37,6 +38,15 @@ class SubgraphBuilder {
  public:
   ~SubgraphBuilder();
 
+  // Build a subgraph with a dynamic update slice op which operates on
+  // a subgraph input tensor. The input buffer cannot be shared with the output.
+  void BuildInputDynamicUpdateSliceSubgraph(Subgraph& subgraph);
+
+  // Build a subgraph with a dynamic update slice op which operates on
+  // an intermediate tensor. The input buffer can be shared with the output if
+  // multiple nodes do not consume the input tensor.
+  void BuildInplaceDynamicUpdateSliceSubgraph(Subgraph& subgraph,
+                                              bool multiple_consumers);
   // Build a subgraph with a single Add op.
   // 2 inputs. 1 output.
   void BuildAddSubgraph(Subgraph* subgraph);
@@ -77,7 +87,7 @@ class SubgraphBuilder {
   //   Equivalent to (counter, value) -> (counter + 1, tf.pad(value, padding))
   // Note the padding is created as a constant tensor.
   void BuildPadLoopBodySubgraph(Subgraph* subgraph,
-                                const std::vector<int> padding);
+                                const std::vector<int>& padding);
 
   // Build a subgraph with a single While op.
   // 2 inputs, 2 outputs.
@@ -162,6 +172,10 @@ void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
 // Check if the shape and bool data of a tensor is as expected.
 void CheckBoolTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                      const std::vector<bool>& data);
+
+// Sets the tensor to be readable and writable. Call this on input
+// tensors when constructing Subgraphs to test.
+void SetupTensor(Subgraph* subgraph, int tensor_index, TfLiteType type);
 
 }  // namespace subgraph_test_util
 }  // namespace tflite

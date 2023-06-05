@@ -16,6 +16,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/gather_functor.h"
+
 #include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {

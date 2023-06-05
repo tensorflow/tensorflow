@@ -21,7 +21,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/compiler/xla/service/gpu/xla_executor_state.h"
-#include "tensorflow/stream_executor/gpu/gpu_executor.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace xla {
@@ -80,7 +80,7 @@ Status InfeedManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   Status block_status = stream()->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream(), block_status.error_message());
+                         stream(), block_status.message());
   }
 
   EnqueueDestination(std::move(buffer_tree));

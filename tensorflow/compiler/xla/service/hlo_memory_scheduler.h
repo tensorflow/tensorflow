@@ -19,12 +19,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -58,6 +58,7 @@ typedef std::function<StatusOr<HloInstructionSequence>(
 typedef std::function<StatusOr<HloSchedule>(
     const HloModule*, const TuplePointsToAnalysis&, const HloAliasAnalysis&,
     const LogicalBuffer::SizeFunction&,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
     /*peak_memory*/ int64_t*)>
     ModuleSchedulerAlgorithm;
 
@@ -112,7 +113,9 @@ StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
 StatusOr<HloSchedule> DefaultModuleScheduler(
     const HloModule* module, const TuplePointsToAnalysis& points_to_analysis,
     const HloAliasAnalysis& alias_analysis,
-    const LogicalBuffer::SizeFunction& size_function, int64_t* peak_memory);
+    const LogicalBuffer::SizeFunction& size_function,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    int64_t* peak_memory);
 
 // Returns an HloSchedule which seeks to minimize the memory required for the
 // module. size_function is the function returning the number of bytes required
@@ -121,6 +124,7 @@ StatusOr<HloSchedule> DefaultModuleScheduler(
 StatusOr<HloSchedule> ScheduleModule(
     const HloModule* module, const LogicalBuffer::SizeFunction& size_function,
     const ModuleSchedulerAlgorithm& algorithm = {},
+    const absl::flat_hash_set<absl::string_view>& execution_threads = {},
     int64_t* peak_memory = nullptr);
 
 // Computes the schedule for a single computation.
@@ -145,7 +149,10 @@ class HloMemoryScheduler : public HloModulePass {
 
   absl::string_view name() const override { return "hlo-memory-scheduler"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   LogicalBuffer::SizeFunction size_function_;
@@ -159,7 +166,10 @@ class HloTrivialScheduler : public HloModulePass {
  public:
   absl::string_view name() const override { return "hlo-trivial-scheduler"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 // A trivial pass which clears the schedule currently set on the
@@ -170,7 +180,10 @@ class HloDescheduler : public HloModulePass {
   ~HloDescheduler() override = default;
   absl::string_view name() const override { return "hlo-descheduler"; }
 
-  StatusOr<bool> Run(HloModule* module) override;
+  using HloPassInterface::Run;
+  StatusOr<bool> Run(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 };
 
 }  // namespace xla

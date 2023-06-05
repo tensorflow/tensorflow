@@ -101,6 +101,8 @@ class XlaContext;
 // `tensor_array_gradients` ordered set.
 class XlaCompiler {
  public:
+  // TODO(b/255826209): Remove this alias. Depending on XlaCompiler just to use
+  // XlaArgument seeems weird and can cause circular dependencies.
   using Argument = ::tensorflow::XlaArgument;
 
   // Options pertaining to an individual call to CompileGraph() or
@@ -212,6 +214,10 @@ class XlaCompiler {
     // This is currently only used to obtain MLIR TPU bridge rollout state.
     // Can be removed once full rollout is complete.
     ConfigProto config_proto;
+
+    SingleOpCompileArgument() = default;
+
+    explicit SingleOpCompileArgument(const OpKernelContext& ctx);
   };
 
   explicit XlaCompiler(Options options);
@@ -226,6 +232,11 @@ class XlaCompiler {
                          const NameAttrList& fn_name_attrs,
                          absl::Span<const Argument> args,
                          CompilationResult* result);
+
+  Status CompileSingleOp(
+      const CompileOptions& options,
+      const SingleOpCompileArgument& single_op_compile_argument,
+      absl::Span<const Argument> args, CompilationResult* result);
 
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
@@ -290,7 +301,7 @@ class XlaCompiler {
   Status GetHostComputeControlDependency(const string& host_compute_name,
                                          xla::XlaOp* handle);
   Status SetHostComputeControlDependency(const string& host_compute_name,
-                                         const xla::XlaOp& handle);
+                                         xla::XlaOp handle);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
@@ -298,7 +309,7 @@ class XlaCompiler {
 
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
-  Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
+  Status SetNodeToken(const string& node_name, xla::XlaOp op);
   StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.

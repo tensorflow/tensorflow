@@ -53,8 +53,8 @@ cc_library(
     name = "vulkan_hpp",
     srcs =
         select({
-            "@org_tensorflow//tensorflow:macos": [],
-            "@org_tensorflow//tensorflow:ios": [],
+            "@org_tensorflow//tensorflow/tsl:macos": [],
+            "@org_tensorflow//tensorflow/tsl:ios": [],
             "//conditions:default": ["tensorflow/vulkan_hpp_dispatch_loader_dynamic.cc"],
         }),
     hdrs = ["include/vulkan/vulkan.hpp"],
@@ -65,8 +65,8 @@ cc_library(
         "VULKAN_HPP_TYPESAFE_CONVERSION",
         "VULKAN_HPP_TYPESAFE_EXPLICIT",
     ] + select({
-        "@org_tensorflow//tensorflow:macos": [],
-        "@org_tensorflow//tensorflow:ios": [],
+        "@org_tensorflow//tensorflow/tsl:macos": [],
+        "@org_tensorflow//tensorflow/tsl:ios": [],
         "//conditions:default": ["VULKAN_HPP_DISPATCH_LOADER_DYNAMIC"],
     }),
     includes = ["include"],

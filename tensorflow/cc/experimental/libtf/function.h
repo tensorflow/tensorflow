@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CC_EXPERIMENTAL_CORE_FUNCTION_H_
-#define TENSORFLOW_CC_EXPERIMENTAL_CORE_FUNCTION_H_
+#ifndef TENSORFLOW_CC_EXPERIMENTAL_LIBTF_FUNCTION_H_
+#define TENSORFLOW_CC_EXPERIMENTAL_LIBTF_FUNCTION_H_
 
 #include <vector>
 
@@ -51,4 +51,4 @@ class Function {
 }  // namespace libtf
 }  // namespace tf
 
-#endif  // TENSORFLOW_CC_EXPERIMENTAL_CORE_FUNCTION_H_
+#endif  // TENSORFLOW_CC_EXPERIMENTAL_LIBTF_FUNCTION_H_

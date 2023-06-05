@@ -17,7 +17,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_H_
 
 #include <cstdint>
+#include <iosfwd>
+#include <string>
 #include <type_traits>
+#include <utility>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/allocator.h"
@@ -29,8 +32,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -39,11 +40,11 @@ namespace tensorflow {
 // Forward declarations.  In particular, we forward declare protos so that their
 // symbols can be removed from .so exports.
 class AllocationDescription;
-class Allocator;
 class OpKernelContext;
 class Tensor;
 class TensorBuffer;
 class TensorCApi;
+class TensorInterface;
 class TensorCord;
 class TensorDescription;
 class TensorProto;
@@ -270,6 +271,10 @@ class Tensor {
 
   ~Tensor();
 
+  // I/O operators.
+  friend std::ostream&  // NOLINT: iosfwd
+  operator<<(std::ostream& out, const Tensor& tensor);
+
   /// Returns the data type.
   DataType dtype() const { return shape_.data_type(); }
 
@@ -313,6 +318,14 @@ class Tensor {
     return true;
 #else
     void* ptr = base<void>();
+    // If ptr is allocated through AsyncValueAllocator, the last bit is 1,
+    // which indicates ptr points to an AsyncValueTensor instead of raw buffer,
+    // and disable alignemnt check for it.
+    constexpr uintptr_t kTag = 0x1ULL;
+    uintptr_t value = reinterpret_cast<uintptr_t>(ptr);
+    if (value & kTag) {
+      return true;
+    }
     return dtype() == DT_STRING || NumElements() == 0 ||
            (reinterpret_cast<intptr_t>(ptr) % EIGEN_MAX_ALIGN_BYTES == 0);
 #endif
@@ -421,7 +434,7 @@ class Tensor {
   }
 
   template <typename T, size_t NDIMS>
-  typename TTypes<T, NDIMS>::Tensor tensor();
+  typename TTypes<T, NDIMS>::Tensor tensor() TF_ATTRIBUTE_NOINLINE;
 
   /// \brief Return the tensor data to an `Eigen::Tensor` with the
   /// same size but a bitwise cast to the specified dtype `T`.
@@ -471,9 +484,7 @@ class Tensor {
   ///
   /// ```
   template <typename T>
-  typename TTypes<T>::Flat flat() {
-    return shaped<T, 1>({NumElements()});
-  }
+  typename TTypes<T>::Flat flat();
 
   template <typename T>
   typename TTypes<T>::UnalignedFlat unaligned_flat() {
@@ -539,7 +550,7 @@ class Tensor {
   }
 
   template <typename T, size_t NDIMS>
-  typename TTypes<T, NDIMS>::ConstTensor tensor() const;
+  typename TTypes<T, NDIMS>::ConstTensor tensor() const TF_ATTRIBUTE_NOINLINE;
 
   /// \brief Return the tensor data to an `Eigen::Tensor` with the
   /// same size but a bitwise cast to the specified dtype `T`.
@@ -560,9 +571,7 @@ class Tensor {
   typename TTypes<T, NDIMS>::ConstTensor reinterpret_last_dimension() const;
 
   template <typename T>
-  typename TTypes<T>::ConstFlat flat() const {
-    return shaped<T, 1>({NumElements()});
-  }
+  typename TTypes<T>::ConstFlat flat() const;
 
   template <typename T>
   typename TTypes<T>::UnalignedConstFlat unaligned_flat() const {
@@ -668,6 +677,10 @@ class Tensor {
   // buffer is one.
   bool RefCountIsOne() const;
 
+  // Experimental. Returns the refcount on buf_ if it points to a regular
+  // TensorBuffer. If buf_ points to a SubBuffer, returns -1.
+  int RefCount() const;
+
   // Returns the type of the underlying memory.
   AllocatorMemoryType GetMemoryType() const { return buf_->GetMemoryType(); }
 
@@ -693,6 +706,7 @@ class Tensor {
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.
   friend class TensorTestHelper;      // For access to set_shape.
+  friend class TensorInterface;       // For access to set_shape.
   friend class CastOpBase;            // For access to set_dtype.
   friend class ScopedAllocator;       // For access to buf_.
   friend Status batch_util::CopyElementToSlice(
@@ -758,6 +772,7 @@ T* Tensor::base() const {
   return buf_ == nullptr ? nullptr : buf_->base<T>();
 }
 
+// This routine is defined out of line for code-space savings
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::tensor() {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
@@ -765,6 +780,7 @@ typename TTypes<T, NDIMS>::Tensor Tensor::tensor() {
                                            shape().AsEigenDSizes<NDIMS>());
 }
 
+// This routine is defined out of line for code-space savings
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
   CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
@@ -792,8 +808,9 @@ typename TTypes<T, NDIMS>::Tensor Tensor::reinterpret_last_dimension() {
     return tensor<T, NDIMS>();
   }
   CHECK(IsAligned());
-  CHECK_EQ(NDIMS, dims() - 1);
-  CHECK_EQ(sizeof(T), shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
+  CHECK_EQ(static_cast<int>(NDIMS), dims() - 1);
+  CHECK_EQ(static_cast<int64_t>(sizeof(T)),
+           shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   for (int d = 0; d < NDIMS; ++d) {
     dims[d] = shape_.dim_sizes()[d];
@@ -808,8 +825,9 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::reinterpret_last_dimension()
     return tensor<T, NDIMS>();
   }
   CHECK(IsAligned());
-  CHECK_EQ(NDIMS, dims() - 1);
-  CHECK_EQ(sizeof(T), shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
+  CHECK_EQ(static_cast<int>(NDIMS), dims() - 1);
+  CHECK_EQ(static_cast<int64_t>(sizeof(T)),
+           shape_.dim_sizes()[NDIMS] * DataTypeSize(dtype()));
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   for (int d = 0; d < NDIMS; ++d) {
     dims[d] = shape_.dim_sizes()[d];
@@ -842,7 +860,8 @@ void Tensor::FillDimsAndValidateCompatibleShape(
   }
   const int element_size = DataTypeSize(BaseType(dtype()));
   if (element_size > 0) {
-    CHECK_EQ(new_num_elements * sizeof(T), NumElements() * element_size);
+    CHECK_EQ(new_num_elements * static_cast<int64_t>(sizeof(T)),
+             NumElements() * element_size);
   } else {
     // DataTypeSize() returns 0 for some data types. In this case, assume that T
     // has the same size as the buffer type.
@@ -852,6 +871,24 @@ void Tensor::FillDimsAndValidateCompatibleShape(
     // of unknown data type size.
     CHECK_EQ(new_num_elements, NumElements());
   }
+}
+
+template <typename T>
+typename TTypes<T>::Flat Tensor::flat() {
+  // Equivalent to 'return shaped<T, 1>({NumElements()});'
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, 1> dims;
+  dims[0] = NumElements();
+  return typename TTypes<T, 1>::Tensor(base<T>(), dims);
+}
+
+template <typename T>
+typename TTypes<T>::ConstFlat Tensor::flat() const {
+  // Equuivalent to 'return shaped<T, 1>({NumElements()});'
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
+  Eigen::array<Eigen::DenseIndex, 1> dims;
+  dims[0] = NumElements();
+  return typename TTypes<T, 1>::ConstTensor(base<T>(), dims);
 }
 
 template <typename T, size_t NDIMS>

@@ -18,7 +18,9 @@ import numpy as np
 
 from tensorflow.compiler.tests import xla_test
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
@@ -559,6 +561,34 @@ class PoolGradTest(xla_test.XLATestCase):
           data_format=data_format)
 
     self._TestPooling(nn_ops.avg_pool, AvgPoolGrad)
+
+  @test_util.disable_mlir_bridge(
+      "TODO(b/266613412): investigate FPE in AvgPoolGrad for TPU"
+  )
+  def testAvgPoolGradSamePaddingZeroStrideZeroSize(self):
+    output_gradient_vals = np.array([0.39117979], dtype=np.float32)
+    output_gradient_vals = output_gradient_vals.reshape([1, 1, 1, 1])
+    with self.session() as sess:
+      with self.test_scope():
+        output_gradients = array_ops.placeholder(
+            dtypes.float32, shape=output_gradient_vals.shape
+        )
+        t = gen_nn_ops.avg_pool_grad(
+            orig_input_shape=[1, 0, 0, 0],
+            grad=output_gradients,
+            ksize=[1, 0, 0, 0],
+            strides=[1, 0, 0, 0],
+            padding="SAME",
+            data_format="NCHW",
+        )
+      with self.assertRaisesRegex(
+          errors.InvalidArgumentError,
+          (
+              "Sliding window ksize field for dimension 1 must be positive but"
+              " is 0"
+          ),
+      ):
+        sess.run(t, {output_gradients: output_gradient_vals})
 
   # The CPU implementation of AvgPoolGrad doesn't accept kernels smaller than
   # the stride size, so we only run the following tests on MaxPoolGrad.

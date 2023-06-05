@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_STATS_H_
 
 #include <numeric>
+#include <string>
 
 #include "absl/strings/str_cat.h"
 

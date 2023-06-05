@@ -819,7 +819,7 @@ Status RenameOp(const GraphDef& input_graph_def,
     }
   }
 
-  return Status::OK();
+  return OkStatus();
 }
 
 REGISTER_GRAPH_TRANSFORM("rename_op", RenameOp);
@@ -1000,7 +1000,7 @@ TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       CopyNodeAttr(conv_node, "strides", "strides", &fused_conv);
       new_nodes->push_back(fused_conv);
 
-      return Status::OK();
+      return OkStatus();
     },
     {}, &replaced_graph_def));
 ```

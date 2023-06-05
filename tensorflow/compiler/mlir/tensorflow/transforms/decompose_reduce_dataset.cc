@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/passes_detail.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
@@ -54,8 +53,13 @@ namespace TF {
 
 namespace {
 
+constexpr char kDeviceAttr[] = "device";
+
+#define GEN_PASS_DEF_DECOMPOSEREDUCEDATASETPASS
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
+
 struct DecomposeReduceDatasetPass
-    : public DecomposeReduceDatasetPassBase<DecomposeReduceDatasetPass> {
+    : public impl::DecomposeReduceDatasetPassBase<DecomposeReduceDatasetPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
     registry.insert<tf_device::TensorFlowDeviceDialect>();
   }
@@ -82,7 +86,7 @@ AnonymousIteratorV3Op CreateIterator(OpBuilder builder,
       /*output_types=*/builder.getArrayAttr(type_attrs),
       /*shape_types=*/builder.getArrayAttr(shape_attrs));
   builder.create<MakeIteratorOp>(reduce_dataset.getLoc(),
-                                 reduce_dataset.input_dataset(),
+                                 reduce_dataset.getInputDataset(),
                                  anonymous_iterator.getResult());
   return anonymous_iterator;
 }
@@ -123,7 +127,7 @@ WhileRegionOp CreateDatasetWhile(OpBuilder builder,
 // condition of whether to continue to next iteration.
 void PopulateDatasetWhileCond(OpBuilder builder, WhileRegionOp dataset_while,
                               Location loc) {
-  auto& cond_region = dataset_while.cond();
+  auto& cond_region = dataset_while.getCond();
   Block* cond_block = builder.createBlock(&cond_region);
   auto while_input_types = dataset_while.getOperandTypes();
   cond_block->addArguments(
@@ -156,7 +160,7 @@ IfRegionOp CreateOptionalDatasetIf(
   // parallelization.
   dataset_if->setAttr("_lower_using_switch_merge", builder.getBoolAttr(true));
   // Empty else branch, if there is no more data, do nothing.
-  auto& else_branch = dataset_if.else_branch();
+  auto& else_branch = dataset_if.getElseBranch();
   else_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&else_branch.front());
   // Return only the state variables from the body arguments.
@@ -168,7 +172,7 @@ IfRegionOp CreateOptionalDatasetIf(
                               /*operands=*/else_returns);
 
   // Then branch gets the data and calls the reduce_function.
-  auto& then_branch = dataset_if.then_branch();
+  auto& then_branch = dataset_if.getThenBranch();
   then_branch.push_back(new Block);
   builder.setInsertionPointToEnd(&then_branch.front());
   // Add iterator operational data access inside if.
@@ -193,6 +197,10 @@ IfRegionOp CreateOptionalDatasetIf(
   auto reduce_call =
       builder.create<mlir::func::CallOp>(loc, reduce_func, reduce_fn_args);
 
+  // Both the device attribute and compile_device_type attribute should be
+  // propagated to the reduce function call.
+  reduce_call->setAttr(kDeviceAttr,
+                       reduce_dataset->getAttrOfType<StringAttr>(kDeviceAttr));
   reduce_call->setAttr(
       TF::kCompileDeviceTypeAttr,
       reduce_dataset->getAttrOfType<StringAttr>(TF::kCompileDeviceTypeAttr));
@@ -212,14 +220,14 @@ void PopulateDatasetWhileBody(OpBuilder builder, ReduceDatasetOp reduce_dataset,
                               ArrayRef<Type> dataset_types) {
   const Location loc = reduce_dataset.getLoc();
   auto while_input_types = dataset_while.getOperandTypes();
-  auto& body_region = dataset_while.body();
+  auto& body_region = dataset_while.getBody();
   Block* body_block = builder.createBlock(&body_region);
   auto body_arguments = body_block->addArguments(
       while_input_types, SmallVector<Location>(while_input_types.size(), loc));
   auto get_next = builder.create<IteratorGetNextAsOptionalOp>(
       loc, RankedTensorType::get({}, builder.getType<VariantType>()),
-      anonymous_iterator.getResult(), anonymous_iterator.output_types(),
-      anonymous_iterator.output_shapes());
+      anonymous_iterator.getResult(), anonymous_iterator.getOutputTypes(),
+      anonymous_iterator.getOutputShapes());
   auto optional_has_value = builder.create<OptionalHasValueOp>(
       loc, RankedTensorType::get({}, builder.getI1Type()),
       get_next.getResult());
@@ -271,7 +279,7 @@ LogicalResult DecomposeReduceDatasetInFunction(FuncOp function) {
     // complexity = # ReduceDataset ops x # of functions in module.
     func::FuncOp reduce_func =
         function->getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-            reduce_dataset.f());
+            reduce_dataset.getF());
 
     // The reduce function arguments consist of three part in this order:
     // 1. Reduction state inputs.
@@ -301,8 +309,12 @@ LogicalResult DecomposeReduceDatasetInFunction(FuncOp function) {
     PopulateDatasetWhileBody(builder, reduce_dataset, reduce_func,
                              dataset_while, anonymous_iterator, dataset_types);
 
-    // Updates usage and erases rewritten reduce_dataset op.
-    reduce_dataset.getResult(0).replaceAllUsesWith(dataset_while.getResult(1));
+    // Updates usage and erases rewritten reduce_dataset op based on the number
+    // of state variables.
+    for (int i = 0; i < state_size; ++i) {
+      reduce_dataset.getResult(i).replaceAllUsesWith(
+          dataset_while.getResult(i + 1));
+    }
     reduce_dataset.erase();
 
     return WalkResult::advance();

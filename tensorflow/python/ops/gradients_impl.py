@@ -20,7 +20,6 @@ from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import image_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import linalg_grad  # pylint: disable=unused-import
@@ -32,6 +31,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import optional_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import random_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops import while_loop
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.util.tf_export import tf_export
 
@@ -422,7 +422,7 @@ def hessians(ys,
     ]
     # Iterate over all elements of the gradient and compute second order
     # derivatives.
-    _, hessian = control_flow_ops.while_loop(
+    _, hessian = while_loop.while_loop(
         lambda j, _: j < n,
         lambda j, result: (j + 1,
                            result.write(j, gradients(gradient[j], x)[0])),

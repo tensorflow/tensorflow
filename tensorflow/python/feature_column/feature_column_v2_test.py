@@ -29,6 +29,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column as fc_old
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import feature_column_v2_types
 from tensorflow.python.feature_column import serialization
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -62,7 +63,7 @@ def get_linear_model_column_var(column, name='linear_model'):
                             name + '/' + column.name)[0]
 
 
-class BaseFeatureColumnForTests(fc.FeatureColumn):
+class BaseFeatureColumnForTests(feature_column_v2_types.FeatureColumn):
   """A base FeatureColumn useful to avoid boiler-plate in tests.
 
   Provides dummy implementations for abstract methods that raise ValueError in
@@ -1413,8 +1414,11 @@ class OldLinearModelTest(test.TestCase):
 
   def test_should_be_dense_or_categorical_column(self):
 
-    class NotSupportedColumn(BaseFeatureColumnForTests, fc.FeatureColumn,
-                             fc_old._FeatureColumn):
+    class NotSupportedColumn(
+        BaseFeatureColumnForTests,
+        feature_column_v2_types.FeatureColumn,
+        fc_old._FeatureColumn,
+    ):
 
       @property
       def _is_v2_column(self):
@@ -2516,7 +2520,7 @@ class FunctionalInputLayerTest(test.TestCase):
       self.assertEqual(0, len(cols_to_vars[dense_feature_bucketized]))
       self.assertEqual(1, len(cols_to_vars[some_embedding_column]))
       self.assertIsInstance(cols_to_vars[some_embedding_column][0],
-                            variables_lib.VariableV1)
+                            variables_lib.Variable)
       self.assertAllEqual(cols_to_vars[some_embedding_column][0].shape, [5, 10])
 
   def test_fills_cols_to_vars_shared_embedding(self):

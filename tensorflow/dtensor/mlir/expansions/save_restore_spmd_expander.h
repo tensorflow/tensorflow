@@ -27,8 +27,8 @@ class SaveRestoreSPMDExpander : public SPMDExpanderBase {
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override;
 
   StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
-      mlir::Operation* op,
-      const llvm::DenseMap<int, Layout>& input_layouts) override;
+      mlir::Operation* op, const llvm::DenseMap<int, Layout>& input_layouts,
+      const llvm::DenseMap<int, Layout>& output_layouts) override;
 
   StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
       mlir::Operation* op,

@@ -19,8 +19,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/delegates/hexagon/builders/conv_2d_builder.h"
 #include "tensorflow/lite/delegates/hexagon/hexagon_nn/hexagon_nn.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
@@ -142,7 +142,7 @@ TfLiteStatus ProcessPerChannelQuantizedBias(
   auto* bias_data_node = graph_builder->AddConstNodeWithData(
       bias_shape.data(),
       reinterpret_cast<char*>(preprocessed_bias_data->data()),
-      preprocessed_bias_data->size() * sizeof(preprocessed_bias_data[0]));
+      preprocessed_bias_data->size() * sizeof((*preprocessed_bias_data)[0]));
   if (bias_const_node) {
     *bias_const_node = bias_data_node;
   }
@@ -167,7 +167,7 @@ void Conv2dOpBuilder::CheckShouldSplitDwConv(TfLiteType weights_type,
       weights_height == 5 && weights_width == 5 &&
       // Stride larger than 2x2
       conv_params->stride_height >= 2 && conv_params->stride_width >= 2 &&
-      // Depth more than 32 and is multiples of 32 so can be splitted.
+      // Depth more than 32 and is multiples of 32 so can be split.
       input_depth > kDwConv5x5Filt2x2StrideChannelCount &&
       input_depth % kDwConv5x5Filt2x2StrideChannelCount == 0 &&
       is_per_channel_quant && channel_multiplier == 1) {

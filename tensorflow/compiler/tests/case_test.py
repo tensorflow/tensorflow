@@ -18,7 +18,7 @@ from tensorflow.compiler.tests import xla_test
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_switch_case
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
@@ -40,7 +40,7 @@ class CaseTest(xla_test.XLATestCase):
       def f3():
         return array_ops.constant(-1)
 
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           branch_index, branch_fns={
               0: f1,
               1: f2
@@ -68,7 +68,7 @@ class CaseTest(xla_test.XLATestCase):
 
       # This tests that we do not try to compile all branches if the branch
       # index in trivially constant.
-      return control_flow_ops.switch_case(
+      return control_flow_switch_case.switch_case(
           branch_index, branch_fns={
               0: f1,
               1: f2

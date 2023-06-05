@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <utility>
 
-#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
-#include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
 
@@ -188,6 +188,28 @@ Status LogicalBufferAnalysis::HandleCustomCall(HloInstruction* custom_call) {
                              [&](const Shape& shape, const ShapeIndex& index) {
                                if (!aliased_outputs.contains(index)) {
                                  NewLogicalBuffer(custom_call, index);
+                               }
+                             });
+  return OkStatus();
+}
+
+// WARNING (b/259460539): output_to_operand_aliasing was moved from
+// HloCustomCallInstruction to HloCallableInstruction so that fusions can
+// also be annotated with this aliasing. This feature might not be complete.
+// Particular to this analysis, we added the HandleFusion function below to
+// accommodate the output-operand aliases (similar to HandleCustomCall).
+// TODO (sacer): We might want to consider the pairs discovered by
+// GetFusionInstructionInPlaceInputOutputPairs() here as well.
+Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
+  auto cfusion = Cast<HloFusionInstruction>(fusion);
+  absl::flat_hash_set<ShapeIndex> aliased_outputs;
+  for (const auto& pair : cfusion->output_to_operand_aliasing()) {
+    aliased_outputs.insert(pair.first);
+  }
+  ShapeUtil::ForEachSubshape(cfusion->shape(),
+                             [&](const Shape& shape, const ShapeIndex& index) {
+                               if (!aliased_outputs.contains(index)) {
+                                 NewLogicalBuffer(fusion, index);
                                }
                              });
   return OkStatus();

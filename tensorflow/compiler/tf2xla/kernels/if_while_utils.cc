@@ -49,25 +49,23 @@ absl::InlinedVector<int, 5> ConvertCompileTimeConstArgumentsToConst(
                                      xla::ValueInferenceMode::kUpperBound);
       if ((maybe_constant.ok() && maybe_constant->has_value()) ||
           (bounds.ok() && bounds->has_value())) {
-        StatusOr<Tensor> values_are_dynamic =
-            expression.ResolveDynamism(ctx->compiler()->client());
+        StatusOr<Tensor> values_are_dynamic = expression.ResolveDynamism();
         bool all_values_are_static = false;
         if (values_are_dynamic.ok()) {
           xla::Literal literal =
-              HostTensorToLiteral(values_are_dynamic.ValueOrDie()).ValueOrDie();
+              HostTensorToLiteral(values_are_dynamic.value()).value();
           all_values_are_static = literal.IsAll(0);
         }
 
         if (all_values_are_static) {
           arg->kind = XlaCompiler::Argument::kConstant;
           arg->type = expression.dtype();
-          arg->constant_value = std::move(maybe_constant.ValueOrDie().value());
-          arg->shape = expression.GetShape().ValueOrDie();
+          arg->constant_value = std::move(maybe_constant.value().value());
+          arg->shape = expression.GetShape().value();
           resolved_constant_idxs.push_back(i);
         } else {
-          arg->value_bound.emplace(std::move(bounds.ValueOrDie().value()));
-          arg->value_dynamism.emplace(
-              std::move(values_are_dynamic.ValueOrDie()));
+          arg->value_bound.emplace(std::move(bounds.value().value()));
+          arg->value_dynamism.emplace(std::move(values_are_dynamic.value()));
         }
       }
     }

@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include <functional>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <utility>
+#include <variant>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/types/optional.h"
 #include "absl/types/variant.h"
-#include "tensorflow/c/c_api_internal.h"
+#include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
@@ -28,12 +38,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
@@ -46,7 +52,7 @@ namespace {
 
 class TestEagerServiceImpl : public EagerServiceImpl {
  public:
-  explicit TestEagerServiceImpl(const WorkerEnv* env) : EagerServiceImpl(env) {}
+  explicit TestEagerServiceImpl(WorkerEnv* env) : EagerServiceImpl(env) {}
   Status GetEagerContext(const uint64 context_id, EagerContext** ctx) {
     ServerContext* context = nullptr;
     TF_RETURN_IF_ERROR(GetServerContext(context_id, &context));
@@ -130,7 +136,7 @@ class DummyEagerClientCache : public EagerClientCache {
 class FakeCache : public TestWorkerCache {
   Status GetEagerClientCache(
       std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
-    eager_client_cache->reset(new DummyEagerClientCache);
+    *eager_client_cache = std::make_unique<DummyEagerClientCache>();
     return OkStatus();
   }
 
@@ -150,7 +156,8 @@ class EagerServiceImplTest : public ::testing::Test {
                WorkerCacheInterface** worker_cache) {
               *worker_cache = new FakeCache;
               return OkStatus();
-            })) {
+            },
+            /*coordination_handler=*/nullptr)) {
     worker_env_.env = Env::Default();
 
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
@@ -158,7 +165,6 @@ class EagerServiceImplTest : public ::testing::Test {
 
     device_mgr_ = std::make_unique<StaticDeviceMgr>(
         DeviceFactory::NewDevice("CPU", {}, "/job:localhost/replica:0/task:0"));
-    worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
   }
 
@@ -166,7 +172,7 @@ class EagerServiceImplTest : public ::testing::Test {
   WorkerEnv worker_env_;
   tensorflow::RpcRendezvousMgr rendezvous_mgr_;
   std::unique_ptr<SessionMgr> session_mgr_;
-  std::unique_ptr<DeviceMgr> device_mgr_;
+  std::unique_ptr<DynamicDeviceMgr> device_mgr_;
 };
 
 void SetTensorProto(TensorProto* tensor_proto) {
@@ -183,7 +189,7 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void BuildOperation(
     Operation* operation, int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device) {
   operation->set_id(id);
@@ -193,10 +199,10 @@ void BuildOperation(
   for (const auto& input : inputs) {
     if (input.index() == 0) {
       *operation->add_op_inputs()->mutable_tensor() =
-          absl::get<TensorProto>(input);
+          std::get<TensorProto>(input);
     } else {
       const auto& tensor_handle_pair =
-          absl::get<std::pair<int64_t, int32>>(input);
+          std::get<std::pair<int64_t, int32>>(input);
       auto* input = operation->add_op_inputs()->mutable_remote_handle();
       input->set_op_id(tensor_handle_pair.first);
       input->set_output_num(tensor_handle_pair.second);
@@ -212,7 +218,7 @@ void BuildOperation(
 
 void AddOperationToEnqueueRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
@@ -222,7 +228,7 @@ void AddOperationToEnqueueRequest(
 
 void AddOperationToRunComponentFunctionRequest(
     int64_t id, const string& name,
-    const std::vector<absl::variant<TensorProto, std::pair<int64_t, int32>>>&
+    const std::vector<std::variant<TensorProto, std::pair<int64_t, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     const int output_num, RunComponentFunctionRequest* request) {
@@ -540,7 +546,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       Env::Default()->SleepForMicroseconds(500000);
       call_opts.StartCancel();
       n.WaitForNotification();
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       n.WaitForNotification();
       TF_ASSERT_OK(status);
@@ -633,7 +639,7 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     }
     n.WaitForNotification();
     if (test_cancel) {
-      EXPECT_TRUE(errors::IsCancelled(status)) << status.error_message();
+      EXPECT_TRUE(absl::IsCancelled(status)) << status.message();
     } else {
       TF_ASSERT_OK(status);
       // Retrieve the output.
@@ -784,8 +790,9 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
         /*session_metadata=*/nullptr,
         Rendezvous::Factory{[this](const int64_t step_id,
                                    const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-          *r = worker_env_.rendezvous_mgr->Find(step_id);
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = tsl::core::RefCountPtr<Rendezvous>(
+              worker_env_.rendezvous_mgr->Find(step_id).release());
           return OkStatus();
         }});
   }
@@ -815,7 +822,7 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     TF_ASSERT_OK(tensor_handle->Tensor(&t));
     EXPECT_EQ(outputs.size(), 1);
     EXPECT_EQ(outputs.at(0).index(), 1);
-    const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
+    const TensorShape& shape = std::get<TensorShape>(outputs.at(0));
     EXPECT_EQ(shape, t->shape());
     CheckOutputTensorAndClose(*t);
   }
@@ -960,7 +967,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -985,8 +993,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
 
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
-                           /*remote_func_params=*/absl::nullopt,
-                           /*stack_trace=*/absl::nullopt,
+                           /*eager_func_params=*/std::nullopt,
+                           /*stack_trace=*/std::nullopt,
                            /*coordination_service_agent=*/nullptr));
 
   CheckOutputsAndClose(outputs, op_id);
@@ -1014,7 +1022,8 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
       /*allow_control_flow_sync_execution=*/false,
       /*shape_inference_on_tfe_dialect_import=*/true,
       /*int_args_and_retvals_on_device=*/false,
-      /*xla_compile_device_type=*/absl::nullopt, ctx->RendezvousCreator(),
+      /*xla_compile_device_type=*/std::nullopt,
+      /*allow_soft_placement=*/false, ctx->RendezvousFactory(),
       [=]() { return op_id; }));
 
   // Instantiate MatMulFunction on remote_device.
@@ -1041,7 +1050,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
   Notification n;
   kernel->RunAsync(/*step_container=*/nullptr, inputs, &outputs,
                    /*cancellation_manager=*/nullptr,
-                   /*remote_func_params=*/absl::nullopt,
+                   /*eager_func_params=*/std::nullopt,
                    /*coordination_service_agent=*/nullptr,
                    [&status, &n](const Status& s) {
                      status = s;
@@ -1224,13 +1233,16 @@ TEST_F(EagerServiceImplTest, SendPackedHandleTest) {
 
 // Test requests sent to the eager service on master.
 TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
-  tensorflow::Rendezvous* rendezvous =
-      new tensorflow::IntraProcessRendezvous(device_mgr_.get());
+  tsl::core::RefCountPtr<tensorflow::Rendezvous> rendezvous =
+      tsl::core::RefCountPtr<tensorflow::Rendezvous>(
+          new tensorflow::IntraProcessRendezvous(device_mgr_.get()));
   // Create a master eager context.
   tensorflow::EagerContext* ctx = new tensorflow::EagerContext(
       SessionOptions(),
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      /*async=*/false, device_mgr_.get(), false, rendezvous);
+      /*async=*/false, device_mgr_.get(), false, std::move(rendezvous), nullptr,
+      nullptr,
+      /*run_eager_op_as_function=*/true);
   const uint64 context_id = random::New64();
 
   // Set RemoteMgr to ctx.
@@ -1258,7 +1270,7 @@ TEST_F(EagerServiceImplTest, RequestsToMasterTest) {
                                              &remote_enqueue_response);
   EXPECT_EQ(error::ABORTED, status.code());
   EXPECT_TRUE(absl::StrContains(
-      status.error_message(),
+      status.message(),
       "Unable to find a context_id matching the specified one"));
 
   // The request can be handled after adding the master eager context to
@@ -1295,7 +1307,7 @@ TEST_F(EagerServiceImplTest, KeepAliveTest) {
 
   EXPECT_EQ(status.code(), error::ABORTED);
   EXPECT_PRED_FORMAT2(::testing::IsSubstring, "Unable to find a context_id",
-                      status.error_message());
+                      std::string(status.message()));
 
   uint64 new_context_id = random::New64();
   // Create a new context.

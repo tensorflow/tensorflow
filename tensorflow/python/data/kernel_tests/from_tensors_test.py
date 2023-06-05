@@ -32,7 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -143,7 +143,7 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.skipTest("attr module is not available.")
 
     @attr.s
-    class Foo(object):
+    class Foo:
       x = attr.ib()
       y = attr.ib()
 
@@ -249,7 +249,7 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual([3], dataset_ops.get_legacy_output_shapes(dataset))
 
-    dataset = dataset.map(lambda x: array_ops.stack([x, x]))
+    dataset = dataset.map(lambda x: array_ops_stack.stack([x, x]))
     self.assertEqual(dtypes.int64,
                      dataset_ops.get_legacy_output_types(dataset))
     self.assertEqual([2, 3], dataset_ops.get_legacy_output_shapes(dataset))
@@ -302,17 +302,24 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 class FromTensorsCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                                 parameterized.TestCase):
 
-  def _build_tensor_dataset(self, variable_array):
+  def _build_tensor_dataset(self, variable_array, options=None):
     components = (variable_array, np.array([1, 2, 3]), np.array(37.0))
-
-    return dataset_ops.Dataset.from_tensors(components)
+    dataset = dataset_ops.Dataset.from_tensors(components)
+    if options:
+      dataset = dataset.with_options(options)
+    return dataset
 
   @combinations.generate(
-      combinations.times(test_base.default_test_combinations(),
-                         checkpoint_test_base.default_test_combinations()))
-  def test(self, verify_fn):
+      combinations.times(
+          test_base.default_test_combinations(),
+          checkpoint_test_base.default_test_combinations(),
+          combinations.combine(symbolic_checkpoint=[False, True])))
+  def test(self, verify_fn, symbolic_checkpoint):
     arr = np.array(1)
-    verify_fn(self, lambda: self._build_tensor_dataset(arr), num_outputs=1)
+    options = options_lib.Options()
+    options.experimental_symbolic_checkpoint = symbolic_checkpoint
+    verify_fn(
+        self, lambda: self._build_tensor_dataset(arr, options), num_outputs=1)
 
 
 class FromTensorsRandomAccessTest(test_base.DatasetTestBase,

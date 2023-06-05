@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
@@ -1674,6 +1675,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
                                                       [[[15, 25], [36]]]])),
   ])
   def testRaggedAddWithBroadcasting(self, x, y, expected, doc):
+    del doc
     expected_rrank = getattr(expected, 'num_row_partitions', 0)
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
@@ -1917,7 +1919,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
     def fun(x):
-      shape_a = DynamicRaggedShape([], array_ops.stack([5, x, 3]))
+      shape_a = DynamicRaggedShape([], array_ops_stack.stack([5, x, 3]))
       shape_b = DynamicRaggedShape.from_lengths([1, 3], dtype=dtypes.int64)
       result = dynamic_ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
       self.assertAllEqual([5, None, 3], result.static_lengths())
@@ -1929,7 +1931,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.int64)])
     def fun(x):
-      shape_a = DynamicRaggedShape([], array_ops.stack([5, x, 3]))
+      shape_a = DynamicRaggedShape([], array_ops_stack.stack([5, x, 3]))
       shape_b = DynamicRaggedShape.from_lengths([2, 3], dtype=dtypes.int64)
       result = dynamic_ragged_shape.broadcast_dynamic_shape(shape_a, shape_b)
       self.assertAllEqual([5, 2, 3], result.static_lengths())
@@ -2202,6 +2204,7 @@ class DynamicRaggedShapeTest(test_util.TensorFlowTestCase,
                                                       [[[15, 25], [36]]]])),
   ])
   def testRaggedDispatchImplWithBroadcasting(self, x, y, expected, doc):
+    del doc
     expected_rrank = getattr(expected, 'num_row_partitions', 0)
     x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x, dtype=dtypes.int32)
     y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y, dtype=dtypes.int32)
@@ -2881,8 +2884,6 @@ class DynamicRaggedShapeErrorTest(parameterized.TestCase):
     # but it exists.
     with self.assertRaisesRegex(errors_impl.InvalidArgumentError,
                                 r'Cannot broadcast'):
-      # with self.assertRaisesRegex(errors.InvalidArgumentError,
-      #                             r"Cannot broadcast"):
       sess = session.Session()
       with sess.as_default():
         origin = _to_ragged_tensor_from_lengths(origin_values, origin_lengths)

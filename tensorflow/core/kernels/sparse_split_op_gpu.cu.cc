@@ -30,10 +30,10 @@ limitations under the License.
 #include "tensorflow/core/util/gpu_solvers.h"  // For ScratchSpace
 
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_activation.h"
 using stream_executor::cuda::ScopedActivateExecutorContext;
 #elif TENSORFLOW_USE_ROCM
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+#include "tensorflow/compiler/xla/stream_executor/rocm/rocm_activation.h"
 using stream_executor::rocm::ScopedActivateExecutorContext;
 #endif
 
@@ -121,7 +121,7 @@ Status LaunchSparseSplitSliceIndexesKernel(const GPUDevice& device,
                                            SliceIndexer<Index> slice_indexer,
                                            const Index* input_indices,
                                            int* slice_indexes) {
-  if (input_nnz == 0) return Status::OK();
+  if (input_nnz == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_nnz, device, &SparseSplitSliceIndexesKernel<Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
@@ -163,7 +163,7 @@ __global__ void SparseSplitScatterKernel(
     const Index* __restrict__ sort_permutation,
     const Index* __restrict__ slice_ends,
     const Index* __restrict__ input_indices, const T* __restrict__ input_values,
-    GpuDeviceArrayStruct<Index*> output_indices_data,
+    const int64_t index_bound, GpuDeviceArrayStruct<Index*> output_indices_data,
     GpuDeviceArrayStruct<T*> output_values_data) {
   Index* __restrict__* __restrict__ output_indices =
       GetGpuDeviceArrayOnDevice(&output_indices_data);
@@ -172,17 +172,19 @@ __global__ void SparseSplitScatterKernel(
 
   for (Index sorted_input_nz : GpuGridRangeX<Index>(input_nnz)) {
     Index input_nz = sort_permutation[sorted_input_nz];
-    int slice_index =
-        slice_indexer.GetSliceIndex(input_indices[input_nz * rank + axis]);
-    Index slice_nz =
-        sorted_input_nz -
-        (slice_index == 0 ? Index(0) : slice_ends[slice_index - 1]);
-    output_values[slice_index][slice_nz] = input_values[input_nz];
-    for (int dim = 0; dim < rank; ++dim) {
-      Index input_index = input_indices[input_nz * rank + dim];
-      output_indices[slice_index][slice_nz * rank + dim] =
-          (dim == axis) ? slice_indexer.GetIndexInSlice(input_index)
-                        : input_index;
+    Index slice_input_index = input_indices[input_nz * rank + axis];
+    int slice_index = slice_indexer.GetSliceIndex(slice_input_index);
+    if (slice_input_index >= 0 && slice_input_index < index_bound) {
+      Index slice_nz =
+          sorted_input_nz -
+          (slice_index == 0 ? Index(0) : slice_ends[slice_index - 1]);
+      output_values[slice_index][slice_nz] = input_values[input_nz];
+      for (int dim = 0; dim < rank; ++dim) {
+        Index input_index = input_indices[input_nz * rank + dim];
+        output_indices[slice_index][slice_nz * rank + dim] =
+            (dim == axis) ? slice_indexer.GetIndexInSlice(input_index)
+                          : input_index;
+      }
     }
   }
 }
@@ -192,16 +194,16 @@ Status LaunchSparseSplitScatterKernel(
     const GPUDevice& device, Index input_nnz, int rank, int axis,
     SliceIndexer<Index> slice_indexer, const Index* sort_permutation,
     const Index* slice_ends, const Index* input_indices, const T* input_values,
-    GpuDeviceArrayStruct<Index*> output_indices_data,
+    int64_t index_bound, GpuDeviceArrayStruct<Index*> output_indices_data,
     GpuDeviceArrayStruct<T*> output_values_data) {
-  if (input_nnz == 0) return Status::OK();
+  if (input_nnz == 0) return OkStatus();
   GpuLaunchConfig config = GetGpuLaunchConfig(
       input_nnz, device, &SparseSplitScatterKernel<T, Index>,
       /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
   return GpuLaunchKernel(SparseSplitScatterKernel<T, Index>, config.block_count,
                          config.thread_per_block, 0, device.stream(), input_nnz,
                          rank, axis, slice_indexer, sort_permutation,
-                         slice_ends, input_indices, input_values,
+                         slice_ends, input_indices, input_values, index_bound,
                          output_indices_data, output_values_data);
 }
 
@@ -266,7 +268,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
       Tensor sorted_slice_indexes;
       OP_REQUIRES_OK_ASYNC(
           context,
-          context->allocate_temp(DT_INT32, TensorShape({num_split}),
+          context->allocate_temp(DT_INT32, TensorShape({input_nnz}),
                                  &sorted_slice_indexes),
           done);
       int* sorted_slice_indexes_ptr = sorted_slice_indexes.vec<int>().data();
@@ -327,7 +329,8 @@ struct SparseSplitFunctor<GPUDevice, T> {
           LaunchSparseSplitScatterKernel(
               device, input_nnz, rank, axis, slice_indexer,
               sort_permutation_ptr, slice_ends_ptr, input_indices_ptr,
-              input_values_ptr, output_indices.data(), output_values.data()),
+              input_values_ptr, dense_shape.dim_size(axis),
+              output_indices.data(), output_values.data()),
           done);
 
       done();
@@ -371,7 +374,7 @@ struct SparseSplitFunctor<GPUDevice, T> {
     }
     TF_RETURN_IF_ERROR(output_indices->Finalize());
     TF_RETURN_IF_ERROR(output_values->Finalize());
-    return Status::OK();
+    return OkStatus();
   }
 };
 

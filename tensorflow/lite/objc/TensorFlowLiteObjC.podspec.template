@@ -42,12 +42,6 @@ Pod::Spec.new do |s|
     core.public_header_files = objc_dir + 'apis/*.h'
     core.source_files = [
       objc_dir + '{apis,sources}/*.{h,m,mm}',
-      tfl_dir + 'builtin_ops.h',
-      tfl_dir + 'c/c_api.h',
-      tfl_dir + 'c/c_api_experimental.h',
-      tfl_dir + 'c/c_api_types.h',
-      tfl_dir + 'c/common.h',
-      tfl_dir + 'delegates/xnnpack/xnnpack_delegate.h',
     ]
     core.exclude_files = [
       objc_dir + '{apis,sources}/TFL{Metal,CoreML}Delegate.{h,m}',

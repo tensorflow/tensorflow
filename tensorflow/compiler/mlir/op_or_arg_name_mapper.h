@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_op_or_val_NAME_MAPPER_H_
-#define TENSORFLOW_COMPILER_MLIR_op_or_val_NAME_MAPPER_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
+#define TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
 
 #include <string>
 
@@ -36,10 +36,10 @@ using OpOrVal = llvm::PointerUnion<mlir::Operation*, mlir::Value>;
 class OpOrArgNameMapper {
  public:
   // Returns unique name for the given prefix.
-  llvm::StringRef GetUniqueName(llvm::StringRef prefix);
+  llvm::StringRef GetUniqueName(llvm::StringRef prefix, int hash_value = 0);
 
   // Returns unique name for the operation or value.
-  llvm::StringRef GetUniqueName(OpOrVal op_or_val);
+  llvm::StringRef GetUniqueName(OpOrVal op_or_val, int hash_value = 0);
 
   // Returns unique name as a string_view for the operation or value.
   absl::string_view GetUniqueNameView(OpOrVal op_or_val);
@@ -66,6 +66,8 @@ class OpOrArgNameMapper {
 
   // Returns the separator used before uniqueing suffix.
   virtual llvm::StringRef GetSuffixSeparator() { return ""; }
+
+  virtual llvm::StringRef GetDashSeparator() { return "_"; }
 
  private:
   // Returns name from the location of the operation or value.
@@ -99,4 +101,4 @@ class OpOrArgStripNameMapper : public OpOrArgNameMapper {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_op_or_val_NAME_MAPPER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_OP_OR_ARG_NAME_MAPPER_H_
