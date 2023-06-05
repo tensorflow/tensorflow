@@ -130,8 +130,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
 
-  opts.set_xla_gpu_enable_dot_strength_reduction(true);
-
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
   opts.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(false);
@@ -1019,11 +1017,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_dot_strength_reduction",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
-      debug_options->xla_gpu_enable_dot_strength_reduction(),
-      "Enable dot strength reduction-related optimizations on GPU."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_enable_experimental_block_size",
                 bool_setter_for(

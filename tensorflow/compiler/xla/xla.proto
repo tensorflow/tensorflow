@@ -521,9 +521,7 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Whether to enable dot strength reduction-related algebraic simplifications
-  // on GPU.
-  bool xla_gpu_enable_dot_strength_reduction = 211;
+  reserved 211;  // Was xla_gpu_enable_dot_strength_reduction
 
   // Enables experimental heuristic of choosing block size for launching a
   // kernel on GPU.

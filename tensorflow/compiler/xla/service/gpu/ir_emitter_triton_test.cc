@@ -449,8 +449,6 @@ class TritonGemmTestAny : public TritonGemmTest {
   DebugOptions GetDebugOptionsForTest() override {
     DebugOptions debug_options = TritonGemmTest::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_triton_gemm_any(true);
-    // Disable algebraic rewrites of dots
-    debug_options.set_xla_gpu_enable_dot_strength_reduction(false);
     return debug_options;
   }
 };

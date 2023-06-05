@@ -360,7 +360,6 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest, BatchDotBF16) {
   )";
   HloModuleConfig config;
   DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_dot_strength_reduction(false);
   config.set_debug_options(debug_options);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
