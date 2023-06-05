@@ -416,8 +416,8 @@ class RngBitGeneratorLowering
   }
 
  private:
-  static constexpr const char kThreeFryTarget[] = "xla.cpu.rng.three_fry";
-  static constexpr const char kPhiloxTarget[] = "xla.cpu.rng.philox";
+  static constexpr const char kThreeFryTarget[] = "xla_cpu_rng_three_fry";
+  static constexpr const char kPhiloxTarget[] = "xla_cpu_rng_philox";
 
   CustomCallDeclarations& custom_calls_;
 };

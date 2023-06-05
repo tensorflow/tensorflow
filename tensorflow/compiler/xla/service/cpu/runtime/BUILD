@@ -134,11 +134,20 @@ cc_library(
     hdrs = ["rng.h"],
     deps = [
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/runtime:memref_view",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+cc_library(
+    name = "rng_call",
+    srcs = ["rng_call.cc"],
+    hdrs = ["rng_call.h"],
+    deps = [
+        ":rng",
+        "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",
         "//tensorflow/compiler/xla/runtime:executable",
-        "@com_google_absl//absl/status",
-        "@llvm-project//mlir:Support",
     ],
 )

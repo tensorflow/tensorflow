@@ -130,7 +130,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime/convolution_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/fft_call.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime/rng.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/rng_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/xfeed.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"

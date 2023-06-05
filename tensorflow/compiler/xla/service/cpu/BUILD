@@ -303,7 +303,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:retain",
-        "//tensorflow/compiler/xla/service/cpu/runtime:rng",
+        "//tensorflow/compiler/xla/service/cpu/runtime:rng_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
