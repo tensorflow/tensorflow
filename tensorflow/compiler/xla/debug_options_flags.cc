@@ -1025,7 +1025,7 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_enable_dot_strength_reduction(),
       "Enable dot strength reduction-related optimizations on GPU."));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_optimized_block_size",
+      tsl::Flag("xla_gpu_enable_experimental_block_size",
                 bool_setter_for(
                     &DebugOptions::set_xla_gpu_enable_experimental_block_size),
                 debug_options->xla_gpu_enable_experimental_block_size(),
