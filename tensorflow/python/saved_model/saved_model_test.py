@@ -199,7 +199,7 @@ class SavedModelTest(SavedModelTestBase):
       f.write("invalid content")
     with self.session(graph=ops.Graph()) as sess:
       with self.assertRaisesRegex(
-          IOError, "Cannot parse file.*%s" % constants.SAVED_MODEL_FILENAME_PB):
+          IOError, "Cannot parse file.*Requested.*bytes but only read 0"):
         loader.load(sess, ["foo"], export_dir)
 
     # Cleanup the directory and start again.
