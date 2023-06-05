@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_densify.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/merge_padding_with.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/remove_noop.h"
+#include "tensorflow/lite/delegates/gpu/common/transformations/group_norm_mean_var_addition.h"
 
 namespace tflite {
 namespace gpu {
@@ -66,7 +67,9 @@ bool ApplyGeneralTransformations(ModelTransformer* transformer) {
          transformer->Apply("merge_add_with_convolution",
                             NewMergeAddWithConvolution().get()) &&
          transformer->Apply("merge_mul_with_convolution",
-                            NewMergeMulWithConvolution().get());
+                            NewMergeMulWithConvolution().get()) &&
+         transformer->Apply("group_norm_mean_var_addition",
+                            NewGroupNormMeanVarAddition().get());
 }
 
 }  // namespace

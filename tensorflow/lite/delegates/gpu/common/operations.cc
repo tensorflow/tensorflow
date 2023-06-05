@@ -125,6 +125,12 @@ std::string ToString(enum OperationType op) {
       return "greater";
     case OperationType::GREATER_EQUAL:
       return "greater_equal";
+    case OperationType::GROUP_NORMALIZATION:
+      return "group_normalization";
+    case OperationType::GROUP_NORM_MEAN:
+      return "group_norm_mean";
+    case OperationType::GROUP_NORM_VAR:
+      return "group_norm_var";
     case OperationType::HARD_SWISH:
       return "hard_swish";
     case OperationType::LESS:
@@ -255,6 +261,9 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"gelu", OperationType::GELU},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
+          {"group_normalization", OperationType::GROUP_NORMALIZATION},
+          {"group_norm_mean", OperationType::GROUP_NORM_MEAN},
+          {"group_norm_var", OperationType::GROUP_NORM_VAR},
           {"hard_swish", OperationType::HARD_SWISH},
           {"less", OperationType::LESS},
           {"less_equal", OperationType::LESS_EQUAL},
