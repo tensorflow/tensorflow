@@ -211,7 +211,8 @@ DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
           0) {
     return DimensionOrder(
         operand, /*batch_dimension_index=*/-1,
-        GetNonContractingDims(operand->shape(), /*batch_dims=*/{},
+        GetNonContractingDims(operand->shape(),
+                              BatchDimensionsForOperand(dot, operand_number),
                               {FirstContractingDimensionIndex(dot, 0)})
             .value()[0]);
   }
