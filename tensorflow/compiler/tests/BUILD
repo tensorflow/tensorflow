@@ -2646,7 +2646,6 @@ tpu_py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/platform:flags",
-        "//tensorflow/python/tpu:tpu_lib",
         "//third_party/py/numpy",
     ],
 )

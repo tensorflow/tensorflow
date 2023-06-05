@@ -18,6 +18,7 @@ import functools
 
 from absl.testing import parameterized
 from tensorflow.compiler.xla.service import hlo_pb2
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
@@ -29,7 +30,6 @@ from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
-from tensorflow.python.tpu import tpu_strategy_util
 
 
 class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
@@ -116,7 +116,7 @@ class RecomputeGradMemoryTest(test.TestCase, parameterized.TestCase):
     device_name = f"{device_type}:0"
     # Necessary for TFRT tests.
     if device_type == "TPU":
-      tpu_strategy_util.initialize_tpu_system()
+      tpu_cluster_resolver.initialize_tpu_system()
 
     n = 500
     with ops.device(device_name):

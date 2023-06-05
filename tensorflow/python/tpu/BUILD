@@ -333,7 +333,7 @@ pytype_strict_library(
         "//tensorflow/python:while_loop",
         "//tensorflow/python/client:session",
         "//tensorflow/python/compiler/xla",
-        "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -613,7 +613,7 @@ pytype_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python/client:session",
-        "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:monitoring",
@@ -621,7 +621,6 @@ pytype_strict_library(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:compat",
-        "//tensorflow/python/util:tf_export",
     ],
 )
 
@@ -906,7 +905,6 @@ tpu_py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":functional",
-        ":tpu_lib",
         ":tpu_py",
         ":tpu_replication",
         "//tensorflow/core:protos_all_py",
