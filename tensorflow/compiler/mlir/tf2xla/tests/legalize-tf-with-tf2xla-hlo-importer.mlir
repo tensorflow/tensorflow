@@ -653,6 +653,21 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %result : tensor<2x13x25x7xf32>
   }
 
+  //===--------------------------------------------------------------------===//
+  // tf.XlaReduceScatter legalization
+  //===--------------------------------------------------------------------===//
+  // CHECK-LABEL: func @xla_reduce_scatter
+  func.func @xla_reduce_scatter(%arg0: tensor<128x128xf32>) -> tensor<64x128xf32> {
+      %cst = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+      %cst_0 = "tf.Const"() {value = dense<[[0, 4], [1, 5], [2, 6], [3, 7]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
+      // CHECK:          "mhlo.reduce_scatter"(%arg0)
+      // CHECK{LITERAL}: replica_groups = dense<[[0, 4], [1, 5], [2, 6], [3, 7]]>
+      // CHECK-SAME:     scatter_dimension = 0
+      //
+      %1 = "tf.XlaReduceScatter"(%arg0, %cst_0, %cst) {reduce_op = "Add"} : (tensor<128x128xf32>, tensor<4x2xi32>, tensor<i32>) -> tensor<64x128xf32>
+      func.return %1 : tensor<64x128xf32>
+  }
+
   // CHECK-LABEL: func @xla_call_module
   func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
     // Equivalent to the following:
