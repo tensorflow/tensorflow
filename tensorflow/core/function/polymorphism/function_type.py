@@ -446,7 +446,7 @@ def _make_validated_mono_param(
 def canonicalize_to_monomorphic(
     args: Tuple[Any, ...], kwargs: Dict[Any, Any], default_values: Dict[Any,
                                                                         Any],
-    captures: Dict[Any, Any], polymorphic_type: FunctionType
+    capture_types: collections.OrderedDict, polymorphic_type: FunctionType
 ) -> Tuple[inspect.BoundArguments, FunctionType,
            trace_type.InternalTracingContext]:
   """Converts polymorphic parameters to monomorphic and associated type."""
@@ -497,10 +497,6 @@ def canonicalize_to_monomorphic(
           _make_validated_mono_param(name, arg, poly_parameter.kind,
                                      type_context,
                                      poly_parameter.type_constraint))
-
-  capture_types = collections.OrderedDict()
-  for name, value in captures.items():
-    capture_types[name] = trace_type.from_value(value, type_context)
 
   monomorphic_function_type = FunctionType(parameters, capture_types)
   mono_bound_arguments = monomorphic_function_type.bind(

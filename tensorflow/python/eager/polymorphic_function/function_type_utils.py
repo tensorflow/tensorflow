@@ -361,14 +361,11 @@ def make_function_type(python_function, input_signature):
 def make_canonicalized_monomorphic_type(
     args: Any,
     kwargs: Any,
-    captures: Any,
+    capture_types: Any,
     polymorphic_type,
     default_values,
 ) -> Tuple[function_type_lib.FunctionType, trace_type.InternalTracingContext]:
   """Generates function type given the function arguments."""
-  if captures is None:
-    captures = dict()
-
   kwargs = {
       function_type_lib.sanitize_arg_name(name): value
       for name, value in kwargs.items()
@@ -376,7 +373,7 @@ def make_canonicalized_monomorphic_type(
 
   _, function_type, type_context = (
       function_type_lib.canonicalize_to_monomorphic(
-          args, kwargs, default_values, captures, polymorphic_type
+          args, kwargs, default_values, capture_types, polymorphic_type
       )
   )
 
