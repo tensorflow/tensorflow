@@ -525,7 +525,7 @@ void CopyIncrementingAboveThreshold(
 }
 
 StatusOr<HloInstruction*> MakeSplitKOperand(
-    HloInstruction& dot,
+    HloInstruction& dot, const DotFusionAnalysis& analysis,
     const tensorflow::AutotuneResult::TritonGemmKey& tiling,
     const int64_t contracting_dim_idx, const int operand_number) {
   const Shape& shape = dot.operand(operand_number)->shape();
@@ -535,7 +535,6 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   if (tiling.split_k() > shape.dimensions(contracting_dim_idx)) {
     return Cancelled("Too small total contracting dimension size.");
   }
-  const DotFusionAnalysis analysis(&dot);
   int64_t size_to_split = tiling.split_k();
   auto fragment = analysis.IterSpec(operand_number, contracting_dim_idx)[0]
                       .subfragments.crbegin();
@@ -590,12 +589,14 @@ Status MakeDotComputationSplitKBatch(
     const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
   HloInstruction* dot = computation->root_instruction();
   CHECK_EQ(dot->opcode(), HloOpcode::kDot);
+  const DotFusionAnalysis analysis(dot);
   const DotDimensionNumbers& old_dim_numbers = dot->dot_dimension_numbers();
   DotDimensionNumbers new_dim_numbers;
 
   const int64_t lhs_contracting_idx = FirstContractingDimensionIndex(*dot, 0);
-  TF_ASSIGN_OR_RETURN(HloInstruction * lhs,
-                      MakeSplitKOperand(*dot, tiling, lhs_contracting_idx, 0));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * lhs,
+      MakeSplitKOperand(*dot, analysis, tiling, lhs_contracting_idx, 0));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.lhs_contracting_dimensions(),
       *new_dim_numbers.mutable_lhs_contracting_dimensions(),
@@ -606,8 +607,9 @@ Status MakeDotComputationSplitKBatch(
   new_dim_numbers.mutable_lhs_batch_dimensions()->Add(lhs_contracting_idx);
 
   const int64_t rhs_contracting_idx = FirstContractingDimensionIndex(*dot, 1);
-  TF_ASSIGN_OR_RETURN(HloInstruction * rhs,
-                      MakeSplitKOperand(*dot, tiling, rhs_contracting_idx, 1));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * rhs,
+      MakeSplitKOperand(*dot, analysis, tiling, rhs_contracting_idx, 1));
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_contracting_dimensions(),
       *new_dim_numbers.mutable_rhs_contracting_dimensions(),
