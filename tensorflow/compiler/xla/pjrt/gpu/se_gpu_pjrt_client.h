@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_GPU_SE_GPU_PJRT_CLIENT_H_
 
+#include <map>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/distributed/client.h"
@@ -27,6 +29,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu/gpu_topology.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/statusor.h"
+
+namespace stream_executor {
+
+class MultiDeviceAdapter;
+
+}
 
 namespace xla {
 
@@ -129,6 +137,56 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
   std::string device_vendor_;
   int slice_index_;
 };
+
+// A custom PjRtClient that overrides the device assignment method.
+class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
+ public:
+  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
+
+  StreamExecutorGpuClient(
+      std::string platform_name, LocalClient* client,
+      std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices,
+      int process_index, std::unique_ptr<se::DeviceMemoryAllocator> allocator,
+      std::unique_ptr<tsl::Allocator> host_memory_allocator,
+      bool should_stage_host_to_device_transfers,
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+      : xla::PjRtStreamExecutorClient(
+            platform_name, client, std::move(devices), process_index,
+            std::move(allocator), std::move(host_memory_allocator),
+            should_stage_host_to_device_transfers, std::move(gpu_run_options)),
+        topology_(xla::StreamExecutorGpuTopologyDescription::Create(
+            xla::GpuId(), std::move(platform_name),
+            devices_.back()->device_kind(), devices_)) {}
+
+  xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
+      int num_replicas, int num_partitions) const override;
+
+  absl::string_view platform_version() const override;
+
+  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
+                                    PjRtDevice* device) override;
+
+  StatusOr<const xla::PjRtTopologyDescription*> GetTopologyDescription()
+      const override {
+    return &topology_;
+  }
+
+  // TODO(b/285385306): Enable loading a non-loaded PjRtExecutable.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override {
+    return absl::WrapUnique<PjRtLoadedExecutable>(
+        tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
+  }
+
+ private:
+  xla::StreamExecutorGpuTopologyDescription topology_;
+};
+
+std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id);
 
 // distributed_client may be nullptr in non-distributed settings.
 // distributed_client should be in the connected state before calling this
