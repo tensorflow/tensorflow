@@ -42,6 +42,7 @@ inline constexpr int kSavedModelSchemaVersion = 1;
 
 // SavedModel proto filename prefix.
 inline constexpr char kSavedModelFilenamePrefix[] = "saved_model";
+
 // SavedModel proto filename.
 inline constexpr char kSavedModelFilenamePb[] = "saved_model.pb";
 

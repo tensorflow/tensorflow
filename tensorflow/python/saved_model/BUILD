@@ -857,9 +857,7 @@ tf_pybind_cc_library_wrapper(
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:fingerprinting",
         "//tensorflow/cc/saved_model:metrics",
-    ] + if_google([
-        "//tensorflow/tools/proto_splitter:merge",
-    ]),
+    ],
 )
 
 tf_python_pybind_extension(
@@ -868,13 +866,11 @@ tf_python_pybind_extension(
         "pywrap_saved_model.cc",
         "pywrap_saved_model_constants.cc",
         "pywrap_saved_model_fingerprinting.cc",
-        "pywrap_saved_model_merger.cc",
         "pywrap_saved_model_metrics.cc",
     ],
     hdrs = [
         "pywrap_saved_model_constants.h",
         "pywrap_saved_model_fingerprinting.h",
-        "pywrap_saved_model_merger.h",
         "pywrap_saved_model_metrics.h",
     ],
     # This fails Windows builds. Please check b/266870200 for details.
@@ -893,11 +889,8 @@ tf_python_pybind_extension(
     deps = [
         ":pywrap_saved_model_headers",
         "//tensorflow/cc/experimental/libexport:save",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
-        "@pybind11_abseil//pybind11_abseil:status_casters",
-        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
@@ -910,26 +903,6 @@ tf_py_strict_test(
         "//tensorflow/python/eager:test",
     ],
 )
-
-# copybara:uncomment_begin(google-only)
-#
-# tf_py_strict_test(
-#     name = "pywrap_saved_model_merger_test",
-#     srcs = ["pywrap_saved_model_merger_test.py"],
-#     data = [
-#         "//tensorflow/tools/proto_splitter/testdata:split-standard.cpb",
-#         "//tensorflow/tools/proto_splitter/testdata:split-standard.pbtxt",
-#     ],
-#     deps = [
-#         ":pywrap_saved_model",
-#         "//tensorflow/core:protos_all_py",
-#         "//tensorflow/python/eager:test",
-#         "//tensorflow/python/lib/io:lib",
-#         "//tensorflow/python/platform:client_testlib",
-#     ],
-# )
-#
-# copybara:uncomment_end
 
 tf_py_strict_test(
     name = "keras_injection_test",
