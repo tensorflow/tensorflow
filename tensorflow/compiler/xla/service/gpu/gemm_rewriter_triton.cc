@@ -196,12 +196,12 @@ DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
       dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
               num_split_k_batch_dims ==
           0) {
-    return DimensionOrder(
-        operand,
-        GetNonContractingDims(operand->shape(),
-                              BatchDimensionsForOperand(dot, operand_number),
-                              {FirstContractingDimensionIndex(dot, 0)})
-            .value()[0]);
+    StatusOr<std::vector<int64_t>> non_contracting_dims = GetNonContractingDims(
+        operand->shape(), BatchDimensionsForOperand(dot, operand_number),
+        {FirstContractingDimensionIndex(dot, 0)});
+    TF_CHECK_OK(non_contracting_dims.status());
+    CHECK_EQ(non_contracting_dims->size(), 1);
+    return DimensionOrder(operand, non_contracting_dims->front());
   }
   return DimensionOrder(operand,
                         /*splittable_dimension_index=*/-1);
