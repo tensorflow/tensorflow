@@ -65,14 +65,6 @@ const tsl::protobuf::RepeatedField<int64_t>& BatchDimensionsForOperand(
   return dimension_numbers.rhs_batch_dimensions();
 }
 
-// Index of first batch dimension of dot instruction operand; -1 if none exist.
-int64_t FirstBatchDimensionForOperand(const HloInstruction& dot,
-                                      const int operand_number) {
-  tsl::protobuf::RepeatedField<int64_t> dimensions =
-      BatchDimensionsForOperand(dot, operand_number);
-  return dimensions.empty() ? -1 : dimensions[0];
-}
-
 // Index of first contracting dimension of dot instruction operand.
 int64_t FirstContractingDimensionIndex(const HloInstruction& dot,
                                        const int operand_number) {
@@ -142,10 +134,8 @@ class DimensionOrder {
   // dimension indices describing the operand
   // are stored along with the dimension order for later analysis.
   explicit DimensionOrder(const HloInstruction* hlo,
-                          const int64_t batch_dimension_index,
                           const int64_t splittable_dimension_index)
-      : batch_dimension_index_(batch_dimension_index),
-        splittable_dimension_index_(splittable_dimension_index) {
+      : splittable_dimension_index_(splittable_dimension_index) {
     dim_order_.reserve(hlo->shape().rank());
     for (const int64_t i : hlo->shape().layout().minor_to_major()) {
       dim_order_.push_back({i, 0, hlo->shape().dimensions(i)});
@@ -182,8 +172,6 @@ class DimensionOrder {
 
   const DimOrderVector& GetDimOrderVector() const { return dim_order_; }
 
-  int64_t BatchDimensionIndex() const { return batch_dimension_index_; }
-
   int64_t SplittableDimensionIndex() const {
     return splittable_dimension_index_;
   }
@@ -194,7 +182,6 @@ class DimensionOrder {
   Status HandleCopyOrTranspose(const HloInstruction* hlo);
 
   DimOrderVector dim_order_;
-  int64_t batch_dimension_index_;
   int64_t splittable_dimension_index_;
 };
 
@@ -210,14 +197,13 @@ DimensionOrder DimensionOrder::FromDotOperand(const HloInstruction& dot,
               num_split_k_batch_dims ==
           0) {
     return DimensionOrder(
-        operand, /*batch_dimension_index=*/-1,
+        operand,
         GetNonContractingDims(operand->shape(),
                               BatchDimensionsForOperand(dot, operand_number),
                               {FirstContractingDimensionIndex(dot, 0)})
             .value()[0]);
   }
   return DimensionOrder(operand,
-                        FirstBatchDimensionForOperand(dot, operand_number),
                         /*splittable_dimension_index=*/-1);
 }
 
