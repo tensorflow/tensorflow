@@ -482,6 +482,14 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     return &topology_;
   }
 
+  // TODO(b/285385306): Enable loading a non-loaded PjRtExecutable.
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> Load(
+      std::unique_ptr<PjRtExecutable> executable,
+      const LoadOptions& load_options) override {
+    return absl::WrapUnique<PjRtLoadedExecutable>(
+        tensorflow::down_cast<PjRtLoadedExecutable*>(executable.release()));
+  }
+
  private:
   xla::StreamExecutorGpuTopologyDescription topology_;
 };

@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
@@ -65,6 +66,7 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + if_cuda([
         ":nccl_id_store_cuda",
@@ -162,5 +164,42 @@ cc_library(
     hdrs = ["gpu_topology.h"],
     deps = [
         ":gpu_topology_proto_cc",
+    ],
+)
+
+cc_library(
+    name = "se_gpu_compiler",
+    srcs = ["se_gpu_compiler.cc"],
+    hdrs = ["se_gpu_compiler.h"],
+    deps = [
+        ":se_gpu_pjrt_client",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
+        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
+        "@com_google_absl//absl/status",
+    ],
+)
+
+xla_cc_test(
+    name = "se_gpu_compiler_test",
+    srcs = if_gpu_is_configured(["se_gpu_compiler_test.cc"]),
+    tags = [
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":se_gpu_compiler",
+        ":se_gpu_pjrt_client",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:Parser",
     ],
 )

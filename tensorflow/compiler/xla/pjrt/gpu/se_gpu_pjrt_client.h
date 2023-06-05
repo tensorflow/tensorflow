@@ -55,6 +55,14 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
         platform_version_(platform_version),
         gpu_topology_(gpu_device_ids) {}
 
+  bool operator==(const StreamExecutorGpuTopologyDescription& other) const {
+    return this->platform_id() == other.platform_id() &&
+           this->platform_name() == other.platform_name() &&
+           this->platform_version() == other.platform_version() &&
+           this->gpu_topology().device_ids() ==
+               other.gpu_topology().device_ids();
+  }
+
   PjRtPlatformId platform_id() const override { return platform_id_; }
 
   absl::string_view platform_name() const override { return platform_name_; }
