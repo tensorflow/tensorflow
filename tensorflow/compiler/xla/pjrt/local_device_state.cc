@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 
+#include <functional>
+#include <limits>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"

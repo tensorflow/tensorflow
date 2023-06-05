@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_LOCAL_DEVICE_STATE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_LOCAL_DEVICE_STATE_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <random>
+#include <stack>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"

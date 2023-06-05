@@ -43,7 +43,6 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
-using absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64_t device_id,
                                       absl::Span<const OpMetadata> metadata) {
