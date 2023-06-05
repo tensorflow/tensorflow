@@ -42,6 +42,11 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
 
+_CACHED_CMP_KEY = "_cached_cmp_key"  # Used by hashing and equality.
+# Cache fixed, derived TypeSpec properties to avoid expensive recompute.
+CACHED_FIXED_PROPERTIES = [_CACHED_CMP_KEY]
+
+
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 class TypeSpec(
     internal.TypeSpec,
@@ -91,7 +96,7 @@ class TypeSpec(
   # be used to reconstruct the `TypeSpec`.  See the documentation for
   # `_serialize()` for more information.
 
-  __slots__ = []
+  __slots__ = CACHED_FIXED_PROPERTIES
 
   @abc.abstractproperty
   def value_type(self):
@@ -575,8 +580,12 @@ class TypeSpec(
 
   def __get_cmp_key(self):
     """Returns a hashable eq-comparable key for `self`."""
-    # TODO(b/133606651): Decide whether to cache this value.
-    return (type(self), self.__make_cmp_key(self._serialize()))
+    if not hasattr(self, _CACHED_CMP_KEY):
+      setattr(self, _CACHED_CMP_KEY, (
+          type(self),
+          self.__make_cmp_key(self._serialize()),
+      ))
+    return getattr(self, _CACHED_CMP_KEY)
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""
