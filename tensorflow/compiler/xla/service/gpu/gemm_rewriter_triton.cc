@@ -566,20 +566,18 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
     }
   }
 
-  absl::Span<const int64_t> physical_dim_order =
-      shape.layout().minor_to_major();
-  const int contracting_dim_physical_idx =
-      absl::c_find(physical_dim_order, contracting_dim_idx) -
-      physical_dim_order.begin();
-  Layout* batch_dot_layout = new_shape.mutable_layout();
-  for (int64_t physical_dim_idx : physical_dim_order) {
-    // When physical_dim_idx == contracting_dim_physical_idx add both
-    // physical_dim_idx+1 and physical_dim_idx because it gets split into two.
-    if (physical_dim_idx >= contracting_dim_physical_idx) {
-      batch_dot_layout->add_minor_to_major(physical_dim_idx + 1);
+  Layout* new_layout = new_shape.mutable_layout();
+  // Iterate through the logical dimension numbers in their physical order;
+  // copy them into the new layout incrementing by one those that get shifted
+  // by the insertion of the new batch dimension.
+  for (int64_t logical_dim_idx : shape.layout().minor_to_major()) {
+    // When 'logical_dim_idx' == 'contracting_dim_idx' add both
+    // 'logical_dim_idx'+1 and 'logical_dim_idx' because it gets split into two.
+    if (logical_dim_idx >= contracting_dim_idx) {
+      new_layout->add_minor_to_major(logical_dim_idx + 1);
     }
-    if (physical_dim_idx <= contracting_dim_physical_idx) {
-      batch_dot_layout->add_minor_to_major(physical_dim_idx);
+    if (logical_dim_idx <= contracting_dim_idx) {
+      new_layout->add_minor_to_major(logical_dim_idx);
     }
   }
   return MakeBitcastHlo(dot.mutable_operand(operand_number), new_shape);
@@ -679,6 +677,7 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
     const HloInstruction* parameter = root->operand(operand_number);
     DimensionOrder dim_order =
         DimensionOrder::FromDotOperand(*root, operand_number, split_k);
+    TF_CHECK_OK(RequireTritonGemmSupportedDimOrder(dim_order));
     while (parameter->opcode() != HloOpcode::kParameter) {
       CHECK_EQ(parameter->operand_count(), 1);
       TF_CHECK_OK(dim_order.HandleInstruction(parameter));
