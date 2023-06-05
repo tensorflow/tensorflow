@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 
 #include <optional>
+#include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
