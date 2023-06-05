@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/runtime/fallback_batch_kernel.h"
 
+#include <cstdlib>
+#include <string>
+
 #include "tensorflow/core/kernels/batching_util/bounded_executor.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
