@@ -2,6 +2,10 @@
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
+**`Documentation`** |
+------------------- |
+[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
+
 #### _Read this in other languages:_ 
 
  العربية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](README_ar.md)</kbd>
@@ -23,9 +27,10 @@
 
 نظام تحقق ومعالجة  [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
 
-نظام تنقيح 'oss fuzz' [![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
+نظام تنقيح 'او اس اس فوز'[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow-py.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow-py)
 
-[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
+نظام ترتيب وتصنيف مشاريع البرمجيات ذات المصدر المفتوح 'او اس اس رانك'[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
+
 
 [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
@@ -33,10 +38,7 @@
 
 [![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
-**`Documentation`** |
-------------------- |
 
-[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
 for machine learning. It has a comprehensive, flexible ecosystem of
@@ -46,10 +48,9 @@ for machine learning. It has a comprehensive, flexible ecosystem of
 researchers push the state-of-the-art in ML and developers easily build and
 deploy ML-powered applications.
 
-TensorFlow was originally developed by researchers and engineers working on the
-Google Brain team within Google's Machine Intelligence Research organization to
-conduct machine learning and deep neural networks research. The system is
-general enough to be applicable in a wide variety of other domains, as well.
+مكتبة (تينزور فلو) TensorFlow: هي مكتبة مفتوحة المصدر لتعليم الآلات من موقع قوقل. تمتلك أدوات ومكتبات شاملة ومجتمع لمصادر المعلومات، التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
+
+مكتبة TensorFlow: تم إنشاءها وتطويرها من قبل مجموعة من الباحثون والمهندسون لدى مؤسسة قوقلة, الذين يعملون في فريق الدماغ (Google brain) كمعمل اكتشافي جنباَ إلى جنب مع فريق المهندسين في Google Resarch  لإدارة تعلم الآلات والبحث في الشبكات العصبية الحاسوبية والنظام شامل وعام بما يكفي ليكون قابلاً للتطبيق في مجموعة واسعة من المجالات الأخرى أيضًا. 
 
 TensorFlow provides stable [Python](https://www.tensorflow.org/api_docs/python)
 and [C++](https://www.tensorflow.org/api_docs/cc) APIs, as well as
