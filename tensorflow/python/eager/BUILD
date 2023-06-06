@@ -397,6 +397,33 @@ cuda_py_strict_test(
     ],
 )
 
+py_strict_test(
+    name = "summary_optimizer_test",
+    srcs = ["summary_optimizer_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],  # TODO(b/219089812)
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/runtime_client:runtime_client_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/eager/polymorphic_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:summary_ops_v2",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/platform:gfile",
+        "@absl_py//absl/flags",
+    ],
+)
+
 py_strict_library(
     name = "tape",
     srcs = ["tape.py"],
@@ -465,7 +492,6 @@ cuda_py_strict_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python:random_ops",
@@ -483,6 +509,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -867,9 +894,9 @@ tf_py_strict_test(
         "//tensorflow/python:gradients",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops:nn_grad",
     ],
 )
 
@@ -1003,6 +1030,7 @@ py_strict_library(
         ":function",
         ":lift_to_graph",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
@@ -1081,7 +1109,6 @@ py_strict_library(
         "//tensorflow/python:pywrap_tfe",
         "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
-        "//tensorflow/python/distribute/cluster_resolver/tpu:tpu_cluster_resolver_py",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:remote_utils",
         "//tensorflow/python/training:server_lib",
@@ -1205,7 +1232,6 @@ tpu_py_strict_test(
         ":remote",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/framework:config",
-        "//tensorflow/python/tpu:tpu_strategy_util",
         "@absl_py//absl/flags",
         "@absl_py//absl/testing:absltest",
     ],

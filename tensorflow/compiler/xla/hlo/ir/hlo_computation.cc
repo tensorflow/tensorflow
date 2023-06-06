@@ -235,10 +235,10 @@ HloInstruction* HloComputation::ReplaceParameter(
   HloInstruction* new_instruction =
       AddInstructionInternal(std::move(instruction));
   HloInstruction* old_instruction = param_instructions_[param_no];
-  CHECK(
-      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
+  TF_CHECK_OK(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   param_instructions_[param_no] = new_instruction;
-  CHECK(RemoveInstruction(old_instruction).ok());
+  TF_CHECK_OK(RemoveInstruction(old_instruction));
   return new_instruction;
 }
 

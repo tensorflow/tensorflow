@@ -170,6 +170,7 @@ cc_library(
         "//tensorflow/core/profiler/rpc/client:save_profile",
         "//tensorflow/tsl/profiler/convert:xplane_to_trace_events",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
+        "//tensorflow/tsl/profiler/utils:session_manager",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",

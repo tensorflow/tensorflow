@@ -24,9 +24,9 @@ tf_py_strict_test(
         "notap",
     ],
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
+        "//tensorflow/python/framework",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],
 )
@@ -46,10 +46,10 @@ tf_py_strict_test(
         "notap",
     ],
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python/framework",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],
 )
@@ -69,9 +69,9 @@ tf_py_strict_test(
         "notap",
     ],
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
+        "//tensorflow/python/framework",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
     ],
 )

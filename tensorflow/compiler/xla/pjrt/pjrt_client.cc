@@ -51,7 +51,7 @@ PjRtFuture<Status> PjRtBuffer::CopyRawToHostFuture(
   return CopyRawToHost(*awaited_dst, offset, transfer_size);
 }
 
-MultiSliceConfig::~MultiSliceConfig() {}
+MultiSliceConfig::~MultiSliceConfig() = default;
 
 std::string CompiledMemoryStats::DebugString() const {
   return absl::Substitute(

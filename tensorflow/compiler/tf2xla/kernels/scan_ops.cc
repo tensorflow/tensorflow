@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"

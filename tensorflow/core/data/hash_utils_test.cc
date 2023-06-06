@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/data/hash_utils.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -1221,7 +1224,7 @@ static void BM_ParallelFunctionCallsGraph(benchmark::State& state) {
 
   uint64 hash_value;
   for (auto _ : state) {
-    CHECK(HashNode(graph_def, *target, &hash_value).ok());
+    TF_CHECK_OK(HashNode(graph_def, *target, &hash_value));
   }
 }
 BENCHMARK(BM_ParallelFunctionCallsGraph);
@@ -1273,7 +1276,7 @@ static void BM_ChainedFunctionCallsGraph(benchmark::State& state) {
 
   uint64 hash_value;
   for (auto _ : state) {
-    CHECK(HashNode(graph_def, target, &hash_value).ok());
+    TF_CHECK_OK(HashNode(graph_def, target, &hash_value));
   }
 }
 BENCHMARK(BM_ChainedFunctionCallsGraph);
@@ -1346,7 +1349,7 @@ static void BM_ComposedFunctionCallsGraph(benchmark::State& state) {
 
   uint64 hash_value;
   for (auto _ : state) {
-    CHECK(HashNode(graph_def, target, &hash_value).ok());
+    TF_CHECK_OK(HashNode(graph_def, target, &hash_value));
   }
 }
 BENCHMARK(BM_ComposedFunctionCallsGraph);

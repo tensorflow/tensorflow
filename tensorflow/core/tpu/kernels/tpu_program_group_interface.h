@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "absl/time/time.h"

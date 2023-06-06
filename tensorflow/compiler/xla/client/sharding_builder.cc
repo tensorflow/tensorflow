@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
 
+#include <vector>
+
 namespace xla {
 namespace sharding_builder {
 

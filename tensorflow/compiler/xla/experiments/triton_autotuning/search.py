@@ -37,7 +37,6 @@ import numpy as np
 import torch
 import tqdm
 from tqdm.contrib.logging import logging_redirect_tqdm
-import triton
 
 LOG = logging.getLogger(__name__)
 
@@ -55,7 +54,9 @@ for files already present.
 _MAX_WORKERS = flags.DEFINE_integer(
     'max_workers', 64, 'Number of threads to use'
 )
-_REPETITIONS = flags.DEFINE_integer('repetitions', 3, 'Number of requests')
+_REPETITIONS_MS = flags.DEFINE_integer(
+    'repetitions_ms', 300, 'Number of requests'
+)
 _NUM_SAMPLES = flags.DEFINE_integer('num_samples', 1000, 'Number of samples ')
 _TILINGS_M = flags.DEFINE_string(
     'tilings_m', '32, 64, 128, 256', 'Tilings to try for M'
@@ -177,7 +178,7 @@ def run_search(
       if _MAX_WORKERS.value == 1:
         for c in samples:
           res = benchmark_matmul(
-              c, pbar, shared_stream, tilings, _REPETITIONS.value
+              c, pbar, shared_stream, tilings, _REPETITIONS_MS.value
           )
           results.extend(res)
           write_timings(res)
@@ -189,7 +190,7 @@ def run_search(
                 pbar,
                 shared_stream,
                 tilings,
-                _REPETITIONS.value,
+                _REPETITIONS_MS.value,
             ): c
             for c in samples
         }
@@ -217,5 +218,4 @@ def main() -> None:
 if __name__ == '__main__':
   random.seed(42)
   app.parse_flags_with_usage(sys.argv)
-  triton.compiler.init_cuda_utils()
   main()

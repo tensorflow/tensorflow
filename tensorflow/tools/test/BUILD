@@ -28,8 +28,8 @@ py_library(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/client",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:gfile",
         "@six_archive//:six",
     ],
@@ -80,7 +80,7 @@ py_library(
     deps = [
         ":run_and_gather_logs_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "@six_archive//:six",

@@ -81,6 +81,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_cuda_graph_capture_threshold(2);
+  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(true);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -107,7 +108,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // Set 4GB space limit for redzone scratch allocator.
   opts.set_xla_gpu_redzone_scratch_max_megabytes(1LL << 12);
   opts.set_xla_gpu_shape_checks(DebugOptions::RUNTIME);
-  opts.set_xla_gpu_enable_mlir_lowering(true);
   opts.set_xla_gpu_normalize_layouts(true);
   opts.set_xla_gpu_simplify_all_fp_conversions(true);
   opts.set_xla_dump_latency_hiding_schedule(false);
@@ -129,8 +129,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
-
-  opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -271,11 +269,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                                         comma_separated_values);
         return true;
       };
-
-  auto setter_for_xla_gpu_enable_mlir_lowering = [debug_options](bool value) {
-    debug_options->set_xla_gpu_enable_mlir_lowering(value);
-    return true;
-  };
 
   // Custom "sub-parser" lambda for xla_partitioning_algorithm.
   auto setter_for_xla_partitioning_algorithm =
@@ -863,6 +856,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cuda_graph_capture_threshold(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cuda_graph_enable_concurrent_region",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_cuda_graph_enable_concurrent_region),
+      debug_options->xla_gpu_cuda_graph_enable_concurrent_region(),
+      "Identify concurrent regions in cuda graphs and execute them "
+      "concurrently."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_persistent_temp_buffers",
@@ -923,10 +923,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "xla_gpu_shape_checks", setter_for_xla_gpu_shape_checks,
       DebugOptions::ShapeChecks_Name(debug_options->xla_gpu_shape_checks()),
       "When to perform shape checks in XLA:GPU."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_mlir_lowering", setter_for_xla_gpu_enable_mlir_lowering,
-      debug_options->xla_gpu_enable_mlir_lowering(),
-      "Enable MLIR-based lowering in XLA:GPU instead of LLVM emitters."));
   flag_list->push_back(
       tsl::Flag("xla_gpu_normalize_layouts",
                 bool_setter_for(&DebugOptions::set_xla_gpu_normalize_layouts),
@@ -1021,13 +1017,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_dot_strength_reduction",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
-      debug_options->xla_gpu_enable_dot_strength_reduction(),
-      "Enable dot strength reduction-related optimizations on GPU."));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_optimized_block_size",
+      tsl::Flag("xla_gpu_enable_experimental_block_size",
                 bool_setter_for(
                     &DebugOptions::set_xla_gpu_enable_experimental_block_size),
                 debug_options->xla_gpu_enable_experimental_block_size(),

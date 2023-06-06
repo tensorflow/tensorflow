@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>

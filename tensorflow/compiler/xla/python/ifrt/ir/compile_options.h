@@ -33,9 +33,10 @@ namespace ifrt {
 struct IfrtIRCompileOptions
     : llvm::RTTIExtends<IfrtIRCompileOptions, CompileOptions> {
   IfrtIRCompileOptions() = default;
-  IfrtIRCompileOptions(
+  explicit IfrtIRCompileOptions(
       std::vector<int> device_assignments,
-      absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding)
+      absl::flat_hash_map<std::string, LoadedExecutable*> loaded_exec_binding =
+          {})
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)) {}
 

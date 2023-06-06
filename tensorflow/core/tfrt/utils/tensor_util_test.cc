@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 
+#include <complex>
+#include <memory>
+#include <numeric>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_tensor.h"

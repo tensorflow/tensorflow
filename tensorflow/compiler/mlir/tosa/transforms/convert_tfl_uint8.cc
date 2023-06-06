@@ -27,7 +27,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
@@ -58,7 +60,7 @@ namespace {
 class ConvertUint8ToInt8
     : public impl::TosaConvertTFLUint8PassBase<ConvertUint8ToInt8> {
  public:
-  explicit ConvertUint8ToInt8() {}
+  explicit ConvertUint8ToInt8() = default;
   void runOnOperation() override;
 };
 

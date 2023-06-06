@@ -426,9 +426,10 @@ using StackTracesMap =
 using FunctionDefLibraryStackTraces =
     absl::flat_hash_map<std::string, StackTracesMap>;
 
-// Generates a GraphDebugInfo proto from a StackTracesMap object.
+// Generates a GraphDebugInfo proto from a StackTracesMap object. Returns user
+// frames by default. If `user_frames` is false, returns all frames.
 tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map);
+    const tensorflow::StackTracesMap& map, bool user_frames = true);
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in

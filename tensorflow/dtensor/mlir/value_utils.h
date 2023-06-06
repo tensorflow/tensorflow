@@ -86,6 +86,9 @@ StatusOr<mlir::Value> SelectScalarValueFromArray(mlir::OpBuilder& builder,
 // then it returns the subtype.
 mlir::Type GetSubtypeOrSelf(mlir::Value value);
 
+// Returns whether `val` is of resource type.
+bool IsResourceType(mlir::Value val);
+
 }  // namespace dtensor
 }  // namespace tensorflow
 #endif  // TENSORFLOW_DTENSOR_MLIR_VALUE_UTILS_H_

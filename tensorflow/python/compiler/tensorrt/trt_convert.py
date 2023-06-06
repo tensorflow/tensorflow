@@ -954,6 +954,7 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
       [tensor.name for tensor in frozen_func.outputs], captures)
   new_func.graph.structured_outputs = nest.pack_sequence_as(
       func.graph.structured_outputs, new_func.graph.structured_outputs)
+  new_func._function_type = func.function_type  # pylint: disable=protected-access
 
   # Copy structured input signature from original function (used during
   # serialization)

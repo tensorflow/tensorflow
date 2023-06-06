@@ -19,6 +19,7 @@ cuda_py_strict_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
@@ -27,7 +28,6 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/tpu:tpu_strategy_util",
         "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )
@@ -46,6 +46,7 @@ tpu_py_strict_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
@@ -54,7 +55,6 @@ tpu_py_strict_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
-        "//tensorflow/python/tpu:tpu_strategy_util",
         "@absl_py//absl/testing:parameterized",
     ] + tf_additional_xla_deps_py(),
 )

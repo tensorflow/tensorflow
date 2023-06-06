@@ -26,7 +26,6 @@ from matmul_lib import MatmulTiling
 from matmul_lib import print_roofline_performance
 import torch
 import tqdm
-import triton
 
 
 _M = flags.DEFINE_integer('m', 64, 'Size of first matrix')
@@ -70,7 +69,7 @@ def main():
               _NUM_WARPS.value,
           )
       ],
-      repetitions=20,
+      repetitions_ms=300,
       debug=_DEBUG.value,
   )
   if len(timing) != 1:
@@ -84,6 +83,5 @@ def main():
 
 
 if __name__ == '__main__':
-  triton.compiler.init_cuda_utils()
   app.parse_flags_with_usage(sys.argv)
   main()

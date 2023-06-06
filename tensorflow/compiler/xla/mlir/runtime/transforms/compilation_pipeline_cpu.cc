@@ -179,7 +179,7 @@ void CreateDefaultXlaCpuRuntimeCompilationPipeline(
 
 void CreateDefaultXlaCpuAOTCompilationPipeline(PassManager& passes,
                                                const CpuPipelineOptions& opts) {
-  CreateXlaCpuCompilationPipeline(*passes, opts, /*useRuntime=*/false);
+  CreateXlaCpuCompilationPipeline(*passes, opts, /*useRuntime=*/true);
 }
 
 static void CreateDefaultCpuPipeline(mlir::OpPassManager& pm) {

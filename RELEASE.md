@@ -31,6 +31,10 @@
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.keras`
+    * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
+    allowing automatic tuning of steps per execution during `Model.fit`,
+    `Model.predict`, and `Model.evaluate` for a significant performance boost. 
 
 # Bug Fixes and Other Changes
 * `tf.lite`

@@ -381,7 +381,7 @@ cuda_py_strict_test(
     name = "memory_alignment_test",
     srcs = ["memory_alignment_test.py"],
     python_version = "PY3",
-    tags = base_tags,
+    tags = base_tags + ["no_oss"],  # TODO(b/285588022)
     xla_enable_strict_auto_jit = False,
     deps = [
         ":tf_trt_integration_test_base_srcs",

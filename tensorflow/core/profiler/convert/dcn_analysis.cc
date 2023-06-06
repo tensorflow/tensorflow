@@ -245,7 +245,7 @@ void DcnEventsProcessor::ProcessReceiveMessages(const XPlaneVisitor& plane) {
     uint32_t recv_msg_id = megascale_msg_[kMegaScaleDcnReceive];
     line.ForEachEvent([&](const XEventVisitor& event) {
       if (event.Id() == recv_msg_id) {
-        DcnMessage dcn_message = GetDcnMessageFromXEvent(plane, event);
+        DcnMessage dcn_message = GetDcnMessageFromXEvent(event);
         // TODO(emizan): Report invalid and clock skew messages somehow.
         // TODO(emizan): Bring back loopback messages when MSXLA fixes them.
         if (dcn_message.validity_info == DCN_MESSAGE_VALID) {

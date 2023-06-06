@@ -35,6 +35,7 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute import test_util
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config as tf_config
@@ -52,7 +53,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 
 
@@ -76,7 +76,7 @@ def create_test_objects(cluster_spec=None,
   if num_tpus is None:
     num_tpus = context.context().list_physical_devices('TPU')
   if num_tpus:
-    tpu_strategy_util.initialize_tpu_system()
+    tpu_cluster_resolver.initialize_tpu_system()
 
   if cluster_spec and task_type and task_id is not None:
     cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(

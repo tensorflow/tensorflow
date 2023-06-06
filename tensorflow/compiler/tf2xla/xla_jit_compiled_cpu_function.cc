@@ -158,8 +158,8 @@ XlaJitCompiledCpuFunction::Compile(
   XlaCompiledCpuFunction::set_static_data_raw_function(&jit->static_data_,
                                                        raw_function);
   if (cpu_executable->IsXlaRuntime()) {
-    XlaCompiledCpuFunction::set_static_data_run_function(&jit->static_data_,
-                                                         RunXlaRuntime);
+    XlaCompiledCpuFunction::set_static_data_external_run_function(
+        &jit->static_data_, RunXlaRuntime);
     XlaCompiledCpuFunction::set_static_data_cpu_executable(&jit->static_data_,
                                                            cpu_executable);
   }

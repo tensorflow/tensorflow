@@ -479,9 +479,11 @@ class ExtensionTypeSpec(type_spec.TypeSpec):
     return _create_object_from_type_and_dict(cls, spec_fields)
 
   def __setattr__(self, name, value):
-    if (hasattr(self, _IN_CONSTRUCTOR) and
-        self._tf_extension_type_has_field(name)):
+    if (hasattr(self, _IN_CONSTRUCTOR)
+        and self._tf_extension_type_has_field(name)):
       self.__dict__[name] = value
+    elif name in type_spec.CACHED_FIXED_PROPERTIES:
+      super().__setattr__(name, value)
     else:
       raise AttributeError(
           f'Cannot mutate attribute `{name}` '
@@ -1120,8 +1122,13 @@ class AnonymousExtensionTypeSpec(ExtensionTypeSpec):
         if not extension_type_field.ExtensionTypeField.is_reserved_name(name))
 
   def __setattr__(self, name, value):
-    raise AttributeError(f'Cannot set attribute `{name}`. '
-                         f'AnonymousExtensionTypeSpec instances are immutable.')
+    if name in type_spec.CACHED_FIXED_PROPERTIES:
+      super().__setattr__(name, value)
+    else:
+      raise AttributeError(
+          f'Cannot set attribute `{name}`. '
+          'AnonymousExtensionTypeSpec instances are immutable.'
+      )
 
   def __delattr__(self, name):
     raise AttributeError(f'Cannot delete attribute `{name}`. '

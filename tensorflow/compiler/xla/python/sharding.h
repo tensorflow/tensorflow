@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_SHARDING_H_
 
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -51,7 +52,7 @@ class Sharding {
 // Returns a hash that may sometimes return different hashes for equal values.
 // It is not a correct implementation of `__hash__` in python, but it's fine
 // for jit/pjit dispatch since it only causes spurious cache misses.
-size_t ShardingHash(const pybind11::object& obj);
+size_t ShardingHash(const pybind11::object& sharding);
 
 bool ShardingEqual(const pybind11::object& a, const pybind11::object& b);
 

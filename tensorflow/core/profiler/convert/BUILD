@@ -930,6 +930,7 @@ cc_library(
     deps = [
         "//tensorflow/tsl/profiler/utils:xplane_schema",
         "//tensorflow/tsl/profiler/utils:xplane_visitor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

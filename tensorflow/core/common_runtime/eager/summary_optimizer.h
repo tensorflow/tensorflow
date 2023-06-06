@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_SUMMARY_OPTIMIZER_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/string_view.h"
@@ -31,9 +32,10 @@ std::string NormalizeEdgeName(absl::string_view name);
 
 }  // namespace internal
 
-// Returns the name of the input_arg that determines whether or not to disable
-// summaries. If no such arg exists returns an empty string.
-absl::string_view GetDisableSummariesInputArg(const FunctionDef& fdef);
+// Returns the name of the input_arg and the bool value that determines whether
+// or not to disable summaries. If no such arg exists returns an empty string.
+std::pair<absl::string_view, bool> GetDisableSummariesInputArg(
+    const FunctionDef& fdef);
 
 // Generates new FunctionDef(s) with the summaries stripped out.
 // This function will traverse all the nested functions and generate a version

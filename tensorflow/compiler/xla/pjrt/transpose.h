@@ -30,6 +30,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

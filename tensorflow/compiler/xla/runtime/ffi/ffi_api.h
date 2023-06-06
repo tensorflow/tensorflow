@@ -345,6 +345,37 @@ enum class PrimitiveType : uint8_t {
   F64 = 12,
 };
 
+constexpr int ByteWidth(PrimitiveType type) {
+  switch (type) {
+    case PrimitiveType::PRED:
+      return 1;
+
+    case PrimitiveType::S8:
+    case PrimitiveType::U8:
+      return 1;
+
+    case PrimitiveType::S16:
+    case PrimitiveType::U16:
+    case PrimitiveType::F16:
+    case PrimitiveType::BF16:
+      return 2;
+
+    case PrimitiveType::S32:
+    case PrimitiveType::U32:
+    case PrimitiveType::F32:
+      return 4;
+
+    case PrimitiveType::S64:
+    case PrimitiveType::U64:
+    case PrimitiveType::F64:
+      return 8;
+
+    case PrimitiveType::PRIMITIVE_TYPE_INVALID:
+      assert(false && "Unsupported type");
+      return 0;
+  }
+}
+
 constexpr std::string_view PrimitiveTypeToString(PrimitiveType type) {
   switch (type) {
     case PrimitiveType::PRIMITIVE_TYPE_INVALID:
@@ -396,6 +427,17 @@ struct BufferArg {
   PrimitiveType dtype;
   void* data;
   Span<const int64_t> sizes;
+};
+
+// A flat view into the buffer argument with an identity (row major) layout.
+// If the memref shape and strides are not required, it is cheaper to pass the
+// flat buffer argument.
+struct FlatBufferArg {
+  std::string ToString() const;
+
+  PrimitiveType dtype;
+  void* data;
+  int64_t size_in_bytes;
 };
 
 // A type tag to represent dictionary attributes that can be decoded into
@@ -462,6 +504,13 @@ inline std::string BufferArg::ToString() const {
   ss << "Buffer: dtype=" << PrimitiveTypeToString(dtype);
   ss << " sizes=";
   PrintArray(ss, sizes);
+  return ss.str();
+}
+
+inline std::string FlatBufferArg::ToString() const {
+  std::stringstream ss;
+  ss << "Buffer: dtype=" << PrimitiveTypeToString(dtype);
+  ss << " size=" << size_in_bytes;
   return ss.str();
 }
 
@@ -1014,6 +1063,31 @@ struct FfiArgDecoding<BufferArg> {
 
     PrimitiveType dtype = static_cast<PrimitiveType>(encoded->dtype);
     return BufferArg{dtype, encoded->data, {encoded->dims, encoded->rank}};
+  }
+};
+
+template <>
+struct FfiArgDecoding<FlatBufferArg> {
+  using EncodedMemref = internal::EncodedMemref;
+
+  static std::optional<FlatBufferArg> Decode(const XLA_FFI_Api* api,
+                                             XLA_FFI_TypeId type_id,
+                                             void* value) {
+    if (!Ffi::Isa<BufferArg>(api, type_id)) {
+      return std::nullopt;
+    }
+
+    auto* encoded = reinterpret_cast<EncodedMemref*>(value);
+    XLA_FFI_ANNOTATE_MEMORY_IS_INITIALIZED(encoded, sizeof(EncodedMemref));
+    XLA_FFI_ANNOTATE_MEMORY_IS_INITIALIZED(
+        encoded, sizeof(EncodedMemref) + encoded->rank * sizeof(int64_t));
+
+    auto dtype = static_cast<PrimitiveType>(encoded->dtype);
+    int64_t size_in_bytes = ByteWidth(dtype);
+    for (int d = 0; d < encoded->rank; ++d) {
+      size_in_bytes *= encoded->dims[d];
+    }
+    return FlatBufferArg{dtype, encoded->data, size_in_bytes};
   }
 };
 

@@ -16,6 +16,8 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_UTILS_XPLANE_TEST_UTILS_H_
 
 #include <initializer_list>
+#include <utility>
+#include <variant>
 
 #include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
@@ -26,7 +28,7 @@ limitations under the License.
 namespace tsl {
 namespace profiler {
 
-using XStatValue = absl::variant<int64_t, uint64, absl::string_view>;
+using XStatValue = std::variant<int64_t, uint64, absl::string_view>;
 
 XPlane* GetOrCreateHostXPlane(XSpace* space);
 

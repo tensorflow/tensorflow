@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -92,6 +93,24 @@ std::vector<TensorHandlePtr> BroadcastTensorHandleToParallelTensor(
   return components;
 }
 
+StatusOr<ResourceHandle> TensorHandleToResourceHandle(
+    TFE_TensorHandle* tensor) {
+  // Resolve the Tensor as resource handle such that we can get the shape and
+  // dtype of the tensor it points to.
+  TF_Status status;
+  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tf_tensor(
+      TFE_TensorHandleResolve(tensor, &status), TF_DeleteTensor);
+  if (TF_GetCode(&status) != TF_OK) {
+    return StatusFromTF_Status(&status);
+  }
+  Tensor t;
+  TF_RETURN_IF_ERROR(TF_TensorToTensor(tf_tensor.get(), &t));
+  if (t.dtype() != DataType::DT_RESOURCE) {
+    return absl::InvalidArgumentError("Expecting a DT_RESOURCE Tensor");
+  }
+  return t.flat<ResourceHandle>()(0);
+}
+
 // Broadcast a single non-parallel resource tensor onto `mesh` with a fully
 // replicated sharding spec. Does not take ownership of `tensor`.
 std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
@@ -100,22 +119,14 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
   // Only broadcast resource tensors that point to scalars since they are
   // always replicated. We also still want to catch honest user errors so
   // error out on non-scalars.
-  // Resolve the Tensor as resource handle and get the shape and dtype
-  // of the tensor it points to.
-  std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)> tf_tensor(
-      TFE_TensorHandleResolve(tensor, status), TF_DeleteTensor);
-  Tensor t;
-  Status convert_status = TF_TensorToTensor(tf_tensor.get(), &t);
-  if (!convert_status.ok() || t.dtype() != DataType::DT_RESOURCE) {
-    TF_SetStatus(status, TF_INTERNAL,
-                 absl::StrCat("TF_TensorToTensor() Conversion failed:",
-                              convert_status.message())
-                     .c_str());
-    return nullptr;
-  }
+
   // Replicate this resource handle to all devices without changing the
   // associated device of the resource itself.
-  ResourceHandle r = t.flat<ResourceHandle>()(0);
+  auto r = TensorHandleToResourceHandle(tensor);
+  if (!r.ok()) {
+    Set_TF_Status_from_Status(status, r.status());
+    return nullptr;
+  }
 
   // Only broadcast resource tensors onto a CPU mesh. Copying
   // resource tensors to non CPU device is not supported.
@@ -128,8 +139,8 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
 
     // Get the stack_trace and Summaries from the resource tensor.
     absl::StrAppend(
-        &error_message, "Offending variable summary: ", r.SummarizeValue(),
-        "\nStack trace: ", DefinitionLocationMsg(r.definition_stack_trace()));
+        &error_message, "Offending variable summary: ", r->SummarizeValue(),
+        "\nStack trace: ", DefinitionLocationMsg(r->definition_stack_trace()));
     TF_SetStatus(status, TF_INVALID_ARGUMENT, error_message.c_str());
     return nullptr;
   }
@@ -151,9 +162,9 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
       context, tensor, target_mesh, status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
 
-  int rank = r.dtypes_and_shapes().empty()
+  int rank = r->dtypes_and_shapes().empty()
                  ? 0
-                 : r.dtypes_and_shapes().begin()->shape.dims();
+                 : r->dtypes_and_shapes().begin()->shape.dims();
 
   StatusOr<std::unique_ptr<TensorWithLayoutTf>> result = CreateTensorWithLayout(
       std::move(tensors), Layout::ReplicatedOnMesh(target_mesh, rank));
@@ -167,14 +178,14 @@ std::unique_ptr<TensorWithLayoutTf> BroadcastResourceTensor(
     return nullptr;
   }
 
-  if (!r.dtypes_and_shapes().empty()) {
-    PartialTensorShape partial_shape = r.dtypes_and_shapes().begin()->shape;
+  if (!r->dtypes_and_shapes().empty()) {
+    PartialTensorShape partial_shape = r->dtypes_and_shapes().begin()->shape;
     // Set the shape/type of the tensor that the resource points to
     // so that the graph has correct shape/type information that we can use.
     const Status s =
         llvm::cast<ResourceHandleWithLayout>((*result).get())
             ->UpdateShapeAndDType(partial_shape.AsProto(),
-                                  r.dtypes_and_shapes().begin()->dtype);
+                                  r->dtypes_and_shapes().begin()->dtype);
     if (!s.ok()) {
       TF_SetStatus(
           status, TF_INTERNAL,

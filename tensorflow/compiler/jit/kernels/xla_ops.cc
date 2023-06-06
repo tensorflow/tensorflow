@@ -592,19 +592,23 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                              compilation_result, done, inputs,
                              resources = resources_]() {
       auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
-      std::vector<VariableInfo> variable_infos;
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
-                              &variable_infos),
-          done);
-      OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                           done);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
-                            *compilation_result, pjrt_executable, ctx),
-          done);
+      // Separate scope so that VariableInfo locks are released before done() is
+      // called.
+      {
+        std::vector<VariableInfo> variable_infos;
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                                &variable_infos),
+            done);
+        OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                             done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
+                              *compilation_result, pjrt_executable, ctx),
+            done);
+      }
       VLOG(2) << "Done executing with PJRT.";
       done();
     };
@@ -623,65 +627,69 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   // Continuation of the execution, may be run in a different thread.
   auto run_xla_cluster = [ctx, client, executable, compilation_result, done,
                           inputs, resources = resources_]() {
-    auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
-    std::vector<VariableInfo> variable_infos;
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
-                            &variable_infos),
-        done);
-    OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                         done);
-    std::map<int, const Tensor*> resource_var_ptrs;
-    for (int i = 0; i < resources.size(); i++) {
-      resource_var_ptrs[resources[i]] = variable_infos[i].var()->tensor();
-    }
-
-    std::shared_ptr<se::DeviceMemoryAllocator> allocator =
-        GetAllocator(ctx->device(), GetStream(ctx), platform_info);
-    XlaComputationLaunchContext launch_context =
-        GetLaunchContext(platform_info, ctx, client, allocator.get());
-
-    const xla::HloInputOutputAliasConfig& input_output_alias =
-        executable->executable()->module().input_output_alias_config();
-    StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
-        launch_context.PopulateInputs(
-            ctx, compilation_result, resource_var_ptrs,
-            /*missing_ctx_input_prefix=*/0, input_output_alias);
-    OP_REQUIRES_OK_ASYNC(ctx, execution_inputs.status(), done);
-
-    xla::gpu::GpuExecutableRunOptions gpu_options;
-    xla::DeviceAssignment device_assignment;
-    xla::ExecutableRunOptions run_options;
-    if (compilation_result->collective_info.has_value()) {
+    // Separate scope so that VariableInfo locks are released before done is
+    // called.
+    {
+      auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
+      std::vector<VariableInfo> variable_infos;
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          ResolveDeviceAssignment(ctx, *compilation_result->collective_info,
-                                  run_options, device_assignment, gpu_options),
+          GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                              &variable_infos),
           done);
+      OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                           done);
+      std::map<int, const Tensor*> resource_var_ptrs;
+      for (int i = 0; i < resources.size(); i++) {
+        resource_var_ptrs[resources[i]] = variable_infos[i].var()->tensor();
+      }
+
+      std::shared_ptr<se::DeviceMemoryAllocator> allocator =
+          GetAllocator(ctx->device(), GetStream(ctx), platform_info);
+      XlaComputationLaunchContext launch_context =
+          GetLaunchContext(platform_info, ctx, client, allocator.get());
+
+      const xla::HloInputOutputAliasConfig& input_output_alias =
+          executable->executable()->module().input_output_alias_config();
+      StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+          launch_context.PopulateInputs(
+              ctx, compilation_result, resource_var_ptrs,
+              /*missing_ctx_input_prefix=*/0, input_output_alias);
+      OP_REQUIRES_OK_ASYNC(ctx, execution_inputs.status(), done);
+
+      xla::gpu::GpuExecutableRunOptions gpu_options;
+      xla::DeviceAssignment device_assignment;
+      xla::ExecutableRunOptions run_options;
+      if (compilation_result->collective_info.has_value()) {
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             ResolveDeviceAssignment(
+                                 ctx, *compilation_result->collective_info,
+                                 run_options, device_assignment, gpu_options),
+                             done);
+      }
+
+      // Hardcode run id to always be zero: TF distributed strategy
+      // differentiates between subsequent runs using dependency edges. This
+      // is safe, as only TF dist-strat can produce distributed ops, and we
+      // can rely on TF dist-strat invariants.
+      xla::RunId run_id(0);
+      run_options.set_run_id(run_id);
+
+      StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
+          platform_info, launch_context, std::move(*execution_inputs),
+          run_options, executable, ctx, allocator.get());
+      OP_REQUIRES_ASYNC(ctx, execution_output.ok(), execution_output.status(),
+                        done);
+
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          launch_context.PopulateOutputs(
+              ctx, compilation_result, execution_output->ConsumeResult(),
+              /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
+              input_output_alias, resource_var_ptrs),
+          done);
+      VLOG(1) << "Done";
     }
-
-    // Hardcode run id to always be zero: TF distributed strategy
-    // differentiates between subsequent runs using dependency edges. This
-    // is safe, as only TF dist-strat can produce distributed ops, and we
-    // can rely on TF dist-strat invariants.
-    xla::RunId run_id(0);
-    run_options.set_run_id(run_id);
-
-    StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
-        platform_info, launch_context, std::move(*execution_inputs),
-        run_options, executable, ctx, allocator.get());
-    OP_REQUIRES_ASYNC(ctx, execution_output.ok(), execution_output.status(),
-                      done);
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        launch_context.PopulateOutputs(
-            ctx, compilation_result, execution_output->ConsumeResult(),
-            /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
-            input_output_alias, resource_var_ptrs),
-        done);
-    VLOG(1) << "Done";
     done();
   };
 

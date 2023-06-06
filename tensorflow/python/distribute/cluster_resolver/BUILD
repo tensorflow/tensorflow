@@ -33,11 +33,11 @@ py_strict_library(
     srcs = ["cluster_resolver.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
         "@six_archive//:six",
     ],
@@ -49,7 +49,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -60,7 +60,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -71,7 +71,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -92,7 +92,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -103,7 +103,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base_cluster_resolver_py",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -116,10 +116,10 @@ tf_py_strict_test(
         ":base_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -132,7 +132,7 @@ tf_py_strict_test(
         ":base_cluster_resolver_py",
         ":gce_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -146,10 +146,10 @@ tf_py_strict_test(
         ":tfconfig_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -163,7 +163,7 @@ tf_py_strict_test(
         ":sagemaker_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -176,7 +176,7 @@ tf_py_strict_test(
     deps = [
         ":slurm_cluster_resolver_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python/training:server_lib",
     ],
 )
 
@@ -204,7 +204,7 @@ tf_py_strict_test(
 #         ":brain_jobs_cluster_resolver_py",
 #         "//tensorflow/python:client_testlib",
 #         "//tensorflow/python:framework_test_lib",
-#         "//tensorflow/python:training_server_lib",
+#         "//tensorflow/python/training:server_lib",
 #     ],
 # )
 # copybara:uncomment_end

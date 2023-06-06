@@ -64,8 +64,8 @@ py_test(
     ],
     deps = [
         ":upgrade_schema_main_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

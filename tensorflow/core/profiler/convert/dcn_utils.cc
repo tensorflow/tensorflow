@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/dcn_utils.h"
 
+#include "absl/strings/match.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 #include "tensorflow/tsl/profiler/utils/xplane_visitor.h"
 
@@ -25,11 +27,9 @@ namespace {
 using tsl::profiler::MicroToNano;
 using tsl::profiler::StatType;
 using tsl::profiler::XEventVisitor;
-using tsl::profiler::XPlaneVisitor;
 using tsl::profiler::XStatVisitor;
 
-DcnMessage CreateDcnMessageFromStats(const XPlaneVisitor& plane_visitor,
-                                     const XEventVisitor& event_visitor) {
+DcnMessage CreateDcnMessageFromStats(const XEventVisitor& event_visitor) {
   DcnMessage dcn_message;
   event_visitor.ForEachStat([&](const XStatVisitor& stat) {
     if (!stat.Type()) return;
@@ -81,8 +81,6 @@ DcnMessage CreateDcnMessageFromStats(const XPlaneVisitor& plane_visitor,
   return dcn_message;
 }
 
-}  // namespace
-
 // Analyze message to see if it can be directly processed or it falls under
 // corner-case categories, or if there is something wrong with it.
 void SetMessageValidity(DcnMessage& dcn_message) {
@@ -106,13 +104,16 @@ void SetMessageValidity(DcnMessage& dcn_message) {
     dcn_message.validity_info = DCN_MESSAGE_VALID;
   }
 }
+}  // namespace
 
-DcnMessage GetDcnMessageFromXEvent(const XPlaneVisitor& plane_visitor,
-                                   const XEventVisitor& event_visitor) {
-  DcnMessage dcn_message =
-      CreateDcnMessageFromStats(plane_visitor, event_visitor);
+DcnMessage GetDcnMessageFromXEvent(const XEventVisitor& event_visitor) {
+  DcnMessage dcn_message = CreateDcnMessageFromStats(event_visitor);
   SetMessageValidity(dcn_message);
   return dcn_message;
+}
+
+bool IsDcnEvent(const tsl::profiler::XEventVisitor& event) {
+  return absl::StartsWith(event.Name(), "MegaScale:");
 }
 
 }  // namespace profiler

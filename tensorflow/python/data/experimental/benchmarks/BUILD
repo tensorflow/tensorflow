@@ -14,10 +14,10 @@ py_strict_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:math_ops",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/ops:math_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -26,10 +26,10 @@ tf_py_strict_test(
     name = "autotune_benchmark",
     srcs = ["autotune_benchmark.py"],
     deps = [
-        "//tensorflow/python:math_ops",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/ops:math_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -38,11 +38,11 @@ tf_py_strict_test(
     name = "parameter_value_benchmark",
     srcs = ["parameter_value_benchmark.py"],
     deps = [
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:script_ops",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:script_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -52,11 +52,11 @@ tf_py_strict_test(
     srcs = ["csv_dataset_benchmark.py"],
     tags = ["no_pip"],
     deps = [
-        "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:readers",
         "//tensorflow/python/data/ops:readers",
+        "//tensorflow/python/ops:parsing_ops",
         "//tensorflow/python/platform:gfile",
     ],
 )
@@ -66,13 +66,13 @@ tf_py_strict_test(
     srcs = ["map_and_batch_benchmark.py"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:batching",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -81,14 +81,14 @@ tf_py_strict_test(
     name = "map_defun_benchmark",
     srcs = ["map_defun_benchmark.py"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:map_fn",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:tensor_spec",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:map_defun",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:map_fn",
+        "//tensorflow/python/ops:math_ops",
     ],
 )
 
@@ -106,10 +106,10 @@ tf_py_strict_test(
     name = "optimize_benchmark",
     srcs = ["optimize_benchmark.py"],
     deps = [
-        "//tensorflow/python:math_ops",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:options",
+        "//tensorflow/python/ops:math_ops",
     ],
 )
 
@@ -130,11 +130,11 @@ tf_py_strict_test(
     name = "snapshot_dataset_benchmark",
     srcs = ["snapshot_dataset_benchmark.py"],
     deps = [
-        "//tensorflow/python:array_ops_gen",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/experimental/ops:snapshot",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/ops:array_ops_gen",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

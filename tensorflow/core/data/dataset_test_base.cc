@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <complex>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <utility>
@@ -349,7 +350,7 @@ Status DatasetOpsTestBase::CreateDatasetContext(
     std::unique_ptr<OpKernelContext>* dataset_context) {
   Status status = CheckOpKernelInput(*dateset_kernel, *inputs);
   if (!status.ok()) {
-    VLOG(0) << "WARNING: " << status.ToString();
+    VLOG(0) << "WARNING: " << status;
   }
   TF_RETURN_IF_ERROR(CreateOpKernelContext(
       dateset_kernel, inputs, dataset_context_params, dataset_context));

@@ -48,7 +48,7 @@ class GpuStream : public internal::StreamInterface {
   // Explicitly initialize the CUDA resources associated with this stream, used
   // by StreamExecutor::AllocateStream().
   bool Init();
-  void SetPriority(int priority) { priority_ = priority; }
+  void SetPriority(int priority) override { priority_ = priority; }
   int priority() const { return priority_; }
 
   // Explicitly destroy the CUDA resources associated with this stream, used by

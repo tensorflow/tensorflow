@@ -15,8 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 #define TENSORFLOW_CORE_DATA_DATASET_UTILS_H_
 
+#include <atomic>
 #include <functional>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"

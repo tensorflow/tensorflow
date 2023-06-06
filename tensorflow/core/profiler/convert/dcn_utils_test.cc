@@ -75,6 +75,27 @@ void PopulateXPlane(XPlane &xplane, absl::string_view event_name, int offset,
       payload_size);
 }
 
+TEST(DcnUtilsTest, IsDcnEvent) {
+  XPlane xplane;
+  PopulateXPlane(xplane, kMegaScaleDcnReceive, 0, "test", 0, 0, 0, 0, 0, 0, 0,
+                 0);
+  XLine line = xplane.lines()[0];
+  XPlaneVisitor xplane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&xplane);
+
+  XEventVisitor visitor(&xplane_visitor, &line, &line.events()[0]);
+  EXPECT_TRUE(IsDcnEvent(visitor));
+}
+
+TEST(DcnUtilsTest, IsNotDcnEvent) {
+  XPlane xplane;
+  PopulateXPlane(xplane, "test", 0, "test", 0, 0, 0, 0, 0, 0, 0, 0);
+  XLine line = xplane.lines()[0];
+  XPlaneVisitor xplane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&xplane);
+
+  XEventVisitor visitor(&xplane_visitor, &line, &line.events()[0]);
+  EXPECT_FALSE(IsDcnEvent(visitor));
+}
+
 TEST(DcnUtilsTest, GetDcnMessageFromXEvent) {
   XPlane xplane;
   PopulateXPlane(xplane, kMegaScaleDcnReceive, 100000, "all-reduce.273_312", 2,
@@ -82,7 +103,7 @@ TEST(DcnUtilsTest, GetDcnMessageFromXEvent) {
   XPlaneVisitor xplane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&xplane);
   XEventVisitor visitor(&xplane_visitor, &xplane.lines()[0],
                         &xplane.lines()[0].events()[0]);
-  EXPECT_THAT(GetDcnMessageFromXEvent(xplane_visitor, visitor),
+  EXPECT_THAT(GetDcnMessageFromXEvent(visitor),
               testing::FieldsAre(
                   "all-reduce.273_312", /* collective name */
                   2, 3, 1, 3, /* slice_src, tpu_src, slice_dst, tpu_dst */
@@ -101,7 +122,7 @@ TEST(DcnUtilsTest, GetDcnMessageFromXEventLoopBack) {
   XPlaneVisitor xplane_visitor = tsl::profiler::CreateTfXPlaneVisitor(&xplane);
   XEventVisitor visitor(&xplane_visitor, &xplane.lines()[0],
                         &xplane.lines()[0].events()[0]);
-  EXPECT_THAT(GetDcnMessageFromXEvent(xplane_visitor, visitor),
+  EXPECT_THAT(GetDcnMessageFromXEvent(visitor),
               testing::FieldsAre(
                   "all-gather.1234", /* collective name */
                   2, 3, 2, 1, /* slice_src, tpu_src, slice_dst, tpu_dst */

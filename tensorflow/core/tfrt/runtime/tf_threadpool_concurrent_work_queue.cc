@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/tf_threadpool_concurrent_work_queue.h"
 
+#include <memory>
 #include <optional>
 #include <utility>
 
