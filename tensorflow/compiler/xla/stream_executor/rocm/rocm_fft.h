@@ -22,12 +22,12 @@ limitations under the License.
 
 #if TENSORFLOW_USE_ROCM
 
+#include "rocm/rocm_config.h"
 #if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/hipfft/hipfft.h"
 #else
 #include "rocm/include/hipfft.h"
 #endif
-#include "rocm/rocm_config.h"
 
 #endif
 

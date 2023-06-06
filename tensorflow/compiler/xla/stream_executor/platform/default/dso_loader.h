@@ -73,6 +73,7 @@ using tsl::internal::CachedDsoLoader::GetHipDsoHandle;
 using tsl::internal::CachedDsoLoader::GetHipfftDsoHandle;
 using tsl::internal::CachedDsoLoader::GetHipsolverDsoHandle;
 using tsl::internal::CachedDsoLoader::GetHipsparseDsoHandle;
+using tsl::internal::CachedDsoLoader::GetHipblasltDsoHandle;
 using tsl::internal::CachedDsoLoader::GetMiopenDsoHandle;
 using tsl::internal::CachedDsoLoader::GetRocblasDsoHandle;
 using tsl::internal::CachedDsoLoader::GetRocrandDsoHandle;

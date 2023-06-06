@@ -427,6 +427,7 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
         "//tensorflow/tsl/platform:status",
+        "@local_config_rocm//rocm:rocm_headers",
     ],
 )
 
