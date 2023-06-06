@@ -31,8 +31,8 @@
 
 نظام ترتيب وتصنيف مشاريع البرمجيات ذات المصدر المفتوح 'او اس اس رانك'[![OSSRank](https://shields.io/endpoint?url=https://ossrank.com/shield/44)](https://ossrank.com/p/44)
 
+مدونة إرشادية للمساهمين في مجتمعات المصادر المفتوحة لتعزيز بيئة كاملة ودية ومحترمة للجميع  [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 [![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
 
