@@ -65,7 +65,7 @@ def main():
   df = pd.read_csv(_DATA.value).sample(_NUM_SAMPLES.value)
   shared_stream = torch.cuda.Stream()
   measured_times = []
-  pbar = tqdm.tqdm(total=_NUM_SAMPLES.value)
+  pbar = tqdm.tqdm(total=_NUM_SAMPLES.value, ncols=0)
   with torch.cuda.stream(shared_stream):
     for _, r in df.iterrows():
       measured_times.append(get_actual_time(r, shared_stream, pbar))

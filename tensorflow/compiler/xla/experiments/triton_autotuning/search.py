@@ -172,7 +172,7 @@ def run_search(
   with concurrent.futures.ThreadPoolExecutor(
       max_workers=_MAX_WORKERS.value
   ) as executor:
-    pbar = tqdm.tqdm(total=len(samples) * len(tilings))
+    pbar = tqdm.tqdm(total=len(samples) * len(tilings), ncols=0)
     results = []
     with logging_redirect_tqdm():
       if _MAX_WORKERS.value == 1:

@@ -68,7 +68,7 @@ def main() -> None:
       parse_int_list(_NUM_STAGES.value),
       parse_int_list(_NUM_WARPS.value),
   )
-  pbar = tqdm.tqdm(total=len(tilings))
+  pbar = tqdm.tqdm(total=len(tilings), ncols=0)
   timings = sorted(
       benchmark_matmul(
           dims, pbar, s, tilings, repetitions_ms=300, debug=_DEBUG.value

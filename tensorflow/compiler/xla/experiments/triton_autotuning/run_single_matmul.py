@@ -53,7 +53,7 @@ _DEBUG = flags.DEFINE_bool('debug', False, 'Print debug information')
 
 def main():
   s = torch.cuda.Stream()
-  pbar = tqdm.tqdm()
+  pbar = tqdm.tqdm(ncols=0)
   dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
   timing = benchmark_matmul(
       dims=dims,
