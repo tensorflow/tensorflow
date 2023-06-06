@@ -40,15 +40,15 @@
 
 
 
-[TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
-for machine learning. It has a comprehensive, flexible ecosystem of
+
 [tools](https://www.tensorflow.org/resources/tools),
 [libraries](https://www.tensorflow.org/resources/libraries-extensions), and
 [community](https://www.tensorflow.org/community) resources that lets
 researchers push the state-of-the-art in ML and developers easily build and
 deploy ML-powered applications.
 
-مكتبة (تينزور فلو) TensorFlow: هي مكتبة مفتوحة المصدر لتعليم الآلات من موقع قوقل. تمتلك أدوات ومكتبات شاملة ومجتمع لمصادر المعلومات، التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
+[مكتبة (تينزور فلو) TensorFlow:](https://www.tensorflow.org/) 
+هي مكتبة مفتوحة المصدر لتعليم الآلات من موقع قوقل. تمتلك أدوات ومكتبات شاملة ومجتمع لمصادر المعلومات، التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
 
 مكتبة TensorFlow: تم إنشاءها وتطويرها من قبل مجموعة من الباحثون والمهندسون لدى مؤسسة قوقلة, الذين يعملون في فريق الدماغ (Google brain) كمعمل اكتشافي جنباَ إلى جنب مع فريق المهندسين في Google Resarch  لإدارة تعلم الآلات والبحث في الشبكات العصبية الحاسوبية والنظام شامل وعام بما يكفي ليكون قابلاً للتطبيق في مجموعة واسعة من المجالات الأخرى أيضًا. 
 
