@@ -28,10 +28,10 @@ py_strict_test(
     tags = ["no_oss"],
     deps = [
         ":common_transformers",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",
         "//tensorflow/python/autograph/pyct:transformer",
+        "//tensorflow/python/platform:client_testlib",
         "@gast_archive//:gast",
     ],
 )
