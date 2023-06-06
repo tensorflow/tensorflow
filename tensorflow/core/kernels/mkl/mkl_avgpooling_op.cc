@@ -222,13 +222,15 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
         const int64_t out_backprop_cols = grad_tensor.dim_size(2);
         const int64_t out_backprop_depth = grad_tensor.dim_size(3);
         int64_t out_height, out_width, pad_rows, pad_cols;
-        OP_REQUIRES_OK(context, GetWindowedOutputSize(
-                                    in_rows, window_rows, row_stride,
-                                    this->padding_, &out_height, &pad_rows));
+        OP_REQUIRES_OK(
+            context, GetWindowedOutputSize(in_rows, window_rows, row_stride,
+                                           /*dilation_rate=*/1, this->padding_,
+                                           &out_height, &pad_rows));
 
-        OP_REQUIRES_OK(context, GetWindowedOutputSize(
-                                    in_cols, window_cols, col_stride,
-                                    this->padding_, &out_width, &pad_cols));
+        OP_REQUIRES_OK(
+            context, GetWindowedOutputSize(in_cols, window_cols, col_stride,
+                                           /*dilation_rate=*/1, this->padding_,
+                                           &out_width, &pad_cols));
 
         for (int64_t r = 0; r < out_backprop_rows; ++r) {
           int rindex, rsize;
