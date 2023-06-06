@@ -773,6 +773,7 @@ cc_library(
     name = "pattern_matcher",
     hdrs = ["pattern_matcher.h"],
     deps = [
+        ":hlo_parser",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -785,6 +786,7 @@ xla_cc_test(
     name = "pattern_matcher_test",
     srcs = ["pattern_matcher_test.cc"],
     deps = [
+        ":hlo_parser",
         ":pattern_matcher",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
