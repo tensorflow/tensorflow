@@ -16,12 +16,25 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CONSTANT_FOLD_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_CONSTANT_FOLD_UTILS_H_
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
 
 namespace mlir {
 namespace TF {
 
+// TODO(b/285423375): Remove this function as it is no longer used.
 TFE_Context* GetContextForConstantFold();
+
+// Checks whether the given TF operation can be folded or not.
+bool CanBeFolded(Operation* inst);
+
+// Evaluates the operation with given operand values.
+LogicalResult EvaluateOperation(Operation* inst,
+                                llvm::ArrayRef<ElementsAttr> operands,
+                                llvm::SmallVector<Attribute>& results);
 
 }  // namespace TF
 }  // namespace mlir
