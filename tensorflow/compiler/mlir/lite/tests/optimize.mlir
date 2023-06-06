@@ -568,8 +568,8 @@ func.func @FuseFullyConnectedAddWithScalarRhs(%arg0: tensor<40x37xf32>, %arg1: t
   // CHECK: return %[[fc]]
 }
 
-// CHECK-LABEL: @FuseFullyConnectedAddWithUnfusableRhs
-func.func @FuseFullyConnectedAddWithUnfusableRhs(%arg0: tensor<4x37xf32>, %arg1: tensor<4x37xf32>) -> tensor<4x4xf32> {
+// CHECK-LABEL: @FuseFullyConnectedAddNoBiasWithUnfusableRhs
+func.func @FuseFullyConnectedAddNoBiasWithUnfusableRhs(%arg0: tensor<4x37xf32>, %arg1: tensor<4x37xf32>) -> tensor<4x4xf32> {
   %cst = "tfl.no_value"() {value} : () -> none
   %cst2 = arith.constant dense<[[2.0, 2.1, 2.2, 2.3], [2.0, 2.1, 2.2, 2.3], [2.0, 2.1, 2.2, 2.3], [2.0, 2.1, 2.2, 2.3]]> : tensor<4x4xf32>
 
@@ -581,6 +581,23 @@ func.func @FuseFullyConnectedAddWithUnfusableRhs(%arg0: tensor<4x37xf32>, %arg1:
   // CHECK-DAG: %[[unit:.*]] = "tfl.no_value"() {value} : () -> none
   // CHECK-DAG: %[[filter:.*]] = arith.constant dense<{{.*}}> : tensor<4x4xf32>
   // CHECK: %[[fc_result:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[unit]])
+  // CHECK: %[[add_result:.*]] = tfl.add %[[fc_result]], %[[filter]]
+  // CHECK: return %[[add_result]]
+}
+
+// CHECK-LABEL: @FuseFullyConnectedAddWithUnfusableRhs
+func.func @FuseFullyConnectedAddWithUnfusableRhs(%arg0: tensor<4x37xf32>, %arg1: tensor<4x37xf32>) -> tensor<4x4xf32> {
+  %cst = arith.constant dense<[2.0, 2.1, 2.2, 2.3]> : tensor<4xf32>
+  %cst2 = arith.constant dense<[[2.0, 2.1, 2.2, 2.3], [2.0, 2.1, 2.2, 2.3], [2.0, 2.1, 2.2, 2.3], [2.0, 2.1, 2.2, 2.3]]> : tensor<4x4xf32>
+
+  %0 = "tfl.fully_connected" (%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<4x37xf32>, tensor<4x37xf32>, tensor<4xf32>) -> (tensor<4x4xf32>)
+  %1 = "tfl.add"(%0, %cst2) {fused_activation_function = "NONE"} : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+
+  func.return %1 : tensor<4x4xf32>
+
+  // CHECK-DAG: %[[bias:.*]] = arith.constant dense<{{.*}}> : tensor<4xf32>
+  // CHECK-DAG: %[[filter:.*]] = arith.constant dense<{{.*}}> : tensor<4x4xf32>
+  // CHECK: %[[fc_result:.*]] = "tfl.fully_connected"(%arg0, %arg1, %[[bias]])
   // CHECK: %[[add_result:.*]] = tfl.add %[[fc_result]], %[[filter]]
   // CHECK: return %[[add_result]]
 }

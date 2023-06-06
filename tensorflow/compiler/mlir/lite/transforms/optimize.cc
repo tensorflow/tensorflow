@@ -770,6 +770,9 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     // Check if the constant RHS is either 0D (scalar), or a 1D with
     // `{num_channels}` shape.
     auto constant_val_type = constant_val.getType().cast<TensorType>();
+    if (constant_val_type.getRank() > 1) {
+      return failure();
+    }
 
     // In TFLite FullyConnect definition, bias must be a 1D tensor where
     // the number of elements is equal to the number of channels.
