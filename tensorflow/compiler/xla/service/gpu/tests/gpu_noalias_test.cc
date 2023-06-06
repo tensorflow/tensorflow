@@ -58,15 +58,8 @@ CHECK: define amdgpu_kernel void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 derefer
                                          : R"(
 CHECK: define void @{{[a-zA-Z0-9_]+}}(ptr noalias align 16 dereferenceable(16) %arg0, ptr noalias align 16 dereferenceable(16) %arg1, ptr noalias align 128 dereferenceable(48) %arg2)
   )";
-<<<<<<< HEAD
-  CompileAndVerifyIr(
-      std::move(hlo_module),
-      expected_ir,
-      /*match_optimized_ir=*/false);
-=======
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/false);
->>>>>>> google_upstream/master
 }
 
 }  // namespace gpu
