@@ -225,12 +225,54 @@ PYBIND11_MODULE(xla_extension, m) {
              }
              return ValueOrThrow(LiteralToPython(std::move(literal)));
            })
-      .def("live_buffers", [](const ClientAndPtr<PjRtDevice>& device) {
-        PythonDeprecationWarning(
-            "Per device live_buffers() is going to be deprecated. Please "
-            "use the jax.live_arrays() for jax.Arrays instead.");
-        return py::list();
-      });
+      .def("live_buffers",
+           [](const ClientAndPtr<PjRtDevice>& device) {
+             PythonDeprecationWarning(
+                 "Per device live_buffers() is going to be deprecated. Please "
+                 "use the jax.live_arrays() for jax.Arrays instead.");
+             return py::list();
+           })
+      .def(
+          "memory_stats",
+          [](const PjRtDevice& device)
+              -> std::optional<std::map<std::string, int64_t>> {
+            GlobalPyRefManager()->CollectGarbage();
+            xla::StatusOr<tsl::AllocatorStats> maybe_stats =
+                device.GetAllocatorStats();
+            if (absl::IsUnimplemented(maybe_stats.status())) {
+              return std::nullopt;
+            }
+            // Raise error if any status other than Unimplemented is returned.
+            ThrowIfError(maybe_stats.status());
+
+            std::map<std::string, int64_t> result;
+            result["num_allocs"] = maybe_stats->num_allocs;
+            result["bytes_in_use"] = maybe_stats->bytes_in_use;
+            result["peak_bytes_in_use"] = maybe_stats->peak_bytes_in_use;
+            result["largest_alloc_size"] = maybe_stats->largest_alloc_size;
+            if (maybe_stats->bytes_limit) {
+              result["bytes_limit"] = *maybe_stats->bytes_limit;
+            }
+            result["bytes_reserved"] = maybe_stats->bytes_reserved;
+            result["peak_bytes_reserved"] = maybe_stats->peak_bytes_reserved;
+            if (maybe_stats->bytes_reservable_limit) {
+              result["bytes_reservable_limit"] =
+                  *maybe_stats->bytes_reservable_limit;
+            }
+            result["largest_free_block_bytes"] =
+                maybe_stats->largest_free_block_bytes;
+            if (maybe_stats->pool_bytes) {
+              result["pool_bytes"] = *maybe_stats->pool_bytes;
+            }
+            if (maybe_stats->peak_pool_bytes) {
+              result["peak_pool_bytes"] = *maybe_stats->peak_pool_bytes;
+            }
+            return result;
+          },
+          "Returns memory statistics for this device keyed by name. May not be "
+          "implemented on all platforms, and different platforms may return "
+          "different stats, or -1 for unavailable stats. 'bytes_in_use' is "
+          "usually available. Intended for diagnostic use.");
   static PyMethodDef get_attr_method = {
       "__getattr__",
       +[](PyObject* self, PyObject* args) -> PyObject* {

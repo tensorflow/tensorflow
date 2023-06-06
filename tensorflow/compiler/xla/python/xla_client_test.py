@@ -2213,6 +2213,28 @@ def TestFactory(xla_backend,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    def testMemoryStats(self):
+      for device in self.backend.local_devices():
+        stats = device.memory_stats()
+        if (
+            self.backend.platform != "tpu"
+            or pjrt_c_api
+            or not tfrt_tpu
+            or external_tpu
+        ):
+          self.assertIsNone(stats)
+        else:
+          self.assertIsNotNone(stats)
+          # Spot check a few fields
+          self.assertEqual(type(stats["num_allocs"]), int)
+          self.assertGreaterEqual(stats["num_allocs"], 0)
+          self.assertEqual(type(stats["bytes_in_use"]), int)
+          self.assertGreaterEqual(stats["bytes_in_use"], 0)
+          self.assertEqual(type(stats["peak_bytes_in_use"]), int)
+          self.assertGreaterEqual(stats["peak_bytes_in_use"], 0)
+          self.assertEqual(type(stats["largest_alloc_size"]), int)
+          self.assertGreaterEqual(stats["largest_alloc_size"], 0)
+
   tests.append(DeviceTest)
 
   class ErrorTest(ComputationTest):
