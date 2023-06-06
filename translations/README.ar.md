@@ -35,10 +35,9 @@
 مدونة إرشادية للمساهمين في مجتمعات المصادر المفتوحة لتعزيز بيئة كاملة ودية ومحترمة للجميع  [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
 [مدونة المساهمين في مجتمعات المصادر المفتوحة](https://www-contributor--covenant-org.translate.goog/?_x_tr_sl=auto&_x_tr_tl=de&_x_tr_hl=de)
+  عملية التكامل والتطوير بشكل مستمر [![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
 
-[![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
-
-[![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
+إصدار المكتبة الليلي للتجربة كما الاصدار الحديث ولكن يوجب الإنتباة إذ أن الإصدارات الليلية غالبًا ما تكون غير مستقرة [![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 
 ## مكتبة (تينزور فلو) TensorFlow:
