@@ -68,7 +68,7 @@ Status ExtractConstVectorFromValue(mlir::Value value,
                                    llvm::SmallVector<int64_t, 4>* out_vector);
 
 // Returns a int64 scalar constant with `value`.
-mlir::Value CreateIntScalarConst(const int64_t value, mlir::OpBuilder builder,
+mlir::Value CreateIntScalarConst(int64_t value, mlir::OpBuilder builder,
                                  mlir::Location loc, bool use_int64 = true);
 
 // Returns a scalar constant with 'value' of 'type'.

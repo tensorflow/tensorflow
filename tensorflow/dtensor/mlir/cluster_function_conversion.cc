@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -62,7 +65,7 @@ mlir::LogicalResult AttachRetvalLayouts(
   if (!func)
     return sp_call_op.emitOpError() << "found no FuncOp for symbol " << sym;
 
-  llvm::SmallVector<absl::optional<Layout>, 8> retvals_layouts;
+  llvm::SmallVector<std::optional<Layout>, 8> retvals_layouts;
   retvals_layouts.reserve(func.getNumResults());
   for (auto operand : func.front().getTerminator()->getOperands()) {
     auto result_layout_or_status = ExtractLayoutFromOperand(operand);
