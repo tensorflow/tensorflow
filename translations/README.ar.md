@@ -46,11 +46,14 @@
 
 مكتبة TensorFlow: تم إنشاءها وتطويرها من قبل مجموعة من الباحثون والمهندسون لدى مؤسسة قوقلة، الذين يعملون في فريق الدماغ (Google brain) كمعمل اكتشافي جنباَ إلى جنب مع فريق المهندسين في Google Resarch  لإدارة تعلم الآلات والبحث في الشبكات العصبية الحاسوبية والنظام شامل وعام بما يكفي ليكون قابلاً للتطبيق في مجموعة واسعة من المجالات الأخرى أيضًا. 
 
-مكتبة TensorFlow توفر لغة البرمجة الثابتة [python](https://www.tensorflow.org/api_docs/python) 
-ولغة [++c](https://www.tensorflow.org/api_docs/cc) (API) Application Programming Interface
-كما توفرAPI غير المضمونة لتتوافق مع الاصدارات السابقة للغات أخرى. لذلك ينصح بمتابعة أحدث الإصدارات للبرامج وتحديثات الأمات عن طريق الاشتراك في البريد الإلكتروني / المجلة الشهرية عن طريق
-[البريد الالكتروني](announce@tensorflow.org)
-يمكنك الإطلاع على جميع القوائم البريدية المتاحة للتاكد من مواكبة الإصدارات والتحديثات الأمنية  
+مكتبة TensorFlow توفر واجهات برمجة التطبيقات 
+لغة البرمجة الثابتة [python](https://www.tensorflow.org/api_docs/python) 
+ولغة
+[c++](https://www.tensorflow.org/api_docs/cc)
+
+
+كما توفر API غير المضمونة لتتوافق مع الاصدارات السابقة للغات أخرى. لذلك ينصح بمتابعة  أحدث الإصدارات للبرامج وتحديثات الأمان عن طريق الاشتراك في قائمة
+[البريد الالكتروني announce@tensorflow.org_](announce@tensorflow.org)  
 non-guaranteed backward compatible API for
 [other languages](https://www.tensorflow.org/api_docs).
 
