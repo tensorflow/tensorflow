@@ -38,6 +38,7 @@ py_strict_library(
     ],
     srcs_version = "PY3",
     deps = [
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:extension_type",
@@ -86,6 +87,7 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":structured_tensor",
+        "//tensorflow/core/config:flags_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

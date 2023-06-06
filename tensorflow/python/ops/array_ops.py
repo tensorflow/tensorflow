@@ -754,7 +754,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 
 @tf_export("size", v1=[])
 @dispatch.add_dispatch_support
-def size_v2(input, out_type=dtypes.int32, name=None):
+def size_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
@@ -771,9 +771,11 @@ def size_v2(input, out_type=dtypes.int32, name=None):
 
   Args:
     input: A `Tensor` or `SparseTensor`.
-    name: A name for the operation (optional).
     out_type: (Optional) The specified non-quantized numeric output type of the
-      operation. Defaults to `tf.int32`.
+      operation. Defaults to `tf.int32`. (Note: there is an experimental
+      flag, `tf_shape_default_int64` that changes the default to `tf.int64`.
+      This is an unsupported, experimental setting that causes known breakages.)
+    name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
@@ -782,13 +784,17 @@ def size_v2(input, out_type=dtypes.int32, name=None):
   Equivalent to np.size()
   @end_compatibility
   """
-
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return size(input, name, out_type)
 
 
 @tf_export(v1=["size"])
 @dispatch.add_dispatch_support
-def size(input, name=None, out_type=dtypes.int32):
+def size(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
@@ -806,7 +812,9 @@ def size(input, name=None, out_type=dtypes.int32):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     out_type: (Optional) The specified non-quantized numeric output type of the
-      operation. Defaults to `tf.int32`.
+      operation. Defaults to `tf.int32`. (Note: there is an experimental
+      flag, `tf_shape_default_int64` that changes the default to `tf.int64`.
+      This is an unsupported, experimental setting that causes known breakages.)
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
@@ -815,6 +823,11 @@ def size(input, name=None, out_type=dtypes.int32):
   Equivalent to np.size()
   @end_compatibility
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return size_internal(input, name, optimize=True, out_type=out_type)
 
 
