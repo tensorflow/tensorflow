@@ -1075,7 +1075,7 @@ int64_t MinSystemMemory(int64_t available_memory, int cc_major) {
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
 #elif !defined(__GNUC__) && defined(NDEBUG)
-// Do nothing
+  // Do nothing
 #else
   // Double the amount of available GPU memory in non-opt builds (debug
   // builds in windows); because in non-opt builds more system memory
@@ -1546,18 +1546,39 @@ Status BaseGPUDeviceFactory::CreateDevices(
   TF_RETURN_IF_ERROR(GetDeviceLocalities(
       tf_device_specs.size(), interconnect_maps, &device_localities));
 
+  GPUProcessState* process_state = GPUProcessState::singleton();
+
   // Build the GPUDevices
   for (int di = 0; di < tf_device_specs.size(); ++di) {
     tsl::TfDeviceId tf_device_id(di);
+
+    std::vector<tsl::TfDeviceId> peer_gpu_ids;
+    size_t num_tf_gpus = tf_device_specs.size();
+    peer_gpu_ids.reserve(num_tf_gpus);
+    for (int id = 0; id < num_tf_gpus; ++id) {
+      tsl::TfDeviceId peer_tf_device_id(id);
+      if (peer_tf_device_id != di) {
+        peer_gpu_ids.push_back(peer_tf_device_id);
+      }
+    }
+
+    int64_t memory_limit = tf_device_specs[di].memory_limit_bytes;
+    Allocator* gpu_allocator = process_state->GetGPUAllocator(
+        options.config.gpu_options(), tf_device_id, memory_limit, peer_gpu_ids);
+    if (gpu_allocator == nullptr) {
+      return absl::InternalError(absl::StrCat(
+          "Failed to get memory allocator for TF GPU ", tf_device_id.value(),
+          " with ", memory_limit, " bytes of memory."));
+    }
+
     auto it = device_localities.find(tf_device_id);
     if (it == device_localities.end()) {
       return errors::Internal("Failed to find DeviceLocality for GPU device ",
                               tf_device_id.value());
     }
     TF_RETURN_IF_ERROR(CreateGPUDevice(options, name_prefix, tf_device_id,
-                                       tf_device_specs[di].memory_limit_bytes,
-                                       it->second, tf_device_specs.size(),
-                                       devices));
+                                       /*dev_locality=*/it->second,
+                                       gpu_allocator, devices));
   }
   return OkStatus();
 }
@@ -1581,9 +1602,8 @@ static string GetShortDeviceDescription(
 
 Status BaseGPUDeviceFactory::CreateGPUDevice(
     const SessionOptions& options, const string& name_prefix,
-    tsl::TfDeviceId tf_device_id, int64_t memory_limit,
-    const DeviceLocality& dev_locality, size_t num_tf_gpus,
-    std::vector<std::unique_ptr<Device>>* devices) {
+    tsl::TfDeviceId tf_device_id, const DeviceLocality& dev_locality,
+    Allocator* gpu_allocator, std::vector<std::unique_ptr<Device>>* devices) {
   CHECK_GE(tf_device_id.value(), 0);
   const string device_name =
       strings::StrCat(name_prefix, "/device:GPU:", tf_device_id.value());
@@ -1602,23 +1622,6 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
   }
   auto desc = std::move(desc_status).value();
 
-  std::vector<tsl::TfDeviceId> peer_gpu_ids;
-  peer_gpu_ids.reserve(num_tf_gpus);
-  for (int id = 0; id < num_tf_gpus; ++id) {
-    tsl::TfDeviceId peer_tf_device_id(id);
-    if (peer_tf_device_id != tf_device_id) {
-      peer_gpu_ids.push_back(peer_tf_device_id);
-    }
-  }
-
-  GPUProcessState* process_state = GPUProcessState::singleton();
-  Allocator* gpu_allocator = process_state->GetGPUAllocator(
-      options.config.gpu_options(), tf_device_id, memory_limit, peer_gpu_ids);
-  if (gpu_allocator == nullptr) {
-    return errors::Internal("Failed to get memory allocator for TF GPU ",
-                            tf_device_id.value(), " with ", memory_limit,
-                            " bytes of memory.");
-  }
   std::optional<AllocatorStats> stats = gpu_allocator->GetStats();
   if (!stats) {
     return errors::Internal("No allocator statistics");
