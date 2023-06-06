@@ -167,7 +167,8 @@ Status CreateFileForDumping(llvm::StringRef name,
 
   if (dir == kCrashReproducerStdErr) {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "(stderr)";
+    *filepath =
+        llvm::formatv("(stderr; requested filename: '{0}')", name).str();
     return Status();
   }
 
