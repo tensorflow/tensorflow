@@ -67,7 +67,7 @@ tf_py_test(
     ],
     deps = [
         ":models",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -95,7 +95,7 @@ tf_py_test(
     deps = [
         ":input_data",
         ":models",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -131,7 +131,7 @@ tf_py_test(
     ],
     deps = [
         ":train_main_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -176,7 +176,7 @@ tf_py_test(
     ],
     deps = [
         ":freeze_main_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -218,7 +218,7 @@ tf_py_test(
     ],
     deps = [
         ":wav_to_features_main_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -261,7 +261,7 @@ tf_py_test(
     ],
     deps = [
         ":generate_streaming_test_wav_main_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -316,7 +316,7 @@ tf_py_test(
     ],
     deps = [
         ":label_wav_main_lib",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

@@ -114,11 +114,11 @@ tf_py_strict_test(
     main = "cluster_resolver_test.py",
     deps = [
         ":base_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],
 )
@@ -131,7 +131,7 @@ tf_py_strict_test(
     deps = [
         ":base_cluster_resolver_py",
         ":gce_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],
 )
@@ -144,11 +144,11 @@ tf_py_strict_test(
     main = "tfconfig_cluster_resolver_test.py",
     deps = [
         ":tfconfig_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],
 )
@@ -161,8 +161,8 @@ tf_py_strict_test(
     main = "sagemaker_cluster_resolver_test.py",
     deps = [
         ":sagemaker_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],
 )
@@ -175,7 +175,7 @@ tf_py_strict_test(
     tags = [],
     deps = [
         ":slurm_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],
 )
@@ -187,8 +187,8 @@ tf_py_strict_test(
     main = "kubernetes_cluster_resolver_test.py",
     deps = [
         ":kubernetes_cluster_resolver_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:server_lib",
     ],
 )
@@ -202,8 +202,8 @@ tf_py_strict_test(
 #     main = "brain_jobs_cluster_resolver_test.py",
 #     deps = [
 #         ":brain_jobs_cluster_resolver_py",
-#         "//tensorflow/python:client_testlib",
-#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python/framework:test_lib",
+#         "//tensorflow/python/platform:client_testlib",
 #         "//tensorflow/python/training:server_lib",
 #     ],
 # )
