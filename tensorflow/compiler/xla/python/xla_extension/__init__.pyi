@@ -667,7 +667,7 @@ class GSPMDSharding(XLACompatibleSharding):
   def __init__(self, devices: Sequence[Device],
                op_sharding: Union[OpSharding, HloSharding]): ...
   _devices: Tuple[Device, ...]
-  _op_sharding: Union[OpSharding, HloSharding]
+  _hlo_sharding: HloSharding
 
 class PjitFunction:
   def __call__(self, *args, **kwargs) -> Any: ...
