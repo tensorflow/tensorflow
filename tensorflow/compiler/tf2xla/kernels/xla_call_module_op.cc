@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -77,10 +78,9 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
   TF_RETURN_IF_ERROR(
       xla::ConvertHloToMlirHlo(*imported, &computation.proto(),
                                /*import_all_computations=*/true));
-  XLA_VLOG_LINES(
-      5, absl::StrCat(
-             "MHLO module lowered from TF function called by XlaCallModule: ",
-             mlir::debugString(*imported)));
+  if (VLOG_IS_ON(5)) {
+    DumpMlirOpToFile("xla_call_module.imported_tf_func", *imported);
+  }
 
   // Rename all functions beforehand in order to avoid conflicts.
   mlir::StringAttr main_func_name;
@@ -514,10 +514,9 @@ class XlaCallModuleOp : public XlaOpKernel {
           &context_, func.getArgumentTypes(), ret.getOperandTypes()));
     }
 
-    XLA_VLOG_LINES(
-        5, absl::StrCat(
-               "XlaCallModule MHLO module after TF function call import: ",
-               mlir::debugString(module)));
+    if (VLOG_IS_ON(5)) {
+      DumpMlirOpToFile("xla_call_module.after_tf_func_call_import", module);
+    }
     return absl::OkStatus();
   }
 

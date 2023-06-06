@@ -386,12 +386,11 @@ cc_library(
     srcs = ["xla_call_module_loader.cc"],
     hdrs = ["xla_call_module_loader.h"],
     deps = [
-        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/mlir/utils:error_util",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:mhlo_passes",
-        "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_utils",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "//tensorflow/tsl/platform:errors",
@@ -420,13 +419,13 @@ tf_kernel_library(
     deps = [
         ":xla_call_module_loader",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
+        "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
@@ -446,7 +445,6 @@ tf_kernel_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
-        "@stablehlo//:stablehlo_ops",
     ],
 )
 
