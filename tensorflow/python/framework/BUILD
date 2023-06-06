@@ -453,6 +453,7 @@ py_strict_library(
     visibility = visibility + [
         "//smartass:__subpackages__",
         "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
         "//third_party/cloud_tpu/convergence_tools:__subpackages__",
         "//third_party/mlperf:__subpackages__",
         "//third_party/py/tf_slim:__subpackages__",
