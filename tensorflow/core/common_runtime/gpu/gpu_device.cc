@@ -253,8 +253,7 @@ class BaseGPUDevice::StreamGroupFactory {
     if (!group->compute) {
       int priority = GetPriority(tf_device_id.value(), options);
       group->priority = priority;
-      group->compute = GetStream(executor, priority);
-      group->compute->Init();
+      group->compute = GetInitializedStream(executor, priority);
       VLOG(2) << "Created stream[" << stream_group_within_gpu
               << "] = " << group->compute << " with priority: " << priority;
 
@@ -262,8 +261,7 @@ class BaseGPUDevice::StreamGroupFactory {
       // ROCm streams are lightweight and will not necessarily trigger device
       // queue init until they are first used. For optimal performance,
       // compute and nccl streams must be immediate siblings.
-      group->nccl = GetStream(executor, priority);
-      group->nccl->Init();
+      group->nccl = GetInitializedStream(executor, priority);
       VLOG(2) << "Created nccl_stream[" << stream_group_within_gpu
               << "] = " << group->nccl;
 
@@ -272,13 +270,11 @@ class BaseGPUDevice::StreamGroupFactory {
       group->nccl->ThenWaitFor(group->compute);
 #endif
 
-      group->host_to_device = GetStream(executor, priority);
-      group->host_to_device->Init();
+      group->host_to_device = GetInitializedStream(executor, priority);
       VLOG(2) << "Created host_to_device_stream[" << stream_group_within_gpu
               << "] = " << group->host_to_device;
 
-      group->device_to_host = GetStream(executor, priority);
-      group->device_to_host->Init();
+      group->device_to_host = GetInitializedStream(executor, priority);
       VLOG(2) << "Created device_to_host_stream[" << stream_group_within_gpu
               << "] = " << group->device_to_host;
 
@@ -292,8 +288,7 @@ class BaseGPUDevice::StreamGroupFactory {
         num_d2d_streams = 1;
       }
       for (int i = 0; i < num_d2d_streams; ++i) {
-        se::Stream* stream = GetStream(executor, priority);
-        stream->Init();
+        se::Stream* stream = GetInitializedStream(executor, priority);
         group->device_to_device.push_back(stream);
         VLOG(2) << "Created device_to_device_stream[" << stream_group_within_gpu
                 << "] = " << group->device_to_device.back();
@@ -375,10 +370,10 @@ class BaseGPUDevice::StreamGroupFactory {
   }
 
   // Returns a Stream with the underlying GPUStream with the given priority.
-  se::Stream* GetStream(se::StreamExecutor* executor, int priority) {
+  se::Stream* GetInitializedStream(se::StreamExecutor* executor, int priority) {
     auto stream = new se::Stream(executor);
-    static_cast<stream_executor::gpu::GpuStream*>(stream->implementation())
-        ->SetPriority(priority);
+    stream->implementation()->SetPriority(priority);
+    stream->Init();
     return stream;
   }
 

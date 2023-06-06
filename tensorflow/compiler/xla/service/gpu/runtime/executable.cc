@@ -344,12 +344,17 @@ Status GpuRuntimeExecutable::Execute(
 
   // Get the async communications stream for async collectives.
   se::StreamExecutor* executor = run_options->stream()->parent();
-  int device_ordinal = executor->device_ordinal();
+  stream_executor::StreamPriority stream_priority =
+      stream_executor::StreamPriority::Default;
+  if (debug_options_.xla_gpu_enable_highest_priority_async_stream()) {
+    stream_priority = stream_executor::StreamPriority::Highest;
+  }
+
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(device_ordinal);
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
-  // executable run, so that concurrent executions can run independenty using a
+  // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);

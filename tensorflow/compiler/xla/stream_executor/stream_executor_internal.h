@@ -27,7 +27,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
@@ -122,6 +122,20 @@ class StreamInterface {
   // Default destructor for the abstract interface.
   virtual ~StreamInterface() {}
 
+  // Sets priority for a stream.
+  virtual void SetPriority(StreamPriority priority) {
+    LOG(ERROR) << "SetPriority unimplemented for this stream.";
+  }
+
+  virtual void SetPriority(int priority) {
+    LOG(ERROR) << "SetPriority unimplemented for this stream.";
+  }
+
+  // Gets priority for a stream.
+  virtual std::variant<StreamPriority, int> priority() const {
+    return StreamPriority::Default;
+  }
+
   // Returns the GPU stream associated with this platform's stream
   // implementation, or nullptr otherwise.
   virtual void* GpuStreamHack() { return nullptr; }
@@ -129,10 +143,6 @@ class StreamInterface {
   // Returns a pointer to a GPU stream associated with this platform's stream,
   // or a nullptr.
   virtual void** GpuStreamMemberHack() { return nullptr; }
-
-  virtual void SetPriority(int priority) {
-    LOG(ERROR) << "SetPriority unimplemented for this stream.";
-  }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);

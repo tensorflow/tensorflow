@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_SERVICE_EXECUTABLE_RUN_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SERVICE_EXECUTABLE_RUN_OPTIONS_H_
 
+#include <functional>
+
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -27,7 +29,11 @@ namespace xla {
 // data.
 class ServiceExecutableRunOptions {
  public:
-  using StreamBorrower = std::function<StatusOr<StreamPool::Ptr>(int)>;
+  // Defines the interface of the stream borrower function pointer
+  // with the first argument being the device ordinal and second
+  // argument being the priority of the stream.
+  using StreamBorrower = std::function<StatusOr<StreamPool::Ptr>(
+      int, stream_executor::StreamPriority)>;
 
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
@@ -50,9 +56,11 @@ class ServiceExecutableRunOptions {
 
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
-  StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal) const {
+  StatusOr<StreamPool::Ptr> BorrowStream(
+      int device_ordinal, stream_executor::StreamPriority priority =
+                              stream_executor::StreamPriority::Default) const {
     return borrow_stream_
-               ? borrow_stream_(device_ordinal)
+               ? borrow_stream_(device_ordinal, priority)
                : Status(absl::StatusCode::kUnimplemented, "No stream cache");
   }
 

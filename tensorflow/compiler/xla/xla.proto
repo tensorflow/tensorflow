@@ -503,6 +503,7 @@ message DebugOptions {
   bool xla_cpu_enable_experimental_deallocation = 191;
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
+  bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
 
@@ -527,7 +528,7 @@ message DebugOptions {
   // kernel on GPU.
   bool xla_gpu_enable_experimental_block_size = 214;
 
-  // Next id: 216
+  // Next id: 217
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

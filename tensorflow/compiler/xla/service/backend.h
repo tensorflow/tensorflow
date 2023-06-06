@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_BACKEND_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_BACKEND_H_
 
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -119,17 +120,27 @@ class Backend {
     return stream_executors_[0];
   }
 
-  // Borrows a stream for use by the caller, either by grabbing it from an
-  // internal pool, or by constructing/initializating it, and returns the result
-  // to the caller.
-  StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal);
-  StatusOr<StreamPool::Ptr> BorrowStream(se::StreamExecutor* executor);
+  // Borrows a stream for use by the caller with a given priority, either by
+  // grabbing it from an internal pool, or by constructing/initializating it,
+  // and returns the result to the caller.
+  StatusOr<StreamPool::Ptr> BorrowStream(
+      int device_ordinal, stream_executor::StreamPriority priority =
+                              stream_executor::StreamPriority::Default);
+  StatusOr<StreamPool::Ptr> BorrowStream(
+      se::StreamExecutor* executor,
+      stream_executor::StreamPriority priority =
+          stream_executor::StreamPriority::Default);
 
-  // Returns a function to borrow a stream, as `BorrowStream` above does.
+  // Returns a function to borrow a stream with a given priority,
+  // as `BorrowStream` above does.
   // Purely for convenience, the caller could rather make this anonymous
   // function itself.
-  std::function<StatusOr<StreamPool::Ptr>(int)> StreamBorrower() {
-    return [this](int device_ordinal) { return BorrowStream(device_ordinal); };
+  std::function<StatusOr<StreamPool::Ptr>(int, stream_executor::StreamPriority)>
+  StreamBorrowerWithPriority() {
+    return
+        [this](int device_ordinal, stream_executor::StreamPriority priority) {
+          return BorrowStream(device_ordinal, priority);
+        };
   }
 
   // Returns whether the given device ordinal of the backend is supported.
