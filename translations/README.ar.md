@@ -41,8 +41,9 @@
 [![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 
-[مكتبة (تينزور فلو) TensorFlow:](https://www.tensorflow.org/) 
-هي مكتبة مفتوحة المصدر لتعليم الآلات من موقع قوقل. المكتبة تمتلك [أدوات](https://www.tensorflow.org/resources/tools) و[مكتبات](https://www.tensorflow.org/resources/libraries-extensions) شاملة و[مجتمع لمصادر المعلومات](https://www.tensorflow.org/community) التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
+## مكتبة (تينزور فلو) TensorFlow:
+
+هي [مكتبة](https://www.tensorflow.org/) مفتوحة المصدر لتعليم الآلات من موقع قوقل. المكتبة تمتلك [أدوات](https://www.tensorflow.org/resources/tools) و[مكتبات](https://www.tensorflow.org/resources/libraries-extensions) شاملة و[مجتمع لمصادر المعلومات](https://www.tensorflow.org/community) التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
 
 مكتبة TensorFlow: تم إنشاءها وتطويرها من قبل مجموعة من الباحثون والمهندسون لدى مؤسسة قوقلة، الذين يعملون في فريق الدماغ (Google brain) كمعمل اكتشافي جنباَ إلى جنب مع فريق المهندسين في Google Resarch  لإدارة تعلم الآلات والبحث في الشبكات العصبية الحاسوبية والنظام شامل وعام بما يكفي ليكون قابلاً للتطبيق في مجموعة واسعة من المجالات الأخرى أيضًا. 
 
