@@ -716,6 +716,9 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
 StatusOr<bool> TritonAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
+    return false;
+  }
   return TritonAutotunerVisitor{config_, thread_pool_}.RunOnModule(
       module, execution_threads);
 }

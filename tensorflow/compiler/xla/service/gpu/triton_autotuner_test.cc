@@ -244,8 +244,8 @@ class TritonAutotunerLevelTest : public HloTestBase,
   }
 };
 
-TEST_P(TritonAutotunerLevelTest, PredF32) {
-  const std::string hlo_text = R"(
+TEST_P(TritonAutotunerLevelTest, AllAutotuningLevelsWorkCorrectly) {
+  const std::string kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -258,12 +258,19 @@ ENTRY e {
 
   TritonAutotuner::ClearAutotuneResults();
 
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p0, %p1), kind=kCustom
-; CHECK-SAME: \"block_m\":\"
-)");
+  if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
+    MatchOptimizedHlo(kHloText, R"(
+; CHECK: kind=kCustom
+; CHECK-NOT: block_m
+      )");
+  } else {
+    MatchOptimizedHlo(kHloText, R"(
+; CHECK: kind=kCustom
+; CHECK-SAME: block_m
+      )");
+  }
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
