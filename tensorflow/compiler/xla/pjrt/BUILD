@@ -19,6 +19,7 @@ package_group(
     ],
     packages = [
         "//third_party/australis/...",
+        "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
     ],
 )
