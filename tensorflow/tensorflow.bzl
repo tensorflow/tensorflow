@@ -1444,7 +1444,7 @@ def tf_gen_op_wrapper_py(
         srcs_version = "PY3",
         visibility = visibility,
         deps = [
-            clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
+            clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2"),
         ],
         # Instruct build_cleaner to try to avoid using this rule; typically ops
         # creators will provide their own tf_custom_op_py_library based target
@@ -3359,10 +3359,10 @@ def if_mlir(if_true, if_false = []):
 def tf_enable_mlir_bridge():
     return select({
         str(Label("//tensorflow:enable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_true",
+            "//tensorflow/python/framework:is_mlir_bridge_test_true",
         ],
         str(Label("//tensorflow:disable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_false",
+            "//tensorflow/python/framework:is_mlir_bridge_test_false",
         ],
         "//conditions:default": [],
     })

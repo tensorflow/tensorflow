@@ -51,7 +51,7 @@ py_strict_library(
         ":gfile",
         ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -70,8 +70,8 @@ py_strict_library(
     srcs = ["device_context.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops",
     ],
 )
 
@@ -216,8 +216,8 @@ py_strict_library(
     ],
     deps = [
         ":test",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradient_checker",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/util:tf_export",
     ],
 )
