@@ -10,29 +10,24 @@ SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAction
 RUN netsh interface ipv4 set subinterface \"vEthernet (Ethernet)\" mtu=1460 store=persistent
 
 RUN md C:\TMP
-RUN (New-Object Net.WebClient).DownloadFile('https://aka.ms/vs/16/release/vs_community.exe', 'C:\tmp\vs_community.exe');
+
 # Install Visual Studio 2019 Build Tools.
+RUN (New-Object Net.WebClient).DownloadFile('https://aka.ms/vs/16/release/vs_community.exe', 'C:\tmp\vs_community.exe');
+COPY visualstudio.bat .
 SHELL ["cmd", "/S", "/C"]
-RUN C:\tmp\vs_community.exe \
-        --quiet --wait --norestart --nocache \
-        --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 \
-        --add Microsoft.VisualStudio.Workload.NativeDesktop \
-        --add Microsoft.VisualStudio.Component.VC.14.29.x86.x64 \
-        --add Microsoft.VisualStudio.Component.Windows10SDK.20348 \
- || IF "%ERRORLEVEL%"=="3010" EXIT 0
+RUN visualstudio.bat || IF "%ERRORLEVEL%"=="3010" EXIT 0
+
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $VerbosePreference = 'Continue';"]
 # Install 7-Zip and add it to the path.
 RUN (New-Object Net.WebClient).DownloadFile('https://www.7-zip.org/a/7z2201-x64.msi', '7z.msi'); \
     Start-Process msiexec.exe -ArgumentList \"/i 7z.msi /qn /norestart /log C:\\tmp\\7z_install_log.txt\" -wait; \
     Remove-Item .\7z.msi;
-# Install msys2, and add some extra tools.
-RUN (New-Object Net.WebClient).DownloadFile( \
-         'https://repo.msys2.org/distrib/x86_64/msys2-base-x86_64-20220603.tar.xz', \
-         'msys2.tar.xz'); \
-    Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x msys2.tar.xz -oC:\tmp\msys2.tar' -Wait; \
-    Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x C:\tmp\msys2.tar -oC:\tools' -Wait; \
-    $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\msys64;C:\tools\msys64\usr\bin\'; \
-    [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
+
+# "Install msys2 and add some extra tools".
+COPY msys2.ps1 msys2.ps1
+RUN powershell -ExecutionPolicy Bypass -File msys2.ps1 
+RUN rm msys2.ps1
+
 # Install clang.
 RUN (New-Object Net.WebClient).DownloadFile( \
          'https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.4/LLVM-16.0.4-win64.exe', \
@@ -40,7 +35,7 @@ RUN (New-Object Net.WebClient).DownloadFile( \
     Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x LLVM.exe -oC:\tools\llvm' -Wait; \
     $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\llvm\bin'; \
     [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
-# Enable signature checking on pacman
+# "Enable signature checking on pacman"
 RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw32 -Value 'SigLevel = Required'
 RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw64 -Value 'SigLevel = Required'
 RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.msys -Value 'SigLevel = Required'
