@@ -33,22 +33,15 @@
 
 مدونة إرشادية للمساهمين في مجتمعات المصادر المفتوحة لتعزيز بيئة كاملة ودية ومحترمة للجميع  [![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v1.4%20adopted-ff69b4.svg)](CODE_OF_CONDUCT.md)
 
+[مدونة المساهمين في مجتمعات المصادر المفتوحة](https://www-contributor--covenant-org.translate.goog/?_x_tr_sl=auto&_x_tr_tl=de&_x_tr_hl=de)
 
 [![TF Official Continuous](https://tensorflow.github.io/build/TF%20Official%20Continuous.svg)](https://tensorflow.github.io/build#TF%20Official%20Continuous)
 
 [![TF Official Nightly](https://tensorflow.github.io/build/TF%20Official%20Nightly.svg)](https://tensorflow.github.io/build#TF%20Official%20Nightly)
 
 
-
-
-[tools](https://www.tensorflow.org/resources/tools),
-[libraries](https://www.tensorflow.org/resources/libraries-extensions), and
-[community](https://www.tensorflow.org/community) resources that lets
-researchers push the state-of-the-art in ML and developers easily build and
-deploy ML-powered applications.
-
 [مكتبة (تينزور فلو) TensorFlow:](https://www.tensorflow.org/) 
-هي مكتبة مفتوحة المصدر لتعليم الآلات من موقع قوقل. تمتلك أدوات ومكتبات شاملة ومجتمع لمصادر المعلومات، التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
+هي مكتبة مفتوحة المصدر لتعليم الآلات من موقع قوقل. تمتلك [أدوات](https://www.tensorflow.org/resources/tools)و[مكتبات](https://www.tensorflow.org/resources/libraries-extensions) شاملة و[مجتمع لمصادر المعلومات](https://www.tensorflow.org/community) التي تسمح للباحثين برفع احدث المستجدات في مجال "تعلم الآلآت" وبامكان والمطورون بنائ ونشر تطبيقات تعلم الآلآت.
 
 مكتبة TensorFlow: تم إنشاءها وتطويرها من قبل مجموعة من الباحثون والمهندسون لدى مؤسسة قوقلة, الذين يعملون في فريق الدماغ (Google brain) كمعمل اكتشافي جنباَ إلى جنب مع فريق المهندسين في Google Resarch  لإدارة تعلم الآلات والبحث في الشبكات العصبية الحاسوبية والنظام شامل وعام بما يكفي ليكون قابلاً للتطبيق في مجموعة واسعة من المجالات الأخرى أيضًا. 
 
