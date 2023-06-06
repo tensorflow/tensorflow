@@ -1075,8 +1075,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   auto set_activation_mode = [&](auto op) -> Status {
     TF_ASSIGN_OR_RETURN(stream_executor::dnn::ActivationMode activation_mode,
                         ConvertConvActivationMode(op.getActivationMode()));
-    descriptor.backend_config.set_activation_mode(
-        static_cast<int64_t>(activation_mode));
+    descriptor.backend_config.set_activation_mode(activation_mode);
     return OkStatus();
   };
 
