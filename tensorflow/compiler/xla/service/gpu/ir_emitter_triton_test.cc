@@ -121,7 +121,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
   )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -142,7 +142,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 ; CHECK-NOT: pad(
 ; CHECK-NOT: slice(
 )");
@@ -165,7 +165,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -189,7 +189,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -265,7 +265,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%transpose{{[^)]*}}, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -288,7 +288,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %transpose)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -310,7 +310,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%y, %x)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
@@ -332,7 +332,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%y, %x)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -355,7 +355,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%y, %x)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
@@ -379,7 +379,7 @@ ENTRY e {
 ; CHECK: f32[5,3,4]{2,1,0} bitcast(%p1)
 ; CHECK: fusion(%p0, %bitcast
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
@@ -467,7 +467,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p0, %p1)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -486,7 +486,7 @@ ENTRY e {
 
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p0), kind=kCustom
-; CHECK-SAME: \"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
@@ -562,7 +562,7 @@ ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
   ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"16\",\"block_n\":\"64\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"3\",\"num_warps\":\"8\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":1,"num_stages":3,"num_warps":8}}
 })";
 
   const char* hlo_text_triton = R"(
@@ -579,7 +579,7 @@ ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
   ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"128\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":128,"block_k":32,"split_k":1,"num_stages":2,"num_warps":4}}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
@@ -596,7 +596,7 @@ ENTRY e {
   arg1 = f16[7,33] parameter(1)
   ROOT custom-call = f16[5,33] custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -614,7 +614,7 @@ ENTRY e {
   p0 = f16[5,7]{1,0} parameter(0)
   p1 = f16[7,33]{1,0} parameter(1)
   ROOT _ = f16[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1}}
 }
 )";
 
@@ -632,7 +632,7 @@ ENTRY e {
   arg1 = f32[7,33] parameter(1)
   ROOT custom-call = f32[5,33] custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -650,7 +650,7 @@ ENTRY e {
   p0 = f32[5,7]{1,0} parameter(0)
   p1 = f32[7,33]{1,0} parameter(1)
   ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1}}
 }
 )";
 
@@ -673,7 +673,7 @@ ENTRY e {
   arg1 = bf16[512,256]{1,0} parameter(1)
   ROOT custom-call = bf16[16,256]{1,0} custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -691,7 +691,7 @@ ENTRY e {
   arg0 = bf16[512,16]{1,0} parameter(0)
   arg1 = bf16[512,256]{1,0} parameter(1)
   ROOT _ = bf16[16,256]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"16\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":128,"block_n":32,"block_k":16,"split_k":1,"num_stages":2,"num_warps":4}}
 }
 )";
 
@@ -725,7 +725,7 @@ ENTRY e {
   p0 = s8[332,441]{1,0} parameter(0)
   p1 = f16[441,39]{1,0} parameter(1)
   ROOT _ = f16[332,39]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"128\",\"block_n\":\"128\",\"block_k\":\"128\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"32\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":128,"block_n":128,"block_k":128,"split_k":1,"num_stages":2,"num_warps":32}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
@@ -769,7 +769,7 @@ ENTRY e {
   p0 = s8[332,441]{1,0} parameter(0)
   p1 = f16[441,39]{1,0} parameter(1)
   ROOT _ = f16[332,39]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4}}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextLowShmem, kHloTextOptinShmem,
@@ -786,7 +786,7 @@ ENTRY e {
   arg1 = f16[64,32]{1,0} parameter(1)
   ROOT custom-call = f16[128,64]{1,0} custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -804,7 +804,7 @@ ENTRY e {
   arg0 = f16[128,32]{1,0} parameter(0)
   arg1 = f16[64,32]{1,0} parameter(1)
   ROOT _ = f16[128,64]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":128,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":4}}
 }
 )";
 
@@ -822,7 +822,7 @@ ENTRY e {
   arg1 = f32[1024,64]{1,0} parameter(1)
   ROOT custom-call = f32[128,1024]{1,0} custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -840,7 +840,7 @@ ENTRY e {
   arg0 = f32[64,128]{1,0} parameter(0)
   arg1 = f32[1024,64]{1,0} parameter(1)
   ROOT _ = f32[128,1024]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":4}}
 }
 )";
 
@@ -868,7 +868,7 @@ ENTRY e {
   p1 = bf16[256,122]{1,0} parameter(1)
   ROOT custom-call = bf16[144,122]{1,0} custom-call(fusion, p1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -886,7 +886,7 @@ ENTRY e {
   p0 = s8[144,256]{1,0} parameter(0)
   p1 = bf16[256,122]{1,0} parameter(1)
   ROOT _ = bf16[144,122]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"64\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"2\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":64,"block_k":64,"split_k":1,"num_stages":1,"num_warps":2}}
 }
 )";
 
@@ -917,7 +917,7 @@ ENTRY e {
   bitcast.4 = s8[480,120]{1,0} bitcast(p0)
   ROOT triton_gemm_r = bf16[480,16]{1,0} fusion(bitcast.4, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":1,"num_stages":4,"num_warps":4}}
 })";
 
   const std::string hlo_text_splitk = R"(
@@ -956,7 +956,7 @@ ENTRY e {
   bitcast.4 = s8[480,120]{1,0} bitcast(p0)
   triton_gemm_r = bf16[4,480,16]{2,1,0} fusion(bitcast.4, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"128\",\"split_k\":\"4\",\"num_stages\":\"1\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":128,"split_k":4,"num_stages":1,"num_warps":4}}
   ROOT fusion.1 = bf16[480,16]{1,0} fusion(triton_gemm_r), kind=kLoop,
     calls=fused_computation
 })";
@@ -988,7 +988,7 @@ ENTRY e {
   tmp_0 = bf16[1,1,800,5,128]{4,3,2,1,0} parameter(1)
   ROOT triton_gemm_dot.24 = f32[5,128,700]{2,1,0} fusion(tmp_3, tmp_0),
     kind=kCustom, calls=triton_gemm_dot.24,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"8\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":8}}
 })";
 
   const std::string hlo_text_splitk = R"(
@@ -1016,7 +1016,7 @@ ENTRY e {
   tmp_0 = bf16[1,1,800,5,128]{4,3,2,1,0} parameter(1)
   triton_gemm_dot.24 = f32[5,8,128,700]{3,2,1,0} fusion(tmp_3, tmp_0),
     kind=kCustom, calls=triton_gemm_dot,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"8\",\"num_stages\":\"1\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":8,"num_stages":1,"num_warps":4}}
   constant = f32[] constant(0)
   ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={1}, to_apply=add
 })";
@@ -1049,7 +1049,7 @@ ENTRY entry {
   parameter_1.1 = bf16[16,4,128]{2,1,0} parameter(1)
   ROOT triton_gemm_dot.5316 = bf16[16,96]{1,0} fusion(bitcast.6, parameter_1.1),
     kind=kCustom, calls=triton_gemm_dot.5316,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"256\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":256,"split_k":1,"num_stages":1,"num_warps":4}}
 })";
 
   const std::string kHloTextSplitK = R"(
@@ -1089,7 +1089,7 @@ ENTRY entry {
   parameter_1.1 = bf16[16,4,128]{2,1,0} parameter(1)
   triton_gemm_dot.5316 = bf16[16,16,96]{2,1,0} fusion(bitcast.6, parameter_1.1),
     kind=kCustom, calls=triton_gemm_dot.5316,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"16\",\"num_stages\":\"1\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":32,"split_k":16,"num_stages":1,"num_warps":4}}
   ROOT fusion.1 = bf16[16,96]{1,0} fusion(triton_gemm_dot.5316),
     kind=kLoop, calls=fused_computation
 })";
@@ -1117,7 +1117,7 @@ ENTRY e {
   p1 = f32[32,50,104]{2,1,0} parameter(1)
   ROOT triton_gemm_dot.6 = f32[32,50,26]{2,0,1} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot.6,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"64\",\"block_n\":\"16\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":16,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4}}
 })";
 
   const std::string kHloTextRef = R"(
@@ -1143,7 +1143,7 @@ ENTRY e {
   %parameter_1 = f32[32,50,104]{2,1,0} parameter(1)
   %triton_gemm_dot.127 = f32[32,50,26]{2,1,0} fusion(%parameter_0, %parameter_1),
     kind=kCustom, calls=%triton_gemm_dot.127,
-    backend_config="{kind: \"__triton_gemm\", triton_gemm_config: {\"block_m\":\"32\",\"block_n\":\"128\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":128,"block_k":64,"split_k":1,"num_stages":2,"num_warps":4}}
   ROOT %fusion.1 = f32[32,50,26]{2,0,1} fusion(%triton_gemm_dot.127), kind=kLoop, calls=%fused_computation
 })";
 

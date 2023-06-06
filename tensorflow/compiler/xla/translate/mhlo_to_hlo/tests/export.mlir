@@ -891,7 +891,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
 // CHECK-DAG:   [[ARG3:%.*]] = bf16[] parameter(3)
 // CHECK-DAG:   (bf16[16,128], s32[16,128]) custom-call(bf16[16,256] [[ARG0]], s32[16,256] [[ARG2]], bf16[] [[ARG3]], s32[] [[ARG1]]),
 // CHECK-SAME: custom_call_target="PartialReduce", called_computations={%top_k_gt_comparator.[[COMPARATOR]]}
-// CHECK-SAME: backend_config="{\"log2_reduction\": 1, \"reduction_dim\": 1, \"to_apply_type\": \"comparator\", \"top_k\": 4, \"recall_target\": 0.949218}"
+// CHECK-SAME: backend_config={"log2_reduction": 1, "reduction_dim": 1, "to_apply_type": "comparator", "top_k": 4, "recall_target": 0.949218}
 
 
 // -----
@@ -2979,7 +2979,7 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  custom_call_target="foo"
 // CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  api_version=API_VERSION_TYPED_FFI
-// CHECK-SAME:  backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"
+// CHECK-SAME:  backend_config={user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}
 
 // -----
 
