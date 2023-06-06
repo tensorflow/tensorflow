@@ -20,13 +20,9 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/c/eager/c_api.h"
 
 namespace mlir {
 namespace TF {
-
-// TODO(b/285423375): Remove this function as it is no longer used.
-TFE_Context* GetContextForConstantFold();
 
 // Checks whether the given TF operation can be folded or not.
 bool CanBeFolded(Operation* inst);
