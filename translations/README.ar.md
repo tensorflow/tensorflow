@@ -14,7 +14,8 @@
  الايرانية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](README_ar.md)</kbd>
 
 ---------------------------------------------------------------------------------------
-روابط المنبثقة
+روابط لأدوات الأستخدام وإمكانيات الوصول:
+
 لغة البرمجة 'بايثن' [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)  
 
 مستودع حفظ البيانات  [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow) 
