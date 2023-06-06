@@ -15,6 +15,7 @@
 # ==============================================================================
 
 """Finds best tuning for a single matmul."""
+import csv
 import sys
 
 from absl import app
@@ -53,6 +54,11 @@ _SPLIT_KS = flags.DEFINE_string(
     'split_ks', '1,2,3,4,5', 'Number of split_k values to try'
 )
 _DEBUG = flags.DEFINE_bool('debug', False, 'Print debug information')
+_APPEND_TO_CSV = flags.DEFINE_string(
+    'append_to_csv',
+    None,
+    'If set, appends the best tiling to the CSV file passed',
+)
 
 
 def main() -> None:
@@ -78,14 +84,15 @@ def main() -> None:
   fastest: MatmulTiming = timings[0]
   print(f'Fastest configuration: {fastest}')
 
-  features = {
+  features_list = [
       'BLOCK_M',
       'BLOCK_N',
       'BLOCK_K',
       'SPLIT_K',
       'num_stages',
       'num_warps',
-  }
+  ]
+  features = frozenset(features_list)
   for f in features:
     other_features = features - {f}
 
@@ -111,6 +118,25 @@ def main() -> None:
   print_roofline_performance(dims, fastest.min_time_ms)
   cublas_time = benchmark_cublas(dims)
   print(f'Reference cuBLAS time (bf16xbf16->bf16): {cublas_time:0.4f}ms')
+
+  if _APPEND_TO_CSV.value:
+    fields = (
+        ['M', 'N', 'K', 'quantized_lhs']
+        + features_list
+        + ['min_time_ms', 'cublas_time_ms']
+    )
+    with open(_APPEND_TO_CSV.value, 'a') as f:
+      writer = csv.DictWriter(f, fieldnames=fields)
+      if f.tell() == 0:
+        writer.writeheader()
+      writer.writerow(
+          dict(
+              fastest.dims._asdict(),
+              **fastest.tiling._asdict(),
+              min_time_ms=fastest.min_time_ms,
+              cublas_time_ms=cublas_time,
+          )
+      )
 
 
 if __name__ == '__main__':
