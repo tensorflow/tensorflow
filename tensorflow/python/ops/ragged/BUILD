@@ -122,6 +122,42 @@ py_strict_library(
 )
 
 py_strict_library(
+    name = "ragged_bincount_ops",
+    srcs = ["ragged_bincount_ops.py"],
+    deps = [
+        ":ragged_tensor",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:bincount_ops",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:count_ops_gen",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/util:dispatch",
+    ],
+)
+
+cuda_py_strict_test(
+    name = "ragged_bincount_ops_test",
+    size = "small",
+    srcs = ["ragged_bincount_ops_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":ragged_factory_ops",
+        ":ragged_tensor",
+        "//tensorflow/python/framework:config",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:bincount_ops",
+        "//tensorflow/python/ops:sparse_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_library(
     name = "ragged_concat_ops",
     srcs = ["ragged_concat_ops.py"],
     srcs_version = "PY3",
@@ -293,6 +329,7 @@ py_strict_library(
         ":ragged_array_ops",
         ":ragged_batch_gather_ops",
         ":ragged_batch_gather_with_default_op",
+        ":ragged_bincount_ops",
         ":ragged_check_ops",
         ":ragged_concat_ops",
         ":ragged_config",  # fixdeps: keep
