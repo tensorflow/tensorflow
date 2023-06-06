@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
