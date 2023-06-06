@@ -37,9 +37,9 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:cond",
-        "//tensorflow/python:variables",
         "//tensorflow/python/framework:smart_cond",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:variables",
     ],
 )
 
