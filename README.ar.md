@@ -8,9 +8,7 @@
 
 #### _Read this in other languages:_
 
- [العربية](https://github.com/franknganmo/tensorflow/blob/master/translations/README.ar.md) <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](README_ar.md)</kbd>
-
-[الألمانية]() <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/de.svg" width="30">](README_ar.md)</kbd>
+ [العربية](https://github.com/franknganmo/tensorflow/blob/master/translations/README.ar.md) <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/tensorflow_translate_readme/README.ar.md)</kbd>
 
 [الفرنسية](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md) <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](README_ar.md)</kbd>
 
