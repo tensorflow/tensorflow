@@ -1508,6 +1508,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
+      return false;
+    }
+
     const HloInstruction *lhs = instr.operand(0);
     const HloInstruction *rhs = instr.operand(1);
     const Shape &output_shape = instr.shape();
