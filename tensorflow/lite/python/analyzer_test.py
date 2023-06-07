@@ -216,6 +216,7 @@ class AnalyzerTest(test_util.TensorFlowTestCase):
 
     converter = tf.lite.TFLiteConverter.from_concrete_functions(
         [func.get_concrete_function()], func)
+    converter.unfold_batchmatmul = True
     fb_model = converter.convert()
     mock_stdout = io.StringIO()
     with test.mock.patch.object(sys, 'stdout', mock_stdout):
