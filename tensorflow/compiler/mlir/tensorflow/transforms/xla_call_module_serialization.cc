@@ -22,14 +22,15 @@ limitations under the License.
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
-#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "stablehlo/api/PortableApi.h"  // from @stablehlo
 #include "stablehlo/dialect/Serialization.h"  // from @stablehlo
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo  // IWYU pragma: keep
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/stablehlo_custom_call.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/visitor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_call_module_attrs.h"
 
@@ -40,55 +41,136 @@ namespace {
 #define GEN_PASS_DEF_XLACALLMODULESERIALIZATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"  // IWYU pragma: keep
 
+// `tf.backend_config` is a DictionaryAttr, JAX2TF sets the value of its
+// i64 attribute `called_index` to the TF function's name.
+constexpr llvm::StringRef kTfBackendConfigAttrName = "tf.backend_config";
+constexpr llvm::StringRef kCalledIndexAttrName = "called_index";
+constexpr llvm::StringRef kCalledFuncAttrName = "called_func";
+
+// Converts `called_func` attributes in custom call ops back to `called_index`.
+FailureOr<ArrayAttr> DesymbolizeCustomCallCalledIndex(ModuleOp module) {
+  Builder builder(module.getContext());
+
+  SmallVector<Attribute> function_list;
+  llvm::DenseMap<SymbolRefAttr, int> called_indexes;
+
+  WalkResult result = module.walk([&](stablehlo::CustomCallOp op) {
+    if (!IsTfFuncCustomCall(op)) {
+      return WalkResult::advance();
+    }
+
+    auto backend_config =
+        op->getAttrOfType<DictionaryAttr>(kTfBackendConfigAttrName);
+    if (!backend_config) {
+      op->emitOpError() << "is missing attribute '" << kTfBackendConfigAttrName
+                        << "'";
+      return WalkResult::interrupt();
+    }
+    auto called_func = backend_config.get(kCalledFuncAttrName)
+                           .dyn_cast_or_null<SymbolRefAttr>();
+    if (!called_func) {
+      op->emitOpError() << "is missing attribute '" << kCalledFuncAttrName
+                        << "'";
+      return WalkResult::interrupt();
+    }
+
+    llvm::SmallVector<NamedAttribute> new_config;
+    // Copy the attributes in the current config except `called_func`.
+    for (auto attr : backend_config) {
+      if (attr.getName() != kCalledFuncAttrName) {
+        new_config.push_back(attr);
+      }
+    }
+
+    auto [it, inserted] =
+        called_indexes.insert({called_func, called_indexes.size()});
+    if (inserted) {
+      function_list.push_back(called_func);
+    }
+
+    // Set the `called_index` attribute to the TF function's name.
+    new_config.push_back(builder.getNamedAttr(
+        kCalledIndexAttrName, builder.getI64IntegerAttr(it->second)));
+
+    // Set the `tf.backend_config` attribute to the `new_config`.
+    op->setAttr(kTfBackendConfigAttrName,
+                builder.getDictionaryAttr(new_config));
+
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted()) {
+    return failure();
+  }
+
+  return builder.getArrayAttr(function_list);
+}
+
 // Creates a pruned module containing the XlaCallModule's entry function and
 // other functions transitively called by the entry function.
-FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(ModuleOp module,
-                                                      XlaCallModuleOp op) {
+FailureOr<OwningOpRef<ModuleOp>> PruneStablehloModule(
+    SymbolTableCollection& symbol_table, ModuleOp module, XlaCallModuleOp op) {
   auto entry_func_symbol =
       op->getAttrOfType<FlatSymbolRefAttr>(kStablehloEntryFunctionAttrName);
-  if (entry_func_symbol == nullptr) {
+  if (!entry_func_symbol) {
     return op.emitOpError() << "does not have "
                             << kStablehloEntryFunctionAttrName << " attribute";
   }
-  auto entry_func_name = entry_func_symbol.getValue();
-
-  OwningOpRef<ModuleOp> stablehlo_module;
-
-  auto pruned = CreatePrunedModule(module, {entry_func_name});
-  if (failed(pruned)) {
-    return module.emitError()
-           << "failed to create stablehlo module from entry function "
-           << entry_func_name;
+  auto entry_func =
+      symbol_table.lookupSymbolIn<func::FuncOp>(module, entry_func_symbol);
+  if (!entry_func) {
+    return op.emitOpError()
+           << "references an unknown entry function " << entry_func_symbol;
   }
-  stablehlo_module = std::move(*pruned);
 
-  // CreatePrunedModule copies the top-level module's attributes to the new
-  // module. But we should restore the deserialized stablehlo module's
-  // attributes to the reconstructed stablehlo module. The stablehlo module's
-  // attributes can contain important information such as SPMD num_replicas and
-  // num_partitions.
+  OpBuilder builder(module.getContext());
+
+  OwningOpRef<ModuleOp> stablehlo_module =
+      builder.create<ModuleOp>(op.getLoc());
+  builder.setInsertionPointToEnd(stablehlo_module->getBody());
+
+  // Copy all referenced StableHLO functions to the new module.
+  WalkResult result = WalkReachableFunctions(
+      entry_func,
+      [&](func::FuncOp f) -> WalkResult {
+        if (!f->hasAttr(kFromXlaCallModuleAttrName)) {
+          return WalkResult::advance();
+        }
+
+        auto cloned = llvm::cast<func::FuncOp>(builder.clone(*f));
+        cloned->removeAttr(kFromXlaCallModuleAttrName);
+
+        if (f == entry_func) {
+          // Entry function must be public and has symbol name "@main".
+          cloned.setPublic();
+          cloned.setName(kStablehloMainFunctionName);
+        } else {
+          cloned.setPrivate();
+        }
+
+        return WalkResult::advance();
+      },
+      &symbol_table);
+  if (result.wasInterrupted()) {
+    return failure();
+  }
+
+  // Rewrite `custom_call`'s `called_func` attribute to `called_index`.
+  auto function_list = DesymbolizeCustomCallCalledIndex(*stablehlo_module);
+  if (failed(function_list)) return failure();
+  op.setFunctionListAttr(*function_list);
+
+  // Restore the deserialized stablehlo module's attributes to the reconstructed
+  // stablehlo module. The stablehlo module's attributes can contain important
+  // information such as SPMD num_replicas and num_partitions.
   auto original_stablehlo_module_attrs =
       op->getAttrOfType<DictionaryAttr>(kStablehloModuleAttrsAttrName);
   if (original_stablehlo_module_attrs) {
     (*stablehlo_module)->setAttrs(original_stablehlo_module_attrs);
-  } else {
-    (*stablehlo_module)->setAttrs(llvm::ArrayRef<NamedAttribute>());
+    // Now, remove the attribute because later passes may not know how to handle
+    // it, we may encounter errors such as:
+    // "Unhandled attribute kind for attribute '_stablehlo_module_attrs'".
+    op->removeAttr(kStablehloModuleAttrsAttrName);
   }
-
-  // Remove _from_xla_call_module attr from all functions in the reconstructed
-  // stablehlo module.
-  stablehlo_module->walk(
-      [&](func::FuncOp f) { f->removeAttr(kFromXlaCallModuleAttrName); });
-
-  // Entry function must be public and has symbol name "@main".
-  auto entry_func =
-      stablehlo_module->lookupSymbol<mlir::func::FuncOp>(entry_func_name);
-  if (entry_func == nullptr) {
-    return stablehlo_module->emitOpError()
-           << "does not have function " << entry_func_name;
-  }
-  entry_func.setPublic();
-  entry_func.setName(kStablehloMainFunctionName);
 
   return stablehlo_module;
 }
@@ -111,8 +193,9 @@ FailureOr<std::string> SerializeStablehlo(ModuleOp stablehlo_module) {
 // The stablehlo functions include the function referred by XlaCallModuleOp's
 // `_entry_function` attribute, and any stablehlo functions called transitively
 // from the entry function.
-LogicalResult SerializeXlaCallModule(ModuleOp module, XlaCallModuleOp op) {
-  auto stablehlo_module = PruneStablehloModule(module, op);
+LogicalResult SerializeXlaCallModule(SymbolTableCollection& symbol_table,
+                                     ModuleOp module, XlaCallModuleOp op) {
+  auto stablehlo_module = PruneStablehloModule(symbol_table, module, op);
   if (failed(stablehlo_module)) {
     return failure();
   }
@@ -128,16 +211,32 @@ LogicalResult SerializeXlaCallModule(ModuleOp module, XlaCallModuleOp op) {
   return success();
 }
 
+// Removes the serialized stablehlo functions, because `XlaCallModuleOp` no
+// longer has `_entry_function` attribute referencing the stablehlo main
+// function, so all stablehlo functions are of no use in the top-level module.
+//
+// Walk the module to find functions with `_from_xla_call_module` attribute,
+// and remove them.
+void RemoveSerializedStablehloFunctions(ModuleOp module) {
+  module.walk([&](func::FuncOp f) {
+    if (f->hasAttr(kFromXlaCallModuleAttrName)) {
+      f->erase();
+    }
+  });
+}
+
 class XlaCallModuleSerializationPass
     : public impl::XlaCallModuleSerializationPassBase<
           XlaCallModuleSerializationPass> {
  public:
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
+    mlir::SymbolTableCollection symbol_table;
 
     mlir::WalkResult result =
         module.walk([&](mlir::TF::XlaCallModuleOp xla_call_module) {
-          if (failed(SerializeXlaCallModule(module, xla_call_module))) {
+          if (failed(SerializeXlaCallModule(symbol_table, module,
+                                            xla_call_module))) {
             return mlir::WalkResult::interrupt();
           }
           return mlir::WalkResult::advance();
@@ -147,21 +246,6 @@ class XlaCallModuleSerializationPass
     }
 
     RemoveSerializedStablehloFunctions(module);
-  }
-
- private:
-  // Removes the serialized stablehlo functions, because `XlaCallModuleOp` no
-  // longer has `_entry_function` attribute referencing the stablehlo main
-  // function, so all stablehlo functions are of no use in the top-level module.
-  //
-  // Walk the module to find functions with `_from_xla_call_module` attribute,
-  // and remove them.
-  void RemoveSerializedStablehloFunctions(ModuleOp module) {
-    module.walk([&](func::FuncOp f) {
-      if (f->hasAttr(kFromXlaCallModuleAttrName)) {
-        f->erase();
-      }
-    });
   }
 };
 

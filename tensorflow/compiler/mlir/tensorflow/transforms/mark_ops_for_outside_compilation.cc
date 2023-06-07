@@ -417,12 +417,12 @@ void WarnOnExcessOutsideCompilationOps(ModuleOp module) {
       op_info.push_back(tensorflow::OpAsString(*op));
     }
 
-    LOG(WARNING) << op_info.size() << " outside compilation "
+    LOG(WARNING) << outside_compile_ops.size() << " outside compilation "
                  << "regions found while processing "
                  << module->getName().getStringRef().str()
                  << ". This may result in excessively slow model execution. "
-                    "Ops found: "
-                 << absl::StrJoin(op_info, "\n");
+                 << "First " << op_info.size()
+                 << " ops: " << absl::StrJoin(op_info, "\n");
   } else {
     LOG(INFO) << "Found " << outside_compile_ops.size()
               << " outside compilation regions.";

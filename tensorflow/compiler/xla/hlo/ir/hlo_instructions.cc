@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <deque>
 #include <functional>
+#include <iterator>
+#include <list>
 #include <memory>
 #include <numeric>
 #include <optional>

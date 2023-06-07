@@ -340,7 +340,9 @@ class Subgraph {
 
   // Returns a pointer to vector of subgraphs.
   // WARNING: This is an experimental API and subject to change.
-  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() { return subgraphs_; }
+  std::vector<std::unique_ptr<Subgraph>>* GetSubgraphs() const {
+    return subgraphs_;
+  }
 
   // Returns the location of this object within subgraphs_, or
   // kInvalidSubgraphIndex if subgraphs_ is nullptr or *this is not

@@ -151,6 +151,7 @@ def TF_RelayoutLikeOp : TF_Op<"RelayoutLike", [Pure, TF_AllTypesMatch<["input", 
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_CopyToMeshOp : TF_Op<"CopyToMesh", [Pure]> {

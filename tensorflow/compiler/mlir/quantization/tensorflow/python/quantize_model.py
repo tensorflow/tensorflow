@@ -17,8 +17,8 @@ import collections.abc
 import tempfile
 from typing import Callable, Collection, Dict, Mapping, Optional, Sequence
 import uuid
-from absl import logging
 
+from absl import logging
 import numpy as np
 
 from tensorflow.compiler.mlir.quantization.tensorflow import exported_model_pb2
@@ -56,6 +56,7 @@ _DYNAMIC_RANGE_DEFAULT_MIN_NUM_ELEMENTS_FOR_WEIGHTS = 1024
 
 # Name of the saved model assets directory.
 _ASSETS_DIR = 'assets'
+_ASSETS_EXTRA_DIR = 'assets.extra'
 
 
 def _is_qat_saved_model(saved_model_path: str):
@@ -530,26 +531,27 @@ def _copy_assets(src_path: str, dst_path: str) -> None:
     src_path: Source saved model directory.
     dst_path: Destination saved model directory. This directory must exist.
   """
-  src_assets_path = file_io.join(src_path, _ASSETS_DIR)
-  if not file_io.file_exists_v2(src_assets_path):
-    # Do nothing if the source assets path does not exist.
-    return
+  for assets_dir_name in [_ASSETS_DIR, _ASSETS_EXTRA_DIR]:
+    src_assets_path = file_io.join(src_path, assets_dir_name)
+    if not file_io.file_exists_v2(src_assets_path):
+      # Do nothing if the source assets path does not exist.
+      continue
 
-  dst_assets_path = file_io.join(dst_path, _ASSETS_DIR)
-  file_io.create_dir_v2(dst_assets_path)
+    dst_assets_path = file_io.join(dst_path, assets_dir_name)
+    file_io.create_dir_v2(dst_assets_path)
 
-  for curr_dir, _, files in file_io.walk_v2(src_assets_path):
-    for asset_file_name in files:
-      src_asset_file = file_io.join(curr_dir, asset_file_name)
+    for curr_dir, _, files in file_io.walk_v2(src_assets_path):
+      for asset_file_name in files:
+        src_asset_file = file_io.join(curr_dir, asset_file_name)
 
-      # Construct the destination assets file path.
-      curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
-      dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
+        # Construct the destination assets file path.
+        curr_dst_dir = curr_dir.replace(src_assets_path, dst_assets_path)
+        dst_asset_file = file_io.join(curr_dst_dir, asset_file_name)
 
-      file_io.copy_v2(src_asset_file, dst_asset_file)
-      logging.info(
-          'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
-      )
+        file_io.copy_v2(src_asset_file, dst_asset_file)
+        logging.info(
+            'Copied asset file: %s -> %s', src_asset_file, dst_asset_file
+        )
 
 
 def _run_static_range_qat(
@@ -1017,7 +1019,7 @@ def _populate_quantization_options_default_values(
     quantization_options: An instance of QuantizationOptions.
   """
   if quantization_options.op_set == quant_opts_pb2.OpSet.OP_SET_UNSPECIFIED:
-    quantization_options.op_set = quant_opts_pb2.OpSet.TF
+    quantization_options.op_set = quant_opts_pb2.OpSet.XLA
 
   if not quantization_options.HasField('freeze_all_variables'):
     quantization_options.freeze_all_variables.enabled = True

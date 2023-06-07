@@ -61,6 +61,43 @@ def _is_type_subset(a, b):
   return True
 
 
+def _parse_func_attr_value(key, value):
+  """Converts a python object to an attr_value_pb2.AttrValue object."""
+  if isinstance(value, attr_value_pb2.AttrValue):
+    return value
+  # bool type check has to happen before int since bool is a subclass of int.
+  elif isinstance(value, bool):
+    return attr_value_pb2.AttrValue(b=value)
+  elif isinstance(value, int):
+    return attr_value_pb2.AttrValue(i=value)
+  elif isinstance(value, float):
+    return attr_value_pb2.AttrValue(f=value)
+  elif isinstance(value, (str, bytes)):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  elif isinstance(value, list):
+    list_value = attr_value_pb2.AttrValue.ListValue()
+    for v in value:
+      if isinstance(v, bool):
+        list_value.b.append(v)
+      elif isinstance(v, int):
+        list_value.i.append(v)
+      elif isinstance(v, float):
+        list_value.f.append(v)
+      elif isinstance(v, (str, bytes)):
+        list_value.s.append(compat.as_bytes(v))
+      else:
+        raise ValueError(
+            f"Attributes for {key} must be bool, int, float, or string. "
+            f"Got {type(v)}."
+        )
+    return attr_value_pb2.AttrValue(list=list_value)
+  else:
+    raise ValueError(
+        f"Attribute {key} must be bool, int, float, string, list, or"
+        f"AttrValue. Got {type(value)}."
+    )
+
+
 def _parse_func_attrs(attributes):
   """Convert the keyword arguments into function_def attributes.
 
@@ -80,20 +117,7 @@ def _parse_func_attrs(attributes):
     if key not in attributes_lib.MONOMORPHIC_FUNCTION_ALLOWLIST:
       raise ValueError(
           f"ConcreteFunction does not support `{key}` as an attribute.")
-    if isinstance(value, attr_value_pb2.AttrValue):
-      attrs[key] = value
-    # bool type check has to happen before int since bool is a subclass of int.
-    elif isinstance(value, bool):
-      attrs[key] = attr_value_pb2.AttrValue(b=value)
-    elif isinstance(value, int):
-      attrs[key] = attr_value_pb2.AttrValue(i=value)
-    elif isinstance(value, float):
-      attrs[key] = attr_value_pb2.AttrValue(f=value)
-    elif isinstance(value, (str, bytes)):
-      attrs[key] = attr_value_pb2.AttrValue(s=compat.as_bytes(value))
-    else:
-      raise ValueError(f"Attribute {key} must be bool, int, float, string, or "
-                       f"AttrValue. Got {type(value)}.")
+    attrs[key] = _parse_func_attr_value(key, value)
   return attrs
 
 _FORWARD_PREFIX = "__forward_"
@@ -130,8 +154,15 @@ def _create_forward_backward_with_graph(attrs, forward_graph, backwards_graph):
   backward_function_attr = _parse_func_attrs(
       {attributes_lib.FORWARD_FUNCTION: forward_function_name})
   backward_function_attr.update(common_attributes)
+  # TODO(fmuham): Include inputs as well.
+  function_type = function_type_lib.from_structured_signature(
+      ((), {}),
+      backwards_graph.structured_outputs,
+      backwards_graph.function_captures.capture_types,
+  )
   backward_function = ConcreteFunction(
-      backwards_graph, attrs=backward_function_attr)
+      backwards_graph, attrs=backward_function_attr, function_type=function_type
+  )
   forward_function_attr = _parse_func_attrs({
       attributes_lib.BACKWARD_FUNCTION:
       backward_function.name})
@@ -996,7 +1027,9 @@ class _ForwardBackwardCall(object):
 class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
   """A `tf.types.experimental.ConcreteFunction` created from `tf.function`."""
 
-  def __init__(self, func_graph, attrs=None, shared_func_graph=True, spec=None):
+  def __init__(
+      self, func_graph, attrs=None, shared_func_graph=True, function_type=None
+  ):
     """Initialize a `ConcreteFunction`.
 
     Args:
@@ -1007,8 +1040,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
      shared_func_graph: If False, the ConcreteFunction takes ownership of
        `func_graph` and will break reference cycles when it is deleted. This
        makes the FuncGraph inoperable.
-     spec: FunctionSpec for the original function.  If not specified, then this
-       ConcreteFunction may only be called using the flat signature.
+     function_type: Defines the structured input/output contract.
 
     Raises:
       ValueError: If number of input_placeholders is not equal to the number
@@ -1020,10 +1052,15 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     self._num_positional_args = None
 
     self._func_graph = func_graph
-    self._captured_inputs = self._func_graph.external_captures + self._func_graph.deferred_external_captures
-
-    # spec defines the structured signature.
-    self._set_function_spec(spec)
+    self._captured_inputs = (
+        self._func_graph.external_captures
+        + self._func_graph.deferred_external_captures
+    )
+    self._function_type = function_type
+    if func_graph.structured_outputs is not None and self.function_type is None:
+      raise ValueError(
+          "Must specify FunctionType if structured outputs are expected"
+      )
 
     if attrs and attributes_lib.IMPLEMENTS in attrs:
       # The alternative is to silently drop "implements" tag
@@ -1071,51 +1108,27 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     # building gradients.
     self._inference_function = self._delayed_rewrite_functions.forward()
 
-  def _set_function_spec(self, spec):
-    """Enables the structured signature by supplying a spec."""
-    self._function_spec = None
-    self._pre_initialized_function_spec = spec
-    self._initialize_function_spec()
+  @property
+  def function_type(self):
+    """Return the FunctionType associated with this ConcreteFunction."""
+    # TODO(fmuham): Ensure this is never None.
+    return self._function_type
 
-  def _initialize_function_spec(self):
-    """Updates `self._function_spec` to include varargs and bound variables.
+  # TODO(fmuham): Remove this property.
+  @property
+  def _function_spec(self):
+    if self.function_type is None:
+      return None
 
-    Adds new positional arguments for any varargs (i.e., for args that are
-    in `structured_input_signature`, but not in the original fullargspec.args).
-
-    Replaces `defaults` and `kwonlydefaults` with the `BOUND_VALUE`, for
-    all args and kwargs in `structured_input_signature`.
-
-    Sets `varkw` and `varargs` to None.
-    """
-    if self._pre_initialized_function_spec is None:
-      return  # e.g., SavedBareConcreteFunction doesn't have function_spec yet.
-    assert not self._function_spec, "already initialized"
-    spec = self._pre_initialized_function_spec
-    unconstrainted_poly_type = function_type_lib.FunctionType(
-        [
-            function_type_lib.Parameter(p.name, p.kind, p.optional, None)
-            for p in spec.function_type.parameters.values()
-        ]
-    )
-    arg_specs, kwarg_specs = self.structured_input_signature
-
-    _, func_type, _ = function_type_lib.canonicalize_to_monomorphic(
-        arg_specs,
+    return function_type_utils.FunctionSpec(
+        self.function_type,
         {
-            function_type_lib.sanitize_arg_name(k): v
-            for k, v in kwarg_specs.items()
+            p.default
+            for p in self.function_type.parameters.values()
+            if p.optional
         },
-        self._pre_initialized_function_spec.default_values,
-        {},
-        unconstrainted_poly_type,
-    )
-
-    self._function_spec = function_type_utils.FunctionSpec(
-        func_type,
-        {d: function_type_utils.BOUND_VALUE for d in spec.default_values},
-        spec.is_pure,
-        name=self._func_graph.name,
+        False,
+        name=self.name,
     )
 
   @property
@@ -1188,14 +1201,18 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     with trace.Trace(self._func_graph.name, tf_function_call="concrete"):
       # Construct the list of input tensors: check if the structured signature
       # applies first; and if not, then use the flat signature.
-      if self._function_spec is not None:
+      if self.function_type is not None:
         try:
           return self._call_with_structured_signature(args, kwargs)
         except TypeError as structured_err:
           try:
             return self._call_with_flat_signature(args, kwargs)
-          except TypeError:
-            raise structured_err
+          except TypeError as flat_err:
+            raise TypeError(  # pylint: disable=raise-missing-from
+                str(structured_err)
+                + "\n Fallback to flat signature also failed due to: "
+                + str(flat_err)
+            )
 
       return self._call_with_flat_signature(args, kwargs)
 
@@ -1267,12 +1284,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     """
     args, kwargs, filtered_flat_args = (
         function_type_utils.canonicalize_function_inputs(
-            args,
-            kwargs,
-            self._function_spec.function_type,
-            self._function_spec.default_values,
-            self._function_spec.is_pure,
-        )
+            args, kwargs, self.function_type)
     )
     return self._call_flat(
         filtered_flat_args,
@@ -1689,22 +1701,14 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     Returns:
       The actual call output.
     """
-    # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
 
-    # Replace outputs with results, skipping over any 'None' values.
-    outputs_list = nest.flatten(
-        self._func_graph.structured_outputs, expand_composites=True)
-    j = 0
-    for i, o in enumerate(outputs_list):
-      if o is not None:
-        handle_data_util.copy_handle_data(self.outputs[j], result[j])
-        outputs_list[i] = result[j]
-        j += 1
-    ret = nest.pack_sequence_as(self._func_graph.structured_outputs,
-                                outputs_list, expand_composites=True)
-    return ret
+    if isinstance(result, ops.Operation):
+      # We get an op when there are no tensor outputs.
+      return self.function_type.pack_output([])
+    else:
+      return self.function_type.pack_output(result)
 
   @property
   def _as_name_attr_list(self):
@@ -1723,11 +1727,11 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     Returns:
       A `string`.
     """
-    # Note: we can't just use self._funcion_spec.signature_summary(), because
+    # Note: we can't just use str(self.function_type), because
     # that would show "BOUND_VALUE" as the default value for all arguments.
-    assert self._function_spec is not None
+    assert self.function_type is not None
     arg_specs, kwarg_specs = self.structured_input_signature
-    arg_names = list(self._function_spec.arg_names)
+    arg_names = function_type_utils.to_arg_names(self.function_type)
 
     # If an explicit input_signature is provided to @tf.function, then any
     # arguments with defaults that are not covered by that explicit signature
@@ -1784,7 +1788,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
 
     lines = [self._structured_signature_summary(default_values=True)]
     arg_specs, kwarg_specs = self.structured_input_signature
-    names = list(self._function_spec.arg_names)
+    names = function_type_utils.to_arg_names(self.function_type)
 
     # If an explicit input_signature is provided to @tf.function, then any
     # arguments with defaults that are not covered by that explicit signature
@@ -1824,7 +1828,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     return "\n".join(lines)
 
   def __repr__(self):
-    if self._function_spec is not None:
+    if self.function_type is not None:
       return "<ConcreteFunction {} at 0x{:X}>".format(
           self.pretty_printed_signature(verbose=False), id(self))
     elif not (self._num_positional_args is None or self._arg_keywords is None):
@@ -1834,7 +1838,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       return object.__repr__(self)
 
   def __str__(self):
-    if self._function_spec is not None:
+    if self.function_type is not None:
       return "ConcreteFunction {}".format(self.pretty_printed_signature())
     else:
       return self.__repr__()

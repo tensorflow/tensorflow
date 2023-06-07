@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_TENSOR_UTIL_H_
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_UTIL_TENSOR_UTIL_H_
 
+#include <memory>
+
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tensor_internal.h"
 #include "tensorflow/core/framework/tensor.h"

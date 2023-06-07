@@ -1348,6 +1348,7 @@ cc_library(
         ":parallel_execute_util",
         ":serialize_mlir_module_utils",
         ":shape_inference_pass",
+        ":stablehlo_custom_call_utils",
         ":string_util",
         ":tensorflow",
         ":tensorflow_analysis",
@@ -1435,6 +1436,19 @@ cc_library(
     srcs = [],
     hdrs = ["utils/xla_call_module_attrs.h"],
     deps = ["@llvm-project//llvm:Support"],
+)
+
+cc_library(
+    name = "stablehlo_custom_call_utils",
+    srcs = ["utils/stablehlo_custom_call.cc"],
+    hdrs = ["utils/stablehlo_custom_call.h"],
+    deps = [
+        ":xla_call_module_attrs",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
 )
 
 cc_library(
@@ -2015,11 +2029,15 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/c:tf_status",
-        "//tensorflow/c/eager:c_api",
-        "//tensorflow/core:lib",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/protobuf:for_core_protos_cc",
+        ":convert_tensor",
+        ":export_tf_dialect_op",
+        ":tensorflow",
+        ":tensorflow_traits",
+        "//tensorflow/core/tfrt/fallback:fallback_state",
+        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )
 
@@ -2034,9 +2052,9 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":constant_fold_utils",
         ":convert_tensor",
         ":export_graphdef",
-        ":export_tf_dialect_op",
         ":tensorflow",
         ":tensorflow_traits",
         ":tensorflow_types",
@@ -2046,8 +2064,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/ops",
-        "//tensorflow/core/tfrt/fallback:fallback_state",
-        "//tensorflow/core/tfrt/fallback:op_kernel_runner",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -2380,7 +2396,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:errors",
         "//tensorflow/tsl/platform:statusor",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:FuncDialect",
     ],
 )
@@ -2490,7 +2506,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:test",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:FuncDialect",

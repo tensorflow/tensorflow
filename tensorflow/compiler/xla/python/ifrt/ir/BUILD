@@ -142,7 +142,6 @@ cc_library(
     hdrs = ["compile_options.h"],
     visibility = ["//tensorflow/compiler/xla/python/ifrt:friends"],
     deps = [
-        "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "//tensorflow/compiler/xla/python/ifrt",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Support",

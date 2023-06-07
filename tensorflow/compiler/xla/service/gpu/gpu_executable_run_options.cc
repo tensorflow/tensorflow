@@ -24,13 +24,6 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-NcclCliqueKey::NcclCliqueKey(std::vector<GlobalDeviceId> devices)
-    : devices_(std::move(devices)) {}
-
-std::string NcclCliqueKey::ToString() const {
-  return GlobalDeviceIdsToString(devices_);
-}
-
 GpuExecutableRunOptions& GpuExecutableRunOptions::set_gpu_global_device_ids(
     std::optional<std::map<int, GlobalDeviceId>> gpu_global_device_ids) {
   gpu_global_device_ids_ = std::move(gpu_global_device_ids);

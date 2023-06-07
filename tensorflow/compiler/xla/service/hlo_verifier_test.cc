@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
@@ -2784,6 +2785,101 @@ ENTRY TopK {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
   auto status = verifier().Run(module.get()).status();
   ASSERT_TRUE(status.ok());
+}
+
+TEST_F(HloVerifierTest, InputLayoutMismatchIgnored) {
+  // Note: The mismatch is between the entry_computation_layout and the layout
+  // of parameter(1).
+
+  constexpr absl::string_view kHlo = R"(
+HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}
+
+ENTRY entry {
+  x = f32[10,10]{1,0} parameter(0)
+  y = f32[10,10]{0,1} parameter(1)
+  ROOT z = f32[10,10]{1,0} dot(x, y),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  TF_ASSERT_OK(status);
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, InputLayoutMismatchReported) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}
+
+ENTRY entry {
+  x = f32[10,10]{1,0} parameter(0)
+  y = f32[10,10]{0,1} parameter(1)
+  ROOT z = f32[10,10]{1,0} dot(x, y),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("should be compatible"));
+}
+
+TEST_F(HloVerifierTest, OutputLayoutMismatchIgnored) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}
+
+ENTRY entry {
+  x = f32[10,10]{1,0} parameter(0)
+  y = f32[10,10]{1,0} parameter(1)
+  ROOT z = f32[10,10]{0,1} dot(x, y),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  TF_ASSERT_OK(status);
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, OutputLayoutMismatchReported) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}
+
+ENTRY entry {
+  x = f32[10,10]{1,0} parameter(0)
+  y = f32[10,10]{1,0} parameter(1)
+  ROOT z = f32[10,10]{0,1} dot(x, y),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("should be compatible"));
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, LayoutOK) {
+  constexpr absl::string_view kHlo = R"(
+HloModule module, entry_computation_layout={(f32[10,10]{1,0},f32[10,10]{1,0})->f32[10,10]{1,0}}
+
+ENTRY entry {
+  x = f32[10,10]{1,0} parameter(0)
+  y = f32[10,10]{1,0} parameter(1)
+  ROOT z = f32[10,10]{1,0} dot(x, y),
+             lhs_contracting_dims={1}, rhs_contracting_dims={0}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  Status status = verifier().Run(module.get()).status();
+
+  TF_ASSERT_OK(status);
 }
 
 }  // namespace

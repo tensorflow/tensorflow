@@ -952,10 +952,11 @@ Status MetaOptimizer::RunOptimizer(
     } else if (absl::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
-      LOG(WARNING) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << optimizer->name() << " failed: " << message;
     } else {
       message = status.ToString();
-      LOG(ERROR) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(ERROR, 60) << optimizer->name() << " failed: " << message;
     }
   } else {
     message = strings::StrCat(

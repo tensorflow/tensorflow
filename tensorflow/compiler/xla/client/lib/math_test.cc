@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
+#include <cmath>
+#include <complex>
+#include <functional>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -120,10 +127,6 @@ class MathTypedTest : public MathTest {
   //
   // For good measure, we also check pow with an exponent other than 0.5.
   void TestSqrtPowInequivalence() {
-    // TODO(b/145798892): test fails on GPU for double values.
-    if (std::is_same<T, double>::value) {
-      return;
-    }
     SetFastMathDisabled(true);
 
     // Tests disable constant folding by default, but this test needs it

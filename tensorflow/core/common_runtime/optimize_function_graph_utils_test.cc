@@ -50,8 +50,7 @@ void CreateCpuDeviceList(absl::string_view name_prefix, int num_devices,
       DeviceFactory::AddDevices(options, "/job:a/replica:0/task:0", &devices));
 }
 
-TEST(OptimizeFunctionGraphTest,
-     OptimizeFunctionGraphReturnsErrorIfNoFunctionFound) {
+void TestOptimizeFunctionGraphWithFunctionNotFound(bool load_from_cache) {
   FunctionLibraryRuntime::InstantiateOptions opts;
   opts.is_multi_device_function = true;
   auto lib_def =
@@ -66,15 +65,30 @@ TEST(OptimizeFunctionGraphTest,
 
   // Try to optimize a function called "FindDevice" which does not exist in
   // library.
-  const StatusOr<OptimizedFunctionGraphInfo> aot_result = OptimizeFunctionGraph(
-      "FindDevice", {}, opts, device_set, lib_def.get(),
-      /*composite_devices=*/{}, devices[0].get(), devices[0].get(),
-      Env::Default(), OptimizedFunctionGraph::AOT);
-  EXPECT_TRUE(errors::IsInvalidArgument(aot_result.status()))
-      << "Actual status: " << aot_result.status();
-  EXPECT_TRUE(absl::StrContains(aot_result.status().message(),
-                                "Failed to find function"))
-      << "Actual error message: " << aot_result.status().message();
+  StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info;
+  if (load_from_cache) {
+    optimized_function_graph_info = OptimizeFunctionGraphOrReadFromFileCache(
+        "FindDevice", {}, opts, device_set, lib_def.get(),
+        /*composite_devices=*/{}, devices[0].get(), devices[0].get(),
+        Env::Default(), absl::ZeroDuration());
+  } else {
+    optimized_function_graph_info = OptimizeFunctionGraph(
+        "FindDevice", {}, opts, device_set, lib_def.get(),
+        /*composite_devices=*/{}, devices[0].get(), devices[0].get(),
+        Env::Default(), OptimizedFunctionGraph::AOT);
+  }
+  EXPECT_TRUE(absl::IsInvalidArgument(optimized_function_graph_info.status()))
+      << "Actual status: " << optimized_function_graph_info.status();
+  EXPECT_TRUE(
+      absl::StrContains(optimized_function_graph_info.status().message(),
+                        "Failed to find function"))
+      << "Actual error message: "
+      << optimized_function_graph_info.status().message();
+}
+
+TEST(OptimizeFunctionGraphTest,
+     OptimizeFunctionGraphReturnsErrorIfNoFunctionFound) {
+  TestOptimizeFunctionGraphWithFunctionNotFound(/*load_from_cache=*/false);
 }
 
 TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {
@@ -107,6 +121,10 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphReturnsCorrectResult) {
   EXPECT_THAT(aot_result->ret_types, ElementsAre(DT_STRING));
   EXPECT_GT(aot_result->optimization_duration_usecs, 0);
   EXPECT_EQ(aot_result->optimization_source, OptimizedFunctionGraph::AOT);
+}
+
+TEST(OptimizeFunctionGraphTest, ReloadFromCacheReturnsErrorIfNoFunctionFound) {
+  TestOptimizeFunctionGraphWithFunctionNotFound(/*load_from_cache=*/true);
 }
 
 TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
@@ -176,7 +194,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   // Check that only one cache file exists.
   file_list.clear();
   TF_ASSERT_OK(env->GetMatchingPaths(
-      absl::StrCat(temp_dir, "/_-1_FindDevice_1234"), &file_list));
+      absl::StrCat(temp_dir, "/_-1_FindDevice_1"), &file_list));
   EXPECT_EQ(file_list.size(), 1);
   EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
                 metrics::GraphOptimizationSource::kJit),
@@ -196,7 +214,7 @@ TEST(OptimizeFunctionGraphTest, OptimizeFunctionGraphAndWriteToCache) {
   TF_ASSERT_OK(optimized_info.status());
   file_list.clear();
   TF_ASSERT_OK(env->GetMatchingPaths(
-      absl::StrCat(temp_dir, "/_-1_FindDevice_1234"), &file_list));
+      absl::StrCat(temp_dir, "/_-1_FindDevice_1"), &file_list));
   EXPECT_EQ(file_list.size(), 1);
   EXPECT_GT(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
                 metrics::GraphOptimizationSource::kJit),

@@ -46,21 +46,22 @@ TEST(PathUtilsTest, SplitsDirectory) {
 
 TEST(PathUtilsTest, SourceDirectory) {
   EXPECT_THAT(
-      SourceDirectory("/path/to/snapshot", /*stream_index=*/0, /*source_id=*/1),
+      SourceDirectory("/path/to/snapshot", /*stream_index=*/0,
+                      /*source_index=*/1),
       MatchesRegex("/path/to/snapshot.streams.stream_0.splits.source_1"));
 }
 
 TEST(PathUtilsTest, RepetitionDirectory) {
   EXPECT_THAT(
       RepetitionDirectory("/path/to/snapshot", /*stream_index=*/0,
-                          /*source_id=*/1, /*repetition_index=*/2),
+                          /*source_index=*/1, /*repetition_index=*/2),
       MatchesRegex(
           "/path/to/snapshot.streams.stream_0.splits.source_1.repetition_2"));
 }
 
 TEST(PathUtilsTest, SplitPath) {
   EXPECT_THAT(
-      SplitPath("/path/to/snapshot", /*stream_index=*/0, /*source_id=*/1,
+      SplitPath("/path/to/snapshot", /*stream_index=*/0, /*source_index=*/1,
                 /*repetition_index=*/2, /*local_index=*/3, /*global_index=*/4),
       MatchesRegex(
           "/path/to/"
@@ -69,6 +70,32 @@ TEST(PathUtilsTest, SplitPath) {
 
 TEST(PathUtilsTest, ParseStreamDirectoryName) {
   EXPECT_THAT(ParseStreamDirectoryName("stream_1"), IsOkAndHolds(1));
+}
+
+TEST(PathUtilsTest, ParseSourceDirectoryName) {
+  EXPECT_THAT(ParseSourceDirectoryName("source_1"), IsOkAndHolds(1));
+  EXPECT_THAT(ParseSourceDirectoryName(""),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected source_<source_index>")));
+  EXPECT_THAT(ParseSourceDirectoryName("source_-1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected source_<source_index>")));
+  EXPECT_THAT(ParseSourceDirectoryName("chunk_1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected source_<source_index>")));
+}
+
+TEST(PathUtilsTest, ParseRepetitionDirectoryName) {
+  EXPECT_THAT(ParseRepetitionDirectoryName("repetition_1"), IsOkAndHolds(1));
+  EXPECT_THAT(ParseRepetitionDirectoryName(""),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected repetition_<repetition_index>")));
+  EXPECT_THAT(ParseRepetitionDirectoryName("repetition_-1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected repetition_<repetition_index>")));
+  EXPECT_THAT(ParseRepetitionDirectoryName("chunk_1"),
+              StatusIs(error::INVALID_ARGUMENT,
+                       HasSubstr("Expected repetition_<repetition_index>")));
 }
 
 TEST(PathUtilsTest, InvalidStreamDirectoryName) {

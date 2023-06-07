@@ -1050,11 +1050,15 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
   // Start by initializing FreeChunkRoots at LatestSliceTime().
   for (const std::pair<const int64_t, int64_t>& free_chunk_pair :
        free_chunks_per_slice_time.back()) {
+    Chunk free_chunk =
+        Chunk::FromOffsetEnd(free_chunk_pair.first, free_chunk_pair.second);
+    if (free_chunk.size == 0) {
+      continue;
+    }
+    CHECK_GT(free_chunk.size, 0);
+
     free_chunks_.insert(
-        {free_chunk_pair.first,
-         FreeChunkRoot(Chunk::FromOffsetEnd(free_chunk_pair.first,
-                                            free_chunk_pair.second),
-                       LatestSliceTime())});
+        {free_chunk_pair.first, FreeChunkRoot(free_chunk, LatestSliceTime())});
   }
   // For slice times < LatestSliceTime(), slice the space of each root according
   // to when each subset of that root space is available.
@@ -1069,6 +1073,11 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
          free_chunks_per_slice_time[free_chunk_slice_time]) {
       Chunk free_chunk =
           Chunk::FromOffsetEnd(free_chunk_pair.first, free_chunk_pair.second);
+
+      if (free_chunk.size == 0) {
+        continue;
+      }
+      CHECK_GT(free_chunk.size, 0);
 
       // Increment it while all of free_chunk < all of it.
       for (; it != free_chunks_.end() &&
@@ -1108,7 +1117,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::
     }
   }
 
-  VLOG(1) << "Initial candidates:\n" << FreeChunksToAsciiArt();
+  VLOG(2) << "Initial candidates:\n" << FreeChunksToAsciiArt();
   VLOG(2) << "SlicedAllocationFinder:\n" << ToString();
 }
 

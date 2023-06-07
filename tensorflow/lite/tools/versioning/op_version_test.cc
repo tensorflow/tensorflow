@@ -355,6 +355,9 @@ TEST(OpVersionTest, VersioningStridedSliceTest) {
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+
+  strided_slice_params.offset = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 }
 
 TEST(OpVersionTest, VersioningSpaceToDepthTest) {

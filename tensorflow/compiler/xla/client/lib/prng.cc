@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 
+#include <array>
 #include <cmath>
+#include <iterator>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"

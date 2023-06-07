@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
 #include <algorithm>
+#include <iterator>
+#include <memory>
 #include <numeric>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"

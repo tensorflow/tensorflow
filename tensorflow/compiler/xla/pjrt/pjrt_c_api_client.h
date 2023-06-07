@@ -511,7 +511,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const;
+      const override;
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;

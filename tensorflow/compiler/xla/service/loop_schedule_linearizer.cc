@@ -128,12 +128,14 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
             continue;
           }
 
-          changed |= absl::c_linear_search(read->control_successors(), write);
-
-          // Unless we want a copy, read should happen before write.
-          TF_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
-          VLOG(2) << "Adding dependency: " << read->ToShortString()
-                  << " before " << write->ToShortString();
+          // Add control dependency if it does not already exist.
+          if (!absl::c_linear_search(read->control_successors(), write)) {
+            // Unless we want a copy, read should happen before write.
+            TF_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
+            VLOG(2) << "Adding dependency: " << read->ToShortString()
+                    << " before " << write->ToShortString();
+            changed = true;
+          }
         }
       }
     }

@@ -227,7 +227,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       uint64 hash = 0;
       Status s = HashNode(graph_def, *node_def, *lib_def, &hash);
       if (!s.ok()) {
-        VLOG(3) << "Failed to hash graph: " << s.ToString();
+        VLOG(3) << "Failed to hash graph: " << s;
         return;
       }
       for (const auto& pair : input_list) {
@@ -237,7 +237,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
         if (s.ok()) {
           hash = Hash64CombineUnordered(hash, tensor_hash);
         } else {
-          VLOG(3) << "Failed to hash tensor: " << s.ToString();
+          VLOG(3) << "Failed to hash tensor: " << s;
         }
       }
       string graph_hash =

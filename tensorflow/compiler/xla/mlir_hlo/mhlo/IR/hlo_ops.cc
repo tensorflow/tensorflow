@@ -23,8 +23,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -5406,6 +5409,59 @@ void SortOp::getCanonicalizationPatterns(RewritePatternSet& results,
 }
 
 //===----------------------------------------------------------------------===//
+// TopKOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult TopKOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  TopKOp::Adaptor adaptor(operands, attributes, properties, regions);
+  return hlo::inferTopKOp(location, adaptor.getOperand(), adaptor.getK(),
+                          inferredReturnShapes);
+}
+
+bool isMhloCompareOfBodyArgumentsGtOrLt(Block& body) {
+  auto terminator = dyn_cast<ReturnOp>(body.getTerminator());
+  if (!terminator || terminator->getNumOperands() != 1) return false;
+
+  auto compare = terminator.getOperand(0).getDefiningOp<CompareOp>();
+  if (!compare) return false;
+  auto direction = compare.getComparisonDirection();
+  if (direction != ComparisonDirection::GT &&
+      direction != ComparisonDirection::LT)
+    return false;
+
+  if (body.getNumArguments() != 2) return false;
+  auto arg0 = matchers::m_Val(body.getArgument(0));
+  auto arg1 = matchers::m_Val(body.getArgument(1));
+  return matchPattern(compare.getResult(), m_Op<CompareOp>(arg0, arg1)) ||
+         matchPattern(compare.getResult(), m_Op<CompareOp>(arg1, arg0));
+}
+
+LogicalResult TopKOp::verify() {
+  Builder builder(getContext());
+  auto operandType = getOperand().getType();
+  Block& body = getBody().front();
+
+  auto expectedBodyArgType =
+      RankedTensorType::get({}, operandType.getElementType());
+  auto expectedBodyType =
+      builder.getFunctionType({expectedBodyArgType, expectedBodyArgType},
+                              {RankedTensorType::get({}, builder.getI1Type())});
+  auto actualBodyType = builder.getFunctionType(
+      body.getArgumentTypes(), body.getTerminator()->getOperandTypes());
+  if (expectedBodyType != actualBodyType)
+    return emitOpError() << "unsupported body: expected: " << expectedBodyType
+                         << ", got " << actualBodyType;
+  if (!isMhloCompareOfBodyArgumentsGtOrLt(body))
+    return emitOpError() << "unsupported body: expected mhlo.compare of "
+                         << "body arguments with GT or LT comparison_direction";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
@@ -6173,23 +6229,19 @@ using mlir::hlo::printWindowAttributes;
 
 using mlir::hlo::parseComplexOpType;
 using mlir::hlo::parseCustomCallTarget;
-using mlir::hlo::parseDenseI64Array;
 using mlir::hlo::parseExponentMantissa;
 using mlir::hlo::parsePairwiseOpType;
 using mlir::hlo::parseSameOperandsAndResultType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::parseTupleOpType;
-using mlir::hlo::parseVariadicOperandWithAttribute;
 using mlir::hlo::parseVariadicSameOperandsAndResultType;
 using mlir::hlo::printComplexOpType;
 using mlir::hlo::printCustomCallTarget;
-using mlir::hlo::printDenseI64Array;
 using mlir::hlo::printExponentMantissa;
 using mlir::hlo::printPairwiseOpType;
 using mlir::hlo::printSameOperandsAndResultType;
 using mlir::hlo::printSelectOpType;
 using mlir::hlo::printTupleOpType;
-using mlir::hlo::printVariadicOperandWithAttribute;
 using mlir::hlo::printVariadicSameOperandsAndResultType;
 
 #define GET_OP_CLASSES
@@ -7183,7 +7235,7 @@ LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
     // parameter_replication = [] or [false] is equivalent to
     // [false,...,false] and parameter_replication = [true] means
     // [true,...,true]
-    if (arrayAttr.size() == 0 || arrayAttr.size() == 1) return success();
+    if (arrayAttr.empty() || arrayAttr.size() == 1) return success();
     auto num_leaf_buffers =
         getNumLeafBuffers(func.getArgumentTypes()[argIndex]);
     if ((size_t)num_leaf_buffers != arrayAttr.size())

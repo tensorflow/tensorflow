@@ -42,6 +42,11 @@ from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
 
 
+_CACHED_CMP_KEY = "_cached_cmp_key"  # Used by hashing and equality.
+# Cache fixed, derived TypeSpec properties to avoid expensive recompute.
+CACHED_FIXED_PROPERTIES = [_CACHED_CMP_KEY]
+
+
 @tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 class TypeSpec(
     internal.TypeSpec,
@@ -91,7 +96,7 @@ class TypeSpec(
   # be used to reconstruct the `TypeSpec`.  See the documentation for
   # `_serialize()` for more information.
 
-  __slots__ = []
+  __slots__ = CACHED_FIXED_PROPERTIES
 
   @abc.abstractproperty
   def value_type(self):
@@ -240,13 +245,26 @@ class TypeSpec(
     return self._from_components(component_placeholders)
 
   def _to_tensors(self, value):
-    value_spec = type_spec_from_value(value)
-    assert value_spec.is_subtype_of(self)
-    return [arg for arg in nest.flatten(value, expand_composites=True)
-            if isinstance(arg, core_types.Symbol)]
+    tensors = []
+    nest.map_structure(
+        lambda spec, v: tensors.extend(spec._to_tensors(v)),  # pylint: disable=protected-access
+        self._component_specs,
+        self._to_components(value))
+    return tensors
+
+  def _from_tensors(self, tensors):
+    components = nest.map_structure(
+        lambda spec: spec._from_tensors(tensors),  # pylint: disable=protected-access
+        self._component_specs
+    )
+    return self._from_components(components)
 
   def _flatten(self):
-    return nest.flatten(self._component_specs, expand_composites=True)
+    if not hasattr(self, "_cached_flatten"):
+      self._cached_flatten = nest.flatten(
+          self._component_specs, expand_composites=True
+      )
+    return self._cached_flatten
 
   def _cast(self, value, casting_context):
     if casting_context.allow_specs and isinstance(value, TypeSpec):
@@ -562,8 +580,12 @@ class TypeSpec(
 
   def __get_cmp_key(self):
     """Returns a hashable eq-comparable key for `self`."""
-    # TODO(b/133606651): Decide whether to cache this value.
-    return (type(self), self.__make_cmp_key(self._serialize()))
+    if not hasattr(self, _CACHED_CMP_KEY):
+      setattr(self, _CACHED_CMP_KEY, (
+          type(self),
+          self.__make_cmp_key(self._serialize()),
+      ))
+    return getattr(self, _CACHED_CMP_KEY)
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""

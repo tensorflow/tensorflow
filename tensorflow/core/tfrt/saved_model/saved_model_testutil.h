@@ -110,15 +110,14 @@ void ExpectTensorEqual(const tensorflow::Tensor& x, const tensorflow::Tensor& y,
 
 SavedModel::Options DefaultTpuModelOptions(
     tensorflow::tfrt_stub::Runtime* runtime,
-    tensorflow::TfrtDeviceInfraTarget tpu_target);
+    tensorflow::TfrtDeviceInfraTarget device_target);
 
 tensorflow::StatusOr<std::vector<tensorflow::serving::PredictRequest>>
 GetWarmupRequests(absl::string_view saved_model_dir);
 
 void ProcessPredictRequestsAndMaybeProfile(
     const std::vector<tensorflow::serving::PredictRequest>& requests,
-    SavedModel* saved_model, const bool profile = false,
-    const int32_t num_steps = 1);
+    SavedModel* saved_model, bool profile = false, int32_t num_steps = 1);
 
 }  // namespace tfrt_stub
 }  // namespace tensorflow

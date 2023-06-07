@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements the lowering for trigonometric standard ops to
 // approximations.
 
+#include <array>
+#include <memory>
 #include <utility>
 
 #include "mhlo/transforms/passes.h"

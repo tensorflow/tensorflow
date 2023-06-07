@@ -706,13 +706,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("post-fusion optimization");
     pipeline.AddPass<AllGatherCombiner>(
-        /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
+        debug_options.xla_gpu_all_gather_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
     pipeline.AddPass<AllReduceCombiner>(
         debug_options.xla_gpu_all_reduce_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
     pipeline.AddPass<ReduceScatterCombiner>(
-        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        debug_options.xla_gpu_reduce_scatter_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
 
     if (debug_options.xla_gpu_all_reduce_contiguous()) {
@@ -861,9 +861,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
-          !cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::HOPPER)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }

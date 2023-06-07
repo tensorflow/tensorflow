@@ -334,7 +334,9 @@ def get_func_graph(op, input_shapes, func_name):
       f = graph._get_function(operation.get_attr("f").name)  # pylint: disable=protected-access
       try:
         cf = concrete_function.ConcreteFunction(
-            f.graph, attrs=f.cached_definition.attr
+            f.graph,
+            attrs=f.cached_definition.attr,
+            function_type=f.function_type,
         )
       except AttributeError:
         # f is not found or f is a _DefinedFunction that doesn't have a graph.

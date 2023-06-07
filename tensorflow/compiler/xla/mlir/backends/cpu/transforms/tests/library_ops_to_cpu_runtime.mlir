@@ -82,9 +82,9 @@ func.func @rng_bit_generator_default(%state: memref<3xui64>,
 // CHECK-LABEL: @rng_bit_generator_default
 //  CHECK-SAME:   %[[ARG0:.*]]: memref<3xui64>, %[[ARG1:.*]]: memref<3xui64>,
 //  CHECK-SAME:   %[[ARG2:.*]]: memref<10xui32>
-//       CHECK: call @xla.cpu.rng.philox(%[[ARG0]], %[[ARG1]], %[[ARG2]])
-//       CHECK: func.func private @xla.cpu.rng.philox(
-//  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.rng.philox"}
+//       CHECK: call @xla_cpu_rng_philox(%[[ARG0]], %[[ARG1]], %[[ARG2]])
+//       CHECK: func.func private @xla_cpu_rng_philox(
+//  CHECK-SAME:     attributes {rt.custom_call = "xla_cpu_rng_philox"}
 
 // -----
 
@@ -97,9 +97,9 @@ func.func @rng_bit_generator_three_fry(%state: memref<2xui64>,
 }
 
 // CHECK-LABEL: @rng_bit_generator_three_fry
-//       CHECK: call @xla.cpu.rng.three_fry(
-//       CHECK: func.func private @xla.cpu.rng.three_fry(
-//  CHECK-SAME:     attributes {rt.custom_call = "xla.cpu.rng.three_fry"}
+//       CHECK: call @xla_cpu_rng_three_fry(
+//       CHECK: func.func private @xla_cpu_rng_three_fry(
+//  CHECK-SAME:     attributes {rt.custom_call = "xla_cpu_rng_three_fry"}
 
 // -----
 

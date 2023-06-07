@@ -103,7 +103,7 @@ pybind_extension(
     ] + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     deps = [
         ":tac_wrapper_lib",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

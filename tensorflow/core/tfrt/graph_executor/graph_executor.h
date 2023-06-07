@@ -88,8 +88,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, const tfrt::Function* func,
-    const mlrt::LoadedExecutable* loaded_executable,
+    absl::string_view signature_name, absl::string_view symbol_uid,
+    const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context,
@@ -151,12 +151,14 @@ class GraphExecutor {
   // The loading result of a `ClientGraph`.
   class LoadedClientGraph {
    public:
-    LoadedClientGraph(std::string name, GraphExecutor* graph_executor,
+    LoadedClientGraph(std::string name, std::string symbol_uid,
+                      GraphExecutor* graph_executor,
                       std::unique_ptr<mlir::MLIRContext> mlir_context,
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context)
         : name_(std::move(name)),
+          symbol_uid_(std::move(symbol_uid)),
           graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
           tf_mlir_with_op_keys_(std::move(tf_mlir_with_op_keys)),
@@ -179,6 +181,7 @@ class GraphExecutor {
       return executable_context_;
     }
     absl::string_view name() const { return name_; }
+    absl::string_view symbol_uid() const { return symbol_uid_; }
 
     OpKernelRunnerTable& runner_table() { return runner_table_; }
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
@@ -186,6 +189,7 @@ class GraphExecutor {
 
    private:
     std::string name_;
+    std::string symbol_uid_;
     GraphExecutor* graph_executor_ = nullptr;
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;

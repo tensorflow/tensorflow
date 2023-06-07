@@ -5134,3 +5134,11 @@ func.func @test_batch_function_with_invalid_symbol(%arg0: tensor<1x3xf32>, %arg1
   "tf.BatchFunction"(%arg0, %arg1) {batch_timeout_micros = 100000 : i64, f = @undefined_function, max_batch_size = 6 : i64, max_enqueued_batches = 10 : i64, num_batch_threads = 1 : i64, operand_segment_sizes = array<i32: 1, 1>} : (tensor<1x3xf32>, tensor<!tf_type.resource<tensor<1x3xf32>>>) -> tensor<*xf32>
   func.return
 }
+
+// -----
+
+func.func @test_xla_call_module_with_invalid_symbol() {
+  // expected-error @below {{refers to an undefined function: @undefined_function}}
+  "tf.XlaCallModule"() {Sout = [], device = "", dim_args_spec = [], function_list = [@undefined_function], module = "", platforms = [], version = 4 : i64} : () -> ()
+  func.return
+}

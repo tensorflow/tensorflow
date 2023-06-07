@@ -177,7 +177,7 @@ HloModule CublasLtMatmulF8
 // CHECK: "lmhlo_gpu.cublas.lt.matmul.f8"
 // CHECK-SAME: alpha_imag = 0.000000e+00 : f64
 // CHECK-SAME: alpha_real = 1.000000e+00 : f64
-// CHECK-SAME: beta = 0.000000e+00 : f64
+// CHECK-SAME: beta = 1.000000e+00 : f64
 // CHECK-NOT: lhs_batching_dimensions
 // CHECK-NOT: rhs_batching_dimensions
 // CHECK-SAME: lhs_contracting_dimensions = [1]
@@ -194,7 +194,7 @@ ENTRY main {
   %C_SCALE = f32[] parameter(5)
   %D_SCALE = f32[] parameter(6)
   ROOT %custom-call = (f8e4m3fn[16,16]{1,0}, f32[]) custom-call(f8e4m3fn[16,16]{1,0} %A, f8e4m3fn[16,16]{1,0} %B, f16[16,16]{1,0} %C, f32[] %A_SCALE, f32[] %B_SCALE, f32[] %C_SCALE, f32[] %D_SCALE), custom_call_target="__cublas$lt$matmul$f8",
-    backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}"
+    backend_config="{\"alpha_real\":1,\"alpha_imag\":0,\"beta\":1.0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]}}"
 }
 
 

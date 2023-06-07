@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

@@ -38,6 +38,15 @@ class SubgraphBuilder {
  public:
   ~SubgraphBuilder();
 
+  // Build a subgraph with a dynamic update slice op which operates on
+  // a subgraph input tensor. The input buffer cannot be shared with the output.
+  void BuildInputDynamicUpdateSliceSubgraph(Subgraph& subgraph);
+
+  // Build a subgraph with a dynamic update slice op which operates on
+  // an intermediate tensor. The input buffer can be shared with the output if
+  // multiple nodes do not consume the input tensor.
+  void BuildInplaceDynamicUpdateSliceSubgraph(Subgraph& subgraph,
+                                              bool multiple_consumers);
   // Build a subgraph with a single Add op.
   // 2 inputs. 1 output.
   void BuildAddSubgraph(Subgraph* subgraph);

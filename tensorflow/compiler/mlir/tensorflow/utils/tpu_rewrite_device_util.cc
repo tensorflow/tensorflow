@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -222,7 +223,7 @@ StatusOr<TPUDevicesAndHosts> GetFullMeshTPUExecutionDeviceAssignment(
 // Helper struct for keeping track of task and device for an associated TPU
 // device coordinate.
 struct TaskAndDevice {
-  TaskAndDevice() {}
+  TaskAndDevice() = default;
   TaskAndDevice(int task, int device) : task(task), device(device) {}
 
   int task = -1;

@@ -111,6 +111,22 @@ def default_mesh(mesh: layout_lib.Mesh):
       yield
 
 
+@tf_export("experimental.dtensor.get_default_mesh", v1=[])
+def get_default_mesh() -> Optional[layout_lib.Mesh]:
+  """Return the default mesh under the current dtensor device context.
+
+  In the case that dtensor device system is not initialized, this function
+  will return None.
+
+  Returns:
+    The current default mesh for the dtensor device context.
+  """
+  if _dtensor_singleton is None:
+    return None
+  else:
+    return _dtensor_singleton._current_default_mesh   # pylint: disable=protected-access
+
+
 @tf_export("experimental.dtensor.device_name", v1=[])
 def device_name() -> str:
   """Returns the singleton DTensor device's name.

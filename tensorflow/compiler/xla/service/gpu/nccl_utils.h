@@ -124,7 +124,8 @@ struct NcclComm : public Lockable<ncclComm_t> {
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank);
+    const NcclUniqueIdCallback& unique_id_callback, int rank,
+    int64_t stream_id);
 
 }  // namespace gpu
 }  // namespace xla

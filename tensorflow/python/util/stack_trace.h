@@ -171,6 +171,7 @@ inline std::vector<StackFrame> ManagedStackTraceToStackFrames(
   PyGILState_STATE gstate = PyGILState_Ensure();
   StackTrace* stack_trace = stack_trace_manager->Get(id);
   if (!stack_trace) {
+    PyGILState_Release(gstate);
     // Must have evicted the stack trace by now. Do best effort.
     return {};
   }

@@ -83,6 +83,8 @@ cc_library(
         "//tensorflow/c/experimental/pluggable_profiler:pluggable_profiler_internal",
         "//tensorflow/c/experimental/stream_executor",
         "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
+        "//tensorflow/compiler/jit:flags_headers",
+        "//tensorflow/compiler/jit:xla_device_no_jit_rewrite_registration",
         "//tensorflow/compiler/xla/pjrt:pjrt_api",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",

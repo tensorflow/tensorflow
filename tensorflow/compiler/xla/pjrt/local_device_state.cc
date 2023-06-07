@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/local_device_state.h"
 
+#include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -31,7 +35,8 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
                                    AllocationModel allocation_model,
                                    int max_inflight_computations,
                                    bool allow_event_reuse,
-                                   bool use_callback_stream)
+                                   bool use_callback_stream,
+                                   std::optional<StreamOptions> stream_options)
     : allocation_model_(allocation_model),
       event_pool_(allow_event_reuse),
       compute_semaphore_(
@@ -41,23 +46,42 @@ LocalDeviceState::LocalDeviceState(se::StreamExecutor* executor,
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()) {
+  int num_device_to_host_streams =
+      stream_options.has_value() ? stream_options->num_device_to_host_streams
+                                 : kNumDeviceToHostStreams;
+  int num_device_to_device_streams =
+      stream_options.has_value() ? stream_options->num_device_to_device_streams
+                                 : kNumDeviceToDeviceStreams;
   compute_stream_ = std::make_unique<se::Stream>(executor);
+  if (stream_options.has_value()) {
+    compute_stream_->implementation()->SetPriority(stream_options->priority);
+  }
   host_to_device_stream_ = std::make_unique<se::Stream>(executor);
+  if (stream_options.has_value()) {
+    host_to_device_stream_->implementation()->SetPriority(
+        stream_options->priority);
+  }
   compute_stream_->Init();
   host_to_device_stream_->Init();
   if (use_callback_stream) {
     callback_stream_map_ =
         absl::flat_hash_map<se::Stream*, std::unique_ptr<se::Stream>>();
   }
-  device_to_host_streams_.reserve(kNumDeviceToHostStreams);
-  for (int i = 0; i < kNumDeviceToHostStreams; ++i) {
+  device_to_host_streams_.reserve(num_device_to_host_streams);
+  for (int i = 0; i < num_device_to_host_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
+    if (stream_options.has_value()) {
+      stream->implementation()->SetPriority(stream_options->priority);
+    }
     stream->Init();
     device_to_host_streams_.push_back(std::move(stream));
   }
-  device_to_device_streams_.reserve(kNumDeviceToDeviceStreams);
-  for (int i = 0; i < kNumDeviceToDeviceStreams; ++i) {
+  device_to_device_streams_.reserve(num_device_to_device_streams);
+  for (int i = 0; i < num_device_to_device_streams; ++i) {
     auto stream = std::make_unique<se::Stream>(executor);
+    if (stream_options.has_value()) {
+      stream->implementation()->SetPriority(stream_options->priority);
+    }
     stream->Init();
     device_to_device_streams_.push_back(std::move(stream));
   }
@@ -142,6 +166,16 @@ se::Stream* LocalDeviceState::GetDeviceToDeviceStream() {
   next_device_to_device_stream_ =
       (next_device_to_device_stream_ + 1) % device_to_device_streams_.size();
   return device_to_device_streams_.at(i).get();
+}
+
+std::vector<se::Stream*> LocalDeviceState::GetDeviceToDeviceStreams() {
+  absl::MutexLock lock(&mu_);
+  std::vector<se::Stream*> result;
+  result.reserve(device_to_device_streams_.size());
+  for (const auto& stream : device_to_device_streams_) {
+    result.push_back(stream.get());
+  }
+  return result;
 }
 
 std::unique_ptr<se::Stream> LocalDeviceState::BorrowStreamFromPool() {

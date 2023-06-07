@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/ascii.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_compiler.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/pjrt/tracked_device_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
@@ -370,6 +371,59 @@ class AsyncHostToDeviceTransferManager
   PjRtStreamExecutorDevice* device_;  // not owned.
 };
 
+absl::string_view StreamExecutorGpuClient::platform_version() const {
+#define STRINGIFY2(X) #X
+#define STRINGIFY(X) STRINGIFY2(X)
+#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
+  // TF_ROCM_VERSION format may change in future. Use it
+  // cautiously
+  return "rocm " STRINGIFY(TF_ROCM_VERSION);
+#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
+  return "cuda " STRINGIFY(CUDART_VERSION);
+#else
+  return "<unknown>";
+#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
+}
+
+StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
+StreamExecutorGpuClient::CreateBuffersForAsyncHostToDevice(
+    absl::Span<const Shape> shapes, PjRtDevice* device) {
+  auto* stream_executor_device =
+      tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
+  return xla::AsyncHostToDeviceTransferManager::Create(
+      shapes, stream_executor_device, this);
+}
+
+xla::StatusOr<xla::DeviceAssignment>
+StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
+                                                    int num_partitions) const {
+  if (num_partitions == 1 && num_replicas <= addressable_devices().size()) {
+    xla::DeviceAssignment assignment(num_replicas, 1);
+    for (int i = 0; i < num_replicas; ++i) {
+      assignment(i, 0) = addressable_devices().at(i)->id();
+    }
+    return assignment;
+  }
+  // Fallback to default global device assignment if we can't run locally.
+  return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
+                                                              num_partitions);
+}
+
+std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
+    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
+    int node_id) {
+  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
+  for (auto& ordinal_and_device : local_device_states) {
+    const se::DeviceDescription& description =
+        ordinal_and_device.second->executor()->GetDeviceDescription();
+    auto device = std::make_unique<StreamExecutorGpuDevice>(
+        ordinal_and_device.first, std::move(ordinal_and_device.second),
+        description.name(), description.device_vendor(), node_id);
+    devices.push_back(std::move(device));
+  }
+  return devices;
+}
+
 namespace {
 
 #if defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
@@ -429,53 +483,6 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateCudaAsyncAllocator(
 }
 
 #endif  // defined(GOOGLE_CUDA) && CUDA_VERSION >= 11020
-
-// A custom PjRtClient that overrides the device assignment method.
-class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
- public:
-  using xla::PjRtStreamExecutorClient::PjRtStreamExecutorClient;
-
-  xla::StatusOr<xla::DeviceAssignment> GetDefaultDeviceAssignment(
-      int num_replicas, int num_partitions) const override;
-
-  absl::string_view platform_version() const override {
-#define STRINGIFY2(X) #X
-#define STRINGIFY(X) STRINGIFY2(X)
-#if TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)  // rocm
-    // TF_ROCM_VERSION fomrat may change in future. Use it
-    // cautiously
-    return "rocm " STRINGIFY(TF_ROCM_VERSION);
-#elif GOOGLE_CUDA && defined(CUDART_VERSION)  // cuda
-    return "cuda " STRINGIFY(CUDART_VERSION);
-#else
-    return "<unknown>";
-#endif  // TENSORFLOW_USE_ROCM && defined(TF_ROCM_VERSION)
-  }
-
-  StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
-  CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    auto* stream_executor_device =
-        tensorflow::down_cast<PjRtStreamExecutorDevice*>(device);
-    return xla::AsyncHostToDeviceTransferManager::Create(
-        shapes, stream_executor_device, this);
-  }
-};
-
-xla::StatusOr<xla::DeviceAssignment>
-StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
-                                                    int num_partitions) const {
-  if (num_partitions == 1 && num_replicas <= addressable_devices().size()) {
-    xla::DeviceAssignment assignment(num_replicas, 1);
-    for (int i = 0; i < num_replicas; ++i) {
-      assignment(i, 0) = addressable_devices().at(i)->id();
-    }
-    return assignment;
-  }
-  // Fallback to default global device assignment if we can't run locally.
-  return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
-                                                              num_partitions);
-}
 
 // Builds a LocalDeviceState for each GPU present.
 StatusOr<std::map<int, std::unique_ptr<LocalDeviceState>>>
@@ -543,21 +550,6 @@ GetStreamExecutorGpuDeviceAllocator(
       break;
   }
   return std::move(allocator);
-}
-
-std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
-    std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
-    int node_id) {
-  std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> devices;
-  for (auto& ordinal_and_device : local_device_states) {
-    const se::DeviceDescription& description =
-        ordinal_and_device.second->executor()->GetDeviceDescription();
-    auto device = std::make_unique<StreamExecutorGpuDevice>(
-        ordinal_and_device.first, std::move(ordinal_and_device.second),
-        description.name(), description.device_vendor(), node_id);
-    devices.push_back(std::move(device));
-  }
-  return devices;
 }
 
 // Exists on Linux systems. Unique per OS kernel restart.

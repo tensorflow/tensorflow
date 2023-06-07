@@ -46,6 +46,9 @@ ShaderCodegen::ShaderCodegen(const CompilationOptions& options,
     char sdk_version[PROP_VALUE_MAX];
     __system_property_get("ro.build.version.sdk", sdk_version);
     if (!strcmp(sdk_version, "31")) inline_parameters_ = false;
+  } else if (gpu_info.IsPowerVR() &&
+             !gpu_info.powervr_info.IsBetterThan(PowerVRGpu::kRogueGm9xxx)) {
+    inline_parameters_ = false;
   }
 #endif  // __ANDROID__
 }

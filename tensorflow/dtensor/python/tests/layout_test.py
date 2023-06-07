@@ -302,6 +302,24 @@ class MeshTest(test_util.DTensorBaseTest, parameterized.TestCase):
       layout.Mesh([_MESH_DIM_BATCH], global_ids, local_ids,
                   np.ravel(a).tolist())
 
+  def test_host_mesh(self):
+    device_ids = test_util.create_device_ids_array((4, 2))
+    mesh = layout.Mesh(
+        [_MESH_DIM_BATCH, _MESH_DIM_X],
+        device_ids,
+        np.ravel(device_ids).tolist(),
+        test_util.create_device_list((4, 2), 'GPU'),
+        mesh_name='name_not_preserved',
+    )
+    expected = layout.Mesh(
+        [_MESH_DIM_BATCH, _MESH_DIM_X],
+        device_ids,
+        np.ravel(device_ids).tolist(),
+        test_util.create_device_list((4, 2), 'CPU'),
+    )
+    host_mesh = mesh.host_mesh()
+    self.assertEqual(host_mesh, expected)
+
 
 class LayoutTest(test_util.DTensorBaseTest, parameterized.TestCase):
 
