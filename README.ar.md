@@ -77,12 +77,11 @@ $ pip install tensorflow-cpu
 
 لتحديث TensorFlow لاخر إصدار، اضف علم *--upgrade* للتعليق الأمر السابق.
 
-يمكنك استخدام الإصدارات الليلية فهي متاحة للاختبار باستخدام [tf-nightly](https://pypi.python.org/pypi/tf-nightly)، وحزمات  [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) 
+*يمكنك استخدام الإصدارات الليلية فهي متاحة للاختبار باستخدام [tf-nightly](https://pypi.python.org/pypi/tf-nightly)، وحزمات  [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) 
 على فهرس حزمة البايثون.* 
 
 
-
-#### *Try your first TensorFlow program*
+#### *قم بتجربة أول مكتبة*
 
 ```shell
 $ python
@@ -97,15 +96,13 @@ $ python
 b'Hello, TensorFlow!'
 ```
 
-For more examples, see the
-[TensorFlow tutorials](https://www.tensorflow.org/tutorials/).
+لمزيد من التعلميات اطلع على [دروس تعليمية](https://www.tensorflow.org/tutorials/).
 
 ## Contribution guidelines
 ## إرشادات المساهمة في tensorFlow 
-**If you want to contribute to TensorFlow, be sure to review the
-[contribution guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
-[code of conduct](CODE_OF_CONDUCT.md). By participating, you are expected to
-uphold this code.**
+**اذا كنت تريد المساهمة في برنامج tensorFlow يتوجب عليك  بقراءة [التعليمات المساهمة](CONTRIBUTING.md) كاول خطوة.
+هذا الكود ملازم بالTensorFlow [code of conduct](CODE_OF_CONDUCT.md).
+بالتدريبات من المتوقع ان هذا الكود سيساعدك.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, please see
