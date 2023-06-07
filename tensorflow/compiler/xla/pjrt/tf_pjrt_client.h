@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_future.h"
+#include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
 
@@ -191,6 +192,10 @@ class TfPjRtClient : public PjRtClient {
   }
   StatusOr<PjRtDevice*> LookupAddressableDevice(
       int local_hardware_id) const override {
+    if (wrapped_ == nullptr) {
+      return tsl::errors::Internal(
+          "Wrapped PJRT client in TfPjRtClient is already destoryed.");
+    }
     return wrapped_->LookupAddressableDevice(local_hardware_id);
   }
   PjRtPlatformId platform_id() const override {

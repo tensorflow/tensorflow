@@ -19,6 +19,7 @@ package_group(
     ],
     packages = [
         "//third_party/australis/...",
+        "//third_party/openxla_pjrt_plugin/...",
         "//third_party/py/jax/...",
     ],
 )
@@ -167,6 +168,8 @@ cc_library(
     hdrs = ["pjrt_client.h"],
     visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
+        ":pjrt_compiler",
+        ":pjrt_device_description",
         ":pjrt_executable",
         ":pjrt_future",
         "//tensorflow/compiler/xla:literal",
@@ -184,6 +187,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -248,14 +252,25 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "pjrt_device_description",
+    hdrs = ["pjrt_device_description.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "pjrt_compiler",
     srcs = ["pjrt_compiler.cc"],
     hdrs = ["pjrt_compiler.h"],
     visibility = [":friends"],
     deps = [
-        ":pjrt_client",
+        ":pjrt_device_description",
         ":pjrt_executable",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@llvm-project//mlir:IR",
@@ -519,11 +534,16 @@ cc_library(
         ":pjrt_client",
         ":pjrt_future",
         ":tracked_tfrt_cpu_device_buffer",
+        ":transpose",
+        ":utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/runtime:cpu_event",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
+        "//tensorflow/compiler/xla/service/cpu:cpu_executable",
+        "//tensorflow/compiler/xla/service/cpu:cpu_xfeed",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:connected_traceme",
         "@com_google_absl//absl/base:core_headers",
@@ -557,7 +577,6 @@ cc_library(
         ":transpose",
         ":utils",
         "//tensorflow/compiler/xla:array",
-        "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
@@ -591,15 +610,11 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:connected_traceme",
         "//third_party/eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:dynamic_annotations",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -632,6 +647,7 @@ xla_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -720,8 +736,6 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_hdrs",
         "//tensorflow/compiler/xla/pjrt/c:pjrt_c_api_helpers",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
-        "//tensorflow/compiler/xla/stream_executor/tpu:c_api_conversions",  # TODO(b/238999986): Remove this.
-        "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/strings",
@@ -737,6 +751,7 @@ cc_library(
     deps = [
         ":pjrt_client",
         ":pjrt_future",
+        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

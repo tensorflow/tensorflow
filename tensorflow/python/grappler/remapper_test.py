@@ -157,6 +157,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(['cuda', 'mkl'])
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_matmul_biasadd_activation_fusion(self, mode):
     """Test MatMul+BiasAdd+Gelu fusion."""
     self.maybe_skip_test(mode)
@@ -221,6 +222,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_conv2d_biasadd_act_fusion(self):
     """Test Conv2D+BiasAdd+Relu fusion."""
     if not test_util.is_gpu_available():
@@ -274,6 +276,7 @@ class RemapperTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')
+  @test_util.run_without_tensor_float_32('Avoid TF32 convs on A100+ GPUs')
   def test_two_conv2d_fusions(self):
     """Test two Conv2D patterns and only the second is fusable."""
     if not test_util.is_gpu_available(

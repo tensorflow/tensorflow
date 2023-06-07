@@ -40,22 +40,21 @@ inline constexpr absl::string_view kOutputShardingAttr =
 // computation correponding to i-th logical device. If the attribute does not
 // exist, the all inputs are placed on logical core 0.
 mlir::LogicalResult ExtractInputsForLogicalDevices(
-    const int num_cores_per_replica,
-    mlir::tf_device::ClusterFuncOp cluster_func, mlir::OpBuilder* builder,
+    int num_cores_per_replica, mlir::tf_device::ClusterFuncOp cluster_func,
+    mlir::OpBuilder* builder,
     llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
 
 // Extracts a list of OpSharding that represent output sharding configuration of
 // `tf_device.cluster`.
 mlir::LogicalResult ParseAndValidateOutputSharding(
-    const int num_cores_per_replica,
-    mlir::tf_device::ClusterFuncOp cluster_func,
+    int num_cores_per_replica, mlir::tf_device::ClusterFuncOp cluster_func,
     mlir::SmallVector<xla::OpSharding, 4>* output_sharding_list);
 
 // Retrieves output types for TPUExecute op representing execution for provided
 // logical device id. TPUExecute op for different logical device may have
 // different outputs depending on the output sharding configuration.
 mlir::LogicalResult GetOutputTypesForLogicalDeviceComputation(
-    const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     mlir::tf_device::ClusterFuncOp cluster_func,
     llvm::SmallVectorImpl<mlir::Type>* output_types,
     llvm::SmallVectorImpl<int>* cluster_to_core_index);

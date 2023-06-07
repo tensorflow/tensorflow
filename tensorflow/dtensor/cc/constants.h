@@ -94,6 +94,10 @@ static constexpr char kMeshCoordinatesAttr[] = "_mesh_coordinates";
 // such as IR dumps etc.
 static constexpr char kDoNotLog[] = "dtensor.do_not_log";
 
+// Attribute used to record the name of the eager operation triggered the
+// DTensor rewrites.
+static constexpr char kEagerOperationName[] = "dtensor.eager_operation_name";
+
 // The number of TPU cores in a donut.
 static constexpr int kTpuDonutSize = 8;
 
@@ -111,6 +115,10 @@ static constexpr char kSkipXlaCompilation[] = "_skip_xla_compilation";
 // An attribute which stores the cache_key for the graph in the module. Used
 // to uniquely name functions.
 static constexpr char kCacheKey[] = "dtensor.cache_key";
+
+// An attribute on Const nodes to record which argument it was originally
+// from.
+static constexpr char kFromArgIndex[] = "dtensor.from_arg_index";
 
 // An attribute that determines whether a tensor is a sparse tensor. If this
 // attribute exists in a tensor, then this tensor is a sparse tensor.

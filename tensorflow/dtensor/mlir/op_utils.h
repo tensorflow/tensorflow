@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_DTENSOR_MLIR_OP_UTILS_H_
 #define TENSORFLOW_DTENSOR_MLIR_OP_UTILS_H_
 
+#include <optional>
 #include <string>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -39,7 +40,7 @@ inline std::string GetFullOpName(const std::string& name) {
 }
 
 // Returns FuncOp if `op` is a callable.
-absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op);
+std::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op);
 
 // DTensorLayout only conveys layout information of tensors which is no
 // longer needed after SPMD expansion. As so, remove all layouts from

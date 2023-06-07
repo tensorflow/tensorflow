@@ -343,6 +343,45 @@ def create_graph_debug_info_def(func_named_operations):
   return graph_debug_info_def
 
 
+def merge_graph_debug_info_def(per_fn_info):
+  """Construct and returns a `GraphDebugInfo` protocol buffer.
+
+  Args:
+    per_fn_info: An iterable of (func_name, GraphDebugInfo) tuples.
+
+  Returns:
+    GraphDebugInfo protocol buffer.
+
+  Raises:
+    TypeError: If the arguments are not of the correct proto buffer type.
+  """
+  graph_debug_info_def = graph_debug_info_pb2.GraphDebugInfo()
+
+  all_file_names = set()
+  for _, fn_info in per_fn_info:
+    all_file_names.update(fn_info.files)
+  # Ensure determinism.
+  all_file_names = sorted(all_file_names)
+
+  graph_debug_info_def.files.extend(all_file_names)
+  file_to_index = dict(
+      [(y, x) for x, y in enumerate(graph_debug_info_def.files)])
+
+  for fn_name, fn_info in per_fn_info:
+    for fn_node_name, fn_trace in fn_info.traces.items():
+      trace_def = graph_debug_info_def.traces[fn_node_name + "@" + fn_name]
+      for fn_frame in fn_trace.file_line_cols:
+        trace_def.file_line_cols.add(
+            file_index=file_to_index[fn_info.files[fn_frame.file_index]],
+            line=fn_frame.line,
+            col=fn_frame.col,
+            func=fn_frame.func,
+            code=fn_frame.code,
+        )
+
+  return graph_debug_info_def
+
+
 def _compute_field_dict(op):
   r"""Return a dictionary mapping interpolation tokens to values.
 

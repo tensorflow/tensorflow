@@ -34,17 +34,10 @@ py_strict_library(
     deps = [
         ":dtensor_strategy_extended",
         ":dtensor_util",
-        "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:config",
         "//tensorflow/dtensor/python:mesh_util",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/distribute:cross_device_ops",
-        "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/framework:device",
-        "//tensorflow/python/framework:ops",
     ],
 )
 
@@ -61,10 +54,6 @@ dtensor_test(
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python:mesh_util",
         "//tensorflow/dtensor/python/tests:test_util",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:stateless_random_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
@@ -73,6 +62,10 @@ dtensor_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:variables",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -86,13 +79,18 @@ py_strict_library(
         "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:input_util",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:device_util",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:summary_ops_v2",
     ],
 )
 
@@ -116,7 +114,7 @@ dtensor_test(
     ],
 )
 
-py_library(
+py_strict_library(
     name = "dtensor_strategy_extended",
     srcs = ["dtensor_strategy_extended.py"],
     deps = [
@@ -126,16 +124,16 @@ py_library(
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:input_util",
         "//tensorflow/dtensor/python:layout",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/util:nest",
     ],
 )
 
-py_library(
+py_strict_library(
     name = "multi_worker_mirrored_strategy",
     srcs = ["multi_worker_mirrored_strategy.py"],
     deps = [
@@ -172,16 +170,24 @@ dtensor_test(
     deps = [
         ":dtensor_util",
         ":multi_worker_mirrored_strategy",
+        "//tensorflow/dtensor/python:api",
         "//tensorflow/dtensor/python:d_variable",
         "//tensorflow/dtensor/python:layout",
         "//tensorflow/dtensor/python/tests:multi_client_test_util",
         "//tensorflow/dtensor/python/tests:test_util",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute/cluster_resolver:tfconfig_cluster_resolver_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:stateless_random_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",

@@ -796,6 +796,18 @@ class ConcatOffsetTest(test.TestCase):
           x_concat
       )  # This test is only meant to check the creation is not crashed
 
+  def testInt64Shape(self):
+    with test_util.use_gpu():
+      cdim = constant_op.constant(1, dtypes.int32)
+      s0 = constant_op.constant([2, 5000000000, 5], dtypes.int64)
+      s1 = constant_op.constant([2, 7, 5], dtypes.int64)
+      s2 = constant_op.constant([2, 20, 5], dtypes.int64)
+      off = gen_array_ops.concat_offset(cdim, [s0, s1, s2])
+      ans = self.evaluate(off)
+      self.assertAllEqual(
+          ans, [[0, 0, 0], [0, 5000000000, 0], [0, 5000000007, 0]])
+      self.assertEqual(ans[0].dtype, dtypes.int64)
+
 
 if __name__ == "__main__":
   test.main()

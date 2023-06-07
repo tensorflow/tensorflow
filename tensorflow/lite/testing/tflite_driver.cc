@@ -16,9 +16,10 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
-#include <cstdlib>
+#include <cstdint>
+#include <cstring>
 #include <iostream>
-#include <iterator>
+#include <map>
 #include <memory>
 #include <ostream>
 #include <string>
@@ -26,10 +27,15 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/escaping.h"
-#include "absl/strings/numbers.h"
-#include "tensorflow/lite/builtin_op_data.h"
-#include "tensorflow/lite/core/c/c_api_types.h"
-#include "tensorflow/lite/core/c/common.h"
+#include "absl/strings/str_cat.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "tensorflow/lite/core/interpreter_builder.h"
+#include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/testing/result_expectations.h"
+#include "tensorflow/lite/tools/delegates/delegate_provider.h"
+#include "tensorflow/lite/tools/logging.h"
 #if !defined(__APPLE__)
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #endif
@@ -41,7 +47,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/signature_runner.h"
-#include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"

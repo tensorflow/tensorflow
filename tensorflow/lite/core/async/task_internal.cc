@@ -67,7 +67,12 @@ TfLiteStatus ExecutionTask::SetBufferHandle(TfLiteIoType io_type,
   if (!GetTensorIdx(io_type, name, &index)) {
     return kTfLiteError;
   }
-  io_data_[index].buf = handle;
+  return SetBufferHandle(index, handle);
+}
+
+TfLiteStatus ExecutionTask::SetBufferHandle(int tensor_index,
+                                            TfLiteBufferHandle handle) {
+  io_data_[tensor_index].buf = handle;
   return kTfLiteOk;
 }
 
@@ -95,7 +100,12 @@ TfLiteStatus ExecutionTask::SetSynchronization(TfLiteIoType io_type,
   if (!GetTensorIdx(io_type, name, &index)) {
     return kTfLiteError;
   }
-  io_data_[index].sync = sync;
+  return SetSynchronization(index, sync);
+}
+
+TfLiteStatus ExecutionTask::SetSynchronization(int tensor_index,
+                                               TfLiteSynchronization* sync) {
+  io_data_[tensor_index].sync = sync;
   return kTfLiteOk;
 }
 

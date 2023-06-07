@@ -15,22 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TESTING_TFLITE_DRIVER_H_
 #define TENSORFLOW_LITE_TESTING_TFLITE_DRIVER_H_
 
+#include <stdlib.h>
+
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/core/c/common.h"
-#include "tensorflow/lite/testing/result_expectations.h"
-#if !defined(__APPLE__)
-#include "tensorflow/lite/delegates/flex/delegate.h"
-#endif
-#include "tensorflow/lite/core/interpreter.h"
-#include "tensorflow/lite/core/kernels/register.h"
-#include "tensorflow/lite/core/model.h"
-#include "tensorflow/lite/kernels/register_ref.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/model_builder.h"
+#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/signature_runner.h"
+#include "tensorflow/lite/testing/result_expectations.h"
 #include "tensorflow/lite/testing/test_runner.h"
 
 namespace tflite {

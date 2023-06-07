@@ -35,7 +35,7 @@ template <typename T>
 class RendezvousCache : public tsl::core::WeakRefCounted {
  public:
   RendezvousCache() = default;
-  virtual ~RendezvousCache() {
+  ~RendezvousCache() override {
     for (auto& p : table_) {
       auto rendez = p.second.GetNewRef();
       if (rendez) {

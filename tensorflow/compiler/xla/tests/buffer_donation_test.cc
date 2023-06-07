@@ -86,8 +86,8 @@ class BufferDonationTest : public HloTestBase {
     ExecutableRunOptions run_options;
     run_options.set_stream(&stream);
     run_options.set_allocator(&memory_allocator);
-    ServiceExecutableRunOptions service_run_options(run_options,
-                                                    backend_->StreamBorrower());
+    ServiceExecutableRunOptions service_run_options(
+        run_options, backend_->StreamBorrowerWithPriority());
 
     std::vector<ExecutionInput> args;
     std::vector<ShapeTree<se::DeviceMemoryBase>> inputs_buffers;

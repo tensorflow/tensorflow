@@ -20,7 +20,9 @@ limitations under the License.
 #include <memory>
 #include <queue>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/strings/substitute.h"
@@ -102,8 +104,8 @@ Status TensorHandle::PackedTensorHandleData::NumElements(
 
 Status TensorHandle::PackedTensorHandleData::Unprotect() {
   for (auto* handle : handles_) {
-    TF_RETURN_IF_ERROR(absl::visit([](auto& data) { return data.Unprotect(); },
-                                   handle->data_));
+    TF_RETURN_IF_ERROR(
+        std::visit([](auto& data) { return data.Unprotect(); }, handle->data_));
   }
   return OkStatus();
 }
@@ -146,8 +148,8 @@ string TensorHandle::PackedTensorHandleData::DebugString() const {
   string debug_str = "PackedTensorHandleData: ";
   for (const auto* handle : handles_) {
     debug_str.append(
-        absl::StrCat(absl::visit([](auto& data) { return data.DebugString(); },
-                                 handle->data_),
+        absl::StrCat(std::visit([](auto& data) { return data.DebugString(); },
+                                handle->data_),
                      "; "));
   }
   return debug_str;
@@ -189,7 +191,7 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
   // Wait for this TensorHandle to be ready.
   profiler::TraceMe activity("TensorHandle::GetResourceHandleInfo WaitReady",
                              profiler::TraceMeLevel::kVerbose);
-  auto& data = absl::get<LocalTensorHandleData>(data_);
+  auto& data = std::get<LocalTensorHandleData>(data_);
   TF_RETURN_IF_ERROR(data.WaitReady("TensorHandle::GetResourceHandleInfo"));
 
   *result = handle_dtypes_and_shapes_;
@@ -200,7 +202,7 @@ int TensorHandle::NumPackedHandles() const {
   if (Type() != PACKED) {
     return 0;
   }
-  return absl::get<PackedTensorHandleData>(data_).NumPackedHandles();
+  return std::get<PackedTensorHandleData>(data_).NumPackedHandles();
 }
 
 Status TensorHandle::ExtractPackedHandle(const int index,
@@ -209,8 +211,8 @@ Status TensorHandle::ExtractPackedHandle(const int index,
     return errors::Internal("Invalid ExtractPackedHandleOnDevice call on a",
                             TypeString(), " handle: ", this);
   }
-  return absl::get<PackedTensorHandleData>(data_).ExtractPackedHandle(index,
-                                                                      handle);
+  return std::get<PackedTensorHandleData>(data_).ExtractPackedHandle(index,
+                                                                     handle);
 }
 
 TensorHandle* TensorHandle::CreateLocalHandle(const tensorflow::Tensor& t) {
@@ -426,12 +428,12 @@ void TensorHandle::Release() {
 tensorflow::DataType TensorHandle::DataType() const { return dtype; }
 
 bool TensorHandle::IsReady() const {
-  return absl::visit([](auto& data) { return data.IsReady(); }, data_);
+  return std::visit([](auto& data) { return data.IsReady(); }, data_);
 }
 
 Status TensorHandle::WaitReady(const char* caller) const {
-  return absl::visit([caller](auto& data) { return data.WaitReady(caller); },
-                     data_);
+  return std::visit([caller](auto& data) { return data.WaitReady(caller); },
+                    data_);
 }
 
 TensorHandle::HandleType TensorHandle::Type() const {
@@ -462,7 +464,7 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) const {
                             " handle: ", this);
   }
 
-  auto& data = absl::get<LocalTensorHandleData>(data_);
+  auto& data = std::get<LocalTensorHandleData>(data_);
   return data.Tensor(t);
 }
 
@@ -476,7 +478,7 @@ Status TensorHandle::TensorFromDevice(const Device* d,
                               " handle: ", this);
     }
 
-    auto& data = absl::get<LocalTensorHandleData>(data_);
+    auto& data = std::get<LocalTensorHandleData>(data_);
     return data.Tensor(t);
   }
 
@@ -500,7 +502,7 @@ Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
                               " handle: ", this);
     }
 
-    auto& data = absl::get<LocalTensorHandleData>(data_);
+    auto& data = std::get<LocalTensorHandleData>(data_);
     return data.TensorValue(t);
   }
 
@@ -517,7 +519,7 @@ Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
 
 Status TensorHandle::WaitUnknownDevice() const {
   if (unknown_device_) {
-    TF_RETURN_IF_ERROR(absl::visit(
+    TF_RETURN_IF_ERROR(std::visit(
         [](auto& data) {
           return data.WaitReady("TensorHandle::UnknownDevice");
         },
@@ -536,8 +538,7 @@ Status TensorHandle::Shape(tensorflow::TensorShape* shape) {
     DCHECK(fill);
     return OkStatus();
   } else {
-    return absl::visit([shape](auto& data) { return data.Shape(shape); },
-                       data_);
+    return std::visit([shape](auto& data) { return data.Shape(shape); }, data_);
   }
 }
 
@@ -587,7 +588,7 @@ void TensorHandle::SetInferenceShape(
   }
   auto s = PartialTensorShape::MakePartialShape(dims.data(), num_dims,
                                                 &inference_shape_);
-  DCHECK(s.ok());
+  TF_DCHECK_OK(s);
 }
 
 Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
@@ -611,7 +612,7 @@ Status TensorHandle::Shape(tensorflow::PartialTensorShape* shape) const {
     *shape = inference_shape_;
     return OkStatus();
   } else {
-    auto result = absl::visit(
+    auto result = std::visit(
         [](auto& data) {
           TensorShape shape;
           Status s = data.Shape(&shape);
@@ -630,8 +631,8 @@ Status TensorHandle::NumDims(int* num_dims) const {
     *num_dims = inference_shape_.dims();
     return OkStatus();
   } else {
-    return absl::visit(
-        [num_dims](auto& data) { return data.NumDims(num_dims); }, data_);
+    return std::visit([num_dims](auto& data) { return data.NumDims(num_dims); },
+                      data_);
   }
 }
 
@@ -642,7 +643,7 @@ Status TensorHandle::Dim(int dim_index, int64_t* dim) const {
     *dim = inference_shape_.dim_size(dim_index);
     return OkStatus();
   } else {
-    return absl::visit(
+    return std::visit(
         [dim_index, dim](auto& data) { return data.Dim(dim_index, dim); },
         data_);
   }
@@ -654,7 +655,7 @@ Status TensorHandle::NumElements(int64_t* num_elements) const {
     *num_elements = inference_shape_.num_elements();
     return OkStatus();
   } else {
-    return absl::visit(
+    return std::visit(
         [num_elements](auto& data) { return data.NumElements(num_elements); },
         data_);
   }
@@ -664,7 +665,7 @@ Status TensorHandle::Unprotect(const Device* d) {
   DVLOG(3) << "Unprotect on TensorHandle: " << this << " device: " << d;
 
   if (d == device_) {
-    return absl::visit([](auto& data) { return data.Unprotect(); }, data_);
+    return std::visit([](auto& data) { return data.Unprotect(); }, data_);
   }
 
   tf_shared_lock l(mu_);
@@ -727,7 +728,7 @@ Status TensorHandle::RemoteAddress(const Device* d, const bool wait_until_ready,
     return errors::InvalidArgument("Primary device is not remote");
   }
 
-  auto& data = absl::get<RemoteTensorHandleData>(data_);
+  auto& data = std::get<RemoteTensorHandleData>(data_);
   return data.OpIdAndOutputNum(wait_until_ready, op_id, output_num);
 }
 
@@ -853,7 +854,7 @@ Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
         "SetRemoteShape should only be called on remote handles.");
   }
 
-  auto& data = absl::get<RemoteTensorHandleData>(data_);
+  auto& data = std::get<RemoteTensorHandleData>(data_);
   // context_view_id is currently used to validate mirrors. The shape of
   // RemoteTensorHandleData should be set without checking context_view_id.
   // The reason behind it is that for the primary copy of data, if the remote
@@ -894,7 +895,7 @@ void TensorHandle::PoisonRemote(Status status, const Device* d,
     DCHECK(Type() == REMOTE)
         << "Poison can only be on remote handles: " << this;
 
-    auto& data = absl::get<RemoteTensorHandleData>(data_);
+    auto& data = std::get<RemoteTensorHandleData>(data_);
     data.Poison(status);
   } else {
     tf_shared_lock l(mu_);
@@ -936,7 +937,7 @@ Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
       auto& resource_handle = t.flat<class ResourceHandle>()(0);
       handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
     }
-    auto& data = absl::get<LocalTensorHandleData>(data_);
+    auto& data = std::get<LocalTensorHandleData>(data_);
     return data.SetTensor(std::move(t));
   } else {
     tf_shared_lock l(mu_);
@@ -958,7 +959,7 @@ void TensorHandle::Poison(Status status, const Device* d) {
 
   if (d == device_) {
     DCHECK(Type() != REMOTE) << "Poison can only be on local handles: " << this;
-    absl::visit([status](auto& data) { data.Poison(status); }, data_);
+    std::visit([status](auto& data) { data.Poison(status); }, data_);
   } else {
     tf_shared_lock l(mu_);
     auto elem = local_mirrors_.find(d);

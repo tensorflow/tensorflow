@@ -129,6 +129,9 @@ TEST(UtilTest, RoundTripFpToString) {
       RoundTripFpToString(std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
       "nan");
   EXPECT_EQ(RoundTripFpToString(
+                std::numeric_limits<tsl::float8_e4m3b11>::quiet_NaN()),
+            "-nan");
+  EXPECT_EQ(RoundTripFpToString(
                 -std::numeric_limits<tsl::float8_e4m3fn>::quiet_NaN()),
             "-nan");
   EXPECT_EQ(RoundTripFpToString(NanWithSignAndPayload<half>(
@@ -180,6 +183,79 @@ TEST(UtilTest, SplitF64ToF32) {
   EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).first,
             std::numeric_limits<float>::infinity());
   EXPECT_EQ(SplitF64ToF32(std::numeric_limits<double>::max()).second, 0.0f);
+}
+
+namespace {
+template <typename T>
+void TotalOrderHelper(T x, T y) {
+  auto x_sm = ToSignMagnitude(x);
+  bool x_sign = static_cast<bool>(Eigen::numext::signbit(x));
+  bool y_sign = static_cast<bool>(Eigen::numext::signbit(y));
+  auto y_sm = ToSignMagnitude(y);
+  if (x_sign && !y_sign) {
+    EXPECT_LT(x_sm, y_sm) << x << " " << y;
+  }
+  if (!x_sign && y_sign) {
+    EXPECT_GT(x_sm, y_sm) << x << " " << y;
+  }
+  if (x == y && x_sign == y_sign) {
+    EXPECT_EQ(x_sm, y_sm) << x << " " << y;
+  }
+  if (x < y) {
+    EXPECT_LT(x_sm, y_sm) << x << " " << y;
+  }
+  if (x > y) {
+    EXPECT_GT(x_sm, y_sm) << x << " " << y;
+  }
+  if (Eigen::numext::isnan(x) && x_sign && !Eigen::numext::isnan(y)) {
+    EXPECT_LT(x_sm, y_sm) << x << " " << y;
+  }
+  if (Eigen::numext::isnan(x) && !x_sign && !Eigen::numext::isnan(y)) {
+    EXPECT_GT(x_sm, y_sm) << x << " " << y;
+  }
+  if (Eigen::numext::isnan(y) && y_sign && !Eigen::numext::isnan(x)) {
+    EXPECT_GT(x_sm, y_sm) << x << " " << y;
+  }
+  if (Eigen::numext::isnan(y) && !y_sign && !Eigen::numext::isnan(x)) {
+    EXPECT_LT(x_sm, y_sm) << x << " " << y;
+  }
+}
+}  // namespace
+
+TEST(UtilTest, TotalOrder_F8E5M2) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e5m2 x =
+        Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e5m2 y =
+          Eigen::numext::bit_cast<tsl::float8_e5m2>(static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
+TEST(UtilTest, TotalOrder_F8E4M3FN) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e4m3fn x =
+        Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e4m3fn y =
+          Eigen::numext::bit_cast<tsl::float8_e4m3fn>(static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
+}
+
+TEST(UtilTest, TotalOrder_F8E4M3B11) {
+  for (int a = 0; a < 256; ++a) {
+    tsl::float8_e4m3b11 x =
+        Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(a));
+    for (int b = 0; b < 256; ++b) {
+      tsl::float8_e4m3b11 y =
+          Eigen::numext::bit_cast<tsl::float8_e4m3b11>(static_cast<uint8_t>(b));
+      TotalOrderHelper(x, y);
+    }
+  }
 }
 
 }  // namespace

@@ -5,6 +5,8 @@ load(
     "tf_cc_fuzz_test",
 )
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 tf_cc_fuzz_test(
     name = "runtime_client_fuzz",
     srcs = ["runtime_client_fuzz.cc"],

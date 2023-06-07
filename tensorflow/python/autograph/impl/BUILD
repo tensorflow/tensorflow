@@ -1,5 +1,5 @@
 load("//tensorflow:strict.default.bzl", "py_strict_library")
-load("//tensorflow:tensorflow.default.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -33,7 +33,6 @@ py_strict_library(
         "//tensorflow/python/autograph/operators:__init__",
         "//tensorflow/python/autograph/operators:py_builtins",
         "//tensorflow/python/autograph/pyct:anno",
-        "//tensorflow/python/autograph/pyct:cache",
         "//tensorflow/python/autograph/pyct:cfg",
         "//tensorflow/python/autograph/pyct:error_utils",
         "//tensorflow/python/autograph/pyct:errors",
@@ -67,7 +66,7 @@ py_strict_library(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "api_test",
     srcs = ["api_test.py"],
     python_version = "PY3",
@@ -75,9 +74,6 @@ tf_py_test(
     deps = [
         ":api",
         ":conversion",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/autograph/core:ag_ctx",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/core:test_lib",
@@ -92,24 +88,27 @@ tf_py_test(
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:function_utils",
         "//tensorflow/python/util:tf_decorator",
         "//third_party/py/numpy",
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
     deps = [
         ":api",
         ":conversion",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/core:config",
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "//tensorflow/python/autograph/utils:__init__",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

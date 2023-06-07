@@ -62,14 +62,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
     int64_t numElementsThreshold = 1024);
 
 /// Pass to vectorize `memref.copy`.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
+    int64_t numElementsThreshold = 8);
 
 /// Pass to remove redundant `memref.copy` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 
 /// Pass to gradually lower vector ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
-    bool enableAVX2 = true);
+    bool enableAVX2 = true, bool flatten = false);
 
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();

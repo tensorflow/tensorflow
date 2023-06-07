@@ -1114,11 +1114,20 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       """A simple model with a single depthwise conv2d, bias and relu."""
 
       def __init__(self):
-        self.filters = np.random.uniform(
-            low=-10, high=10, size=filter_shape
-        ).astype('f4')
-
         self.out_channel_size = filter_shape[2] * filter_shape[3]
+
+        # This ensures filters will have different value range per out channel
+        self.filters = np.stack(
+            [
+                np.random.uniform(
+                    low=-(i + 1), high=(i + 1), size=filter_shape[:-2]
+                ).astype('f4')
+                for i in range(self.out_channel_size)
+            ],
+            axis=-1,
+        )
+        self.filters = self.filters.reshape(filter_shape)
+
         self.bias = np.random.uniform(
             low=0, high=10, size=(self.out_channel_size)
         ).astype('f4')
@@ -1178,11 +1187,19 @@ class QuantizedModelTest(test.TestCase, parameterized.TestCase):
       """A simple model with a single conv2d, bias and relu."""
 
       def __init__(self):
-        self.filters = np.random.uniform(
-            low=-10, high=10, size=filter_shape
-        ).astype('f4')
-
         self.out_channel_size = filter_shape[-1]
+
+        # This ensures filters will have different value range per out channel
+        self.filters = np.stack(
+            [
+                np.random.uniform(
+                    low=-(i + 1), high=(i + 1), size=filter_shape[:-1]
+                ).astype('f4')
+                for i in range(self.out_channel_size)
+            ],
+            axis=-1,
+        )
+
         self.bias = np.random.uniform(
             low=0, high=10, size=(self.out_channel_size)
         ).astype('f4')

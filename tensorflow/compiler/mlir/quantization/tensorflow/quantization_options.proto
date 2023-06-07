@@ -141,7 +141,7 @@ message QuantizationOptions {
   // units that are not specified in unit-wise configurations.
   QuantizationMethod quantization_method = 1;
 
-  OpSet op_set = 2;  // If not specified, it defaults to `TF`.
+  OpSet op_set = 2;  // If not specified, it defaults to `XLA`.
 
   QuantizationPrecision quantization_precision = 3;
 

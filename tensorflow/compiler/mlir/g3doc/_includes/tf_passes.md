@@ -1993,4 +1993,21 @@ This pass will transform it into
 ### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
 Verifies whether all functions in module are of single tf_executor.graph and
 each tf_executor.island in tf_executor.graph only has a single op.
+### `-tf-xla-call-module-deserialization`: Deserializes StableHLO functions embedded in `tf.XlaCallModule` to top level module
+This pass deserializes the StableHLO bytecodes embedded in tf.XlaCallModule,
+then outlines the functions in the deserialized StableHLO module to the top
+level MLIR module, with function renamings to avoid naming conflicts.
+
+After the outlining, it updates tf.XlaCallModule's module attribute to be
+empty, adds an `_entry_function` attribute referring to the entry function.
+It also adds a `_from_xla_call_module: true` attribute to each lifted
+StableHLO function.
+### `-tf-xla-call-module-serialization`: Serializes StableHLO functions from top-level module into `tf.XlaCallModule`'s `module` attribute
+This pass collects StableHLO functions referenced from `tf.XlaCallModule`'s
+`_entry_function` attribute into a module, serializes the module into MLIR
+bytecode, and embed the bytecode to `tf.XlaCallModule`'s `module` attribute.
+
+After serialization, this pass removes the `_entry_function` attribute from
+`tf.XlaCallModule`, and removes all the serialized stablehlo functions
+from the top-level module.
 ### `-tfe-legalize-tfg`: Legalize from TFG to the TFE dialect

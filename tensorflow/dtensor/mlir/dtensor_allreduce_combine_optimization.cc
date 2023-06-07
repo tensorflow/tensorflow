@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -582,9 +583,14 @@ struct DTensorAllReduceCombineOptimization
         all_reduce_groups = createSubgroupsByReductionAttr(all_reduce_groups);
         all_reduce_groups = createSubgroupsByGroupAssignment(all_reduce_groups);
 
+        // Maintain relative order of ALLReduces within the block.
         std::sort(all_reduce_groups.begin(), all_reduce_groups.end(),
                   [](std::vector<mlir::TF::DTensorAllReduceOp> lhs,
                      std::vector<mlir::TF::DTensorAllReduceOp> rhs) {
+                    if (lhs.empty() || rhs.empty()) {
+                      // Skip order check if either group is empty.
+                      return false;
+                    }
                     if (lhs[0]->getBlock() == rhs[0]->getBlock())
                       return lhs[0]->isBeforeInBlock(rhs[0]);
                     return true;

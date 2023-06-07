@@ -24,7 +24,10 @@ limitations under the License.
 namespace tflite {
 
 // Prints a dump of what tensors and what nodes are in the interpreter.
-void PrintInterpreterState(const impl::Interpreter* interpreter);
+void PrintInterpreterState(const impl::Interpreter* interpreter,
+                           int32_t tensor_name_display_length = 25,
+                           int32_t tensor_type_display_length = 15,
+                           int32_t alloc_type_display_length = 18);
 
 }  // namespace tflite
 

@@ -50,6 +50,10 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
 
+// Builds a constant bool attribute.
+class GetBoolAttr<int value> :
+    NativeCodeCall<"$_builder.getBoolAttr(" # value #")">;
+
 // Converts an integer attribute $0 to 64-bit with builder.
 def convertIntAttrTo64Bit : NativeCodeCall<
     "$_builder.getI64IntegerAttr($0.cast<IntegerAttr>().getInt())">;
@@ -534,7 +538,8 @@ def LegalizeStridedSlice : Pat<
     (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
-    (convertIntAttrTo32Bit $shrink_axis_mask))>;
+    (convertIntAttrTo32Bit $shrink_axis_mask),
+    (GetBoolAttr<false>))>;
 
 def LegalizeRfft2d : Pat<
   (TF_RFFT2DOp $input, $fft_length),

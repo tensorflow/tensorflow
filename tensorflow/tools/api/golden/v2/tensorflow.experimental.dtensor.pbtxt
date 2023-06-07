@@ -81,6 +81,10 @@ tf_module {
     argspec: "args=[\'task_id\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "get_default_mesh"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "heartbeat_enabled"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
@@ -142,7 +146,11 @@ tf_module {
   }
   member_method {
     name: "relayout"
-    argspec: "args=[\'tensor\', \'layout\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'tensor\', \'layout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "relayout_like"
+    argspec: "args=[\'tensor\', \'layout_tensor\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "run_on"

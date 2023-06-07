@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cstdlib>
+#include <functional>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -364,7 +368,7 @@ void FallbackBatchResource::ProcessFuncBatchImpl(
     // If there is only 1 error after deduplication, we emit the error with
     // proper error code mapping from TFRT to TF.
     if (errors.size() == 1) {
-      final_status = FromAbslStatus(*errors[0]);
+      final_status = *errors[0];
     } else {
       std::string msg;
       llvm::raw_string_ostream os(msg);

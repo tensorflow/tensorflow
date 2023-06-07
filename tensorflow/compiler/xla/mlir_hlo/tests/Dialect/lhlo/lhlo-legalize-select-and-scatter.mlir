@@ -47,14 +47,14 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 
 // Parallel loop to initialize the output buffer.
 // CHECK: %[[INIT:.*]] = "memref.load"(%[[INIT_BUF]]) : (memref<f32>) -> f32
-// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C112]], %[[C112]], %[[C1]], %[[C1]]) ({
+// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C112]], %[[C112]], %[[C1]], %[[C1]]) <{{.*}}> ({
 // CHECK: ^bb0(%[[I:.*]]: index, %[[J:.*]]: index):
 // CHECK:   "memref.store"(%[[INIT]], %[[RESULT_BUF]], %[[I]], %[[J]])
 // CHECK:   "scf.yield"() : () -> ()
 // CHECK: })
 
 // Parallel loop over source buffer to compute scattered values.
-// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C56]], %[[C56]], %[[C1]], %[[C1]]) ({
+// CHECK: "scf.parallel"(%[[C0]], %[[C0]], %[[C56]], %[[C56]], %[[C1]], %[[C1]]) <{{.*}}> ({
 // CHECK: ^bb0(%[[II:.*]]: index, %[[JJ:.*]]: index):
 
 // Window loop w.r.t. first dim.
@@ -131,7 +131,7 @@ func.func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK: }
 
 // Use selected ivs to load element from the SRC buffer.
-// CHECK: %[[SRC_ELEM:.*]] = "memref.load"(%[[SRC_BUF]], %[[II]], %[[JJ]]) {nontemporal = false} : (memref<56x56xf32>, index, index) -> f32
+// CHECK: %[[SRC_ELEM:.*]] = "memref.load"(%[[SRC_BUF]], %[[II]], %[[JJ]]) <{nontemporal = false}> : (memref<56x56xf32>, index, index) -> f32
 
 // Update of RESULT[SELECTED_I, SELECTED_J] should be done atomically, because
 // it may happen that several other threads select the same IVs if the windows

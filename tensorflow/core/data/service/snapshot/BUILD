@@ -37,6 +37,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
@@ -185,6 +186,9 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
 )
@@ -249,6 +253,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/core/data/service:worker_proto_cc",
@@ -260,7 +265,9 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -281,9 +288,11 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -336,6 +345,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

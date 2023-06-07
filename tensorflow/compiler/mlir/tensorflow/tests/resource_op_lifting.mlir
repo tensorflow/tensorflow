@@ -53,7 +53,7 @@ func.func @only_resource_store() -> tensor<*xi32> {
 
 // -----
 
-// Tests that a resource ops with both load and store are hoisted.
+// Tests that resource ops with both load and store are hoisted.
 
 // CHECK-LABEL: func @same_resource_load_and_store
 func.func @same_resource_load_and_store() -> tensor<*xi32> {
@@ -82,7 +82,7 @@ func.func @same_resource_load_and_store() -> tensor<*xi32> {
 
 // -----
 
-// Tests that a resource ops with both load and store are hoisted
+// Tests that resource ops with both load and store are hoisted
 // but input to load and output from store have mixed defined/undefined shapes.
 
 // CHECK-LABEL: func @same_resource_load_and_store_cast
@@ -114,13 +114,85 @@ func.func @same_resource_load_and_store_cast() -> tensor<1xi32> {
 
 // -----
 
-// Tests that internal resource operations are not hoisted.
+// Tests that anonymous internal resource operations are eliminated.
 
-// CHECK-LABEL: func @internal_resource
-func.func @internal_resource() -> tensor<*xi32> {
+// CHECK-LABEL: func @anonymous_internal_resource
+func.func @anonymous_internal_resource() -> tensor<*xi32> {
+
+  // CHECK: %[[COMPUTE1_RES:[0-9]*]] = "tf.SomeComputation1"()
+  %0 = "tf.SomeComputation1"() : () -> (tensor<*xi32>)
 
   // CHECK: %[[CLUSTER_RES:[0-9]*]] = "tf_device.cluster"
-  %0 = "tf_device.cluster"() ({
+  // CHECK-NOT: "tf.VarHandleOp"
+  // CHECK-NOT: "tf.AssignVariableOp"
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK: %[[COMPUTE2_RES:[0-9]*]] = "tf.SomeComputation2"(%[[COMPUTE1_RES]])
+  // CHECK-NOT: "tf.AssignVariableOp"
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK: tf_device.return %[[COMPUTE2_RES]]
+  // CHECK: {cluster_attr = "cluster_attr"}
+  // CHECK-SAME: () -> tensor<*xi32>
+
+  %1 = "tf_device.cluster"() ( {
+    %1 = "tf.VarHandleOp"() {shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
+    "tf.AssignVariableOp"(%1, %0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    %2 = "tf.ReadVariableOp"(%1) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
+    %3 = "tf.SomeComputation2"(%2) : (tensor<*xi32>) -> (tensor<*xi32>)
+    "tf.AssignVariableOp"(%1, %3) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    %4 = "tf.ReadVariableOp"(%1) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
+    tf_device.return %4 : tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
+
+  // CHECK: return %[[CLUSTER_RES]]
+  return %1 : tensor<*xi32>
+}
+
+// -----
+
+// Tests that anonymous internal resource operations (including DestroyResourceOp) are eliminated.
+
+// CHECK-LABEL: func @anonymous_internal_resource_with_destroy
+func.func @anonymous_internal_resource_with_destroy() -> tensor<*xi32> {
+
+  // CHECK: %[[COMPUTE1_RES:[0-9]*]] = "tf.SomeComputation1"()
+  %0 = "tf.SomeComputation1"() : () -> (tensor<*xi32>)
+
+  // CHECK: %[[CLUSTER_RES:[0-9]*]] = "tf_device.cluster"
+  // CHECK-NOT: "tf.VarHandleOp"
+  // CHECK-NOT: "tf.AssignVariableOp"
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK: %[[COMPUTE2_RES:[0-9]*]] = "tf.SomeComputation2"(%[[COMPUTE1_RES]])
+  // CHECK-NOT: "tf.AssignVariableOp"
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK-NOT: "tf.DestroyResourceOp"
+  // CHECK: tf_device.return %[[COMPUTE2_RES]]
+  // CHECK: {cluster_attr = "cluster_attr"}
+  // CHECK-SAME: () -> tensor<*xi32>
+
+  %1 = "tf_device.cluster"() ( {
+    %1 = "tf.VarHandleOp"() {shared_name = "cd2c89b7-88b7-44c8-ad83-06c2a9158347"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
+    "tf.AssignVariableOp"(%1, %0) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    %2 = "tf.ReadVariableOp"(%1) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
+    %3 = "tf.SomeComputation2"(%2) : (tensor<*xi32>) -> (tensor<*xi32>)
+    "tf.AssignVariableOp"(%1, %3) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>, tensor<*xi32>) -> ()
+    %4 = "tf.ReadVariableOp"(%1) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> tensor<*xi32>
+    "tf.DestroyResourceOp"(%1) {dtype = i32} : (tensor<*x!tf_type.resource<tensor<*xi32>>>) -> ()
+    tf_device.return %4 : tensor<*xi32>
+  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
+
+  // CHECK: return %[[CLUSTER_RES]]
+  return %1 : tensor<*xi32>
+}
+
+// -----
+
+// Tests that named internal resource operations are not hoisted.
+
+// CHECK-LABEL: func @named_internal_resource
+func.func @named_internal_resource() -> tensor<*xi32> {
+
+  // CHECK: %[[CLUSTER_RES:[0-9]*]] = "tf_device.cluster"
+  %0 = "tf_device.cluster"() ( {
 
     // CHECK: %[[RES_HANDLE:[0-9]*]] = "tf.VarHandleOp"
     %1 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf_type.resource<tensor<*xi32>>>
@@ -139,7 +211,7 @@ func.func @internal_resource() -> tensor<*xi32> {
   }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
 
   // CHECK: return %[[CLUSTER_RES]]
-  func.return %0 : tensor<*xi32>
+  return %0 : tensor<*xi32>
 }
 
 // -----

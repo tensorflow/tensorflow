@@ -92,7 +92,8 @@ static bool HasFp8(const HloModule& hlo_module) {
   for (const HloComputation* computation : hlo_module.computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       if (ShapeUtil::HasPrimitiveType(instruction->shape(), F8E5M2) ||
-          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN)) {
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3FN) ||
+          ShapeUtil::HasPrimitiveType(instruction->shape(), F8E4M3B11FNUZ)) {
         return true;
       }
     }
@@ -114,6 +115,8 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
 
   GpuPipelineOpts opts;
   opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
+  opts.enable_concurrent_region =
+      debug_options.xla_gpu_cuda_graph_enable_concurrent_region();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {

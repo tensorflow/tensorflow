@@ -75,6 +75,6 @@ py_strict_test(
     tags = ["no_pip"],
     deps = [
         ":flags_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

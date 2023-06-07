@@ -16,6 +16,8 @@ limitations under the License.
 #include "analysis/userange_analysis.h"
 
 #include <algorithm>
+#include <iterator>
+#include <limits>
 #include <utility>
 
 #include "llvm/ADT/SetOperations.h"

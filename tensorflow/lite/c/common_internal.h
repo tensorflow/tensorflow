@@ -39,14 +39,16 @@ typedef struct TfLiteRegistrationExternal {
   // Initializes the op from serialized data.
   void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
                 size_t length);
+
+  // Deallocates the op.
   // The pointer `buffer` is the data previously returned by an init invocation.
   void (*free)(TfLiteOpaqueContext* context, void* buffer);
 
   // Called when the inputs that this node depends on have been resized.
   TfLiteStatus (*prepare)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
-  // Called when the node is executed. (should read node->inputs and output to
-  // node->outputs).
+  // Called when the node is executed. (Should read node inputs and write to
+  // node outputs).
   TfLiteStatus (*invoke)(TfLiteOpaqueContext* context, TfLiteOpaqueNode* node);
 
   // Retrieves the async kernel. The functor is nullptr if the node / backend

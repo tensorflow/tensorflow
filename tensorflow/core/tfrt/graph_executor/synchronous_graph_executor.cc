@@ -100,5 +100,16 @@ absl::Status SynchronousGraphExecutor::Run(
       target_tensor_names, outputs));
 }
 
+absl::Status SynchronousGraphExecutor::CompileGraph(
+    const std::string& graph_name,
+    absl::Span<const std::string> input_tensor_names,
+    absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names) {
+  return tfrt::AbslStatusFromTfStatus(graph_executor_->CompileGraph(
+      graph_name, input_tensor_names, input_tensor_dtypes, output_tensor_names,
+      target_tensor_names));
+}
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow

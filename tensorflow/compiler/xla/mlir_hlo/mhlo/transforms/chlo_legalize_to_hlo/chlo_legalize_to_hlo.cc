@@ -1552,19 +1552,24 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
 //                           strides = dense<1> : tensor<2xi64>} :
 //                              (tensor<16x16xf32>) -> tensor<16x8xf32>
 // %6 = "mhlo.slice"(%4) ...
+//
+// TODO(b/284078162): Decide what to do with this pattern given that we now
+// have mhlo::TopKOp. No action needed for now given that mhlo::TopKOp is
+// currently categorized as `hasPrivateFeaturesNotInStablehlo`.
 struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
   using OpConversionPattern<TopKOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       TopKOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
-    // The last dimension of the operand's shape should be known so we can have
-    // clamped end_indices for slices. This is verified by the op.
-    auto operandType = op.getOperand().getType().cast<RankedTensorType>();
+    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    if (!operandType) return failure();
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
     int64_t lastDimResultSize =
-        std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+        hlo::isDynamicDimSize(lastDimSize)
+            ? static_cast<int64_t>(op.getK())
+            : std::min(static_cast<int64_t>(op.getK()), lastDimSize);
     int64_t isDynamic = !operandType.hasStaticShape();
     auto i32Type = rewriter.getIntegerType(32);
     Value opShapeValue, resultShapeValue;

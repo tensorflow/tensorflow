@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -42,7 +43,7 @@ inline constexpr absl::string_view kDeviceAssignmentAttr = "device_assignment";
 
 // A TPU device for execution alongside its associated host CPU device.
 struct TPUDeviceAndHost {
-  TPUDeviceAndHost() {}
+  TPUDeviceAndHost() = default;
   TPUDeviceAndHost(llvm::StringRef device, llvm::StringRef host)
       : device(device), host(host) {}
 

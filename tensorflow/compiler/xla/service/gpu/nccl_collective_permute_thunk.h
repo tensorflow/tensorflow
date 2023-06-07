@@ -55,24 +55,7 @@ struct NcclCollectivePermuteConfig {
 };
 
 // Thunk that performs a NCCL-based collective permute.
-class NcclCollectivePermuteThunkBase : public NcclCollectiveThunk {
- public:
-  NcclCollectivePermuteThunkBase(Kind kind, ThunkInfo thunk_info,
-                                 NcclCollectivePermuteConfig config,
-                                 const Buffer& buffer);
-
- protected:
-  Status RunCollectivePermute(const ExecuteParams& params, se::Stream& stream,
-                              ncclComm_t comm);
-
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-
- private:
-  const NcclCollectivePermuteConfig config_;
-  const Buffer buffer_;
-};
-
-class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
+class NcclCollectivePermuteStartThunk : public NcclCollectiveThunk {
  public:
   static NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
@@ -86,7 +69,6 @@ class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::CollectivePermuteStartOp op);
   static const char* GetHloOpName() { return "collective-permute-start"; }
-  static constexpr bool IsAsync() { return true; }
 
   NcclCollectivePermuteStartThunk(ThunkInfo thunk_info,
                                   mlir::lmhlo_gpu::CollectivePermuteStartOp op,
@@ -94,20 +76,14 @@ class NcclCollectivePermuteStartThunk : public NcclCollectivePermuteThunkBase {
                                   int64_t partition_count,
                                   const Buffer& buffer);
 
-  AsyncExecutor& async_executor() { return async_; }
-
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  const NcclCollectiveConfig& config() const override { return config_.config; }
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
 
  private:
-  AsyncExecutor async_;
-};
-
-class NcclCollectivePermuteDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclCollectivePermuteDoneThunk(ThunkInfo thunk_info,
-                                 NcclCollectiveThunk::AsyncExecutor& async);
+  const NcclCollectivePermuteConfig config_;
+  const Buffer buffer_;
 };
 
 Status RunCollectivePermute(

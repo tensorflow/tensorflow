@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
@@ -589,7 +592,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
+    auto error = EmitErrorAsync(exec_ctx, status);
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return error;
@@ -1084,7 +1087,7 @@ static void RuntimeFallbackExecuteOp(
     const tensorflow::Tensor* tf_tensor = nullptr;
     tensorflow::Status s =
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
-    DCHECK(s.ok()) << s.ToString();
+    DCHECK(s.ok()) << s;
     results[i] =
         tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(*tf_tensor);
   }

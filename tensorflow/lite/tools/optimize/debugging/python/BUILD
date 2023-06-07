@@ -36,7 +36,7 @@ py_strict_test(
         "//tensorflow/lite/python:convert",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/metrics",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/trackable:autotrackable",
         "//third_party/py/numpy",

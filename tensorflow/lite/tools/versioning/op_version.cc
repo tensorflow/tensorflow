@@ -409,6 +409,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SLICE:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 6;
+      }
       if (op_sig.inputs.at(0).dims.size() > 4) {
         return 5;
       }
@@ -520,6 +523,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto strided_slice_params =
           reinterpret_cast<TfLiteStridedSliceParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(strided_slice_params != nullptr);
+      if (strided_slice_params->offset == true) {
+        return 8;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 7;
+      }
       if (strided_slice_params->ellipsis_mask != 0 ||
           strided_slice_params->new_axis_mask != 0) {
         return 6;
@@ -749,6 +758,12 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_RANGE:
+      if (op_sig.inputs.at(0).type == kTfLiteInt64) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_BATCH_MATMUL: {
       // In case of int16 inputs, the version is 3.
       if (op_sig.inputs.at(0).type == kTfLiteInt16) {
@@ -785,6 +800,18 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_CONCATENATION:
+      if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
+        return 4;
+      }
+      // In case of int16 inputs, the version is 3.
+      if (op_sig.inputs.at(0).type == kTfLiteInt16) {
+        return 3;
+      }
+      if (op_sig.inputs.at(0).type == kTfLiteInt8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_MIRROR_PAD:

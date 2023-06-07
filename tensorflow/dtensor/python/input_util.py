@@ -145,6 +145,7 @@ class _DTensorIterator(iterator_ops.OwnedIterator):
       # device mesh. If the dataset layouts are on the host mesh itself, this
       # is handled by DTensor as a no-op.
       host_elem = self._next_internal()
+      context.async_wait()
       device_elem = nest.map_structure(
           api.copy_to_mesh, host_elem, self._layouts)
       context.async_wait()

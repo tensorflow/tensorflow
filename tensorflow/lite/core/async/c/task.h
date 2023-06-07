@@ -55,6 +55,14 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetBuffer(
     TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name, TfLiteBufferHandle handle);
 
+/// Sets the buffer handle to the input / output tensor associated with the
+/// tensor index.
+/// NOTE: This method does not check tensor index is pointing to a valid tensor.
+/// Caller need to make sure the tensor_index points to a valid tensor by
+/// using the element from AsyncSignatureRunner inputs / outputs array.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetBufferByIndex(
+    TfLiteExecutionTask* task, int tensor_index, TfLiteBufferHandle handle);
+
 /// Returns the buffer handle of the input / output tensor associated with
 /// `tensor_signature_name`.
 /// `task` and `tensor_signature_name` must not be nullptr.
@@ -105,6 +113,15 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetSync(
     TfLiteExecutionTask* task, TfLiteIoType io_type,
     const char* tensor_signature_name, TfLiteSynchronization* sync);
 
+/// Sets the opaque sync object to the input / output tensor associated with the
+/// tensor index.
+/// NOTE: This method does not check tensor index is pointing to a
+/// valid tensor. Caller need to make sure the tensor_index points to a valid
+/// tensor by using the element from AsyncSignatureRunner inputs / outputs
+/// array.
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskSetSyncByIndex(
+    TfLiteExecutionTask* task, int tensor_index, TfLiteSynchronization* sync);
+
 /// Returns the sync object of the input / output tensor associated with
 /// `tensor_signature_name`.
 /// `task` and `tensor_signature_name` must not be nullptr.
@@ -128,7 +145,7 @@ TFL_CAPI_EXPORT extern void TfLiteExecutionTaskSetDelegateExecutionData(
     TfLiteExecutionTask* task, TfLiteAsyncKernel* kernel, void* data);
 
 /// Task status
-/// Thread safe accessors for the lastest status of the task.
+/// Thread safe accessors for the latest status of the task.
 TFL_CAPI_EXPORT extern TfLiteStatus TfLiteExecutionTaskGetStatus(
     const TfLiteExecutionTask* task);
 

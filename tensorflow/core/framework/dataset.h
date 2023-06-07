@@ -815,7 +815,7 @@ class IteratorContext {
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }
 
-  std::vector<std::shared_ptr<SplitProvider>> split_providers() {
+  std::vector<std::shared_ptr<SplitProvider>> split_providers() const {
     return params_.split_providers;
   }
 

@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 #define TENSORFLOW_CORE_TFRT_GRAPH_EXECUTOR_GRAPH_EXECUTOR_H_
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -87,8 +88,8 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, const tfrt::Function* func,
-    const mlrt::LoadedExecutable* loaded_executable,
+    absl::string_view signature_name, absl::string_view symbol_uid,
+    const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
     tfrt::ResourceContext* resource_context,
@@ -150,12 +151,14 @@ class GraphExecutor {
   // The loading result of a `ClientGraph`.
   class LoadedClientGraph {
    public:
-    LoadedClientGraph(std::string name, GraphExecutor* graph_executor,
+    LoadedClientGraph(std::string name, std::string symbol_uid,
+                      GraphExecutor* graph_executor,
                       std::unique_ptr<mlir::MLIRContext> mlir_context,
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context)
         : name_(std::move(name)),
+          symbol_uid_(std::move(symbol_uid)),
           graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
           tf_mlir_with_op_keys_(std::move(tf_mlir_with_op_keys)),
@@ -164,7 +167,8 @@ class GraphExecutor {
 
     // Returns a `CostRecorder` if none has been created before for this
     // `LoadedClientGraph`.
-    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder() const;
+    std::unique_ptr<CostRecorder> MaybeCreateCostRecorder(
+        uint64_t normalize_ratio = 1) const;
 
     // Updates the op cost values in this `LoadedClientGraph` with records from
     // `cost_recorder`.
@@ -177,6 +181,7 @@ class GraphExecutor {
       return executable_context_;
     }
     absl::string_view name() const { return name_; }
+    absl::string_view symbol_uid() const { return symbol_uid_; }
 
     OpKernelRunnerTable& runner_table() { return runner_table_; }
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
@@ -184,6 +189,7 @@ class GraphExecutor {
 
    private:
     std::string name_;
+    std::string symbol_uid_;
     GraphExecutor* graph_executor_ = nullptr;
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;
@@ -264,6 +270,14 @@ class GraphExecutor {
   tfrt::ResourceContext& resource_context() { return resource_context_; }
 
   const Options& options() const { return options_; }
+
+  // Compiles graph for `graph_name` and runs any initializers.
+  tensorflow::Status CompileGraph(
+      const std::string& graph_name,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names);
 
  private:
   // A set of methods to load a client graph.

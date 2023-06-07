@@ -22,7 +22,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/core/runtime_fallback/...",
-        "//tensorflow/core/tfrt/eager/...",
         "//tensorflow/core/tfrt/experimental/data/...",
         "//tensorflow/core/tfrt/graph_executor/...",
         "//tensorflow/core/tfrt/saved_model/...",
@@ -307,8 +306,10 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
         "@tf_runtime//:befexecutor",
+        "@tf_runtime//:core_runtime_alwayslink",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
@@ -534,7 +535,6 @@ cc_library(
         # copybara:uncomment "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:__pkg__",
         # copybara:uncomment "//learning/brain/experimental/tfrt/visualization:__pkg__",
         "//tensorflow/compiler/mlir/tfrt/tests/saved_model:__pkg__",
-        "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__pkg__",
         "//tensorflow/core/tfrt/saved_model:__pkg__",
     ],
@@ -587,6 +587,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+        "@tf_runtime//:compiler_tfrt_op_interfaces",
     ],
 )
 
