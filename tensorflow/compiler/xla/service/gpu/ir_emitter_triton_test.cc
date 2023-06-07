@@ -223,7 +223,9 @@ ENTRY e {
 
 TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
   // TODO(bchetioui): reenable when b/285866137 is fixed.
+#ifndef NDEBUG
   GTEST_SKIP() << "This test times out when -UNDEBUG is set.";
+#endif
   const std::string kHloText = R"(
 HloModule m
 
