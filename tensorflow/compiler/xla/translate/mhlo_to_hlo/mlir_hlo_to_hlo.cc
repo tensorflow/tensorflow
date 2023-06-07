@@ -945,14 +945,29 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
     return failure();
 
-  value_map[op] = xla::AllReduce(
-      operand, computation, Convert_replica_groups(op.getReplicaGroups()),
-      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
-      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Shape> shape_with_layout = std::nullopt;
+    if (shape_or->has_layout()) shape_with_layout = shape_or.value();
+    auto tuple = xla::AllReduceTuple(
+        operands, computation, Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), shape_with_layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    value_map[op->getResults()[0]] = xla::AllReduce(
+        operands[0], computation, Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  }
+
   return success();
 }
 
@@ -1253,7 +1268,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllReduceDone(
-            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType()));
+            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType(0)));
     return success();
   }
   auto collective_permute_op =
