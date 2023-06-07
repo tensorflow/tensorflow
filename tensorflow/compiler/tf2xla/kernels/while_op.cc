@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/while_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
@@ -246,7 +250,7 @@ StatusOr<xla::XlaComputation> BuildWrappedBody(
 xla::XlaOp BuildWhile(XlaOpKernelContext* ctx,
                       const xla::XlaComputation& wrapped_cond,
                       const xla::XlaComputation& wrapped_body,
-                      const xla::XlaOp& initial_values,
+                      const xla::XlaOp initial_values,
                       const std::vector<int>& input_mapping,
                       const std::vector<bool>& compile_time_const_arg_indices,
                       int num_compile_time_const_args,

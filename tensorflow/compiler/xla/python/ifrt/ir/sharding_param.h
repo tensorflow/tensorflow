@@ -75,9 +75,9 @@ class ShardingParam {
   // Sizes of `permutation` and `sizes` must be equal.
   struct MinorToMajor {
     // A permutation of range [0...n].
-    llvm::SmallVector<int64_t, 4> permutation;
+    llvm::SmallVector<int, 4> permutation;
     // The size of mesh dimensions before the permutation.
-    llvm::SmallVector<int64_t, 4> axis_sizes;
+    llvm::SmallVector<int, 4> axis_sizes;
 
     mlir::LogicalResult verify(
         llvm::function_ref<mlir::InFlightDiagnostic()> emit_error) const;
@@ -87,7 +87,7 @@ class ShardingParam {
     }
 
     // Produces a flat list of device ids according to the permutation.
-    void ToDeviceList(llvm::SmallVectorImpl<int64_t>& out_devices) const;
+    void ToDeviceList(llvm::SmallVectorImpl<int>& out_devices) const;
   };
 
   ShardingParam(llvm::ArrayRef<int64_t> dim_shards, MinorToMajor minor_to_major)
@@ -110,9 +110,9 @@ class ShardingParam {
   }
 
   llvm::hash_code hash_value() const {
-    return llvm::hash_combine(
-        dim_shards(), llvm::ArrayRef<int64_t>(minor_to_major_.permutation),
-        llvm::ArrayRef<int64_t>(minor_to_major_.axis_sizes));
+    return llvm::hash_combine(dim_shards(),
+                              llvm::ArrayRef<int>(minor_to_major_.permutation),
+                              llvm::ArrayRef<int>(minor_to_major_.axis_sizes));
   }
 
   std::string DebugString() const;

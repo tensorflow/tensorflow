@@ -199,7 +199,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

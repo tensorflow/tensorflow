@@ -284,13 +284,13 @@ class FunctionType(inspect.Signature):
       if not self_param.is_subtype_of(other_param):
         return False
 
-    # Self must have all capture names of other.
-    if not all(name in self.captures for name in other.captures):
+    # Other must have all capture names of self.
+    if not all(name in other.captures for name in self.captures):
       return False
 
     # Functions are contravariant upon the capture types.
-    return all(self.captures[name].is_subtype_of(capture_type)
-               for name, capture_type in other.captures.items())
+    return all(capture_type.is_subtype_of(other.captures[name])
+               for name, capture_type in self.captures.items())
 
   def most_specific_common_subtype(
       self, others: Sequence["FunctionType"]) -> Optional["FunctionType"]:
@@ -308,16 +308,22 @@ class FunctionType(inspect.Signature):
     if not all(subtyped_parameters):
       return None
 
-    # Common subtype must use captures common to all.
+    # Common subtype has superset of all captures.
     capture_names = set(self.captures.keys())
     for other in others:
-      capture_names = capture_names.intersection(other.captures.keys())
+      capture_names = capture_names.union(other.captures.keys())
 
     subtyped_captures = collections.OrderedDict()
     for name in capture_names:
+      containing = [t for t in [self, *others] if name in t.captures]
+      # Pick the first type that has the capture as the base.
+      base = containing[0]
+      relevant_others = containing[1:]
+
       # Functions are contravariant upon the capture types.
-      common_type = self.captures[name].most_specific_common_supertype(
-          [other.captures[name] for other in others])
+      common_type = base.captures[name].most_specific_common_supertype(
+          [other.captures[name] for other in relevant_others]
+      )
       if common_type is None:
         return None
       else:
@@ -362,6 +368,16 @@ class FunctionType(inspect.Signature):
         self._cached_flat_outputs = self.output._flatten()   # pylint: disable=protected-access
 
     return self._cached_flat_outputs
+
+  def pack_output(self, flat_values):
+    """Packs flat tensors to generate a value of the output type."""
+    if flat_values is None:
+      flat_values = []
+
+    if self.output is None:
+      raise ValueError("Can not pack outputs for undefined output type.")
+    else:
+      return self.output._from_tensors(iter(flat_values))   # pylint: disable=protected-access
 
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, FunctionType):
@@ -430,7 +446,7 @@ def _make_validated_mono_param(
 def canonicalize_to_monomorphic(
     args: Tuple[Any, ...], kwargs: Dict[Any, Any], default_values: Dict[Any,
                                                                         Any],
-    captures: Dict[Any, Any], polymorphic_type: FunctionType
+    capture_types: collections.OrderedDict, polymorphic_type: FunctionType
 ) -> Tuple[inspect.BoundArguments, FunctionType,
            trace_type.InternalTracingContext]:
   """Converts polymorphic parameters to monomorphic and associated type."""
@@ -481,10 +497,6 @@ def canonicalize_to_monomorphic(
           _make_validated_mono_param(name, arg, poly_parameter.kind,
                                      type_context,
                                      poly_parameter.type_constraint))
-
-  capture_types = collections.OrderedDict()
-  for name, value in captures.items():
-    capture_types[name] = trace_type.from_value(value, type_context)
 
   monomorphic_function_type = FunctionType(parameters, capture_types)
   mono_bound_arguments = monomorphic_function_type.bind(
@@ -556,9 +568,12 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
 
 
 def from_structured_signature(
-    input_signature, output_signature=None, capture_types=None
+    input_signature=None, output_signature=None, capture_types=None
 ) -> FunctionType:
   """Generates a FunctionType from legacy signature representation."""
+  if input_signature is None:
+    input_signature = ((), {})
+
   args, kwargs = input_signature
   parameters = []
 
@@ -587,13 +602,10 @@ def from_structured_signature(
         )
     )
 
-  if output_signature is None:
-    return_type = None
-  else:
-    return_type = trace_type.from_value(
-        output_signature,
-        trace_type.InternalTracingContext(is_legacy_signature=True),
-    )
+  return_type = trace_type.from_value(
+      output_signature,
+      trace_type.InternalTracingContext(is_legacy_signature=True),
+  )
 
   return FunctionType(
       parameters, capture_types or {}, return_annotation=return_type

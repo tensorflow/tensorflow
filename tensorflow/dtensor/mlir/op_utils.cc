@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/op_utils.h"
 
+#include <optional>
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
@@ -39,17 +40,17 @@ uint64_t OpHash(mlir::Operation* op) {
 }
 
 // Returns FuncOp if `op` is a callable.
-absl::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
+std::optional<mlir::func::FuncOp> MaybeFindFunction(mlir::Operation* op) {
   auto call_op = llvm::dyn_cast<mlir::CallOpInterface>(op);
-  if (!call_op) return absl::nullopt;
+  if (!call_op) return std::nullopt;
 
   mlir::CallInterfaceCallable callable = call_op.getCallableForCallee();
   mlir::SymbolRefAttr sym = callable.dyn_cast<mlir::SymbolRefAttr>();
-  if (!sym) return absl::nullopt;
+  if (!sym) return std::nullopt;
 
   mlir::func::FuncOp func = llvm::dyn_cast<mlir::func::FuncOp>(
       mlir::SymbolTable::lookupNearestSymbolFrom(op, sym));
-  if (!func) return absl::nullopt;
+  if (!func) return std::nullopt;
 
   return func;
 }

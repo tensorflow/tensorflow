@@ -108,8 +108,8 @@ class LocalRendezvous {
   // This is necessary because subsequent calls to RendezvousMgr::Find() will
   // return the aborted rendezvous, and proper errors will be propagated.
   // TODO(hhb): find a better way to manage rendezvous lifespan.
-  static mutex aborted_rendezs_mu_;
-  static std::vector<tsl::core::RefCountPtr<Rendezvous> > aborted_rendezs_
+  static mutex& aborted_rendezs_mu_;
+  static std::vector<tsl::core::RefCountPtr<Rendezvous> >& aborted_rendezs_
       TF_GUARDED_BY(aborted_rendezs_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);

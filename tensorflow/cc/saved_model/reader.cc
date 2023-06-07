@@ -45,6 +45,37 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+Status FindMetaGraphDef(const std::unordered_set<string>& tags,
+                        SavedModel* saved_model_proto,
+                        MetaGraphDef* meta_graph_def) {
+  LOG(INFO) << "Reading meta graph with tags { " << absl::StrJoin(tags, " ")
+            << " }";
+  for (MetaGraphDef& graph_def : *saved_model_proto->mutable_meta_graphs()) {
+    // Get tags from the graph_def.
+    std::unordered_set<string> graph_tags;
+    for (const string& tag : graph_def.meta_info_def().tags()) {
+      graph_tags.insert(tag);
+    }
+    // Match with the set of tags provided.
+    if (graph_tags == tags) {
+      *meta_graph_def = std::move(graph_def);
+      // Correct the endiness of Tensor content on big-endian system
+      if (!port::kLittleEndian) {
+        TF_RETURN_IF_ERROR(ByteSwapTensorContentInMetaGraphDef(meta_graph_def));
+      }
+      return OkStatus();
+    }
+  }
+  return Status(
+      absl::StatusCode::kNotFound,
+      strings::StrCat(
+          "Could not find meta graph def matching supplied tags: { ",
+          absl::StrJoin(tags, " "),
+          " }. To inspect available tag-sets in the SavedModel, please "
+          "use the SavedModel CLI: `saved_model_cli`"));
+}
+}  // namespace
+
 // Reads the SavedModel proto from saved_model.pb in `export_dir`.
 // Returns a failure status when the SavedModel file does not exist.
 Status ReadSavedModel(absl::string_view export_dir,
@@ -99,37 +130,6 @@ Status ReadSavedModel(absl::string_view export_dir,
                       "the directory exists and that you have the right "
                       "permissions for accessing it."));
 }
-
-Status FindMetaGraphDef(const std::unordered_set<string>& tags,
-                        SavedModel* saved_model_proto,
-                        MetaGraphDef* meta_graph_def) {
-  LOG(INFO) << "Reading meta graph with tags { " << absl::StrJoin(tags, " ")
-            << " }";
-  for (MetaGraphDef& graph_def : *saved_model_proto->mutable_meta_graphs()) {
-    // Get tags from the graph_def.
-    std::unordered_set<string> graph_tags;
-    for (const string& tag : graph_def.meta_info_def().tags()) {
-      graph_tags.insert(tag);
-    }
-    // Match with the set of tags provided.
-    if (graph_tags == tags) {
-      *meta_graph_def = std::move(graph_def);
-      // Correct the endiness of Tensor content on big-endian system
-      if (!port::kLittleEndian) {
-        TF_RETURN_IF_ERROR(ByteSwapTensorContentInMetaGraphDef(meta_graph_def));
-      }
-      return OkStatus();
-    }
-  }
-  return Status(
-      absl::StatusCode::kNotFound,
-      strings::StrCat(
-          "Could not find meta graph def matching supplied tags: { ",
-          absl::StrJoin(tags, " "),
-          " }. To inspect available tag-sets in the SavedModel, please "
-          "use the SavedModel CLI: `saved_model_cli`"));
-}
-}  // namespace
 
 Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
                                       const std::unordered_set<string>& tags,

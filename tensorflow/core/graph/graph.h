@@ -631,9 +631,9 @@ class Graph {
   // imported function differs from an existing function or op with the same
   // name.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
-                            const StackTracesMap& stack_traces);
+                            const FunctionDefLibraryStackTraces& stack_traces);
   Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
-                            const StackTracesMap& stack_traces);
+                            const FunctionDefLibraryStackTraces& stack_traces);
 
   // Adds the function definition and its stacktraces to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an

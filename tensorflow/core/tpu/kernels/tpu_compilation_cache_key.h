@@ -60,7 +60,7 @@ struct TpuCompilationCacheKey {
                         guaranteed_const_fingerprint());
   }
 
-  explicit TpuCompilationCacheKey() {}
+  explicit TpuCompilationCacheKey() = default;
   explicit TpuCompilationCacheKey(const std::string& p) : prefix(p) {}
 };
 

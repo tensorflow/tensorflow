@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PJRT_LOCAL_DEVICE_STATE_H_
 #define TENSORFLOW_COMPILER_XLA_PJRT_LOCAL_DEVICE_STATE_H_
 
+#include <functional>
 #include <memory>
+#include <optional>
 #include <random>
+#include <stack>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -26,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/semaphore.h"
 #include "tensorflow/compiler/xla/pjrt/worker_thread.h"
 #include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 
 namespace xla {
@@ -86,12 +90,20 @@ class LocalDeviceState {
     kAsynchronous
   };
 
+  // Options for stream creations.
+  struct StreamOptions {
+    int priority = 0;
+    int num_device_to_host_streams = 1;
+    int num_device_to_device_streams = 1;
+  };
+
   // If asynchronous is false, the host will synchronize to the device after
   // each execution or transfer. This is intended for debugging only.
   LocalDeviceState(se::StreamExecutor* executor, LocalClient* client,
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
-                   bool use_callback_stream);
+                   bool use_callback_stream,
+                   std::optional<StreamOptions> stream_options = std::nullopt);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
@@ -116,6 +128,9 @@ class LocalDeviceState {
   // Returns a device to device stream. Allocates streams in a round-robin
   // fashion amongst the available streams.
   se::Stream* GetDeviceToDeviceStream();
+
+  // Returns a vector of device to device streams.
+  std::vector<se::Stream*> GetDeviceToDeviceStreams();
 
   // Returns a stream from a pool. The stream is guaranteed not to have any
   // currently outstanding work at its tail.

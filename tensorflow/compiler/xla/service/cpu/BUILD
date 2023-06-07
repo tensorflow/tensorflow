@@ -89,6 +89,8 @@ filegroup(
 filegroup(
     name = "runtime_hdrs",
     srcs = [
+        # XLA Runtime support.
+        "buffer_desc.h",
         # Single-threaded support.
         "runtime_custom_call_status.h",
         "runtime_conv_impl.h",
@@ -109,20 +111,6 @@ filegroup(
         "runtime_lightweight_check.h",
         "runtime_matmul.h",
     ],
-    visibility = [":friends"],
-)
-
-filegroup(
-    name = "xla_runtime_runner_hdrs",
-    srcs = [
-        "buffer_desc.h",
-    ],
-    visibility = [":friends"],
-)
-
-filegroup(
-    name = "xla_runtime_runner_srcs",
-    srcs = [],
     visibility = [":friends"],
 )
 
@@ -188,6 +176,7 @@ cc_library(
     hdrs = ["buffer_info_util.h"],
     deps = [
         "//tensorflow/compiler/xla:cpu_function_runtime",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "@com_google_absl//absl/types:span",
     ],
@@ -225,10 +214,11 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/mlir/framework/ir:xla_framework",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
+        "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:calling_convention",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_cpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
+        "//tensorflow/compiler/xla/mlir/runtime/transforms:jit_compiler",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
@@ -312,7 +302,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/cpu/runtime:custom_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:fft_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:retain",
-        "//tensorflow/compiler/xla/service/cpu/runtime:rng",
+        "//tensorflow/compiler/xla/service/cpu/runtime:rng_call",
         "//tensorflow/compiler/xla/service/cpu/runtime:xfeed",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_command_line_options",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -407,7 +397,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compiler",
         "//tensorflow/compiler/xla/mlir_hlo:all_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_bufferizable_op_interface",
@@ -784,6 +773,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/runtime:execution_engine",
         "//tensorflow/compiler/xla/service:llvm_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:logging",

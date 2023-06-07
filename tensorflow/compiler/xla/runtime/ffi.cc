@@ -46,6 +46,9 @@ struct XLA_FFI_ExecutionContext {
 
 //===----------------------------------------------------------------------===//
 
+template <typename T>
+using TensorRef = ::xla::runtime::CustomCall::TensorRef<T>;
+
 namespace xla {
 namespace runtime {
 namespace ffi {
@@ -487,6 +490,10 @@ const XLA_FFI_Api ffi_api = {
     FfiTypeId<absl::Span<const double>>,
     FfiTypeId<absl::Span<const int32_t>>,
     FfiTypeId<absl::Span<const int64_t>>,
+    FfiTypeId<TensorRef<float>>,
+    FfiTypeId<TensorRef<double>>,
+    FfiTypeId<TensorRef<int32_t>>,
+    FfiTypeId<TensorRef<int64_t>>,
     FfiTypeId<::xla::runtime::MemrefView>,
     FfiTypeId<::xla::runtime::StridedMemrefView>,
     FfiTypeId<::xla::runtime::Dictionary>,

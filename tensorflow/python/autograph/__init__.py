@@ -29,22 +29,6 @@ For more information, see the
 and the [tf.function guide](https://www.tensorflow.org/guide/function#autograph_transformations).
 """
 
-# TODO(mdan): Bring only the relevant symbols to the top level.
-from tensorflow.python.autograph import operators
-from tensorflow.python.autograph import utils
-from tensorflow.python.autograph.core.converter import ConversionOptions
-from tensorflow.python.autograph.core.converter import Feature
-from tensorflow.python.autograph.impl.api import AutoGraphError
-from tensorflow.python.autograph.impl.api import convert
-from tensorflow.python.autograph.impl.api import converted_call
-from tensorflow.python.autograph.impl.api import do_not_convert
-from tensorflow.python.autograph.impl.api import StackTraceMapper
-from tensorflow.python.autograph.impl.api import to_code
-from tensorflow.python.autograph.impl.api import to_graph
-from tensorflow.python.autograph.lang.directives import set_element_type
-from tensorflow.python.autograph.lang.directives import set_loop_options
-from tensorflow.python.autograph.lang.special_functions import stack
-from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.util.all_util import remove_undocumented
 
 # TODO(mdan): Revisit this list once we finalize the generated code mechanism.

@@ -14,7 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/util/attr_util.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <cstring>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"

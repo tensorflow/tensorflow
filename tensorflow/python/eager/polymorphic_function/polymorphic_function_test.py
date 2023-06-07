@@ -2796,11 +2796,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     conc = func.get_concrete_function(*conc_args, **conc_kwargs)
-
-    # Remove _function_type to disable the structured signature.
-    conc._function_type = None
     with self.assertRaisesRegex(exception, error):
-      self.evaluate(conc(*call_args, **call_kwargs))
+      self.evaluate(conc._call_with_flat_signature(call_args, call_kwargs))  # pylint: disable=protected-access
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionAmbiguousSignature(self):

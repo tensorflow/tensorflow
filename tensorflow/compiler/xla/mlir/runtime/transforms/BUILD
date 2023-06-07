@@ -103,7 +103,6 @@ cc_library(
         ":custom_call_encoding",
         ":passes",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",

@@ -35,7 +35,8 @@ StatusOr<std::unique_ptr<LoadedExecutable>> PjRtCompiler::Compile(
   TF_ASSIGN_OR_RETURN(auto xla_compile_options,
                       GetXlaCompileOptions(std::move(options)));
   return PjRtLoadedExecutable::Create(
-      client_, mlir_module, std::move(xla_compile_options->compile_options));
+      client_, mlir_module, std::move(xla_compile_options->compile_options),
+      std::move(xla_compile_options->loaded_host_callbacks));
 }
 
 StatusOr<std::unique_ptr<LoadedExecutable>>
@@ -48,8 +49,9 @@ PjRtCompiler::DeserializeLoadedExecutable(
       auto pjrt_loaded_executble,
       client_->pjrt_client()->DeserializeExecutable(
           serialized, std::move(xla_deserialize_options->compile_options)));
-  return PjRtLoadedExecutable::Create(client_,
-                                      std::move(pjrt_loaded_executble));
+  return PjRtLoadedExecutable::Create(
+      client_, std::move(pjrt_loaded_executble),
+      std::move(xla_deserialize_options->loaded_host_callbacks));
 }
 
 }  // namespace ifrt

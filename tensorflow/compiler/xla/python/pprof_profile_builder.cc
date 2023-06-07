@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 
 #include <string>
+#include <utility>
 
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/statusor.h"

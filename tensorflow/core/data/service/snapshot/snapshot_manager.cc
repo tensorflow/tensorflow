@@ -49,9 +49,7 @@ namespace data {
 using ::tsl::OkStatus;
 using ::tsl::errors::InvalidArgument;
 
-// The time for which an UNKNOWN stream should transition to ORPHAN if no worker
-// claims ownership of it via heartbeat.
-const absl::Duration kUnknownStreamTimeout = absl::Seconds(45);
+const absl::Duration kProgressLoggingInterval = absl::Minutes(1);
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Start(
     const SnapshotRequest& request, Env* env) {
@@ -120,8 +118,7 @@ Status SnapshotManager::WriteOnDiskMetadata(const SnapshotRequest& request) {
 
 StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
     absl::string_view path, Env* env) {
-  SnapshotManager* snapshot_manager =
-      new SnapshotManager(path, env, absl::Microseconds(env->NowMicros()));
+  SnapshotManager* snapshot_manager = new SnapshotManager(path, env);
   TF_RETURN_IF_ERROR(snapshot_manager->Resume());
   return absl::WrapUnique(snapshot_manager);
 }
@@ -320,6 +317,7 @@ Status SnapshotManager::SkipSplit(SplitProvider& split_provider) {
 Status SnapshotManager::HandleStreamCompletion(
     int64_t stream_index, absl::string_view worker_address) {
   streams_[stream_index].state = Stream::State::kDone;
+  ++num_completed_streams_;
   if (absl::c_all_of(streams_, [](const Stream& stream) {
         return stream.state == Stream::State::kDone;
       })) {
@@ -413,17 +411,21 @@ SnapshotManager::MaybeGetOrCreateStreamAssignment(
 
 Status SnapshotManager::WorkerHeartbeat(const WorkerHeartbeatRequest& request,
                                         WorkerHeartbeatResponse& response) {
-  LOG_EVERY_N_SEC(INFO, 60)
-      << "tf.data snapshot progress [" << path_ << "]: " << num_assigned_splits_
-      << " of " << num_total_splits_
-      << " total splits have been assigned or completed.";
-
   dead_workers_.erase(request.worker_address());
 
   if (mode_ == Mode::kDone || mode_ == Mode::kError) {
     // When the snapshot manager is done or in an error state, it returns an
     // empty response to inform the workers to cancel the ongoing tasks.
     return OkStatus();
+  }
+
+  if (absl::Time now = absl::FromUnixMicros(env_->NowMicros());
+      now - last_progress_log_time_ > kProgressLoggingInterval) {
+    LOG(INFO) << "tf.data snapshot progress [" << path_
+              << "]: " << num_completed_streams_ << "/" << streams_.size()
+              << " streams completed; " << num_assigned_splits_ << "/"
+              << num_total_splits_ << " splits assigned or completed.";
+    last_progress_log_time_ = now;
   }
 
   const SnapshotTaskProgress* snapshot_progress = nullptr;

@@ -1,5 +1,7 @@
 # Fuzztest TensorShape domains
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "tensor_shape_domains",
     testonly = 1,

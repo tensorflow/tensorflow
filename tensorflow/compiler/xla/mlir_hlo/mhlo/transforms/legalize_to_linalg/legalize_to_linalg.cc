@@ -2346,6 +2346,15 @@ class RngBitGeneratorConverter
       return success();
     }
 
+    if (op.getRngAlgorithm() == mhlo::RngAlgorithm::PHILOX ||
+        op.getRngAlgorithm() == mhlo::RngAlgorithm::DEFAULT) {
+      Value random;
+      if (generateLinalgPhilox(rewriter, loc, resultTy, state, random).failed())
+        return failure();
+      rewriter.replaceOp(op, {state, random});
+      return success();
+    }
+
     return failure();
   }
 };

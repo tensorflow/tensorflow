@@ -44,8 +44,9 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
 
-// Returns a numpy-style format descriptor string for `type`.
-StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+// Returns a Python buffer protocol (PEP 3118) format descriptor string for
+// `type`. Return nullptr if there is no suitable choice of format string.
+const char* PEP3118FormatDescriptorForPrimitiveType(PrimitiveType type);
 
 // Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
 StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);

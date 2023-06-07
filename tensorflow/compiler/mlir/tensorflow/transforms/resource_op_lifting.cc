@@ -308,7 +308,7 @@ LogicalResult RegionResourceHoister::Analyze() {
       // Since all the sub-regions within this region (i.e., regions attached to
       // op's in this region) have themselves gone through lifting, all resource
       // users are expected to be operations in this region and not embedded
-      // within other sub-regions attached to op's in this region. So the check
+      // within other sub-regions attached to ops in this region. So the check
       // for whether a user is in one of the regions attached to this op is
       // straightforward.
       if (user->getParentRegion()->getParentOp() != op_) continue;
@@ -1260,6 +1260,11 @@ void ResourceOpLiftingPass::runOnOperation() {
   });
 
   if (walk_result.wasInterrupted()) return signalPassFailure();
+
+  // Clean up and canonicalize to remove dead local variables as some local
+  // variables might be dead after hoisting resource loads/stores.
+  if (failed(TF::CleanupAndCanonicalizeForResourceOpLifting(module)))
+    return signalPassFailure();
 }
 
 #define GEN_PASS_DEF_RESOURCEOPLIFTINGFORMAINFUNCTIONPASS

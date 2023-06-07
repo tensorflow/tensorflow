@@ -31,6 +31,10 @@
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.keras`
+    * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
+    allowing automatic tuning of steps per execution during `Model.fit`,
+    `Model.predict`, and `Model.evaluate` for a significant performance boost. 
 
 # Bug Fixes and Other Changes
 * `tf.lite`
@@ -50,6 +54,10 @@
 *  `tf.experimental.dtensor`
     * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
       relayouting a tensor according to the layout of another tensor. 
+    * Added `dtensor.get_default_mesh`, for retrieving the current default 
+      mesh under the dtensor context.
+
+*   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
 # Thanks to our Contributors
 

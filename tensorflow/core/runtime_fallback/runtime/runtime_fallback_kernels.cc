@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"

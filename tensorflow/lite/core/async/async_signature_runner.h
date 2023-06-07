@@ -90,9 +90,21 @@ class AsyncSignatureRunner {
   // Merged attributes will be populated to `merged`.
   // If there's a conflict attribute, it's populated to `conflict` if provided.
   // `user_provided_attributes` and `merged` should not be nullptr.
-  // Returns true if the reconcilation successes and there's no conflicting
+  // Returns true if the reconciliation successes and there's no conflicting
   // attributes.
   bool ReconcileRestrictions(TfLiteIoType io_type, const char* name,
+                             const TfLiteAttributeMap* user_provided_attributes,
+                             TfLiteAttributeMap* merged,
+                             TfLiteAttributeMap* conflict) const;
+
+  // Reconciles registrations with all backends depending on I/O tensor at
+  // `tensor_index` if the backend kernel reads or writes the tensor. Merged
+  // attributes will be populated to `merged`. If there's a conflict attribute,
+  // it's populated to `conflict` if provided. `user_provided_attributes` and
+  // `merged` should not be nullptr.
+  // Returns true if the reconciliation successes and there's no conflicting
+  // attributes.
+  bool ReconcileRestrictions(int tensor_index,
                              const TfLiteAttributeMap* user_provided_attributes,
                              TfLiteAttributeMap* merged,
                              TfLiteAttributeMap* conflict) const;
@@ -103,6 +115,12 @@ class AsyncSignatureRunner {
   // Returns true if all backends accept the `attrs`.
   TfLiteStatus SetAttributes(TfLiteIoType io_type, const char* name,
                              const TfLiteAttributeMap* attrs);
+
+  // Finalizes the attribute for I/O tensor at `tensor_index` with `attrs`.
+  // The attributes will be sent to all backend kernels that depends on tensor.
+  // Must call `Prepare` after setting new attributes.
+  // Returns true if all backends accept the `attrs`.
+  TfLiteStatus SetAttributes(int tensor_index, const TfLiteAttributeMap* attrs);
 
   // Prepares delegate backends for execution.
   // Must be called after calling `SetAttributes`.
@@ -186,7 +204,7 @@ class AsyncSignatureRunner {
   /// Read only access to list of output index.
   const std::vector<int>& outputs() const { return subgraph_->outputs(); }
 
-  /// Returns the input tensor information by tensor index.
+  /// Returns the tensor information by tensor index.
   const TfLiteOpaqueTensor* tensor(int tensor_index) const {
     // The following cast is safe only because this code is part of the
     // TF Lite runtime implementation.  Apps using TF Lite should not rely on

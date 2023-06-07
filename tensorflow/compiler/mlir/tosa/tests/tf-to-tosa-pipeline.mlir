@@ -617,8 +617,8 @@ func.func @test_slice(%arg0: tensor<13x21x3xf32>) -> tensor<4x11x1xf32> {
 
 // CHECK-LABEL: test_strided_slice
 // CHECK-DAG: %[[VAR0:.*]] = "tosa.slice"(%arg0) <{size = array<i64: 9, 21, 2>, start = array<i64: 4, 0, 1>}
-// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 9, 1, 7, 3, 2, 1>}
-// CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) <{size = array<i64: 9, 1, 7, 1, 2, 1>, start = array<i64: 0, 0, 0, 0, 0, 0>}
+// CHECK-DAG: %[[VAR1:.*]] = "tosa.reshape"(%[[VAR0]]) <{new_shape = array<i64: 9, 7, 3, 2>}
+// CHECK-DAG: %[[VAR2:.*]] = "tosa.slice"(%[[VAR1]]) <{size = array<i64: 9, 7, 1, 2>, start = array<i64: 0, 0, 0, 0>}
 // CHECK: %[[VAR3:.*]] = "tosa.reshape"(%[[VAR2]]) <{new_shape = array<i64: 9, 7, 2>}
 func.func @test_strided_slice(%arg0: tensor<13x21x3xf32>) -> tensor<9x7x2xf32> {
   %2 = "tf.Const"()  {value = dense<[4, 0, 1]> : tensor<3xi64>}  : () -> tensor<3xi64>

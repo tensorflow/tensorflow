@@ -83,7 +83,7 @@ cc_library(
     deps = [
         ":gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor:device_options",
-        "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
     ] + if_libtpu(

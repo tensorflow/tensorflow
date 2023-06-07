@@ -39,8 +39,8 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":ast_edits",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "@six_archive//:six",
     ],
 )
@@ -76,8 +76,8 @@ py_test(
     ],
     deps = [
         ":tf_upgrade_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "@six_archive//:six",
     ],
 )
@@ -112,8 +112,8 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":all_renames_v2",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "@six_archive//:six",
     ],
 )
@@ -180,8 +180,8 @@ py_test(
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
         "@absl_py//absl/testing:parameterized",
@@ -195,8 +195,8 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":tf_upgrade_v2_safety_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "@six_archive//:six",
     ],
 )

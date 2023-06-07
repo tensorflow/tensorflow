@@ -922,6 +922,16 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
 }
 
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
+  }
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          JobSelector job_selector,
@@ -965,7 +975,7 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<5>,
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<10>,
                             IndependentHostTasks);
 }  // namespace
 }  // namespace data

@@ -1358,6 +1358,7 @@ StatusOr<bool> ProcessShardingInstruction(
       }
       TF_RET_CHECK(instruction->has_sharding())
           << "Sharding instruction must have a sharding attribute";
+      VLOG(3) << "ProcessShardingInstruction: " << instruction->ToString();
       const HloSharding& sharding = instruction->sharding();
 
       std::vector<int64_t> unspec_dims;
@@ -1652,31 +1653,43 @@ std::optional<HloSharding> ShardingPropagation::GetShardingFromUser(
               ? user.sharding().GetSubSharding(
                     user.shape(), {user.operand_index(&instruction)})
               : user.sharding();
-      if (user_sharding.IsTileMaximal()) {
-        return user_sharding;
+      if (!user_sharding.IsTileMaximal()) {
+        std::vector<int64_t> target_tile_assignment_dimensions(
+            instruction.shape().rank() +
+            (user_sharding.ReplicateOnLastTileDim() ? 1 : 0) +
+            user_sharding.subgroup_types().size());
+        const auto& dimensions = user.dimensions();
+        int64_t next_output_dim = 0;
+        for (int64_t i = 0; i < target_tile_assignment_dimensions.size(); ++i) {
+          if (absl::c_find(dimensions, i) == dimensions.end()) {
+            target_tile_assignment_dimensions[i] =
+                user_sharding.tile_assignment().dim(next_output_dim++);
+          } else {
+            target_tile_assignment_dimensions[i] = 1;
+          }
+        }
+        auto tile_assignment = user_sharding.tile_assignment();
+        tile_assignment.Reshape(target_tile_assignment_dimensions);
+        user_sharding =
+            user_sharding.ReplicateOnLastTileDim()
+                ? HloSharding::PartialTile(tile_assignment,
+                                           user_sharding.metadata())
+                : HloSharding::Subgroup(tile_assignment,
+                                        user_sharding.subgroup_types(),
+                                        user_sharding.metadata());
       }
-      std::vector<int64_t> target_tile_assignment_dimensions(
-          instruction.shape().rank() +
-          (user_sharding.ReplicateOnLastTileDim() ? 1 : 0) +
-          user_sharding.subgroup_types().size());
-      const auto& dimensions = user.dimensions();
-      int64_t next_output_dim = 0;
-      for (int64_t i = 0; i < target_tile_assignment_dimensions.size(); ++i) {
-        if (absl::c_find(dimensions, i) == dimensions.end()) {
-          target_tile_assignment_dimensions[i] =
-              user_sharding.tile_assignment().dim(next_output_dim++);
-        } else {
-          target_tile_assignment_dimensions[i] = 1;
+
+      // Try to merge with sharding from other operands if they can improve
+      // current sharding.
+      const auto* reduce = Cast<const HloReduceInstruction>(&user);
+      for (const HloInstruction* operand : reduce->inputs()) {
+        if (operand != &instruction && operand->has_sharding()) {
+          hlo_sharding_util::MergeShardingIfCompatible(
+              operand->sharding(), user_sharding.NumTiles() + 1,
+              &user_sharding);
         }
       }
-      auto tile_assignment = user_sharding.tile_assignment();
-      tile_assignment.Reshape(target_tile_assignment_dimensions);
-      return user_sharding.ReplicateOnLastTileDim()
-                 ? HloSharding::PartialTile(tile_assignment,
-                                            user_sharding.metadata())
-                 : HloSharding::Subgroup(tile_assignment,
-                                         user_sharding.subgroup_types(),
-                                         user_sharding.metadata());
+      return user_sharding;
     }
     case HloOpcode::kSort: {
       HloSharding user_sharding = user.sharding();

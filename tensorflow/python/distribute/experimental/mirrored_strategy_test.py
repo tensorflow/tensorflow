@@ -200,6 +200,20 @@ class StrategyBaseTest(test_util.DTensorBaseTest):
     self.assertAllClose(result.values[0], constant_op.constant([0]))
     self.assertAllClose(result.values[1], constant_op.constant([2]))
 
+  def test_run_without_input(self):
+    strategy = mirrored_strategy.MirroredStrategy(self.mesh)
+
+    @def_function.function
+    def replica_fn():
+      return constant_op.constant([1.0])
+
+    result = strategy.run(replica_fn)
+    self.assertIsInstance(result, dtensor_util.DTensorDistributedValue)
+    self.assertLen(result.values, 2)
+
+    self.assertAllClose(result.values[0], constant_op.constant([1.0]))
+    self.assertAllClose(result.values[1], constant_op.constant([1.0]))
+
   def test_nested_structure_output(self):
     strategy = mirrored_strategy.MirroredStrategy(self.mesh)
     array_value = np.array([3., 2., 1.])

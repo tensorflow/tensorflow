@@ -29,7 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
-#include "tensorflow/compiler/xla/hlo/utils/hlo_matchers.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -40,7 +41,7 @@ namespace xla {
 
 namespace {
 
-namespace op = xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 
 using ::testing::HasSubstr;
 
@@ -80,58 +81,57 @@ TEST_F(XlaBuilderTest, OnePlusTwo) {
   Add(ConstantR0<float>(&b, 1.0), ConstantR0<float>(&b, 2.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Constant(), op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Constant(), m::Constant())));
 }
 
 TEST_F(XlaBuilderTest, UnaryOperatorsBuildExpectedHLO) {
-  auto test_unary_operator =
-      [&](std::function<XlaOp(XlaOp)> op,
-          ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
-        XlaBuilder b(TestName());
-        op(ConstantR0<int32_t>(&b, 1));
-        TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
-        auto root = module->entry_computation()->root_instruction();
-        EXPECT_THAT(root, matches_pattern);
-      };
-  test_unary_operator([](XlaOp x) { return -x; }, op::Negate(op::Constant()));
-  test_unary_operator([](XlaOp x) { return ~x; }, op::Not(op::Constant()));
+  auto test_unary_operator = [&](std::function<XlaOp(XlaOp)> op,
+                                 auto matches_pattern) {
+    XlaBuilder b(TestName());
+    op(ConstantR0<int32_t>(&b, 1));
+    TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+    auto root = module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, matches_pattern);
+  };
+  test_unary_operator([](XlaOp x) { return -x; },
+                      GmockMatch(m::Negate(m::Constant())));
+  test_unary_operator([](XlaOp x) { return ~x; },
+                      GmockMatch(m::Not(m::Constant())));
 }
 
 TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
-  auto test_binary_operator =
-      [&](std::function<XlaOp(XlaOp, XlaOp)> op,
-          ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
-        XlaBuilder b(TestName());
-        op(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
-        TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
-        auto root = module->entry_computation()->root_instruction();
-        EXPECT_THAT(root, matches_pattern);
-      };
+  auto test_binary_operator = [&](std::function<XlaOp(XlaOp, XlaOp)> op,
+                                  auto matches_pattern) {
+    XlaBuilder b(TestName());
+    op(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
+    TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+    auto root = module->entry_computation()->root_instruction();
+    EXPECT_THAT(root, matches_pattern);
+  };
 
   test_binary_operator([](XlaOp x, XlaOp y) { return x + y; },
-                       op::Add(op::Constant(), op::Constant()));
+                       GmockMatch(m::Add(m::Constant(), m::Constant())));
   test_binary_operator([](XlaOp x, XlaOp y) { return x - y; },
-                       op::Subtract(op::Constant(), op::Constant()));
+                       GmockMatch(m::Subtract(m::Constant(), m::Constant())));
   test_binary_operator([](XlaOp x, XlaOp y) { return x * y; },
-                       op::Multiply(op::Constant(), op::Constant()));
+                       GmockMatch(m::Multiply(m::Constant(), m::Constant())));
   test_binary_operator([](XlaOp x, XlaOp y) { return x / y; },
-                       op::Divide(op::Constant(), op::Constant()));
+                       GmockMatch(m::Divide(m::Constant(), m::Constant())));
 
   test_binary_operator([](XlaOp x, XlaOp y) { return x & y; },
-                       op::And(op::Constant(), op::Constant()));
+                       GmockMatch(m::And(m::Constant(), m::Constant())));
   test_binary_operator([](XlaOp x, XlaOp y) { return x | y; },
-                       op::Or(op::Constant(), op::Constant()));
+                       GmockMatch(m::Or(m::Constant(), m::Constant())));
   test_binary_operator([](XlaOp x, XlaOp y) { return x ^ y; },
-                       op::Xor(op::Constant(), op::Constant()));
+                       GmockMatch(m::Xor(m::Constant(), m::Constant())));
   test_binary_operator([](XlaOp x, XlaOp y) { return x << y; },
-                       op::ShiftLeft(op::Constant(), op::Constant()));
+                       GmockMatch(m::ShiftLeft(m::Constant(), m::Constant())));
   test_binary_operator(
       [](XlaOp x, XlaOp y) { return x >> y; },
-      op::ShiftRightArithmetic(op::Constant(), op::Constant()));
+      GmockMatch(m::ShiftRightArithmetic(m::Constant(), m::Constant())));
 
   auto test_unsigned_binary_operator =
-      [&](std::function<XlaOp(XlaOp, XlaOp)> op,
-          ::testing::Matcher<const ::xla::HloInstruction*> matches_pattern) {
+      [&](std::function<XlaOp(XlaOp, XlaOp)> op, auto matches_pattern) {
         XlaBuilder b(TestName());
         op(ConstantR0<uint32_t>(&b, 1), ConstantR0<uint32_t>(&b, 2));
         TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
@@ -140,7 +140,7 @@ TEST_F(XlaBuilderTest, BinaryOperatorsBuildExpectedHLO) {
       };
   test_unsigned_binary_operator(
       [](XlaOp x, XlaOp y) { return x >> y; },
-      op::ShiftRightLogical(op::Constant(), op::Constant()));
+      GmockMatch(m::ShiftRightLogical(m::Constant(), m::Constant())));
 }
 
 TEST_F(XlaBuilderTest, VariadicAnd) {
@@ -151,12 +151,12 @@ TEST_F(XlaBuilderTest, VariadicAnd) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   // Don't specify in the test whether And(x, y, z) is right- or
   // left-associative; accept either one.
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      ::testing::AnyOf(op::And(op::Parameter(0),
-                               op::And(op::Parameter(1), op::Parameter(2))),
-                       op::And(op::And(op::Parameter(0), op::Parameter(1)),
-                               op::Parameter(2))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              ::testing::AnyOf(
+                  GmockMatch(m::And(m::Parameter(0),
+                                    m::And(m::Parameter(1), m::Parameter(2)))),
+                  GmockMatch(m::And(m::And(m::Parameter(0), m::Parameter(1)),
+                                    m::Parameter(2)))));
 }
 
 TEST_F(XlaBuilderTest, VariadicOr) {
@@ -167,12 +167,12 @@ TEST_F(XlaBuilderTest, VariadicOr) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   // Don't specify in the test whether Or(x, y, z) is right- or
   // left-associative; accept either one.
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      ::testing::AnyOf(
-          op::Or(op::Parameter(0), op::Or(op::Parameter(1), op::Parameter(2))),
-          op::Or(op::Or(op::Parameter(0), op::Parameter(1)),
-                 op::Parameter(2))));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              ::testing::AnyOf(
+                  GmockMatch(m::Or(m::Parameter(0),
+                                   m::Or(m::Parameter(1), m::Parameter(2)))),
+                  GmockMatch(m::Or(m::Or(m::Parameter(0), m::Parameter(1)),
+                                   m::Parameter(2)))));
 }
 
 TEST_F(XlaBuilderTest, ShiftRightOperatorOnNonIntegerProducesError) {
@@ -191,7 +191,8 @@ TEST_F(XlaBuilderTest, ParamPlusConstantHasScalarBroadcast) {
   Add(x, ConstantR0<float>(&b, 1.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Parameter(), op::Broadcast(op::Constant())));
+  EXPECT_THAT(root,
+              GmockMatch(m::Add(m::Parameter(), m::Broadcast(m::Constant()))));
 }
 
 TEST_F(XlaBuilderTest, ParamPlusParamHasBroadcast) {
@@ -207,7 +208,8 @@ TEST_F(XlaBuilderTest, ParamPlusParamHasBroadcast) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Parameter(0), op::Broadcast(op::Parameter(1))));
+  EXPECT_THAT(
+      root, GmockMatch(m::Add(m::Parameter(0), m::Broadcast(m::Parameter(1)))));
 }
 
 TEST_F(XlaBuilderTest, XPlusX) {
@@ -216,7 +218,7 @@ TEST_F(XlaBuilderTest, XPlusX) {
   Add(x, x);
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Parameter(0), op::Parameter(0)));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Parameter(0), m::Parameter(0))));
 }
 
 TEST_F(XlaBuilderTest, ShapeInferenceError) {
@@ -268,8 +270,8 @@ TEST_F(XlaBuilderTest, Call) {
   Add(Call(&b, call, {x, y}), Call(&b, call, {one, two}));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Call(op::Parameter(), op::Parameter()),
-                            op::Call(op::Constant(), op::Constant())));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Call(m::Parameter(), m::Parameter()),
+                                      m::Call(m::Constant(), m::Constant()))));
 }
 
 TEST_F(XlaBuilderTest, BinopHasDegenerateBroadcast) {
@@ -289,8 +291,9 @@ TEST_F(XlaBuilderTest, BinopHasDegenerateBroadcast) {
   //       \             /
   //            add
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Parameter(0),
-                            op::Broadcast(op::Reshape(op::Parameter(1)))));
+  EXPECT_THAT(root,
+              GmockMatch(m::Add(m::Parameter(0),
+                                m::Broadcast(m::Reshape(m::Parameter(1))))));
 }
 
 TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
@@ -314,8 +317,9 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
   //       \                      /
   //                 add
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Broadcast(op::Parameter(0)),
-                            op::Broadcast(op::Reshape(op::Parameter(1)))));
+  EXPECT_THAT(root,
+              GmockMatch(m::Add(m::Broadcast(m::Parameter(0)),
+                                m::Broadcast(m::Reshape(m::Parameter(1))))));
 }
 
 TEST_F(XlaBuilderTest, BroadcastInDim) {
@@ -325,7 +329,7 @@ TEST_F(XlaBuilderTest, BroadcastInDim) {
                  /*broadcast_dimensions=*/{0, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Broadcast());
+  EXPECT_THAT(root, GmockMatch(m::Broadcast()));
 }
 
 TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
@@ -335,7 +339,7 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
                  /*broadcast_dimensions=*/{0, 1, 2});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Broadcast(op::Reshape(op::Broadcast())));
+              GmockMatch(m::Broadcast(m::Reshape(m::Broadcast()))));
 }
 
 TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
@@ -368,7 +372,7 @@ TEST_F(XlaBuilderTest, ReshapeDefaultOrder) {
   Reshape(x, /*new_sizes=*/{6, 35});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Reshape(op::Parameter()));
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Parameter())));
 }
 
 TEST_F(XlaBuilderTest, ReshapeHasTranspose) {
@@ -377,7 +381,7 @@ TEST_F(XlaBuilderTest, ReshapeHasTranspose) {
   Reshape(x, /*dimensions=*/{3, 2, 1, 0}, /*new_sizes=*/{6, 35});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Reshape(op::Transpose(op::Parameter())));
+  EXPECT_THAT(root, GmockMatch(m::Reshape(m::Transpose(m::Parameter()))));
 }
 
 TEST_F(XlaBuilderTest, Transpose) {
@@ -386,7 +390,7 @@ TEST_F(XlaBuilderTest, Transpose) {
   Transpose(x, /*permutation=*/{1, 0});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Transpose(op::Parameter()));
+  EXPECT_THAT(root, GmockMatch(m::Transpose(m::Parameter())));
 }
 
 TEST_F(XlaBuilderTest, AllGatherR1) {
@@ -481,14 +485,23 @@ TEST_F(XlaBuilderTest, AllToAllTuple) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
 
-  // AllToAll is converted into a single all-to-all HloInstruction.
-  EXPECT_EQ(root->opcode(), HloOpcode::kAllToAll);
+  // Check shape and replica groups.
   auto expected_shape =
       ShapeUtil::MakeShapeWithDenseLayout(F32, /* dimensions= */ {2, 4},
                                           /* minor_to_major= */ {0, 1});
-  EXPECT_THAT(root, op::ShapeWithLayout(ShapeUtil::MakeTupleShape(
-                        {expected_shape, expected_shape})));
-  EXPECT_THAT(root, op::ReplicaGroups({{0, 1}}));
+  auto tuple_shape =
+      ShapeUtil::MakeTupleShape({expected_shape, expected_shape});
+  auto is_replica_group_pred = [](const HloInstruction* instr) {
+    return instr->replica_groups().size() == 1 &&
+           absl::c_equal(instr->replica_groups()[0].replica_ids(),
+                         std::vector<int64_t>{0, 1});
+  };
+
+  // AllToAll is converted into a single all-to-all HloInstruction.
+  EXPECT_THAT(root, GmockMatch(m::Op()
+                                   .WithOpcode(HloOpcode::kAllToAll)
+                                   .WithShapeEqualTo(&tuple_shape)
+                                   .WithPredicate(is_replica_group_pred)));
 }
 
 TEST_F(XlaBuilderTest, CollectivePermute) {
@@ -536,7 +549,7 @@ TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesNonErrors) {
   Add(b.ReportErrorOrReturn(op), ConstantR0<float>(&b, 2.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Add(op::Constant(), op::Constant()));
+  EXPECT_THAT(root, GmockMatch(m::Add(m::Constant(), m::Constant())));
 }
 
 TEST_F(XlaBuilderTest, ReportErrorOrReturnHandlesErrors) {
@@ -554,7 +567,7 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRoot) {
   Add(constant, ConstantR0<float>(&b, 2.0));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, /*root=*/constant));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Constant());
+  EXPECT_THAT(root, GmockMatch(m::Constant()));
 }
 
 TEST_F(XlaBuilderTest, BuildWithSpecificRootAndMultipleParameters) {
@@ -568,7 +581,7 @@ TEST_F(XlaBuilderTest, BuildWithSpecificRootAndMultipleParameters) {
   Add(x, Sub(y, z));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b, /*root=*/x));
   auto root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root, op::Parameter());
+  EXPECT_THAT(root, GmockMatch(m::Parameter()));
   EXPECT_EQ(module->entry_computation()->num_parameters(), 3);
   EXPECT_EQ(module->entry_computation()->instruction_count(), 5);
 }
@@ -821,19 +834,19 @@ TEST_F(XlaBuilderTest, SelectIntoConditional) {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           BuildHloModule(&b));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      op::Conditional(op::Parameter(0), op::Parameter(1), op::Parameter(2)));
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Conditional(m::Parameter(0), m::Parameter(1),
+                                        m::Parameter(2))));
   EXPECT_THAT(module->entry_computation()
                   ->root_instruction()
                   ->branch_computation(0)
                   ->root_instruction(),
-              op::Parameter(0));
+              GmockMatch(m::Parameter(0)));
   EXPECT_THAT(module->entry_computation()
                   ->root_instruction()
                   ->branch_computation(1)
                   ->root_instruction(),
-              op::Parameter(0));
+              GmockMatch(m::Parameter(0)));
 }
 
 TEST_F(XlaBuilderTest, DynamicPad) {
@@ -1420,7 +1433,7 @@ TEST_F(XlaBuilderTest, ComparisonType) {
   (void)Le(ConstantR0<int32_t>(&b, 1), ConstantR0<int32_t>(&b, 2));
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   auto root = module->entry_computation()->root_instruction();
-  ASSERT_THAT(root, op::Compare(op::Constant(), op::Constant()));
+  ASSERT_THAT(root, GmockMatch(m::Compare(m::Constant(), m::Constant())));
   EXPECT_EQ(Comparison::Type::kSigned,
             DynCast<HloCompareInstruction>(root)->type());
 }

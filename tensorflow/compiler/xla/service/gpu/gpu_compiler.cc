@@ -342,8 +342,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
-  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
-      debug_options.xla_gpu_enable_dot_strength_reduction());
 
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
@@ -708,13 +706,13 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
   {
     HloPassPipeline pipeline("post-fusion optimization");
     pipeline.AddPass<AllGatherCombiner>(
-        /*combine_threshold_in_bytes=*/1024 * 1024 * 1024,
+        debug_options.xla_gpu_all_gather_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
     pipeline.AddPass<AllReduceCombiner>(
         debug_options.xla_gpu_all_reduce_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
     pipeline.AddPass<ReduceScatterCombiner>(
-        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        debug_options.xla_gpu_reduce_scatter_combine_threshold_bytes(),
         /*combine_threshold_count=*/256);
 
     if (debug_options.xla_gpu_all_reduce_contiguous()) {
@@ -837,8 +835,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(
-        debug_options.xla_gpu_enable_dot_strength_reduction());
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
@@ -865,9 +861,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
-          !cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::HOPPER)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
@@ -978,8 +972,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(
-        debug_options.xla_gpu_enable_dot_strength_reduction());
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);

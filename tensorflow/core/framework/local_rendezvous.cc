@@ -380,10 +380,11 @@ void LocalRendezvous::RecvAsync(const Rendezvous::ParsedKey& key,
   delete item;
 }
 
-mutex LocalRendezvous::aborted_rendezs_mu_;
+mutex& LocalRendezvous::aborted_rendezs_mu_ = *new mutex();
 
-std::vector<tsl::core::RefCountPtr<Rendezvous> >
-    LocalRendezvous::aborted_rendezs_;
+std::vector<tsl::core::RefCountPtr<Rendezvous> >&
+    LocalRendezvous::aborted_rendezs_ =
+        *new std::vector<tsl::core::RefCountPtr<Rendezvous> >();
 
 void LocalRendezvous::StartAbort(const Status& status) {
   DoAbort(status);

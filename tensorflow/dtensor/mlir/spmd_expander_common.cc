@@ -18,7 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <iterator>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_cat.h"
@@ -284,7 +286,7 @@ StatusOr<Layout> GetBroadcastLayoutForElementWise(
   return Layout::GetLayout(output_layout_specs, layout_a.mesh());
 }
 
-StatusOr<absl::optional<Layout>> GetMergedOperandLayout(
+StatusOr<std::optional<Layout>> GetMergedOperandLayout(
     const llvm::DenseMap<int, Layout>& operand_layouts, mlir::Operation* op) {
   // Represents list of Layouts and it's operand index where layout value is
   // defined (i.e. layout is not absl::nullopt).
@@ -301,7 +303,7 @@ StatusOr<absl::optional<Layout>> GetMergedOperandLayout(
   }
 
   if (filtered_preferred_operand_layouts.empty())
-    return absl::optional<Layout>();
+    return std::optional<Layout>();
 
   // Merged all operands and it's layouts to a single broadcasted layout.
   Layout merged_operand_layout = filtered_preferred_operand_layouts[0].first;
@@ -325,7 +327,7 @@ StatusOr<absl::optional<Layout>> GetMergedOperandLayout(
                             merged_shape, shape_to_merge,
                             /*dims_to_ignore=*/0, left_splits, right_splits));
   }
-  return absl::optional<Layout>(merged_operand_layout);
+  return std::optional<Layout>(merged_operand_layout);
 }
 
 mlir::Value GetForwardedDTensorLayoutInput(mlir::Value value) {
@@ -772,7 +774,7 @@ mlir::Operation* TopologicalIterator::next() {
 
   // If this is a function call op, push the first op of the function body so
   // that the function body is converted before the call site.
-  absl::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
+  std::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
   if (func.has_value()) {
     mlir::StringRef func_name = func->getName();
 

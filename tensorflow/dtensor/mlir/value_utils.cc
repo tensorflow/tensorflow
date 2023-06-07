@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/errors.h"
@@ -275,6 +276,13 @@ mlir::Type GetSubtypeOrSelf(mlir::Value val) {
     }
   }
   return type;
+}
+
+bool IsResourceType(mlir::Value val) {
+  return val.getType()
+      .cast<mlir::TensorType>()
+      .getElementType()
+      .isa<mlir::TF::ResourceType>();
 }
 
 }  // namespace dtensor

@@ -169,13 +169,13 @@ class KernelFallbackCompatRequestState {
     client_graph_resource_context_ = client_graph_resource_context;
   }
 
-  void set_model_config(
-      const tensorflow::tfrt_stub::ModelConfig* model_config) {
-    model_config_ = model_config;
+  void set_runtime_config(
+      const tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
+    runtime_config_ = runtime_config;
   }
 
-  const tensorflow::tfrt_stub::ModelConfig* model_config() const {
-    return model_config_;
+  const tensorflow::tfrt_stub::RuntimeConfig* runtime_config() const {
+    return runtime_config_;
   }
 
  private:
@@ -219,7 +219,7 @@ class KernelFallbackCompatRequestState {
 
   tfrt::ResourceContext* client_graph_resource_context_ = nullptr;
 
-  const tensorflow::tfrt_stub::ModelConfig* model_config_ = nullptr;
+  const tensorflow::tfrt_stub::RuntimeConfig* runtime_config_ = nullptr;
 };
 
 // Set up fallback context with common tensorflow states such as devices,

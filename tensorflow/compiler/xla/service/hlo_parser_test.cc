@@ -459,6 +459,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// CustomCall with backend_config in curly braces rather than double quotes.
+{
+"CustomCallWithBackendConfigInCurlyBraces",
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config={key: "value"}
+}
+
+)"
+},
 
 // CustomCall with literal.
 {
@@ -4500,6 +4512,23 @@ comp2 {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, LexesAsJsonDict) {
+  EXPECT_TRUE(LexesAsJsonDict("{}"));
+  EXPECT_TRUE(LexesAsJsonDict("{abc: 123}"));
+  EXPECT_TRUE(LexesAsJsonDict("{{abc: 123}, {{{d}}}}"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"}"})"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"\"}"})"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"\"{"})"));
+  EXPECT_FALSE(LexesAsJsonDict(""));
+  EXPECT_FALSE(LexesAsJsonDict("{"));
+  EXPECT_FALSE(LexesAsJsonDict("}"));
+  EXPECT_FALSE(LexesAsJsonDict("{{}"));
+  EXPECT_FALSE(LexesAsJsonDict("{}}"));
+  EXPECT_FALSE(LexesAsJsonDict("{}a"));
+  EXPECT_FALSE(LexesAsJsonDict("a{}"));
+  EXPECT_FALSE(LexesAsJsonDict("{{{{}}}"));
 }
 
 }  // namespace

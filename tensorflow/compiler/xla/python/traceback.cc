@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/traceback.h"
 
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"

@@ -703,7 +703,8 @@ std::optional<PartitionedHlo::WindowedInputShardReturnValue>
 PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                        const HloSharding& target,
                                        HloInstruction* pad_value,
-                                       bool mask_invalid_region) {
+                                       bool mask_invalid_region,
+                                       bool force_mask_in_compact) {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].window_reshard_cache;
   for (auto& entry : cache) {
     if (std::get<0>(entry) == target &&
@@ -1177,7 +1178,8 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         padded_shape.dimensions(dim), shard_shape.dimensions(dim), dim,
         *halo_exchange_target, offsets_on_padded_shape[dim], pad_value,
         partition_ordinals[dim], state_.collective_ops_creator,
-        state_.next_channel_id, state_.b, mask_invalid_region);
+        state_.next_channel_id, state_.b, mask_invalid_region,
+        force_mask_in_compact);
     if (!resharded) {
       VLOG(1) << "ReshardAsWindowedInput failed without replicate first: halo "
                  "is beyond the neighbor.";
@@ -3205,8 +3207,12 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       auto operand_propagated_back = hlo_sharding_util::ReshapeSharding(
           base_shape, operand_base_shape, propagated);
       std::vector<int64_t> operand_group_dims;
+      if (!operand_propagated_back.has_value()) {
+        // Unlikely, but if certain case is not implemented properly in
+        // ReshapeSharding we fallback to shard_reshape().
+        return shard_reshape(operand, sharding, base_shape);
+      }
       CHECK(operand_propagated_back->IsTiled());
-      CHECK(operand_propagated_back.has_value());
       Shape inner_operand_base_shape = operand_base_shape;
       for (int64_t i = 0; i < operand_base_shape.rank(); ++i) {
         if (operand_propagated_back->tile_assignment().dim(i) > 1) {

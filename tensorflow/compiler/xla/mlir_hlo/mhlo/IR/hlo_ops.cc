@@ -23,8 +23,11 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <functional>
+#include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -6226,23 +6229,19 @@ using mlir::hlo::printWindowAttributes;
 
 using mlir::hlo::parseComplexOpType;
 using mlir::hlo::parseCustomCallTarget;
-using mlir::hlo::parseDenseI64Array;
 using mlir::hlo::parseExponentMantissa;
 using mlir::hlo::parsePairwiseOpType;
 using mlir::hlo::parseSameOperandsAndResultType;
 using mlir::hlo::parseSelectOpType;
 using mlir::hlo::parseTupleOpType;
-using mlir::hlo::parseVariadicOperandWithAttribute;
 using mlir::hlo::parseVariadicSameOperandsAndResultType;
 using mlir::hlo::printComplexOpType;
 using mlir::hlo::printCustomCallTarget;
-using mlir::hlo::printDenseI64Array;
 using mlir::hlo::printExponentMantissa;
 using mlir::hlo::printPairwiseOpType;
 using mlir::hlo::printSameOperandsAndResultType;
 using mlir::hlo::printSelectOpType;
 using mlir::hlo::printTupleOpType;
-using mlir::hlo::printVariadicOperandWithAttribute;
 using mlir::hlo::printVariadicSameOperandsAndResultType;
 
 #define GET_OP_CLASSES
@@ -7236,7 +7235,7 @@ LogicalResult MhloDialect::verifyRegionArgAttribute(Operation* op,
     // parameter_replication = [] or [false] is equivalent to
     // [false,...,false] and parameter_replication = [true] means
     // [true,...,true]
-    if (arrayAttr.size() == 0 || arrayAttr.size() == 1) return success();
+    if (arrayAttr.empty() || arrayAttr.size() == 1) return success();
     auto num_leaf_buffers =
         getNumLeafBuffers(func.getArgumentTypes()[argIndex]);
     if ((size_t)num_leaf_buffers != arrayAttr.size())

@@ -153,9 +153,9 @@ Status TokenProcessor::Run(const std::vector<Token>& tokens) {
   for (const auto& token : tokens) {
     switch (token.token_type) {
       case Token::ELLIPSIS:
-        out_of_bound =
-            VisitEllipsisLoop(&token, input_rank, output_rank, ellipsis_size,
-                              &input_index, &output_index);
+        VisitEllipsisAxis(token);
+        out_of_bound = VisitLoop(input_rank, output_rank, ellipsis_size,
+                                 &input_index, &output_index);
         ellipsis_size = 0;
         break;
       case Token::SHRINK_AXIS:
@@ -182,9 +182,8 @@ Status TokenProcessor::Run(const std::vector<Token>& tokens) {
     }
   }
   if (ellipsis_size > 0) {
-    out_of_bound =
-        VisitEllipsisLoop(nullptr, input_rank, output_rank, ellipsis_size,
-                          &input_index, &output_index);
+    out_of_bound = VisitLoop(input_rank, output_rank, ellipsis_size,
+                             &input_index, &output_index);
   }
   if (out_of_bound) {
     return absl::InvalidArgumentError(
@@ -195,20 +194,14 @@ Status TokenProcessor::Run(const std::vector<Token>& tokens) {
   return FinalizeResults(input_rank, output_rank);
 }
 
-bool TokenProcessor::VisitEllipsisLoop(const Token* token, int64_t input_rank,
-                                       int64_t output_rank,
-                                       int64_t ellipsis_size,
-                                       int64_t* input_index,
-                                       int64_t* output_index) {
+bool TokenProcessor::VisitLoop(int64_t input_rank, int64_t output_rank,
+                               int64_t ellipsis_size, int64_t* input_index,
+                               int64_t* output_index) {
   for (int64_t k = 0; k < ellipsis_size; ++k) {
     if (*input_index >= input_rank) {
       return true;
     }
-    if (k == 0) {
-      VisitEllipsisAxis(token, *input_index, *output_index);
-    } else {
-      VisitEllipsisAxis(nullptr, *input_index, *output_index);
-    }
+    VisitImplicitAxis(*input_index, *output_index);
     ++*input_index;
     ++*output_index;
   }

@@ -134,7 +134,7 @@ def Ifrt_CallOp : Ifrt_Op<"Call",
     Variadic<Ifrt_ControlType>:$control_inputs,
 
     SymbolRefAttr:$callee,
-    DenseI64ArrayAttr:$devices,
+    DenseI32ArrayAttr:$devices,
     DefaultValuedAttr<IoAliasesAttr, "{}">:$io_aliases);
   let results = (outs
     Variadic<Ifrt_ArrayType>:$outputs,
@@ -194,7 +194,7 @@ def Ifrt_LoadedExecutableOp : Ifrt_Op<"LoadedExecutable",
   let arguments = (ins
     SymbolNameAttr: $sym_name,
     TypeAttrOf<FunctionType>: $function_type,
-    DenseI64ArrayAttr:$devices
+    DenseI32ArrayAttr:$devices
   );
 
   let assemblyFormat = "$sym_name attr-dict `:` $function_type";
