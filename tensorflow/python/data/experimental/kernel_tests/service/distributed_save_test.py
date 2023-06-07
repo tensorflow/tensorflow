@@ -240,29 +240,35 @@ class DistributedSaveTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(num_workers=[1, 3]),
-      )
-  )
-  def testDistributedLoad(self, num_workers):
+          combinations.combine(
+              num_workers=[1, 3],
+              sharding_policy=[
+                  data_service_ops.ShardingPolicy.OFF,
+                  data_service_ops.ShardingPolicy.DYNAMIC])))
+  def testDistributedLoad(self, num_workers, sharding_policy):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     dataset = dataset_ops.Dataset.range(10)
     self.evaluate(
         distributed_save_op.distributed_save(
-            dataset, self._test_dir, cluster.dispatcher_address()
-        )
-    )
+            dataset, self._test_dir, cluster.dispatcher_address()))
     _wait_for_snapshot(self._test_dir)
 
     dataset = dataset_ops.Dataset.load(self._test_dir)
     dataset = dataset.apply(
         data_service_ops.distribute(
-            data_service_ops.ShardingPolicy.OFF,
-            cluster.dispatcher_address(),
-        )
-    )
-    ignore_order = num_workers > 0
-    self.assertDatasetProduces(
-        dataset, list(range(10)) * num_workers, assert_items_equal=ignore_order)
+            processing_mode=sharding_policy,
+            service=cluster.dispatcher_address()))
+
+    if sharding_policy == data_service_ops.ShardingPolicy.OFF:
+      ignore_order = num_workers > 0
+      self.assertDatasetProduces(
+          dataset,
+          list(range(10)) * num_workers,
+          assert_items_equal=ignore_order)
+    else:
+      # TODO(b/280442285): Support dynamic sharding.
+      with self.assertRaises(errors.UnimplementedError):
+        self.getDatasetOutput(dataset)
 
   @combinations.generate(test_base.default_test_combinations())
   def testImbalancedZipAndRepeat(self):
