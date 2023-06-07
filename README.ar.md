@@ -6,7 +6,7 @@
 ------------------- |
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
-#### _Read this in other languages:_ 
+#### _Read this in other languages:_
 
  [العربية](https://github.com/franknganmo/tensorflow/blob/master/translations/README.ar.md) <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](README_ar.md)</kbd>
 
@@ -55,16 +55,8 @@
 [c++](https://www.tensorflow.org/api_docs/cc)
 
 
-كما توفر API غير المضمونة لتتوافق مع الاصدارات السابقة للغات أخرى. لذلك ينصح بمتابعة  أحدث الإصدارات للبرامج وتحديثات الأمان عن طريق الاشتراك في قائمة
-[البريد الالكتروني announce@tensorflow.org_](announce@tensorflow.org)  
-non-guaranteed backward compatible API for
-[other languages](https://www.tensorflow.org/api_docs).
-
-Keep up-to-date with release announcements and security updates by subscribing
-to
-[announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/forum/#!forum/announce).
-See all the [mailing lists](https://www.tensorflow.org/community/forums).
-
+كما توفر API غير المضمونة لتتوافق مع الاصدارات السابقة [للغات أخرى](https://www.tensorflow.org/api_docs). لذلك ينصح بمتابعة  أحدث الإصدارات للبرامج وتحديثات الأمان عن طريق الاشتراك في قائمة
+[البريد الالكتروني announce@tensorflow.org_](https://groups.google.com/a/tensorflow.org/g/announce). كما يمكنك الاطلاع [على قائمة الايميلات](https://www.tensorflow.org/community/mailing-lists?hl=ar)
 
  ## تثبيت tensorflow
 
