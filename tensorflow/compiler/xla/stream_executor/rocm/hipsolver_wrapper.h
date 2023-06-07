@@ -24,7 +24,7 @@ limitations under the License.
 
 #if TF_ROCM_VERSION >= 40500
 
-#if TF_ROCM_VERSION >= 50600
+#if TF_ROCM_VERSION >= 50200
 #include "rocm/include/hipsolver/hipsolver.h"
 #else
 #include "rocm/include/hipsolver.h"

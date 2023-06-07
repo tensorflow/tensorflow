@@ -33,7 +33,7 @@ limitations under the License.
 #else
 #include "rocm/rocm_config.h"
 #include "rocm/include/hip/hip_complex.h"
-#if TF_ROCM_VERSION >= 50600
+#if (TF_ROCM_VERSION >= 50200)
 #include "rocm/include/rocblas/rocblas.h"
 #else
 #include "rocm/include/rocblas.h"
