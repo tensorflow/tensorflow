@@ -1,5 +1,28 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
+cc_library(
+    name = "list_ops_util",
+    srcs = ["list_ops_util.cc"],
+    hdrs = ["list_ops_util.h"],
+    deps = [
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_test(
+    name = "list_ops_util_test",
+    srcs = ["list_ops_util_test.cc"],
+    deps = [
+        ":list_ops_util",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 # test utilities for complex multi-op subgraphs
 cc_library(
     name = "list_ops_subgraph_test_util",
