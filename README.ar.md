@@ -77,11 +77,10 @@ $ pip install tensorflow-cpu
 
 لتحديث TensorFlow لاخر إصدار، اضف علم *--upgrade* للتعليق الأمر السابق.
 
-يمكنك استخدام الإصدارات الليلية متاحة للاختبار باستخدام
+يمكنك استخدام الإصدارات الليلية فهي متاحة للاختبار باستخدام [tf-nightly](https://pypi.python.org/pypi/tf-nightly)، وحزمات  [tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) 
+على فهرس حزمة البايثون.* 
 
-*Nightly binaries are available for testing using the
-[tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
-[tf-nightly-cpu](https://pypi.python.org/pypi/tf-nightly-cpu) packages on PyPi.*
+
 
 #### *Try your first TensorFlow program*
 
