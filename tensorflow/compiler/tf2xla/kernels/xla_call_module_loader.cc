@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -73,13 +75,25 @@ constexpr int VERSION_START_PLATFORMS = 3;
 // March 28th, 2023 we stopped using dim_args_spec (cl/520033493).
 // TODO(b/283439649): Remove support for dim_args_spec.
 constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
-// Version 5 add support for call_tf_graph. This does not change the semantics
+// Version 5 adds support for call_tf_graph. This does not change the semantics
 // of the op, but it allows the `function_list` attribute.
 // Used in jax2tf from May 3rd, 2023 (cl/529106145).
 constexpr int VERSION_START_SUPPORT_CALL_TF_GRAPH = 5;
+// Version 6 adds support for the `disabled_checks` attribute. This version
+// mandates a non-empty `platforms` attribute.
+// Used in jax2tf since June 2023.
+constexpr int VERSION_START_SUPPORT_DISABLED_CHECKS = 6;
 constexpr int VERSION_MINIMUM_SUPPORTED =
     VERSION_START_STABLE_HLO_COMPATIBILITY;
-constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_CALL_TF_GRAPH;
+
+constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_DISABLED_CHECKS;
+
+constexpr absl::string_view DISABLED_CHECK_PLATFORM = "platform";
+
+bool IsPlatformCheckDisabled(absl::Span<const std::string> disabled_checks) {
+  return std::find(disabled_checks.begin(), disabled_checks.end(),
+                   DISABLED_CHECK_PLATFORM) != disabled_checks.end();
+}
 
 // Computes a dimension value from the dim_arg specification.
 // The specification is of the form "<arg_idx>.<arg_axis_idx>".
@@ -130,27 +144,14 @@ tsl::StatusOr<mlir::Value> ComputeDimensionValue(
 
 tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
     mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> dim_args_spec, int platform_index) {
-  if (version < VERSION_MINIMUM_SUPPORTED) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "XlaCallModuleOp with version ", version,
-        " is not supported anymore. Must be >= ", VERSION_MINIMUM_SUPPORTED));
-  }
-  if (version > VERSION_MAXIMUM_SUPPORTED) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("XlaCallModuleOp with version ", version,
-                     " is not supported by this build. Must be <= ",
-                     VERSION_MAXIMUM_SUPPORTED));
-  }
-
-  if (version < VERSION_START_PLATFORMS) {
-    platform_index = -1;
-  }
-
+    std::vector<std::string> dim_args_spec,
+    std::vector<std::string> disabled_checks,
+    std::vector<std::string> platforms, std::string loading_platform) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadAndPreprocessModule(
       context, version, std::move(module_str), std::move(dim_args_spec),
-      platform_index));
+      std::move(disabled_checks), std::move(platforms),
+      std::move(loading_platform)));
   return loader;
 }
 
@@ -427,11 +428,12 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
 
 tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> dim_args_spec, int platform_index) {
+    std::vector<std::string> dim_args_spec,
+    std::vector<std::string> disabled_checks,
+    std::vector<std::string> platforms, std::string loading_platform) {
   context_ = context;
   version_ = version;
   dim_args_spec_ = std::move(dim_args_spec);
-  platform_index_ = platform_index;
 
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
@@ -440,6 +442,13 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   context_->loadDialect<mlir::mhlo::MhloDialect>();
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
+
+  if (version >= VERSION_START_SUPPORT_DISABLED_CHECKS && platforms.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("XlaCallModuleOp with version ", version,
+                     " must have non-empty platforms."));
+  }
+
   // Parses both IR text and bytecode.
   if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
     module_ =
@@ -451,10 +460,51 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   if (!module_) {
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
+
   VLOG(3) << "Parsed serialized module (version " << version
-          << ", platform_index = " << platform_index_ << ", dim_args_spec = ["
-          << absl::StrJoin(dim_args_spec_, ", ") << "]), module = "
+          << ", platforms = [" << absl::StrJoin(platforms, ", ")
+          << "], loading_platform = " << loading_platform
+          << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
+          << "], disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
+          << "]), module = "
           << DumpMlirOpToFile("xla_call_module.parsed", *module_);
+
+  if (version < VERSION_MINIMUM_SUPPORTED) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaCallModuleOp with version ", version,
+        " is not supported anymore. Must be >= ", VERSION_MINIMUM_SUPPORTED));
+  }
+  if (version > VERSION_MAXIMUM_SUPPORTED) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("XlaCallModuleOp with version ", version,
+                     " is not supported by this build. Must be <= ",
+                     VERSION_MAXIMUM_SUPPORTED));
+  }
+
+  platform_index_ = -1;
+  if (!platforms.empty()) {
+    auto found_platform =
+        std::find(platforms.begin(), platforms.end(), loading_platform);
+    if (found_platform == platforms.end()) {
+      if (!IsPlatformCheckDisabled(disabled_checks)) {
+        return absl::NotFoundError(absl::StrCat(
+            "The current platform ", loading_platform,
+            " is not among the platforms required by the module: [",
+            absl::StrJoin(platforms, ", "), "]"));
+      } else {
+        if (platforms.size() > 1) {
+          platform_index_ = 0;
+        }
+      }
+    } else {
+      // We only use a platform index arguments if we support at least 2
+      // platforms.
+      if (platforms.size() > 1) {
+        platform_index_ = found_platform - platforms.begin();
+      }
+    }
+  }
+
   if (version >= VERSION_START_SUPPORT_CALL_TF_GRAPH &&
       !dim_args_spec_.empty()) {
     return absl::InvalidArgumentError(

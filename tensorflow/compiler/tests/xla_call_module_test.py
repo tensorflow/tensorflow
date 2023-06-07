@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 def serialize(module_str: str) -> Tuple[str, int]:
   target = stablehlo.get_minimum_version()
   byte_str = stablehlo.serialize_portable_artifact(module_str, target)
-  return byte_str, 4
+  return byte_str, xla.call_module_maximum_supported_version()
 
 
 class XlaCallModuleOpTest(xla_test.XLATestCase):
@@ -88,7 +88,8 @@ module @jit_f.0 {
 }
 """)
       return xla.call_module([x], version=version,
-                             module=module, Tout=[x.dtype], Sout=[x.shape])
+                             module=module, Tout=[x.dtype], Sout=[x.shape],
+                             platforms=[self.testing_platform()])
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
 
@@ -113,6 +114,7 @@ module @jit_f.0 {
           Tout=[x.dtype],
           Sout=[x.shape],
           has_token_input_output=True,
+          platforms=[self.testing_platform()],
       )
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))
@@ -135,7 +137,8 @@ module @jit_f_jax.0 {
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[res.shape])
+                             Sout=[res.shape],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -157,7 +160,8 @@ module @jit_f.0 {
       return xla.call_module([x, y], version=version,
                              module=module,
                              Tout=[x.dtype, y.dtype],
-                             Sout=[x.shape, y.shape])
+                             Sout=[x.shape, y.shape],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x, y), (np.sin(x), np.cos(y)))
 
@@ -168,7 +172,7 @@ module @jit_f.0 {
     def f(x):  # x: f32[2, b]
       # Module takes another argument which is the value of b
       # (sin(x), x.shape[1])
-      module, version = serialize("""
+      module, _ = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i32>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i32>) {
     %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
@@ -178,7 +182,7 @@ module @jit_f.0 {
 """)
       return gen_xla_ops.xla_call_module(
           [x],
-          version=version,
+          version=4,
           module=module,
           Tout=[x.dtype, np.int32],
           Sout=[(None, 3), ()],
@@ -193,7 +197,7 @@ module @jit_f.0 {
     def f(x):  # x: f32[2, b]
       # Module takes another argument which is the value of b
       # (sin(x), x.shape[1])
-      module, version = serialize("""
+      module, _ = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg0: tensor<i64>, %arg1: tensor<2x?xf32>) -> (tensor<2x?xf32>, tensor<i64>) {
     %0 = stablehlo.sine %arg1 : tensor<2x?xf32>
@@ -203,7 +207,7 @@ module @jit_f.0 {
 """)
       return gen_xla_ops.xla_call_module(
           [x],
-          module=module, version=version,
+          module=module, version=4,
           Tout=[x.dtype, np.int64],
           Sout=[(None, 3), ()],
           dim_args_spec=['0.1'])
@@ -232,7 +236,8 @@ module @jit_f.0 {
       return xla.call_module([x],
                              module=module, version=version,
                              Tout=[x.dtype, np.int32],
-                             Sout=[(None, 3), ()])
+                             Sout=[(None, 3), ()],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(x), x.shape[1]))
 
@@ -256,6 +261,7 @@ module @jit_f.0 {
           version=version,
           Tout=[x.dtype],
           Sout=[(None, 2)],
+          platforms=[self.testing_platform()],
       )
 
     self._assertOpOutputMatchesExpected(f, (x, y), (x,))
@@ -331,14 +337,23 @@ module @jit_f.0 {
   }
 }
 """
+    module_str_no_platform_arg = """
+module @jit_f.0 {
+  func.func public @main(%arg0: tensor<f32>) -> tensor<f32> {
+    return %arg0 : tensor<f32>
+  }
+}
+"""
     module, version = serialize(module_str)
-    platforms = []
+    platforms = [self.testing_platform()]
+    disabled_checks = []
     def f(x):
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[np.float32],
                              Sout=[()],
-                             platforms=platforms)
+                             platforms=platforms,
+                             disabled_checks=disabled_checks)
 
     # With empty platforms, there should be no platform_index argument
     with self.assertRaisesRegex(
@@ -362,6 +377,26 @@ module @jit_f.0 {
     with self.assertRaisesRegex(
         errors.NotFoundError,
         'The current platform .* is not among the platforms'):
+      self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # Disable the check but have two platforms
+    platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
+    disabled_checks = [xla.call_module_disable_check_platform()]
+    # No error
+    self._assertOpOutputMatchesExpected(f, (x,), (x,))
+
+    # Disable the check but have a single platform and hence no platform arg.
+    platforms = ['RANDOM_PLATFORM_1']
+    module, version = serialize(module_str_no_platform_arg)
+    # No error
+    self._assertOpOutputMatchesExpected(f, (x,), (x,))
+    disabled_checks = []
+    module, version = serialize(module_str)
+
+    platforms = []
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'must have non-empty platforms'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
     platforms = ['CPU', 'CUDA', 'ROCM']
@@ -420,7 +455,8 @@ module @jit_fun.1 {
       return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[(None,)])
+                             Sout=[(None,)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -469,7 +505,8 @@ module @jit_fun_flat_jax {
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[(None,)])
+                             Sout=[(None,)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -499,7 +536,8 @@ module @jit_fun_flat_jax {
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[(None, 2)])
+                             Sout=[(None, 2)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -534,7 +572,8 @@ module @jit_fun_flat_jax {
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[x.dtype],
-                             Sout=[(4,)])
+                             Sout=[(4,)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -565,7 +604,8 @@ module @jit_fun_flat_jax {
       return xla.call_module([x, idx], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[(None, 4)])
+                             Sout=[(None, 4)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x, idx), (res,))
 
@@ -597,7 +637,8 @@ module @jit_fun.0 {
       return xla.call_module([x, y], version=version,
                              module=module,
                              Tout=[res[0].dtype, res[1].dtype],
-                             Sout=[(2, None, 4), (2, None, 4)])
+                             Sout=[(2, None, 4), (2, None, 4)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x, y), res)
 
@@ -629,7 +670,8 @@ module @jit_fun{
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[res.shape])
+                             Sout=[res.shape],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -663,7 +705,8 @@ module @jit_fun_flat_jax {
       return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[(None, 1)])
+                             Sout=[(None, 1)],
+                             platforms=[self.testing_platform()],)
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -694,7 +737,8 @@ module @jit_fun_3 {
       return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[()])
+                             Sout=[()],
+                             platforms=[self.testing_platform()])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -718,7 +762,8 @@ module @jit_fun_3 {
       return xla.call_module([x], version=version,
                              module=module,
                              Tout=[res.dtype],
-                             Sout=[()])
+                             Sout=[()],
+                             platforms=[self.testing_platform()])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res,))
 
@@ -762,7 +807,8 @@ module @jit_fun_flat_jax {
       return xla.call_module([x,], version=version,
                              module=module,
                              Tout=[res0.dtype, res1.dtype],
-                             Sout=[(None,), res1.shape])
+                             Sout=[(None,), res1.shape],
+                             platforms=[self.testing_platform()])
 
     self._assertOpOutputMatchesExpected(f, (x,), (res0, res1))
 
@@ -793,6 +839,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res.dtype],
           Sout=[res.shape],
+          platforms=[self.testing_platform()],
           function_list=(foo,),
       )
 
@@ -835,6 +882,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res.dtype],
           Sout=[res.shape],
+          platforms=[self.testing_platform()],
           function_list=(foo, bar),
       )
 
@@ -869,6 +917,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res.dtype],
           Sout=[res.shape],
+          platforms=[self.testing_platform()],
           function_list=(foo,),
       )
 
@@ -901,6 +950,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res.dtype],
           Sout=[res.shape],
+          platforms=[self.testing_platform()],
           function_list=(foo,),
           has_token_input_output=True,
       )
@@ -935,6 +985,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res.dtype],
           Sout=[res.shape],
+          platforms=[self.testing_platform()],
           function_list=(add,),
       )
 
@@ -959,6 +1010,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res.dtype],
           Sout=[res.shape],
+          platforms=[self.testing_platform()],
           function_list=(call,),
       )
 
@@ -998,6 +1050,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res0.dtype],
           Sout=[res0.shape],
+          platforms=[self.testing_platform()],
       )
 
     @function.Defun(dtypes.int32, dtypes.int32)
@@ -1021,6 +1074,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res1.dtype],
           Sout=[res1.shape],
+          platforms=[self.testing_platform()],
       )
 
     def f(x, y):
@@ -1043,6 +1097,7 @@ module @jit_fun_flat_jax {
           module=module,
           Tout=[res0.dtype, res1.dtype],
           Sout=[res0.shape, res1.shape],
+          platforms=[self.testing_platform()],
           function_list=(add, subtract),
       )
 
@@ -1072,6 +1127,7 @@ module @jit_f.0 {
           module=module,
           Tout=[x.dtype],
           Sout=[x.shape],
+          platforms=[self.testing_platform()],
       )
 
     self._assertOpOutputMatchesExpected(f, (x,), (np.sin(np.cos(x)),))

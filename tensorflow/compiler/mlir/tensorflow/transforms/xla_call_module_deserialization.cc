@@ -64,14 +64,25 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
   for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
     dim_args_spec.push_back(attr.getValue().str());
   }
+  std::vector<std::string> disabled_checks;
+  for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+    disabled_checks.push_back(attr.getValue().str());
+  }
+  std::vector<std::string> platforms;
+  for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+    platforms.push_back(attr.getValue().str());
+  }
   // XlaCallModuleOp OpKernel will determine platform index when running
   // TF2XLA. We don't know the device/platform type in this MLIR pass, so
-  // we set platform_index to -1.
-  TF_ASSIGN_OR_RETURN(auto loader,
-                      tensorflow::XlaCallModuleLoader::Create(
-                          context, static_cast<int>(op.getVersion()),
-                          op.getModule().str(), dim_args_spec,
-                          /*platform_index=*/-1));
+  // we set loading_platform to the first platform.
+  std::string loading_platform =
+      (platforms.empty() ? "CPU" : platforms.front());
+  TF_ASSIGN_OR_RETURN(
+      auto loader,
+      tensorflow::XlaCallModuleLoader::Create(
+          context, static_cast<int>(op.getVersion()), op.getModule().str(),
+          std::move(dim_args_spec), std::move(disabled_checks),
+          std::move(platforms), std::move(loading_platform)));
   return std::move(*loader).module();
 }
 
