@@ -63,10 +63,8 @@
 [ملف الpip](https://www.tensorflow.org/install/pip)، إلى [تمكين ودعم الGPU](https://www.tensorflow.org/install/gpu)
 ، أستخدم [Docker حاويات ال](https://www.tensorflow.org/install/docker)، و[ابني من المصادر](https://www.tensorflow.org/install/source).
 
-لتحميل الاصدار الحالي مع وجود دعم لبرنامج ال
-[cuda Cards](https://www.tensorflow.org/install/gpu)
+لتحميل الاصدار الحالي للأجهزة *(Ubuntu and Windows)* مع وجود دعم لبرنامج ال[cuda Cards](https://www.tensorflow.org/install/gpu)
 
-*(Ubuntu and Windows)*:
 
 ```
 $ pip install tensorflow
@@ -79,8 +77,9 @@ $ pip install tensorflow
 $ pip install tensorflow-cpu
 ```
 
-To update TensorFlow to the latest version, add `--upgrade` flag to the above
-commands.
+لتحديث TensorFlow لاخر إصدار، اضف علم *--upgrade* للتعليق الأمر السابق.
+
+يمكنك استخدام الإصدارات الليلية متاحة للاختبار باستخدام
 
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and
