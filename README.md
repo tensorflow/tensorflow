@@ -2,6 +2,11 @@
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
+#### _Read this in other languages:_
+ Arabic   <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/tensorflow_translate_readme/README.ar.md)</kbd>
+French <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
+Persian <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)</kbd>
+
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4724125.svg)](https://doi.org/10.5281/zenodo.4724125)
