@@ -232,6 +232,7 @@ class LoadDatasetOp::DatasetV1 : public DatasetBase {
   const tstring path_;
 };
 
+// TODO(b/280442285): Support dynamic sharding.
 class LoadDatasetOp::DatasetV2 : public DatasetBase {
  public:
   DatasetV2(OpKernelContext* ctx, const tstring& path,
