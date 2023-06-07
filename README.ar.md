@@ -59,15 +59,9 @@
 [البريد الالكتروني  announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/g/announce). كما يمكنك الاطلاع [على قائمة الايميلات](https://www.tensorflow.org/community/mailing-lists?hl=ar).
  ## تثبيت tensorflow
 
-شاهد 
-[TensorFlow خطوات تنصيب](https://www.tensorflow.org/install) ل
-[ملف الpip](https://www.tensorflow.org/install/pip),
-إلى
-
-[تمكين ودعم الGPU](https://www.tensorflow.org/install/gpu)
-، أستخدم [Docker حاويات ال](https://www.tensorflow.org/install/docker)، 
-
-و[ ابني من المصادر] (https://www.tensorflow.org/install/source).
+شاهد [خطوات تنصيب TensorFlow](https://www.tensorflow.org/install) ل
+[ملف الpip](https://www.tensorflow.org/install/pip)، إلى [تمكين ودعم الGPU](https://www.tensorflow.org/install/gpu)
+، أستخدم [Docker حاويات ال](https://www.tensorflow.org/install/docker)، و[ابني من المصادر](https://www.tensorflow.org/install/source).
 
 لتحميل الاصدار الحالي مع وجود دعم لبرنامج ال
 [cuda Cards](https://www.tensorflow.org/install/gpu)
