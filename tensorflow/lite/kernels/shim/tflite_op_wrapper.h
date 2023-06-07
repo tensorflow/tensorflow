@@ -70,8 +70,8 @@ struct AttrType {
 //              Attr<AttrName<a_type>, bool, float>,
 //              Attr<AttrName<b_type>, int32_t, int64_t>> x;
 // Result:
-//   std::variant<TmplOp<Rt, bool, int32_t>, TmplOp<Rt, bool, int64_t>,
-//                TmplOp<Rt, float, int32_t>, TmplOp<Rt, float, int64_t>> x;
+//   absl::variant<TmplOp<Rt, bool, int32_t>, TmplOp<Rt, bool, int64_t>,
+//                 TmplOp<Rt, float, int32_t>, TmplOp<Rt, float, int64_t>> x;
 
 // Prepends a type onto a tuple.
 template <typename T, typename... Us>
@@ -123,7 +123,7 @@ static constexpr auto convertTuplesToOps(std::tuple<Ts...>) -> std::tuple<
 
 // Convert a tuple of types into a variant of types.
 template <typename... Ts>
-static constexpr std::variant<Ts...> convertTupleToVariant(std::tuple<Ts...>);
+static constexpr absl::variant<Ts...> convertTupleToVariant(std::tuple<Ts...>);
 
 // The variant Op type created with TMP. A tuple of tuples containing the
 // attribute combinations is first created. Then each inner tuple is converted
