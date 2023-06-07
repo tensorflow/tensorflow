@@ -1408,5 +1408,11 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   return max_blocks;
 }
 
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  ScopedActivateContext activation(context);
+  return stream_executor::StreamPriority::Default;
+}
+
 }  // namespace gpu
 }  // namespace stream_executor
