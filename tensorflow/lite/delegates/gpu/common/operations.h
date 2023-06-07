@@ -119,8 +119,8 @@ std::string ToString(enum OperationType op);
 OperationType OperationTypeFromString(const std::string& name);
 
 template <DataType DataTypeT, typename t>
-using TensorOrScalarBase = std::variant<std::monostate, Tensor<HWC, DataTypeT>,
-                                        Tensor<Linear, DataTypeT>, t>;
+using TensorOrScalarBase = absl::variant<std::monostate, Tensor<HWC, DataTypeT>,
+                                         Tensor<Linear, DataTypeT>, t>;
 
 using TensorOrScalar = TensorOrScalarBase<DataType::FLOAT32, float>;
 
