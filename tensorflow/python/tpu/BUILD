@@ -776,6 +776,7 @@ pytype_strict_library(
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
