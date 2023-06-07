@@ -9,8 +9,15 @@
 
 #### _اقرأ هذا بلغات التالية:_
 
-الفرنسية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
-اللإيرانية<kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)</kbd>
+الانجليزية
+<kbd>[<img title="ايراني" alt="ايراني" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/us.svg" width="30">](https://github.com/franknganmo/tensorflow/edit/tensorflow_translate_readme/README.ar.md)</kbd>
+
+
+الفرنسية
+<kbd>[<img title="فرنسي"alt="فرنسي" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
+
+اللإيرانية
+<kbd>[<img title="ايراني" alt="ايراني" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)</kbd>
 
 --------------------------------------------------------------------------------------
 روابط لأدوات الأستخدام وإمكانيات الوصول:
