@@ -2213,6 +2213,7 @@ def TestFactory(xla_backend,
       for device in self.backend.local_devices():
         self.assertEqual(device.platform, self.backend.platform)
 
+    @unittest.skipIf(pathways, "not implemented")
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
