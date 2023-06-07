@@ -83,6 +83,100 @@ SubgraphBuilder::~SubgraphBuilder() {
   }
 }
 
+namespace {
+
+// Add an ADD node to the subgraph.
+void AddAddNode(Subgraph& subgraph, int input0, int input1, int output) {
+  int node_index;
+  TfLiteAddParams* add_params =
+      reinterpret_cast<TfLiteAddParams*>(calloc(1, sizeof(TfLiteAddParams)));
+  auto* add_reg = ops::builtin::Register_ADD();
+  add_reg->builtin_code = kTfLiteBuiltinAdd;
+  subgraph.AddNodeWithParameters({input0, input1}, {output}, {}, nullptr, 0,
+                                 add_params, add_reg, &node_index);
+}
+
+// Add a DYNAMIC_UPDATE_SLICE node to the subgraph.
+void AddDynamicUpdateSliceNode(Subgraph& subgraph, int input0, int input1,
+                               int input2, int output) {
+  int node_index;
+  auto* reg = ops::builtin::Register_DYNAMIC_UPDATE_SLICE();
+  reg->builtin_code = kTfLiteBuiltinDynamicUpdateSlice;
+  subgraph.AddNodeWithParameters({input0, input1, input2}, {output}, {},
+                                 nullptr, 0, nullptr, reg, &node_index);
+}
+
+}  // namespace
+
+void SubgraphBuilder::BuildInputDynamicUpdateSliceSubgraph(Subgraph& subgraph) {
+  enum {
+    kInput0,
+    kInput1,
+    kInput2,
+    kConstRhs,
+    kOutput,
+    kIntermediate0,
+    kTensorCount
+  };
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph.AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph.SetInputs({kInput0, kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({kOutput}), kTfLiteOk);
+  for (int i = 0; i < kTensorCount; ++i) {
+    SetupTensor(&subgraph, i, kTfLiteInt32);
+  }
+
+  // kInput0 --> +---+
+  // kInput1 --> |DUS| --> kIntermediate0 --> +---+
+  // kInput2 --> +---+                        |ADD| --> kOutput
+  //                            kConstRhs --> +---+
+  CreateConstantInt32Tensor(&subgraph, kConstRhs, {1}, {1});
+  AddDynamicUpdateSliceNode(subgraph, kInput0, kInput1, kInput2,
+                            kIntermediate0);
+  AddAddNode(subgraph, kIntermediate0, kConstRhs, kOutput);
+}
+
+void SubgraphBuilder::BuildInplaceDynamicUpdateSliceSubgraph(
+    Subgraph& subgraph, bool multiple_consumers) {
+  enum {
+    kInput0,
+    kInput1,
+    kInput2,
+    kConstRhs,
+    kOutput,
+    kIntermediate0,
+    kIntermediate1,
+    kTensorCount
+  };
+
+  int first_new_tensor_index;
+  ASSERT_EQ(subgraph.AddTensors(kTensorCount, &first_new_tensor_index),
+            kTfLiteOk);
+  ASSERT_EQ(first_new_tensor_index, 0);
+  ASSERT_EQ(subgraph.SetInputs({kInput0, kInput1, kInput2}), kTfLiteOk);
+  ASSERT_EQ(subgraph.SetOutputs({kOutput}), kTfLiteOk);
+  for (int i = 0; i < kTensorCount; ++i) {
+    SetupTensor(&subgraph, i, kTfLiteInt32);
+  }
+
+  //   kInput0 --> +---+
+  //               |ADD| --> kIntermediate0 --> +---+
+  // kConstRhs --> +---+       |    kInput1 --> |DUS| --> kIntermediate1
+  //     |                     |    kInput2 --> +---+           |
+  //     |                     |                                +----> +---+
+  //     |if one consumer      |if multiple consumers                  |ADD|
+  //     +---------------------+-------------------------------------> +---+
+  CreateConstantInt32Tensor(&subgraph, kConstRhs, {1}, {1});
+  AddAddNode(subgraph, kInput0, kConstRhs, kIntermediate0);
+  AddDynamicUpdateSliceNode(subgraph, kIntermediate0, kInput1, kInput2,
+                            kIntermediate1);
+  AddAddNode(subgraph, kIntermediate1,
+             multiple_consumers ? kIntermediate0 : kConstRhs, kOutput);
+}
+
 void SubgraphBuilder::BuildAddSubgraph(Subgraph* subgraph) {
   const int kInput1 = 0;
   const int kInput2 = 1;

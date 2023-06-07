@@ -1126,7 +1126,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         [](const py::handle& context, const py::handle& handles) {
           return tensorflow::TFE_Py_PackEagerTensors_wrapper(context, handles);
         });
-  m.def("TFE_Py_SetEagerTensorProfiler", &TFE_Py_SetEagerTensorProfiler);
+  m.def("TFE_Py_SetEagerTensorProfiler", [](const py::handle& o) {
+    return tensorflow::PyoOrThrow(TFE_Py_SetEagerTensorProfiler(o.ptr()));
+  });
   m.def("TFE_Py_RegisterJVPFunction", [](const py::handle& o) {
     return tensorflow::PyoOrThrow(TFE_Py_RegisterJVPFunction(o.ptr()));
   });

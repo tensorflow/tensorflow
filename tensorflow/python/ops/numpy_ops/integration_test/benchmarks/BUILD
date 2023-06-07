@@ -14,7 +14,6 @@ py_strict_binary(
         ":tf_numpy_mlp",
         "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python/ops/numpy_ops:numpy",
         "//third_party/py/numpy",
         "@absl_py//absl/flags",
         "@absl_py//absl/logging",

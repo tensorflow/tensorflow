@@ -76,6 +76,7 @@ def ConvertPlaceholderWithDefault : Pat<(TF_PlaceholderWithDefaultOp $arg), (TF_
 //===----------------------------------------------------------------------===//
 // Op removal patterns.
 //===----------------------------------------------------------------------===//
+def RemovePreventGradient : Pat<(TF_PreventGradientOp $op, $msg), (replaceWithValue $op)>;
 def RemoveXlaSharding : Pat<(TF_XlaShardingOp $a, $b, $c), (replaceWithValue $a)>;
 def RemoveIdentityN : Pat<(TF_IdentityNOp $arg), (replaceWithValue $arg)>;
 

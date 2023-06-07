@@ -20,7 +20,9 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>

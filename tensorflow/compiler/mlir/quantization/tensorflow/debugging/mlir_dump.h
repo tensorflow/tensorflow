@@ -35,7 +35,7 @@ void EnableIrPrinting(llvm::raw_ostream &out_stream, mlir::PassManager &pm);
 // level < 1 or TF_QUANT_MLIR_DUMP_PREFIX is not set or set to an empty string.
 // The returned ostream instance should live until the pass run is complete.
 absl::StatusOr<std::unique_ptr<llvm::raw_ostream>> MaybeEnableIrPrinting(
-    mlir::PassManager &pm, const absl::string_view name);
+    mlir::PassManager &pm, absl::string_view name);
 
 }  // namespace quantization
 }  // namespace tensorflow

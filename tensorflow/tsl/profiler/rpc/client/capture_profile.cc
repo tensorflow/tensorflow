@@ -17,8 +17,10 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/rpc/client/profiler_client.h"
 #include "tensorflow/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "tensorflow/tsl/profiler/rpc/client/save_profile.h"
+#include "tensorflow/tsl/profiler/utils/session_manager.h"
 
 namespace tsl {
 namespace profiler {
@@ -259,6 +262,26 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
     return tsl::profiler::SaveGzippedToolData(
         repository_root, run, host, "trace.json.gz",
         tsl::profiler::TraceContainerToJson(container));
+  }
+  return OkStatus();
+}
+
+Status CaptureRemoteTrace(
+    const char* service_addr, const char* logdir, const char* worker_list,
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
+  // TPU capture is true if the user sets worker_list.
+  bool is_cloud_tpu_session = false;
+  RemoteProfilerSessionManagerOptions opts =
+      GetRemoteSessionManagerOptionsLocked(service_addr, logdir, worker_list,
+                                           include_dataset_ops, duration_ms,
+                                           options, &is_cloud_tpu_session);
+  TF_RETURN_IF_ERROR(ValidateRemoteProfilerSessionManagerOptions(opts));
+
+  {
+    TF_RETURN_IF_ERROR(CaptureRemoteTrace(logdir, num_tracing_attempts, opts,
+                                          is_cloud_tpu_session));
   }
   return OkStatus();
 }

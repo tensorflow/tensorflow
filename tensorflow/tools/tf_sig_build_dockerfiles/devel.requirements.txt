@@ -6,7 +6,7 @@
 # This will change in the future.
 absl-py ~= 1.0.0
 astunparse ~= 1.6.3
-flatbuffers ~= 2.0
+flatbuffers ~= 23.5.8
 google_pasta ~= 0.2
 h5py ~= 3.8.0 # Earliest version for Python 3.11
 # TODO(b/262592253): Support older versions of NumPy for Python 3.10 and lower
@@ -34,7 +34,7 @@ tb-nightly ~= 2.13.0.a
 tf-estimator-nightly ~= 2.14.0.dev
 # Test dependencies
 grpcio ~= 1.49.1 # Earliest version for Python 3.11
-portpicker ~= 1.4.0
+portpicker ~= 1.5.2
 scipy ~= 1.7.2; python_version < '3.11'
 scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 # Required for TFLite import from JAX tests

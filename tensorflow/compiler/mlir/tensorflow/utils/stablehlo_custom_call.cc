@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/stablehlo_custom_call.h"
 
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -31,20 +30,21 @@ constexpr llvm::StringRef kTfTargetName = "tf.call_tf_function";
 // `tf.backend_config` is a DictionaryAttr, JAX2TF sets the value of its
 // string attribute `caller_name` to the TF host callback function's name.
 constexpr llvm::StringRef kTfBackendConfigAttrName = "tf.backend_config";
-constexpr llvm::StringRef kCallerNameAttrName = "caller_name";
+constexpr llvm::StringRef kCalledFuncAttrName = "called_func";
+
+}  // namespace
+
+bool IsTfFuncCustomCall(stablehlo::CustomCallOp op) {
+  return op.getCallTargetName() == kTfTargetName;
+}
 
 DictionaryAttr GetTfBackendConfig(stablehlo::CustomCallOp op) {
   return op->getAttrOfType<DictionaryAttr>(kTfBackendConfigAttrName);
 }
 
-}  // namespace
-
-bool IsTfHostCallback(stablehlo::CustomCallOp op) {
-  return op.getCallTargetName() == kTfTargetName;
-}
-
-FailureOr<StringAttr> GetTfHostCallbackName(stablehlo::CustomCallOp op) {
-  if (!IsTfHostCallback(op)) {
+FailureOr<SymbolRefAttr> GetTfFuncCustomCallFuncName(
+    stablehlo::CustomCallOp op) {
+  if (!IsTfFuncCustomCall(op)) {
     return success(nullptr);
   }
 
@@ -55,45 +55,21 @@ FailureOr<StringAttr> GetTfHostCallbackName(stablehlo::CustomCallOp op) {
     return failure();
   }
 
-  auto f = config.get(kCallerNameAttrName);
+  auto f = config.get(kCalledFuncAttrName);
   if (f == nullptr) {
-    op.emitOpError() << "does not have attribute '" << kCallerNameAttrName
+    op.emitOpError() << "does not have attribute '" << kCalledFuncAttrName
                      << "' in its dictionary attribute '"
                      << kTfBackendConfigAttrName << "'";
     return failure();
   }
 
-  if (auto attr = f.dyn_cast<StringAttr>(); attr != nullptr) {
+  if (auto attr = f.dyn_cast<FlatSymbolRefAttr>()) {
     return attr;
   }
 
-  if (auto attr = f.dyn_cast<FlatSymbolRefAttr>(); attr != nullptr) {
-    return attr.getAttr();
-  }
-
-  op.emitOpError() << "'s attribute '" << kCallerNameAttrName
+  op.emitOpError() << "'s attribute '" << kCalledFuncAttrName
                    << "' is neither StringAttr nor FlatSymbolRefAttr";
   return failure();
-}
-
-void SetTfHostCallbackName(stablehlo::CustomCallOp op, FlatSymbolRefAttr f) {
-  llvm::SmallVector<NamedAttribute> new_config;
-  if (auto config = GetTfBackendConfig(op)) {
-    // Copy the attributes in the current config except `caller_name`.
-    for (auto attr : config) {
-      if (attr.getName() != kCallerNameAttrName) {
-        new_config.push_back(attr);
-      }
-    }
-  }
-
-  Builder builder(op.getContext());
-  // Sets the `caller_name` attribute to the TF host callback function's name.
-  new_config.push_back(
-      NamedAttribute(builder.getStringAttr(kCallerNameAttrName), f));
-
-  // Sets the `tf.backend_config` attribute to the `new_config`.
-  op->setAttr(kTfBackendConfigAttrName, builder.getDictionaryAttr(new_config));
 }
 
 }  // namespace TF

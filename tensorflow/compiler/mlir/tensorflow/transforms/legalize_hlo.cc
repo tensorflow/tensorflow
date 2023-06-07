@@ -2463,7 +2463,8 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     if (cumulative_axis == -1) {
-      return rewriter.notifyMatchFailure(rw, "no reduced dimension is found.");
+      rw.emitOpError() << "no reduced dimension is found.";
+      return failure();
     }
 
     // For a cumulative op, padding (expressed as a list of left-padding and
@@ -3007,6 +3008,10 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   LogicalResult matchAndRewrite(
       mhlo::GatherOp gather_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    if (succeeded(ConvertGatherOpToSlice(gather_op, rewriter))) {
+      return success();
+    }
+
     Value operand = gather_op.getOperand();
     Value start_indices = gather_op.getStartIndices();
 
@@ -3125,6 +3130,153 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         rewriter.getI64TensorAttr(transpose_params.permutation));
 
     return success();
+  }
+
+  // Convert gather op to tf.slice and tf.concat
+  LogicalResult ConvertGatherOpToSlice(
+      mhlo::GatherOp gather_op, ConversionPatternRewriter& rewriter) const {
+    Value operand = gather_op.getOperand();
+    Value start_indices = gather_op.getStartIndices();
+    static const int rank_two = 2;
+    // This converts a gather op to multiple slice ops, cap the number of slice
+    // ops allowed.
+    static const int max_batch_size = 50;
+
+    // Can only convert with static shaped gather.
+    ShapedType operand_type = operand.getType().cast<ShapedType>();
+    ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
+    ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
+    if (!operand_type.hasStaticShape() ||
+        !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
+      gather_op.emitOpError() << "Dynamic shaped inputs are not supported.";
+      return failure();
+    }
+
+    auto start_index_map = gather_op.getDimensionNumbers().getStartIndexMap();
+    auto collapsed_slice_dims =
+        gather_op.getDimensionNumbers().getCollapsedSliceDims();
+    auto offset_dims = gather_op.getDimensionNumbers().getOffsetDims();
+    auto slice_sizes = gather_op.getSliceSizes();
+    llvm::SmallVector<int64_t, 2> slice_sizes_vector;
+    slice_sizes_vector.reserve(slice_sizes.size());
+    for (int64_t s : slice_sizes.getValues<int64_t>()) {
+      slice_sizes_vector.push_back(s);
+    }
+
+    llvm::SmallVector<int64_t, 1> batch_dims;
+    // Offset dims are guaranteed to be sorted.
+    int offset_index = 0;
+    for (int64_t i = 0; i < result_type.getRank(); ++i) {
+      if (offset_index >= offset_dims.size() ||
+          offset_dims[offset_index] != i) {
+        batch_dims.push_back(i);
+      } else {
+        ++offset_index;
+      }
+    }
+    // Here we only support gather with one batch dim and the batch dim is 0.
+    if (batch_dims.size() != 1 || batch_dims[0] != 0) {
+      return failure();
+    }
+    int64_t batch_dim = batch_dims[0];
+    // Batch dim in operand and start indices should match.
+    if (operand_type.getDimSize(batch_dim) > max_batch_size ||
+        operand_type.getRank() != rank_two ||
+        start_indices_type.getRank() != rank_two ||
+        operand_type.getDimSize(batch_dim) !=
+            start_indices_type.getDimSize(batch_dim) ||
+        slice_sizes_vector[batch_dim] != 1) {
+      return failure();
+    }
+    // Here we only support the case where [0, 1] in start_indices maps to
+    // operand[0, 1]
+    for (int64_t i = 0; i < start_index_map.size(); i++) {
+      if (start_index_map[i] != i) {
+        return failure();
+      }
+    }
+    // Collapsed slice dims should contain the batch dim.
+    if (collapsed_slice_dims.size() != start_index_map.size() - 1 ||
+        collapsed_slice_dims.size() != 1 || collapsed_slice_dims[0] != 0) {
+      return failure();
+    }
+
+    // Normalize start_indices so index_vector_dim == start_indices.rank() - 1.
+    int64_t index_vector_dim =
+        gather_op.getDimensionNumbers().getIndexVectorDim();
+    if (failed(NormalizeIndexVector(gather_op, start_indices,
+                                    start_indices_type, index_vector_dim,
+                                    rewriter))) {
+      return failure();
+    }
+
+    ImplicitLocOpBuilder builder(gather_op.getLoc(), rewriter);
+    // Clamp the start indices to ensure it is in bounds.
+    auto max_start_indices = BuildIntArrayConstOp(
+        builder, rewriter,
+        llvm::SmallVector<int64_t>(
+            {operand_type.getDimSize(0) - slice_sizes_vector[0],
+             operand_type.getDimSize(1) - slice_sizes_vector[1]}),
+        start_indices_type.getElementType());
+    auto min_start_indices = BuildIntArrayConstOp(
+        builder, rewriter, llvm::SmallVector<int64_t>({0, 0}),
+        start_indices_type.getElementType());
+    auto start_indices_max_op = rewriter.create<MaximumOp>(
+        gather_op.getLoc(), start_indices, min_start_indices);
+    auto clamped_start_indices_op = rewriter.create<MinimumOp>(
+        gather_op.getLoc(), start_indices_max_op, max_start_indices);
+
+    int64_t batch_size = start_indices_type.getDimSize(batch_dim);
+    auto slice_size = BuildIntArrayConstOp(
+        builder, rewriter, slice_sizes_vector, rewriter.getI32Type());
+    if (batch_size == 1) {
+      auto squeeze_op = rewriter.create<TF::SqueezeOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({rank_two},
+                                start_indices_type.getElementType()),
+          clamped_start_indices_op,
+          rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
+      auto slice_op =
+          rewriter.create<SliceOp>(gather_op.getLoc(), gather_op.getType(),
+                                   operand, squeeze_op, slice_size);
+      rewriter.replaceOp(gather_op, {slice_op});
+      return mlir::success();
+    }
+
+    llvm::SmallVector<Value, 1> slices;
+    slices.reserve(batch_size);
+    for (int64_t i = 0; i < batch_size; ++i) {
+      auto zero = BuildIntArrayConstOp(builder, rewriter,
+                                       llvm::SmallVector<int64_t>({i, 0}),
+                                       rewriter.getI32Type());
+      auto two = BuildIntArrayConstOp(builder, rewriter,
+                                      llvm::SmallVector<int64_t>({1, 2}),
+                                      rewriter.getI32Type());
+      auto begin = rewriter.create<SliceOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({1, 2}, start_indices_type.getElementType()),
+          clamped_start_indices_op, zero, two);
+      auto squeeze_op = rewriter.create<TF::SqueezeOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({rank_two},
+                                start_indices_type.getElementType()),
+          begin,
+          rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
+      auto slice_op = rewriter.create<SliceOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({1, slice_sizes_vector[1]},
+                                operand_type.getElementType()),
+          operand, squeeze_op, slice_size);
+      slices.push_back(slice_op);
+    }
+    auto scalar_type = RankedTensorType::get({}, rewriter.getI32Type());
+    auto zero_scalar = rewriter.create<TF::ConstOp>(
+        gather_op.getLoc(),
+        DenseIntElementsAttr::get(scalar_type, static_cast<int32_t>(0)));
+    auto concat_op = rewriter.create<ConcatV2Op>(
+        gather_op.getLoc(), result_type, slices, zero_scalar);
+    rewriter.replaceOp(gather_op, {concat_op});
+    return mlir::success();
   }
 
  private:
@@ -3346,11 +3498,41 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
         loc, permutation_and_shape.shape, operands[0],
         permutation_and_shape.permutation);
 
+    Value new_indices = indices;
+    int64_t index_depth =
+        permutation_and_shape.shape.getRank() - inserted_window_dims.size();
+    int64_t num_updates = indices_type.getDimSize(0);
+    // For TF::TensorScatterUpdateOp, `indices` must have at least 2 axes:
+    // `(num_updates, index_depth)`. Reshape indices and updates if necessary.
+    if (std::is_same<TfOp, TF::TensorScatterUpdateOp>::value &&
+        indices_type.getRank() == 1 && updates_type.getRank() == 1 &&
+        index_depth == 1 && num_updates == 1) {
+      ImplicitLocOpBuilder builder(loc, rewriter);
+      auto indices_shape = BuildIntArrayConstOp(
+          builder, rewriter,
+          llvm::SmallVector<int64_t>({num_updates, index_depth}),
+          rewriter.getI32Type());
+      new_indices = rewriter.create<ReshapeOp>(
+          loc,
+          RankedTensorType::get({num_updates, index_depth},
+                                indices_type.getElementType()),
+          indices, indices_shape);
+      auto updates_shape = BuildIntArrayConstOp(
+          builder, rewriter,
+          llvm::SmallVector<int64_t>({num_updates, updates_type.getDimSize(0)}),
+          rewriter.getI32Type());
+      new_updates = rewriter.create<ReshapeOp>(
+          loc,
+          RankedTensorType::get({1, updates_type.getDimSize(0)},
+                                updates_type.getElementType()),
+          new_updates, updates_shape);
+    }
+
     // Apply TF scatter to update the trailing dimensions of the
     // transposed operand.
     auto tf_scatter_op =
         rewriter.create<TfOp>(loc, permutation_and_shape.shape,
-                              transposed_operand, indices, new_updates);
+                              transposed_operand, new_indices, new_updates);
 
     // Reverse the earlier transpose.
     auto inverse_permutation =

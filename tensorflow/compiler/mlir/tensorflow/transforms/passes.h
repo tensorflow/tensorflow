@@ -337,10 +337,6 @@ CreateXlaCallModuleDeserializationPass();
 // `module` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaCallModuleSerializationPass();
 
-// Creates a pass that renames TF function names in `stablehlo.custom_call`.
-std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
-CreateXlaCallModuleCustomCallTfFunctionRenamingPass();
-
 }  // namespace TF
 
 namespace tf_executor {

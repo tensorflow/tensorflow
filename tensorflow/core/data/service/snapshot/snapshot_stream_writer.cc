@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
+#include "tensorflow/core/data/service/common.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/utils.h"
@@ -70,6 +71,7 @@ SnapshotStreamWriter::SnapshotStreamWriter(
     const SnapshotWriterParams& params, std::unique_ptr<TaskIterator> iterator)
     : params_(params), iterator_(std::move(iterator)) {
   DCHECK_NE(iterator_.get(), nullptr);
+  last_checkpoint_time_ = absl::FromUnixMicros(params_.env->NowMicros());
   snapshot_thread_ = absl::WrapUnique(params_.env->StartThread(
       /*thread_options=*/{}, /*name=*/"tf_data_service_snapshot_thread",
       [this]() { WriteSnapshotAndLog(); }));
@@ -87,6 +89,10 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   Status status = WriteSnapshot();
+  if (IsPreemptedError(status)) {
+    LOG(INFO) << "tf.data service snapshot writer is cancelled: " << status;
+    return;
+  }
   status = FinalizeStream(status);
   mutex_lock l(mu_);
   if (!status.ok()) {
@@ -243,6 +249,10 @@ void SnapshotStreamWriter::Cancel() TF_LOCKS_EXCLUDED(mu_) {
 
 bool SnapshotStreamWriter::ShouldSave() const TF_LOCKS_EXCLUDED(mu_) {
   mutex_lock l(mu_);
+  const absl::Time now = absl::FromUnixMicros(params_.env->NowMicros());
+  if (now < last_checkpoint_time_ + params_.checkpoint_interval) {
+    return false;
+  }
   if (end_of_sequence_) {
     // If this is the last chunk, we only write checkpoints when there are more
     // than one chunk. For example, if there are 3 chunks, the files will be:
@@ -274,8 +284,10 @@ Status SnapshotStreamWriter::Save() {
   TF_RETURN_IF_ERROR(AtomicallyWriteTFRecords(
       checkpoint_path, serialized_iterator, params_.compression, params_.env));
   absl::Time end_time = absl::FromUnixMicros(params_.env->NowMicros());
-  LOG(INFO) << "Checkpointing distributed tf.data snapshot writer took "
+  LOG(INFO) << "Wrote checkpoint file " << checkpoint_path << ". "
+            << "Checkpointing distributed tf.data snapshot writer took "
             << (end_time - start_time);
+  last_checkpoint_time_ = end_time;
   return DeleteOutdatedCheckpoints();
 }
 

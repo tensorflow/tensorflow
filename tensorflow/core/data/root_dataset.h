@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 #define TENSORFLOW_CORE_DATA_ROOT_DATASET_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/model.pb.h"

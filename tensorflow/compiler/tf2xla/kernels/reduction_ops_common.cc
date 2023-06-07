@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific reduction Ops.
 
+#include <vector>
+
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"

@@ -119,11 +119,14 @@ void AddExportPasses(const bool duplicate_shape_determining_constants,
   }
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+  pm.addPass(mlir::quant::CreateLiftHashTableOpsAsArgsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
   pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
   pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateMergeDuplicateResourceOpsPass());
 
   // Used to clean up the "tf._noinliner" attribute that is previously used to
   // prevent certain functions from being inlined (see

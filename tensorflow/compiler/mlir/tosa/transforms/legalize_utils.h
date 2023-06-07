@@ -20,6 +20,7 @@ limitations under the License.
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iterator>
 #include <numeric>
 #include <optional>

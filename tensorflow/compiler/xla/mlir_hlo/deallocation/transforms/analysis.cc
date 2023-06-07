@@ -42,8 +42,11 @@ bool isRestrictBbArg(Value value) {
 
 bool isMemref(Value v) { return llvm::isa<BaseMemRefType>(v.getType()); }
 
-void collectBackingMemory(Value source, DenseSet<Value>& visited,
-                          DenseSet<Value>& results) {
+}  // namespace
+
+void DeallocationAnalysis::collectBackingMemory(
+    Value source, DenseSet<Value>& visited,
+    breaks_if_you_move_ops::ValueSet& results) {
   if (!isMemref(source)) return;
   if (!visited.insert(source).second) return;
 
@@ -96,12 +99,15 @@ void collectBackingMemory(Value source, DenseSet<Value>& visited,
   }
 }
 
-}  // namespace
+const breaks_if_you_move_ops::ValueSet& DeallocationAnalysis::getBackingMemory(
+    Value source) {
+  auto it = backingMemory.find(source);
+  if (it != backingMemory.end()) return it->second;
 
-breaks_if_you_move_ops::ValueSet getBackingMemory(Value source) {
-  DenseSet<Value> results, visited;
+  auto& results = backingMemory[source];
+  DenseSet<Value> visited;
   collectBackingMemory(source, visited, results);
-  return {results.begin(), results.end()};
+  return results;
 }
 
 }  // namespace deallocation

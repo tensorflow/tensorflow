@@ -3158,8 +3158,7 @@ class DTensorLayoutPropSPMDTest(test_util.DTensorBaseTest):
 
     @polymorphic_function.function
     def add_fn(x, y):
-      result = math_ops.add(x, y)
-      return api.relayout(result, a_layout)
+      return math_ops.add(x, y)
 
     dtensor_result = add_fn(a, b)
     self.assertDTensorEqual(expected, a_layout, dtensor_result)

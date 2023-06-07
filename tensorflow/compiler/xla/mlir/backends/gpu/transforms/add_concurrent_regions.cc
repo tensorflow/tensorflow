@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
+#include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
 namespace xla {
 namespace gpu {
@@ -53,16 +54,21 @@ struct BufferUse {
   BlockArgument arg;
   size_t offset;
   size_t len;
+
+  // The buffer is only read by the operation.
+  bool read_only;
 };
 
-BufferUse GetBufferUse(Value operand) {
+BufferUse GetBufferUse(Value operand, bool read_only = false) {
   Operation* defining_op = operand.getDefiningOp();
   if (!defining_op) {
     auto block_argument = cast<mlir::BlockArgument>(operand);
     auto memref_type = cast<MemRefType>(block_argument.getType());
-    size_t len = memref_type.getNumElements() *
-                 (memref_type.getElementTypeBitWidth() / 8);
-    return {block_argument, 0, len};
+    size_t len =
+        (memref_type.getNumElements() * memref_type.getElementTypeBitWidth() +
+         7) /
+        8;
+    return {block_argument, 0, len, read_only};
   }
 
   if (isa<memref::ViewOp>(defining_op)) {
@@ -80,27 +86,47 @@ BufferUse GetBufferUse(Value operand) {
 
     // Get len.
     auto memref_type = cast<MemRefType>(view_op.getType());
-    size_t len = memref_type.getNumElements() *
-                 (memref_type.getElementTypeBitWidth() / 8);
+    size_t len =
+        (memref_type.getNumElements() * memref_type.getElementTypeBitWidth() +
+         7) /
+        8;
 
-    return {buffer_use.arg, buffer_use.offset + offset, len};
+    return {buffer_use.arg, buffer_use.offset + offset, len, read_only};
   }
 
   if (auto cast = dyn_cast<mlir::memref::ReinterpretCastOp>(defining_op)) {
-    return GetBufferUse(cast.getSource());
+    return GetBufferUse(cast.getSource(), read_only);
   }
 
   return {};
 }
 
+// Arguments to the graph capture function may have the "lmhlo.constant_name"
+// attribute, which indicates that the passed-in buffer is constant.
+bool IsConstant(BlockArgument block_argument) {
+  // Check if the input buffer is marked as constant.
+  Region* parent_region = block_argument.getParentRegion();
+  auto parent_func = parent_region->getParentOfType<FuncOp>();
+  unsigned parent_func_arg_index = block_argument.getArgNumber();
+  auto cst = parent_func.getArgAttrOfType<StringAttr>(parent_func_arg_index,
+                                                      "lmhlo.constant_name");
+  return cst != nullptr;
+}
+
 // Check if buffer_use has any overlap with buffers in the region.
 bool HasDependency(llvm::ArrayRef<BufferUse> region_buffer_uses,
                    BufferUse buffer_use) {
+  if (IsConstant(buffer_use.arg)) return false;
+
   for (auto buffer_use_in_region : region_buffer_uses) {
-    if (buffer_use_in_region.arg.getArgNumber() !=
-        buffer_use.arg.getArgNumber()) {
+    if (IsConstant(buffer_use_in_region.arg) ||
+        buffer_use_in_region.arg.getArgNumber() !=
+            buffer_use.arg.getArgNumber()) {
       continue;
     }
+
+    // Two read-only accesses to the same buffer does not create dependency.
+    if (buffer_use.read_only && buffer_use_in_region.read_only) continue;
 
     // Check if two buffer slices overlap.
     size_t start1 = buffer_use_in_region.offset;
@@ -138,34 +164,41 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
   // These two arrays stores the information about the current region that is
   // being processed. region contains the kernels, while buffer_uses stores the
   // buffer usage by the kernels in the region.
-  llvm::SmallVector<LaunchFuncOp> region;
+  llvm::SmallVector<Operation*> region;
   llvm::SmallVector<BufferUse> buffer_uses;
 
   auto store_region_and_start_new_region = [&]() {
     if (region.size() >= 2) {
-      region_start_and_end.push_back(
-          {region.front().getOperation(), region.back().getOperation()});
+      region_start_and_end.push_back({region.front(), region.back()});
     }
     region.clear();
     buffer_uses.clear();
   };
 
-  auto launch_func_ops = llvm::to_vector(capture_func.getOps<LaunchFuncOp>());
   auto operations = capture_func.getOps();
   for (auto& operation : operations) {
     // TODO(anlunx): Support other ops.
-    if (!isa<LaunchFuncOp>(operation)) {
+    llvm::SmallVector<BufferUse> operand_buffer_uses;
+    if (auto launch_func = dyn_cast<LaunchFuncOp>(operation)) {
+      auto kernel_operands = launch_func.getKernelOperands();
+      for (auto kernel_operand : kernel_operands) {
+        BufferUse buffer_use = GetBufferUse(kernel_operand);
+        operand_buffer_uses.push_back(buffer_use);
+      }
+    } else if (auto gemm = dyn_cast<lmhlo_gpu::GEMMOp>(operation)) {
+      BufferUse buffer_use_0 = GetBufferUse(gemm.getA(), /*read_only=*/true);
+      BufferUse buffer_use_1 = GetBufferUse(gemm.getB(), /*read_only=*/true);
+      BufferUse buffer_use_2 = GetBufferUse(gemm.getC(), /*read_only=*/false);
+      operand_buffer_uses.push_back(buffer_use_0);
+      operand_buffer_uses.push_back(buffer_use_1);
+      operand_buffer_uses.push_back(buffer_use_2);
+    } else {
       store_region_and_start_new_region();
       continue;
     }
 
-    LaunchFuncOp launch_func = cast<LaunchFuncOp>(operation);
-
     bool has_dependency = false;
-    llvm::SmallVector<BufferUse> operand_buffer_uses;
-    for (auto operand : launch_func.getKernelOperands()) {
-      BufferUse buffer_use = GetBufferUse(operand);
-      operand_buffer_uses.push_back(buffer_use);
+    for (BufferUse buffer_use : operand_buffer_uses) {
       if (HasDependency(buffer_uses, buffer_use)) {
         has_dependency = true;
       }
@@ -175,7 +208,7 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
       store_region_and_start_new_region();
     }
 
-    region.push_back(launch_func);
+    region.push_back(&operation);
     for (auto buffer_use : operand_buffer_uses) {
       buffer_uses.push_back(buffer_use);
     }
@@ -225,7 +258,6 @@ void AddConcurrentRegionsPass::runOnOperation() {
     // Find the cuda graph capture function.
     if (absl::StrContains(func_op.getSymNameAttr().str(),
                           "xla.gpu.cuda.graph.capture")) {
-      auto region_start_and_end = GetRegionStartAndEnd(func_op);
       InsertConcurrentRegions(func_op, custom_calls);
     }
   }

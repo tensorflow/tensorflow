@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/Support/SourceMgr.h"
@@ -53,7 +55,7 @@ tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> LoadFromGraphdefOrMlirSource(
 // Load Saved model (either v1 or v2) into MLIR.
 // 'saved_model_bundle' will be initialized if V1 model was loaded.
 tsl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ImportSavedModel(
-    const std::string& input_filename, const int saved_model_version,
+    const std::string& input_filename, int saved_model_version,
     const std::unordered_set<std::string>& tags,
     absl::Span<const std::string> extra_tf_opdefs,
     absl::Span<std::string> exported_names, const GraphImportConfig& specs,

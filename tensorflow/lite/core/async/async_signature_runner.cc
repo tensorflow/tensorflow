@@ -113,6 +113,13 @@ bool AsyncSignatureRunner::ReconcileRestrictions(
     const TfLiteAttributeMap* user_provided_attributes,
     TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const {
   auto tensor_index = GetTensorIndex(io_type, name);
+  return ReconcileRestrictions(tensor_index, user_provided_attributes, merged,
+                               conflict);
+}
+
+bool AsyncSignatureRunner::ReconcileRestrictions(
+    int tensor_index, const TfLiteAttributeMap* user_provided_attributes,
+    TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) const {
   if (tensor_index < 0) return false;
   return async_subgraph_->ReconcileRestrictions(
       tensor_index, user_provided_attributes, merged, conflict);
@@ -121,6 +128,11 @@ bool AsyncSignatureRunner::ReconcileRestrictions(
 TfLiteStatus AsyncSignatureRunner::SetAttributes(
     TfLiteIoType io_type, const char* name, const TfLiteAttributeMap* attrs) {
   auto tensor_index = GetTensorIndex(io_type, name);
+  return SetAttributes(tensor_index, attrs);
+}
+
+TfLiteStatus AsyncSignatureRunner::SetAttributes(
+    int tensor_index, const TfLiteAttributeMap* attrs) {
   if (tensor_index < 0) return kTfLiteError;
   return async_subgraph_->SetAttributes(tensor_index, attrs);
 }

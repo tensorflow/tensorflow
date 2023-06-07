@@ -16,8 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 #define TENSORFLOW_CORE_DATA_SERIALIZATION_UTILS_H_
 
+#include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/dataset.pb.h"
@@ -88,9 +91,8 @@ class VariantTensorDataReader : public IteratorStateReader {
 // Now the VariantTensorData objects can be used to serialize.
 class VariantTensorDataWriter : public IteratorStateWriter {
  public:
-  Status WriteScalar(StringPiece key, const int64_t val) override;
-  Status WriteScalar(StringPiece name, StringPiece key,
-                     const int64_t val) override;
+  Status WriteScalar(StringPiece key, int64_t val) override;
+  Status WriteScalar(StringPiece name, StringPiece key, int64_t val) override;
 
   Status WriteScalar(StringPiece key, const tstring& val) override;
   Status WriteScalar(StringPiece name, StringPiece key,

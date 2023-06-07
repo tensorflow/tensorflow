@@ -466,7 +466,7 @@ TEST_F(CWiseUnaryGradTest, Asin_Complex) {
   };
   // TODO(kbsriram)
   // Enable test when the asin kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ASIN, x_fn);
   }
 }
@@ -482,7 +482,7 @@ TEST_F(CWiseUnaryGradTest, Acos_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the acos kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ACOS, x_fn);
   }
 }
@@ -510,7 +510,7 @@ TEST_F(CWiseUnaryGradTest, Atan_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the atan kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ATAN, x_fn);
   }
 }
@@ -561,7 +561,7 @@ TEST_F(CWiseUnaryGradTest, Lgamma_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the lgamma kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(LGAMMA, x_fn);
   }
 }
@@ -579,7 +579,7 @@ TEST_F(CWiseUnaryGradTest, Erf_Complex) {
   };
   // TODO(kbsriram)
   // Add test when the erf kernel supports complex numbers
-  if (false) {
+  if (/* DISABLES CODE */ (false)) {
     TestCWiseGrad<complex64, complex64>(ERF, x_fn);
   }
 }

@@ -16,10 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TOOLS_HLO_EXTRACTOR_H_
 #define TENSORFLOW_COMPILER_XLA_TOOLS_HLO_EXTRACTOR_H_
 
+#include <functional>
+#include <memory>
+
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 
 namespace xla {
+
+// Define HloSelector, which is a lambda that, given an HLO
+// instruction, returns true if selected, otherwise return false.
+using HloSelector = std::function<bool(const HloInstruction*)>;
 
 // Creates a new HLO module rooted with an entry computation rooted at the given
 // instruction.
@@ -28,8 +36,13 @@ namespace xla {
 //  operands of `root`.  If you specify a different height, the new computation
 //  will include all instructions <= `height` hops away from `root`.
 //  Instructions at the boundary are replaced by parameters.
+//
+// The `hlo_selector` will return true/false for each hlo instruction. If false
+// is returned, the corresponding instruction and its predecessors will not be
+// included in the extracted hlo module
 std::unique_ptr<HloModule> ExtractModule(HloInstruction* instruction,
-                                         int64_t height = -1);
+                                         int64_t height = -1,
+                                         HloSelector hlo_selector = nullptr);
 
 }  // namespace xla
 

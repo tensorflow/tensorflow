@@ -523,6 +523,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       auto strided_slice_params =
           reinterpret_cast<TfLiteStridedSliceParams*>(op_sig.builtin_data);
       TFLITE_DCHECK(strided_slice_params != nullptr);
+      if (strided_slice_params->offset == true) {
+        return 8;
+      }
       if (op_sig.inputs.at(0).type == kTfLiteUInt32) {
         return 7;
       }

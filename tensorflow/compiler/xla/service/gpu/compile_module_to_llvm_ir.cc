@@ -115,6 +115,8 @@ static Status LowerToXlaGpuRuntime(mlir::ModuleOp module,
 
   GpuPipelineOpts opts;
   opts.cuda_graph_level = debug_options.xla_gpu_cuda_graph_level();
+  opts.enable_concurrent_region =
+      debug_options.xla_gpu_cuda_graph_enable_concurrent_region();
   populateXlaGpuRuntimePasses(pm, thunk_sequence, opts);
 
   if (pm.run(module).failed()) {

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_SCHEDULE_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_SCHEDULE_H_
 
+#include <algorithm>
+#include <ostream>
 #include <string>
 #include <vector>
 

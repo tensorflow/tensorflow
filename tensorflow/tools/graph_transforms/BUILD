@@ -335,7 +335,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:compat",
     ],
@@ -350,9 +350,9 @@ tf_py_test(
     deps = [
         ":transform_graph_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:variables",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -136,7 +140,7 @@ class HostComputeOp : public XlaOpKernel {
                                      &original_node_name_));
   }
 
-  ~HostComputeOp() override {}
+  ~HostComputeOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
@@ -421,7 +425,7 @@ class SendToHostOp : public XlaOpKernel {
                                      &original_node_name_));
   }
 
-  ~SendToHostOp() override {}
+  ~SendToHostOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();
@@ -480,7 +484,7 @@ class RecvFromHostOp : public XlaOpKernel {
       original_node_name_ = name();
   }
 
-  ~RecvFromHostOp() override {}
+  ~RecvFromHostOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* b = ctx->builder();

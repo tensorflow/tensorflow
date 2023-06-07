@@ -46,7 +46,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   def __init__(self,
                sess,
                dump_root=None,
-               ui_type="curses",
+               ui_type="readline",
                thread_name_filter=None,
                config_file_path=False):
     """Constructor of LocalCLIDebugWrapperSession.
@@ -59,7 +59,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         `run()` calls and removed afterwards. If `None`, the debug dumps will
         be at tfdbg_<random_string> under the system temp directory.
       ui_type: (`str`) requested UI type. Currently supported:
-        (curses | readline)
+        (readline)
       thread_name_filter: Regular-expression white list for thread name. See
         the doc of `BaseDebugWrapperSession` for details.
       config_file_path: Optional override to the default configuration file

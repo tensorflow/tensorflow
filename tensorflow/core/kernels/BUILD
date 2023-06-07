@@ -3766,7 +3766,6 @@ tf_cuda_cc_test(
     srcs = ["matmul_op_test.cc"],
     tags = [
         "no_arm64",  # b/282068262
-        "no_armv7",  # b/280582913
     ],
     deps = [
         ":matmul_op",
@@ -7804,7 +7803,6 @@ tf_cc_test(
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/framework:types_proto_cc",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

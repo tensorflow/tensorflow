@@ -28,10 +28,10 @@ cuda_py_strict_test(
     ],
     deps = [
         ":mnist_testing_utils",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",

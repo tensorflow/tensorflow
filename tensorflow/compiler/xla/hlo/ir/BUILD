@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/service:compilation_environments",
         "//tensorflow/compiler/xla/service:computation_placer_hdr",
+        "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:mapped_ptr_container_sorter",

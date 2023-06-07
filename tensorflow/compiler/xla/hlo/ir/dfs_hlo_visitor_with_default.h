@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include <memory>
 #include <utility>
 
 #include "absl/base/optimization.h"
@@ -42,8 +43,8 @@ template <typename HloInstructionPtr>
 class DfsHloVisitorWithDefaultBase
     : public DfsHloVisitorBase<HloInstructionPtr> {
  public:
-  DfsHloVisitorWithDefaultBase() {}
-  ~DfsHloVisitorWithDefaultBase() override {}
+  DfsHloVisitorWithDefaultBase() = default;
+  ~DfsHloVisitorWithDefaultBase() override = default;
 
   // Default action performed on HloInstruction.
   virtual Status DefaultAction(HloInstructionPtr hlo_instruction) = 0;

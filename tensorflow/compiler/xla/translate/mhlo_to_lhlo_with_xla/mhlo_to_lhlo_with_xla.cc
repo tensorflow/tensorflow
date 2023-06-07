@@ -319,8 +319,7 @@ tsl::StatusOr<mlir::Operation*> LhloDialectEmitter::CreateOpInFusion(
 
     TF_RETURN_IF_ERROR(xla::HloFunctionImporter::ImportAsRegion(
         *instr->called_computations()[0], symbol_table_, &reduce_op.getBody(),
-        &builder_,
-        /*flatten_region_arg_tuple=*/true));
+        &builder_, /*flatten_region_arg_tuple=*/true));
     op = reduce_op;
   } else {
     TF_ASSIGN_OR_RETURN(op,
@@ -607,8 +606,18 @@ tsl::StatusOr<lmhlo::FusionOp> LhloDialectEmitter::EmitFusionOp(
     }
   }
 
-  fusion.setBackendConfigAttr(
-      builder_.getStringAttr(instr->raw_backend_config_string()));
+  // The fusion op might not have a backend-config.  But we at least want to set
+  // the fusion kind, because LMHLO doesn't have this concept.
+  TF_ASSIGN_OR_RETURN(auto backend_config,
+                      instr->backend_config<xla::gpu::FusionBackendConfig>());
+  if (backend_config.kind().empty() &&
+      instr->opcode() == xla::HloOpcode::kFusion) {
+    backend_config.set_kind(std::string(ToString(instr->fusion_kind())));
+  }
+
+  TF_ASSIGN_OR_RETURN(std::string backend_config_str,
+                      HloInstruction::BackendConfigToRawString(backend_config));
+  fusion.setBackendConfigAttr(builder_.getStringAttr(backend_config_str));
 
   // Fold GTE/Tuple pairs.
   //
@@ -994,27 +1003,40 @@ tsl::StatusOr<Operation*> LhloDialectEmitter::EmitCublasLtMatmulF8(
       custom_call->backend_config<xla::gpu::GemmBackendConfig>());
 
   int ops_num = custom_call->operand_count();
-  TF_RET_CHECK(ops_num == 7 || ops_num == 8);
-
+  TF_RET_CHECK(ops_num == 6 || ops_num == 7 || ops_num == 8);
   TF_ASSIGN_OR_RETURN(
       bool has_vector_bias,
       xla::gpu::cublas_lt::EpilogueAddsVectorBias(config.epilogue()));
 
   bool has_damax = custom_call->shape().IsTuple();
+  bool has_matrix_bias = config.beta() != 0.;
   xla::ShapeIndex output_index =
       has_damax ? xla::ShapeIndex{0} : xla::ShapeIndex{};
 
   llvm::SmallVector<Value, 10> operands;
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(0), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(1), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(3), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(4), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(5), &operands));
-  TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(6), &operands));
+
+  int a_scale_index = has_matrix_bias ? 3 : 2;
+  if (has_matrix_bias) {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(2), &operands));
+  } else {
+    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+  }
+
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index), &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index + 1), &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index + 2), &operands));
+  TF_RETURN_IF_ERROR(
+      GetOrCreateView(custom_call->operand(a_scale_index + 3), &operands));
   TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, output_index));
+
   if (has_vector_bias) {
-    TF_RETURN_IF_ERROR(GetOrCreateView(custom_call->operand(7), &operands));
+    TF_RETURN_IF_ERROR(
+        GetOrCreateView(custom_call->operand(a_scale_index + 4), &operands));
   }
   if (has_damax) {
     TF_RETURN_IF_ERROR(GetOrCreateView(custom_call, &operands, {1}));

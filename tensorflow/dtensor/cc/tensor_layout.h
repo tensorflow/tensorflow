@@ -160,6 +160,8 @@ class Mesh {
     return local_device_ids_.empty() && !global_device_ids_.empty();
   }
 
+  StatusOr<Mesh> host_mesh() const { return ToDeviceType("CPU"); }
+
   // Device information methods.
   std::string device_type() const;
   // Takes an index in the flattened list of devices and returns a location

@@ -130,7 +130,7 @@ py_library(
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:test_util",
-        "//tensorflow/python:graph_util",
+        "//tensorflow/python/framework:graph_util",
         "//third_party/py/numpy",
     ],
 )
@@ -650,7 +650,7 @@ pybind_extension(
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

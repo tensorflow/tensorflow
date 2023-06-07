@@ -31,6 +31,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+
 StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
     xla::CompileOptions compile_options = xla::CompileOptions()) {
@@ -321,6 +323,24 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
         src_literals[i].data<float>(),
         literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
   }
+}
+
+TEST(GpuTopology, FromProto) {
+  GpuTopologyProto msg;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      R"pb(
+        device_ids: [ 3, 2, 1 ]
+      )pb",
+      &msg));
+
+  std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
+  EXPECT_THAT(gpu_topology->device_ids(), ElementsAre(3, 2, 1));
+}
+
+TEST(GpuTopology, ToProto) {
+  GpuTopology gpu_topology({3, 2, 1});
+  GpuTopologyProto msg = gpu_topology.ToProto();
+  EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
 }
 
 }  // namespace

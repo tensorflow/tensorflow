@@ -891,7 +891,7 @@ func.func public @main(%arg0: tensor<16x256xbf16>, %arg1: tensor<i32>, %arg2: te
 // CHECK-DAG:   [[ARG3:%.*]] = bf16[] parameter(3)
 // CHECK-DAG:   (bf16[16,128], s32[16,128]) custom-call(bf16[16,256] [[ARG0]], s32[16,256] [[ARG2]], bf16[] [[ARG3]], s32[] [[ARG1]]),
 // CHECK-SAME: custom_call_target="PartialReduce", called_computations={%top_k_gt_comparator.[[COMPARATOR]]}
-// CHECK-SAME: backend_config="{\"log2_reduction\": 1, \"reduction_dim\": 1, \"to_apply_type\": \"comparator\", \"top_k\": 4, \"recall_target\": 0.949218}"
+// CHECK-SAME: backend_config={"log2_reduction": 1, "reduction_dim": 1, "to_apply_type": "comparator", "top_k": 4, "recall_target": 0.949218}
 
 
 // -----
@@ -2033,15 +2033,26 @@ func.func @recv_0(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) attribu
 }
 
 func.func @main(%token: !mhlo.token) -> (tensor<3x4xi32>, !mhlo.token) {
-  %0 = "mhlo.async_start"(%token) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
-  %1, %2 = "mhlo.async_done"(%0) {called_computation = @recv_0, execution_thread = "main"} : (!mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !mhlo.token)
+  %0 = "mhlo.async_start"(%token) {called_computation = @recv_0, execution_thread = "main", mhlo.sharding = "{{maximal device=0}, {maximal device=0}, {maximal device=0}}"} : (!mhlo.token) -> !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
+  %1, %2 = "mhlo.async_done"(%0) {called_computation = @recv_0, execution_thread = "main", mhlo.sharding = "{{maximal device=0}, {maximal device=0}}"} : (!mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !mhlo.token)
   return %1, %2 : tensor<3x4xi32>, !mhlo.token
 }
 
 // CHECK:  ENTRY
 // CHECK:  [[TOKEN:%.*]] = token[] parameter(0)
 // CHECK:  [[RECV:%.*]] = (s32[3,4], u32[], token[]) recv(token[] [[TOKEN]]), channel_id=5, is_host_transfer
-// CHECK:  (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer
+// CHECK-SAME:  sharding={
+// CHECK-SAME:    {maximal device=0}, {maximal device=0}, {maximal device=0}
+// CHECK-SAME:  }
+// CHECK:  [[RECV_DONE:%.*]] = (s32[3,4], token[]) recv-done((s32[3,4], u32[], token[]) [[RECV]]), channel_id=5, is_host_transfer
+// CHECK-SAME:  sharding={
+// CHECK-SAME:    {maximal device=0}, {maximal device=0}
+// CHECK-SAME:  }
+// CHECK:  [[TUPLE0:%.*]] = s32[3,4] get-tuple-element((s32[3,4], token[]) [[RECV_DONE]]), index=0
+// CHECK-NOT: sharding=
+// CHECK:  [[TUPLE1:%.*]] = token[] get-tuple-element((s32[3,4], token[]) [[RECV_DONE]]), index=1
+// CHECK-NOT: sharding=
+// CHECK:  ROOT {{%.*}} = (s32[3,4], token[]) tuple(s32[3,4] [[TUPLE0]], token[] [[TUPLE1]]) 
 
 // -----
 
@@ -2968,7 +2979,7 @@ func.func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3x
 // CHECK-SAME:  custom_call_target="foo"
 // CHECK-SAME:  custom_call_has_side_effect=true
 // CHECK-SAME:  api_version=API_VERSION_TYPED_FFI
-// CHECK-SAME:  backend_config="{user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}"
+// CHECK-SAME:  backend_config={user_attr0 = 123 : i32, user_attr1 = dense<42> : tensor<i32>}
 
 // -----
 

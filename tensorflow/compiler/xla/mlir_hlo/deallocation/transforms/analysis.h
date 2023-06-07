@@ -21,27 +21,36 @@ limitations under the License.
 namespace mlir {
 namespace deallocation {
 
-// Returns the set of all possible values that may back the given value. A value
-// `A` is considered to back another value `B` if
-// a) `A` is an alloc or a bbarg
-// b) `B` depends on `A` (possibly indirectly)
-//
-// For example, in this IR:
-//
-// func.func @foo(%arg0: memref<i32>) -> memref<i32> {
-//   %c0 = arith.constant 0 : index
-//   %c4 = arith.constant 4 : index
-//   %c1 = arith.constant 1 : index
-//   %ret = scf.for %i = %c0 to %c4 step %c1 iter_args(%x = %arg0)
-//        -> memref<i32> {
-//     %y = some.op(%x) : memref<i32> -> memref<i32>
-//     scf.yield %y : memref<i32>
-//   }
-//   func.return %ret : memref<i32>
-// }
-//
-// `getBackingMemory(%ret)` is {`%arg0`, `%x`, `%y`}.
-breaks_if_you_move_ops::ValueSet getBackingMemory(Value source);
+class DeallocationAnalysis {
+ public:
+  // Returns the set of all possible values that may back the given value. A
+  // value `A` is considered to back another value `B` if
+  // a) `A` is an alloc or a bbarg
+  // b) `B` depends on `A` (possibly indirectly)
+  //
+  // For example, in this IR:
+  //
+  // func.func @foo(%arg0: memref<i32>) -> memref<i32> {
+  //   %c0 = arith.constant 0 : index
+  //   %c4 = arith.constant 4 : index
+  //   %c1 = arith.constant 1 : index
+  //   %ret = scf.for %i = %c0 to %c4 step %c1 iter_args(%x = %arg0)
+  //        -> memref<i32> {
+  //     %y = some.op(%x) : memref<i32> -> memref<i32>
+  //     scf.yield %y : memref<i32>
+  //   }
+  //   func.return %ret : memref<i32>
+  // }
+  //
+  // `getBackingMemory(%ret)` is {`%arg0`, `%x`, `%y`}.
+  const breaks_if_you_move_ops::ValueSet& getBackingMemory(Value source);
+
+ private:
+  void collectBackingMemory(Value source, DenseSet<Value>& visited,
+                            breaks_if_you_move_ops::ValueSet& results);
+
+  DenseMap<Value, breaks_if_you_move_ops::ValueSet> backingMemory;
+};
 
 }  // namespace deallocation
 }  // namespace mlir

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_UTILS_FALLBACK_TENSOR_H_
 #define TENSORFLOW_CORE_TFRT_UTILS_FALLBACK_TENSOR_H_
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/tsl/profiler/lib/traceme.h"

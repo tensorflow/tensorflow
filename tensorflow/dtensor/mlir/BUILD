@@ -526,6 +526,7 @@ cc_library(
         ":tf_dtensor_dialect",
         "//tensorflow/compiler/mlir/tensorflow:dynamic_shape_utils",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/core:lib",
         "//tensorflow/dtensor/cc:dstatus",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",

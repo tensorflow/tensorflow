@@ -153,23 +153,23 @@ REGISTER_OP("FinalizeTPUEmbedding")
 //    till _ConfigureDistributedTPU completes. Also stores the HBM size and the
 //    embedding partitioner output in the system metadata where it can be used
 //    while compiling embedding Ops for TPU.
-// 2) The ConfigureTPUEmbeddingMemory Op runs on TPU:0 of all tasks. Using the
-//    output of the ExecuteTPUEmbeddingPartitioner Op, it allocates HBM memory,
-//    initializes the TPUEmbeddingManager and store the HBM buffer
-//    configuration.
-// 3) The ConfigureTPUEmbeddingHost Op runs on TPU:0 of all tasks. Using the
-//    output of the ExecuteTPUEmbeddingPartitioner Op, it builds the program
-//    that executes on the TPUEmbeddings, configures the TPUEmbedding hardware
-//    and sets up the TPUEmbedding host software. Using the output of the
-//    ConfigureTPUEmbeddingMemory Op that it receives from all tasks, it
-//    checks that HBM segment sizes are equal, and combines each task's
-//    allocation info to create a global map of HBM base addresses. It uses that
-//    to initialize the TPUEmbeddingManager, and also provides the hostname:port
-//    for inter-TPUEmbedding agreement of minibatch sizing.
-// 4) The _ConnectInterTPUEmbeddingCommunication Op runs on TPU:0 of all tasks.
-//    It uses the hostname:port output from all ConfigureTPUEmbeddingHost Ops
-//    to form all-to-all connections between all tasks for inter-TPUEmbedding
-//    agreement.
+// 2) The ConfigureTPUEmbeddingMemory Op runs on the TPU:0's host device of all
+//    tasks. Using the output of the ExecuteTPUEmbeddingPartitioner Op, it
+//    allocates HBM memory, initializes the TPUEmbeddingManager and store the
+//    HBM buffer configuration.
+// 3) The ConfigureTPUEmbeddingHost Op runs on the TPU:0's host device of all
+//    tasks. Using the output of the ExecuteTPUEmbeddingPartitioner Op, it
+//    builds the program that executes on the TPUEmbeddings, configures the
+//    TPUEmbedding hardware and sets up the TPUEmbedding host software. Using
+//    the output of the ConfigureTPUEmbeddingMemory Op that it receives from all
+//    tasks, it checks that HBM segment sizes are equal, and combines each
+//    task's allocation info to create a global map of HBM base addresses. It
+//    uses that to initialize the TPUEmbeddingManager, and also provides the
+//    hostname:port for inter-TPUEmbedding agreement of minibatch sizing.
+// 4) The _ConnectInterTPUEmbeddingCommunication Op runs on the TPU:0's host
+//    device of all tasks. It uses the hostname:port output from all
+//    ConfigureTPUEmbeddingHost Ops to form all-to-all connections between all
+//    tasks for inter-TPUEmbedding agreement.
 // 5) The FinalizeTPUEmbedding Op runs on TPU_SYSTEM of
 //    task 0. It takes as input the outputs from all ConfigureTPUEmbeddingHost
 //    Ops and validates that the HBM base address (in bytes) used for

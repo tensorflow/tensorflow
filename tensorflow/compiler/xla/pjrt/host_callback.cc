@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <utility>
+#include <vector>
 
 namespace xla {
 

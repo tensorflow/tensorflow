@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 
+#include <iostream>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/tensor_shape.h"

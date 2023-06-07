@@ -58,7 +58,7 @@ tf_cc_test(
         "//tensorflow/dtensor/cc:dtensor_device_util",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -72,6 +72,6 @@ tf_cc_test(
         "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )

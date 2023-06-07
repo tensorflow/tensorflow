@@ -128,8 +128,9 @@ class LowerWhileHelper {
   // (name_), infix and a suffix to ensure it is unique within the graph.
   string NewName(const string& infix);
 
-  // Returns whether the While op's input/output at `index` is a `DT_RESOURCE`.
-  bool IsResource(int index);
+  // Returns true if the input at index is a resource and the same resource is
+  // returned as an output.
+  bool IsLoopCarriedResource(int index);
 
   // The original While op.
   Node* while_op_;
@@ -229,7 +230,7 @@ Status LowerWhileHelper::RunInternal() {
 void LowerWhileHelper::InitializeInputOutputToLoweredNodeMap() {
   int counter = 0;
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (!IsResource(i)) {
+    if (!IsLoopCarriedResource(i)) {
       op_input_output_to_lowered_node_[i] = counter++;
     }
   }
@@ -250,7 +251,7 @@ Status LowerWhileHelper::CreateEnterNodes() {
             .Attr("parallel_iterations", parallel_iterations_)
             .Device(edge->src()->requested_device())
             .AssignedDevice(edge->src()->assigned_device_name());
-    if (IsResource(edge->dst_input())) {
+    if (IsLoopCarriedResource(edge->dst_input())) {
       builder.Attr("is_constant", true);
     }
     TF_RETURN_IF_ERROR(builder.Finalize(graph_, &enter_node));
@@ -280,7 +281,8 @@ Status LowerWhileHelper::CreateEnterNodes() {
 
 Status LowerWhileHelper::CreateMergeNodes() {
   for (Node* enter_node : enter_nodes_) {
-    if (enter_node->output_type(0) == DT_RESOURCE) {
+    bool is_constant = enter_node->attrs().FindByString("is_constant")->b();
+    if (is_constant && enter_node->output_type(0) == DT_RESOURCE) {
       continue;
     }
     Node* merge_node;
@@ -297,7 +299,7 @@ Status LowerWhileHelper::CreateMergeNodes() {
 
 Status LowerWhileHelper::CreateCondFuncCallNode() {
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       cond_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
     } else {
       cond_call_builder_.Input(
@@ -320,7 +322,7 @@ Status LowerWhileHelper::CreateCondFuncCallNode() {
 
 Status LowerWhileHelper::CreateSwitchNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       continue;
     }
     string op_name;
@@ -349,7 +351,7 @@ Status LowerWhileHelper::CreateSwitchNodes() {
 
 Status LowerWhileHelper::CreateBodyFuncCallNode() {
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       body_call_builder_.Input(NodeOut(enter_nodes_[i], 0));
     } else {
       body_call_builder_.Input(
@@ -383,7 +385,7 @@ Status LowerWhileHelper::CreateExitNodes() {
   std::vector<NodeOut> outputs;
   outputs.reserve(num_loop_inputs_);
   for (int i = 0; i < num_loop_inputs_; i++) {
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       // Note(srbs): A resource output of this While should never be used but we
       // need this for the IdentityN node below.
       OutputTensor resource_tensor;
@@ -443,7 +445,7 @@ Status LowerWhileHelper::CreateExitNodes() {
 Status LowerWhileHelper::CreateNextIterationNodes() {
   for (int i = 0; i < num_loop_inputs_; i++) {
     Node* next_iteration;
-    if (IsResource(i)) {
+    if (IsLoopCarriedResource(i)) {
       continue;
     }
     Node* merge_node = merge_nodes_[op_input_output_to_lowered_node_[i]];
@@ -472,7 +474,7 @@ Status LowerWhileHelper::UpdateConsumers() {
     if (e->IsControlEdge()) {
       graph_->AddControlEdge(lowered_while_executed_, e->dst());
     } else {
-      if (IsResource(e->src_output())) {
+      if (IsLoopCarriedResource(e->src_output())) {
         OutputTensor resource;
         TF_RETURN_IF_ERROR(
             enter_nodes_[e->src_output()]->input_tensor(0, &resource));
@@ -498,8 +500,17 @@ string LowerWhileHelper::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
 }
 
-bool LowerWhileHelper::IsResource(int index) {
-  return while_op_->input_type(index) == DT_RESOURCE;
+bool LowerWhileHelper::IsLoopCarriedResource(int index) {
+  if (while_op_->input_type(index) != DT_RESOURCE) return false;
+
+  auto body_func_name = while_op_->attrs().Find("body")->func().name();
+  auto body_func = flib_def_->Find(body_func_name);
+  auto arg_name = body_func->signature().input_arg(index).name();
+  // Technically, we should check that the position in the return matches
+  // 'index' but proto2 maps have undefined order.
+  for (auto& ret : body_func->ret())
+    if (ret.second == arg_name) return true;
+  return false;
 }
 
 }  // namespace
