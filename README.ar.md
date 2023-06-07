@@ -56,7 +56,7 @@
 
 
 كما توفر API غير المضمونة لتتوافق مع الاصدارات السابقة [للغات أخرى](https://www.tensorflow.org/api_docs). لذلك ينصح بمتابعة  أحدث الإصدارات للبرامج وتحديثات الأمان عن طريق الاشتراك في قائمة
-[البريد الالكتروني announce@tensorflow.org_](https://groups.google.com/a/tensorflow.org/g/announce). كما يمكنك الاطلاع [على قائمة الايميلات](https://www.tensorflow.org/community/mailing-lists?hl=ar)
+[البريد الالكتروني  announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/g/announce). كما يمكنك الاطلاع [على قائمة الايميلات](https://www.tensorflow.org/community/mailing-lists?hl=ar)
 
  ## تثبيت tensorflow
 
