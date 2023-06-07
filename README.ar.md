@@ -10,7 +10,7 @@
 #### _اقرأ هذا بلغات التالية:_
 
 الانجليزية
-<kbd>[<img title="ايراني" alt="ايراني" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/us.svg" width="30">](https://github.com/franknganmo/tensorflow/README.md](https://github.com/franknganmo/tensorflow/blob/master/README.md](https://github.com/tensorflow/tensorflow/blob/master/README.md)</kbd>
+<kbd>[<img title="ايراني" alt="ايراني" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/us.svg" width="30">](https://github.com/tensorflow/tensorflow/blob/master/README.md)</kbd>
 
 الفرنسية
 <kbd>[<img title= "فرنسي" alt="فرنسي" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
