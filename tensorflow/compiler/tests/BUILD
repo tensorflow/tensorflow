@@ -2723,6 +2723,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/framework:function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
