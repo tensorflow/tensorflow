@@ -98,6 +98,11 @@ void getTosaConst32bitTable(PatternRewriter& rewriter, Operation* op,
                             Value& first_const, Value& second_const,
                             Value& third_const, Value& fourth_const);
 
+// Create an 8-bit TOSA Table constant tensor for the HardSwish operator
+Value getTosaConstHardSwish8bitTable(PatternRewriter& rewriter, Operation* op,
+                                     float input_scale, int32_t input_zp,
+                                     float output_scale, int32_t output_zp);
+
 // Create a 32-bit float constant operator from a float
 Value getTosaConstTensorSingleF32(PatternRewriter& rewriter, Operation* op,
                                   float val);
