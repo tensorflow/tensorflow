@@ -3346,9 +3346,12 @@ StatusOr<KernelThunk*> IrEmitterUnnested::BuildKernelThunkImpl(
     Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions) {
   std::vector<BufferAllocation::Slice> arg_slices;
   arg_slices.reserve(kernel_arguments.size());
+  std::vector<bool> written;
+  written.reserve(kernel_arguments.size());
   for (const auto& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice.has_value()) {
       arg_slices.push_back(kernel_argument.slice);
+      written.push_back(kernel_argument.written);
     }
   }
 
@@ -3363,8 +3366,8 @@ StatusOr<KernelThunk*> IrEmitterUnnested::BuildKernelThunkImpl(
   }
 
   auto thunk_ptr = std::make_unique<KernelThunk>(
-      std::move(thunk_info), std::move(arg_slices), std::string(kernel_name),
-      launch_dimensions, std::move(values));
+      std::move(thunk_info), std::move(arg_slices), std::move(written),
+      std::string(kernel_name), launch_dimensions, std::move(values));
   KernelThunk* raw_thunk_ptr = thunk_ptr.get();
   AddThunkToThunkSequence(std::move(thunk_ptr));
 
