@@ -31,6 +31,41 @@ limitations under the License.
 extern "C" {
 #endif
 
+// --------------------------------- Version -----------------------------------
+
+// Incremented when an ABI-incompatible change is made to the interface.
+// Changes include:
+// * Deleting a method or argument
+// * Changing the type of an argument
+// * Rearranging fields in the PJRT_Api or argument structs
+#define PJRT_API_MAJOR 0
+
+// Incremented when the interface is updated in a way that is potentially
+// ABI-compatible with older versions, if supported by the caller and/or
+// implementation.
+//
+// Callers can implement forwards compatibility by using PJRT_Api_Version to
+// check if the implementation is aware of newer interface additions.
+//
+// Implementations can implement backwards compatibility by using the
+// `struct_size` fields to detect how many struct fields the caller is aware of.
+//
+// Changes include:
+// * Adding a new field to the PJRT_Api or argument structs
+// * Renaming a method or argument (doesn't affect ABI)
+#define PJRT_API_MINOR 1
+
+// The plugin should set the major_version and minor_version of
+// PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
+// this header that the implementation was compiled with.
+struct PJRT_Api_Version {
+  size_t struct_size;
+  void* priv;
+  int major_version;  // out
+  int minor_version;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Api_Version, minor_version);
+
 // ---------------------------------- Errors -----------------------------------
 
 // PJRT C API methods generally return a PJRT_Error*, which is nullptr if there
@@ -1444,6 +1479,8 @@ typedef PJRT_Error* PJRT_Compile(PJRT_Compile_Args* args);
 typedef struct {
   size_t struct_size;
   void* priv;
+
+  PJRT_Api_Version pjrt_api_version;
 
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
