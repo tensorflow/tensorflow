@@ -119,6 +119,21 @@ py_strict_library(
     ],
 )
 
+cuda_py_strict_test(
+    name = "concrete_function_test",
+    size = "small",
+    srcs = ["concrete_function_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":concrete_function",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:func_graph",
+        "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/python/util:compat",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 py_strict_library(
     name = "tracing_compiler",
     srcs = ["tracing_compiler.py"],
@@ -236,7 +251,6 @@ cuda_py_strict_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:random_ops_gen",
-        "//tensorflow/python:random_seed",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:sendrecv_ops_gen",
@@ -261,6 +275,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:extension_type",
         "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/module",
@@ -376,7 +391,6 @@ cuda_py_strict_test(
         "//tensorflow/python:cond",
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variable_scope",
@@ -391,6 +405,7 @@ cuda_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

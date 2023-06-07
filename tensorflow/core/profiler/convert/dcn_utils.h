@@ -65,8 +65,10 @@ struct DcnMessage {
 };
 
 DcnMessage GetDcnMessageFromXEvent(
-    const tsl::profiler::XPlaneVisitor& plane_visitor,
     const tsl::profiler::XEventVisitor& event_visitor);
+
+// Check if the XEventVisitor is a DCN Message
+bool IsDcnEvent(const tsl::profiler::XEventVisitor& event);
 
 }  // namespace profiler
 }  // namespace tensorflow

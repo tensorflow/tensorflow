@@ -35,6 +35,7 @@ cc_library(
         "array.cc",
         "client.cc",
         "compiler.cc",
+        "device.cc",
         "dtype.cc",
         "executable.cc",
         "future.cc",
@@ -160,7 +161,13 @@ cc_library(
     deps = [
         ":ifrt",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
+        "@tf_runtime//:ref_count",
     ],
 )
 

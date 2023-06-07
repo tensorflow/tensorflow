@@ -25,6 +25,7 @@ list(APPEND TFLITE_BENCHMARK_SRCS
   ${TFLITE_SOURCE_DIR}/kernels/internal/utils/sparsity_format_converter.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_info.cc
   ${TFLITE_SOURCE_DIR}/profiling/memory_usage_monitor.cc
+  ${TFLITE_SOURCE_DIR}/profiling/profile_buffer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summarizer.cc
   ${TFLITE_SOURCE_DIR}/profiling/profile_summary_formatter.cc
   ${TFLITE_SOURCE_DIR}/profiling/root_profiler.cc

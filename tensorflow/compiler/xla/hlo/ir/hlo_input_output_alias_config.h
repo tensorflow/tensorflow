@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INPUT_OUTPUT_ALIAS_CONFIG_H_
 
 #include <optional>
+#include <ostream>
+#include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"

@@ -16,6 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TRANSFER_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TRANSFER_OPS_H_
 
+#include <deque>
+#include <memory>
+#include <string>
+
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_transfer_manager_interface.h"
@@ -26,7 +30,7 @@ namespace tensorflow {
 
 class TpuTransferOpInterface {
  public:
-  virtual ~TpuTransferOpInterface() {}
+  virtual ~TpuTransferOpInterface() = default;
   virtual void Cancel() = 0;
   virtual StatusOr<int> GetDeviceOrdinal(OpKernelContext* ctx) = 0;
 

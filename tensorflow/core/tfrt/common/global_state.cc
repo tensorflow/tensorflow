@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/common/global_state.h"
 
+#include <memory>
 #include <utility>
 
 #include "absl/memory/memory.h"

@@ -1308,10 +1308,10 @@ std::string FrozenStackTrace::ToString(const TracePrintingOptions& opts) const {
 }
 
 tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map) {
+    const tensorflow::StackTracesMap& map, bool user_frames) {
   GraphDebugInfoBuilder builder;
   GraphDebugInfoBuilder::Options options;
-  options.user_frames = true;
+  options.user_frames = user_frames;
   options.user_frames_limit = -1;
   builder.AccumulateStackTracesMap(map, "", options);
   return builder.Build();

@@ -15,6 +15,11 @@ limitations under the License.
 
 // XLA-specific Shape Ops.
 
+#include <algorithm>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/tf2xla/kernels/shape_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
@@ -312,7 +317,7 @@ class SqueezeOp : public XlaOpKernel {
     xla::Shape shape = input_shape.value();
     int64_t rank = shape.rank();
 
-    std::unordered_set<int32> wrapped_squeeze_dims;
+    absl::flat_hash_set<int32> wrapped_squeeze_dims;
     wrapped_squeeze_dims.reserve(squeeze_dims_.size());
     std::vector<int64_t> new_shape;
     // Validate squeeze dims against the input.
@@ -360,7 +365,7 @@ class SqueezeOp : public XlaOpKernel {
   }
 
  private:
-  std::unordered_set<int32> squeeze_dims_;
+  absl::flat_hash_set<int32> squeeze_dims_;
 };
 
 REGISTER_XLA_OP(Name("Squeeze"), SqueezeOp);

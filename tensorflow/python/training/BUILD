@@ -72,6 +72,10 @@ py_library(
         ":deprecated_inclusions_in_training_lib",
     ],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":adadelta",
         ":adagrad",
@@ -129,6 +133,15 @@ py_library(
 py_library(
     name = "training",
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow_minigo:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":training_lib",
         "//tensorflow/python/checkpoint",
@@ -821,6 +834,10 @@ py_library(
     name = "saver",
     srcs = ["saver.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":py_checkpoint_reader",
         ":training_util",
@@ -894,7 +911,6 @@ cuda_py_test(
         "//tensorflow/python:gradients_impl",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:random_ops",
@@ -909,6 +925,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/summary:summary_py",
         "//tensorflow/python/trackable:base",
@@ -951,6 +968,10 @@ py_library(
     name = "basic_session_run_hooks",
     srcs = ["basic_session_run_hooks.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":session_run_hook",
         ":summary_io",
@@ -973,6 +994,10 @@ py_library(
     name = "session_run_hook",
     srcs = ["session_run_hook.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = ["//tensorflow/python/util:tf_export"],
 )
 
@@ -1045,6 +1070,11 @@ py_library(
     name = "training_util",
     srcs = ["training_util.py"],
     srcs_version = "PY3",
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:cond",
         "//tensorflow/python:dtypes",
@@ -1147,7 +1177,7 @@ TRAINING_TEST_DEPS = [
     "//tensorflow/python:gradients",
     "//tensorflow/python:lookup_ops",
     "//tensorflow/python:math_ops",
-    "//tensorflow/python:nn_grad",
+    "//tensorflow/python/ops:nn_grad",
     "//tensorflow/python:nn_ops",
     "//tensorflow/python:partitioned_variables",
     "//tensorflow/python:platform_test",
@@ -1420,10 +1450,10 @@ tf_py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:nn_grad",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/summary:summary_py",

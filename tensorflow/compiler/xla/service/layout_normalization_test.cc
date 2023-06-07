@@ -255,6 +255,26 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, BroadcastUnsortedDimensions) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[2,3]{1,0} parameter(0)
+  b = f32[3,4,2]{2,1,0} broadcast(a), dimensions={2,0}
+  ROOT out = abs(b)
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: [[a_0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+// CHECK: [[bitcast_1:%[^ ]+]] = f32[2,3]{1,0} bitcast([[a_0]])
+// CHECK: [[broadcast_2:%[^ ]+]] = f32[3,4,2]{2,1,0} broadcast([[bitcast_1]]), dimensions={2,0}
+// CHECK: [[abs_3:%[^ ]+]] = f32[3,4,2]{2,1,0} abs([[broadcast_2]])
+// CHECK: ROOT [[bitcast_3_4:%[^ ]+]] = f32[3,4,2]{2,1,0} bitcast([[abs_3]])
+)");
+}
+
 TEST_F(LayoutNormalizationTest, BroadcastCustomOutputLayoutWithDegenerate) {
   const char* hlo = R"(
 HloModule module

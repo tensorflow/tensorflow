@@ -290,11 +290,8 @@ class FunctionCaptures(object):
     placeholder._record_tape(tensor)  # pylint: disable=protected-access
     return placeholder
 
-  def _maybe_recompute_cached_properties(self):
+  def _recompute_cached_properties(self):
     """Regenerates cached properties if there have been mutations."""
-    if not self._by_val_internal.mutated and not self._by_val_external.mutated:
-      return
-
     self._by_val_internal.mutated = False
     self._by_val_external.mutated = False
     assert len(self._by_val_internal) == len(self._by_val_external)
@@ -312,12 +309,14 @@ class FunctionCaptures(object):
 
   @property
   def capture_types(self):
-    self._maybe_recompute_cached_properties()
+    if self._by_val_internal.mutated or self._by_val_external.mutated:
+      self._recompute_cached_properties()
     return self._cached_capture_types
 
   @property
   def by_val_capture_tuples(self):
-    self._maybe_recompute_cached_properties()
+    if self._by_val_internal.mutated or self._by_val_external.mutated:
+      self._recompute_cached_properties()
     return self._cached_by_val_capture_tuples
 
   @property

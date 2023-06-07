@@ -55,12 +55,19 @@ TEST(SummaryOptimizerInternal, NormalizesEdgeName) {
 TEST(SummaryOptimizer, GetsDisableSummariesInputArg) {
   FunctionDef fdef;
   // When no disable_summaries_at_runtime attr is populated expect an empty str.
-  EXPECT_EQ(GetDisableSummariesInputArg(fdef), "");
+  auto input_arg = GetDisableSummariesInputArg(fdef);
+  EXPECT_EQ(input_arg.first, "");
+  EXPECT_FALSE(input_arg.second);
 
   AttrValue attr_val;
-  attr_val.set_s("include_summary");
+  ASSERT_TRUE(TextFormat::ParseFromString(R"pb(
+                                            list { s: "remove_summary" b: true }
+                                          )pb",
+                                          &attr_val));
   fdef.mutable_attr()->insert({"disable_summaries_at_runtime", attr_val});
-  EXPECT_EQ(GetDisableSummariesInputArg(fdef), "include_summary");
+  input_arg = GetDisableSummariesInputArg(fdef);
+  EXPECT_EQ(input_arg.first, "remove_summary");
+  EXPECT_TRUE(input_arg.second);
 }
 
 TEST(SummaryOptimizer, StripsSummaries) {
@@ -128,7 +135,7 @@ TEST(SummaryOptimizer, StripsSummaries) {
         }
         attr {
           key: "disable_summaries_at_runtime"
-          value: { s: "include_summaries" }
+          value: { list { s: "include_summaries" b: false } }
         }
       )pb",
       &fdef));
@@ -146,7 +153,7 @@ TEST(SummaryOptimizer, StripsSummaries) {
   TF_ASSERT_OK(flib.AddFunctionDef(nested_fdef3));
 
   std::vector<FunctionDef> stripped_fdefs = StripSummaries(fdef, flib);
-  EXPECT_EQ(stripped_fdefs.size(), 4);
+  ASSERT_EQ(stripped_fdefs.size(), 4);
   // Sort the FunctionDefs so we are able to compare them in a deterministic
   // order.
   struct {

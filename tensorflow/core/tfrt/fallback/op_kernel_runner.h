@@ -18,6 +18,7 @@ limitations under the License.
 #include <assert.h>
 #include <stddef.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>

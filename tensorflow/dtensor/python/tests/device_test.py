@@ -107,7 +107,7 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
       a + big  # pylint:disable=pointless-statement
     a + small  # pylint:disable=pointless-statement
 
-  def test_concurrent_execute(self):
+  def testConcurrentExecute(self):
     results = {}
 
     def func(thread_id):

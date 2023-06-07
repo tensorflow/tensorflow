@@ -130,6 +130,10 @@ class StreamInterface {
   // or a nullptr.
   virtual void** GpuStreamMemberHack() { return nullptr; }
 
+  virtual void SetPriority(int priority) {
+    LOG(ERROR) << "SetPriority unimplemented for this stream.";
+  }
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamInterface);
 };

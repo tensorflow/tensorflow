@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 
 namespace tensorflow {

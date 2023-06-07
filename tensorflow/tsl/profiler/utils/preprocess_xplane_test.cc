@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/utils/preprocess_xplane.h"
 
+#include <optional>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -85,7 +87,7 @@ TEST(PreprocessXPlane, ProducerConsumerTest) {
       GetHostEventTypeStr(HostEventType::kTpuExecuteOp), 200, 100,
       {{StatType::kStepId, int64_t{123}}, {StatType::kIterNum, int64_t{456}}});
   PreprocessXSpace(&space);
-  absl::optional<uint64_t> producer_context_id, consumer_context_id;
+  std::optional<uint64_t> producer_context_id, consumer_context_id;
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   plane_visitor.ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {
@@ -135,7 +137,7 @@ TEST(PreprocessXPlane, ProducerConsumerNotMatchedTest) {
       GetHostEventTypeStr(HostEventType::kTpuExecuteOp), 200, 100,
       {{StatType::kStepId, int64_t{123}}, {StatType::kIterNum, int64_t{789}}});
   PreprocessXSpace(&space);
-  absl::optional<uint64_t> producer_context_id, consumer_context_id;
+  std::optional<uint64_t> producer_context_id, consumer_context_id;
   XPlaneVisitor plane_visitor = CreateTfXPlaneVisitor(plane);
   plane_visitor.ForEachLine([&](const XLineVisitor& line) {
     line.ForEachEvent([&](const XEventVisitor& event) {

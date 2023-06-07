@@ -1077,6 +1077,13 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     assert isinstance(value, Tensor)
     return [value]
 
+  def _from_tensors(self, tensors):
+    tensor = next(tensors)
+    handle_data = self.dtype._handle_data  # pylint: disable=protected-access
+    if handle_data:
+      handle_data_util.set_handle_data(tensor, handle_data)
+    return tensor
+
   def _flatten(self):
     return [self]
 

@@ -59,7 +59,7 @@ py_strict_test(
         ":function_cache",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:array_ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/types:trace",
     ],

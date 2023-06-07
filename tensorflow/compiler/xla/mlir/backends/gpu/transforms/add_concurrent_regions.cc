@@ -64,8 +64,10 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
   if (!defining_op) {
     auto block_argument = cast<mlir::BlockArgument>(operand);
     auto memref_type = cast<MemRefType>(block_argument.getType());
-    size_t len = memref_type.getNumElements() *
-                 (memref_type.getElementTypeBitWidth() / 8);
+    size_t len =
+        (memref_type.getNumElements() * memref_type.getElementTypeBitWidth() +
+         7) /
+        8;
     return {block_argument, 0, len, read_only};
   }
 
@@ -84,8 +86,10 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
 
     // Get len.
     auto memref_type = cast<MemRefType>(view_op.getType());
-    size_t len = memref_type.getNumElements() *
-                 (memref_type.getElementTypeBitWidth() / 8);
+    size_t len =
+        (memref_type.getNumElements() * memref_type.getElementTypeBitWidth() +
+         7) /
+        8;
 
     return {buffer_use.arg, buffer_use.offset + offset, len, read_only};
   }

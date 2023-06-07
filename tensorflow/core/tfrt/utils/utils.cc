@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/utils.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <string>

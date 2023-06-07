@@ -46,6 +46,7 @@ py_strict_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":gfile",
         ":tf_logging",
@@ -208,6 +209,12 @@ py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
     srcs_version = "PY3",
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":test",
         "//tensorflow/python:framework_test_lib",

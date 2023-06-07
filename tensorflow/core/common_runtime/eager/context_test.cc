@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/context.h"
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"

@@ -266,7 +266,11 @@ StatusOr<std::unique_ptr<PjRtLoadedExecutable>> PjRtCApiClient::Compile(
   std::string module_bytecode;
   {
     llvm::raw_string_ostream os(module_bytecode);
-    if (mlir::failed(mlir::writeBytecodeToFile(module, os)))
+    mlir::BytecodeWriterConfig config;
+    // Pin bytecode version to 1 until transition to stable.
+    // TODO(285913864): Remove post enabling frameworks to set it.
+    config.setDesiredBytecodeVersion(1);
+    if (mlir::failed(mlir::writeBytecodeToFile(module, os, config)))
       return absl::UnknownError("writeBytecodeToFile() failed.");
   }
   std::string format(pjrt::kMlirFormat);
@@ -1572,7 +1576,11 @@ StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCApiCompiler::Compile(
   std::string module_bytecode;
   {
     llvm::raw_string_ostream os(module_bytecode);
-    if (mlir::failed(mlir::writeBytecodeToFile(module, os)))
+    mlir::BytecodeWriterConfig config;
+    // Pin bytecode version to 1 until transition to stable.
+    // TODO(285913864): Remove post enabling frameworks to set it.
+    config.setDesiredBytecodeVersion(1);
+    if (mlir::failed(mlir::writeBytecodeToFile(module, os, config)))
       return absl::UnknownError("writeBytecodeToFile() failed.");
   }
   std::string format(pjrt::kMlirFormat);

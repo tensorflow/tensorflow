@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <utility>
+
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/rewriters.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"

@@ -25,7 +25,6 @@ from matmul_lib import MatmulTiling
 import pandas as pd
 import torch
 import tqdm
-import triton
 
 _DATA = flags.DEFINE_string('data', '', 'Data to check')
 _OUTPUT_FILE = flags.DEFINE_string(
@@ -58,7 +57,7 @@ def get_actual_time(r, s, pbar):
               r.num_warps,
           )
       ],
-      repetitions=20,
+      repetitions_ms=300,
   )[0].min_time_ms
 
 
@@ -89,5 +88,4 @@ def main():
 
 if __name__ == '__main__':
   app.parse_flags_with_usage(sys.argv)
-  triton.compiler.init_cuda_utils()
   main()

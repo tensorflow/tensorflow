@@ -17,6 +17,7 @@
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager import wrap_function as wrap_function_lib
 from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.saved_model import nested_structure_coder
@@ -87,6 +88,14 @@ def serialize_concrete_function(concrete_function, node_ids):
 # TODO(b/203440205): Support FunctionType directly.
 def get_preinitialized_function_spec(concrete_function):
   """Generates an unconstrained FunctionSpec from FunctionType."""
+  # TODO(b/203440205): SavedModel does not support FunctionType on its own
+  # without a FuncGraph signature.
+  # WrappedFunctions are not supposed to have FunctionSpecs.
+  if concrete_function.structured_input_signature is None or isinstance(
+      concrete_function, wrap_function_lib.WrappedFunction
+  ):
+    return None
+
   function_type = concrete_function.function_type
   if function_type is None:
     return None
@@ -177,7 +186,9 @@ def wrap_cached_variables(concrete_function):
   if not mapped_captures:
     return concrete_function
 
-  inner_concrete = defun.ConcreteFunction(concrete_function.graph)
+  inner_concrete = defun.ConcreteFunction(
+      concrete_function.graph, function_type=concrete_function.function_type
+  )
 
   def wrap_function(*args):
     return inner_concrete._call_flat(args, inner_concrete.captured_inputs)  # pylint:disable=protected-access

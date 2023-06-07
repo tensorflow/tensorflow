@@ -23,12 +23,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
+#include <algorithm>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
 #include <optional>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"

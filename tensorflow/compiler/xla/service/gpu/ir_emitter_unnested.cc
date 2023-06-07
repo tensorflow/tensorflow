@@ -4491,10 +4491,9 @@ Status IrEmitterUnnested::EmitTransposeTile(
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
-  const HloInstruction* first_transpose = &FindNonTrivialHero(
-      **absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
-        return FindAnyTiledTranspose(FindNonTrivialHero(*instr));
-      }));
+  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
+      hlo_roots,
+      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
 
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
   auto first_tiled_transpose = FindAnyTiledTranspose(*first_transpose);
@@ -4626,6 +4625,17 @@ Status IrEmitterUnnested::EmitTransposeTile(
               FusedIrEmitter fused_emitter(elemental_emitter_);
               fused_emitter.BindGenerator(
                   hero, [&](const IrArray::Index& index) { return loaded; });
+              for (int64_t i = 0; i < fusion_hlo->num_parameters(); ++i) {
+                llvm_ir::IrArray ir_array = operand_arrays[i];
+                HloInstruction* fused_operand =
+                    fusion_hlo->parameter_instruction(i);
+                fused_emitter.BindGenerator(
+                    *fused_operand, [this, ir_array, fused_operand](
+                                        const llvm_ir::IrArray::Index& index) {
+                      return ir_array.EmitReadArrayElement(
+                          index, &b_, fused_operand->name());
+                    });
+              }
 
               // Apply codegeneration for the code after the real hero.
               TF_ASSIGN_OR_RETURN(llvm_ir::ElementGenerator gen,

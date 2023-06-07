@@ -1265,9 +1265,9 @@ TfLiteStatus TfLiteTensorVariantRealloc(TfLiteTensor* t,
     // For now we assume if `t` is already allocated then it was allocated
     // with the same `VariantType` as templated.
     t->data.data =
-        new (t->data.raw) VariantType(std::forward<VariantArgs...>(args...));
+        new (t->data.raw) VariantType(std::forward<VariantArgs>(args)...);
   } else {
-    t->data.data = new VariantType(std::forward<VariantArgs...>(args...));
+    t->data.data = new VariantType(std::forward<VariantArgs>(args)...);
   }
   t->allocation_type = kTfLiteVariantObject;
   return kTfLiteOk;

@@ -501,6 +501,10 @@ FailureOr<TransformResult> Deallocator::transformOp(
   }
 
   if (auto me = llvm::dyn_cast<MemoryEffectOpInterface>(op)) {
+    if (llvm::isa<memref::AllocaOp>(op)) {
+      // Don't attempt to memory manage memref.alloca.
+      return TransformResult{};
+    }
     TransformResult result;
     OpBuilder b(op->getContext());
     b.setInsertionPointAfter(op);

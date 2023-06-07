@@ -369,6 +369,16 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_outputs
 
+  def pack_output(self, flat_values):
+    """Packs flat tensors to generate a value of the output type."""
+    if flat_values is None:
+      flat_values = []
+
+    if self.output is None:
+      raise ValueError("Can not pack outputs for undefined output type.")
+    else:
+      return self.output._from_tensors(iter(flat_values))   # pylint: disable=protected-access
+
   def __eq__(self, other: Any) -> bool:
     if not isinstance(other, FunctionType):
       return NotImplemented
@@ -436,7 +446,7 @@ def _make_validated_mono_param(
 def canonicalize_to_monomorphic(
     args: Tuple[Any, ...], kwargs: Dict[Any, Any], default_values: Dict[Any,
                                                                         Any],
-    captures: Dict[Any, Any], polymorphic_type: FunctionType
+    capture_types: collections.OrderedDict, polymorphic_type: FunctionType
 ) -> Tuple[inspect.BoundArguments, FunctionType,
            trace_type.InternalTracingContext]:
   """Converts polymorphic parameters to monomorphic and associated type."""
@@ -487,10 +497,6 @@ def canonicalize_to_monomorphic(
           _make_validated_mono_param(name, arg, poly_parameter.kind,
                                      type_context,
                                      poly_parameter.type_constraint))
-
-  capture_types = collections.OrderedDict()
-  for name, value in captures.items():
-    capture_types[name] = trace_type.from_value(value, type_context)
 
   monomorphic_function_type = FunctionType(parameters, capture_types)
   mono_bound_arguments = monomorphic_function_type.bind(
@@ -562,9 +568,12 @@ def add_type_constraints(function_type: FunctionType, input_signature: Any,
 
 
 def from_structured_signature(
-    input_signature, output_signature=None, capture_types=None
+    input_signature=None, output_signature=None, capture_types=None
 ) -> FunctionType:
   """Generates a FunctionType from legacy signature representation."""
+  if input_signature is None:
+    input_signature = ((), {})
+
   args, kwargs = input_signature
   parameters = []
 
@@ -593,13 +602,10 @@ def from_structured_signature(
         )
     )
 
-  if output_signature is None:
-    return_type = None
-  else:
-    return_type = trace_type.from_value(
-        output_signature,
-        trace_type.InternalTracingContext(is_legacy_signature=True),
-    )
+  return_type = trace_type.from_value(
+      output_signature,
+      trace_type.InternalTracingContext(is_legacy_signature=True),
+  )
 
   return FunctionType(
       parameters, capture_types or {}, return_annotation=return_type

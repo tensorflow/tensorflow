@@ -51,7 +51,6 @@ limitations under the License.
 namespace tensorflow {
 
 using se::DeviceMemoryBase;
-using se::Stream;
 
 static Status PrepareCopy(Device* device, const DeviceContext* ctx,
                           const Tensor& src, const Tensor* dst,

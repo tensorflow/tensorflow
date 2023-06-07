@@ -352,6 +352,21 @@ func.func @realloc_in_loop(%size: index, %lb: index, %ub: index, %step: index) {
 
 // -----
 
+func.func @alloca() {
+  %alloca = memref.alloca() : memref<2xf32>
+  %passthrough = "test.use"(%alloca) : (memref<2xf32>) -> (memref<2xf32>)
+  "test.use"(%passthrough) : (memref<2xf32>) -> ()
+  return
+}
+
+// CHECK-LABEL: @alloca()
+// CHECK-NEXT: memref.alloca
+// CHECK-NEXT: test.use
+// CHECK-NEXT: test.use
+// CHECK-NEXT: return
+
+// -----
+
 func.func @dealloc() {
   %alloc = memref.alloc() : memref<i32>
   "test.use"(%alloc) : (memref<i32>) -> ()

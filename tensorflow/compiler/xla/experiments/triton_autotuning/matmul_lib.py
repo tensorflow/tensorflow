@@ -186,7 +186,7 @@ def benchmark_matmul_tiling(
     b: torch.Tensor,
     c: torch.Tensor,
     scratchpad: torch.Tensor,  # Largest size: c * SPLIT_K
-    repetitions: int,
+    repetitions_ms: int,
     debug=False,
 ) -> typing.Optional[MatmulTiming]:
   """Benchmarks a single matmul tiling."""
@@ -261,7 +261,7 @@ def benchmark_matmul_tiling(
       LOG.error('Overly large tile')
     return None
 
-  max_shared_memory = triton.compiler.cuda_utils.get_device_properties(
+  max_shared_memory = triton.runtime.driver.utils.get_device_properties(
       torch.cuda.current_device()
   )['max_shared_mem']
 
@@ -288,8 +288,8 @@ def benchmark_matmul_tiling(
       percentiles = triton.testing.do_bench(
           run_matmul,
           warmup=0,
-          rep=repetitions,
-          percentiles=(0.001, 0.1, 0.5, 0.9),
+          rep=repetitions_ms,
+          quantiles=(0.001, 0.1, 0.5, 0.9),
       )
       min_ms = percentiles[0]
     except Exception as exc:
@@ -304,7 +304,7 @@ def benchmark_cublas(dims: MatmulSize) -> MatmulTiming:
   b = torch.randn(dims.K, dims.N, device='cuda', dtype=torch.bfloat16)
   run_matmul = lambda: torch.matmul(a, b)
   percentiles = triton.testing.do_bench(
-      run_matmul, warmup=0, rep=20, percentiles=(0.001, 0.1, 0.5, 0.9)
+      run_matmul, warmup=0, rep=300, quantiles=(0.001, 0.1, 0.5, 0.9)
   )
   min_ms = percentiles[0]
   return min_ms
@@ -315,7 +315,7 @@ def benchmark_matmul(
     pbar: tqdm.std.tqdm,
     shared_stream: torch.cuda.Stream,
     tilings: typing.List[MatmulTiling],
-    repetitions: int,
+    repetitions_ms: int,
     debug=False,
 ) -> typing.Sequence[MatmulTiming]:
   """For a given matmul configuration, benchmark it.
@@ -325,7 +325,7 @@ def benchmark_matmul(
     pbar: a progress bar
     shared_stream: stream to execute benchmarks on
     tilings: list of tilings to benchmark
-    repetitions: how many milliseconds to spend running each configuration
+    repetitions_ms: how many milliseconds to spend running each configuration
     debug: whether to print debug output
 
   Returns:
@@ -368,7 +368,7 @@ def benchmark_matmul(
         b,
         c,
         scratchpad,
-        repetitions=repetitions,
+        repetitions_ms=repetitions_ms,
         debug=debug,
     )
     if not timing:

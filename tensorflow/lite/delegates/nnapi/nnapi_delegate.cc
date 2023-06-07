@@ -5872,6 +5872,14 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
         const TfLiteTensor constant_value = context->tensors[constant_value_id];
 
         switch (constant_value.type) {
+          case kTfLiteFloat16:
+            if (constant_value.allocation_type == kTfLiteMmapRo) {
+              builder.AddScalarFloat32Operand(constant_value.data.f16->data);
+            } else {
+              builder.AddSingleValueTensorAsScalarOperand(
+                  constant_value_id, ANEURALNETWORKS_TENSOR_FLOAT16);
+            }
+            break;
           case kTfLiteFloat32:
             if (constant_value.allocation_type == kTfLiteMmapRo) {
               builder.AddScalarFloat32Operand(*constant_value.data.f);

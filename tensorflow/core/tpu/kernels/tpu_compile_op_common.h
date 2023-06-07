@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILE_OP_COMMON_H_
 
+#include <atomic>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"

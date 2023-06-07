@@ -15,6 +15,7 @@ limitations under the License.
 
 // Legalize TensorFlow Lite to TOSA
 
+#include <algorithm>
 #include <cfloat>
 #include <climits>
 #include <cmath>
@@ -23,6 +24,7 @@ limitations under the License.
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <string>

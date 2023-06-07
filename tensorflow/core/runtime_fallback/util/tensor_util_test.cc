@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/util/tensor_util.h"
 
+#include <memory>
+
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"

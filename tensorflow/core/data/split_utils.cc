@@ -15,8 +15,10 @@ limitations under the License.
 #include "tensorflow/core/data/split_utils.h"
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/platform/errors.h"
 
