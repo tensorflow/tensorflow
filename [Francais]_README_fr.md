@@ -19,7 +19,7 @@
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
 [TensorFlow](https://www.tensorflow.org/) est une plateforme open source de bout en bout 
-pour l'apprentissage automatique.  Il dispose d'un écosystème complet et flexible d'
+pour l'apprentissage automatique. Il dispose d'un écosystème complet et flexible d'
 [outils](https://www.tensorflow.org/resources/tools), de
 [bibliotheques](https://www.tensorflow.org/resources/libraries-extensions), et d'une
 [communauté](https://www.tensorflow.org/community) de resources qui permet aux chercheurs
