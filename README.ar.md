@@ -104,17 +104,14 @@ b'Hello, TensorFlow!'
 هذا الكود ملازم بالTensorFlow [code of conduct](CODE_OF_CONDUCT.md).
 بالتدريبات من المتوقع ان هذا الكود سيساعدك.**
 
-**We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
-tracking requests and bugs, please see
-[TensorFlow Forum](https://discuss.tensorflow.org/) for general questions and
-discussion, and please direct specific questions to
-[Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
+**من خلال استخدام ال [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
+اي مشاكل الTesnorFlow من خلاله يمكننا تتبع جميع طلبات التغيرات و خصوصاُ على الأخطاء أنظر هنا please see
+[ هنا](https://discuss.tensorflow.org/)
+للأسئلة العامة فقط وللأسئلة الخاصة ب TensorFlow اطرحها في منتدى[Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow) لطرح مزيد من الأسئلة والاجوبة.**
+ 
+ يسعى TensorFlow إلى الالتزام لأفضل الممارسات المقبولة عموماً في مجال تطوير البرمجيات مفتوحة المصدر. 
 
-The TensorFlow project strives to abide by generally accepted best practices in
-open-source software development.
-
-## Patching guidelines
-## إرشادات التصحيح 
+## Patching guidelines ## إرشادات التصحيح
 
 Follow these steps to patch a specific version of TensorFlow, for example, to
 apply fixes to bugs or security vulnerabilities:
