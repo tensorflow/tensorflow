@@ -965,12 +965,21 @@ class OpRunner<void(Args...)> {
   virtual tsl::Status operator()(Stream*, ProfileResult*,
                                  DeviceMemoryBase scratch_memory,
                                  Args... args) const = 0;
+
+  // Launch the operation with a variable number of operands.
+  virtual tsl::Status operator()(Stream*, ProfileResult*,
+                                 DeviceMemoryBase scratch_memory,
+                                 std::vector<DeviceMemoryBase>) const {
+    return tsl::errors::Unimplemented("operator() not implemented.");
+  };
 };
 
 using ConvSignature = void(DeviceMemoryBase /* input_data */,
                            DeviceMemoryBase /* filter_data */,
                            DeviceMemoryBase /* output_data */);
 using ConvRunner = OpRunner<ConvSignature>;
+
+using GraphConvRunner = OpRunner<ConvSignature>;
 
 using FusedConvSignature = void(DeviceMemoryBase /* input_data */,
                                 DeviceMemoryBase /* filter_data */,
@@ -1625,6 +1634,30 @@ class DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor);
+
+  virtual tsl::Status GetGraphConvolveRunners(
+      bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+      dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+      const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      DeviceMemoryBase filter_data,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemoryBase output_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
+      std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans,
+      string serialized_graph);
+
+  virtual tsl::StatusOr<std::unique_ptr<const dnn::ConvRunner>>
+  GraphConvolveRunnerFromDesc(
+      Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+      dnn::ConvolutionKind kind, dnn::DataType element_type,
+      dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      string serialized_graph);
 
   virtual tsl::Status GetFusedConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,

@@ -149,6 +149,36 @@ DnnSupport::ConvolveRunnerFromDesc(
   return tsl::errors::Unimplemented("ConvolveRunnerFromDesc not implemented.");
 }
 
+tsl::Status DnnSupport::GetGraphConvolveRunners(
+    bool /* use_cudnn_frontend */, dnn::ConvolutionKind /*kind*/,
+    dnn::DataType /*input_type*/, dnn::DataType /*output_type*/,
+    Stream* /*stream*/, const dnn::BatchDescriptor& /*input_descriptor*/,
+    DeviceMemoryBase /*input_data*/,
+    const dnn::FilterDescriptor& /*filter_descriptor*/,
+    DeviceMemoryBase /*filter_data*/,
+    const dnn::BatchDescriptor& /*output_descriptor*/,
+    DeviceMemoryBase /*output_data*/,
+    const dnn::ConvolutionDescriptor& /*convolution_descriptor*/,
+    bool /*use_fallback*/, ScratchAllocator* /*scratch_allocator*/,
+    const NumericOptions& /*numeric_options*/,
+    std::vector<std::unique_ptr<const dnn::ConvRunner>>* /*exec_plans*/,
+    string cudnn_grapph) {
+  return tsl::errors::Unimplemented("GetGraphConvolveRunners not implemented.");
+}
+
+tsl::StatusOr<std::unique_ptr<const dnn::GraphConvRunner>>
+DnnSupport::GraphConvolveRunnerFromDesc(
+    Stream* stream, const dnn::AlgorithmDesc& algorithm_desc,
+    dnn::ConvolutionKind kind, dnn::DataType element_type,
+    dnn::DataType output_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    string serialized_graph) {
+  return tsl::errors::Unimplemented(
+      "GraphConvolveRunnerFromDesc not implemented.");
+}
+
 tsl::Status DnnSupport::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType element_type, dnn::DataType bias_type,

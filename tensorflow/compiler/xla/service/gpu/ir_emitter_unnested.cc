@@ -844,6 +844,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   using mlir::lmhlo_gpu::ConvBackwardInputOp;
   using mlir::lmhlo_gpu::ConvForwardFusedOp;
   using mlir::lmhlo_gpu::ConvForwardFusedSideInputOp;
+  using mlir::lmhlo_gpu::ConvForwardGraphOp;
   using mlir::lmhlo_gpu::ConvForwardOp;
 
   // Last 2 operands of the convolution operation are the result and scratch.
@@ -942,6 +943,11 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
   } else if (auto conv = dyn_cast<ConvBackwardFilterOp>(op)) {
     descriptor.kind = CudnnConvKind::kBackwardFilter;
     fill_conv_descriptor(conv);
+  } else if (auto conv = dyn_cast<ConvForwardGraphOp>(op)) {
+    descriptor.kind = CudnnConvKind::kForwardGraph;
+    fill_conv_descriptor(conv);
+    descriptor.backend_config.set_serialized_graph(
+        conv.getSerializedGraph().data());
   } else if (auto conv = dyn_cast<ConvForwardFusedOp>(op)) {
     descriptor.kind = CudnnConvKind::kForwardActivation;
     fill_conv_descriptor(conv);
@@ -955,7 +961,7 @@ Status IrEmitterUnnested::EmitConvolutionThunk(mlir::Operation* op) {
     descriptor.backend_config.set_side_input_scale(
         conv.getSideInputScale().convertToDouble());
   } else {
-    return InternalError("Unexpected operation");
+    return InternalError("EmitConvolutionThunk: Unexpected operation");
   }
   TF_ASSIGN_OR_RETURN(GpuConvConfig config, GetGpuConvConfig(descriptor, ""));
   AddThunkToThunkSequence(std::make_unique<ConvolutionThunk>(
@@ -4681,6 +4687,7 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
 #endif  // GOOGLE_CUDA
 
   if (mlir::isa<mlir::lmhlo_gpu::ConvForwardOp,
+                mlir::lmhlo_gpu::ConvForwardGraphOp,
                 mlir::lmhlo_gpu::ConvForwardFusedOp,
                 mlir::lmhlo_gpu::ConvForwardFusedSideInputOp,
                 mlir::lmhlo_gpu::ConvBackwardFilterOp,

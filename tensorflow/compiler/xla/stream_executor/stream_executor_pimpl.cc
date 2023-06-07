@@ -286,6 +286,28 @@ tsl::Status StreamExecutor::GetConvolveRunners(
       scratch_allocator, numeric_options, out_exec_plans);
 }
 
+tsl::Status StreamExecutor::GetGraphConvolveRunners(
+    bool use_cudnn_frontend, dnn::ConvolutionKind kind,
+    dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
+    const dnn::BatchDescriptor& input_descriptor, DeviceMemoryBase input_data,
+    const dnn::FilterDescriptor& filter_descriptor,
+    DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
+    DeviceMemoryBase output_data,
+    const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
+    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
+    std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans,
+    string serialized_graph) {
+  dnn::DnnSupport* dnn_support = AsDnn();
+  if (!dnn_support) {
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+  return dnn_support->GetGraphConvolveRunners(
+      use_cudnn_frontend, kind, input_type, output_type, stream,
+      input_descriptor, input_data, filter_descriptor, filter_data,
+      output_descriptor, output_data, convolution_descriptor, use_fallback,
+      scratch_allocator, numeric_options, out_exec_plans, serialized_graph);
+}
+
 tsl::Status StreamExecutor::GetFusedConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType bias_type,

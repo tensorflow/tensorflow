@@ -57,14 +57,13 @@ class ConvolutionThunk : public Thunk {
   std::vector<BufferAllocation::Slice> operand_buffers_;
   BufferAllocation::Slice result_buffer_;
   BufferAllocation::Slice scratch_buffer_;
-  MaybeFusedConvRunner& GetOrCreateRunner(
-      const stream_executor::Stream* stream);
+  GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream);
 
   // Convolution config
   const GpuConvConfig config_;
   absl::Mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
-                      std::unique_ptr<MaybeFusedConvRunner>>
+                      std::unique_ptr<GenericConvRunner>>
       runner_cache_ ABSL_GUARDED_BY(mu_);
 };
 
