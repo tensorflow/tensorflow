@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/variants/tensor_array.h"
 
+#include <cstring>
+
 namespace tflite {
 namespace variants {
 
@@ -112,7 +114,7 @@ void TensorArray::Clear() {
 
 void TensorArray::AssignBuffer(RefCountedTensor* dst) const {
   // Copy `this` underlying buffer.
-  memcpy(dst, elements_, sizeof(RefCountedTensor) * num_elements_);
+  std::memcpy(dst, elements_, sizeof(RefCountedTensor) * num_elements_);
   // Increment the reference count for each copied tensor.
   for (int i = 0; i < num_elements_; ++i) {
     if (dst[i].count == nullptr) {
