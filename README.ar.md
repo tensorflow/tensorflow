@@ -113,21 +113,17 @@ b'Hello, TensorFlow!'
 
 ## Patching guidelines ## إرشادات التصحيح
 
-Follow these steps to patch a specific version of TensorFlow, for example, to
-apply fixes to bugs or security vulnerabilities:
+اتبع هذه الخطوات لتصحيح إصدار محدد من TensorFlow ، على سبيل المثال ، لتطبيق إصلاحات للأخطاء أو ثغرات الأمان:
 
-*   Clone the TensorFlow repo and switch to the corresponding branch for your
-    desired TensorFlow version, for example, branch `r2.8` for version 2.8.
-*   Apply (that is, cherry pick) the desired changes and resolve any code
-    conflicts.
-*   Run TensorFlow tests and ensure they pass.
-*   [Build](https://www.tensorflow.org/install/source) the TensorFlow pip
-    package from source.
+* استنسخ مستودع TensorFlow وانتقل إلى الفرع المقابل للإصدار المطلوب من TensorFlow ، على سبيل المثال ، الفرع `r2.8` للإصدار 2.8.
+* قم بتطبيق (أي اختيار) التغييرات المطلوبة وحل أي تضاربات في الشفرة.
+* قم بتشغيل اختبارات TensorFlow وتأكد من اجتيازها.
+* [قم ببناء](https://www.tensorflow.org/install/source) حزمة TensorFlow pip من المصدر.
 
 ## Continuous build status
 
-You can find more community-supported platforms and configurations in the
-[TensorFlow SIG Build community builds table](https://github.com/tensorflow/build#community-supported-tensorflow-builds).
+يمكنك العثور على منصات أخرى مدعومة من المجتمع وتكوينات في [جدول بناء المجتمع لفريق عمل SIG Build في ](https://github.com/tensorflow/build#community-supported-tensorflow-builds)TensorFlow.
+ 
 
 ### Official Builds
 
@@ -164,9 +160,8 @@ Build Type                    | Status                                          
 *   [TensorBoard Visualization Toolkit](https://github.com/tensorflow/tensorboard)
 *   [TensorFlow Code Search](https://cs.opensource.google/tensorflow/tensorflow)
 
-Learn more about the
-[TensorFlow community](https://www.tensorflow.org/community) and how to
-[contribute](https://www.tensorflow.org/community/contribute).
+
+تعرف على المزيد حول [مجتمع TensorFlow](https://www.tensorflow.org/community) وكيفية [المساهمة](https://www.tensorflow.org/community/contribute).
 
 ## الدورات التعليمية 
 
