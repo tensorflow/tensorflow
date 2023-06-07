@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/tsl/framework/bfc_allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/profiler/lib/connected_traceme.h"
 
 #ifdef GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -407,6 +408,93 @@ StreamExecutorGpuClient::GetDefaultDeviceAssignment(int num_replicas,
   // Fallback to default global device assignment if we can't run locally.
   return PjRtStreamExecutorClient::GetDefaultDeviceAssignment(num_replicas,
                                                               num_partitions);
+}
+
+PjRtFuture<absl::Status> StreamExecutorGpuClient::CopyRawSubBufferToHost(
+    PjRtBuffer* pjrt_buffer, void* dst, int64_t offset, int64_t transfer_size) {
+  auto* buffer = tensorflow::down_cast<PjRtStreamExecutorBuffer*>(pjrt_buffer);
+  DCHECK(buffer);
+  PjRtStreamExecutorDevice* device = buffer->device();
+  LocalDeviceState* local_device = device->local_device_state();
+  // Always borrow a stream to avoid potential deadlocks enqueueing transfers
+  // that might be required in order to compute the inputs for computations
+  // that have already been enqueued. Such cycles can occur when there are
+  // cross-host data dependencies.
+  auto stream = local_device->BorrowStreamFromPool();
+
+  PjRtStreamExecutorBuffer::ScopedHold hold(buffer->GetBufferWithUsageHold());
+  if (!hold.ok()) {
+    return PjRtFuture<absl::Status>(hold.status());
+  }
+  auto device_buffer = hold.buffer();
+  if (device_buffer->device_memory().size() != 1) {
+    return PjRtFuture<absl::Status>(
+        InvalidArgument("Copy raw buffer called on tuple"));
+  }
+  auto& device_memory = device_buffer->device_memory()[0];
+  if (offset < 0 || offset > device_memory.size() ||
+      device_memory.size() - offset < transfer_size) {
+    return PjRtFuture<absl::Status>(
+        InvalidArgument("Copy raw buffer called on buffer size %lld with "
+                        "invalid offset %lld, transfer size %lld",
+                        device_memory.size(), offset, transfer_size));
+  }
+  WaitForBufferDefinitionEventsOnStream(*device_buffer, stream.get());
+  absl::StatusOr<EventPool::Handle> event_or =
+      local_device->event_pool().AllocateEvent(stream->parent());
+  if (!event_or.ok()) {
+    return PjRtFuture<absl::Status>(event_or.status());
+  }
+
+  std::unique_ptr<se::DeviceMemoryBase> sub_buffer;
+  if (transfer_size < device_memory.size()) {
+    sub_buffer = std::make_unique<se::DeviceMemoryBase>(
+        reinterpret_cast<char*>(device_memory.opaque()) + offset,
+        transfer_size);
+  } else {
+    sub_buffer = std::make_unique<se::DeviceMemoryBase>(device_memory);
+  }
+
+  if (transfer_size != 0) {
+    // D2H request holds a non-owned pointer into sub_buffer base address
+    // that needs to outlive the transfer until the stream callback is invoked.
+    stream->ThenMemcpy(dst, *sub_buffer, transfer_size);
+  }
+
+  auto usage_event = std::make_shared<BufferSequencingEvent>();
+  local_device->event_pool().ThenRecordEvent(stream.get(), event_or.value());
+  usage_event->SetSequencingEvent(std::move(event_or).value(), stream.get());
+  // This usage hold will prevent device_buffer from being deleted before
+  // the transfer is complete.
+  hold.ConvertUsageHold(stream.get(), std::move(usage_event),
+                        /*reference_held=*/false);
+
+  auto promise = PjRtFuture<absl::Status>::CreatePromise();
+  local_device->ThenExecuteCallback(
+      stream.get(), [promise, free_sub_range = sub_buffer.release(),
+                     free_stream = stream.release(), local_device]() mutable {
+        auto stream = std::unique_ptr<se::Stream>(free_stream);
+        auto sub_range = std::unique_ptr<se::DeviceMemoryBase>(free_sub_range);
+        local_device->ReturnStreamToPool(std::move(stream));
+        promise.Set(OkStatus());
+      });
+
+  return PjRtFuture<Status>(
+      std::move(promise),
+      /*on_block_start=*/
+      []() {
+        tsl::profiler::TraceMeProducer traceme(
+            "StreamExecutorGpuClient::CopyRawSubBufferToHost");
+        VLOG(1) << "StreamExecutorGpuClient::CopyRawSubBufferToHost";
+        return PjRtFutureHelpers::ProfilingKeys(
+            {/*traceme_context_id =*/traceme.GetContextId()});
+      },
+      /*on_block_end=*/
+      [](PjRtFutureHelpers::ProfilingKeys keys) {
+        tsl::profiler::TraceMeConsumer traceme(
+            "StreamExecutorGpuClient::CopyRawSubBufferToHost",
+            keys.traceme_context_id);
+      });
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

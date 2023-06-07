@@ -27,11 +27,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
@@ -323,6 +326,65 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
         src_literals[i].data<float>(),
         literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
   }
+}
+
+TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*distributed_client=*/nullptr,
+                                              /*node_id=*/0));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+
+  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+
+  auto result =
+      buffer->CopyRawToHost(dst, 0, buffer->GetOnDeviceSizeInBytes().value());
+  EXPECT_OK(result.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+  EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
+
+  aligned_free(dst);
+}
+
+TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*distributed_client=*/nullptr,
+                                              /*node_id=*/0));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+
+  auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
+  EXPECT_OK(result.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+
+  aligned_free(dst);
+}
+
+TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*distributed_client=*/nullptr,
+                                              /*node_id=*/0));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+
+  auto result =
+      buffer->CopyRawToHost(dst, 1, buffer->GetOnDeviceSizeInBytes().value());
+  EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("invalid offset 1")));
+  aligned_free(dst);
 }
 
 TEST(GpuTopology, FromProto) {
