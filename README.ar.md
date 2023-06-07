@@ -78,12 +78,9 @@
 $ pip install tensorflow
 ```
 
-على الاجهره الاخرى مثل acOS-metal وDirectX  يجب استخدام [الأجهزة المتاحة](https://www.tensorflow.org/install/gpu_plugins#available_devices) 
-[Device plugins]
-(https://www.tensorflow.org/install/gpu_plugins#available_devices).
+على الاجهره الاخرى مثل acOS-metal وDirectX  يجب استخدام [الأجهزة المتاحة](https://www.tensorflow.org/install/gpu_plugins#available_devices)
 
-A smaller CPU-only package is also available:
-
+حزمة صغيرة ل CPU متوفرة أيضاَ:
 ```
 $ pip install tensorflow-cpu
 ```
