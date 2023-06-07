@@ -120,7 +120,7 @@ void FlatBufferModel::ByteSwapBuffer(int8_t tensor_type, size_t buffer_size,
   switch (tensor_type) {
     case tflite::TensorType_STRING: {
       auto bp = reinterpret_cast<int32_t*>(buffer);
-      int num_of_strings = 
+      int num_of_strings =
           from_big_endian ? bp[0] : flatbuffers::EndianSwap(bp[0]);
       for (int i = 0; i < num_of_strings + 2; i++)
         bp[i] = flatbuffers::EndianSwap(bp[i]);
