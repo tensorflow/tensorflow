@@ -38,3 +38,6 @@ scipy ~= 1.9.2; python_version >= '3.11' # Earliest version for Python 3.11
 # This is usually vendored in setuptools but ensure it gets installed in CI anyway
 # No bound here, we prefer the one in setuptools
 packaging
+
+# For using Python 3.11 with Bazel 6 (b/286090018)
+lit ~= 16.0.5.post0
