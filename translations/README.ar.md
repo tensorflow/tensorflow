@@ -10,7 +10,7 @@
 
  [العربية](https://github.com/franknganmo/tensorflow/blob/master/translations/README.ar.md) <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](README_ar.md)</kbd>
 [الألمانية]() <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/de.svg" width="30">](README_ar.md)</kbd>
-[الفرنسية]() <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](README_ar.md)</kbd>
+[الفرنسية](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md) <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](README_ar.md)</kbd>
 [الايرانية]() <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](README_ar.md)</kbd>
 --------------------------------------------------------------------------------------
 روابط لأدوات الأستخدام وإمكانيات الوصول:
