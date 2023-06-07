@@ -1013,6 +1013,7 @@ FunctionalHloRunner::RunInternal(
         running_options.profiler->CreateSession();
       }
     }
+    execute_options.launch_id = repeat;
     TF_ASSIGN_OR_RETURN(output_buffers,
                         executable->Execute(argument_ptrs, execute_options));
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
