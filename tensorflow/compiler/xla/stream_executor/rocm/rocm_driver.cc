@@ -1410,8 +1410,7 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
 /* static */ int GpuDriver::GetGpuStreamPriority(
     GpuContext* context, stream_executor::StreamPriority stream_priority) {
-  ScopedActivateContext activation(context);
-  return stream_executor::StreamPriority::Default;
+  return 0;
 }
 
 }  // namespace gpu
