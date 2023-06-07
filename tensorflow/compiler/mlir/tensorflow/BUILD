@@ -474,6 +474,7 @@ cc_library(
     ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
     deps = [
         ":attribute_utils",
+        ":convert_type",
         ":dynamic_shape_utils",
         ":rewrite_util",
         ":tensorflow_attributes",
