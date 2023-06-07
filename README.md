@@ -4,8 +4,8 @@
 
 #### _Read this in other languages:_
  Arabic   <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/tensorflow_translate_readme/README.ar.md)</kbd>
-French <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
-Persian <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)</kbd>
+French <kbd>[<img title="Français" alt="Français" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
+Persian <kbd>[<img title="فارسی" alt="فارسی" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/master/README.fa.md)</kbd>
 
 [![Python](https://img.shields.io/pypi/pyversions/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
 [![PyPI](https://badge.fury.io/py/tensorflow.svg)](https://badge.fury.io/py/tensorflow)
