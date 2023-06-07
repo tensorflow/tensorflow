@@ -1,25 +1,17 @@
+
 <div align="center">
   <img src="https://www.tensorflow.org/images/tf_logo_horizontal.png">
 </div>
 
 **`Documentation`** |
-------------------- |
+------------------- | 
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
 #### _Read this in other languages:_
+ العربية  <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/tensorflow_translate_readme/README.ar.md)</kbd>
+الفرنسية <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)</kbd>
+اللإيرانية<kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)</kbd>
 
- [العربية](https://github.com/franknganmo/tensorflow/blob/master/translations/README.ar.md)
- 
- <kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/sa.svg" width="30">](https://github.com/franknganmo/tensorflow/blob/tensorflow_translate_readme/README.ar.md)</kbd>
-
-[الفرنسية](https://github.com/franknganmo/tensorflow/blob/frtrnsor/%5BFrancais%5D_README_fr.md)
-
-<kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/fr.svg" width="30">](README_ar.md)</kbd>
-
-[الايرانية](https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)
-(https://github.com/franknganmo/tensorflow/blob/moghri-patch-1/translations/README.fa.md)
-
-<kbd>[<img title="عربى" alt="عربى" src="https://cdn.staticaly.com/gh/hjnilsson/country-flags/master/svg/ir.svg" width="30">](README_ar.md)</kbd>
 --------------------------------------------------------------------------------------
 روابط لأدوات الأستخدام وإمكانيات الوصول:
 
