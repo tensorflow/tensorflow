@@ -35,6 +35,7 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/pytypes.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "tensorflow/compiler/xla/python/pytree.pb.h"
 
 namespace xla {
 
@@ -179,7 +180,13 @@ class PyTreeDef {
   // to implement `PyTreeDef.__setstate__`.
   static PyTreeDef FromPickleable(pybind11::object pickleable);
 
+  void SerializeTo(jax::PyTreeDefProto& result) const;
+
+  static PyTreeDef DeserializeFrom(const jax::PyTreeDefProto& input);
+
  private:
+  void SetNumLeavesAndNumNodes();
+
   struct Node {
     PyTreeKind kind = PyTreeKind::kLeaf;
 

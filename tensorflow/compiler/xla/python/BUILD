@@ -1,6 +1,6 @@
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
-load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library")
+load("//tensorflow/tsl/platform:build_config.bzl", "pyx_library", "tf_proto_library")
 load(
     "//tensorflow/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -660,6 +660,28 @@ cc_library(
     ],
 )
 
+py_test(
+    name = "pytree_test",
+    srcs = ["pytree_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
+    deps = [
+        ":xla_client",
+        ":xla_extension",
+        "@absl_py//absl/flags",
+        "@absl_py//absl/logging",
+        "@absl_py//absl/testing:absltest",
+    ] + xla_py_test_deps(),
+)
+
+tf_proto_library(
+    name = "pytree_proto",
+    srcs = ["pytree.proto"],
+    cc_api_version = 2,
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "pytree",
     srcs = ["pytree.cc"],
@@ -673,6 +695,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":exceptions",
+        ":pytree_proto_cc",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
