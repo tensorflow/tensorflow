@@ -642,6 +642,55 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
 typedef PJRT_Error* PJRT_Device_LocalHardwareId(
     PJRT_Device_LocalHardwareId_Args* args);
 
+struct PJRT_Device_MemoryStats_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+
+  // Number of bytes in use.
+  int64_t bytes_in_use;  // out
+
+  // The peak bytes in use.
+  int64_t peak_bytes_in_use;      // out
+  bool peak_bytes_in_use_is_set;  // out
+  // Number of allocations.
+  int64_t num_allocs;      // out
+  bool num_allocs_is_set;  // out
+  // The largest single allocation seen.
+  int64_t largest_alloc_size;      // out
+  bool largest_alloc_size_is_set;  // out
+  // The upper limit of user-allocatable device memory in bytes.
+  int64_t bytes_limit;      // out
+  bool bytes_limit_is_set;  // out
+
+  // Number of bytes reserved.
+  int64_t bytes_reserved;      // out
+  bool bytes_reserved_is_set;  // out
+  // The peak number of bytes reserved.
+  int64_t peak_bytes_reserved;      // out
+  bool peak_bytes_reserved_is_set;  // out
+  // The upper limit on the number bytes of reservable memory.
+  int64_t bytes_reservable_limit;      // out
+  bool bytes_reservable_limit_is_set;  // out
+
+  // Largest free block size in bytes.
+  int64_t largest_free_block_bytes;      // out
+  bool largest_free_block_bytes_is_set;  // out
+
+  // Number of bytes of memory held by the allocator.  This may be higher than
+  // bytes_in_use if the allocator holds a pool of memory (e.g. BFCAllocator).
+  int64_t pool_bytes;           // out
+  bool pool_bytes_is_set;       // out
+  int64_t peak_pool_bytes;      // out
+  bool peak_pool_bytes_is_set;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
+
+// Device memory/allocator statistics. All returned stats except `bytes_in_use`
+// are optional and may not be returned by all platforms. Implementations may
+// also return PJRT_Error_Code_UNIMPLEMENTED. Intended for diagnostic purposes.
+typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
+
 // ------------------------------- Executables ---------------------------------
 
 struct PJRT_Executable_Destroy_Args {
@@ -1429,6 +1478,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

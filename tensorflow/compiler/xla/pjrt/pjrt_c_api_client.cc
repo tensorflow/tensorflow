@@ -539,6 +539,66 @@ int PjRtCApiDevice::local_hardware_id() const {
   return args.local_hardware_id;
 }
 
+StatusOr<tsl::AllocatorStats> PjRtCApiDevice::GetAllocatorStats() const {
+  PJRT_Device_MemoryStats_Args args;
+  args.struct_size = PJRT_Device_MemoryStats_Args_STRUCT_SIZE;
+  args.priv = nullptr;
+  args.device = device_;
+  const PJRT_Api* api = client_->pjrt_c_api();
+  RETURN_STATUS_IF_ERROR(api->PJRT_Device_MemoryStats(&args), api);
+
+  tsl::AllocatorStats result;
+  result.bytes_in_use = args.bytes_in_use;
+
+  // The PJRT C API supports optionally returning most fields, but only some
+  // fields in tsl::AllocatorStats are optional. Return -1 for unset,
+  // non-optional fields. We could change tsl::AllocatorStats to have all
+  // optional fields, but that requires changing a lot of callers.
+  if (args.peak_bytes_in_use_is_set) {
+    result.peak_bytes_in_use = args.peak_bytes_in_use;
+  } else {
+    result.peak_bytes_in_use = -1;
+  }
+  if (args.num_allocs_is_set) {
+    result.num_allocs = args.num_allocs;
+  } else {
+    result.num_allocs = -1;
+  }
+  if (args.largest_alloc_size_is_set) {
+    result.largest_alloc_size = args.largest_alloc_size;
+  } else {
+    result.largest_alloc_size = -1;
+  }
+  if (args.bytes_limit_is_set) {
+    result.bytes_limit = args.bytes_limit;
+  }
+  if (args.bytes_reserved_is_set) {
+    result.bytes_reserved = args.bytes_reserved;
+  } else {
+    result.bytes_reserved = -1;
+  }
+  if (args.peak_bytes_reserved_is_set) {
+    result.peak_bytes_reserved = args.peak_bytes_reserved;
+  } else {
+    result.peak_bytes_reserved = -1;
+  }
+  if (args.bytes_reservable_limit_is_set) {
+    result.bytes_reservable_limit = args.bytes_reservable_limit;
+  }
+  if (args.largest_free_block_bytes_is_set) {
+    result.largest_free_block_bytes = args.largest_free_block_bytes;
+  } else {
+    result.largest_free_block_bytes = -1;
+  }
+  if (args.pool_bytes_is_set) {
+    result.pool_bytes = args.pool_bytes;
+  }
+  if (args.peak_pool_bytes_is_set) {
+    result.peak_pool_bytes = args.peak_pool_bytes;
+  }
+  return result;
+}
+
 // ------------------------------- Executables ---------------------------------
 
 PjRtCApiExecutable::PjRtCApiExecutable(const PJRT_Api* c_api,

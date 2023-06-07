@@ -2217,12 +2217,7 @@ def TestFactory(xla_backend,
     def testMemoryStats(self):
       for device in self.backend.local_devices():
         stats = device.memory_stats()
-        if (
-            self.backend.platform != "tpu"
-            or pjrt_c_api
-            or not tfrt_tpu
-            or external_tpu
-        ):
+        if self.backend.platform != "tpu" or not tfrt_tpu or external_tpu:
           self.assertIsNone(stats)
         else:
           self.assertIsNotNone(stats)

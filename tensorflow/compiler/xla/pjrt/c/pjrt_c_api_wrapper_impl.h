@@ -175,6 +175,7 @@ PJRT_Error* PJRT_DeviceDescription_ToString(
 PJRT_Error* PJRT_Device_GetDescription(PJRT_Device_GetDescription_Args* args);
 PJRT_Error* PJRT_Device_IsAddressable(PJRT_Device_IsAddressable_Args* args);
 PJRT_Error* PJRT_Device_LocalHardwareId(PJRT_Device_LocalHardwareId_Args* args);
+PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
 
 PJRT_Error* PJRT_Executable_Destroy(PJRT_Executable_Destroy_Args* args);
 PJRT_Error* PJRT_Executable_Name(PJRT_Executable_Name_Args* args);
@@ -335,6 +336,7 @@ constexpr PJRT_Api CreatePjrtApi(
       .PJRT_Device_GetDescription = pjrt::PJRT_Device_GetDescription,
       .PJRT_Device_IsAddressable = pjrt::PJRT_Device_IsAddressable,
       .PJRT_Device_LocalHardwareId = pjrt::PJRT_Device_LocalHardwareId,
+      .PJRT_Device_MemoryStats = pjrt::PJRT_Device_MemoryStats,
 
       .PJRT_Executable_Destroy = pjrt::PJRT_Executable_Destroy,
       .PJRT_Executable_Name = pjrt::PJRT_Executable_Name,
