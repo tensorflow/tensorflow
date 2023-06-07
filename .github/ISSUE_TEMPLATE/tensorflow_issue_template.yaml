@@ -9,6 +9,7 @@ body:
       multiple: false
       options:
         - Bug
+        - Library
         - Build/Install
         - Performance
         - Support
