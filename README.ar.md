@@ -56,26 +56,31 @@
 
 
 كما توفر API غير المضمونة لتتوافق مع الاصدارات السابقة [للغات أخرى](https://www.tensorflow.org/api_docs). لذلك ينصح بمتابعة  أحدث الإصدارات للبرامج وتحديثات الأمان عن طريق الاشتراك في قائمة
-[البريد الالكتروني  announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/g/announce). كما يمكنك الاطلاع [على قائمة الايميلات](https://www.tensorflow.org/community/mailing-lists?hl=ar)
-
+[البريد الالكتروني  announce@tensorflow.org](https://groups.google.com/a/tensorflow.org/g/announce). كما يمكنك الاطلاع [على قائمة الايميلات](https://www.tensorflow.org/community/mailing-lists?hl=ar).
  ## تثبيت tensorflow
 
-See the [TensorFlow install guide](https://www.tensorflow.org/install) for the
-[pip package](https://www.tensorflow.org/install/pip), to
-[enable GPU support](https://www.tensorflow.org/install/gpu), use a
-[Docker container](https://www.tensorflow.org/install/docker), and
-[build from source](https://www.tensorflow.org/install/source).
+شاهد 
+[TensorFlow خطوات تنصيب](https://www.tensorflow.org/install) ل
+[ملف الpip](https://www.tensorflow.org/install/pip),
+إلى
 
-To install the current release, which includes support for
-[CUDA-enabled GPU cards](https://www.tensorflow.org/install/gpu) *(Ubuntu and
-Windows)*:
+[تمكين ودعم الGPU](https://www.tensorflow.org/install/gpu)
+، أستخدم [Docker حاويات ال](https://www.tensorflow.org/install/docker)، 
+
+و[ ابني من المصادر] (https://www.tensorflow.org/install/source).
+
+لتحميل الاصدار الحالي مع وجود دعم لبرنامج ال
+[cuda Cards](https://www.tensorflow.org/install/gpu)
+
+*(Ubuntu and Windows)*:
 
 ```
 $ pip install tensorflow
 ```
 
-Other devices (DirectX and MacOS-metal) are supported using
-[Device plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
+على الاجهره الاخرى مثل acOS-metal وDirectX  يجب استخدام [الأجهزة المتاحة](https://www.tensorflow.org/install/gpu_plugins#available_devices) 
+[Device plugins]
+(https://www.tensorflow.org/install/gpu_plugins#available_devices).
 
 A smaller CPU-only package is also available:
 
