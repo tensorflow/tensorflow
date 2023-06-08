@@ -203,6 +203,7 @@ DECL_CONVERT_OP(Real);
 DECL_CONVERT_OP(Imag);
 DECL_CONVERT_OP(RFFT2d);
 DECL_CONVERT_OP(BroadcastTo);
+DECL_CONVERT_OP(Exp);
 
 #undef DECL_CONVERT_OP
 
@@ -4538,6 +4539,62 @@ LogicalResult ConvertTFLBroadcastToOp::matchAndRewrite(
   if (!result) return failure();
 
   rewriter.replaceOp(op, {result.value()});
+
+  return success();
+}
+
+LogicalResult ConvertTFLExpOp::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  auto tfl_exp_op = cast<TFL::ExpOp>(op);
+
+  RankedTensorType input_type =
+      dyn_cast<RankedTensorType>(tfl_exp_op.getX().getType());
+  RankedTensorType output_type =
+      dyn_cast<RankedTensorType>(tfl_exp_op.getResult().getType());
+
+  if (!input_type || !output_type) {
+    return rewriter.notifyMatchFailure(
+        op, "input/output are not all a ranked tensor");
+  }
+
+  mlir::quant::UniformQuantizedType input_qtype =
+      dyn_cast_or_null<mlir::quant::UniformQuantizedType>(
+          input_type.getElementType());
+  mlir::quant::UniformQuantizedType output_qtype =
+      dyn_cast_or_null<mlir::quant::UniformQuantizedType>(
+          output_type.getElementType());
+
+  if ((input_qtype == nullptr) != (output_qtype == nullptr)) {
+    return rewriter.notifyMatchFailure(
+        op,
+        "input/output tensor should be all quantized or all floating-point");
+  }
+
+  // Quantization case
+  if (input_qtype && output_qtype) {
+    auto exp_func = [](float x) -> float { return std::exp(x); };
+
+    Value table_const;
+    if (input_qtype.getStorageTypeIntegralWidth() == 8) {
+      table_const = getTosaConst8bitTable(
+          rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
+          output_qtype.getScale(), output_qtype.getZeroPoint(), exp_func);
+    } else if (input_qtype.getStorageTypeIntegralWidth() == 16) {
+      table_const = getTosaConst16bitTable<float>(
+          rewriter, op, input_qtype.getScale(), input_qtype.getZeroPoint(),
+          output_qtype.getScale(), output_qtype.getZeroPoint(), exp_func);
+    } else {
+      return rewriter.notifyMatchFailure(
+          op, "only quantized int8 and int16 are supported");
+    }
+
+    CreateReplaceOpAndInfer<tosa::TableOp>(rewriter, op, output_type,
+                                           tfl_exp_op.getX(), table_const);
+    return success();
+  }
+
+  CreateReplaceOpAndInfer<tosa::ExpOp>(rewriter, op, tfl_exp_op.getType(),
+                                       tfl_exp_op.getX());
 
   return success();
 }
