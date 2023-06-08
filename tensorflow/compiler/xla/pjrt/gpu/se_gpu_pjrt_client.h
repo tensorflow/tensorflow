@@ -192,15 +192,17 @@ std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(
     std::map<int, std::unique_ptr<LocalDeviceState>> local_device_states,
     int node_id);
 
-// distributed_client may be nullptr in non-distributed settings.
-// distributed_client should be in the connected state before calling this
-// function.
+// kv_get and kv_put are callbacks provided by the caller to access a key-value
+// store shared between nodes. kv_get and kv_put must be non-null if num_nodes
+// > 1.
 StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
-    bool asynchronous, const GpuAllocatorConfig& allocator_config,
-    std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
+    bool asynchronous, const GpuAllocatorConfig& allocator_config, int node_id,
+    int num_nodes = 1,
     const std::optional<std::set<int>>& allowed_devices = std::nullopt,
     std::optional<std::string> platform_name = std::nullopt,
-    bool should_stage_host_to_device_transfers = true);
+    bool should_stage_host_to_device_transfers = true,
+    PjRtClient::KeyValueGetCallback kv_get = nullptr,
+    PjRtClient::KeyValuePutCallback kv_put = nullptr);
 
 }  // namespace xla
 

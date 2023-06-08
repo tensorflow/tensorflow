@@ -35,7 +35,6 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
                         xla::GetStreamExecutorGpuClient(
                             /*asynchronous=*/true, allocator_config,
-                            /*distributed_client=*/nullptr,
                             /*node_id=*/0));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
