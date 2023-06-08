@@ -3378,3 +3378,14 @@ func.func @dontFuseAddAndStridedSliceEllipsisMask(%arg0: tensor<4xi32>, %arg1: t
   %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
 }
+
+// CHECK-LABEL:   func @fuseSigmoid
+func.func @fuseSigmoid(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: "tfl.logistic"
+  %cst = arith.constant dense<1.000000e+00> : tensor<10xf32>
+  %0 = "tfl.neg"(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
+  %1 = "tfl.exp"(%0) : (tensor<10xf32>) -> tensor<10xf32>
+  %2 = tfl.add %1, %cst {fused_activation_function = "NONE"} : tensor<10xf32>
+  %3 = tfl.div %cst, %2 {fused_activation_function = "NONE"} : tensor<10xf32>
+  return %3 : tensor<10xf32>
+}
