@@ -1695,6 +1695,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         }
 
         if (strategies->leaf_vector.empty()) {
+          strategies->following = nullptr;
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                                 strategies, 0);
         }
