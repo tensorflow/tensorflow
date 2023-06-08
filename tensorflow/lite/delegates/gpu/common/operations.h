@@ -392,16 +392,16 @@ Padding3D CalculateSamePadding(const BHWDC& input,
 
 // f(x):= {
 //   if x < 0  : x -> alpha * x
-//   if x >= 0 : x -> min(clip, x)
+//   if x >= 0 : x -> min(activation_max, x)
 // }
 //
 // Examples:
-//   - ReLU: clip = 0, alpha = 0
-//   - ReLU6: clip = 6, alpha = 0
-//   - Leaky ReLU: clip = 0, alpha = a
+//   - ReLU: activation_max = 0, alpha = 0
+//   - ReLU6: activation_max = 6, alpha = 0
+//   - Leaky ReLU: activation_max = 0, alpha = a
 struct ReLUAttributes {
-  // clip <= 0 mean it is not set.
-  float clip = 0;
+  // activation_max <= 0 mean it is not set.
+  float activation_max = 0;
 
   float alpha = 0;
 };

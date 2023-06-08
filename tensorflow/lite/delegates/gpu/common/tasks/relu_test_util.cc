@@ -33,7 +33,7 @@ absl::Status ReLUNoClipNoAlphaTest(TestExecutionEnvironment* env) {
 
   ReLUAttributes attr;
   attr.alpha = 0.0f;
-  attr.clip = 0.0f;
+  attr.activation_max = 0.0f;
 
   for (auto precision : env->GetSupportedPrecisions()) {
     auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -62,7 +62,7 @@ absl::Status ReLUClipTest(TestExecutionEnvironment* env) {
 
   ReLUAttributes attr;
   attr.alpha = 0.0f;
-  attr.clip = 0.9f;
+  attr.activation_max = 0.9f;
 
   for (auto precision : env->GetSupportedPrecisions()) {
     auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -91,7 +91,7 @@ absl::Status ReLUAlphaTest(TestExecutionEnvironment* env) {
 
   ReLUAttributes attr;
   attr.alpha = 0.5f;
-  attr.clip = 0.0f;
+  attr.activation_max = 0.0f;
 
   for (auto precision : env->GetSupportedPrecisions()) {
     auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -120,7 +120,7 @@ absl::Status ReLUAlphaClipTest(TestExecutionEnvironment* env) {
 
   ReLUAttributes attr;
   attr.alpha = 0.5f;
-  attr.clip = 0.5f;
+  attr.activation_max = 0.5f;
 
   for (auto precision : env->GetSupportedPrecisions()) {
     auto data_type = DeduceDataTypeFromPrecision(precision);

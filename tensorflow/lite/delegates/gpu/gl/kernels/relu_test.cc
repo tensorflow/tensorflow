@@ -45,7 +45,7 @@ class ReluTest : public ::testing::Test {
 TEST_F(ReluTest, Smoke) {
   OperationType op_type = OperationType::RELU;
   ReLUAttributes attr;
-  attr.clip = 0;
+  attr.activation_max = 0;
   attr.alpha = 0;
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -58,7 +58,7 @@ TEST_F(ReluTest, Smoke) {
 TEST_F(ReluTest, ClipOnly) {
   OperationType op_type = OperationType::RELU;
   ReLUAttributes attr;
-  attr.clip = 6;
+  attr.activation_max = 6;
   attr.alpha = 0;
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -71,7 +71,7 @@ TEST_F(ReluTest, ClipOnly) {
 TEST_F(ReluTest, AlphaOnly) {
   OperationType op_type = OperationType::RELU;
   ReLUAttributes attr;
-  attr.clip = 0;
+  attr.activation_max = 0;
   attr.alpha = 0.5;
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});
@@ -84,7 +84,7 @@ TEST_F(ReluTest, AlphaOnly) {
 TEST_F(ReluTest, ClipAndAlpha) {
   OperationType op_type = OperationType::RELU;
   ReLUAttributes attr;
-  attr.clip = 6;
+  attr.activation_max = 6;
   attr.alpha = 0.5;
   SingleOpModel model({ToString(op_type), attr}, {GetTensorRef(0)},
                       {GetTensorRef(1)});

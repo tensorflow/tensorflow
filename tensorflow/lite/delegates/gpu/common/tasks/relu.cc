@@ -37,14 +37,14 @@ ElementwiseDescriptor CreateReLU(const ReLUAttributes& attr,
   } else {
     min_func = "INIT_FLT4(0.0f)";
   }
-  if (attr.clip != 0.0f) {
+  if (attr.activation_max != 0.0f) {
     if (precision == CalculationsPrecision::F32) {
-      result.args.AddFloat("clip", attr.clip);
+      result.args.AddFloat("activation_max", attr.activation_max);
     } else {
-      result.args.AddHalf("clip", half(attr.clip));
+      result.args.AddHalf("activation_max", half(attr.activation_max));
     }
     result.code = absl::StrCat("out_value = clamp(in_value, " + min_func +
-                               ", INIT_FLT4(args.clip));");
+                               ", INIT_FLT4(args.activation_max));");
   } else {
     result.code = absl::StrCat("out_value = max(in_value, ", min_func, ");");
   }
