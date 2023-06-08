@@ -152,19 +152,25 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     func_pm.addPass(CreateDTensorDesignateResourceHandleMesh());
   }
 
+  // Clone Control Flow.
+  pm->addPass(CreateDTensorDecomposeControlflowPass());
+
   // Validates that all cross mesh data transfers are expressed via
   // DTensorLayout operation and lowers it to send/recvs.
   pm->addPass(CreateDTensorHandleCrossClusterDependencies());
+
+  // Merge Clusters
+  pm->addPass(CreateDTensorMergeClustersPass());
 
   // Mark all ops and functions with global shape attribute to preserve global
   // shape information as it is needed during Layout Propagation and SPMD
   // expansion.
   pm->addPass(CreateDTensorAnnotateGlobalShape());
 
-  // Propagate layout to all ops in graph.
-  pm->addPass(CreateDTensorMergeClustersPass());
-
   AddDTensorEmbeddingPassV2(pm);
+
+  ////////
+  // Propagate layout to all ops in graph.
 
   // For DTensor Checkpoint V2, the outputs of tf.RestoreV2 ops
   // do not have shape information. We can infer the shapes of these
