@@ -67,6 +67,11 @@ struct RequestInfo {
   std::function<void(std::function<void()>)> runner;
 };
 
+struct SymbolUids {
+  std::string tf_symbol_uid;
+  std::string tfrt_symbol_uid;
+};
+
 // Creates a `RequestInfo` given relative data.
 // Note: `resource_context` is per-graph-executor and
 // `client_graph_resource_context` is per-loaded-client-graph. See the comment
@@ -88,7 +93,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, absl::string_view symbol_uid,
+    absl::string_view signature_name, const SymbolUids& symbol_uids,
     const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
@@ -151,14 +156,14 @@ class GraphExecutor {
   // The loading result of a `ClientGraph`.
   class LoadedClientGraph {
    public:
-    LoadedClientGraph(std::string name, std::string symbol_uid,
+    LoadedClientGraph(std::string name, SymbolUids symbol_uids,
                       GraphExecutor* graph_executor,
                       std::unique_ptr<mlir::MLIRContext> mlir_context,
                       mlir::OwningOpRef<mlir::ModuleOp> tf_mlir_with_op_keys,
                       mlir::OwningOpRef<mlir::ModuleOp> tfrt_mlir,
                       std::shared_ptr<ExecutableContext> executable_context)
         : name_(std::move(name)),
-          symbol_uid_(std::move(symbol_uid)),
+          symbol_uids_(std::move(symbol_uids)),
           graph_executor_(graph_executor),
           mlir_context_(std::move(mlir_context)),
           tf_mlir_with_op_keys_(std::move(tf_mlir_with_op_keys)),
@@ -181,7 +186,7 @@ class GraphExecutor {
       return executable_context_;
     }
     absl::string_view name() const { return name_; }
-    absl::string_view symbol_uid() const { return symbol_uid_; }
+    const SymbolUids& symbol_uids() const { return symbol_uids_; }
 
     OpKernelRunnerTable& runner_table() { return runner_table_; }
     tfd::FallbackResourceArray& resource_array() { return resource_array_; }
@@ -189,7 +194,7 @@ class GraphExecutor {
 
    private:
     std::string name_;
-    std::string symbol_uid_;
+    SymbolUids symbol_uids_;
     GraphExecutor* graph_executor_ = nullptr;
     OpKernelRunnerTable runner_table_;
     tfd::FallbackResourceArray resource_array_;

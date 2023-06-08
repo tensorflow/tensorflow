@@ -218,7 +218,7 @@ class SavedModelImpl final : public SavedModel {
       absl::string_view saved_model_dir);
 
   SavedModelImpl(
-      Options options, string symbol_uid,
+      Options options, SymbolUids symbol_uids,
       tensorflow::MetaGraphDef meta_graph_def, tfrt::BefBuffer bef,
       tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
       std::optional<mlrt::LoadedExecutable> loaded_executable,
@@ -260,7 +260,7 @@ class SavedModelImpl final : public SavedModel {
   // The result of loading signature(s).
   struct LoadingResult {
     std::string name;
-    string symbol_uid;
+    SymbolUids symbol_uids;
     tfrt::BefBuffer bef;
     tfrt::RCReference<tfrt::BEFFile> bef_file;
     std::unique_ptr<OpKernelRunnerTable> runner_table;
@@ -289,7 +289,7 @@ class SavedModelImpl final : public SavedModel {
       TF_LOCKS_EXCLUDED(loading_result_cache_mu_);
 
   Options options_;
-  string symbol_uid_;
+  SymbolUids symbol_uids_;
   // `meta_graph_def_` only contains metadata of the model. The graph_def field
   // is removed.
   //

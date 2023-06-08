@@ -252,7 +252,7 @@ StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
 tensorflow::Status GraphExecutionRunOnFunction(
     const GraphExecutionOptions& options,
     const GraphExecutionRunOptions& run_options,
-    absl::string_view signature_name, absl::string_view symbol_uid,
+    absl::string_view signature_name, const SymbolUids& symbol_uids,
     const tfrt::Function* func, const mlrt::LoadedExecutable* loaded_executable,
     absl::Span<const tensorflow::Tensor> inputs,
     std::vector<tensorflow::Tensor>* outputs,
@@ -273,7 +273,7 @@ tensorflow::Status GraphExecutionRunOnFunction(
   tensorflow::profiler::TraceMeProducer traceme(
       // To TraceMeConsumers in RunHandlerThreadPool::WorkerLoop.
       [request_id = request_info->tfrt_request_context->id(), signature_name,
-       &options, symbol_uid] {
+       &options, symbol_uids] {
         return tensorflow::profiler::TraceMeEncode(
             "TfrtModelRun",
             {{"_r", 1},
@@ -281,7 +281,8 @@ tensorflow::Status GraphExecutionRunOnFunction(
              {"signature", signature_name},
              {"model_id", absl::StrCat(options.model_metadata.name(), ":",
                                        options.model_metadata.version())},
-             {"symbol_uid", symbol_uid}});
+             {"tf_symbol_uid", symbol_uids.tf_symbol_uid},
+             {"tfrt_symbol_uid", symbol_uids.tfrt_symbol_uid}});
       },
       tensorflow::profiler::ContextType::kTfrtExecutor,
       request_info->tfrt_request_context->id());
@@ -546,7 +547,7 @@ tensorflow::Status GraphExecutor::Run(
   std::vector<tensorflow::Tensor> flat_outputs;
   TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
       options_, run_options, loaded_client_graph.name(),
-      loaded_client_graph.symbol_uid(), func, loaded_executable, flat_inputs,
+      loaded_client_graph.symbol_uids(), func, loaded_executable, flat_inputs,
       &flat_outputs, &resource_context_, &executable_context->resource_context,
       &loaded_client_graph.runner_table(),
       &loaded_client_graph.resource_array(), runtime(), fallback_state_,
@@ -582,7 +583,8 @@ GraphExecutor::ImportAndCompileClientGraph(
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.
-  ASSIGN_OR_RETURN_IN_IMPORT(string symbol_uid,
+  SymbolUids symbol_uids;
+  ASSIGN_OR_RETURN_IN_IMPORT(symbol_uids.tf_symbol_uid,
                              MaybeUploadMlirToXsymbol(module.get()));
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
@@ -629,13 +631,15 @@ GraphExecutor::ImportAndCompileClientGraph(
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
+  ASSIGN_OR_RETURN_IN_COMPILE(symbol_uids.tfrt_symbol_uid,
+                              MaybeUploadMlirToXsymbol(module.get()));
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(compile_duration)
             << " ms. Client graph name: " << client_graph.name;
 
   return std::make_unique<LoadedClientGraph>(
-      client_graph.name, symbol_uid, this, std::move(context),
+      client_graph.name, std::move(symbol_uids), this, std::move(context),
       std::move(module_with_op_keys), std::move(module),
       std::move(executable_context));
 }
