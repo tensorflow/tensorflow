@@ -23,8 +23,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/infra/mira/mlrt/bytecode/bytecode.h"
-#include "learning/infra/mira/mlrt/interpreter/context.h"
 #include "absl/base/call_once.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -37,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"
