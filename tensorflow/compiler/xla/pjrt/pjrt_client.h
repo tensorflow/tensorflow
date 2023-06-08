@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
@@ -88,6 +86,9 @@ class PjRtMemorySpace {
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current memory space unambiguously.
   virtual absl::string_view DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse.
+  virtual absl::string_view ToString() const = 0;
 };
 
 class PjRtDevice {

@@ -183,7 +183,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
