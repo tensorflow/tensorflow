@@ -39,8 +39,8 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:subgraph_test_util",
-        "//testing/base/public:gunit_for_library_testonly",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
     ],
 )
 
