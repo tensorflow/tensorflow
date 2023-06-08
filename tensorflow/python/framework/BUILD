@@ -1992,6 +1992,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
     ],
