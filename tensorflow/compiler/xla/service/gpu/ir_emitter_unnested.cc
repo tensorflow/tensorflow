@@ -2012,6 +2012,41 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   return OkStatus();
 }
 
+// Returns true if the fusion has consistent transpose heros.
+static bool HasConsistentTransposeHeros(HloComputation* fusion) {
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
+  if (!HasAnyTiledTransposeRoot(fusion)) {
+    return false;
+  }
+  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
+      hlo_roots,
+      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
+  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
+  std::optional<TransposeDescription> first_tiled_transpose =
+      FindAnyTiledTranspose(*first_transpose);
+
+  // We need the following invariant:
+  // For every tuple element:
+  //  -> EITHER it's a kCopy: S{L} -> S{L'}
+  //  -> OR it's an elementwise op of shape S{L}
+  for (HloInstruction* root : hlo_roots) {
+    std::optional<TransposeDescription> tiled_transpose =
+        FindAnyTiledTranspose(*root);
+    if (tiled_transpose) {
+      if (*tiled_transpose != *first_tiled_transpose) {
+        return false;
+      }
+    } else {
+      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
+              root->shape(), transpose_in_shape,
+              /*ignore_element_type=*/true)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
@@ -2037,7 +2072,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     return EmitUnnestedReduction(fusion_op, fused_computation);
   }
 
-  if (HasAnyTiledTransposeRoot(fused_computation)) {
+  // TODO(b/286029825): Do not generate fusions with inconsistent transposes.
+  if (HasConsistentTransposeHeros(fused_computation)) {
     return EmitUnnestedTranspose(fusion_op, fused_computation);
   }
 
@@ -4505,28 +4541,6 @@ Status IrEmitterUnnested::EmitTransposeTile(
       [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
 
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  std::optional<TransposeDescription> first_tiled_transpose =
-      FindAnyTiledTranspose(*first_transpose);
-
-  // We need the following invariant:
-  // For every tuple element:
-  //  -> EITHER it's a kCopy: S{L} -> S{L'}
-  //  -> OR it's an elementwise op of shape S{L}
-  for (HloInstruction* root : hlo_roots) {
-    std::optional<TransposeDescription> tiled_transpose =
-        FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      TF_RET_CHECK(*tiled_transpose == *first_tiled_transpose)
-          << " Mismatch between first transpose "
-          << first_tiled_transpose->ToString() << " and encountered transpose "
-          << tiled_transpose->ToString() << " in fusion "
-          << fusion_hlo->ToString();
-    } else {
-      TF_RET_CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
-          root->shape(), transpose_in_shape,
-          /*ignore_element_type=*/true));
-    }
-  }
 
   FusedIrEmitter fused_emitter(elemental_emitter_);
   for (int i = 0; i < fusion_hlo->num_parameters(); i++) {
