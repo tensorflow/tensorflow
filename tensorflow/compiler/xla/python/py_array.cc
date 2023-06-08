@@ -106,6 +106,7 @@ extern "C" PyObject* PyArray_tp_new(PyTypeObject* type, PyObject*, PyObject*) {
 }
 
 extern "C" void PyArray_tp_dealloc(PyObject* self) {
+  PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   auto* obj = reinterpret_cast<PyArrayObject*>(self);
 

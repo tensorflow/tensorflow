@@ -768,6 +768,7 @@ PyObject* JaxPmapFunction_tp_new(PyTypeObject* subtype, PyObject* args,
 }
 
 void JaxPmapFunction_tp_dealloc(PyObject* self) {
+  PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   JaxPmapFunctionObject* o = reinterpret_cast<JaxPmapFunctionObject*>(self);
   if (o->weakrefs) {

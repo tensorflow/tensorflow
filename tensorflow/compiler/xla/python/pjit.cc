@@ -781,6 +781,7 @@ PyObject* PjitFunction_tp_new(PyTypeObject* subtype, PyObject* args,
 }
 
 void PjitFunction_tp_dealloc(PyObject* self) {
+  PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   PjitFunctionObject* o = reinterpret_cast<PjitFunctionObject*>(self);
   if (o->weakrefs) {
