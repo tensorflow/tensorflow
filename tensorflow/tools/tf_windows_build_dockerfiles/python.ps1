@@ -1,3 +1,4 @@
+# These lines consist of sub-commands that are executed using a single RUN command in the Dockerfile to install Python (specified by ARG PYTHON_VERSION).
 $url = ('https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe' -f $env:PYTHON_VERSION); `
 Write-Host ('Downloading {0} ...' -f $url); `
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; `
