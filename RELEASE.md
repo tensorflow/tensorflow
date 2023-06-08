@@ -1,6 +1,8 @@
 # Release 2.12.1
 
-<REPLACE THIS TEXT WITH THE RELEASE NOTES>
+### Bug Fixes and Other Changes
+
+*  The use of the ambe config to build and test aarch64 is not needed. The ambe config will be removed in the future. Making cpu_arm64_pip.sh and cpu_arm64_nonpip.sh more similar for easier future maintenance.
 
 # Release 2.12.0
 
