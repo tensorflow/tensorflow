@@ -1960,9 +1960,10 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
 
   // TODO(cheshire): avoid duplication of FindTiledTranspose function, is it
   // possible?
-  auto dims_and_order = FindAnyTiledTranspose(**absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
+  std::optional<TransposeDescription> dims_and_order = FindAnyTiledTranspose(
+      **absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
+        return FindAnyTiledTranspose(*instr);
+      }));
 
   // TODO(cheshire): have a more robust way of checking this.
   CHECK(dims_and_order.has_value());
@@ -1971,8 +1972,9 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   CHECK_EQ(WarpSize() % kNumRows, 0);
 
   // 3D view over the input shape.
-  Vector3 dims = dims_and_order->first;
-  Vector3 order = dims_and_order->second;
+  Vector3 dims = dims_and_order->dimensions;
+  Vector3 order = dims_and_order->permutation;
+
   // We expect that the last dimension is swapped with a different dimension.
   CHECK_NE(order[2], 2);
   Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
@@ -4503,18 +4505,24 @@ Status IrEmitterUnnested::EmitTransposeTile(
       [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
 
   const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  auto first_tiled_transpose = FindAnyTiledTranspose(*first_transpose);
+  std::optional<TransposeDescription> first_tiled_transpose =
+      FindAnyTiledTranspose(*first_transpose);
 
   // We need the following invariant:
   // For every tuple element:
   //  -> EITHER it's a kCopy: S{L} -> S{L'}
   //  -> OR it's an elementwise op of shape S{L}
   for (HloInstruction* root : hlo_roots) {
-    auto tiled_transpose = FindAnyTiledTranspose(*root);
+    std::optional<TransposeDescription> tiled_transpose =
+        FindAnyTiledTranspose(*root);
     if (tiled_transpose) {
-      CHECK(*tiled_transpose == *first_tiled_transpose);
+      TF_RET_CHECK(*tiled_transpose == *first_tiled_transpose)
+          << " Mismatch between first transpose "
+          << first_tiled_transpose->ToString() << " and encountered transpose "
+          << tiled_transpose->ToString() << " in fusion "
+          << fusion_hlo->ToString();
     } else {
-      CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
+      TF_RET_CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
           root->shape(), transpose_in_shape,
           /*ignore_element_type=*/true));
     }
@@ -4536,7 +4544,7 @@ Status IrEmitterUnnested::EmitTransposeTile(
   Vector3 permutation;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
     if (auto tr = FindAnyTiledTranspose(*root)) {
-      permutation = tr->second;
+      permutation = tr->permutation;
       const HloInstruction& hero = FindNonTrivialHero(*root);
       tiles[&hero] =
           AllocateShared(tiling_scheme,
