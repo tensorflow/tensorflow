@@ -3379,7 +3379,8 @@ LogicalResult ConvertTFLAtan2Op::matchAndRewrite(
   // Note: the implementation of std::atan2 may be different on
   // different machines, so may result in varying numerical results.
   auto atan_func = [](double x) -> double { return std::atan(x); };
-  Value table_const = getTosaConst16bitTable(rewriter, op, atan_func, 0.0, 1.0);
+  Value table_const = getTosaConst16bitTable<double>(
+      rewriter, op, 1.0 / 65535.0, -32768, 2.0 / 65535.0, 0, atan_func);
   auto table_result = CreateOpAndInfer<tosa::TableOp>(
       rewriter, loc, output_ty.clone(rewriter.getIntegerType(32)), casted,
       table_const);
@@ -3473,13 +3474,10 @@ LogicalResult ConvertTFLLogisticOp::matchAndRewrite(
         return rewriter.notifyMatchFailure(
             op, "input/output zeropoint should be 0 in 16-bit mode");
       }
-      double input_min = -32768 * input_qtype.getScale();
-      double input_max = 32767 * input_qtype.getScale();
 
-      // Generate table with gen_lut() in
-      // tensorflow/lite/kernels/internal/common.h
-      Value table_const = getTosaConst16bitTable(rewriter, op, sigmoid_func,
-                                                 input_min, input_max);
+      Value table_const =
+          getTosaConst16bitTable<double>(rewriter, op, input_qtype.getScale(),
+                                         0, 2.0 / 65535.0, 0, sigmoid_func);
 
       auto op1_table_in =
           CreateOpAndInfer<tosa::TableOp>(rewriter, op->getLoc(), int32_type,
@@ -3545,13 +3543,9 @@ LogicalResult ConvertTFLTanhOp::matchAndRewrite(
         return rewriter.notifyMatchFailure(
             op, "input/output zeropoint should be 0 in 16-bit mode");
       }
-      double input_min = -32768 * input_qtype.getScale();
-      double input_max = 32767 * input_qtype.getScale();
 
-      // Generate table with gen_lut() in
-      // tensorflow/lite/kernels/internal/common.h
-      Value table_const =
-          getTosaConst16bitTable(rewriter, op, tanh_func, input_min, input_max);
+      Value table_const = getTosaConst16bitTable<double>(
+          rewriter, op, input_qtype.getScale(), 0, 2.0 / 65535.0, 0, tanh_func);
 
       auto op1_table_in =
           CreateOpAndInfer<tosa::TableOp>(rewriter, op->getLoc(), int32_type,
