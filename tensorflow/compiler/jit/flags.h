@@ -234,6 +234,10 @@ struct BuildXlaOpsPassFlags {
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
   bool tf_xla_disable_constant_folding;
+
+  // Disables full embedding pipelining when true. Instead, strict SparseCore
+  // TensorCore sequencing will be used.
+  bool tf_xla_disable_full_embedding_pipelining;
 };
 
 // Flags for common MLIR configurations.

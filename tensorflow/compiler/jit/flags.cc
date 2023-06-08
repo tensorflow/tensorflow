@@ -192,6 +192,7 @@ void AllocateAndParseFlags() {
   build_ops_flags->tf_xla_check_cluster_input_numerics = false;
   build_ops_flags->tf_xla_check_cluster_output_numerics = false;
   build_ops_flags->tf_xla_disable_constant_folding = false;
+  build_ops_flags->tf_xla_disable_full_embedding_pipelining = false;
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
@@ -262,6 +263,10 @@ void AllocateAndParseFlags() {
             &build_ops_flags->tf_xla_disable_constant_folding,
             "If true then disables constant folding on TF graph before XLA "
             "compilation."),
+       Flag("tf_xla_disable_full_embedding_pipelining",
+            &build_ops_flags->tf_xla_disable_full_embedding_pipelining,
+            "If true then disables full embedding pipelining and instead use "
+            "strict SparseCore / TensorCore sequencing."),
 
        Flag("tf_xla_compile_on_demand", &device_flags->tf_xla_compile_on_demand,
             "Switch a device into 'on-demand' mode, where instead of "

@@ -449,7 +449,9 @@ std::unique_ptr<OperationPass<func::FuncOp>>
 CreateReplicaIDToDeviceOrdinalPass();
 
 // Creates a pass that adds pipelining to a graph that contains device
-// accelerated embeddings.
+// accelerated embeddings. The EmbeddingSequencingPass is a temporary fallback
+// while developing full pipelining capabilities.
+std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingSequencingPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreateEmbeddingPipeliningPass();
 
 // Creates a pass that creates `tf_executor.island` from a single
