@@ -33,6 +33,7 @@ from matmul_lib import generate_tiling_configs
 from matmul_lib import MatmulSize
 from matmul_lib import MatmulTiming
 from matmul_lib import parse_int_list
+from matmul_lib import QuantizedInputType
 import numpy as np
 import torch
 import tqdm
@@ -146,7 +147,8 @@ def generate_samples() -> typing.List[MatmulSize]:
   m_axis = np.unique(np.logspace(4, 13, num=200, dtype=np.int64, base=2))
   n_axis = np.unique(np.logspace(4, 13, num=200, dtype=np.int64, base=2))
   k_axis = np.unique(np.logspace(4, 13, num=200, dtype=np.int64, base=2))
-  out = [MatmulSize(*p) for p in itertools.product(m_axis, n_axis, k_axis, [1])]
+  q = [QuantizedInputType.INT8]
+  out = [MatmulSize(*p) for p in itertools.product(m_axis, n_axis, k_axis, q)]
   out = random.choices(out, k=_NUM_SAMPLES.value)
   return out
 

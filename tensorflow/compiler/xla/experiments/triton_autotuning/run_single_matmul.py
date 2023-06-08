@@ -24,6 +24,7 @@ from matmul_lib import benchmark_matmul
 from matmul_lib import MatmulSize
 from matmul_lib import MatmulTiling
 from matmul_lib import print_roofline_performance
+from matmul_lib import QuantizedInputType
 import torch
 import tqdm
 
@@ -31,8 +32,11 @@ import tqdm
 _M = flags.DEFINE_integer('m', 64, 'Size of first matrix')
 _K = flags.DEFINE_integer('k', 64, 'Size of contracting dimension')
 _N = flags.DEFINE_integer('n', 64, 'Size of second matrix')
-_QUANTIZED_LHS = flags.DEFINE_integer(
-    'quantized_lhs', 0, 'Whether LHS is in int8'
+_QUANTIZED_LHS = flags.DEFINE_enum_class(
+    'quantized_lhs',
+    QuantizedInputType.FULL,
+    QuantizedInputType,
+    'Type to use for LHS quantization',
 )
 
 _BLOCK_M = flags.DEFINE_integer('block_m', 16, 'Tiling in M-dimension')
