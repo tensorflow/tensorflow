@@ -87,6 +87,11 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
 
     // Get len.
     auto memref_type = cast<MemRefType>(view_op.getType());
+    // TODO(b/274157088): Handle the case where elements are complex numbers.
+    if (!memref_type.getElementType().isIntOrFloat()) {
+      return buffer_use;
+    }
+
     size_t len =
         (memref_type.getNumElements() * memref_type.getElementTypeBitWidth() +
          7) /
