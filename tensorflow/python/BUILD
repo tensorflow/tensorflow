@@ -1334,11 +1334,6 @@ py_strict_library(
 )
 
 alias(
-    name = "client_testlib",
-    actual = "//tensorflow/python/platform:client_testlib",
-)
-
-alias(
     name = "pybind11_lib",
     actual = "//tensorflow/python/lib/core:pybind11_lib",
 )

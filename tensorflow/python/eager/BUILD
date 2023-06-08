@@ -410,7 +410,6 @@ py_strict_test(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/runtime_client:runtime_client_py",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/eager/polymorphic_function",
         "//tensorflow/python/framework:constant_op",
@@ -420,6 +419,7 @@ py_strict_test(
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl/flags",
     ],
