@@ -35,7 +35,7 @@ tf_python_pybind_extension(
     module_name = "_pywrap_saved_model_aot_compile",
     deps = [
         "//tensorflow/core/tfrt/saved_model:saved_model_aot_compile",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",

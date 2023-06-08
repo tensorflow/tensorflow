@@ -1086,9 +1086,9 @@ tf_python_pybind_extension(
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
-        ":pybind11_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/config:flags_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -1331,11 +1331,6 @@ py_strict_library(
     name = "platform_test",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/platform:test"],
-)
-
-alias(
-    name = "pybind11_lib",
-    actual = "//tensorflow/python/lib/core:pybind11_lib",
 )
 
 alias(
