@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -50,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -1513,21 +1515,26 @@ bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
          MatchIotaConst(dimensions, iota);
 }
 
+template <typename ReturnOpType, typename CompareOpType>
 bool MatchTopKComparator(Region& comparator) {
   if (!comparator.hasOneBlock()) return false;
   Block& comparator_blk = comparator.front();
   using OpListType = llvm::iplist<Operation>;
   OpListType& operations = comparator_blk.getOperations();
   if (operations.size() != 2) return false;
-  auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
-  auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
+  auto compare_op = dyn_cast_or_null<CompareOpType>(&operations.front());
+  auto return_op = dyn_cast_or_null<ReturnOpType>(&operations.back());
   if (!compare_op || !return_op) return false;
   // TODO(xuanyuanluo): Support mhlo::ComparisonDirection::LT direction.
-  if (compare_op.getComparisonDirection() != mhlo::ComparisonDirection::GT)
+  if (std::is_same_v<CompareOpType, mhlo::CompareOp> &&
+      dyn_cast_or_null<mhlo::CompareOp>(&operations.front())
+              .getComparisonDirection() != mhlo::ComparisonDirection::GT) {
     return false;
-  if (compare_op.getLhs() != comparator_blk.getArgument(0) ||
-      compare_op.getRhs() != comparator_blk.getArgument(1))
+  }
+  if (compare_op.getOperands()[0] != comparator_blk.getArgument(0) ||
+      compare_op.getOperands()[1] != comparator_blk.getArgument(1)) {
     return false;
+  }
   return return_op.getOperands().front() == compare_op.getResult();
 }
 
@@ -1578,7 +1585,8 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
     if (!MatchIota(sort_dim_attr, indices))
       return rewriter.notifyMatchFailure(
           op, "the second operand is supposed to be obtained from IOTA");
-    if (!MatchTopKComparator(op.getComparator()))
+    if (!MatchTopKComparator<mhlo::ReturnOp, mhlo::CompareOp>(
+            op.getComparator()))
       return rewriter.notifyMatchFailure(op, "only match for GT comparator");
     ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
@@ -3546,6 +3554,161 @@ class ConvertPopulationCountOp
   }
 };
 
+class ConvertCustomCallWithApproxTopK
+    : public mlir::OpConversionPattern<mhlo::CustomCallOp> {
+ public:
+  explicit ConvertCustomCallWithApproxTopK(MLIRContext* context,
+                                           mlir::ModuleOp* module_op)
+      : OpConversionPattern<mhlo::CustomCallOp>(context),
+        module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mhlo::CustomCallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (op.getCallTargetName() != "ApproxTopK") {
+      return mlir::failure();
+    }
+    auto is_supported_attr_name = [](NamedAttribute attr) {
+      auto name = attr.getName();
+      return name == "call_target_name" || name == "backend_config" ||
+             name == "api_version" || name == "called_computations";
+    };
+    for (const auto& attr : op->getAttrs()) {
+      if (!is_supported_attr_name(attr)) {
+        return op.emitOpError()
+               << attr.getName().getValue()
+               << " is not a supported attribute for ApproxTopK";
+      }
+    }
+    auto backend_config =
+        op.getBackendConfigAttr().dyn_cast_or_null<mlir::DictionaryAttr>();
+    if (!backend_config) {
+      return op.emitOpError() << "Missing backend_config attribute";
+    }
+
+    for (const auto& attr : backend_config) {
+      auto name = attr.getName();
+      if (!(name == "top_k" || name == "reduction_dim" ||
+            name == "recall_target" || name == "aggregate_to_topk" ||
+            name == "reduction_input_size_override" || name == "is_fallback")) {
+        return op.emitOpError()
+               << name.getValue() << " is not a supported backend_config"
+               << " attribute for ApproxTopK";
+      }
+    }
+
+    auto check_i64_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<IntegerAttr>(attr_name);
+      if (!attr || !attr.getType().isInteger(64)) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of i64 type";
+      }
+      return success();
+    };
+    auto check_f32_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<FloatAttr>(attr_name);
+      if (!attr || !attr.getType().isF32()) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of f32 type";
+      }
+      return success();
+    };
+    auto check_bool_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<BoolAttr>(attr_name);
+      if (!attr) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of bool type";
+      }
+      return success();
+    };
+    if (failed(check_i64_attr("top_k"))) return failure();
+    if (failed(check_i64_attr("reduction_dim"))) return failure();
+    if (failed(check_f32_attr("recall_target"))) return failure();
+    if (failed(check_bool_attr("aggregate_to_topk"))) return failure();
+    if (failed(check_i64_attr("reduction_input_size_override"))) {
+      return failure();
+    }
+    bool has_is_fallback = backend_config.contains("is_fallback");
+    if (has_is_fallback && !backend_config.getAs<BoolAttr>("is_fallback")) {
+      return op.emitOpError()
+             << "is_fallback attribute in backend_config must be of bool type";
+    }
+
+    auto top_k_attr = backend_config.getAs<IntegerAttr>("top_k");
+    auto reduction_dim_attr =
+        backend_config.getAs<IntegerAttr>("reduction_dim");
+    auto recall_target_attr = backend_config.getAs<FloatAttr>("recall_target");
+    auto aggregate_to_topk_attr =
+        backend_config.getAs<BoolAttr>("aggregate_to_topk");
+    auto reduction_input_size_override_attr =
+        backend_config.getAs<IntegerAttr>("reduction_input_size_override");
+    if (op.getInputs().size() % 2 != 0) {
+      return op.emitOpError() << "ApproxTopK takes an even number of operands.";
+    }
+
+    auto called_computations = op.getCalledComputations();
+    if (called_computations.size() != 1) {
+      return op.emitOpError()
+             << "ApproxTopK takes exactly 1 called_computation.";
+    }
+    mlir::func::FuncOp callee = module_op_->lookupSymbol<mlir::func::FuncOp>(
+        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+    mlir::FunctionType callee_type = callee.getFunctionType();
+    SmallVector<Type, 4> expected_callee_input_types;
+    auto num_inputs = op.getInputs().size() / 2;
+    for (unsigned i = 0; i < num_inputs; ++i) {
+      auto input_type = op.getOperand(i).getType().dyn_cast<RankedTensorType>();
+      auto scalar = RankedTensorType::get({}, input_type.getElementType());
+      expected_callee_input_types.push_back(scalar);
+      expected_callee_input_types.push_back(scalar);
+    }
+    FunctionType expected_callee_type = mlir::FunctionType::get(
+        op->getContext(), expected_callee_input_types,
+        RankedTensorType::get({}, IntegerType::get(op->getContext(), 1)));
+    if (callee_type != expected_callee_type) {
+      return op.emitOpError()
+             << "called_computation type does not match the expected type. Got "
+             << callee_type << " expected " << expected_callee_type;
+    }
+    if (!MatchTopKComparator<mlir::func::ReturnOp, TF::GreaterOp>(
+            callee.getBody()) &&
+        !MatchTopKComparator<mlir::func::ReturnOp, mhlo::CompareOp>(
+            callee.getBody())) {
+      return op.emitOpError() << "only match for GT comparator";
+    }
+    auto is_max_k = rewriter.getBoolAttr(true);
+
+    auto approx_top_k = rewriter.create<TF::ApproxTopKOp>(
+        op.getLoc(), op->getResultTypes(), op.getInputs()[0], top_k_attr,
+        reduction_dim_attr, recall_target_attr, is_max_k,
+        reduction_input_size_override_attr, aggregate_to_topk_attr);
+
+    rewriter.replaceOp(op, approx_top_k.getResults());
+    return mlir::success();
+  }
+
+ private:
+  mlir::ModuleOp* module_op_;
+};
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3589,9 +3752,10 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
 /// Performs the lowering to XLA dialect.
 void LegalizeHloToTf::runOnOperation() {
   MLIRContext& context = getContext();
+  mlir::ModuleOp module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
-  // Add legalization patterns to the list.
   RewritePatternSet patterns(&getContext());
+  patterns.add<ConvertCustomCallWithApproxTopK>(&context, &module);
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);
