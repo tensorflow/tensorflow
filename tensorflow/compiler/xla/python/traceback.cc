@@ -129,15 +129,28 @@ py::object Traceback::AsPythonTraceback() const {
   py::dict globals;
   py::handle traceback_type(reinterpret_cast<PyObject*>(&PyTraceBack_Type));
   for (const std::pair<PyCodeObject*, int>& frame : frames_) {
-    PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), frame.first,
+    int lineno = PyCode_Addr2Line(frame.first, frame.second);
+    // Under Python 3.11 we observed crashes when using a fake PyFrameObject
+    // with a real PyCodeObject (https://github.com/google/jax/issues/16027).
+    // because the frame does not have fields necessary to compute the locals,
+    // notably the closure object, leading to crashes in CPython in
+    // _PyFrame_FastToLocalsWithError
+    // https://github.com/python/cpython/blob/deaf509e8fc6e0363bd6f26d52ad42f976ec42f2/Objects/frameobject.c#LL1116C2-L1116C2
+    // We therefore always build a fake code object to go along with our fake
+    // frame.
+    PyCodeObject* py_code =
+        PyCode_NewEmpty(PyUnicode_AsUTF8(frame.first->co_filename),
+                        PyUnicode_AsUTF8(frame.first->co_name), lineno);
+    PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), py_code,
                                           globals.ptr(), /*locals=*/nullptr);
+    Py_DECREF(py_code);
 
     traceback = traceback_type(
         /*tb_next=*/std::move(traceback),
         /*tb_frame=*/
         py::reinterpret_steal<py::object>(
             reinterpret_cast<PyObject*>(py_frame)),
-        /*tb_lasti=*/frame.second,
+        /*tb_lasti=*/0,
         /*tb_lineno=*/
         PyCode_Addr2Line(frame.first, frame.second));
   }
