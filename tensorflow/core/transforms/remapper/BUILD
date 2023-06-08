@@ -53,6 +53,7 @@ cc_library(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/transforms:test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     test_file_exts = ["mlir"],

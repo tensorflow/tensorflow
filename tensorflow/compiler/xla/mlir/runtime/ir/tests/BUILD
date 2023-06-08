@@ -5,6 +5,7 @@ load("//tensorflow/tsl:tsl.default.bzl", "filegroup", "get_compatible_with_porta
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/xla:run_lit.sh",
     test_file_exts = ["mlir"],
