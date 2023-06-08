@@ -1,3 +1,4 @@
+# These lines consist of sub-commands that are executed using a single RUN command in the Dockerfile to install jdk by using zulu.
 Add-Type -AssemblyName "System.IO.Compression.FileSystem"; `
 $zulu_url = "https://cdn.azul.com/zulu/bin/zulu8.28.0.1-jdk8.0.163-win_x64.zip"; `
 $zulu_zip = "c:\tmp\zulu8.28.0.1-jdk8.0.163-win_x64.zip"; `
