@@ -439,14 +439,14 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     static_deps = tf_python_pybind_static_deps(),
+    # Do not sort: core:py_exception_registry must come before platform:status
     deps = [
-        ":py_exception_registry",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/python/lib/core:py_exception_registry",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
+        "//third_party/python_runtime:headers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:py_exception_registry",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -1979,7 +1979,7 @@ pywrap_tensorflow_macro(
         "@eigen_archive//:__subpackages__",
     ]),
     roots = [
-        ":py_exception_registry",
+        "//tensorflow/python/lib/core:py_exception_registry",
     ],
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
@@ -2161,7 +2161,6 @@ pywrap_tensorflow_macro(
 filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
-        ":py_exception_registry",  # py_exception_registry
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:safe_ptr",  # checkpoint_reader
@@ -2232,6 +2231,7 @@ filegroup(
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
         "//tensorflow/python/lib/core:ndarray_tensor",  # checkpoint_reader
+        "//tensorflow/python/lib/core:py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
         "//tensorflow/python/lib/core:safe_pyobject_ptr",  # checkpoint_reader
         "//tensorflow/python/util:cpp_nest",
