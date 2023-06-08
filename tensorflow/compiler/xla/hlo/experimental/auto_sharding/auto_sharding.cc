@@ -2962,16 +2962,6 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
       }
     }
   }
-
-  for (HloInstruction* inst : sequence.instructions()) {
-    if (inst->opcode() == HloOpcode::kIota) {
-      if (inst->sharding().IsReplicated()) {
-        // For fully replicated iota, leave its sharding annotation to the
-        // ShardingPropagation pass, which can typically do a better job.
-        inst->clear_sharding();
-      }
-    }
-  }
 }
 
 // Print liveness set for debugging.
