@@ -3,99 +3,67 @@
 # - Has Visual Studio 2019 Build Tools installed.
 # - Has MSVC 14.29 and clang 14.0 installed
 # - Has msys2 + git, curl, zip, unzip installed.
-# - Has Python 3.11 installed.
+# - Has Python installation based on the input argument.
 # - Has Bazelisk v1.16.0 installed.
 FROM mcr.microsoft.com/windows/servercore:ltsc2019
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $VerbosePreference = 'Continue';"]
-RUN netsh interface ipv4 set subinterface \"vEthernet (Ethernet)\" mtu=1460 store=persistent
+# RUN netsh interface ipv4 set subinterface \"vEthernet (Ethernet)\" mtu=1460 store=persistent
 
 RUN md C:\TMP
 
 # Install Visual Studio 2019 Build Tools.
 RUN (New-Object Net.WebClient).DownloadFile('https://aka.ms/vs/16/release/vs_community.exe', 'C:\tmp\vs_community.exe');
-COPY visualstudio.bat .
+COPY vs.bat .
 SHELL ["cmd", "/S", "/C"]
-RUN visualstudio.bat || IF "%ERRORLEVEL%"=="3010" EXIT 0
+RUN vs.bat || IF "%ERRORLEVEL%"=="3010" EXIT 0
 
 SHELL ["powershell.exe", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; $VerbosePreference = 'Continue';"]
 # Install 7-Zip and add it to the path.
-RUN (New-Object Net.WebClient).DownloadFile('https://www.7-zip.org/a/7z2201-x64.msi', '7z.msi'); \
-    Start-Process msiexec.exe -ArgumentList \"/i 7z.msi /qn /norestart /log C:\\tmp\\7z_install_log.txt\" -wait; \
-    Remove-Item .\7z.msi;
+COPY 7zip.ps1 7zip.ps1
+RUN powershell -ExecutionPolicy Bypass -File 7zip.ps1 
 
-# "Install msys2 and add some extra tools".
+# Install msys2, and add some extra tools.
 COPY msys2.ps1 msys2.ps1
 RUN powershell -ExecutionPolicy Bypass -File msys2.ps1 
-RUN rm msys2.ps1
 
 # Install clang.
-RUN (New-Object Net.WebClient).DownloadFile( \
-         'https://github.com/llvm/llvm-project/releases/download/llvmorg-16.0.4/LLVM-16.0.4-win64.exe', \
-         'LLVM.exe'); \
-    Start-Process -FilePath \"C:\Program Files\7-Zip\7z.exe\" -ArgumentList 'x LLVM.exe -oC:\tools\llvm' -Wait; \
-    $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\llvm\bin'; \
-    [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
-# "Enable signature checking on pacman"
-RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw32 -Value 'SigLevel = Required'
-RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.mingw64 -Value 'SigLevel = Required'
-RUN Add-Content -Path C:\tools\msys64\etc\pacman.d\mirrorlist.msys -Value 'SigLevel = Required'
-# Install pacman packages.
-RUN C:\tools\msys64\usr\bin\bash.exe -lc 'pacman-key --init && pacman-key --populate msys2 && pacman --noconfirm -Syy git curl zip unzip patch'
+COPY clang.ps1 clang.ps1
+RUN powershell -ExecutionPolicy Bypass -File clang.ps1 
+
+# Enable signature checking on pacman and Install pacman packages.
+COPY pacman.ps1 pacman.ps1
+RUN powershell -ExecutionPolicy Bypass -File pacman.ps1 
 
 # Install Python (specified by ARG PYTHON_VERSION)
 ARG PYTHON_VERSION
-ENV PYTHON_DIR=C:\\python
-
-SHELL ["powershell", "-Command", "$env:PYTHON_VERSION_SHORT = $env:PYTHON_VERSION.Replace('.', '');"];
-RUN $TargetDirPython = $Env:PYTHON_DIR + $Env:PYTHON_VERSION_SHORT; \
-    Write-Host $TargetDirPython
-
-RUN $url = ('https://www.python.org/ftp/python/{0}/python-{0}-amd64.exe' -f $env:PYTHON_VERSION); \
-    Write-Host ('Downloading {0} ...' -f $url); \
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; \
-	(New-Object Net.WebClient).DownloadFile($url, 'C:\tmp\pyinstall.exe'); \
-    \
-    Write-Host 'Installing...'; \
-	Start-Process -FilePath "C:\tmp\pyinstall.exe" -ArgumentList "/quiet", "InstallAllUsers=1", "PrependPath=1", "TargetDir=$TargetDirPython" -Wait; \
-    \
-    Write-Host 'Removing ...'; \
-    Remove-Item C:\tmp\pyinstall.exe -Force; \
-    Write-Host 'Complete.';
-	
+COPY python.ps1 python.ps1
+RUN powershell -ExecutionPolicy Bypass -File python.ps1 
 RUN Write-Host '  python --version';& "python.exe" --version;
 
 # Install the pip packages
 COPY devel.requirements.txt C:\\tmp\\devel.requirements.txt
 RUN & "python.exe" -m pip install --ignore-installed --force-reinstall --upgrade -r 'C:\tmp\devel.requirements.txt'
-	
-RUN \
-  Add-Type -AssemblyName \"System.IO.Compression.FileSystem\"; \
-  $zulu_url = \"https://cdn.azul.com/zulu/bin/zulu8.28.0.1-jdk8.0.163-win_x64.zip\"; \
-  $zulu_zip = \"c:\\tmp\\zulu8.28.0.1-jdk8.0.163-win_x64.zip\"; \
-  $zulu_extracted_path = \"c:\\tmp\\\" + [IO.Path]::GetFileNameWithoutExtension($zulu_zip); \
-  $zulu_root = \"c:\\openjdk\"; \
-  (New-Object Net.WebClient).DownloadFile($zulu_url, $zulu_zip); \
-  [System.IO.Compression.ZipFile]::ExtractToDirectory($zulu_zip, \"c:\\tmp\"); \
-  Move-Item $zulu_extracted_path -Destination $zulu_root; \
-  Remove-Item $zulu_zip; \
-  $env:PATH = [Environment]::GetEnvironmentVariable(\"PATH\", \"Machine\") + \";${zulu_root}\\bin\"; \
-  [Environment]::SetEnvironmentVariable(\"PATH\", $env:PATH, \"Machine\"); \
-  $env:JAVA_HOME = $zulu_root; \
-  [Environment]::SetEnvironmentVariable(\"JAVA_HOME\", $env:JAVA_HOME, \"Machine\")
+
+# Install jdk by using zulu
+COPY jdk.ps1 jdk.ps1
+RUN powershell -ExecutionPolicy Bypass -File jdk.ps1 
+
 # Environment variables to work around the msys issues
 ENV MSYS_NO_PATHCONV 1
 ENV MSYS2_ARG_CONV_EXCL *
+
 # See https://docs.microsoft.com/en-us/visualstudio/releases/2019/history for the mapping
 ENV BAZEL_VC_FULL_VERSION 14.29.30133
 # Make sure path to MSVC tools is available to Bazel
 ENV BAZEL_VC "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC"
+
 # Install bazelisk
 RUN md C:\tools\bazel
-RUN (New-Object Net.WebClient).DownloadFile( \
-         'https://github.com/bazelbuild/bazelisk/releases/download/v1.16.0/bazelisk-windows-amd64.exe', \
-         'C:\tools\bazel\bazel.exe'); \
-    $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\bazel'; \
-    [Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
+COPY bazelisk.ps1 bazelisk.ps1
+RUN powershell -ExecutionPolicy Bypass -File bazelisk.ps1 
+
+RUN Remove-Item -Path "*.ps1", "vs.bat"
+
 # Restore default shell for Windows containers.
 SHELL ["cmd.exe", "/s", "/c"]
 # Default to PowerShell if no other command specified.

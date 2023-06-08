@@ -2,4 +2,5 @@
 Start-Process -FilePath "C:\Program Files\7-Zip\7z.exe" -ArgumentList 'x msys2.tar.xz -oC:\tmp\msys2.tar' -Wait; `
 Start-Process -FilePath "C:\Program Files\7-Zip\7z.exe" -ArgumentList 'x C:\tmp\msys2.tar -oC:\tools' -Wait; `
 $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';C:\tools\msys64;C:\tools\msys64\usr\bin\'; `
-[Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine');
+[Environment]::SetEnvironmentVariable('PATH', $env:PATH, 'Machine'); `
+Write-Host "MSYS2 Installed.";
