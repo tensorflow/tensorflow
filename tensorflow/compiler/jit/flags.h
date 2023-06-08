@@ -207,6 +207,12 @@ struct XlaOpsCommonFlags {
   } tf_xla_use_device_api;
 };
 
+// Flags for the XlaCallModule kernel.
+struct XlaCallModuleFlags {
+  // Used by XlaCallModuleOp to specify safety checks to disable.
+  absl::flat_hash_set<std::string> disabled_checks;
+};
+
 // Flags for the build_xla_ops pass.
 struct BuildXlaOpsPassFlags {
   // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
@@ -266,6 +272,7 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 XlaOpsCommonFlags* GetXlaOpsCommonFlags();
+XlaCallModuleFlags* GetXlaCallModuleFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
 

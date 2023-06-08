@@ -2729,6 +2729,34 @@ tf_xla_py_strict_test(
 )
 
 tf_xla_py_strict_test(
+    name = "xla_call_module_no_platform_check_test",
+    size = "small",
+    srcs = ["xla_call_module_no_platform_check_test.py"],
+    enable_mlir_bridge = False,
+    env = {"TF_XLA_FLAGS": "--tf_xla_call_module_disabled_checks=platform"},
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    use_xla_device = False,  # Uses tf.function(jit_compile=True)
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/mlir/stablehlo",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:function",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_xla_py_strict_test(
     name = "bincount_op_test",
     size = "small",
     srcs = ["bincount_op_test.py"],

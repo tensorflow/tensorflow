@@ -34,6 +34,7 @@ BuildXlaOpsPassFlags* build_ops_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
+XlaCallModuleFlags* call_module_flags;
 MlirCommonFlags* mlir_flags;
 JitRtFlags* jitrt_flags;
 std::vector<Flag>* jitrt_flag_list;
@@ -73,6 +74,13 @@ bool SetterForXlaAutoJitFlag(const string& value) {
 
   mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_single_gpu =
       opt_level;
+  return true;
+}
+
+bool SetterForXlaCallModuleDisabledChecks(const string& value) {
+  auto directives = absl::StrSplit(value, ',', absl::SkipEmpty());
+  call_module_flags->disabled_checks.insert(directives.begin(),
+                                            directives.end());
   return true;
 }
 
@@ -218,6 +226,7 @@ void AllocateAndParseFlags() {
   ops_flags->tf_xla_use_device_api.enabled_for_compile_and_run_ = false;
   ops_flags->tf_xla_use_device_api.enabled_for_all_ = false;
 
+  call_module_flags = new XlaCallModuleFlags;
   // The `enable_mlir_bridge` flag allows the user to explicitly request that
   // their program is (or isn't) compiled using the MLIR-based TF-to-XLA bridge.
   //
@@ -289,6 +298,12 @@ void AllocateAndParseFlags() {
             "of ops one-by-one in 'on-demand' mode, for functions marked for "
             "JIT compilation, or when auto-clustering is enabled. Defaults to "
             "false."),
+
+       Flag("tf_xla_call_module_disabled_checks",
+            SetterForXlaCallModuleDisabledChecks, "",
+            "A comma-sepated list of directives specifying the safety checks "
+            "to be skipped when compiling XlaCallModuleOp. See the op "
+            "documentation for the recognized values."),
 
        Flag("tf_mlir_enable_mlir_bridge", &enable_mlir_bridge,
             "Enables experimental MLIR-Based TensorFlow Compiler Bridge.",
@@ -375,6 +390,11 @@ XlaDeviceFlags* GetXlaDeviceFlags() {
 XlaOpsCommonFlags* GetXlaOpsCommonFlags() {
   absl::call_once(flags_init, &AllocateAndParseFlags);
   return ops_flags;
+}
+
+XlaCallModuleFlags* GetXlaCallModuleFlags() {
+  absl::call_once(flags_init, &AllocateAndParseFlags);
+  return call_module_flags;
 }
 
 MlirCommonFlags* GetMlirCommonFlags() {
