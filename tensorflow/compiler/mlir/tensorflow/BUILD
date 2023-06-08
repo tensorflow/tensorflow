@@ -1311,6 +1311,7 @@ cc_library(
         "transforms/xla_cluster_formation.cc",
         "transforms/xla_inline_device_ops.cc",
         "transforms/xla_rewrite.cc",
+        "transforms/xla_validate_inputs.cc",
         "translate/breakup-islands.cc",
         "translate/split_into_island_per_op_pass.cc",
         "translate/tf_executor_to_functional.cc",
@@ -1318,7 +1319,6 @@ cc_library(
     ],
     hdrs = [
         "transforms/bridge.h",
-        "transforms/call_graph_util.h",
         "transforms/cluster_ops_by_policy.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
@@ -1335,6 +1335,7 @@ cc_library(
     deps = [
         ":attribute_utils",
         ":bridge_logger",
+        ":call_graph_util",
         ":cluster_util",
         ":convert_tensor",
         ":convert_type",
@@ -1388,6 +1389,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/client:sharding_builder",
         "//tensorflow/compiler/xla/mlir_hlo",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -2592,6 +2594,41 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "call_graph_util",
+    srcs = [
+        "utils/call_graph_util.cc",
+    ],
+    hdrs = [
+        "utils/call_graph_util.h",
+    ],
+    deps = [
+        ":tensorflow",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "call_graph_util_test",
+    size = "small",
+    srcs = ["utils/call_graph_util_test.cc"],
+    deps = [
+        ":attribute_utils",
+        ":call_graph_util",
+        ":tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Parser",
     ],
 )
 

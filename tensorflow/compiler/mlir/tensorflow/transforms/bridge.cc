@@ -414,6 +414,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   VLOG(2) << "Create TF XLA Bridge pipeline";
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+  // This pass expectes unified compilation markers.
+  pm.addPass(TFDevice::CreateXlaValidateInputsPass());
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));

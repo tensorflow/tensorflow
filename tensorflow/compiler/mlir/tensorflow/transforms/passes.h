@@ -507,6 +507,9 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateXlaInlineDeviceOpsPass();
 // Creates a pass that rewrites partitioned calls with `_xla_compile_device
 // type` with `tf.XlaLaunch` ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateXlaRewritePass();
+
+// Create a pass that validates the input graph to the CPU/GPU bridge.
+std::unique_ptr<OperationPass<ModuleOp>> CreateXlaValidateInputsPass();
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -765,6 +768,7 @@ namespace TFDevice {
 #define GEN_PASS_DECL_XLACLUSTERFORMATIONPASS
 #define GEN_PASS_DECL_XLAINLINEDEVICEOPSPASS
 #define GEN_PASS_DECL_XLAREWRITEPASS
+#define GEN_PASS_DECL_XLAVALIDATEINPUTSPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_device_passes.h.inc"
 }  // namespace TFDevice
 
