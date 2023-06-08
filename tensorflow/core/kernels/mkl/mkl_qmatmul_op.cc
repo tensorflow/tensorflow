@@ -281,7 +281,7 @@ class MklDnnQuantizedMatMulOp
         // to OI for the first iteration and cache it to reuse in the
         // subsequent iterations, if the weight is constant.
 #ifndef ENABLE_ONEDNN_V3
-        // TODO(intel-tf): enable weights caching once it is enabled in the base
+        // TODO(intel-tf): enable weight caching once it is enabled in the base
         // class.
         if (this->is_weight_const_) {
           // Check if the weight is already cached or not
@@ -478,15 +478,12 @@ class MklDnnQuantizedMatMulOp
     }
 #else
       if (std::is_same<Toutput, quint8>::value) {
-        // Existing unit tests expect dst_scale to be computed using 256.0
-        // value as opposed to 255.0. This has no impact on model level
-        // accuracy.
-        dst_scale = scale_eightbit / 256.0;
+        dst_scale = scale_eightbit / 255.0;
       } else if (std::is_same<Toutput, qint8>::value) {
         dst_scale = scale_eightbit / 127.0;
       } else {
         // Output type is float.
-        dst_scale = src_scale * wei_scale;
+        dst_scale = 1.0;
       }
     } else {
       if (!std::is_same<Toutput, qint32>::value)
@@ -666,7 +663,7 @@ class MklDnnQuantizedMatMulOp
             x += wt_buf[i * n + j];
           }
           if (std::is_same<Tbias, qint32>::value) {
-            // Starting oneDNN v3.0, bias is expected to be dequantized to
+            // Starting with oneDNN v3.0, bias is expected to be dequantized to
             // float32.
             comp_bias[j] = static_cast<float>(bias_buf[j]) / out_scale;
           } else {
