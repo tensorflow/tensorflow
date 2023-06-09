@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 
 namespace xla {
@@ -156,6 +157,23 @@ StatusOr<bool> LoopScheduleLinearizer::Run(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
+      }
+
+      // Skip loops that have async collectives, as the additional control deps
+      // inserted by this pass can constrain scheduling and hamper compute
+      // and communication overlap.
+      const HloComputation* body = instruction->while_body();
+      bool has_async_collectives =
+          absl::c_any_of(body->instructions(), [](const HloInstruction* instr) {
+            HloOpcode op = instr->opcode();
+            return hlo_query::IsAsyncCollectiveStartOp(op) ||
+                   hlo_query::IsAsyncCollectiveDoneOp(op);
+          });
+
+      if (has_async_collectives) {
+        VLOG(2) << "Skipping " << instruction->name()
+                << " since body has async collectives";
         continue;
       }
 

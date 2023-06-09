@@ -4595,6 +4595,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service/graphcycles",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
