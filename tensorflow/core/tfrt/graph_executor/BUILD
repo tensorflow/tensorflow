@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -95,11 +95,7 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
-    ] + if_google(
-        [
-            "//learning/brain/tfrt/support:export_mlir",
-        ],
-    ),
+    ],
 )
 
 tf_cc_test(

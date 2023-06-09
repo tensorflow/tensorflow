@@ -162,6 +162,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime",
         "@tf_runtime//:hostcontext",
     ] + if_google([
+        "//learning/brain/tfrt/support:export_mlir",
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )
