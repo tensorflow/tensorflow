@@ -121,8 +121,6 @@ xla_cc_test(
     deps = [
         ":bit_cast",
         ":test",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -219,7 +217,6 @@ xla_cc_test(
     deps = [
         ":test",
         ":types",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -231,7 +228,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":status",
-        ":xla_cc_grpc_proto",
         ":xla_data_proto_cc",
         ":xla_proto_cc",
     ],
@@ -263,7 +259,6 @@ xla_cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -377,7 +372,6 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/hash",
@@ -500,7 +494,6 @@ xla_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -586,7 +579,6 @@ xla_cc_test(
         ":types",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:float8",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
@@ -654,7 +646,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -880,8 +871,6 @@ xla_cc_test(
         ":types",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -912,10 +901,8 @@ xla_cc_test(
         ":shape_util",
         ":test",
         ":xla_data_proto_cc",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -997,12 +984,10 @@ xla_cc_test(
         ":literal",
         ":reference_util",
         ":test",
-        ":util",
         ":xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1081,12 +1066,9 @@ xla_cc_test(
     deps =
         [
             ":xla_proto_cc",
-            "//tensorflow/compiler/xla/hlo/ir:hlo",
-            "//tensorflow/tsl/platform:logging",
             "//tensorflow/tsl/platform:test",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/strings:str_format",
         ],
 )
 
