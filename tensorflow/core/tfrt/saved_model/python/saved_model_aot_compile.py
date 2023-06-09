@@ -15,7 +15,9 @@
 
 """Test .py file for pybind11 files for AotOptions and AotCompileSavedModel, currently unable to test due to nullptr in AotOptions."""
 
+
 from absl import app
+from tensorflow.core.tfrt.graph_executor.python import _pywrap_graph_execution_options
 from tensorflow.core.tfrt.saved_model.python import _pywrap_saved_model_aot_compile
 
 
@@ -23,6 +25,10 @@ def main(unused_argv):
   if not _pywrap_saved_model_aot_compile:
     return
   try:
+    # Test for creating an instance of GraphExecutionOptions
+    test = _pywrap_graph_execution_options.GraphExecutionOptions()
+    print(test)
+
     # Executes AoTOptions and AotCompileSavedModel for Wrapping Tests
     _pywrap_saved_model_aot_compile.AotOptions()
 
@@ -30,6 +36,7 @@ def main(unused_argv):
     # update this test script to read from CNS
     _pywrap_saved_model_aot_compile.AotCompileSavedModel("random")
 
+  # Could also do except status.StatusNotOk if testing for AotCompileSavedModel
   except Exception as exception:  # pylint: disable=broad-exception-caught
     print(exception)
 

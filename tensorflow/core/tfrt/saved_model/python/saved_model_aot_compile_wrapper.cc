@@ -14,14 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include "pybind11/pybind11.h"  // from @pybind11
+#include "pybind11_abseil/status_casters.h"  // from @pybind11_abseil
+#include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
+#include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_aot_compile.h"
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 
 namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_saved_model_aot_compile, m) {
-  py::class_<tensorflow::tfrt_stub::AotOptions>(m, "AotOptions")
-      .def(py::init<>());
+  py::google::ImportStatusModule();
+
+  py::class_<tensorflow::tfrt_stub::AotOptions>(m, "AotOptions",
+                                                py::dynamic_attr())
+      .def(py::init<>())
+      .def_readwrite(
+          "graph_execution_options",
+          &tensorflow::tfrt_stub::AotOptions::graph_execution_options);
   m.doc() = "pybind11 AotOptions Python - C++ Wrapper";
 
   m.def("AotCompileSavedModel", &tensorflow::tfrt_stub::AotCompileSavedModel,
