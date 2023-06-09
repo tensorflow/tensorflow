@@ -1,4 +1,4 @@
-/* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,17 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/data/service/snapshot/snapshot_reader.h"
-
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/data/captured_function.h"
 #include "tensorflow/core/data/name_utils.h"
-#include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -31,10 +27,8 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/path.h"
-#include "tensorflow/tsl/platform/refcount.h"
 #include "tensorflow/tsl/platform/status.h"
-#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/tstring.h"
 
 namespace tensorflow {
 namespace data {
@@ -48,7 +42,7 @@ constexpr const char* const kOutputShapes = "output_shapes";
 
 constexpr int64_t kTFRecordReaderOutputBufferSize = 512 << 20;  // 512MB
 
-// A reader dataset is responsible for reading one chunk file.
+// A reader dataset is responsible for reading one chunk file of a snapshot.
 // TODO(b/250921378): Merge this with `snapshot_util::Reader::Dataset`.
 class SnapshotChunkDatasetOp : public DatasetOpKernel {
  public:
@@ -198,65 +192,9 @@ void SnapshotChunkDatasetOp::MakeDataset(OpKernelContext* ctx,
                                                 output_shapes_);
 }
 
-Status MakeNestedDataset(const SnapshotReaderParams& params,
-                         DatasetBase** output) {
-  TF_ASSIGN_OR_RETURN(
-      std::vector<std::string> chunk_files,
-      GetChildren(params.CommittedChunksDirectory(), params.env));
-
-  std::vector<DatasetBase*> datasets;
-  datasets.reserve(chunk_files.size());
-  for (int64_t i = 0; i < chunk_files.size(); ++i) {
-    std::string chunk_file_path =
-        tsl::io::JoinPath(params.CommittedChunksDirectory(), chunk_files[i]);
-    datasets.push_back(new SnapshotChunkDatasetOp::Dataset(
-        DatasetContext(DatasetContext::Params(
-            {"SnapshotChunkDataset",
-             strings::StrCat("SnapshotChunkDataset/_", i)})),
-        chunk_file_path, params.metadata.compression(), params.dtypes,
-        params.shapes));
-    datasets.back()->Initialize(/*metadata=*/{});
-  }
-  snapshot_util::Reader::MakeNestedDataset(datasets, output);
-  return OkStatus();
-}
-
 REGISTER_KERNEL_BUILDER(Name("SnapshotChunkDataset").Device(DEVICE_CPU),
                         SnapshotChunkDatasetOp);
 
 }  // namespace
-
-StatusOr<core::RefCountPtr<DatasetBase>> MakeSnapshotReaderDataset(
-    const SnapshotReaderParams& params,
-    InstantiatedCapturedFunction& instantiated_captured_func,
-    IteratorContext* ctx) {
-  TF_RETURN_IF_ERROR(ValidateSnapshot(params.snapshot_path, params.env));
-  DatasetBase* dataset_of_snapshot_files;
-  TF_RETURN_IF_ERROR(MakeNestedDataset(params, &dataset_of_snapshot_files));
-
-  Tensor input_dataset_tensor(DT_VARIANT, TensorShape({}));
-  TF_RETURN_IF_ERROR(StoreDatasetInVariantTensor(dataset_of_snapshot_files,
-                                                 &input_dataset_tensor));
-
-  std::vector<Tensor> reader_input;
-  std::vector<Tensor> reader_output;
-  reader_input.push_back(std::move(input_dataset_tensor));
-
-  // NOTE: We intentionally ignore resource modeling outside GetNext().
-  TF_RETURN_IF_ERROR(instantiated_captured_func.Run(
-      ctx, std::move(reader_input), &reader_output, /*node=*/nullptr));
-  if (reader_output.size() != 1) {
-    return errors::InvalidArgument(
-        "reader_func in tf.data.Dataset.load is expected to return one "
-        "argument. Got ",
-        reader_output.size(), ".");
-  }
-  DatasetBase* output_dataset = nullptr;
-  TF_RETURN_IF_ERROR(
-      GetDatasetFromVariantTensor(reader_output[0], &output_dataset));
-  output_dataset->Ref();
-  return core::RefCountPtr<DatasetBase>(output_dataset);
-}
-
 }  // namespace data
 }  // namespace tensorflow

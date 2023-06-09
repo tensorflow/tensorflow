@@ -425,7 +425,6 @@ tf_kernel_library(
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:utils",
-        "//tensorflow/core/data/service/snapshot:snapshot_reader",
         "//tensorflow/core/framework:op_requires",
     ],
 )
@@ -964,6 +963,7 @@ tf_kernel_library(
         ":to_tf_record_op",
         ":unbatch_dataset_op",
         ":unique_dataset_op",
+        "//tensorflow/core/data/service/snapshot:snapshot_chunk_dataset_op",
     ] + select({
         "//tensorflow:fuchsia": [],
         "//conditions:default": [":lmdb_dataset_op"],
