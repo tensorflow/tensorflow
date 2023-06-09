@@ -645,3 +645,24 @@ diff -ruN --strip-trailing-cr a/llvm/test/CodeGen/WebAssembly/simd-offset.ll b/l
  ; CHECK-NEXT:    # fallthrough-return
    %v = load <4 x i8>, ptr @gv_v4i8
    %v2 = zext <4 x i8> %v to <4 x i32>
+diff -ruN --strip-trailing-cr a/mlir/include/mlir/Analysis/SliceAnalysis.h b/mlir/include/mlir/Analysis/SliceAnalysis.h
+--- a/mlir/include/mlir/Analysis/SliceAnalysis.h
++++ b/mlir/include/mlir/Analysis/SliceAnalysis.h
+@@ -31,9 +31,17 @@
+ 
+   /// Include the top level op in the slice.
+   bool inclusive = false;
++
++  // TODO: Remove this alias once downstream users are updated.
++  SliceOptions() {}
++  SliceOptions(TransitiveFilter filter) : filter(std::move(filter)) {}
+ };
+ 
++// TODO: Remove this alias once downstream users are updated.
++using TransitiveFilter = SliceOptions::TransitiveFilter;
++
+ struct BackwardSliceOptions : public SliceOptions {
++  using SliceOptions::SliceOptions;
+   /// When omitBlockArguments is true, the backward slice computation omits
+   /// traversing any block arguments. When omitBlockArguments is false, the
+   /// backward slice computation traverses block arguments and asserts that the
