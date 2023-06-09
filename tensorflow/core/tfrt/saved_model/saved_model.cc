@@ -708,7 +708,7 @@ SavedModelImpl::LoadSavedModel(Options options,
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                       options.graph_execution_options.compile_options,
-                      mlir_module.get()));
+                      *fallback_state, mlir_module.get()));
   } else {
     RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
         options.graph_execution_options.compile_options, mlir_module.get(),

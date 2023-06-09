@@ -45,12 +45,13 @@ namespace tensorflow {
 namespace mlrt_compiler {
 
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    const TfrtCompileOptions& options,
+    const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
     mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) {
   mlrt::bc::Buffer bytecode_buffer;
   TF_RETURN_IF_ERROR(ConvertTfMlirToRuntimeExecutable(
       options, module,
-      [&bytecode_buffer, module_with_op_keys](
+      [&bytecode_buffer, &fallback_state, module_with_op_keys](
           mlir::PassManager& pm, mlir::ModuleOp module,
           const TfrtPipelineOptions& options) {
         mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
@@ -82,7 +83,7 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
         // Clear passes already run.
         pm.clear();
         // Create the remaining pipeline and run.
-        CreateTfToMlrtPipeline(pm, options);
+        CreateTfToMlrtPipeline(pm, options, &fallback_state);
         if (mlir::failed(pm.run(module))) {
           return diag_handler.Combine(absl::InternalError(
               "failed to lower TF Dialect to MLRT dialect."));
@@ -100,7 +101,9 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
 }
 
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module_with_op_keys,
+    const TfrtCompileOptions& options,
+    const tfrt_stub::FallbackState& fallback_state,
+    mlir::ModuleOp module_with_op_keys,
     const tfrt_stub::CostRecorder& cost_recorder) {
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module_with_op_keys.getContext());
@@ -111,7 +114,8 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
   // Create the reconversion pipeline and run.
   mlir::PassManager pm(module_with_op_keys.getContext());
   const auto pipeline_options = GetTfrtPipelineOptions(options);
-  CreateTfToMlrtPipeline(pm, *pipeline_options, &cost_recorder);
+  CreateTfToMlrtPipeline(pm, *pipeline_options, &fallback_state,
+                         &cost_recorder);
   if (mlir::failed(pm.run(module_with_op_keys))) {
     return diag_handler.Combine(
         absl::InternalError("failed to lower TF Dialect to MLRT dialect."));

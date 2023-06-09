@@ -391,7 +391,7 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
     absl::StrAppend(&node_name, "_", execute_key);
 
     auto statusor_node_def = tensorflow::ConvertTFDialectOpToNodeDef(
-        op, node_name, /*ignore_unregistered_attrs=*/true);
+        op, node_name, /*ignore_unregistered_attrs=*/false);
     if (!statusor_node_def.ok())
       return op->emitWarning("failed to export NodeDef.");
     auto &node_def = **statusor_node_def;
@@ -450,9 +450,15 @@ class ExecuteOpConversion final : public mlir::ConversionPattern {
         new_op = rewriter.replaceOpWithNewOp<tf_mlrt::ExecuteOp>(
             op, result_types, operands, node_def_text, execute_key);
       }
-      if (mlir::failed(
-              execute_op_registry_.RegisterExecuteOp(new_op, execute_key))) {
-        return op->emitWarning("Fail to register sync op");
+
+      if (op_kernel_runner.ok()) {
+        // Only register this executeop if its opkernel can be created.
+        // Otherwise, it is an unused op so we don't need to create them at
+        // runtime.
+        if (mlir::failed(
+                execute_op_registry_.RegisterExecuteOp(new_op, execute_key))) {
+          return op->emitWarning("Fail to register sync op");
+        }
       }
     }
 
@@ -739,10 +745,14 @@ void CreateFallbackInitializationFunction(
   // Create operations for all fallback kernels in the module.
   for (const auto &[op_index, op] :
        llvm::enumerate(execute_op_registry.GetExecuteOps())) {
-    CHECK(op != nullptr) << " Missing op for " << op_index;  // Crash OK
-    builder.create<tf_mlrt::CreateOp>(
-        func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
-        /*operands=*/mlir::ValueRange{}, op->getAttrs());
+    if (op) {
+      // There might be unused ops, and we don't need to create them at runtime.
+      //
+      // TODO(chky, deqiangc): Clean up unused ops before hand.
+      builder.create<tf_mlrt::CreateOp>(
+          func_op.getLoc(), /*resultTypes=*/mlir::TypeRange{},
+          /*operands=*/mlir::ValueRange{}, op->getAttrs());
+    }
   }
 
   builder.create<mlir::func::ReturnOp>(func_op.getLoc());

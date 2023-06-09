@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
 
 namespace tensorflow {
@@ -31,7 +32,8 @@ namespace mlrt_compiler {
 //
 // This is for initial conversion.
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module,
+    const TfrtCompileOptions& options,
+    const tfrt_stub::FallbackState& fallback_state, mlir::ModuleOp module,
     mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys = nullptr);
 
 // Converts an MLIR `module_with_op_keys` in TF dialect to MLRT's bytecode
@@ -39,7 +41,9 @@ StatusOr<mlrt::bc::Buffer> ConvertTfMlirToBytecode(
 //
 // This is for re-conversion.
 StatusOr<mlrt::bc::Buffer> ConvertTfMlirWithOpKeysToBytecode(
-    const TfrtCompileOptions& options, mlir::ModuleOp module_with_op_keys,
+    const TfrtCompileOptions& options,
+    const tfrt_stub::FallbackState& fallback_state,
+    mlir::ModuleOp module_with_op_keys,
     const tfrt_stub::CostRecorder& cost_recorder);
 
 }  // namespace mlrt_compiler

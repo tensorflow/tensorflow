@@ -618,7 +618,9 @@ GraphExecutor::ImportAndCompileClientGraph(
 
     ASSIGN_OR_RETURN_IN_COMPILE(
         auto bytecode_buffer,
-        CompileMlirModuleToByteCode(module.get(), &module_with_op_keys));
+        tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
+            options_.compile_options, fallback_state_, module.get(),
+            &module_with_op_keys));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     auto bytecode_executable =
         std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
@@ -707,19 +709,6 @@ StatusOr<tfrt::BefBuffer> GraphExecutor::CompileMlirModuleToBef(
   TF_RETURN_IF_ERROR(
       tensorflow::ConvertTfMlirToBef(options_.compile_options, module, &bef));
   return bef;
-}
-
-StatusOr<mlrt::bc::Buffer> GraphExecutor::CompileMlirModuleToByteCode(
-    mlir::ModuleOp module,
-    mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) const {
-  return tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
-      options_.compile_options, module, module_with_op_keys);
-}
-
-StatusOr<mlrt::bc::Buffer> GraphExecutor::CompileMlirModuleWithOpKeysToByteCode(
-    mlir::ModuleOp module, const CostRecorder& cost_recorder) const {
-  return tensorflow::mlrt_compiler::ConvertTfMlirWithOpKeysToBytecode(
-      options_.compile_options, module, cost_recorder);
 }
 
 tensorflow::Status GraphExecutor::InitBef(
@@ -912,9 +901,12 @@ Status GraphExecutor::LoadedClientGraph::UpdateCost(
   if (executable_context()->IsForMlrt()) {
     // Recompile from the TF MLIR with recorded costs (skipping
     // AssignOpKeyPass), during which Stream Analysis is redone.
-    TF_ASSIGN_OR_RETURN(auto bytecode_buffer,
-                        graph_executor_->CompileMlirModuleWithOpKeysToByteCode(
-                            tf_mlir_with_op_keys.get(), cost_recorder));
+    TF_ASSIGN_OR_RETURN(
+        auto bytecode_buffer,
+        tensorflow::mlrt_compiler::ConvertTfMlirWithOpKeysToBytecode(
+            graph_executor_->options().compile_options,
+            graph_executor_->fallback_state_.get(), tf_mlir_with_op_keys.get(),
+            cost_recorder));
     mlrt::bc::Executable executable(bytecode_buffer.data());
     auto bytecode_executable = std::make_unique<mlrt::LoadedExecutable>(
         executable, *graph_executor_->kernel_registry_);

@@ -41,13 +41,17 @@ void RegisterMlrtPasses() {
 
 void CreateTfToMlrtPipeline(mlir::OpPassManager &pm,
                             const TfrtPipelineOptions &options,
+                            const tfrt_stub::FallbackState *fallback_state,
                             const tfrt_stub::CostRecorder *cost_recorder) {
   pm.addPass(
       mlrt_compiler::CreateTfToMlrtPreParallelizationConversionPass(options));
   pm.addPass(mlrt_compiler::CreateParallelizationPass(
       options.cost_threshold, options.merge_inter_dependent_streams,
       cost_recorder));
-  pm.addPass(mlrt_compiler::CreateTfToMlrtConversionPass(options));
+
+  DCHECK(fallback_state);
+  pm.addPass(
+      mlrt_compiler::CreateTfToMlrtConversionPass(options, fallback_state));
 
   // Perform optimizations in the lowered MLIR.
   pm.addNestedPass<mlir::func::FuncOp>(mlrt_compiler::CreateFuseMlrtOpPass());

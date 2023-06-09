@@ -295,11 +295,6 @@ class GraphExecutor {
   ImportClientGraphToMlirModule(const GraphExecutor::ClientGraph& client_graph,
                                 mlir::MLIRContext* context) const;
   StatusOr<tfrt::BefBuffer> CompileMlirModuleToBef(mlir::ModuleOp module) const;
-  StatusOr<mlrt::bc::Buffer> CompileMlirModuleToByteCode(
-      mlir::ModuleOp module,
-      mlir::OwningOpRef<mlir::ModuleOp>* module_with_op_keys) const;
-  StatusOr<mlrt::bc::Buffer> CompileMlirModuleWithOpKeysToByteCode(
-      mlir::ModuleOp module, const CostRecorder& cost_recorder) const;
 
   tensorflow::Status InitBef(
       LoadedClientGraph* loaded_client_graph,

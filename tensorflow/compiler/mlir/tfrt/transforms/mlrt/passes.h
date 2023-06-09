@@ -18,6 +18,7 @@ limitations under the License.
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -28,9 +29,10 @@ void RegisterMlrtPasses();
 // The op costs from `cost_recorder` (if non-null) are used for Stream Analysis.
 void CreateTfToMlrtPipeline(
     mlir::OpPassManager& pm, const TfrtPipelineOptions& options,
+    const tfrt_stub::FallbackState* fallback_state,
     const tfrt_stub::CostRecorder* cost_recorder = nullptr);
-}
 
+}  // namespace mlrt_compiler
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_MLRT_PASSES_H_

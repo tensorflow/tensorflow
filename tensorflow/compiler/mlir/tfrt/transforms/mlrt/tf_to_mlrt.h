@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_pipeline_options.h"
+#include "tensorflow/core/tfrt/fallback/fallback_state.h"
 
 namespace tensorflow {
 namespace mlrt_compiler {
@@ -36,6 +37,10 @@ CreateTfToMlrtPreParallelizationConversionPass(
 // contain conversion that depends on individual ops.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateTfToMlrtConversionPass(const TfrtPipelineOptions& options);
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTfToMlrtConversionPass(const TfrtPipelineOptions& options,
+                             const tfrt_stub::FallbackState* fallback_state);
 
 }  // namespace mlrt_compiler
 }  // namespace tensorflow
