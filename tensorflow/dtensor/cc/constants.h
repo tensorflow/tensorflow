@@ -153,6 +153,11 @@ static constexpr char kIteratorOutputShapes[] = "output_shapes";
 // The number of list of regular tensors used to represent sparse tensors.
 static constexpr int kSparseTensorNum = 3;
 
+// Attribute which stores the environment variable value for all_reduce
+// optimization group size: DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE.
+static constexpr char kAllReduceNumOpsInGroup[] =
+    "dtensor.all_reduce_combiner.num_ops_in_group";
+
 }  // namespace dtensor
 }  // namespace tensorflow
 
