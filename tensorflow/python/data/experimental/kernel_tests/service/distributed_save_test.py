@@ -354,6 +354,23 @@ class DistributedSaveTest(
       ))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testBadElementSpec(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset, self._test_dir,
+        cluster.dispatcher_address(),
+        compression="AUTO"))
+    _wait_for_snapshot(self._test_dir)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "User specified element_spec bad_element_spec, but the actual "
+        "element_spec is TensorSpec"):
+      _ = dataset_ops.Dataset.load(self._test_dir,
+                                   element_spec="bad_element_spec")
+
+  @combinations.generate(test_base.default_test_combinations())
   def testBadCompression(self):
     cluster = data_service_test_base.TestCluster(num_workers=1)
     dataset = dataset_ops.Dataset.range(10)
