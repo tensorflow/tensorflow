@@ -52,7 +52,7 @@ def is_nan(x):
 
 def cast_and_return_whether_casted(
     trace_types, values, context
-) -> tuple[list[Any], bool]:
+) -> PythonTuple[PythonList[Any], bool]:
   did_cast = False
   casted_values = []
   for t, v in zip(trace_types, values):
