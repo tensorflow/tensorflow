@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 
+#include <atomic>
+#include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
@@ -200,8 +206,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
   if (use_mlir_) {
     const ConfigProto* config = flib_runtime->config_proto();
     ConfigProto::Experimental::MlirBridgeRollout rollout_state =
-        GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
-                                         : absl::nullopt);
+        GetMlirBridgeRolloutState(config ? std::make_optional(*config)
+                                         : std::nullopt);
     compile_status =
         Compile(MlirToHloArgs{mlir_module_, rollout_state}, mesh_state->data(),
                 arg_shapes, &key, tpu_program_group);

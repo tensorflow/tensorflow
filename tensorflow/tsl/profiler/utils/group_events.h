@@ -147,12 +147,12 @@ using ContextGroupMap = absl::flat_hash_map<
 class EventForest {
  public:
   void AddSpace(
-      const std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       tensorflow::profiler::XSpace* space);
 
   void AddPlanes(
-      const std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       const std::vector<tensorflow::profiler::XPlane*>& planes);
 
@@ -171,7 +171,7 @@ class EventForest {
 
  private:
   void AddPlane(
-      const std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
+      std::function<XPlaneVisitor(const tensorflow::profiler::XPlane*)>
           visitor_factory,
       tensorflow::profiler::XPlane* plane);
 

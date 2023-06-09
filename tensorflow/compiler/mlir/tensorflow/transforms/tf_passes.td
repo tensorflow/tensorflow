@@ -402,6 +402,16 @@ def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> 
   }];
 }
 
+def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for sequential execution of embeddings";
+  let constructor = "TFDevice::CreateEmbeddingSequencingPass()";
+    let description = [{
+    This is a strictly sequential and formally correct fallback option for the
+    embedding pipelining pass intended for debugging during pipelining
+    development.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
@@ -2773,31 +2783,4 @@ def XlaCallModuleSerializationPass
   ];
 
   let constructor = "TF::CreateXlaCallModuleSerializationPass()";
-}
-
-def XlaCallModuleCustomCallTfFunctionRenamingPass
-    : Pass<"tf-xla-call-module-custom-call-tf-function-renaming", "ModuleOp"> {
-  let summary = "Renames stablehlo.custom_call's TF function name string attributes.";
-
-  let description = [{
-    In the stablehlo functions embedded in `tf.XlaCallModule`,
-    `stablehlo.custom_call`'s dictionary attribute `tf.backend_config` may have
-    a string attribute `caller_name` referring to a TF host callback function.
-
-    When importing SavedModel to MLIR, TF functions might be renamed. A renamed
-    TF function has a `tf._original_func_name` attribute indicating the original
-    function name.
-
-    But the stablehlo functions are serialized as a string attribute in
-    `tf.XlaCallModule`, MLIR framework cannot automatically rename
-    `stablehlo.custom_call`'s string attribute referring to those renamed TF
-    functions.
-
-    So after `XlaCallModuleDeserializationPass`, we need to run this pass to
-    rename the TF function names in `stablehlo.custom_call`'s attributes.
-  }];
-
-  let dependentDialects = ["stablehlo::StablehloDialect"];
-
-  let constructor = "TF::CreateXlaCallModuleCustomCallTfFunctionRenamingPass()";
 }

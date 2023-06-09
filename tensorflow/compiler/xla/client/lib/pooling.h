@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_LIB_POOLING_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_LIB_POOLING_H_
 
+#include <utility>
+#include <vector>
+
 #include "absl/container/inlined_vector.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 
@@ -57,8 +60,7 @@ XlaOp MaxPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
 XlaOp AvgPool(XlaOp operand, absl::Span<const int64_t> kernel_size,
               absl::Span<const int64_t> stride,
               absl::Span<const std::pair<int64_t, int64_t>> padding,
-              const TensorFormat& data_format,
-              const bool counts_include_padding);
+              const TensorFormat& data_format, bool counts_include_padding);
 
 // Returns the list of low and high padding elements in each spatial dimension
 // for the given 'padding' specification.
@@ -72,8 +74,7 @@ XlaOp AvgPoolGrad(XlaOp out_backprop, absl::Span<const int64_t> gradients_size,
                   absl::Span<const int64_t> kernel_size,
                   absl::Span<const int64_t> stride,
                   absl::Span<const std::pair<int64_t, int64_t>> spatial_padding,
-                  const TensorFormat& data_format,
-                  const bool counts_include_padding);
+                  const TensorFormat& data_format, bool counts_include_padding);
 
 }  // namespace xla
 

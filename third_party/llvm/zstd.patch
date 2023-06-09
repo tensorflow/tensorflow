@@ -1,11 +1,11 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 68bee8e08839..cbeb1b8caef8 100644
+index eb887a2e04a2..3ca71bc623e3 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -279,14 +279,6 @@ cc_library(
-         # will both provide the necessary dependencies and configuration
-         # defines.
-         "@llvm_terminfo//:terminfo",
+@@ -274,14 +274,6 @@ cc_library(
+     deps = [
+         ":config",
+         ":Demangle",
 -        # We unconditionally depend on the custom LLVM zlib wrapper. This will
 -        # be an empty library unless zlib is enabled, in which case it will
 -        # both provide the necessary dependencies and configuration defines.

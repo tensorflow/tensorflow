@@ -134,6 +134,7 @@ pytype_strict_library(
     visibility = [
         "//learning/brain/experimental/tfq:__pkg__",
         "//tensorflow/core/function/transform:__subpackages__",
+        "//tensorflow/python/eager:__subpackages__",
     ],
     deps = [
         ":runtime_client_pybind",
@@ -152,7 +153,6 @@ py_strict_test(
         ":runtime_client_py",
         "//tensorflow/core/framework:function_proto_py",
         "//tensorflow/core/function/testing:test_pass_py",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:tf2",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -161,6 +161,7 @@ py_strict_test(
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )

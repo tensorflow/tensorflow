@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 
+#include <utility>
+
 #include "absl/strings/str_split.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project

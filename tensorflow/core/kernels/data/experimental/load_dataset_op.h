@@ -59,7 +59,7 @@ class LoadDatasetOp : public DatasetOpKernel {
   std::string compression_;
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
-  std::shared_ptr<FunctionMetadata> func_metadata_;
+  std::shared_ptr<FunctionMetadata> reader_func_metadata_;
 };
 
 }  // namespace experimental

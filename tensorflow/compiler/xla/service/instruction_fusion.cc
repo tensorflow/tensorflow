@@ -40,6 +40,18 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
+
+#if defined(PLATFORM_GOOGLE)
+FusionDecision::FusionDecision(bool decision,
+                               absl::SourceLocation source_location) {
+  if (!decision) {
+    explanation_ =
+        absl::StrCat("Not fusing: due to ", source_location.file_name(), ":",
+                     source_location.line());
+  }
+}
+#endif  // PLATFORM_GOOGLE
+
 namespace {
 
 // These nodes can always be duplicated into consumers, even if

@@ -18,6 +18,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"

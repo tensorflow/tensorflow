@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -194,6 +195,12 @@ class CoordinationBarrierTest : public ::testing::Test {
     return coord_service_.get();
   }
   CoordinatedTask GetTask(int i) { return tasks_[i]; }
+
+  // TODO(b/286141652) Refactor this method into a util file.
+  std::string GetTaskName(const CoordinatedTask& task) {
+    return absl::StrCat("/job:", task.job_name(), "/replica:", 0,
+                        "/task:", task.task_id());
+  }
 
  private:
   std::unique_ptr<CoordinationServiceInterface> coord_service_;
@@ -985,6 +992,12 @@ TEST_F(CoordinationBarrierTest, BarrierTimeout) {
   // Block until user-specified timeout.
   n_0.WaitForNotification();
   EXPECT_TRUE(absl::IsDeadlineExceeded(barrier_status_0));
+  EXPECT_FALSE(
+      absl::StrContains(barrier_status_0.message(), GetTaskName(GetTask(0))));
+  EXPECT_TRUE(
+      absl::StrContains(barrier_status_0.message(), GetTaskName(GetTask(1))));
+  EXPECT_TRUE(
+      absl::StrContains(barrier_status_0.message(), GetTaskName(GetTask(2))));
 }
 
 TEST_F(CoordinationBarrierTest, BarrierReturnsPreviousError) {

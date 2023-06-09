@@ -99,6 +99,8 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
 
   absl::string_view DebugString() const override { return debug_string_; }
 
+  absl::string_view ToString() const override { return to_string_; }
+
   void AttachDevice(PjRtDevice* device) { devices_.push_back(device); }
 
  private:
@@ -106,6 +108,7 @@ class UnpinnedHostMemorySpace : public PjRtMemorySpace {
   PjRtClient* client_;
   std::vector<PjRtDevice*> devices_;
   std::string debug_string_;
+  std::string to_string_;
 };
 
 class AbstractTfrtCpuBuffer : public PjRtBuffer {
@@ -272,11 +275,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
            on_device_shape_.tuple_shapes_size() == 0;
   }
 
-  void DropExternalReference() {
-    absl::MutexLock lock(&mu_);
-    CHECK_GT(external_reference_counter_, 0);
-    --external_reference_counter_;
-  }
+  void DropExternalReference();
 
   // Commits the pending donation by setting `pending_donation_` to false.
   // `pending_donation_` must be true before calling this method.
@@ -308,7 +307,7 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
   // outstanding donation or usage holds, this method blocks until those holds
   // are committed or dropped.
   std::unique_ptr<TrackedTfrtCpuDeviceBuffer> ReleaseBufferLocked()
-      ABSL_LOCKS_EXCLUDED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const Shape on_device_shape_;
 
@@ -317,6 +316,13 @@ class AbstractTfrtCpuBuffer : public PjRtBuffer {
       ABSL_GUARDED_BY(mu_);
   // Count of external references on the buffer.
   int external_reference_counter_ ABSL_GUARDED_BY(mu_) = 0;
+
+  // If this buffer has external references when Delete() is called, this event
+  // is populated by Delete(). When the last external reference is released,
+  // the event is triggered, which is a precondition for the buffer being
+  std::optional<tfrt::AsyncValueRef<runtime::CpuEvent>>
+      external_references_dropped_event_ ABSL_GUARDED_BY(mu_);
+
   // `pending_donation_` indicates whether a donation is pending. The destructor
   // of the AbstractTfrtCpuBuffer will wait for a pending donation, as the
   // donation might fail. Note that concurrent calls to AcquireUsage() and

@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -171,9 +172,9 @@ Status WriteToCache(const string& dir_name, const string& file_name,
 
   const absl::Duration cache_writing_duration =
       absl::Now() - cache_writing_start_time;
-  VLOG(3) << "Finished writing optimized graph into cache; took "
-          << absl::ToInt64Seconds(cache_writing_duration)
-          << " secs, file name: " << file_name;
+  VLOG(3) << "Finished writing Tensorflow optimized graph into cache; took "
+          << absl::ToInt64Milliseconds(cache_writing_duration)
+          << " msecs, file name: " << file_name;
 
   return OkStatus();
 }
@@ -198,8 +199,8 @@ StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(const string& file_name,
 
   const absl::Duration cache_reading_duration =
       absl::Now() - cache_reading_start_time;
-  VLOG(3) << "Finished reading optimized graph from cache; took "
-          << absl::ToInt64Seconds(cache_reading_duration) << " secs";
+  VLOG(3) << "Finished reading Tensorflow optimized graph from cache; took "
+          << absl::ToInt64Milliseconds(cache_reading_duration) << " msecs";
 
   return optimized_function_graph_info_restored;
 }
@@ -208,9 +209,25 @@ StatusOr<OptimizedFunctionGraphInfo> ReadFromCache(const string& file_name,
 // TODO(b/276813768) Include more runtime specific info like env/flag
 // values, or line number. An alternative is to use the fingerprint of the
 // graph once graph building cache is enabled.
-string GetFileCacheName(const string& dir_name, const string& function_name) {
+//
+// Current file cache key components:
+// 1) Job name.
+// 2) Task ID.
+// 3) Function name (without UUID suffix).
+// 4) TF graph node count.
+string GetFileCacheName(const string& dir_name, const string& function_name,
+                        const FunctionDef* fdef) {
+  string plain_func_name = function_name;
+  // Remove the random UUID in the function name.
+  if (absl::StrContains(function_name, "_")) {
+    std::vector<string> func_name_tokens = absl::StrSplit(function_name, '_');
+    func_name_tokens.pop_back();
+    plain_func_name = absl::StrJoin(func_name_tokens, "_");
+  }
+
   return absl::StrCat(dir_name, "/", tsl::port::JobName(), "_",
-                      tsl::port::TaskId(), "_", function_name);
+                      tsl::port::TaskId(), "_", plain_func_name, "_",
+                      fdef->node_def_size());
 }
 }  // namespace
 
@@ -500,10 +517,11 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
 
   bool control_rets_updated = false;
   if (should_run_optimization_passes) {
+    FunctionOptimizationPass::FunctionOptions function_options{
+        options.xla_compile_device_type, options.allow_soft_placement};
     TF_RETURN_IF_ERROR(FunctionOptimizationPassRegistry::Global().Run(
-        function_name, dev_set, options.config_proto,
-        options.xla_compile_device_type, &graph, &reachable_lib_def,
-        &control_ret_node_names, &control_rets_updated));
+        function_name, dev_set, options.config_proto, function_options, &graph,
+        &reachable_lib_def, &control_ret_node_names, &control_rets_updated));
   }
 
   if (control_rets_updated) {
@@ -571,7 +589,7 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraph(
         &reachable_lib_def, dev_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
-                   << status.ToString();
+                   << status;
     }
     DEBUG_DATA_DUMPER()->DumpGraph(function_name, kDebugGroupMain,
                                    "after_graph_optimization", graph.get(),
@@ -621,11 +639,23 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
                                  OptimizedFunctionGraph::JIT);
   }
 
-  const string file_name = GetFileCacheName(dir_name, function_name);
+  const FunctionLibraryDefinition* lib_def =
+      options.lib_def == nullptr ? input_lib_def : options.lib_def;
+  const FunctionDef* fdef = lib_def->Find(function_name);
+  // If the function definition can't be found, return as error because there's
+  // no point running the graph optimization passes as that will fail too.
+  if (fdef == nullptr) {
+    return absl::AbortedError(absl::StrCat(
+        "Failed to find function ", function_name,
+        " in function library: ", lib_def->ToProto().DebugString()));
+  }
+  const string file_name = GetFileCacheName(dir_name, function_name, fdef);
 
   // Scenario (2): File cache exists for this function; restore from the cache.
   if (env->FileExists(file_name).ok()) {
-    VLOG(3) << "Cache existed; reading from cache; file_name: " << file_name;
+    LOG(INFO)
+        << "TensorFlow graph cache existed; reading from cache; function name: "
+        << function_name << ", full cache file path: " << file_name;
 
     StatusOr<OptimizedFunctionGraphInfo> optimized_function_graph_info =
         ReadFromCache(file_name, env);
@@ -635,15 +665,23 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
           metrics::GraphOptimizationSource::kJit);
       metrics::IncrementFunctionGraphOptimizationCacheHitCount(
           1, metrics::GraphOptimizationSource::kJit);
+      LOG(INFO)
+          << "Successfully restored the Tensorflow optimized graph from "
+             "the cache for the function: "
+          << function_name << ", saved optimized time: "
+          << absl::ToInt64Milliseconds(absl::Microseconds(
+                 optimized_function_graph_info->optimization_duration_usecs))
+          << " msecs";
       return optimized_function_graph_info;
     }
 
     // Run the optimization passes if reading from cache fails.
     metrics::IncrementFunctionGraphOptimizationCacheFailureCount(
         1, metrics::GraphOptimizationSource::kJit);
-    LOG(ERROR) << "Reading from file cache failed. Continue to run the "
-                  "optimization passes instead. Error message: "
-               << optimized_function_graph_info.status().ToString();
+    LOG(ERROR)
+        << "Reading from Tensorflow graph optimization cache failed. Continue "
+           "to run the Tensorflow graph optimization passes instead. Error: "
+        << optimized_function_graph_info.status();
     return OptimizeFunctionGraph(function_name, attrs, options, dev_set,
                                  input_lib_def, composite_devices, cpu_device,
                                  default_device, env,
@@ -672,17 +710,25 @@ StatusOr<OptimizedFunctionGraphInfo> OptimizeFunctionGraphOrReadFromFileCache(
 
   // Step 2: Write the optimized function graph into the cache if eligible.
   if (graph_optimization_duration >= caching_threshold_duration) {
-    VLOG(3) << "Writing optimized graph into cache: function name: "
-            << function_name << ", full cache file path: " << file_name;
+    LOG(INFO)
+        << "Writing the optimized TensorFlow graph into cache: function name: "
+        << function_name << ", full cache file path: " << file_name;
     Status s = WriteToCache(dir_name, file_name,
                             optimized_function_graph_info.value(), env);
     // If writing to cache failed, log the error message and move on without
     // failing the program.
     if (!s.ok()) {
-      LOG(ERROR) << "Caching the graph optimization results failed; "
+      LOG(ERROR) << "Caching the Tensorflow graph optimization results failed; "
                     "cotinue without caching. Error message: "
-                 << s.ToString();
+                 << s;
     }
+
+    LOG(INFO) << "Successfully wrote the optimized Tensorflow graph into cache "
+                 "for the function: "
+              << function_name << ", graph optimization time ( / threshold): "
+              << absl::ToInt64Milliseconds(graph_optimization_duration)
+              << " / (" << absl::ToInt64Milliseconds(caching_threshold_duration)
+              << ") msecs";
   }
 
   return optimized_function_graph_info;

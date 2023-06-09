@@ -27,11 +27,11 @@ py_strict_test(
     deps = [
         ":xla_sharding",
         "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:absltest",
     ],

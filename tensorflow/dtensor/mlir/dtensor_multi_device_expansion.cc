@@ -66,10 +66,12 @@ using ExpandedArgumentMap =
     absl::flat_hash_map<int,
                         absl::flat_hash_map<Mesh, std::vector<mlir::Value>>>;
 
-mlir::BlockArgument MakeArgumentForDevice(mlir::Builder& builder,
-                                          mlir::func::FuncOp func,
-                                          mlir::Type arg_type,
-                                          const std::string& device) {
+using ExpandedResultsMap = absl::flat_hash_map<int, std::vector<mlir::Value>>;
+
+mlir::BlockArgument InsertArgumentForDevice(mlir::OpBuilder& builder,
+                                            mlir::func::FuncOp func,
+                                            mlir::Type arg_type,
+                                            const std::string& device) {
   const int arg_index = func.getNumArguments();
 
   std::vector<mlir::NamedAttribute> named_attrs = {builder.getNamedAttr(
@@ -82,38 +84,83 @@ mlir::BlockArgument MakeArgumentForDevice(mlir::Builder& builder,
   return func.getArgument(arg_index);
 }
 
-StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
-    mlir::func::FuncOp func, ExpandedArgumentMap& expanded_arguments,
-    unsigned int argument_number, const Mesh* target_mesh = nullptr);
-
+// Returns the user of all the ops in the span iff it is a single return op.
+// Otherwise, returns nullptr; for example, if there are multiple return ops.
 template <typename Operation>
-Status ExpandOperation(ExpandedArgumentMap& expanded_arguments_map,
-                       absl::Span<const std::string> devices, Operation op,
-                       const Layout& layout) {
-  auto func = op->template getParentOfType<mlir::func::FuncOp>();
-  if (!func) {
-    // This line should be unreachable within the current framework.
-    // This function is only called on operations discovered while walking
-    // through the main function.
-    return errors::InvalidArgument("Operator not within function.");
+mlir::func::ReturnOp GetReturnOpFromUsers(absl::Span<Operation> ops) {
+  mlir::func::ReturnOp return_op;
+
+  for (Operation op : ops) {
+    for (mlir::Operation* user : op->getUsers()) {
+      // TODO(twelve): Determine whether we should follow identity ops.
+      if (mlir::func::ReturnOp op =
+              llvm::dyn_cast_or_null<mlir::func::ReturnOp>(user)) {
+        if (return_op) {
+          if (return_op != op) {
+            return nullptr;
+          }
+        } else {
+          return_op = op;
+        }
+      } else {
+        return nullptr;
+      }
+    }
   }
 
-  mlir::OpBuilder builder(op);
-  const Mesh& mesh = layout.mesh();
+  return return_op;
+}
+
+// Returns the devices for a given mesh.
+absl::Span<const std::string> GetDevices(const Mesh& mesh) {
+  const std::vector<std::string>& devices = mesh.global_devices();
+  if (devices.empty()) {
+    return mesh.local_devices();
+  } else {
+    return devices;
+  }
+}
+
+StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
+    mlir::OpBuilder& builder, mlir::func::FuncOp target_func,
+    ExpandedArgumentMap& expanded_arguments, mlir::BlockArgument argument,
+    const Mesh* target_mesh = nullptr);
+
+// Extracts the operation's layouts, then expands it across them.
+template <typename Operation>
+mlir::LogicalResult ExpandOperation(mlir::func::FuncOp target_func,
+                                    mlir::func::ReturnOp return_op,
+                                    ExpandedArgumentMap& expanded_arguments,
+                                    ExpandedResultsMap& expanded_results,
+                                    Operation op) {
+  const StatusOr<std::optional<Mesh>> mesh = ExtractDeviceMeshFromOp(op);
+  if (!(mesh.ok() && *mesh)) {
+    op->emitOpError("Failed to retrieve op mesh or layout.");
+    return mlir::failure();
+  } else if ((*mesh)->IsSingleDevice()) {
+    op->emitOpError("Unimplemented, single-device expansion support.");
+    return mlir::failure();
+  }
+
+  mlir::OpBuilder builder(target_func.getBody());
+  const absl::Span<const std::string> devices = GetDevices(**mesh);
   const std::size_t num_devices = devices.size();
+  const Mesh* target_mesh = &(**mesh);
 
   llvm::SmallVector<Operation> replications;
   for (std::size_t i = 0; i < num_devices; ++i) {
     llvm::SmallVector<mlir::Value, 8> operands;
     for (const mlir::Value& operand : op->getOperands()) {
       if (const auto arg = operand.dyn_cast_or_null<mlir::BlockArgument>()) {
-        TF_ASSIGN_OR_RETURN(const absl::Span<mlir::Value> expanded_arguments,
-                            GetExpandedArguments(func, expanded_arguments_map,
-                                                 arg.getArgNumber(), &mesh));
-        if (expanded_arguments.empty()) {
+        const StatusOr<absl::Span<mlir::Value>> new_args = GetExpandedArguments(
+            builder, target_func, expanded_arguments, arg, target_mesh);
+        if (!new_args.ok()) {
+          op->emitOpError(tsl::NullTerminatedMessage(new_args.status()));
+          return mlir::failure();
+        } else if (new_args->empty()) {
           operands.push_back(operand);
         } else {
-          operands.push_back(expanded_arguments[i]);
+          operands.push_back((*new_args)[i]);
         }
       } else {
         operands.push_back(operand);
@@ -131,97 +178,20 @@ Status ExpandOperation(ExpandedArgumentMap& expanded_arguments_map,
     replications.emplace_back(new_op);
   }
 
-  mlir::func::ReturnOp return_op;
-  for (const mlir::OpOperand& user : op->getUses()) {
-    const mlir::Operation* owner = user.getOwner();
-    if (!(return_op = llvm::dyn_cast_or_null<mlir::func::ReturnOp>(owner))) {
-      // TODO(twelve) : Determine whether this restriction should be lifted.
-      return errors::InvalidArgument("Call result must be used by return op.");
-    }
-  }
-
   if (return_op) {
-    llvm::SmallVector<mlir::Value, 8> operands;
-    for (const mlir::Value operand : return_op->getOperands()) {
+    mlir::Operation::operand_range operands = return_op->getOperands();
+    for (const auto [i, operand] : llvm::enumerate(operands)) {
       if (op == operand.getDefiningOp()) {
         const mlir::Operation::result_range results = op->getResults();
         const mlir::Operation::result_range::iterator search =
             llvm::find(results, operand);
         const std::size_t result_number = search - results.begin();
         for (const Operation& replication : replications) {
-          operands.push_back(replication->getResult(result_number));
-        }
-      } else {
-        operands.push_back(operand);
-      }
-    }
-
-    llvm::SmallVector<mlir::Type, 8> results;
-    for (const mlir::Value& operand : operands) {
-      results.push_back(operand.getType());
-    }
-
-    const mlir::FunctionType func_type = func.getFunctionType();
-    func.removeResAttrsAttr();
-    func.setFunctionType(
-        builder.getFunctionType(func_type.getInputs(), results));
-
-    builder.create<mlir::func::ReturnOp>(return_op->getLoc(), operands);
-
-    return_op->erase();
-  }
-
-  return OkStatus();
-}
-
-// Returns the devices for a given mesh.
-absl::Span<const std::string> GetDevices(const Mesh& mesh) {
-  const std::vector<std::string>& devices = mesh.global_devices();
-  if (devices.empty()) {
-    return mesh.local_devices();
-  } else {
-    return devices;
-  }
-}
-
-// Extracts the operation's layouts, then expands it across them.
-template <typename Operation>
-mlir::LogicalResult ExpandOperations(ExpandedArgumentMap& expanded_arguments,
-                                     Operation op) {
-  const StatusOr<std::optional<Mesh>> mesh = ExtractDeviceMeshFromOp(op);
-  const StatusOr<std::vector<std::optional<Layout>>> layouts =
-      ExtractLayoutFromOp(op);
-  if (!((mesh.ok() && *mesh) && (layouts.ok() && !layouts->empty()))) {
-    op->emitOpError("Failed to retrieve op mesh or layout.");
-    return mlir::failure();
-  }
-
-  bool expanded = false;
-  for (const std::optional<Layout>& layout : *layouts) {
-    if (layout) {
-      const Mesh& layout_mesh = layout->mesh();
-      if (**mesh != layout_mesh) {
-        op->emitOpError("Unimplemented, outputs not on op mesh.");
-        return mlir::failure();
-      } else if (layout_mesh.IsSingleDevice()) {
-        op->emitOpError("Unimplemented, single-device expansion support.");
-        return mlir::failure();
-      } else {
-        const absl::Span<const std::string> devices = GetDevices(layout_mesh);
-        const Status status =
-            ExpandOperation(expanded_arguments, devices, op, *layout);
-        if (status.ok()) {
-          expanded = true;
-        } else {
-          op->emitOpError(tsl::NullTerminatedMessage(status));
-          return mlir::failure();
+          expanded_results[i].emplace_back(
+              replication->getResult(result_number));
         }
       }
     }
-  }
-
-  if (expanded) {
-    op->erase();
   }
 
   return mlir::success();
@@ -258,13 +228,11 @@ void UpdateEntryFuncAttr(mlir::OpBuilder& builder, mlir::func::FuncOp func) {
 }
 
 StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
-    mlir::func::FuncOp func, ExpandedArgumentMap& expanded_arguments,
-    unsigned int argument_number, const Mesh* target_mesh) {
-  if (func.getName() != kMainFuncName) {
-    return absl::Span<mlir::Value>();  // only expand main function arguments
-  }
-  const mlir::BlockArgument arg = func.getArgument(argument_number);
+    mlir::OpBuilder& builder, mlir::func::FuncOp target_func,
+    ExpandedArgumentMap& expanded_arguments, mlir::BlockArgument arg,
+    const Mesh* target_mesh) {
   std::optional<Mesh> mesh;
+  unsigned int argument_number = arg.getArgNumber();
   if (argument_number == kDeviceIDArgumentNumber) {
     if (target_mesh) {
       mesh = *target_mesh;
@@ -283,15 +251,12 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
       const absl::Span<const std::string> devices = GetDevices(*mesh);
       const std::size_t num_devices = devices.size();
       replications.reserve(num_devices);
-      mlir::Block& func_block = func.getBody().front();
-      mlir::OpBuilder builder(&(func_block.front()));
       if (argument_number == kDeviceIDArgumentNumber) {
-        mlir::Location loc = func_block.front().getLoc();
         for (int i = 0; i < num_devices; ++i) {
           const auto value_attr = mlir::DenseIntElementsAttr::get<int>(
               mlir::RankedTensorType::get({0}, builder.getI32Type()), {i});
           replications.emplace_back(
-              builder.create<mlir::TF::ConstOp>(loc, value_attr));
+              builder.create<mlir::TF::ConstOp>(arg.getLoc(), value_attr));
         }
       } else {
         mlir::TensorType tensor_type =
@@ -300,8 +265,8 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
           return errors::InvalidArgument("Could not determine tensor type.");
         }
         for (int i = 0; i < num_devices; ++i) {
-          replications.emplace_back(
-              MakeArgumentForDevice(builder, func, tensor_type, devices[i]));
+          replications.emplace_back(InsertArgumentForDevice(
+              builder, target_func, tensor_type, devices[i]));
         }
       }
     }
@@ -311,22 +276,130 @@ StatusOr<absl::Span<mlir::Value>> GetExpandedArguments(
   }
 }
 
+template <typename Results>
+mlir::FunctionType GetFunctionType(mlir::OpBuilder& builder,
+                                   mlir::func::FuncOp func, Results results) {
+  std::vector<mlir::Type> input_types, result_types;
+  for (mlir::BlockArgument input : func.getArguments()) {
+    input_types.emplace_back(input.getType());
+  }
+  for (const auto result : results) {
+    result_types.emplace_back(result.getType());
+  }
+  return builder.getFunctionType(input_types, result_types);
+}
+
+// Build a new main function that calls the multi-device/translated function.
+mlir::LogicalResult BuildOuterMainFunc(
+    mlir::ModuleOp module, mlir::func::FuncOp old_main_func,
+    mlir::func::FuncOp translated_func, mlir::func::ReturnOp return_op,
+    absl::Span<mlir::TF::StatefulPartitionedCallOp> call_ops) {
+  llvm::SmallVector<mlir::Attribute, 4> output_layouts;
+  for (mlir::TF::StatefulPartitionedCallOp call_op : call_ops) {
+    // Then extract all their output layouts.
+    mlir::ArrayAttr layouts =
+        call_op->getAttr(kLayoutAttr).dyn_cast_or_null<mlir::ArrayAttr>();
+    if (!layouts) {
+      call_op.emitOpError() << "Could not find op's layouts.";
+      return mlir::failure();
+    }
+    // Here, we assume that the output layouts and the results are in the same
+    // ordering--this property should be guaranteed as long as all the results
+    // have been expanded (produced by ExpandOperation).
+    output_layouts.insert(output_layouts.end(), layouts.begin(), layouts.end());
+  }
+
+  mlir::SymbolTable symbol_table(module);
+  mlir::Block* module_body = module.getBody();
+  mlir::OpBuilder builder = mlir::OpBuilder::atBlockBegin(module_body);
+  // Build a new main function with no initial attributes/return type.
+  mlir::func::FuncOp main_func = mlir::func::FuncOp::create(
+      old_main_func.getLoc(), "main", builder.getFunctionType({}, {}));
+  mlir::Block* entry_block = main_func.addEntryBlock();
+  builder.setInsertionPointToEnd(entry_block);
+
+  // Copy the arguments from the translated function to the new main function.
+  std::vector<mlir::Value> inputs;
+  for (auto [arg_index, arg] :
+       llvm::enumerate(translated_func.getArguments())) {
+    main_func.insertArgument(arg_index, arg.getType(),
+                             translated_func.getArgAttrDict(arg_index),
+                             old_main_func.getLoc());
+    inputs.emplace_back(main_func.getArgument(arg_index));
+  }
+
+  // Get the type of the translated function.
+  mlir::FunctionType func_type = translated_func.getFunctionType();
+  // Then build a call op targeting it (reflecting its result types).
+  auto expanded_call_op = builder.create<mlir::TF::StatefulPartitionedCallOp>(
+      call_ops[0].getLoc(), func_type.getResults(), inputs,
+      translated_func.getSymName(),
+      /*config=*/builder.getStringAttr(""),
+      /*config_proto=*/builder.getStringAttr(""),
+      /*executor_type=*/builder.getStringAttr(""));
+
+  // Set the output layout attribute on the new call op.
+  llvm::ArrayRef<mlir::Attribute> output_layouts_ref(output_layouts);
+  mlir::ArrayAttr output_layouts_attr =
+      builder.getArrayAttr(output_layouts_ref);
+  expanded_call_op->setAttr(kLayoutAttr, output_layouts_attr);
+
+  // Return all the values from the new call op.
+  mlir::Operation::result_range outputs = expanded_call_op.getResults();
+  if (return_op) {
+    builder.create<mlir::func::ReturnOp>(return_op.getLoc(), outputs);
+  } else if (!outputs.empty()) {
+    call_ops[0]->emitOpError("Call had results, but they were not used.");
+    return mlir::failure();
+  }
+
+  // Update the function's type based on the arguments and return values.
+  main_func.setFunctionType(GetFunctionType(builder, main_func, outputs));
+  UpdateEntryFuncAttr(builder, main_func);
+
+  // Erase the original main func.
+  symbol_table.remove(old_main_func);
+  old_main_func.erase();
+  // Add the new main function to the module's symbol table, ensuring that it's
+  // located before all the other functions with the module.
+  symbol_table.insert(main_func, module_body->begin());
+
+  return mlir::success();
+}
+
 struct DTensorMultiDeviceExpansion
     : public impl::DTensorMultiDeviceExpansionBase<
           DTensorMultiDeviceExpansion> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
+    mlir::SymbolTable symbol_table(module);
     mlir::func::FuncOp main_func =
         module.lookupSymbol<mlir::func::FuncOp>(kMainFuncName);
     if (!main_func) {
       return;
     }
 
+    mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(module.getBody());
+    const char* translated_func_name = "multi_device_main";
+    mlir::func::FuncOp translated_func =
+        mlir::func::FuncOp::create(main_func.getLoc(), translated_func_name,
+                                   builder.getFunctionType({}, {}));
+
+    // build the entry block and return op of the translated function
+    builder.setInsertionPointToEnd(translated_func.addEntryBlock());
+    auto translated_terminator_op =
+        builder.create<mlir::func::ReturnOp>(main_func.getLoc());
+
+    // so the function has a "terminator" and we can insert it into the module
+    translated_func.setVisibility(mlir::SymbolTable::Visibility::Private);
+    symbol_table.insert(translated_func);
+
     ExpandedArgumentMap expanded_arguments_map;
     for (unsigned i = 1; i < main_func.getNumArguments(); ++i) {
       // Expand all the arguments (in case they're unused).
       StatusOr<absl::Span<mlir::Value>> expanded_arguments =
-          GetExpandedArguments(main_func, expanded_arguments_map, i);
+          GetExpandedArguments(builder, translated_func, expanded_arguments_map,
+                               main_func.getArgument(i));
       if (!expanded_arguments.ok()) {
         main_func->emitOpError(
             tsl::NullTerminatedMessage(expanded_arguments.status()));
@@ -347,36 +420,49 @@ struct DTensorMultiDeviceExpansion
       }
     });
 
+    // Ensure that all the call ops return results via the same op.
+    mlir::func::ReturnOp return_op = GetReturnOpFromUsers(
+        absl::Span<mlir::TF::StatefulPartitionedCallOp>(stateful_call_ops));
+    if (!return_op && !stateful_call_ops.empty()) {
+      stateful_call_ops[0]->emitOpError(
+          "Calls must be used by exactly one return op.");
+      return;
+    }
+
+    ExpandedResultsMap expanded_results;
     for (const mlir::TF::StatefulPartitionedCallOp& stateful_call_op :
          stateful_call_ops) {
       mlir::LogicalResult status =
-          ExpandOperations(expanded_arguments_map, stateful_call_op);
-      if (status.failed()) {
+          ExpandOperation(translated_func, return_op, expanded_arguments_map,
+                          expanded_results, stateful_call_op);
+      if (mlir::failed(status)) {
         return;
       }
     }
 
-    if (main_func && !expanded_arguments_map.empty()) {
-      mlir::OpBuilder builder(main_func);
-      const mlir::FunctionType func_type = main_func.getFunctionType();
-      const llvm::ArrayRef<mlir::Type> inputs = func_type.getInputs();
-      llvm::SmallVector<mlir::Type, 8> next_inputs;
-      unsigned num_erased = 0;
-      for (unsigned i = 0; i < inputs.size(); ++i) {
-        const ExpandedArgumentMap::iterator search =
-            expanded_arguments_map.find(i);
-        // Always erase the device id, even when it's unexpanded.
-        if ((search == expanded_arguments_map.end()) &&
-            (i != kDeviceIDArgumentNumber)) {
-          next_inputs.push_back(inputs[i]);
-        } else {
-          main_func.eraseArgument(i - num_erased);
-          num_erased += 1;
-        }
+    std::vector<mlir::Value> results;
+    for (unsigned i = 0; i < return_op->getNumOperands(); ++i) {
+      ExpandedResultsMap::iterator search = expanded_results.find(i);
+      if (search == expanded_results.end()) {
+        results.emplace_back(return_op->getOperand(i));
+      } else {
+        std::vector<mlir::Value>& values = search->second;
+        results.insert(results.end(), values.begin(), values.end());
       }
-      main_func.setFunctionType(
-          builder.getFunctionType(next_inputs, func_type.getResults()));
-      UpdateEntryFuncAttr(builder, main_func);
+    }
+
+    // update the operands of the translated return op
+    translated_terminator_op->setOperands(results);
+    // and, update the function's type accordingly
+    translated_func.setFunctionType(GetFunctionType(
+        builder, translated_func, absl::Span<mlir::Value>(results)));
+    UpdateEntryFuncAttr(builder, translated_func);
+
+    mlir::LogicalResult status = BuildOuterMainFunc(
+        module, main_func, translated_func, return_op,
+        absl::Span<mlir::TF::StatefulPartitionedCallOp>(stateful_call_ops));
+    if (mlir::failed(status)) {
+      return;
     }
   }
 };

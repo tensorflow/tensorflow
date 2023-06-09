@@ -67,7 +67,7 @@ TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8) {
 }
 
 TEST(BuiltinOpResolverTest, HasXNNPACKDelegate_QS8_QU8) {
-  BuiltinOpResolverWithXNNPACK builtin_op_resolver(true);
+  BuiltinOpResolver builtin_op_resolver;
   ASSERT_EQ(builtin_op_resolver.GetDelegateCreators().size(), 1);
   BuiltinOpResolver::TfLiteDelegateCreator delegate_creator =
       builtin_op_resolver.GetDelegateCreators()[0];

@@ -52,6 +52,7 @@ limitations under the License.
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
@@ -944,14 +945,29 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  xla::XlaOp operand;
-  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+  SmallVector<xla::XlaOp> operands;
+  if (failed(GetTuple(op.getOperation(), op.getOperands(), ctx, operands)))
     return failure();
 
-  value_map[op] = xla::AllReduce(
-      operand, computation, Convert_replica_groups(op.getReplicaGroups()),
-      Convert_channel_handle(op.getChannelHandle()), std::nullopt,
-      Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  mlir::FailureOr<xla::Shape> shape_or = ExtractXlaShape(op.getOperation());
+  if (failed(shape_or)) return failure();
+  if (shape_or->IsTuple()) {
+    std::optional<xla::Shape> shape_with_layout = std::nullopt;
+    if (shape_or->has_layout()) shape_with_layout = shape_or.value();
+    auto tuple = xla::AllReduceTuple(
+        operands, computation, Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), shape_with_layout,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+    for (auto [index, result] : llvm::enumerate(op.getResults())) {
+      value_map[result] = xla::GetTupleElement(tuple, index);
+    }
+  } else {
+    value_map[op->getResults()[0]] = xla::AllReduce(
+        operands[0], computation, Convert_replica_groups(op.getReplicaGroups()),
+        Convert_channel_handle(op.getChannelHandle()), std::nullopt,
+        Convert_use_global_device_ids(op.getUseGlobalDeviceIds()));
+  }
+
   return success();
 }
 
@@ -1252,7 +1268,7 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   if (all_reduce_op && SimplyReturnedOp(all_reduce_op)) {
     value_map[op.getResult(0)] =
         xla::internal::XlaBuilderFriend::BuildAllReduceDone(
-            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType()));
+            ctx.builder, operand, xla::TypeToShape(all_reduce_op.getType(0)));
     return success();
   }
   auto collective_permute_op =
@@ -1280,15 +1296,23 @@ LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
   }
   auto recv_op = dyn_cast_or_null<RecvOp>(callee.getBody().front().front());
   if (recv_op && SimplyReturnedOp(recv_op)) {
-    auto result_type =
+    auto result_types =
         op.getBundle().getType().cast<AsyncBundleType>().getTypes()[1];
+
+    mlir::Type received_type = mlir::TupleType::get(op->getContext(), {});
+    if (isa<TupleType>(result_types)) {
+      received_type = result_types.cast<TupleType>().getType(0);
+    }
+
     xla::XlaOp xla_recv = xla::internal::XlaBuilderFriend::BuildRecvDone(
-        ctx.builder, operand, xla::TypeToShape(result_type),
+        ctx.builder, operand, xla::TypeToShape(received_type),
         Convert_channel_handle(recv_op.getChannelHandle()),
         recv_op.getIsHostTransfer());
     if (op.getNumResults() == 1) {
       value_map[op.getResult(0)] = xla_recv;
     } else {
+      xla::XlaScopedShardingAssignment scoped_sharding(ctx.builder,
+                                                       std::nullopt);
       for (const auto& item : llvm::enumerate(op.getResults())) {
         value_map[item.value()] = xla::GetTupleElement(xla_recv, item.index());
       }
@@ -2640,6 +2664,11 @@ LogicalResult ExportXlaOp(UniformQuantizeOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   // Currently, it doesn't have an XLA builder equivalent.
   // TODO(b/230671877): Implement XLA import/export for quantized MHLO ops.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(TopKOp op, OpLoweringContext ctx) {
+  // TODO(b/284077883): Implement HLO roundtrip for mhlo::TopKOp.
   return failure();
 }
 

@@ -19,12 +19,12 @@ import traceback
 from typing import Any, List
 
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
+from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -459,20 +459,7 @@ def from_func_graph(name, graph, inputs, outputs, attrs, overwrite=False):
       is_stateful=any(op._is_stateful for op in operations),  # pylint: disable=protected-access
   )
 
-  # TODO(fmuham): Include structure info from structured_inputs
-  input_signature = (
-      tuple(trace_type.from_value(i) for i in inputs),
-      {},
-  )
-
-  # TODO(fmuham): Include output structure info from structured_outputs
-  output_signature = tuple(trace_type.from_value(o) for o in outputs)
-
-  function_type = function_type_lib.from_structured_signature(
-      input_signature,
-      output_signature,
-      graph.function_captures.capture_types,
-  )
+  function_type = function_type_utils.derive_from_graph(graph)
 
   return AtomicFunction(
       name,

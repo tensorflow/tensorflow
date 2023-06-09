@@ -8,6 +8,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir/quantization/stablehlo:run_lit.sh",
     size_override = {

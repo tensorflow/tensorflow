@@ -161,6 +161,30 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   function.setPrivate();
   auto async_builder = mlir::OpBuilder(function.getBody());
 
+  llvm::SmallVector<mlir::NamedAttribute> async_attributes;
+  async_attributes.push_back(builder_->getNamedAttr(
+      "called_computation", mlir::FlatSymbolRefAttr::get(builder_->getContext(),
+                                                         function.getName())));
+  async_attributes.push_back(builder_->getNamedAttr(
+      "execution_thread", builder_->getStringAttr("main")));
+
+  // Attach the frontend_attributes and sharding attributes to the async op
+  // instead of the sync op. First, semantically sharding attributes cannot be
+  // attached to the sync op since the sync op may not produce the same number
+  // of results as the sharding's tuple element count, e.g., `mhlo.send` vs. HLO
+  // `send`. Second, `mlir_hlo_to_hlo.cc` imports these attributes from the
+  // `mhlo.async_start` ops, so attaching them to the sync op will make them
+  // disappear during MHLO to HLO lowering.
+  for (auto it = attributes.begin(); it != attributes.end();) {
+    if (it->getName() == kShardingAttr ||
+        it->getName() == kFrontendAttributesAttr) {
+      async_attributes.push_back(*it);
+      it = attributes.erase(it);
+    } else {
+      ++it;
+    }
+  }
+
   llvm::SmallVector<mlir::Location, 1> locs(Untuple(result_types[0]).size(),
                                             loc);
   auto sync_operand =
@@ -172,12 +196,6 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportOldStyleAsyncStart(
   async_builder.create<mlir::func::ReturnOp>(loc, sync_operation->getResults());
   TF_RETURN_IF_ERROR(mutate_op(sync_operation));
 
-  llvm::SmallVector<mlir::NamedAttribute> async_attributes;
-  async_attributes.push_back(builder_->getNamedAttr(
-      "called_computation", mlir::FlatSymbolRefAttr::get(builder_->getContext(),
-                                                         function.getName())));
-  async_attributes.push_back(builder_->getNamedAttr(
-      "execution_thread", builder_->getStringAttr("main")));
   function->setAttr("execution_thread", builder_->getStringAttr("main"));
 
   auto bundle_result_type =
@@ -1378,6 +1396,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+
+      llvm::SmallVector<Type> result_types = {result_type};
+      if (result_tuple_ty) {
+        result_types = llvm::to_vector(result_tuple_ty.getTypes());
+      }
+
       attributes.push_back(
           ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
       if (all_reduce->channel_id().has_value())
@@ -1386,10 +1411,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_reduce->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
-          loc, result_type, operands, attributes);
+          loc, result_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
                                         &all_reduce_op.getComputation(),
                                         /*flatten_region_arg_tuple=*/true));
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type,
+                                          all_reduce_op.getResults())
+            .getOperation();
+      }
       return all_reduce_op.getOperation();
     }
     case HloOpcode::kAllReduceStart: {
@@ -1401,6 +1432,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(all_reduce_start->channel_id().value()));
       if (all_reduce_start->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
+      if (all_reduce_start->operands().size() > 1)
+        return InvalidArgument(
+            "Async tuple all-reduce is not supported in MHLO");
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllReduceOp>(
           attributes, operands, loc, result_type, func_builder, "all_reduce_",

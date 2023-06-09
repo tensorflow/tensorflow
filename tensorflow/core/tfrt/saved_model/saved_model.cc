@@ -25,11 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms/import_model.h"
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/batch_kernel.h"
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
-#include "learning/infra/mira/mlrt/bytecode/bytecode.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -44,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/tfrt_compile_options.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -59,8 +56,12 @@ limitations under the License.
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
+#include "tensorflow/core/tfrt/graph_executor/export_mlir.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/batch_kernel.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_import_input.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
@@ -265,8 +266,9 @@ tensorflow::Status RunBytecodeInitializers(
     const auto& initializer_inputs = p.inputs;
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-        options, /*run_options=*/{}, initializer_name, nullptr,
-        &loaded_executable, initializer_inputs, &outputs, resource_context,
+        options, /*run_options=*/{}, initializer_name, /*symbol_uids=*/{},
+        nullptr, &loaded_executable, initializer_inputs, &outputs,
+        resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
         *options.runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
@@ -313,7 +315,7 @@ tensorflow::Status RunBefInitializers(
     DCHECK(func);
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-        options, /*run_options=*/{}, initializer_name, func,
+        options, /*run_options=*/{}, initializer_name, /*symbol_uids=*/{}, func,
         /*loaded_executable=*/nullptr, initializer_inputs, &outputs,
         resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
@@ -677,6 +679,10 @@ SavedModelImpl::LoadSavedModel(Options options,
           options.graph_execution_options.run_placer_grappler_on_functions,
           options.graph_execution_options.enable_tfrt_gpu,
           options.graph_execution_options.compile_options.use_bridge_for_gpu));
+  // TODO(b/278143179): Upload module w/o control flow.
+  SymbolUids symbol_uids;
+  ASSIGN_OR_RETURN_IN_IMPORT(symbol_uids.tf_symbol_uid,
+                             MaybeUploadMlirToXsymbol(mlir_module.get()));
 
   const auto import_duration = absl::Now() - import_start_time;
   saved_model_import_time_seconds->GetCell(std::string(saved_model_dir))
@@ -702,13 +708,14 @@ SavedModelImpl::LoadSavedModel(Options options,
     ASSIGN_OR_RETURN_IN_COMPILE(
         bytecode, tensorflow::mlrt_compiler::ConvertTfMlirToBytecode(
                       options.graph_execution_options.compile_options,
-                      mlir_module.get()));
+                      *fallback_state, mlir_module.get()));
   } else {
     RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
         options.graph_execution_options.compile_options, mlir_module.get(),
         &bef, fallback_state.get()));
   }
-
+  ASSIGN_OR_RETURN_IN_COMPILE(symbol_uids.tfrt_symbol_uid,
+                              MaybeUploadMlirToXsymbol(mlir_module.get()));
   const auto compile_duration = absl::Now() - compile_start_time;
   saved_model_compile_time_seconds->GetCell(std::string(saved_model_dir))
       ->Set(absl::ToInt64Seconds(compile_duration));
@@ -766,17 +773,18 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   // Finally, create the saved model.
   return {std::make_unique<SavedModelImpl>(
-      std::move(options), std::move(meta_graph_def), std::move(bef),
-      std::move(bef_file), std::move(bytecode), std::move(loaded_executable),
+      std::move(options), std::move(symbol_uids), std::move(meta_graph_def),
+      std::move(bef), std::move(bef_file), std::move(bytecode),
+      std::move(loaded_executable),
       std::move(initializers_and_signatures.signature_map),
       std::move(fallback_state), std::move(runner_table),
       std::move(resource_array), std::move(graph_executor))};
 }
 
 SavedModelImpl::SavedModelImpl(
-    Options options, tensorflow::MetaGraphDef meta_graph_def,
-    tfrt::BefBuffer bef, tfrt::RCReference<tfrt::BEFFile> bef_file,
-    mlrt::bc::Buffer bytecode,
+    Options options, SymbolUids symbol_uids,
+    tensorflow::MetaGraphDef meta_graph_def, tfrt::BefBuffer bef,
+    tfrt::RCReference<tfrt::BEFFile> bef_file, mlrt::bc::Buffer bytecode,
     std::optional<mlrt::LoadedExecutable> loaded_executable,
     SignatureMap signatures, std::unique_ptr<FallbackState> fallback_state,
     std::unique_ptr<OpKernelRunnerTable> runner_table,
@@ -784,6 +792,7 @@ SavedModelImpl::SavedModelImpl(
     std::unique_ptr<GraphExecutor> graph_executor)
     : SavedModel(options.graph_execution_options.runtime),
       options_(std::move(options)),
+      symbol_uids_(std::move(symbol_uids)),
       meta_graph_def_(std::move(meta_graph_def)),
       bef_(std::move(bef)),
       bef_file_(std::move(bef_file)),
@@ -852,6 +861,7 @@ tensorflow::Status SavedModelImpl::Run(
       CheckInputSpecs(options_.graph_execution_options.model_metadata,
                       run_options, name, signature, inputs));
 
+  const SymbolUids* symbol_uids = nullptr;
   const tfrt::Function* func = nullptr;
   const mlrt::LoadedExecutable* loaded_executable = nullptr;
   OpKernelRunnerTable* runner_table = nullptr;
@@ -865,11 +875,13 @@ tensorflow::Status SavedModelImpl::Run(
     TF_ASSIGN_OR_RETURN(
         const LoadingResult& loading_result,
         GetOrCreateLoadingResult(run_options, {std::string(name)}));
+    symbol_uids = &loading_result.symbol_uids;
     func = loading_result.bef_file->GetFunction(
         tensorflow::kImportModelDefaultGraphFuncName);
     runner_table = loading_result.runner_table.get();
     resource_array = loading_result.resource_array.get();
   } else {
+    symbol_uids = &symbol_uids_;
     if (loaded_executable_) {
       loaded_executable = &(*loaded_executable_);
     } else {
@@ -884,7 +896,7 @@ tensorflow::Status SavedModelImpl::Run(
   DCHECK(resource_array);
 
   return GraphExecutionRunOnFunction(
-      options_.graph_execution_options, run_options, name, func,
+      options_.graph_execution_options, run_options, name, *symbol_uids, func,
       loaded_executable, inputs, outputs, resource_context,
       /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
       runtime(), *fallback_state_, &req_deadline_tracker_);
@@ -1095,11 +1107,14 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
       auto module, ImportSubgraph(&context, joined_signature.input_nodes,
                                   joined_signature.output_nodes,
                                   joined_signature.target_nodes));
+  // TODO(b/278143179): Upload module w/o control flow.
+  SymbolUids symbol_uids;
+  ASSIGN_OR_RETURN_IN_IMPORT(symbol_uids.tf_symbol_uid,
+                             MaybeUploadMlirToXsymbol(module.get()));
 
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   auto loading_result = std::make_unique<LoadingResult>();
   loading_result->name = joined_signature.name;
-
   loading_result->runner_table = std::make_unique<OpKernelRunnerTable>();
   loading_result->resource_array =
       std::make_unique<tfd::FallbackResourceArray>();
@@ -1107,6 +1122,9 @@ SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   RETURN_IF_ERROR_IN_COMPILE(tensorflow::ConvertTfMlirToBef(
       options_.graph_execution_options.compile_options, module.get(),
       &loading_result->bef, fallback_state_.get()));
+  ASSIGN_OR_RETURN_IN_COMPILE(symbol_uids.tfrt_symbol_uid,
+                              MaybeUploadMlirToXsymbol(module.get()));
+  loading_result->symbol_uids = std::move(symbol_uids);
 
   // Step 3: Initialize runtime states using special BEF functions.
   ASSIGN_OR_RETURN_IN_INIT(

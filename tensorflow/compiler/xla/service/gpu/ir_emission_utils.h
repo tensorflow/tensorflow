@@ -56,9 +56,8 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
-// this string. TritonAutotuner replaces it with TritonGemmKey proto.
-inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
+// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -210,13 +209,34 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
-                                          Vector3& permutation);
+struct TransposeDescription {
+  Vector3 dimensions;
+  Vector3 permutation;
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
-                                                 Vector3& permutation);
+  TransposeDescription(Vector3 dimensions, Vector3 permutation)
+      : dimensions(dimensions), permutation(permutation) {}
 
-std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+  std::string ToString() const {
+    return absl::StrCat("dimensions=", VectorString(dimensions),
+                        ", permutation=", VectorString(permutation));
+  }
+
+  bool operator==(const TransposeDescription& other) const {
+    return dimensions == other.dimensions && permutation == other.permutation;
+  }
+
+  bool operator!=(const TransposeDescription& other) const {
+    return !(*this == other);
+  }
+};
+
+std::optional<TransposeDescription> FindTiledTranspose(
+    const HloInstruction& instr);
+
+std::optional<TransposeDescription> FindTiledLogicalTranspose(
+    const HloInstruction& instr);
+
+std::optional<TransposeDescription> FindAnyTiledTranspose(
     const HloInstruction& instr);
 
 // Log and verify an LLVM module.

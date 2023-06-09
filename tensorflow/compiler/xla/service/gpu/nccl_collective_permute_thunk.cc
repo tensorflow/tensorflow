@@ -33,17 +33,19 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
+
+using mlir::lmhlo_gpu::CollectivePermuteStartOp;
+
 namespace impl {
 
-template <typename OpT>
-CollectiveOpGroupMode GetGroupMode(OpT op) {
+CollectiveOpGroupMode GetGroupMode(CollectivePermuteStartOp op) {
   return GetCollectiveOpGroupMode(op.getChannelId().has_value(), std::nullopt)
       .value();
 }
 
-template <typename OpT>
 NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
-    OpT op, int64_t replica_count, int64_t partition_count) {
+    CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
   NcclCollectivePermuteConfig collective_permute_config;
   auto& config = collective_permute_config.config;
 
@@ -83,8 +85,8 @@ NcclCollectivePermuteConfig GetNcclCollectivePermuteConfig(
 
 // The collective permute is degenerate if all source-target pairs are identity,
 // and all the IDs appear in the list.
-template <typename OpT>
-bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
+bool IsDegenerate(CollectivePermuteStartOp op, int64_t replica_count,
+                  int64_t partition_count) {
   const std::vector<std::pair<int64_t, int64_t>> source_target_pairs =
       ConvertNx2Attribute(op.getSourceTargetPairs()).value();
   // Each ID can appear only once as a source and as a target. So if all pairs
@@ -99,22 +101,49 @@ bool IsDegenerate(OpT op, int64_t replica_count, int64_t partition_count) {
                         });
 }
 
-template <typename OpT>
-Status CheckImplementable(OpT op) {
+Status CheckImplementable(CollectivePermuteStartOp op) {
   TF_RETURN_IF_ERROR(NcclCollectiveThunk::CheckImplementable());
   return IsValidOperand(op.getOperand(), Thunk::kNcclCollectivePermute);
 }
 
 }  // namespace impl
 
-NcclCollectivePermuteThunkBase::NcclCollectivePermuteThunkBase(
-    Kind kind, ThunkInfo thunk_info, NcclCollectivePermuteConfig config,
-    const Buffer& buffer)
-    : NcclCollectiveThunk(kind, thunk_info),
-      config_(std::move(config)),
+NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
+    ThunkInfo thunk_info, CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count, const Buffer& buffer)
+    : NcclCollectiveThunk(Thunk::kNcclCollectivePermuteStart, thunk_info,
+                          op.getIsSync()),
+      config_(
+          GetNcclCollectivePermuteConfig(op, replica_count, partition_count)),
       buffer_(buffer) {}
 
-Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
+/*static*/ NcclCollectivePermuteConfig
+NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
+    CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
+                                              partition_count);
+}
+
+/*static*/ Status NcclCollectivePermuteStartThunk::CheckImplementable(
+    CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return AddOpDescription<NcclCollectivePermuteStartThunk>(
+      impl::CheckImplementable(op), op, replica_count, partition_count);
+}
+
+/*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
+    CollectivePermuteStartOp op, int64_t replica_count,
+    int64_t partition_count) {
+  return impl::IsDegenerate(op, replica_count, partition_count);
+}
+
+/*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
+    CollectivePermuteStartOp op) {
+  return impl::GetGroupMode(op);
+}
+
+Status NcclCollectivePermuteStartThunk::RunNcclCollective(
     const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
@@ -141,54 +170,6 @@ Status NcclCollectivePermuteThunkBase::RunCollectivePermute(
                                           stream, comm, device_string,
                                           current_id);
 }
-
-/*static*/ NcclCollectivePermuteConfig
-NcclCollectivePermuteStartThunk::GetNcclCollectivePermuteConfig(
-    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::GetNcclCollectivePermuteConfig(op, replica_count,
-                                              partition_count);
-}
-
-/*static*/ Status NcclCollectivePermuteStartThunk::CheckImplementable(
-    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return AddOpDescription<NcclCollectivePermuteStartThunk>(
-      impl::CheckImplementable(op), op, replica_count, partition_count);
-}
-
-/*static*/ bool NcclCollectivePermuteStartThunk::IsDegenerate(
-    mlir::lmhlo_gpu::CollectivePermuteStartOp op, int64_t replica_count,
-    int64_t partition_count) {
-  return impl::IsDegenerate(op, replica_count, partition_count);
-}
-
-/*static*/ CollectiveOpGroupMode NcclCollectivePermuteStartThunk::GetGroupMode(
-    mlir::lmhlo_gpu::CollectivePermuteStartOp op) {
-  return impl::GetGroupMode(op);
-}
-
-NcclCollectivePermuteStartThunk::NcclCollectivePermuteStartThunk(
-    ThunkInfo thunk_info, mlir::lmhlo_gpu::CollectivePermuteStartOp op,
-    int64_t replica_count, int64_t partition_count, const Buffer& buffer)
-    : NcclCollectivePermuteThunkBase(
-          Thunk::kNcclCollectivePermuteStart, thunk_info,
-          GetNcclCollectivePermuteConfig(op, replica_count, partition_count),
-          buffer) {}
-
-Status NcclCollectivePermuteStartThunk::RunNcclCollective(
-    const ExecuteParams& params, ncclComm_t comm) {
-  return async_.Execute(
-      [this](const ExecuteParams& params, se::Stream& stream, ncclComm_t comm) {
-        return RunCollectivePermute(params, stream, comm);
-      },
-      params, comm);
-}
-
-NcclCollectivePermuteDoneThunk::NcclCollectivePermuteDoneThunk(
-    ThunkInfo thunk_info, NcclCollectiveThunk::AsyncExecutor& async)
-    : NcclCollectiveDoneThunk(Thunk::kNcclCollectivePermuteDone, thunk_info,
-                              async) {}
 
 Status RunCollectivePermute(
     NcclCollectivePermuteConfig::SourceTargetMapEntry source_target,

@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/IRMapping.h"  // from @llvm-project
 #include "mlir/IR/ImplicitLocOpBuilder.h"  // from @llvm-project
@@ -50,6 +51,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -1233,62 +1235,14 @@ class ConvertDynamicUpdateSliceOp
 
     Type idx_type = start_indices_type.getElementType();
     int64_t shape_dim = operand_type.getRank();
-    auto operand_shape = operand_type.getShape();
-    auto update_shape = update_type.getShape();
-
-    ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
-    Value zero_cst = BuildIntConstOp(builder, rewriter, 0, idx_type);
-    Value one_cst = BuildIntConstOp(builder, rewriter, 1, idx_type);
-    // Clamp start indices in [0, operand_size - update_size].
     llvm::SmallVector<Value> start_indices_vector;
     Append(start_indices_vector, op.getStartIndices());
     auto shape_tensor_type = RankedTensorType::get({shape_dim}, idx_type);
-    Value start_indices_tensor =
-        builder.create<PackOp>(shape_tensor_type, start_indices_vector);
-    Value operand_shape_cst =
-        BuildIntArrayConstOp(builder, rewriter, operand_shape, idx_type);
-    Value update_shape_cst =
-        BuildIntArrayConstOp(builder, rewriter, update_shape, idx_type);
-    Value max_start_indices =
-        builder.create<SubOp>(operand_shape_cst, update_shape_cst);
-    Value start_indices_clip_max =
-        builder.create<MinimumOp>(start_indices_tensor, max_start_indices);
-    Value clamped_start_indices =
-        builder.create<MaximumOp>(start_indices_clip_max, zero_cst);
-
-    // Do dynamic_upate_slice on flattened operand and update with the aid of
-    // tf.TensorScatterUpdate op. It takes in 3 parameters: flat_operand,
-    // indices and flat_update. The indices are computed as follows:
-    // 1. Construct a range (0, n_operand). It arranges a id number to each
-    //    element position in operand.
-    // 2. Reshape the range to the shape of operand.
-    // 3. Compute the id numbers of update positions by choose a slice form
-    //    clamped_start_indices to clamped_start_indices + update_size.
-    // 4. Flatten the update id numbers and the indices is obtained.
-    int64_t n_operand = operand_type.getNumElements();
-    Value n_operand_cst =
-        BuildIntConstOp(builder, rewriter, n_operand, idx_type);
-    Value range_flat =
-        builder.create<RangeOp>(zero_cst, n_operand_cst, one_cst);
-    Value range = BuildReshapeOp(builder, rewriter, range_flat, operand_shape,
-                                 idx_type, idx_type);
-    Value update_indices_raw =
-        BuildSliceOp(builder, rewriter, range, clamped_start_indices,
-                     update_shape, idx_type, idx_type);
-    int64_t n_update = update_type.getNumElements();
-    Type element_type = operand_type.getElementType();
-    Value update_indices = BuildReshapeOp(builder, rewriter, update_indices_raw,
-                                          {n_update, 1}, idx_type, idx_type);
-    Value operand_flat = BuildReshapeOp(builder, rewriter, op.getOperand(),
-                                        {n_operand}, idx_type, element_type);
-    Value update_flat = BuildReshapeOp(builder, rewriter, op.getUpdate(),
-                                       {n_update}, idx_type, element_type);
-    Value flat_result = builder.create<TensorScatterUpdateOp>(
-        operand_flat, update_indices, update_flat);
-
-    // Reshape back before return.
-    rewriter.replaceOpWithNewOp<ReshapeOp>(op, operand_type, flat_result,
-                                           operand_shape_cst);
+    Value start_indices_tensor = rewriter.create<PackOp>(
+        op.getLoc(), shape_tensor_type, start_indices_vector);
+    rewriter.replaceOpWithNewOp<TF::XlaDynamicUpdateSliceOp>(
+        op, op.getType(), op.getOperand(), op.getUpdate(),
+        start_indices_tensor);
     return success();
   };
 };
@@ -1561,21 +1515,26 @@ bool MatchIota(DenseIntElementsAttr dimensions, Value iota) {
          MatchIotaConst(dimensions, iota);
 }
 
+template <typename ReturnOpType, typename CompareOpType>
 bool MatchTopKComparator(Region& comparator) {
   if (!comparator.hasOneBlock()) return false;
   Block& comparator_blk = comparator.front();
   using OpListType = llvm::iplist<Operation>;
   OpListType& operations = comparator_blk.getOperations();
   if (operations.size() != 2) return false;
-  auto compare_op = dyn_cast_or_null<mhlo::CompareOp>(&operations.front());
-  auto return_op = dyn_cast_or_null<mhlo::ReturnOp>(&operations.back());
+  auto compare_op = dyn_cast_or_null<CompareOpType>(&operations.front());
+  auto return_op = dyn_cast_or_null<ReturnOpType>(&operations.back());
   if (!compare_op || !return_op) return false;
   // TODO(xuanyuanluo): Support mhlo::ComparisonDirection::LT direction.
-  if (compare_op.getComparisonDirection() != mhlo::ComparisonDirection::GT)
+  if (std::is_same_v<CompareOpType, mhlo::CompareOp> &&
+      dyn_cast_or_null<mhlo::CompareOp>(&operations.front())
+              .getComparisonDirection() != mhlo::ComparisonDirection::GT) {
     return false;
-  if (compare_op.getLhs() != comparator_blk.getArgument(0) ||
-      compare_op.getRhs() != comparator_blk.getArgument(1))
+  }
+  if (compare_op.getOperands()[0] != comparator_blk.getArgument(0) ||
+      compare_op.getOperands()[1] != comparator_blk.getArgument(1)) {
     return false;
+  }
   return return_op.getOperands().front() == compare_op.getResult();
 }
 
@@ -1626,7 +1585,8 @@ class ConvertSortToTfTopk : public OpConversionPattern<mhlo::SortOp> {
     if (!MatchIota(sort_dim_attr, indices))
       return rewriter.notifyMatchFailure(
           op, "the second operand is supposed to be obtained from IOTA");
-    if (!MatchTopKComparator(op.getComparator()))
+    if (!MatchTopKComparator<mhlo::ReturnOp, mhlo::CompareOp>(
+            op.getComparator()))
       return rewriter.notifyMatchFailure(op, "only match for GT comparator");
     ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
     Value k_cst = BuildIntConstOp(builder, rewriter, k, rewriter.getI32Type());
@@ -1812,7 +1772,7 @@ Value ConvertDotGeneralOp(PatternRewriter& rewriter, Operation* old_op) {
 }
 
 // Checks if the specified region is a binary reduction function that takes 2
-// inputs, passes it to an instance of the specifiied reduction op and then
+// inputs, passes it to an instance of the specified reduction op and then
 // returns the result.
 template <typename ReductionOp>
 LogicalResult MatchBinaryReduceFunction(mlir::Region& function) {
@@ -1849,7 +1809,7 @@ LogicalResult MatchBinaryReduceFunction<void>(mlir::Region& function) {
 }
 
 // Replace BinaryOp with a combination of TfBinaryOp and TfReduceOp if the
-// init value doesn't match the expection of TfReduceOp.
+// init value doesn't match the expectation of TfReduceOp.
 template <typename TfReduceOp, typename TfBinOp>
 LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
                                        ConstOp reduction_indices,
@@ -1863,7 +1823,7 @@ LogicalResult rewriteNonMatchInitValue(mhlo::ReduceOp reduce_op, Value input,
   return success();
 }
 
-// Cannot replace BinaryOp if the init value doesn't match the expection of
+// Cannot replace BinaryOp if the init value doesn't match the expectation of
 // TfReduceOp and there is no corresponding TfBinaryOp.
 template <>
 LogicalResult rewriteNonMatchInitValue<TF::MaxOp, void>(
@@ -2463,7 +2423,8 @@ class ConvertLoweredCumOp : public OpConversionPattern<mhlo::ReduceWindowOp> {
     }
 
     if (cumulative_axis == -1) {
-      return rewriter.notifyMatchFailure(rw, "no reduced dimension is found.");
+      rw.emitOpError() << "no reduced dimension is found.";
+      return failure();
     }
 
     // For a cumulative op, padding (expressed as a list of left-padding and
@@ -3007,6 +2968,10 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
   LogicalResult matchAndRewrite(
       mhlo::GatherOp gather_op, OpAdaptor adaptor,
       ConversionPatternRewriter& rewriter) const final {
+    if (succeeded(ConvertGatherOpToSlice(gather_op, rewriter))) {
+      return success();
+    }
+
     Value operand = gather_op.getOperand();
     Value start_indices = gather_op.getStartIndices();
 
@@ -3125,6 +3090,153 @@ class ConvertGatherOp : public OpConversionPattern<mhlo::GatherOp> {
         rewriter.getI64TensorAttr(transpose_params.permutation));
 
     return success();
+  }
+
+  // Convert gather op to tf.slice and tf.concat
+  LogicalResult ConvertGatherOpToSlice(
+      mhlo::GatherOp gather_op, ConversionPatternRewriter& rewriter) const {
+    Value operand = gather_op.getOperand();
+    Value start_indices = gather_op.getStartIndices();
+    static const int rank_two = 2;
+    // This converts a gather op to multiple slice ops, cap the number of slice
+    // ops allowed.
+    static const int max_batch_size = 50;
+
+    // Can only convert with static shaped gather.
+    ShapedType operand_type = operand.getType().cast<ShapedType>();
+    ShapedType start_indices_type = start_indices.getType().cast<ShapedType>();
+    ShapedType result_type = gather_op.getResult().getType().cast<ShapedType>();
+    if (!operand_type.hasStaticShape() ||
+        !start_indices_type.hasStaticShape() || !result_type.hasStaticShape()) {
+      gather_op.emitOpError() << "Dynamic shaped inputs are not supported.";
+      return failure();
+    }
+
+    auto start_index_map = gather_op.getDimensionNumbers().getStartIndexMap();
+    auto collapsed_slice_dims =
+        gather_op.getDimensionNumbers().getCollapsedSliceDims();
+    auto offset_dims = gather_op.getDimensionNumbers().getOffsetDims();
+    auto slice_sizes = gather_op.getSliceSizes();
+    llvm::SmallVector<int64_t, 2> slice_sizes_vector;
+    slice_sizes_vector.reserve(slice_sizes.size());
+    for (int64_t s : slice_sizes.getValues<int64_t>()) {
+      slice_sizes_vector.push_back(s);
+    }
+
+    llvm::SmallVector<int64_t, 1> batch_dims;
+    // Offset dims are guaranteed to be sorted.
+    int offset_index = 0;
+    for (int64_t i = 0; i < result_type.getRank(); ++i) {
+      if (offset_index >= offset_dims.size() ||
+          offset_dims[offset_index] != i) {
+        batch_dims.push_back(i);
+      } else {
+        ++offset_index;
+      }
+    }
+    // Here we only support gather with one batch dim and the batch dim is 0.
+    if (batch_dims.size() != 1 || batch_dims[0] != 0) {
+      return failure();
+    }
+    int64_t batch_dim = batch_dims[0];
+    // Batch dim in operand and start indices should match.
+    if (operand_type.getDimSize(batch_dim) > max_batch_size ||
+        operand_type.getRank() != rank_two ||
+        start_indices_type.getRank() != rank_two ||
+        operand_type.getDimSize(batch_dim) !=
+            start_indices_type.getDimSize(batch_dim) ||
+        slice_sizes_vector[batch_dim] != 1) {
+      return failure();
+    }
+    // Here we only support the case where [0, 1] in start_indices maps to
+    // operand[0, 1]
+    for (int64_t i = 0; i < start_index_map.size(); i++) {
+      if (start_index_map[i] != i) {
+        return failure();
+      }
+    }
+    // Collapsed slice dims should contain the batch dim.
+    if (collapsed_slice_dims.size() != start_index_map.size() - 1 ||
+        collapsed_slice_dims.size() != 1 || collapsed_slice_dims[0] != 0) {
+      return failure();
+    }
+
+    // Normalize start_indices so index_vector_dim == start_indices.rank() - 1.
+    int64_t index_vector_dim =
+        gather_op.getDimensionNumbers().getIndexVectorDim();
+    if (failed(NormalizeIndexVector(gather_op, start_indices,
+                                    start_indices_type, index_vector_dim,
+                                    rewriter))) {
+      return failure();
+    }
+
+    ImplicitLocOpBuilder builder(gather_op.getLoc(), rewriter);
+    // Clamp the start indices to ensure it is in bounds.
+    auto max_start_indices = BuildIntArrayConstOp(
+        builder, rewriter,
+        llvm::SmallVector<int64_t>(
+            {operand_type.getDimSize(0) - slice_sizes_vector[0],
+             operand_type.getDimSize(1) - slice_sizes_vector[1]}),
+        start_indices_type.getElementType());
+    auto min_start_indices = BuildIntArrayConstOp(
+        builder, rewriter, llvm::SmallVector<int64_t>({0, 0}),
+        start_indices_type.getElementType());
+    auto start_indices_max_op = rewriter.create<MaximumOp>(
+        gather_op.getLoc(), start_indices, min_start_indices);
+    auto clamped_start_indices_op = rewriter.create<MinimumOp>(
+        gather_op.getLoc(), start_indices_max_op, max_start_indices);
+
+    int64_t batch_size = start_indices_type.getDimSize(batch_dim);
+    auto slice_size = BuildIntArrayConstOp(
+        builder, rewriter, slice_sizes_vector, rewriter.getI32Type());
+    if (batch_size == 1) {
+      auto squeeze_op = rewriter.create<TF::SqueezeOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({rank_two},
+                                start_indices_type.getElementType()),
+          clamped_start_indices_op,
+          rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
+      auto slice_op =
+          rewriter.create<SliceOp>(gather_op.getLoc(), gather_op.getType(),
+                                   operand, squeeze_op, slice_size);
+      rewriter.replaceOp(gather_op, {slice_op});
+      return mlir::success();
+    }
+
+    llvm::SmallVector<Value, 1> slices;
+    slices.reserve(batch_size);
+    for (int64_t i = 0; i < batch_size; ++i) {
+      auto zero = BuildIntArrayConstOp(builder, rewriter,
+                                       llvm::SmallVector<int64_t>({i, 0}),
+                                       rewriter.getI32Type());
+      auto two = BuildIntArrayConstOp(builder, rewriter,
+                                      llvm::SmallVector<int64_t>({1, 2}),
+                                      rewriter.getI32Type());
+      auto begin = rewriter.create<SliceOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({1, 2}, start_indices_type.getElementType()),
+          clamped_start_indices_op, zero, two);
+      auto squeeze_op = rewriter.create<TF::SqueezeOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({rank_two},
+                                start_indices_type.getElementType()),
+          begin,
+          rewriter.getI64ArrayAttr(llvm::ArrayRef<int64_t>({batch_dim})));
+      auto slice_op = rewriter.create<SliceOp>(
+          gather_op.getLoc(),
+          RankedTensorType::get({1, slice_sizes_vector[1]},
+                                operand_type.getElementType()),
+          operand, squeeze_op, slice_size);
+      slices.push_back(slice_op);
+    }
+    auto scalar_type = RankedTensorType::get({}, rewriter.getI32Type());
+    auto zero_scalar = rewriter.create<TF::ConstOp>(
+        gather_op.getLoc(),
+        DenseIntElementsAttr::get(scalar_type, static_cast<int32_t>(0)));
+    auto concat_op = rewriter.create<ConcatV2Op>(
+        gather_op.getLoc(), result_type, slices, zero_scalar);
+    rewriter.replaceOp(gather_op, {concat_op});
+    return mlir::success();
   }
 
  private:
@@ -3346,11 +3458,41 @@ class ConvertScatterOp : public OpConversionPattern<mhlo::ScatterOp> {
         loc, permutation_and_shape.shape, operands[0],
         permutation_and_shape.permutation);
 
+    Value new_indices = indices;
+    int64_t index_depth =
+        permutation_and_shape.shape.getRank() - inserted_window_dims.size();
+    int64_t num_updates = indices_type.getDimSize(0);
+    // For TF::TensorScatterUpdateOp, `indices` must have at least 2 axes:
+    // `(num_updates, index_depth)`. Reshape indices and updates if necessary.
+    if (std::is_same<TfOp, TF::TensorScatterUpdateOp>::value &&
+        indices_type.getRank() == 1 && updates_type.getRank() == 1 &&
+        index_depth == 1 && num_updates == 1) {
+      ImplicitLocOpBuilder builder(loc, rewriter);
+      auto indices_shape = BuildIntArrayConstOp(
+          builder, rewriter,
+          llvm::SmallVector<int64_t>({num_updates, index_depth}),
+          rewriter.getI32Type());
+      new_indices = rewriter.create<ReshapeOp>(
+          loc,
+          RankedTensorType::get({num_updates, index_depth},
+                                indices_type.getElementType()),
+          indices, indices_shape);
+      auto updates_shape = BuildIntArrayConstOp(
+          builder, rewriter,
+          llvm::SmallVector<int64_t>({num_updates, updates_type.getDimSize(0)}),
+          rewriter.getI32Type());
+      new_updates = rewriter.create<ReshapeOp>(
+          loc,
+          RankedTensorType::get({1, updates_type.getDimSize(0)},
+                                updates_type.getElementType()),
+          new_updates, updates_shape);
+    }
+
     // Apply TF scatter to update the trailing dimensions of the
     // transposed operand.
     auto tf_scatter_op =
         rewriter.create<TfOp>(loc, permutation_and_shape.shape,
-                              transposed_operand, indices, new_updates);
+                              transposed_operand, new_indices, new_updates);
 
     // Reverse the earlier transpose.
     auto inverse_permutation =
@@ -3412,6 +3554,161 @@ class ConvertPopulationCountOp
   }
 };
 
+class ConvertCustomCallWithApproxTopK
+    : public mlir::OpConversionPattern<mhlo::CustomCallOp> {
+ public:
+  explicit ConvertCustomCallWithApproxTopK(MLIRContext* context,
+                                           mlir::ModuleOp* module_op)
+      : OpConversionPattern<mhlo::CustomCallOp>(context),
+        module_op_(module_op) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mhlo::CustomCallOp op, OpAdaptor adaptor,
+      ConversionPatternRewriter& rewriter) const final {
+    if (op.getCallTargetName() != "ApproxTopK") {
+      return mlir::failure();
+    }
+    auto is_supported_attr_name = [](NamedAttribute attr) {
+      auto name = attr.getName();
+      return name == "call_target_name" || name == "backend_config" ||
+             name == "api_version" || name == "called_computations";
+    };
+    for (const auto& attr : op->getAttrs()) {
+      if (!is_supported_attr_name(attr)) {
+        return op.emitOpError()
+               << attr.getName().getValue()
+               << " is not a supported attribute for ApproxTopK";
+      }
+    }
+    auto backend_config =
+        op.getBackendConfigAttr().dyn_cast_or_null<mlir::DictionaryAttr>();
+    if (!backend_config) {
+      return op.emitOpError() << "Missing backend_config attribute";
+    }
+
+    for (const auto& attr : backend_config) {
+      auto name = attr.getName();
+      if (!(name == "top_k" || name == "reduction_dim" ||
+            name == "recall_target" || name == "aggregate_to_topk" ||
+            name == "reduction_input_size_override" || name == "is_fallback")) {
+        return op.emitOpError()
+               << name.getValue() << " is not a supported backend_config"
+               << " attribute for ApproxTopK";
+      }
+    }
+
+    auto check_i64_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<IntegerAttr>(attr_name);
+      if (!attr || !attr.getType().isInteger(64)) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of i64 type";
+      }
+      return success();
+    };
+    auto check_f32_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<FloatAttr>(attr_name);
+      if (!attr || !attr.getType().isF32()) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of f32 type";
+      }
+      return success();
+    };
+    auto check_bool_attr =
+        [&](const std::string& attr_name) -> mlir::LogicalResult {
+      if (!backend_config.contains(attr_name)) {
+        return op.emitOpError()
+               << "Missing " << attr_name << " attribute in backend_config";
+      }
+      auto attr = backend_config.getAs<BoolAttr>(attr_name);
+      if (!attr) {
+        return op.emitOpError()
+               << attr_name
+               << " attribute in backend_config must be of bool type";
+      }
+      return success();
+    };
+    if (failed(check_i64_attr("top_k"))) return failure();
+    if (failed(check_i64_attr("reduction_dim"))) return failure();
+    if (failed(check_f32_attr("recall_target"))) return failure();
+    if (failed(check_bool_attr("aggregate_to_topk"))) return failure();
+    if (failed(check_i64_attr("reduction_input_size_override"))) {
+      return failure();
+    }
+    bool has_is_fallback = backend_config.contains("is_fallback");
+    if (has_is_fallback && !backend_config.getAs<BoolAttr>("is_fallback")) {
+      return op.emitOpError()
+             << "is_fallback attribute in backend_config must be of bool type";
+    }
+
+    auto top_k_attr = backend_config.getAs<IntegerAttr>("top_k");
+    auto reduction_dim_attr =
+        backend_config.getAs<IntegerAttr>("reduction_dim");
+    auto recall_target_attr = backend_config.getAs<FloatAttr>("recall_target");
+    auto aggregate_to_topk_attr =
+        backend_config.getAs<BoolAttr>("aggregate_to_topk");
+    auto reduction_input_size_override_attr =
+        backend_config.getAs<IntegerAttr>("reduction_input_size_override");
+    if (op.getInputs().size() % 2 != 0) {
+      return op.emitOpError() << "ApproxTopK takes an even number of operands.";
+    }
+
+    auto called_computations = op.getCalledComputations();
+    if (called_computations.size() != 1) {
+      return op.emitOpError()
+             << "ApproxTopK takes exactly 1 called_computation.";
+    }
+    mlir::func::FuncOp callee = module_op_->lookupSymbol<mlir::func::FuncOp>(
+        op.getCalledComputations()[0].cast<FlatSymbolRefAttr>());
+    mlir::FunctionType callee_type = callee.getFunctionType();
+    SmallVector<Type, 4> expected_callee_input_types;
+    auto num_inputs = op.getInputs().size() / 2;
+    for (unsigned i = 0; i < num_inputs; ++i) {
+      auto input_type = op.getOperand(i).getType().dyn_cast<RankedTensorType>();
+      auto scalar = RankedTensorType::get({}, input_type.getElementType());
+      expected_callee_input_types.push_back(scalar);
+      expected_callee_input_types.push_back(scalar);
+    }
+    FunctionType expected_callee_type = mlir::FunctionType::get(
+        op->getContext(), expected_callee_input_types,
+        RankedTensorType::get({}, IntegerType::get(op->getContext(), 1)));
+    if (callee_type != expected_callee_type) {
+      return op.emitOpError()
+             << "called_computation type does not match the expected type. Got "
+             << callee_type << " expected " << expected_callee_type;
+    }
+    if (!MatchTopKComparator<mlir::func::ReturnOp, TF::GreaterOp>(
+            callee.getBody()) &&
+        !MatchTopKComparator<mlir::func::ReturnOp, mhlo::CompareOp>(
+            callee.getBody())) {
+      return op.emitOpError() << "only match for GT comparator";
+    }
+    auto is_max_k = rewriter.getBoolAttr(true);
+
+    auto approx_top_k = rewriter.create<TF::ApproxTopKOp>(
+        op.getLoc(), op->getResultTypes(), op.getInputs()[0], top_k_attr,
+        reduction_dim_attr, recall_target_attr, is_max_k,
+        reduction_input_size_override_attr, aggregate_to_topk_attr);
+
+    rewriter.replaceOp(op, approx_top_k.getResults());
+    return mlir::success();
+  }
+
+ private:
+  mlir::ModuleOp* module_op_;
+};
+
 // Returns true if broadcast_dimensions obey Tensorflow convention, as in new
 // dimensions are added as prefix.
 bool IsTFStyleBroadcast(DenseIntElementsAttr broadcast_dimensions,
@@ -3455,9 +3752,10 @@ arith::ConstantOp ExpandedShape(PatternRewriter& rewriter, Value input,
 /// Performs the lowering to XLA dialect.
 void LegalizeHloToTf::runOnOperation() {
   MLIRContext& context = getContext();
+  mlir::ModuleOp module = getOperation()->getParentOfType<mlir::ModuleOp>();
 
-  // Add legalization patterns to the list.
   RewritePatternSet patterns(&getContext());
+  patterns.add<ConvertCustomCallWithApproxTopK>(&context, &module);
   PopulateLegalizeHloToTfPatterns(&patterns, &context);
 
   ConversionTarget target(context);

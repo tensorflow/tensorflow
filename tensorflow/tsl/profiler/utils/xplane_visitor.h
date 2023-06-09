@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,13 +49,13 @@ class XStatVisitor {
 
   // REQUIRED: plane, stat and metadata cannot be nullptr.
   XStatVisitor(const XPlaneVisitor* plane, const XStat* stat,
-               const XStatMetadata* metadata, absl::optional<int64_t> type);
+               const XStatMetadata* metadata, std::optional<int64_t> type);
 
   int64_t Id() const { return stat_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }
 
-  absl::optional<int64_t> Type() const { return type_; }
+  std::optional<int64_t> Type() const { return type_; }
 
   absl::string_view Description() const { return metadata_->description(); }
 
@@ -88,7 +89,7 @@ class XStatVisitor {
   const XStat* stat_;
   const XStatMetadata* metadata_;
   const XPlaneVisitor* plane_;
-  absl::optional<int64_t> type_;
+  std::optional<int64_t> type_;
 };
 
 template <class T>
@@ -109,17 +110,17 @@ class XStatsOwner {
   // Shortcut to get a specific stat type, nullopt if absent.
   // This function performs a linear search for the requested stat value.
   // Prefer ForEachStat above when multiple stat values are necessary.
-  absl::optional<XStatVisitor> GetStat(int64_t stat_type) const;
+  std::optional<XStatVisitor> GetStat(int64_t stat_type) const;
 
   // Same as above that skips searching for the stat.
-  absl::optional<XStatVisitor> GetStat(
+  std::optional<XStatVisitor> GetStat(
       int64_t stat_type, const XStatMetadata& stat_metadata) const {
     for (const XStat& stat : stats_owner_->stats()) {
       if (stat.metadata_id() == stat_metadata.id()) {
         return XStatVisitor(plane_, &stat, &stat_metadata, stat_type);
       }
     }
-    return absl::nullopt;  // type does not exist in this owner.
+    return std::nullopt;  // type does not exist in this owner.
   }
 
  protected:
@@ -168,7 +169,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   absl::string_view Name() const { return metadata_->name(); }
 
-  absl::optional<int64_t> Type() const { return type_; }
+  std::optional<int64_t> Type() const { return type_; }
 
   bool HasDisplayName() const { return !metadata_->display_name().empty(); }
 
@@ -217,7 +218,7 @@ class XEventVisitor : public XStatsOwner<XEvent> {
   const XLine* line_;
   const XEvent* event_;
   const XEventMetadata* metadata_;
-  absl::optional<int64_t> type_;
+  std::optional<int64_t> type_;
 };
 
 class XLineVisitor {
@@ -257,7 +258,7 @@ class XLineVisitor {
   const XLine* line_;
 };
 
-using TypeGetter = std::function<absl::optional<int64_t>(absl::string_view)>;
+using TypeGetter = std::function<std::optional<int64_t>(absl::string_view)>;
 using TypeGetterList = std::vector<TypeGetter>;
 
 class XPlaneVisitor : public XStatsOwner<XPlane> {
@@ -303,7 +304,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   const XEventMetadata* GetEventMetadata(int64_t event_metadata_id) const;
 
   // Returns the type of an event given its id.
-  absl::optional<int64_t> GetEventType(int64_t event_metadata_id) const;
+  std::optional<int64_t> GetEventType(int64_t event_metadata_id) const;
 
   // Returns stat metadata given its id. Returns a default value if not found.
   const XStatMetadata* GetStatMetadata(int64_t stat_metadata_id) const;
@@ -313,7 +314,7 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
   const XStatMetadata* GetStatMetadataByType(int64_t stat_type) const;
 
   // Returns the type of an stat given its id.
-  absl::optional<int64_t> GetStatType(int64_t stat_metadata_id) const;
+  std::optional<int64_t> GetStatType(int64_t stat_metadata_id) const;
 
  private:
   void BuildEventTypeMap(const XPlane* plane,
@@ -332,12 +333,12 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
 };
 
 template <class T>
-absl::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64_t stat_type) const {
+std::optional<XStatVisitor> XStatsOwner<T>::GetStat(int64_t stat_type) const {
   const auto* stat_metadata = plane_->GetStatMetadataByType(stat_type);
   if (stat_metadata != nullptr) {
     return GetStat(stat_type, *stat_metadata);
   }
-  return absl::nullopt;  // type does not exist in this owner.
+  return std::nullopt;  // type does not exist in this owner.
 }
 
 template <typename ForEachChildFunc>

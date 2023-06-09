@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/error_spec.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
@@ -120,7 +121,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
   )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -141,7 +142,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 ; CHECK-NOT: pad(
 ; CHECK-NOT: slice(
 )");
@@ -164,7 +165,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -188,10 +189,65 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, SplitAndTransposeLhsExecutesCorrectly) {
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY e {
+  tmp_0 = s8[5,50,2,128] parameter(1)
+  tmp_2 = s8[50,5,2,128] transpose(tmp_0), dimensions={1,0,2,3}
+  tmp_3 = s8[50,1280] reshape(tmp_2)
+  tmp_4 = f16[50,1280] convert(tmp_3)
+  tmp_5 = f16[50,79] parameter(0)
+  ROOT tmp_6 = f16[1280,79] dot(tmp_4, tmp_5),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: ROOT
+; CHECK-SAME: fusion
+; CHECK-SAME: kind=kCustom
+)");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, NondefaultOperandLayoutIsSupported) {
+  // TODO(bchetioui): reenable when b/285866137 is fixed.
+#ifndef NDEBUG
+  GTEST_SKIP() << "This test times out when -UNDEBUG is set.";
+#endif
+  const std::string kHloText = R"(
+HloModule m
+
+ENTRY r {
+  p1 = f16[9,1440,128]{2,1,0} parameter(1)
+  cp6 = f16[9,1440,128]{2,0,1} copy(p1)
+  cv4 = f32[9,1440,128]{2,0,1} convert(cp6)
+  p0 = f32[9,1440,1234]{2,1,0} parameter(0)
+  ROOT dot.10 = f32[9,128,1234]{2,1,0} dot(cv4, p0),
+    lhs_batch_dims={0}, lhs_contracting_dims={1},
+    rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: fusion
+; CHECK-SAME: kind=kCustom
+)");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 TEST_F(TritonGemmTest, DoNotFuseSplitRhsContractingTranspose) {
@@ -211,7 +267,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%transpose{{[^)]*}}, %p0)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -234,7 +290,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p1, %transpose)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -256,7 +312,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%y, %x)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
@@ -278,7 +334,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%y, %x)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -301,7 +357,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%y, %x)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-2}));
@@ -325,14 +381,14 @@ ENTRY e {
 ; CHECK: f32[5,3,4]{2,1,0} bitcast(%p1)
 ; CHECK: fusion(%p0, %bitcast
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
 }
 
-TEST_F(TritonGemmTest, SkipMultipleBatch) {
-  const std::string hlo_text = R"(
+TEST_F(TritonGemmTest, MultipleBatchRequireSeparateTranspose) {
+  const std::string kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -344,9 +400,17 @@ ENTRY e {
     rhs_batch_dims={0,1,2}, rhs_contracting_dims={4}
 })";
 
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK-NOT: __triton
+  MatchOptimizedHlo(kHloText, R"(
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: kLoop
+; CHECK-NEXT: kCustom
+; CHECK-NEXT: ROOT
+; CHECK-SAME: bitcast
 )");
+
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-4, /*arel=*/1e-4}));
 }
 
 TEST_F(TritonGemmTest, SkipU8) {
@@ -405,7 +469,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p0, %p1)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -424,7 +488,7 @@ ENTRY e {
 
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK: fusion(%p0), kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
@@ -449,6 +513,37 @@ ENTRY e {
 )");
 }
 
+TEST_F(TritonGemmTestAny,
+       ShouldNotLowerDotWithLhsWithoutNonContractingDimThroughTriton) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  parameter_0 = f32[32,40] parameter(0)
+  parameter_1 = f32[32,40,64] parameter(1)
+  ROOT dot = f32[32,64] dot(f32[32,40] parameter_0, f32[32,40,64] parameter_1), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: triton");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
+
+TEST_F(TritonGemmTestAny,
+       ShouldNotLowerDotWithRhsWithoutNonContractingDimThroughTriton) {
+  const std::string hlo_text = R"(
+HloModule t
+
+ENTRY e {
+  parameter_0 = f32[32,40,64] parameter(0)
+  parameter_1 = f32[32,40] parameter(1)
+  ROOT dot = f32[32,64] dot(f32[32,40,64] parameter_0, f32[32,40] parameter_1), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  MatchOptimizedHlo(hlo_text, "CHECK-NOT: triton");
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-6, /*arel=*/1e-6}));
+}
 
 // This group of tests compares GPU results of dots already rewritten
 // into Triton fusions.
@@ -469,7 +564,7 @@ ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
   ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"16\",\"block_n\":\"64\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"3\",\"num_warps\":\"8\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":16,"block_n":64,"block_k":32,"split_k":1,"num_stages":3,"num_warps":8}}
 })";
 
   const char* hlo_text_triton = R"(
@@ -486,7 +581,7 @@ ENTRY e {
   p0 = s8[101,202]{1,0} parameter(0)
   p1 = f32[202,303]{1,0} parameter(1)
   ROOT _ = f32[101,303] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"128\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":128,"block_k":32,"split_k":1,"num_stages":2,"num_warps":4}}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_triton,
@@ -503,7 +598,7 @@ ENTRY e {
   arg1 = f16[7,33] parameter(1)
   ROOT custom-call = f16[5,33] custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -521,7 +616,7 @@ ENTRY e {
   p0 = f16[5,7]{1,0} parameter(0)
   p1 = f16[7,33]{1,0} parameter(1)
   ROOT _ = f16[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1}}
 }
 )";
 
@@ -539,7 +634,7 @@ ENTRY e {
   arg1 = f32[7,33] parameter(1)
   ROOT custom-call = f32[5,33] custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -557,7 +652,7 @@ ENTRY e {
   p0 = f32[5,7]{1,0} parameter(0)
   p1 = f32[7,33]{1,0} parameter(1)
   ROOT _ = f32[5,33] fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"1\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":1}}
 }
 )";
 
@@ -580,7 +675,7 @@ ENTRY e {
   arg1 = bf16[512,256]{1,0} parameter(1)
   ROOT custom-call = bf16[16,256]{1,0} custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -598,7 +693,7 @@ ENTRY e {
   arg0 = bf16[512,16]{1,0} parameter(0)
   arg1 = bf16[512,256]{1,0} parameter(1)
   ROOT _ = bf16[16,256]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"16\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":128,"block_n":32,"block_k":16,"split_k":1,"num_stages":2,"num_warps":4}}
 }
 )";
 
@@ -632,7 +727,7 @@ ENTRY e {
   p0 = s8[332,441]{1,0} parameter(0)
   p1 = f16[441,39]{1,0} parameter(1)
   ROOT _ = f16[332,39]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"128\",\"block_n\":\"128\",\"block_k\":\"128\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"32\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":128,"block_n":128,"block_k":128,"split_k":1,"num_stages":2,"num_warps":32}}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
@@ -645,16 +740,15 @@ ENTRY e {
   llvm::Module llvm_module("module", llvm_ctx);
   mlir::MLIRContext mlir_context;
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      const tensorflow::AutotuneResult::TritonGemmKey config,
-      hlo_module->entry_computation()
-          ->root_instruction()
-          ->backend_config<tensorflow::AutotuneResult::TritonGemmKey>());
-  TF_ASSERT_OK_AND_ASSIGN(
-      const LaunchDimensions launch_dimensions,
-      TritonWrapper("test_fn", triton_dot_computation,
-                    GetCudaComputeCapability(), dev_info, config, &llvm_module,
-                    &MatMul, mlir_context));
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          hlo_module->entry_computation()
+                              ->root_instruction()
+                              ->backend_config<FusionBackendConfig>());
+  TF_ASSERT_OK_AND_ASSIGN(const LaunchDimensions launch_dimensions,
+                          TritonWrapper("test_fn", triton_dot_computation,
+                                        GetCudaComputeCapability(), dev_info,
+                                        config.triton_gemm_config(),
+                                        &llvm_module, &MatMul, mlir_context));
   // The config is chosen so that the used memory size is slightly above the
   // 48 kB boundary of standard / optin shared memory so that any GPU that
   // has the optin one should be able to execute the test.
@@ -677,7 +771,7 @@ ENTRY e {
   p0 = s8[332,441]{1,0} parameter(0)
   p1 = f16[441,39]{1,0} parameter(1)
   ROOT _ = f16[332,39]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4}}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHloTextLowShmem, kHloTextOptinShmem,
@@ -694,7 +788,7 @@ ENTRY e {
   arg1 = f16[64,32]{1,0} parameter(1)
   ROOT custom-call = f16[128,64]{1,0} custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -712,7 +806,7 @@ ENTRY e {
   arg0 = f16[128,32]{1,0} parameter(0)
   arg1 = f16[64,32]{1,0} parameter(1)
   ROOT _ = f16[128,64]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"128\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":128,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":4}}
 }
 )";
 
@@ -730,7 +824,7 @@ ENTRY e {
   arg1 = f32[1024,64]{1,0} parameter(1)
   ROOT custom-call = f32[128,1024]{1,0} custom-call(arg0, arg1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"0\"],\"rhs_contracting_dimensions\":[\"1\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[0],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -748,7 +842,7 @@ ENTRY e {
   arg0 = f32[64,128]{1,0} parameter(0)
   arg1 = f32[1024,64]{1,0} parameter(1)
   ROOT _ = f32[128,1024]{1,0} fusion(arg0, arg1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":4}}
 }
 )";
 
@@ -776,7 +870,7 @@ ENTRY e {
   p1 = bf16[256,122]{1,0} parameter(1)
   ROOT custom-call = bf16[144,122]{1,0} custom-call(fusion, p1),
     custom_call_target="__cublas$gemm",
-    backend_config="{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"]},\"epilogue\":\"DEFAULT\"}"
+    backend_config={"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[0],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}
 }
 )";
 
@@ -794,7 +888,7 @@ ENTRY e {
   p0 = s8[144,256]{1,0} parameter(0)
   p1 = bf16[256,122]{1,0} parameter(1)
   ROOT _ = bf16[144,122]{1,0} fusion(p0, p1), kind=kCustom, calls=triton_dot,
-    backend_config="{\"block_m\":\"64\",\"block_n\":\"64\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"2\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":64,"block_k":64,"split_k":1,"num_stages":1,"num_warps":2}}
 }
 )";
 
@@ -825,7 +919,7 @@ ENTRY e {
   bitcast.4 = s8[480,120]{1,0} bitcast(p0)
   ROOT triton_gemm_r = bf16[480,16]{1,0} fusion(bitcast.4, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"4\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":1,"num_stages":4,"num_warps":4}}
 })";
 
   const std::string hlo_text_splitk = R"(
@@ -864,7 +958,7 @@ ENTRY e {
   bitcast.4 = s8[480,120]{1,0} bitcast(p0)
   triton_gemm_r = bf16[4,480,16]{2,1,0} fusion(bitcast.4, p1), kind=kCustom,
     calls=triton_gemm_r,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"128\",\"split_k\":\"4\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":128,"split_k":4,"num_stages":1,"num_warps":4}}
   ROOT fusion.1 = bf16[480,16]{1,0} fusion(triton_gemm_r), kind=kLoop,
     calls=fused_computation
 })";
@@ -896,7 +990,7 @@ ENTRY e {
   tmp_0 = bf16[1,1,800,5,128]{4,3,2,1,0} parameter(1)
   ROOT triton_gemm_dot.24 = f32[5,128,700]{2,1,0} fusion(tmp_3, tmp_0),
     kind=kCustom, calls=triton_gemm_dot.24,
-    backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"8\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":8}}
 })";
 
   const std::string hlo_text_splitk = R"(
@@ -924,7 +1018,7 @@ ENTRY e {
   tmp_0 = bf16[1,1,800,5,128]{4,3,2,1,0} parameter(1)
   triton_gemm_dot.24 = f32[5,8,128,700]{3,2,1,0} fusion(tmp_3, tmp_0),
     kind=kCustom, calls=triton_gemm_dot,
-    backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"64\",\"split_k\":\"8\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":8,"num_stages":1,"num_warps":4}}
   constant = f32[] constant(0)
   ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={1}, to_apply=add
 })";
@@ -957,7 +1051,7 @@ ENTRY entry {
   parameter_1.1 = bf16[16,4,128]{2,1,0} parameter(1)
   ROOT triton_gemm_dot.5316 = bf16[16,96]{1,0} fusion(bitcast.6, parameter_1.1),
     kind=kCustom, calls=triton_gemm_dot.5316,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"32\",\"block_k\":\"256\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":256,"split_k":1,"num_stages":1,"num_warps":4}}
 })";
 
   const std::string kHloTextSplitK = R"(
@@ -997,7 +1091,7 @@ ENTRY entry {
   parameter_1.1 = bf16[16,4,128]{2,1,0} parameter(1)
   triton_gemm_dot.5316 = bf16[16,16,96]{2,1,0} fusion(bitcast.6, parameter_1.1),
     kind=kCustom, calls=triton_gemm_dot.5316,
-    backend_config="{\"block_m\":\"64\",\"block_n\":\"32\",\"block_k\":\"32\",\"split_k\":\"16\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":32,"split_k":16,"num_stages":1,"num_warps":4}}
   ROOT fusion.1 = bf16[16,96]{1,0} fusion(triton_gemm_dot.5316),
     kind=kLoop, calls=fused_computation
 })";
@@ -1025,7 +1119,7 @@ ENTRY e {
   p1 = f32[32,50,104]{2,1,0} parameter(1)
   ROOT triton_gemm_dot.6 = f32[32,50,26]{2,0,1} fusion(p0, p1),
     kind=kCustom, calls=triton_gemm_dot.6,
-    backend_config="{\"block_m\":\"64\",\"block_n\":\"16\",\"block_k\":\"32\",\"split_k\":\"1\",\"num_stages\":\"1\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":16,"block_k":32,"split_k":1,"num_stages":1,"num_warps":4}}
 })";
 
   const std::string kHloTextRef = R"(
@@ -1051,7 +1145,7 @@ ENTRY e {
   %parameter_1 = f32[32,50,104]{2,1,0} parameter(1)
   %triton_gemm_dot.127 = f32[32,50,26]{2,1,0} fusion(%parameter_0, %parameter_1),
     kind=kCustom, calls=%triton_gemm_dot.127,
-    backend_config="{\"block_m\":\"32\",\"block_n\":\"128\",\"block_k\":\"64\",\"split_k\":\"1\",\"num_stages\":\"2\",\"num_warps\":\"4\"}"
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":128,"block_k":64,"split_k":1,"num_stages":2,"num_warps":4}}
   ROOT %fusion.1 = f32[32,50,26]{2,0,1} fusion(%triton_gemm_dot.127), kind=kLoop, calls=%fused_computation
 })";
 

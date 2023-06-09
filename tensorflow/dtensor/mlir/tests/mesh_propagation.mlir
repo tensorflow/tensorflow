@@ -74,14 +74,19 @@ module @test_args_of_enclosing_func {
 
 // -----
 
+// Check that error is raised if mesh from inputs is not unique.
+
+module @test_error_on_different_meshes {
 
 func.func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32> {tf._mesh = "CPU|x=2,y=1|0,1|0,1|/job:localhost/task:0/device:CPU:0,/job:localhost/task:0/device:CPU:1"}, %arg2: tensor<1xf32> {tf._mesh = "TPU|x=2,y=1|0,1|0,1|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1"}) -> () {
-    // expected-error @+1 {{ All inputs to `tf_device.Cluster` must have same mesh configuration}}
+    // COMMENT: Regex is used to do a multiline match.
+    // expected-error-re @+1 {{All inputs to `tf_device.Cluster` must have same mesh configuration{{.*}}List of found inputs:{{.*}}Input Cluster 0:{{.*}}Input Cluster 1:}}
     %0 = "tf_device.cluster"() ({
       %1 = "tf.A"(%arg1, %arg2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<i32>
       tf_device.return %1 : tensor<i32>
     }) : () -> (tensor<i32>)
     func.return
+}
 }
 
 // -----

@@ -20,6 +20,7 @@ import re
 
 from absl import logging
 
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
 from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import def_function
@@ -179,17 +180,22 @@ def set_preinitialized_function_spec(concrete_fn, spec):
   )
   arg_specs, kwarg_specs = concrete_fn.structured_input_signature
 
-  _, function_type, _ = (
-      function_type_lib.canonicalize_to_monomorphic(
-          arg_specs,
-          {
-              function_type_lib.sanitize_arg_name(k): v
-              for k, v in kwarg_specs.items()
-          },
-          spec.default_values,
-          {},
-          unconstrained_type,
-      )
+  _, input_function_type, _ = function_type_lib.canonicalize_to_monomorphic(
+      arg_specs,
+      {
+          function_type_lib.sanitize_arg_name(k): v
+          for k, v in kwarg_specs.items()
+      },
+      spec.default_values,
+      {},
+      unconstrained_type,
+  )
+
+  output_type = trace_type.from_value(concrete_fn.graph.structured_outputs)
+  # Captures are restored later so we will update it then.
+  function_type = function_type_lib.FunctionType(
+      input_function_type.parameters.values(),
+      return_annotation=output_type,
   )
   concrete_fn._function_type = function_type  # pylint: disable=protected-access
 
@@ -473,7 +479,14 @@ def load_function_def_library(library,
     # initialization at a later stage.
     if "_input_shapes" in fdef.attr:
       del fdef.attr["_input_shapes"]
-    func = function_lib.ConcreteFunction(func_graph, attrs=fdef.attr)
+    function_type = function_type_lib.from_structured_signature(
+        func_graph.structured_input_signature,
+        func_graph.structured_outputs,
+        func_graph.function_captures.capture_types,
+    )
+    func = function_lib.ConcreteFunction(
+        func_graph, attrs=fdef.attr, function_type=function_type
+    )
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)

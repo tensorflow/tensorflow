@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/if_op.h"
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

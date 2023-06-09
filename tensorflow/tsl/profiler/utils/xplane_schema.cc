@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/utils/xplane_schema.h"
 
+#include <atomic>
 #include <cstdint>
+#include <optional>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -68,11 +70,16 @@ constexpr int kNumHostEventTypes =
 constexpr int kNumStatTypes =
     StatType::kLastStatType - StatType::kFirstStatType + 1;
 
+constexpr int kNumLineIdTypes =
+    LineIdType::kLastLineIdType - LineIdType::kFirstLineIdType + 1;
+
 using HostEventTypeMap = absl::flat_hash_map<absl::string_view, HostEventType>;
 using HostEventTypeStrMap =
     absl::flat_hash_map<HostEventType, absl::string_view>;
 using StatTypeMap = absl::flat_hash_map<absl::string_view, StatType>;
 using StatTypeStrMap = absl::flat_hash_map<StatType, absl::string_view>;
+using LineIdTypeMap = absl::flat_hash_map<absl::string_view, LineIdType>;
+using LineIdTypeStrMap = absl::flat_hash_map<LineIdType, absl::string_view>;
 
 const HostEventTypeMap& GetHostEventTypeMap() {
   static auto* host_event_type_map = new HostEventTypeMap({
@@ -250,6 +257,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tracing_count", kTfFunctionTracingCount},
       {"flops", kFlops},
       {"bytes_accessed", kBytesAccessed},
+      {"memory_access_breakdown", kMemoryAccessBreakdown},
       {"source", kSourceInfo},
       {"model_name", kModelName},
       {"model_version", kModelVersion},
@@ -314,6 +322,16 @@ const StatTypeMap& GetStatTypeMap() {
   return *stat_type_map;
 }
 
+const LineIdTypeMap& GetLineIdTypeMap() {
+  static auto* line_id_type_map = new LineIdTypeMap({
+      {"UnknownLineIdType", kUnknownLineIdType},
+      {"DcnHostTraffic", kDcnHostTraffic},
+      {"DcnCollectiveTraffic", kDcnCollectiveTraffic},
+  });
+  DCHECK_EQ(line_id_type_map->size(), kNumLineIdTypes);
+  return *line_id_type_map;
+}
+
 const HostEventTypeStrMap& GetHostEventTypeStrMap() {
   static auto* host_event_type_str_map = new HostEventTypeStrMap(
       gtl::ReverseMap<HostEventTypeStrMap>(GetHostEventTypeMap()));
@@ -326,20 +344,26 @@ const StatTypeStrMap& GetStatTypeStrMap() {
   return *stat_type_str_map;
 }
 
+const LineIdTypeStrMap& GetLineIdTypeStrMap() {
+  static auto* line_id_type_str_map = new LineIdTypeStrMap(
+      gtl::ReverseMap<LineIdTypeStrMap>(GetLineIdTypeMap()));
+  return *line_id_type_str_map;
+}
+
 }  // namespace
 
 absl::string_view GetHostEventTypeStr(HostEventType event_type) {
   return GetHostEventTypeStrMap().at(event_type);
 }
 
-absl::optional<int64_t> FindHostEventType(absl::string_view event_name) {
+std::optional<int64_t> FindHostEventType(absl::string_view event_name) {
   if (auto event_type = gtl::FindOrNull(GetHostEventTypeMap(), event_name)) {
     return *event_type;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
+std::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
   // TF op names.
   Category category = ParseTfOpFullname(event_name).category;
   switch (category) {
@@ -348,7 +372,7 @@ absl::optional<int64_t> FindTfOpEventType(absl::string_view event_name) {
     case Category::kTfData:
       return HostEventType::kIterator;
     default:
-      return absl::nullopt;
+      return std::nullopt;
   }
 }
 
@@ -356,14 +380,18 @@ absl::string_view GetStatTypeStr(StatType stat_type) {
   return GetStatTypeStrMap().at(stat_type);
 }
 
-absl::optional<int64_t> FindStatType(absl::string_view stat_name) {
+std::optional<int64_t> FindStatType(absl::string_view stat_name) {
   if (auto stat_type = gtl::FindOrNull(GetStatTypeMap(), stat_name)) {
     return *stat_type;
   }
-  return absl::nullopt;
+  return std::nullopt;
 }
 
-bool IsInternalEvent(absl::optional<int64_t> event_type) {
+absl::string_view GetLineIdTypeStr(LineIdType line_id_type) {
+  return GetLineIdTypeStrMap().at(line_id_type);
+}
+
+bool IsInternalEvent(std::optional<int64_t> event_type) {
   // TODO(b/162102421): Introduce a prefix for internal event names.
   if (!event_type.has_value()) return false;
   switch (*event_type) {
@@ -386,7 +414,7 @@ bool IsInternalEvent(absl::optional<int64_t> event_type) {
   }
 }
 
-bool IsInternalStat(absl::optional<int64_t> stat_type) {
+bool IsInternalStat(std::optional<int64_t> stat_type) {
   // TODO(b/162102421): Introduce a prefix for internal stat names.
   if (!stat_type.has_value()) return false;
   switch (*stat_type) {

@@ -1,6 +1,8 @@
 # Provides stable ABI delegate.
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "delegate_provider",
     srcs = [

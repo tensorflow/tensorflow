@@ -12,9 +12,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:control_flow_v2_toggles",
         "//tensorflow/python:tf2",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python/data/experimental/ops:counter",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
         "//tensorflow/python/data/experimental/ops:random_ops",
@@ -24,6 +22,8 @@ py_strict_library(
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops:control_flow_v2_toggles",
+        "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -47,7 +47,7 @@ tf_py_strict_test(
     tags = ["nofwdcompat"],
     deps = [
         ":compat",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -57,9 +57,9 @@ tf_py_strict_test(
     srcs = ["disable_v2_behavior_test.py"],
     deps = [
         ":v2_compat",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:_pywrap_tf2",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

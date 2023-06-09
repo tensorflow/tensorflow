@@ -443,9 +443,9 @@ tf_custom_op_py_library(
     deps = [
         ":_pywrap_py_utils",
         ":trt_ops",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:resources",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:resources",
     ],
 )
 

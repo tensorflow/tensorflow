@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 
+#include <memory>
+
 #include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"

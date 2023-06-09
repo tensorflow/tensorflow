@@ -14,22 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_execute_compat.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "absl/base/casts.h"
 #include "llvm/ADT/StringRef.h"
 #include "tensorflow/core/framework/logging.h"
-#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/runtime_fallback/kernel/kernel_fallback_compat_request_state.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/tensor_util.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tfrt/core_runtime/op_attrs.h"  // from @tf_runtime
 #include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
 #include "tfrt/host_context/async_value_ref.h"  // from @tf_runtime
 #include "tfrt/host_context/attribute_utils.h"  // from @tf_runtime
@@ -57,7 +57,6 @@ limitations under the License.
 #include "tfrt/host_context/kernel_registry.h"  // from @tf_runtime
 #include "tfrt/support/error_util.h"  // from @tf_runtime
 #include "tfrt/support/forward_decls.h"  // from @tf_runtime
-#include "tfrt/support/pointer_util.h"  // from @tf_runtime
 #include "tfrt/support/string_util.h"  // from @tf_runtime
 #include "tfrt/tensor/tensor.h"  // from @tf_runtime
 
@@ -75,11 +74,6 @@ using ::tfrt::AsyncValueRef;
 using ::tfrt::Chain;
 using ::tfrt::RCReference;
 using ::tfrt::string_view;
-
-constexpr char kOpKernelRunnerTableResourceName[] =
-    "OpKernelRunnerTableResourceName";
-
-constexpr char kFallbackResourceArray[] = "FallbackResourceArray";
 
 void KernelFallbackEmitError(
     const tfrt::ExecutionContext& exec_ctx,
@@ -108,12 +102,11 @@ void KernelFallbackEmitError(
 }  // namespace
 
 static llvm::Expected<gtl::InlinedVector<tensorflow::Tensor, 4>>
-ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments,
-                    const tfrt::ExecutionContext& exec_ctx) {
+ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments) {
   gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
   input_tf_tensors.reserve(arguments.size());
   for (tfrt::Tensor* argument : arguments) {
-    auto expected_tf_tensor = TFRTTensorToTFTensor(*argument, exec_ctx.host());
+    auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(*argument);
     if (!expected_tf_tensor) {
       return tfrt::MakeStringError(
           tfrt::StrCat(expected_tf_tensor.takeError()));
@@ -261,14 +254,6 @@ static void KernelFallbackExecuteCompatSyncInternal(
   if (op_chain) *op_chain = tfrt::MakeAvailableAsyncValueRef<tfrt::Chain>();
 }
 
-static std::string PrintTfrtOpAttrsToString(const tfrt::OpAttrsRef& attrs) {
-  std::string str;
-  llvm::raw_string_ostream ss(str);
-  attrs.Print(ss);
-  ss.flush();
-  return str;
-}
-
 tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
     const tfrt::ExecutionContext& exec_ctx, tfrt::string_view op_name,
     tfrt::string_view device_name, llvm::ArrayRef<tfrt::Tensor*> arguments,
@@ -278,7 +263,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   auto op_chain = tfrt::GetReadyChain();
   tensorflow::Status status;
 
-  auto expected_input_tf_tensors = ConvertInputTensors(arguments, exec_ctx);
+  auto expected_input_tf_tensors = ConvertInputTensors(arguments);
   if (!expected_input_tf_tensors) {
     status = tensorflow::errors::Internal(
         tfrt::StrCat(expected_input_tf_tensors.takeError()));
@@ -510,9 +495,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   uint64_t run_start_time = 0;
   tfrt::AsyncValueRef<tfrt::Chain> cost_chain;
   if (cost_recorder != nullptr) {
-    run_start_time = cost_recorder->RecordInCpuCycles()
-                         ? tfrt::GetCpuClockCycle()
-                         : Env::Default()->NowNanos();
+    run_start_time = tfrt::GetCpuClockCycle();
     if (op_chain == nullptr) op_chain = &cost_chain;
   }
 
@@ -539,9 +522,7 @@ TF_ATTRIBUTE_ALWAYS_INLINE static void KernelFallbackExecuteOp(
   if (cost_recorder != nullptr) {
     op_chain->AndThen(
         [cost_recorder, run_start_time, op_key = frame.op_key().GetValue()] {
-          const uint64_t run_finish_time = cost_recorder->RecordInCpuCycles()
-                                               ? tfrt::GetCpuClockCycle()
-                                               : Env::Default()->NowNanos();
+          const uint64_t run_finish_time = tfrt::GetCpuClockCycle();
           cost_recorder->RecordCost(op_key, run_finish_time - run_start_time);
         });
   }

@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include "learning/brain/tfrt/mlrt/application/vrooml/kernel.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 

@@ -361,14 +361,11 @@ def make_function_type(python_function, input_signature):
 def make_canonicalized_monomorphic_type(
     args: Any,
     kwargs: Any,
-    captures: Any,
+    capture_types: Any,
     polymorphic_type,
     default_values,
 ) -> Tuple[function_type_lib.FunctionType, trace_type.InternalTracingContext]:
   """Generates function type given the function arguments."""
-  if captures is None:
-    captures = dict()
-
   kwargs = {
       function_type_lib.sanitize_arg_name(name): value
       for name, value in kwargs.items()
@@ -376,7 +373,7 @@ def make_canonicalized_monomorphic_type(
 
   _, function_type, type_context = (
       function_type_lib.canonicalize_to_monomorphic(
-          args, kwargs, default_values, captures, polymorphic_type
+          args, kwargs, default_values, capture_types, polymorphic_type
       )
   )
 
@@ -554,6 +551,24 @@ def _get_variable_specs(args):
       # arg is a CompositeTensor spec.
       variable_specs.extend(_get_variable_specs(arg._component_specs))  # pylint: disable=protected-access
   return variable_specs
+
+
+def derive_from_graph(func_graph):
+  """Derives a FunctionType from FuncGraph."""
+  # TODO(fmuham): Include structure info from structured_inputs
+  input_signature = (
+      tuple(trace_type.from_value(i) for i in func_graph.inputs),
+      {},
+  )
+
+  # TODO(fmuham): Include output structure info from structured_outputs
+  output_signature = tuple(trace_type.from_value(o) for o in func_graph.outputs)
+
+  return function_type_lib.from_structured_signature(
+      input_signature,
+      output_signature,
+      func_graph.function_captures.capture_types,
+  )
 
 
 # TODO(fmuham): Replace usages with TraceType and remove.

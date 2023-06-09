@@ -18,4 +18,6 @@ limitations under the License.
 #define MAYBE_ADD_SOURCE_LOCATION(status) \
   {}
 
+#define ADD_SOURCE_LOCATION(status) status
+
 #endif  // TENSORFLOW_TSL_PLATFORM_DEFAULT_STATUS_H_

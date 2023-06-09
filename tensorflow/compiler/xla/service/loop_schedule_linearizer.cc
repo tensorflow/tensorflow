@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/service/graphcycles/graphcycles.h"
 
 namespace xla {
@@ -128,12 +129,14 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
             continue;
           }
 
-          changed |= absl::c_linear_search(read->control_successors(), write);
-
-          // Unless we want a copy, read should happen before write.
-          TF_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
-          VLOG(2) << "Adding dependency: " << read->ToShortString()
-                  << " before " << write->ToShortString();
+          // Add control dependency if it does not already exist.
+          if (!absl::c_linear_search(read->control_successors(), write)) {
+            // Unless we want a copy, read should happen before write.
+            TF_RETURN_IF_ERROR(read->AddControlDependencyTo(write));
+            VLOG(2) << "Adding dependency: " << read->ToShortString()
+                    << " before " << write->ToShortString();
+            changed = true;
+          }
         }
       }
     }
@@ -154,6 +157,23 @@ StatusOr<bool> LoopScheduleLinearizer::Run(
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() != HloOpcode::kWhile) {
+        continue;
+      }
+
+      // Skip loops that have async collectives, as the additional control deps
+      // inserted by this pass can constrain scheduling and hamper compute
+      // and communication overlap.
+      const HloComputation* body = instruction->while_body();
+      bool has_async_collectives =
+          absl::c_any_of(body->instructions(), [](const HloInstruction* instr) {
+            HloOpcode op = instr->opcode();
+            return hlo_query::IsAsyncCollectiveStartOp(op) ||
+                   hlo_query::IsAsyncCollectiveDoneOp(op);
+          });
+
+      if (has_async_collectives) {
+        VLOG(2) << "Skipping " << instruction->name()
+                << " since body has async collectives";
         continue;
       }
 

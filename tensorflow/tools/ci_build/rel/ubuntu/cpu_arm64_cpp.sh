@@ -19,12 +19,10 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-sudo mkdir /tmpfs
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tmpfs
-sudo mkdir /tensorflow
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tensorflow
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tmpfs
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tensorflow
 sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/lib/python*
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
 sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
 
 # Update bazel

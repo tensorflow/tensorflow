@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_pod_stats.h"
 
+#include <algorithm>
+#include <utility>
+#include <vector>
+
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/gtl/map_util.h"

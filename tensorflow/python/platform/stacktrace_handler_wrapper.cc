@@ -16,8 +16,6 @@ limitations under the License.
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/core/platform/stacktrace_handler.h"
 
-namespace py = pybind11;
-
 PYBIND11_MODULE(_pywrap_stacktrace_handler, m) {
   m.def("InstallStacktraceHandler",
         &tensorflow::testing::InstallStacktraceHandler);

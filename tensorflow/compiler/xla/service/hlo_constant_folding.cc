@@ -76,7 +76,9 @@ StatusOr<bool> HloConstantFolding::Run(
   // fast-path lets us e.g. use Eigen for matmuls.
   evaluator->set_use_fast_path(true);
 
-  bool changed = false;
+  // We delay deleting dead instructions so that we can print them out if we are
+  // taking too long without use-after-free or other sorts of races.
+  std::vector<HloInstruction*> dead_instructions;
 
   for (auto* computation :
        module->MakeNonfusionComputations(execution_threads)) {
@@ -184,23 +186,7 @@ StatusOr<bool> HloConstantFolding::Run(
 
       absl::Duration slow_timeout =
           absl::Seconds(uint64_t{1} << slow_op_counter_.load());
-      // We cannot call `instruction->ToString() within the callback, because
-      // the instruction may be modified and invalidated in place, and ToString
-      // will fail if the compilation is slow. We probably do not want to
-      // call `ToString()` for all the instructions, thus, we only display the
-      // name by default.
-      std::string instruction_msg;
-      if (VLOG_IS_ON(4)) {
-        instruction_msg = instruction->ToString();
-      } else {
-        instruction_msg =
-            absl::StrCat(instruction->name(),
-                         " (displaying the full instruction incurs a runtime "
-                         "overhead. Raise your logging level to 4 or above).");
-      }
-      SlowOperationAlarm slow_alarm(slow_timeout, [instruction_msg = std::move(
-                                                       instruction_msg),
-                                                   slow_timeout] {
+      SlowOperationAlarm slow_alarm(slow_timeout, [instruction, slow_timeout] {
         const bool ndebug =
 #if NDEBUG
             true;
@@ -223,7 +209,7 @@ StatusOr<bool> HloConstantFolding::Run(
             "Constant folding an instruction is taking > %s:\n\n"
             "  %s\n\n"  // instruction->name() or instruction->ToString()
             "%s",       // explanation_msg
-            absl::FormatDuration(slow_timeout), instruction_msg,
+            absl::FormatDuration(slow_timeout), instruction->ToString(),
             explanation_msg);
       });
 
@@ -244,11 +230,17 @@ StatusOr<bool> HloConstantFolding::Run(
       }
 
       VLOG(4) << "Constant folded: " << instruction->ToString();
-
-      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-          instruction, HloInstruction::CreateConstant(std::move(result))));
-      changed = true;
+      dead_instructions.push_back(instruction);
+      HloInstruction* new_constant = computation->AddInstruction(
+          HloInstruction::CreateConstant(std::move(result)));
+      TF_RETURN_IF_ERROR(instruction->ReplaceAllUsesWith(new_constant));
     }
+  }
+  const bool changed = !dead_instructions.empty();
+  for (HloInstruction* dead_instruction : dead_instructions) {
+    CHECK(dead_instruction->IsDead());
+    HloComputation* computation = dead_instruction->parent();
+    TF_RETURN_IF_ERROR(computation->RemoveInstruction(dead_instruction));
   }
   return changed;
 }

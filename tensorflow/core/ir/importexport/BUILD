@@ -230,6 +230,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = ["//tensorflow/core/ir:test_utilities"],
     driver = "//tensorflow/core/ir:run_lit.sh",
     exclude = [],

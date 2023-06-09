@@ -115,6 +115,8 @@ cc_library(
     name = "mlir_hlo_builder",
     srcs = ["mlir_hlo_builder.cc"],
     hdrs = ["mlir_hlo_builder.h"],
+    # This is going to be deleted, so prevent new usage.
+    visibility = ["//tensorflow/compiler/mlir/tf2xla/transforms:__pkg__"],
     deps = [
         ":attribute_importer",
         ":hlo_module_importer",

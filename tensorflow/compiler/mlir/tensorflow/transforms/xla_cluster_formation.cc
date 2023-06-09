@@ -20,11 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-
-inline constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
 
 namespace mlir {
 
@@ -63,37 +61,25 @@ void EncapsulatePartitionedCall(Operation *call_op) {
 }
 
 void XlaClusterFormationPass::runOnOperation() {
+  auto has_compile_device_type = [](SymbolUserOpInterface op) {
+    return op->hasAttr(tensorflow::kCompileDeviceTypeAttr);
+  };
+
   ModuleOp module = getOperation();
   SymbolTable symtab(module);
-
-  llvm::SmallVector<func::FuncOp> entry_funcs;
-  // A model may have multiple graphs, with each graph having its own entry.
-  // When a graph is imported to MLIR, `tf.entry_function` will be added to
-  // each entry function. The one exception are initializer functions, which
-  // have `tf_saved_model.initializer_type` instead.
-  module.walk([&](func::FuncOp func) {
-    if (func->hasAttr(kEntryFunctionAttr) ||
-        func->hasAttr(tf_saved_model::kTfSavedModelInitializerTypeAttr)) {
-      entry_funcs.push_back(func);
-    }
-  });
-  if (entry_funcs.empty()) {
-    LOG(WARNING) << "no entry function is found";
-  }
-  auto predicate = [](Operation *op) {
-    if (op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) return true;
-    return false;
-  };
-  for (auto &root : entry_funcs) {
-    llvm::SmallVector<Operation *> outermost_call_ops;
-    if (failed(GetOutermostOpsOfType<TF::StatefulPartitionedCallOp,
-                                     TF::PartitionedCallOp>(
-            root, symtab, outermost_call_ops, predicate)))
+  llvm::SmallVector<func::FuncOp> entry_funcs = GetEntryFunctions(module);
+  for (auto &entry_func : entry_funcs) {
+    llvm::SmallVector<SymbolUserOpInterface> outermost_pcall_ops;
+    if (failed(GetFirstOpsOfType<TF::StatefulPartitionedCallOp,
+                                 TF::PartitionedCallOp>(
+            entry_func, symtab, /*predicate*/ has_compile_device_type,
+            outermost_pcall_ops))) {
       return signalPassFailure();
+    }
     // Cluster outermost partitioned calls with _xla_compile_device_type
     // attribute.
-    for (auto &call_op : outermost_call_ops) {
-      EncapsulatePartitionedCall(call_op);
+    for (auto &pcall_op : outermost_pcall_ops) {
+      EncapsulatePartitionedCall(pcall_op);
     }
   }
 }

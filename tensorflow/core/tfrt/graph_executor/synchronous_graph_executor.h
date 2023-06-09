@@ -19,13 +19,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "learning/infra/mira/mlrt/interpreter/context.h"
-#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/value.h"  // from @tf_runtime

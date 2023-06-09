@@ -29,24 +29,8 @@ struct NcclAllToAllConfig {
   bool has_split_dimension;
 };
 
-// Base class for thunks that performs a NCCL-based All-to-All among CUDA
-// GPU-based replicas.
-class NcclAllToAllThunkBase : public NcclCollectiveThunk {
- public:
-  NcclAllToAllThunkBase(Kind kind, ThunkInfo thunk_info,
-                        NcclAllToAllConfig config, std::vector<Buffer> buffers);
-
- protected:
-  Status RunAllToAll(const ExecuteParams& params, se::Stream& stream,
-                     ncclComm_t comm);
-  const NcclCollectiveConfig& config() const override { return config_.config; }
-
- private:
-  const NcclAllToAllConfig config_;
-  const std::vector<Buffer> buffers_;
-};
-
-class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {
+// Thunk that performs a NCCL-based All-to-All among CUDA GPU-based replicas.
+class NcclAllToAllStartThunk : public NcclCollectiveThunk {
  public:
   NcclAllToAllStartThunk(ThunkInfo thunk_info,
                          mlir::lmhlo_gpu::AllToAllStartOp op,
@@ -64,21 +48,14 @@ class NcclAllToAllStartThunk : public NcclAllToAllThunkBase {
   static CollectiveOpGroupMode GetGroupMode(
       mlir::lmhlo_gpu::AllToAllStartOp op);
 
-  static constexpr bool IsAsync() { return true; }
-  AsyncExecutor& async_executor() { return async_; }
-
  protected:
-  Status RunNcclCollective(const ExecuteParams& params,
+  const NcclCollectiveConfig& config() const override { return config_.config; }
+  Status RunNcclCollective(const ExecuteParams& params, se::Stream& stream,
                            ncclComm_t comm) override;
 
  private:
-  AsyncExecutor async_;
-};
-
-class NcclAllToAllDoneThunk : public NcclCollectiveDoneThunk {
- public:
-  NcclAllToAllDoneThunk(ThunkInfo thunk_info,
-                        NcclCollectiveThunk::AsyncExecutor& async);
+  const NcclAllToAllConfig config_;
+  const std::vector<Buffer> buffers_;
 };
 
 Status RunAllToAll(bool has_split_dimension,

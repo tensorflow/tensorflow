@@ -66,9 +66,6 @@ class _LoadDataset(dataset_ops.DatasetSource):
         **self._flat_structure)
     super().__init__(variant_tensor)
 
-  def _functions(self):
-    return [self._reader_func]
-
   @property
   def element_spec(self):
     return self._element_spec

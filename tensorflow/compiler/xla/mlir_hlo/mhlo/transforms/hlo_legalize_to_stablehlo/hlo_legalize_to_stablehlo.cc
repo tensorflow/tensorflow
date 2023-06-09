@@ -49,7 +49,7 @@ bool hasPrivateFeaturesNotInStablehlo(HloOpTy hloOp) {
   // Please let us know if we missed something, and we'll recategorize them.
   if (isa<mhlo::AddDependencyOp, mhlo::AsyncDoneOp, mhlo::AsyncStartOp,
           mhlo::AsyncUpdateOp, mhlo::BitcastOp, mhlo::CopyOp, mhlo::DomainOp,
-          mhlo::FusionOp, mhlo::StochasticConvertOp,
+          mhlo::FusionOp, mhlo::StochasticConvertOp, mhlo::TopKOp,
           mhlo::XlaRngGetAndUpdateStateOp>(hloOp.getOperation())) {
     return true;
   }

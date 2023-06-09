@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
 #include <functional>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -1359,7 +1360,7 @@ class HloFusionInstruction : public HloCallableInstruction {
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
-  const bool IsMultiOutputFusion() const {
+  bool IsMultiOutputFusion() const {
     return fused_expression_root()->opcode() == HloOpcode::kTuple;
   }
 
@@ -1543,8 +1544,7 @@ class HloReducePrecisionInstruction : public HloInstruction {
  public:
   explicit HloReducePrecisionInstruction(const Shape& shape,
                                          HloInstruction* operand,
-                                         const int exponent_bits,
-                                         const int mantissa_bits);
+                                         int exponent_bits, int mantissa_bits);
   // Returns the number of exponent bits for a reduce-precision node.
   int32_t exponent_bits() const { return exponent_bits_; }
   // Returns the number of mantissa bits for a reduce-precision node.

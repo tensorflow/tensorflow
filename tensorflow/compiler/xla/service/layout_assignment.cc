@@ -2427,43 +2427,6 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   return OkStatus();
 }
 
-Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
-  TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
-  for (const auto& buffer : alias_analysis->buffers()) {
-    // First go through values to collect the memory spaces.
-    int64_t buffer_memory_space = Layout::kDefaultMemorySpace;
-    for (auto value : buffer.values()) {
-      const Shape& defining_shape = value->defining_position().shape();
-      if (!defining_shape.has_layout()) {
-        continue;
-      }
-      int64_t memory_space = defining_shape.layout().memory_space();
-      if (memory_space != Layout::kDefaultMemorySpace) {
-        if (buffer_memory_space != Layout::kDefaultMemorySpace &&
-            memory_space != buffer_memory_space) {
-          return InternalError(
-              "Buffer %d (%s) has conflicting memory spaces: %d and %d.",
-              buffer.id(), value->ToShortString(), buffer_memory_space,
-              memory_space);
-        }
-        buffer_memory_space = memory_space;
-      }
-    }
-
-    // If we encounter a memory space other than the default, then propagate all
-    // the positions with the buffer's memory space.
-    if (buffer_memory_space != Layout::kDefaultMemorySpace) {
-      for (auto value : buffer.values()) {
-        for (auto& position : value->positions()) {
-          Shape* shape = ShapeUtil::GetMutableSubshape(
-              position.instruction->mutable_shape(), position.index);
-          shape->mutable_layout()->set_memory_space(buffer_memory_space);
-        }
-      }
-    }
-  }
-  return OkStatus();
-}
 
 Status LayoutAssignment::PropagateComputationLayouts(
     HloComputation* computation, ComputationLayout* computation_layout) {
@@ -2657,8 +2620,6 @@ StatusOr<bool> LayoutAssignment::Run(
   }
   TF_RETURN_IF_ERROR(PropagateComputationLayouts(module->entry_computation(),
                                                  entry_computation_layout_));
-
-  TF_RETURN_IF_ERROR(PropagateMemorySpace(module));
 
   TF_RETURN_IF_ERROR(CheckLayouts(module, execution_threads));
 

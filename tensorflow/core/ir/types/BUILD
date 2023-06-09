@@ -98,9 +98,7 @@ cc_library(
     textual_hdrs = [
         "types.def",
     ],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":AttributesIncGen",
         ":DialectIncGen",

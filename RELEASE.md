@@ -31,6 +31,15 @@
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.keras`
+    * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
+    allowing automatic tuning of steps per execution during `Model.fit`,
+    `Model.predict`, and `Model.evaluate` for a significant performance boost. 
+
+*   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
+    than 2**32 elements.
+    *   Unary GPU kernels: Abs, Atanh, Acos, Acosh, Asin, Asinh, Atan, Cos,
+        Cosh, Sin, Sinh, Tan, Tanh.
 
 # Bug Fixes and Other Changes
 * `tf.lite`
@@ -50,6 +59,10 @@
 *  `tf.experimental.dtensor`
     * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
       relayouting a tensor according to the layout of another tensor. 
+    * Added `dtensor.get_default_mesh`, for retrieving the current default 
+      mesh under the dtensor context.
+
+*   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
 # Thanks to our Contributors
 

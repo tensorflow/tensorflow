@@ -36,6 +36,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.cluster_resolver import tfconfig_cluster_resolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.framework import device as tf_device
@@ -45,7 +46,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.trackable import base
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
@@ -540,7 +540,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     local_devices, local_device_type = self._initialize_local_devices(
         cluster_resolver, self._worker_device)
     if local_device_type == "TPU":
-      tpu_strategy_util.initialize_tpu_system()
+      tpu_cluster_resolver.initialize_tpu_system()
 
     self._collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=1 + self._collective_key_base)
