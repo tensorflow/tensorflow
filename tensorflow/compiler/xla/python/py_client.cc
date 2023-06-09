@@ -546,11 +546,13 @@ StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
     pybind11::function callable, absl::Span<Shape const> operand_shapes,
     absl::Span<Shape const> result_shapes,
     absl::Span<uint16_t const> send_channel_ids,
-    absl::Span<uint16_t const> recv_channel_ids) {
-  TF_ASSIGN_OR_RETURN(auto loaded_host_callback,
-                      PyHostSendAndRecvLoadedHostCallback::Create(
-                          ifrt_client(), std::move(callable), operand_shapes,
-                          result_shapes, send_channel_ids, recv_channel_ids));
+    absl::Span<uint16_t const> recv_channel_ids,
+    pybind11::function serializer) {
+  TF_ASSIGN_OR_RETURN(
+      auto loaded_host_callback,
+      PyHostSendAndRecvLoadedHostCallback::Create(
+          ifrt_client(), std::move(callable), operand_shapes, result_shapes,
+          send_channel_ids, recv_channel_ids, std::move(serializer)));
   py::capsule callback_capsule(loaded_host_callback.release(), [](void* ptr) {
     static_cast<ifrt::LoadedHostCallback*>(ptr)->DropRef();
   });

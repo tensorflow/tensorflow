@@ -1,4 +1,5 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
 
 package_group(
     name = "friends",
@@ -42,6 +43,13 @@ cc_library(
         "//tensorflow/compiler/xla/python/ifrt",
         "@llvm-project//llvm:Support",
     ],
+)
+
+tf_proto_library(
+    name = "xla_host_callback_proto",
+    srcs = ["xla_host_callback.proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 # TODO(hyeontaek): Move this target out of pjrt_ifrt.

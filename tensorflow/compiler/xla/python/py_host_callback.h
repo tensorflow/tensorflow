@@ -94,7 +94,8 @@ class PyHostSendAndRecvLoadedHostCallback final
       absl::Span<const Shape> operand_shapes,
       absl::Span<const Shape> result_shapes,
       absl::Span<const uint16_t> send_channel_ids,
-      absl::Span<const uint16_t> recv_channel_ids);
+      absl::Span<const uint16_t> recv_channel_ids,
+      pybind11::function serializer);
 
   // PjRtLoadedHostCallback implementation.
 
@@ -111,7 +112,8 @@ class PyHostSendAndRecvLoadedHostCallback final
       pybind11::function callable, absl::Span<const Shape> operand_shapes,
       absl::Span<const Shape> result_shapes,
       absl::Span<const uint16_t> send_channel_ids,
-      absl::Span<const uint16_t> recv_channel_ids);
+      absl::Span<const uint16_t> recv_channel_ids,
+      pybind11::function serializer);
 
   template <typename T, typename... Args>
   friend tsl::RCReference<T> tsl::MakeRef(Args&&... args);
@@ -122,6 +124,7 @@ class PyHostSendAndRecvLoadedHostCallback final
   std::vector<Shape> result_shapes_;
   std::vector<uint16_t> send_channel_ids_;
   std::vector<uint16_t> recv_channel_ids_;
+  pybind11::function serializer_;
 };
 
 }  // namespace xla

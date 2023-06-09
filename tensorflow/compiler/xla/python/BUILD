@@ -340,6 +340,7 @@ cc_library(
     deps = [
         ":exceptions",
         ":pprof_profile_builder",
+        ":py_host_callback_proto_cc",
         ":python_ref_manager",
         ":python_utils",
         ":status_casters",
@@ -364,6 +365,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:transpose",
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/pjrt_ifrt",
+        "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_host_callback_proto_cc",
         "//tensorflow/compiler/xla/python/pjrt_ifrt:xla_ifrt",
         "//tensorflow/compiler/xla/service:custom_call_status",
         "//tensorflow/compiler/xla/service:custom_call_target_registry",
@@ -381,6 +383,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@pybind11",
         "@pybind11_abseil//pybind11_abseil:absl_casters",
@@ -891,6 +894,12 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@pybind11",
     ],
+)
+
+tf_proto_library(
+    name = "py_host_callback_proto",
+    srcs = ["py_host_callback.proto"],
+    cc_api_version = 2,
 )
 
 # TODO(phawkins): the configuration settings here are overly confusing. The right fix is to split

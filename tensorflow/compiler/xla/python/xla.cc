@@ -383,7 +383,7 @@ PYBIND11_MODULE(xla_extension, m) {
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"))
+           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
       // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback",
            xla::ValueOrThrowWrapper(&PyClient::EmitPythonCallback),
