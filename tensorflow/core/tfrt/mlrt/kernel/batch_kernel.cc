@@ -319,6 +319,9 @@ void MlrtBatchResource::ProcessFuncBatchImpl(
   fallback_request_state.set_cost_recorder(
       caller_fallback_request_state.cost_recorder());
 
+  fallback_request_state.set_client_graph_resource_context(
+      caller_fallback_request_state.client_graph_resource_context());
+
   tensorflow::profiler::TraceMeProducer activity(
       // To TraceMeConsumers in WorkQueue.
       [step_id] {
