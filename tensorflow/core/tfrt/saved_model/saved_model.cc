@@ -91,7 +91,6 @@ using ::tensorflow::StatusOr;
 
 struct Initializer {
   std::string name;
-  std::vector<tensorflow::Tensor> inputs;
 };
 
 struct InitializersAndSignatures {
@@ -143,51 +142,22 @@ auto* saved_model_input_spec_validation_failure =
         "/tensorflow/tfrt/saved_model/input_spec_validation_failure",
         "Record the models that failed input spec validation.", "model_name");
 
-tensorflow::Tensor CreateScalarStringTensor(absl::string_view str) {
-  return tensorflow::Tensor(tensorflow::tstring(str));
-}
-
-// Create the tensor for the bound input, which can be a variable or an asset.
-//
-// TODO(chky): For V2 models, the bound input can also be a resource.
-StatusOr<tensorflow::Tensor> CreateTensorFromBoundInput(
-    mlir::Operation* bound_input, absl::string_view saved_model_dir) {
-  // Assets are files in the saved model directory. We pass their filenames to
-  // functions so that they can be used.
-  if (auto asset = llvm::dyn_cast<mlir::tf_saved_model::AssetOp>(bound_input)) {
-    // The filename in the asset is a relative path. So we prefix it with the
-    // directory path.
-    return CreateScalarStringTensor(
-        tensorflow::io::JoinPath(saved_model_dir, asset.getFilename().str()));
-  }
-
-  return tensorflow::errors::Internal(
-      "Failed to create captured tensors: unknown bound input type.");
-}
-
 StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
-    mlir::ModuleOp module, absl::string_view saved_model_dir) {
+    mlir::ModuleOp module) {
   InitializersAndSignatures result;
-
-  // A map for initializer inputs.
-  absl::flat_hash_map<std::string, std::vector<tensorflow::Tensor>>
-      initializer_input_map;
 
   // Create placeholders for initializers.
   for (auto session_initializer_name :
        mlir::tf_saved_model::GetSessionInitializerExportedName(module)) {
     Initializer initializer;
     initializer.name = session_initializer_name.str();
-    initializer_input_map[initializer.name];
     result.initializers.push_back(std::move(initializer));
   }
 
   auto& signatures = result.signature_map;
-  tensorflow::StatusGroup status_group;
   TF_RETURN_IF_ERROR(tensorflow::MapFunctionSignaturesFromTFSavedModelMLIR(
       module,
-      [&status_group, &signatures, &initializer_input_map, saved_model_dir](
-          const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
+      [&signatures](const tensorflow::TFRTSavedModelSignatureInfo& sig_info) {
         auto signature_name = std::string(sig_info.func_name);
         auto& signature = signatures[signature_name];
 
@@ -211,30 +181,7 @@ StatusOr<InitializersAndSignatures> GetInitializersAndSignatures(
         for (auto& spec : sig_info.output_specs) {
           signature.output_specs.push_back(TensorSpec(spec.first, spec.second));
         }
-
-        auto init_iter = initializer_input_map.find(signature_name);
-        if (init_iter == initializer_input_map.end()) return;
-
-        auto& init_inputs = init_iter->second;
-
-        for (auto* bound_input : sig_info.bound_inputs) {
-          auto capture =
-              CreateTensorFromBoundInput(bound_input, saved_model_dir);
-          if (!capture.ok()) {
-            status_group.Update(capture.status());
-            // Insert a random tensor in case of errors.
-            init_inputs.push_back(tensorflow::Tensor());
-          } else {
-            init_inputs.push_back(*std::move(capture));
-          }
-        }
       }));
-
-  if (!status_group.ok()) return status_group.as_concatenated_status();
-
-  for (auto& initializer : result.initializers) {
-    initializer.inputs = std::move(initializer_input_map.at(initializer.name));
-  }
 
   return result;
 }
@@ -263,12 +210,10 @@ tensorflow::Status RunBytecodeInitializers(
 
   for (const auto& p : initializers_and_signatures.initializers) {
     const auto& initializer_name = p.name;
-    const auto& initializer_inputs = p.inputs;
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-        options, /*run_options=*/{}, initializer_name, /*symbol_uids=*/{},
-        nullptr, &loaded_executable, initializer_inputs, &outputs,
-        resource_context,
+        options, /*run_options=*/{}, initializer_name, /*symbol_uid=*/{},
+        nullptr, &loaded_executable, /*inputs=*/{}, &outputs, resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
         *options.runtime, fallback_state,
         /*req_deadline_tracker=*/nullptr));
@@ -310,13 +255,12 @@ tensorflow::Status RunBefInitializers(
 
   for (const auto& p : initializers_and_signatures.initializers) {
     const auto& initializer_name = p.name;
-    const auto& initializer_inputs = p.inputs;
     auto* func = bef_file->GetFunction(initializer_name);
     DCHECK(func);
     std::vector<tensorflow::Tensor> outputs;
     TF_RETURN_IF_ERROR(GraphExecutionRunOnFunction(
-        options, /*run_options=*/{}, initializer_name, /*symbol_uids=*/{}, func,
-        /*loaded_executable=*/nullptr, initializer_inputs, &outputs,
+        options, /*run_options=*/{}, initializer_name, /*symbol_uid=*/{}, func,
+        /*loaded_executable=*/nullptr, /*inputs=*/{}, &outputs,
         resource_context,
         /*client_graph_resource_context=*/nullptr, runner_table, resource_array,
         *options.runtime, fallback_state,
@@ -646,6 +590,8 @@ SavedModelImpl::LoadSavedModel(Options options,
   UpdateTpuTargetByBridgeCompatibility(options.graph_execution_options,
                                        meta_graph_def.graph_def());
   UpdateCompileOptions(options);
+  options.graph_execution_options.compile_options.saved_model_dir =
+      saved_model_dir;
 
   mlir::MLIRContext context;
 
@@ -692,9 +638,8 @@ SavedModelImpl::LoadSavedModel(Options options,
 
   // Step 2: Compile the MLIR module from TF dialect to TFRT dialect (in BEF).
   const auto compile_start_time = absl::Now();
-  ASSIGN_OR_RETURN_IN_COMPILE(
-      auto initializers_and_signatures,
-      GetInitializersAndSignatures(mlir_module.get(), saved_model_dir));
+  ASSIGN_OR_RETURN_IN_COMPILE(auto initializers_and_signatures,
+                              GetInitializersAndSignatures(mlir_module.get()));
   // If lazy loading is enabled, the user signatures are not exported via MLIR
   // module, so we need to get them from the proto.
   // TODO(b/187228559): Unify the code paths for populating the signature map.

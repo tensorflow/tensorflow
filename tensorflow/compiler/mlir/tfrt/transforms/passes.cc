@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_asset_sinking_pass.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/set_shape_invariant_in_while_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/tfrt_jitrt_stub.h"
@@ -205,6 +206,11 @@ void CreateTFExecutorToTFInvariantOptimizationPipelineHelper(
     mlir::OpPassManager &pm, const TfrtPipelineOptions &options) {
   if (options.sink_in_invariant_ops) {
     pm.addPass(CreateSinkInInvariantOpsPass());
+  }
+
+  if (!options.saved_model_dir.empty()) {
+    pm.addPass(
+        mlir::tf_saved_model::CreateAssetSinkingPass(options.saved_model_dir));
   }
 
   pm.addPass(CreateLowerTFSavedModelPass(
