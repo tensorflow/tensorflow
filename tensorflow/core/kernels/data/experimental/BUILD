@@ -422,15 +422,11 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:captured_function",
-        "//tensorflow/core/data:dataset_utils",
-        "//tensorflow/core/data:hash_utils",
         "//tensorflow/core/data:name_utils",
-        "//tensorflow/core/data:root_dataset",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/core/data:utils",
         "//tensorflow/core/data/service/snapshot:snapshot_reader",
         "//tensorflow/core/framework:op_requires",
-        "//tensorflow/core/kernels/data:iterator_ops",
     ],
 )
 
