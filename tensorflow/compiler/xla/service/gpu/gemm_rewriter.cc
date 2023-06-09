@@ -578,6 +578,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
               m::AddAnyOrder(
                   GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
+      std::cout << "uuuuuuuuuuuuuuuuuuuuuuuuuuuu\n";
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
 
@@ -724,20 +725,48 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
     }
 
+    // Get the padded shape.
+    auto pad_shape = [&batch_dims](const Shape old_shape) {
+      Shape padded_shape = old_shape;
+      for (int i = 0; i < old_shape.rank(); ++i) {
+        if (!absl::c_linear_search(batch_dims, i)) {
+          int64_t padded_dimension =
+              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
+          padded_shape.set_dimensions(i, padded_dimension);
+        }
+      }
+      return padded_shape;
+    };
+    
+    // If slice is needed, won't pattern matched to FuseMatrixBias
+    bool slice_needed = pad_shape(instr->shape()).dimensions() != instr->shape().dimensions();
     // Fuse the possible addition of a matrix bias here to enable the subsequent
     // fusion of the scaling and conversion of D into the Custom Call. Fusing
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr, *add = nullptr;
-
-    if (instr->user_count() == 1 &&
-        instr->users()[0]->opcode() == HloOpcode::kAdd) {
-      HloInstruction *bias = instr->users()[0]->mutable_operand(
-          !instr->users()[0]->operand_index(instr));
-      if (bias->opcode() != HloOpcode::kBroadcast) {
-        c = bias;
-        gemm_backend_config.set_beta(1.0);
-        add = instr->users()[0];
+    bool has_matrix_bias = false;
+    bool is_high_rank_input = a->shape().rank() > 2 || b->shape().rank() > 2;
+    if (slice_needed && ((instr->user_count() == 1 &&
+        instr->users()[0]->opcode() == HloOpcode::kAdd) ||
+        (instr->user_count() == 1 && instr->users()[0]->user_count() == 1 &&
+        instr->users()[0]->opcode()== HloOpcode::kBitcast && 
+        instr->users()[0]->users()[0]->opcode() == HloOpcode::kAdd) ) ) {
+       std::cout << "yyyyyyyyyyyyyyyyyyyyyyyyyy\n";
+       std::cout << a->shape().rank() <<" ;"<< b->shape().rank()<<std::endl;
+      HloInstruction *bias = nullptr;
+      if (!is_high_rank_input) {
+        bias = instr->users()[0]->mutable_operand(!instr->users()[0]->operand_index(instr));
+      } else {
+        bias = instr->users()[0]->users()[0]->mutable_operand(
+          !instr->users()[0]->users()[0]->operand_index(instr->users()[0]));
       }
+      if (bias->opcode() != HloOpcode::kBroadcast) {
+        // c = bias;
+        // gemm_backend_config.set_beta(1.0);
+        // add = instr->users()[0];
+        has_matrix_bias = true;
+      }
+      std::cout << "hhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh\n";
     }
 
     // Each operand must have exactly one contracting and one non-contracting
@@ -834,19 +863,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
 
-    // Get the padded shape.
-    auto pad_shape = [&batch_dims](const Shape old_shape) {
-      Shape padded_shape = old_shape;
-      for (int i = 0; i < old_shape.rank(); ++i) {
-        if (!absl::c_linear_search(batch_dims, i)) {
-          int64_t padded_dimension =
-              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
-          padded_shape.set_dimensions(i, padded_dimension);
-        }
-      }
-      return padded_shape;
-    };
-
     // Pad the non-batch dimensions of the operands to multiples of 16 as
     // required by cuBLASLt.
     auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
@@ -869,12 +885,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return;
     };
 
-    pad_operand(a);
-    pad_operand(b);
+    //  Possible padding of ouput shape.
+    Shape new_output_shape = instr->shape();
+    if (!has_matrix_bias) {
+      pad_operand(a);
+      pad_operand(b);
+      new_output_shape = pad_shape(instr->shape());      
+    }
     if (c != nullptr) {
+      std::cout <<" pppppppaaaaaaa\n";
       pad_operand(c);
     }
-    Shape new_output_shape = pad_shape(instr->shape());
+ 
 
     std::vector<HloInstruction *> operands_list = {
         a, b, scales_f32[0], scales_f32[1], one, one};
@@ -895,15 +917,20 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Slice the result of the GEMM if the operands were padded.
     HloInstruction *slice = nullptr;
-    if (new_output_shape.dimensions() != instr->shape().dimensions()) {
+    if (new_output_shape.dimensions() != instr->shape().dimensions() && !has_matrix_bias) {
       std::vector<int64_t> start_indices(instr->shape().rank(), 0);
       std::vector<int64_t> strides(instr->shape().rank(), 1);
       slice = instr->AddInstruction(HloInstruction::CreateSlice(
           instr->shape(), new_custom_call, start_indices,
           instr->shape().dimensions(), strides));
+      std::cout << "CCCCCCCCCCCCCCCCCCCCCCCCCC\n";
     }
-    TF_RETURN_IF_ERROR(
-        ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
+
+// TF_RETURN_IF_ERROR(
+//         ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
+ std::cout <<"exiting CreateF8CustomCall!\n";
+TF_RETURN_IF_ERROR(
+        ReplaceInstruction(instr, slice?slice: new_custom_call)); 
     return true;
   }
 
@@ -1048,7 +1075,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
-                           const HloInstruction *gemm,
+                           HloInstruction *gemm,
                            HloInstruction *bitcast = nullptr) {
     TF_RET_CHECK(bias->shape() == (bitcast ? bitcast->shape() : gemm->shape()));
 
@@ -1057,7 +1084,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (gemm->shape().element_type() == S32) {
       return OkStatus();
     }
-
+     std::cout << "11111111111111111111111111\n";
     // Cublas gemm overwrites the bias matrix, so fusion is only possible if the
     // gemm is the only user. CublasLt gemm can operate out-of-place.
     bool can_overwrite_bias = [bias]() {
@@ -1087,7 +1114,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return in_out_alias_config.ParameterHasAlias(bias->parameter_number(),
                                                    /*param_index=*/{});
     }();
-    bool want_to_fuse_bias = IsCublasLtMatmul(*gemm) || can_overwrite_bias;
+    bool want_to_fuse_bias = IsCublasLtMatmulF8(*gemm) || IsCublasLtMatmul(*gemm) || can_overwrite_bias;
 
     auto config = gemm->backend_config<GemmBackendConfig>().value();
 
@@ -1096,24 +1123,119 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     bool supported_epilogue =
         ((config.epilogue() == GemmBackendConfig::DEFAULT) ||
          (config.epilogue() == GemmBackendConfig::BIAS));
-
+    std::cout << "22222222222222222222\n";
+    std::cout << config.beta() << "; " << want_to_fuse_bias << "; "
+              << gemm->user_count() << ";  " << supported_epilogue << "; \n";
     if ((config.beta() != 0) || !want_to_fuse_bias ||
         (gemm->user_count() != 1) || !supported_epilogue) {
       return OkStatus();
     }
-
+    std::cout << "333333333333333333\n";
     config.set_beta(1.0);
 
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
-    HloInstruction* broadcast_bias = MaybeConstantFoldBias(bias);
+    HloInstruction *broadcast_bias = MaybeConstantFoldBias(bias);
+    // if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
+    //   operands.at(2) = broadcast_bias;
+    // } else
+
+    std::cout << "44444444444444444444\n";
+
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
-      operands.at(2) = broadcast_bias;
+      absl::Span<const int64_t> batch_dims =
+        config.dot_dimension_numbers().rhs_batch_dimensions();
+      // Get the padded shape.
+      auto pad_shape = [&batch_dims](const Shape old_shape) {
+        Shape padded_shape = old_shape;
+        for (int i = 0; i < old_shape.rank(); ++i) {
+          if (!absl::c_linear_search(batch_dims, i)) {
+            int64_t padded_dimension =
+                RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
+            padded_shape.set_dimensions(i, padded_dimension);
+          }
+        }
+        return padded_shape;
+      };
+
+      // Pad the non-batch dimensions of the operands to multiples of 16 as
+      // required by cuBLASLt.
+      auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
+        PaddingConfig padding_config;
+        Shape padded_shape = pad_shape(x->shape());
+        for (int i = 0; i < x->shape().rank(); ++i) {
+          auto dimension = padding_config.add_dimensions();
+          dimension->set_edge_padding_low(0);
+          dimension->set_edge_padding_high(padded_shape.dimensions(i) -
+                                           x->shape().dimensions(i));
+          dimension->set_interior_padding(0);
+        }
+        if (!ShapeUtil::Equal(padded_shape, x->shape())) {
+          HloInstruction *zero =
+              instr->AddInstruction(HloInstruction::CreateConstant(
+                  LiteralUtil::Zero(x->shape().element_type())));
+          x = instr->AddInstruction(
+              HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
+        }
+        return;
+      };
+      HloInstruction *a = operands[0];
+      HloInstruction *b = operands[1];
+      pad_operand(a);
+      pad_operand(b);
+      operands[0] = a;
+      operands[1] = b;
+      pad_operand(broadcast_bias);
+      operands.insert(operands.begin() + 2, broadcast_bias);
+
+      Shape new_output_shape = pad_shape(instr->shape());
+      bool need_padding =
+          new_output_shape.dimensions() != instr->shape().dimensions();
+      // HloInstruction *new_custom_call =
+      //     gemm->parent()->AddInstruction(HloInstruction::CreateCustomCall(
+      //         ShapeUtil::MakeShapeWithDenseLayout(
+      //             instr->shape().element_type(), new_output_shape.dimensions(),
+      //             instr->shape().layout().minor_to_major()),
+      //         operands, kCublasLtMatmulF8CallTarget));
+      std::unique_ptr<HloInstruction> new_custom_call = 
+      // gemm->CloneWithNewShape(new_output_shape, operands);
+       gemm->CloneWithNewOperands(new_output_shape,operands);
+       TF_RETURN_IF_ERROR(new_custom_call->set_backend_config(config));
+
+      std::cout << "555555555555555\n";           
+
+      std::cout << "6666666666666666\n";        
+      std::cout << "need_padding"<<": "<< need_padding <<"\n";
+      TF_RETURN_IF_ERROR(SetName(instr->GetModule(), new_custom_call.get()));
+      // Slice the result of the GEMM if the operands were padded.
+      HloInstruction *slice = nullptr;
+      if (need_padding) {
+        std::vector<int64_t> start_indices(instr->shape().rank(), 0);
+        std::vector<int64_t> strides(instr->shape().rank(), 1);
+         slice = instr->AddInstruction(HloInstruction::CreateSlice(
+            instr->shape(), new_custom_call.get(), start_indices,
+            instr->shape().dimensions(), strides));
+  
+      }
+      if (slice) {
+        new_custom_call = slice->CloneWithNewOperands(
+          slice->shape(), {slice->parent()->AddInstruction(std::move(new_custom_call))});
+      }
+      std::cout << new_custom_call.get()->ToString() << std::endl;
+      std::cout << instr->ToString() << std::endl;
+      std::cout << instr->parent()->ToString() << std::endl;
+      std::cout << slice->ToString() << std::endl;
+      std::cout << slice->parent()->ToString() << std::endl;
+      std::cout << "7777777777777777777\n"; 
+      // return ReplaceInstruction(instr, slice);
+      return ReplaceWithNewInstruction(instr,std::move(new_custom_call));
+ 
+                        
+     
     } else {
       operands.insert(operands.begin() + 2, broadcast_bias);
-    }
-
-    std::unique_ptr<HloInstruction> fused_op =
+    
+       std::unique_ptr<HloInstruction> fused_op =
         gemm->CloneWithNewOperands(gemm->shape(), operands);
 
     TF_RETURN_IF_ERROR(fused_op->set_backend_config(config));
@@ -1145,8 +1267,15 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           bitcast->shape(),
           {bitcast->parent()->AddInstruction(std::move(fused_op))});
     }
-
+    std::cout <<"at exiting fusematrixbiasadd:\n";
+    std::cout << instr->ToString() << std::endl;
+    std::cout <<"----------------------------\n";
+    std::cout << fused_op.get()->ToString() << std::endl;
+    std::cout <<"at exiting fusematrixbiasadd print done\n";
     return ReplaceWithNewInstruction(instr, std::move(fused_op));
+                           }
+
+   
   }
 
   StatusOr<bool> FuseVectorBiasAdd(HloInstruction *instr,
