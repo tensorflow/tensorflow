@@ -70,6 +70,12 @@ namespace tensorflow {
 #define SUMMAND_SCALE_S8(summand_range, output_range) summand_range / 127.0f
 #endif  // !ENABLE_ONEDNN_V3
 
+#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
+#define FWD_STREAM , *fwd_stream
+#else
+#define FWD_STREAM
+#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+
 // TODO(intel-tf) Remove this once old API of quantized ops is abandoned
 namespace quantized_fusions {
 string none[] = {""};
@@ -171,89 +177,44 @@ class MklConvFwdPrimitive : public MklPrimitive {
     // should happen under the lock.
     mutex_lock lock(primitive_execution_mu_);
 #endif
-#if !defined(ENABLE_ONEDNN_OPENMP) && !defined(ENABLE_ONEDNN_V3)
     context_.src_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tinput*>(src_data)), *fwd_stream);
+        static_cast<void*>(const_cast<Tinput*>(src_data)) FWD_STREAM);
     context_.filter_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tfilter*>(filter_data)), *fwd_stream);
+        static_cast<void*>(const_cast<Tfilter*>(filter_data)) FWD_STREAM);
     if (bias_data != nullptr) {
-      context_.bias_mem->set_data_handle(const_cast<void*>(bias_data),
-                                         *fwd_stream);
-    }
-    auto const& post_op_params = convFwdDims.post_op_params;
-    if (!post_op_params.empty()) {
-      for (auto const& post_op_param : post_op_params) {
-        if (post_op_param.name == "src_scale") {
-          context_.src_scale_mem->set_data_handle(
-              static_cast<void*>(
-                  const_cast<float*>(post_op_param.param.data())),
-              *fwd_stream);
-        } else if (post_op_param.name == "wei_scale") {
-          context_.wei_scale_mem->set_data_handle(
-              static_cast<void*>(
-                  const_cast<float*>(post_op_param.param.data())),
-              *fwd_stream);
-        } else if (post_op_param.name == "dst_scale") {
-          context_.dst_scale_mem->set_data_handle(
-              static_cast<void*>(
-                  const_cast<float*>(post_op_param.param.data())),
-              *fwd_stream);
-        }
-      }
-    }
-    if (bn_scale_data != nullptr) {
-      context_.bn_scale_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)), *fwd_stream);
-      context_.bn_mean_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)), *fwd_stream);
-      context_.bn_rsqrt_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)), *fwd_stream);
-      context_.bn_offset_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)), *fwd_stream);
-    }
-    context_.dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<Toutput*>(dst_data)), *fwd_stream);
-    if (sp_data) {
-      context_.sp_mem->set_data_handle(static_cast<void*>(sp_data),
-                                       *fwd_stream);
-    }
-#else
-    context_.src_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tinput*>(src_data)));
-    context_.filter_mem->set_data_handle(
-        static_cast<void*>(const_cast<Tfilter*>(filter_data)));
-    if (bias_data != nullptr) {
-      context_.bias_mem->set_data_handle(const_cast<void*>(bias_data));
+      context_.bias_mem->set_data_handle(const_cast<void*>(bias_data)
+                                             FWD_STREAM);
     }
     auto const& post_op_params = convFwdDims.post_op_params;
     if (!post_op_params.empty()) {
       for (auto const& post_op_param : post_op_params) {
         if (post_op_param.name == "src_scale") {
           context_.src_scale_mem->set_data_handle(static_cast<void*>(
-              const_cast<float*>(post_op_param.param.data())));
+              const_cast<float*>(post_op_param.param.data())) FWD_STREAM);
         } else if (post_op_param.name == "wei_scale") {
           context_.wei_scale_mem->set_data_handle(static_cast<void*>(
-              const_cast<float*>(post_op_param.param.data())));
+              const_cast<float*>(post_op_param.param.data())) FWD_STREAM);
         } else if (post_op_param.name == "dst_scale") {
           context_.dst_scale_mem->set_data_handle(static_cast<void*>(
-              const_cast<float*>(post_op_param.param.data())));
+              const_cast<float*>(post_op_param.param.data())) FWD_STREAM);
         }
       }
     }
     if (bn_scale_data != nullptr) {
       context_.bn_scale_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)));
+          static_cast<void*>(const_cast<Tinput*>(bn_scale_data)) FWD_STREAM);
       context_.bn_mean_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)));
+          static_cast<void*>(const_cast<Tinput*>(bn_mean_data)) FWD_STREAM);
       context_.bn_rsqrt_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)));
+          static_cast<void*>(const_cast<Tinput*>(bn_rsqrt_data)) FWD_STREAM);
       context_.bn_offset_mem->set_data_handle(
-          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)));
+          static_cast<void*>(const_cast<Tinput*>(bn_offset_data)) FWD_STREAM);
     }
     context_.dst_mem->set_data_handle(
-        static_cast<void*>(const_cast<Toutput*>(dst_data)));
-    if (sp_data) context_.sp_mem->set_data_handle(static_cast<void*>(sp_data));
-#endif  // !ENABLE_ONEDNN_OPENMP && !ENABLE_ONEDNN_V3
+        static_cast<void*>(const_cast<Toutput*>(dst_data)) FWD_STREAM);
+    if (sp_data) {
+      context_.sp_mem->set_data_handle(static_cast<void*>(sp_data) FWD_STREAM);
+    }
 
     DCHECK_EQ(context_.fwd_primitives.size(),
               context_.fwd_primitives_args.size());
@@ -561,31 +522,25 @@ class MklConvFwdPrimitive : public MklPrimitive {
         new dnnl::memory(scratchpad_md, cpu_engine_, DummyData));
 
     // Create convolution primitive and add it to net
+    std::unordered_map<int, memory> net_args;
     if (!convFwdDims.bias_dims.empty()) {
       context_.bias_mem.reset(new memory(context_.fwd_pd.get()->bias_desc(),
                                          cpu_engine_, DummyData));
-      if (is_scale_set["src"] && is_scale_set["wei"] && is_scale_set["dst"]) {
-        context_.fwd_primitives_args.push_back(
-            {{DNNL_ARG_SRC, *context_.src_mem},
-             {DNNL_ARG_WEIGHTS, *context_.filter_mem},
-             {DNNL_ARG_BIAS, *context_.bias_mem},
-             {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
-             {DNNL_ARG_DST, *context_.dst_mem},
+      net_args = {{DNNL_ARG_SRC, *context_.src_mem},
+                  {DNNL_ARG_WEIGHTS, *context_.filter_mem},
+                  {DNNL_ARG_BIAS, *context_.bias_mem},
+                  {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
+                  {DNNL_ARG_DST, *context_.dst_mem}};
 #ifdef ENABLE_ONEDNN_V3
-             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem},
-             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem},
-             { DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
-               *context_.dst_scale_mem }
-#endif  // ENABLE_ONEDNN_V3
-            });
-      } else {
-        context_.fwd_primitives_args.push_back(
-            {{DNNL_ARG_SRC, *context_.src_mem},
-             {DNNL_ARG_WEIGHTS, *context_.filter_mem},
-             {DNNL_ARG_BIAS, *context_.bias_mem},
-             {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
-             {DNNL_ARG_DST, *context_.dst_mem}});
+      if (is_scale_set["src"] && is_scale_set["wei"] && is_scale_set["dst"]) {
+        net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem});
+        net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem});
+        net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, *context_.dst_scale_mem});
       }
+#endif  // ENABLE_ONEDNN_V3
     } else if (!convFwdDims.fuse_bn_dims.empty()) {
       context_.bn_scale_mem.reset(
           new memory(*context_.bn_scale_md, cpu_engine_, DummyData));
@@ -596,41 +551,35 @@ class MklConvFwdPrimitive : public MklPrimitive {
       context_.bn_rsqrt_mem.reset(
           new memory(*context_.bn_rsqrt_md, cpu_engine_, DummyData));
 
-      context_.fwd_primitives_args.push_back(
-          {{DNNL_ARG_SRC, *context_.src_mem},
-           {DNNL_ARG_WEIGHTS, *context_.filter_mem},
-           {DNNL_ARG_DST, *context_.dst_mem},
-           {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
-           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
-            *context_.bn_mean_mem},
-           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
-            *context_.bn_rsqrt_mem},
-           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
-            *context_.bn_scale_mem},
-           {DNNL_ARG_ATTR_MULTIPLE_POST_OP(3) | DNNL_ARG_SRC_1,
-            *context_.bn_offset_mem}});
+      net_args = {{DNNL_ARG_SRC, *context_.src_mem},
+                  {DNNL_ARG_WEIGHTS, *context_.filter_mem},
+                  {DNNL_ARG_DST, *context_.dst_mem},
+                  {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
+                  {DNNL_ARG_ATTR_MULTIPLE_POST_OP(0) | DNNL_ARG_SRC_1,
+                   *context_.bn_mean_mem},
+                  {DNNL_ARG_ATTR_MULTIPLE_POST_OP(1) | DNNL_ARG_SRC_1,
+                   *context_.bn_rsqrt_mem},
+                  {DNNL_ARG_ATTR_MULTIPLE_POST_OP(2) | DNNL_ARG_SRC_1,
+                   *context_.bn_scale_mem},
+                  {DNNL_ARG_ATTR_MULTIPLE_POST_OP(3) | DNNL_ARG_SRC_1,
+                   *context_.bn_offset_mem}};
     } else {
-      if (is_scale_set["src"] && is_scale_set["wei"] && is_scale_set["dst"]) {
-        context_.fwd_primitives_args.push_back(
-            {{DNNL_ARG_SRC, *context_.src_mem},
-             {DNNL_ARG_WEIGHTS, *context_.filter_mem},
-             {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
-             {DNNL_ARG_DST, *context_.dst_mem},
+      net_args = {{DNNL_ARG_SRC, *context_.src_mem},
+                  {DNNL_ARG_WEIGHTS, *context_.filter_mem},
+                  {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
+                  {DNNL_ARG_DST, *context_.dst_mem}};
 #ifdef ENABLE_ONEDNN_V3
-             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem},
-             {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem},
-             { DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST,
-               *context_.dst_scale_mem }
-#endif  // ENABLE_ONEDNN_V3
-            });
-      } else {
-        context_.fwd_primitives_args.push_back(
-            {{DNNL_ARG_SRC, *context_.src_mem},
-             {DNNL_ARG_WEIGHTS, *context_.filter_mem},
-             {DNNL_ARG_SCRATCHPAD, *context_.sp_mem},
-             {DNNL_ARG_DST, *context_.dst_mem}});
+      if (is_scale_set["src"] && is_scale_set["wei"] && is_scale_set["dst"]) {
+        net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, *context_.src_scale_mem});
+        net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_WEIGHTS, *context_.wei_scale_mem});
+        net_args.insert(
+            {DNNL_ARG_ATTR_SCALES | DNNL_ARG_DST, *context_.dst_scale_mem});
       }
+#endif  // ENABLE_ONEDNN_V3
     }
+    context_.fwd_primitives_args.push_back(net_args);
     context_.fwd_primitives.push_back(*context_.conv_fwd);
   }
 
@@ -719,15 +668,12 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
         }
 #ifndef ENABLE_ONEDNN_V3
       } else if (post_op_param.name == "output_scale") {
-        key_creator.AddAsKey(post_op_param.partial_key);
 #else
-      } else if (post_op_param.name == "src_scale") {
-        key_creator.AddAsKey(post_op_param.partial_key);
-      } else if (post_op_param.name == "wei_scale") {
-        key_creator.AddAsKey(post_op_param.partial_key);
-      } else if (post_op_param.name == "dst_scale") {
-        key_creator.AddAsKey(post_op_param.partial_key);
+      } else if (post_op_param.name == "src_scale" ||
+                 post_op_param.name == "wei_scale" ||
+                 post_op_param.name == "dst_scale") {
 #endif  // !ENABLE_ONEDNN_V3
+        key_creator.AddAsKey(post_op_param.partial_key);
       } else if (post_op_param.name == "fuse_bn") {
         key_creator.AddAsKey(post_op_param.name);
         key_creator.AddAsKey(convFwdDims.fuse_bn_dims);
@@ -2487,7 +2433,7 @@ class MklQuantizedConvOp
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
     // Re-scale bias if either of following 2 conditions are met:
     // 1. Bias is not const;
-    // 2. Bias is const, bias has not been cached (first iteration).
+    // 2. Bias is const, but bias cache is empty (first iteration).
 
     size_t depth = min_filter_vector.NumElements();
     bool scales_are_valid = (depth == scales_.size());
@@ -2556,10 +2502,10 @@ class MklQuantizedConvOp
       return static_cast<Tbias*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
     }
-    // Starting oneDNN v3.0, bias needs to be passed as is (in float datatype).
-    // However, for backward compatibility we need to handle the case where bias
-    // is qint32. Since oneDNN v3.0 does not support qint32 bias, we need to
-    // dequantize to float.
+    // Starting with oneDNN v3.0, bias needs to be passed as is (in float
+    // datatype). However, for backward compatibility we need to handle the case
+    // where bias is qint32. Since oneDNN v3.0 does not support qint32 bias, we
+    // need to dequantize to float.
     const float min_input =
         context->input(min_input_idx_).template scalar<float>()();
     const float max_input =
@@ -2579,7 +2525,7 @@ class MklQuantizedConvOp
         (std::is_same<Tinput, quint8>::value) ? 255.0 * 127.0 : 127.0 * 127.0;
     // Re-scale bias if either of following 2 conditions are met:
     // 1. Bias is not const;
-    // 2. Bias is const, but bias cache is empty (first iteration).
+    // 2. Bias is const, bias has not been cached (first iteration).
 
     size_t depth = min_filter_vector.NumElements();
     bool scales_are_valid = (depth == scales_.size());
