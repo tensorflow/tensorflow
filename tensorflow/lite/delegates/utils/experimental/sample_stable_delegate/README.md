@@ -234,3 +234,14 @@ adb shell "/data/local/tmp/benchmark_model \
   --stable_delegate_settings_file=/data/local/tmp/stable_delegate_settings.json \
   --graph=/data/local/tmp/add.bin"
 ```
+
+## Sample app
+
+To show how to use the sample stable delegate, we have included a sample app
+that uses it.  You can build and run the sample app as follows:
+
+```
+bazel run -c opt \
+    //tensorflow/lite/delegates/utils/experimental/sample_stable_delegate:sample_app_using_stable_delegate \
+    tensorflow/lite/testdata/add.tflite
+```
