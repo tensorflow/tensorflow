@@ -814,7 +814,7 @@ class MemorySpaceAssignment {
     // Details about a slice in the sliced allocation.
     struct SliceDetails {
       std::string ToString() const;
-      std::tuple<const Chunk&, int64_t, int64_t, const std::vector<SliceParam>,
+      std::tuple<const Chunk&, int64_t, int64_t, const std::vector<SliceParam>&,
                  const HloInstruction*, const HloInstruction*>
       ToTuple() const;
       bool operator==(const SliceDetails& other) const;

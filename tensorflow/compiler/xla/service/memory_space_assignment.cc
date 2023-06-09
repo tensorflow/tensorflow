@@ -5886,11 +5886,12 @@ MemorySpaceAssignment::SlicedCopyAllocation::SliceDetails::ToString() const {
 
 std::tuple<
     const MemorySpaceAssignment::Chunk&, int64_t, int64_t,
-    const std::vector<MemorySpaceAssignment::SlicedCopyAllocation::SliceParam>,
+    const std::vector<MemorySpaceAssignment::SlicedCopyAllocation::SliceParam>&,
     const HloInstruction*, const HloInstruction*>
 MemorySpaceAssignment::SlicedCopyAllocation::SliceDetails::ToTuple() const {
-  return std::make_tuple(chunk, copy_start_after_time, copy_done_before_time,
-                         slice_params, copy_start, copy_done);
+  return std::make_tuple(std::ref(chunk), copy_start_after_time,
+                         copy_done_before_time, std::ref(slice_params),
+                         copy_start, copy_done);
 }
 
 bool MemorySpaceAssignment::SlicedCopyAllocation::SliceDetails::operator==(
