@@ -1078,7 +1078,7 @@ Status ExecutorState<PropagatorStateType>::ProcessOutputs(
                !item.is_distributed_communication) {
       s = errors::ReplaceErrorFromNonCommunicationOps(s, item.kernel->name());
     }
-    return s;
+    return ADD_SOURCE_LOCATION(s);
   }
 
   for (int i = 0; i < item.num_outputs; ++i) {

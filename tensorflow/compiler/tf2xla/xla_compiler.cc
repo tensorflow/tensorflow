@@ -756,8 +756,8 @@ Status XlaCompiler::CompileSingleOp(
 
   auto compile_with_old_bridge = [&]() {
     *result = {};
-    return CompileGraph(compile_options, node_def.name(), std::move(graph),
-                        args, result);
+    return ADD_SOURCE_LOCATION(CompileGraph(compile_options, node_def.name(),
+                                            std::move(graph), args, result));
   };
 
   const ConfigProto* config = &(single_op_compile_argument.config_proto);
