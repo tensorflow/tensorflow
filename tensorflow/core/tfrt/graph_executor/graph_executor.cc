@@ -584,8 +584,14 @@ GraphExecutor::ImportAndCompileClientGraph(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
-  ASSIGN_OR_RETURN_IN_IMPORT(symbol_uids.tf_symbol_uid,
-                             MaybeUploadMlirToXsymbol(module.get()));
+
+  if (auto tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
+      tf_symbol_uid.ok()) {
+    symbol_uids.tf_symbol_uid = *tf_symbol_uid;
+  } else {
+    LOG(ERROR) << tf_symbol_uid.status();
+  }
+
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(import_duration)
@@ -633,8 +639,14 @@ GraphExecutor::ImportAndCompileClientGraph(
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
-  ASSIGN_OR_RETURN_IN_COMPILE(symbol_uids.tfrt_symbol_uid,
-                              MaybeUploadMlirToXsymbol(module.get()));
+
+  if (auto tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
+      tfrt_symbol_uid.ok()) {
+    symbol_uids.tfrt_symbol_uid = *tfrt_symbol_uid;
+  } else {
+    LOG(ERROR) << tfrt_symbol_uid.status();
+  }
+
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
             << "). Took " << absl::ToInt64Milliseconds(compile_duration)
