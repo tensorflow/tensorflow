@@ -36,8 +36,6 @@ jobs:
           exempt-pr-labels: "override-stale"
           #Limit the No. of API calls in one run default value is 30.
           operations-per-run: 1000
-          #Prevent to remove stale label when PRs or issues are updated.
-          remove-stale-when-updated: false
           days-before-issue-stale: 7
           days-before-issue-close: 7
           stale-issue-label: "stale"
@@ -64,8 +62,6 @@ jobs:
           exempt-pr-labels: "override-stale"
           #Limit the No. of API calls in one run default value is 30.
           operations-per-run: 1000
-          #Prevent to remove stale label when PRs or issues are updated.
-          remove-stale-when-updated: false
           days-before-issue-stale: 180
           days-before-issue-close: 365
           stale-issue-label: "stale"
@@ -78,9 +74,3 @@ jobs:
           close-issue-message: >
             This issue was closed because it has been inactive for 1 year.
           repo-token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/github-script@v6
-        with:
-          script: |
-            const script = require('./\.github/workflows/scripts/stale-close-when-update.js')
-            script({github, context})    
-      
