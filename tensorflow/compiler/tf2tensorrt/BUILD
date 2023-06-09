@@ -1030,6 +1030,7 @@ pybind_extension(
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
+        "@ml_dtypes//:__subpackages__",
         "@nsync//:__subpackages__",
         "@platforms//:__subpackages__",
         "@pybind11//:__subpackages__",
