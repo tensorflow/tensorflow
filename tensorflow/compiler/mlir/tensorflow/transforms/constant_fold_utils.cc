@@ -99,6 +99,8 @@ static std::function<void(std::function<void()>)>* GetDefaultRunner() {
   return default_runner;
 }
 
+constexpr int64_t kMaxConstantSizeInBytes = 10 * 1024 * 1024;
+
 LogicalResult EvaluateOperation(Operation* inst,
                                 llvm::ArrayRef<ElementsAttr> operands,
                                 llvm::SmallVector<Attribute>& results) {
@@ -153,6 +155,12 @@ LogicalResult EvaluateOperation(Operation* inst,
 
   std::vector<tensorflow::TensorValue> input_values;
   for (tensorflow::Tensor& tensor : inputs) {
+    // Limit the constant size to avoid OOM. This is consistent with the TF
+    // grappler.
+    //
+    // third_party/tensorflow/core/common_runtime/constant_folding.cc
+    if (tensor.TotalBytes() > kMaxConstantSizeInBytes) return failure();
+
     input_values.emplace_back();
     input_values.back().tensor = &tensor;
   }
