@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -1288,7 +1290,7 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
     const {
   // Check if we can place the fully allocated buffer at the preferred offset
   if (preferred_offset_ >= 0) {
-    VLOG(2) << "SlicedAllocationFinder::Find() searching preferred offset "
+    VLOG(3) << "SlicedAllocationFinder::Find() searching preferred offset "
             << preferred_offset_;
     auto it = free_chunks_.lower_bound(preferred_offset_);
     if (it != free_chunks_.end()) {
@@ -1296,6 +1298,9 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
       ChunksSortedBySliceTime chunks =
           FindInRoot(*root, /*only_try_preferred_offset=*/true);
       if (!chunks.empty()) {
+        VLOG(1) << "SlicedAllocationFinder found chunks: "
+                << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+                << " }";
         return chunks;
       }
     }
@@ -1325,10 +1330,13 @@ GlobalDecreasingSizeBestFitHeap<BufferType>::SlicedAllocationFinder::Find()
   // Each call to heap_next() gives us the next smallest root.
   for (const FreeChunkRoot* root = heap_next(); root != nullptr;
        root = heap_next()) {
-    VLOG(2) << "SlicedAllocationFinder::Find() searching " << root->ToString();
+    VLOG(3) << "SlicedAllocationFinder::Find() searching " << root->ToString();
     ChunksSortedBySliceTime chunks =
         FindInRoot(*root, /*only_try_preferred_offset=*/false);
     if (!chunks.empty()) {
+      VLOG(1) << "SlicedAllocationFinder found chunks: "
+              << "{ " << absl::StrJoin(chunks, ", ", absl::StreamFormatter())
+              << " }";
       return chunks;
     }
   }
@@ -1658,49 +1666,54 @@ std::vector<typename GlobalDecreasingSizeBestFitHeap<BufferType>::Chunk>
 GlobalDecreasingSizeBestFitHeap<BufferType>::FindChunkCandidates(
     const SlicedBufferInterval& sliced_buffer_interval,
     int64_t preferred_offset) const {
-  const BufferInterval& buffer_interval =
-      sliced_buffer_interval.full_buffer_interval();
-  // TODO(b/275905276): changes this method to account for slicing and remove
-  // the following check
-  CHECK_EQ(sliced_buffer_interval.SliceSizesSortedByOffset().size(), 1)
-      << "Chunk slicing is not yet supported.";
-
   VLOG(1) << "Finding chunks for sliced buffer interval: "
           << sliced_buffer_interval.ToString();
 
   // Find the max size of interval across its colocations and use this value
   // to determine whether the buffer will fit in the heap.
-  int64_t max_colocation_size = buffer_interval.size;
-  for (const BufferType* colocation :
-       GetTransitiveColocations(buffer_interval)) {
+  int64_t max_colocation_size =
+      sliced_buffer_interval.full_buffer_interval().size;
+  for (const BufferType* colocation : GetTransitiveColocations(
+           sliced_buffer_interval.full_buffer_interval())) {
     max_colocation_size =
         std::max(max_colocation_size, buffer_intervals_.at(colocation).size);
   }
 
-  // Get all colocated buffers and gather all interferenced chunks.
-  FreeChunks free_chunks = MakeFreeChunks(buffer_interval, max_colocation_size);
-
-  // TODO(b/275905276): when slicing, build free_chunks for each consecutive
-  // slice time, where slice time is logical time.
-
-  // TODO(b/275905276): when slicing, merge the free_chunks for each slice time.
-  // The end result should be a list of free chunks in which buffer_interval not
-  // only fits in each free chunk, but the slices of buffer interval can be
-  // allocated according to their requirements. Try to find a large enough free
-  // chunk containing the preferred offset.
-  Chunk chunk = Chunk::FromOffsetSize(preferred_offset, max_colocation_size);
-  auto it = (preferred_offset < 0) ? free_chunks.end()
-                                   : free_chunks.lower_bound(preferred_offset);
-  if (it == free_chunks.end() || (it->second < chunk.chunk_end())) {
-    // Otherwise, find the smallest free chunk. In the case of a tie, prefer the
-    // smallest offset. We ensure above that all of the free chunks are large
-    // enough to store the buffer.
-    chunk.offset = absl::c_min_element(free_chunks, [](auto a, auto b) {
-                     return std::forward_as_tuple(a.second - a.first, a.first) <
-                            std::forward_as_tuple(b.second - b.first, b.first);
-                   })->first;
+  // Build up a list of free chunks for each slice time.
+  std::vector<FreeChunks> free_chunks_per_slice_time;
+  free_chunks_per_slice_time.reserve(sliced_buffer_interval.num_slices());
+  for (int slice_time = 0; slice_time < sliced_buffer_interval.num_slices() - 1;
+       ++slice_time) {
+    // We don't need to account for colocation until the last slice time, in
+    // which we've allocated all the slices. So we set max_colocation_size to
+    // -1.
+    free_chunks_per_slice_time.push_back(MakeFreeChunks(
+        sliced_buffer_interval.IntervalForMakeFreeChunks(slice_time),
+        /*max_colocation_size=*/-1));
   }
-  return {chunk};
+  // We account for colocation size in the last slice time, where we've
+  // allocated all the slices.
+  free_chunks_per_slice_time.push_back(
+      MakeFreeChunks(sliced_buffer_interval.IntervalForMakeFreeChunks(
+                         sliced_buffer_interval.num_slices() - 1),
+                     max_colocation_size));
+
+  auto chunks =
+      SlicedAllocationFinder(free_chunks_per_slice_time,
+                             sliced_buffer_interval.SliceSizesSortedByOffset(),
+                             max_colocation_size, preferred_offset, alignment_)
+          .Find();
+  if (chunks.empty()) {
+    return {};
+  }
+  CHECK_EQ(chunks.size(), sliced_buffer_interval.num_slices() + 1);
+  // The extra chunk is for colocations, so merge the last two chunks.
+  Chunk last = chunks.back();
+  chunks.pop_back();
+  chunks.back() = Chunk::FromOffsetSize(chunks.back().offset,
+                                        chunks.back().size + last.size);
+
+  return chunks;
 }
 
 template <typename BufferType>
