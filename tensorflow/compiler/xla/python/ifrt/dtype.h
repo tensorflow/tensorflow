@@ -41,12 +41,14 @@ class DType {
     kPred = 1,
 
     // Signed integral values of fixed width.
+    kS4 = 21,
     kS8 = 2,
     kS16 = 3,
     kS32 = 4,
     kS64 = 5,
 
     // Unsigned integral values of fixed width.
+    kU4 = 22,
     kU8 = 6,
     kU16 = 7,
     kU32 = 8,

@@ -60,7 +60,28 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // -----
 
+func.func @all_reduce_tuple(%arg0: tensor<10xf32>, %arg1: tensor<f32>) -> tensor<10xf32> {
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  // Perform max reduction inside the region
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
+    use_global_device_ids
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0 : tensor<10xf32>
+}
+
+// -----
+
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region must take 2 parameters, but takes 3 parameter(s)}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<f32>):
@@ -76,6 +97,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The reduction-region expected to return some value(s)}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -91,6 +113,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region here must produce 1 tensors, but produces 2 instead}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -106,6 +129,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{Reduction-region here must produce tensor-typed result(s), but produces 'tuple<tensor<f32>, tensor<f32>>' instead}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -122,6 +146,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's parameter at index 1 is different than the corresponding result type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<i32>):
@@ -137,6 +162,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's parameter at index 0 is different than the corresponding result type: 'tensor<f32>' vs 'tensor<i32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -153,6 +179,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<i32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<i32>, %arg1: tensor<i32>):
@@ -168,6 +195,7 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{The type of reduction-region's result type at index 0 differs from the op's corresponding init-value type: 'tensor<4xf32>' vs 'tensor<f32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>):
@@ -183,7 +211,8 @@ func.func @all_reduce_invalid_reducer(%operand: tensor<10xf32>) -> tensor<10xf32
 // -----
 
 func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10x4xf32> {
-  // expected-error@+1 {{requires compatible types for all operands and results}}
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
+  // expected-error@+1 {{'mhlo.all_reduce' op inferred type(s) 'tensor<10xf32>' are incompatible with return type(s) of operation 'tensor<10x4xf32>'}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<f32>
@@ -198,7 +227,7 @@ func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10
 // -----
 
 func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10xi32> {
-  // expected-error@+1 {{requires compatible types for all operands and results}}
+  // expected-error@+1 {{'mhlo.all_reduce' op requires the same element type for all operands and results}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
     %max = mhlo.maximum %arg0, %arg1 : tensor<f32>
@@ -213,6 +242,7 @@ func.func @all_reduce_invalid_return_type(%operand: tensor<10xf32>) -> tensor<10
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{replica groups should be a rank 2 tensor}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -228,6 +258,7 @@ func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   // expected-error@+1 {{replica id #1 seen more than once}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -243,6 +274,7 @@ func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   //  expected-error@+1 {{replica id #2 not seen in replica groups}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -258,6 +290,7 @@ func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<
 // -----
 
 func.func @all_reduce_invalid_replica_group(%operand: tensor<10xf32>) -> tensor<10xf32> {
+  // expected-error@+2 {{'mhlo.all_reduce' op failed to infer returned types}}
   //  expected-error@+1 {{replica groups cannot be empty}}
   %0 = "mhlo.all_reduce"(%operand) ({
   ^bb0(%arg0: tensor<f32>, %arg1: tensor<f32>):
@@ -6072,7 +6105,7 @@ func.func @scatter_variadic(%arg0: tensor<3xi32>, %arg1: tensor<1x1xi32>,
 
 
 #SV = #sparse_tensor.encoding<{
-  dimLevelType = ["compressed"]
+  lvlTypes = ["compressed"]
 }>
 
 func.func @is_compatible_sparse_mix_non_sparse(%arg0: tensor<1xf32>, %arg1: tensor<1xf32, #SV>) {
@@ -6435,4 +6468,144 @@ func.func @f8e4m3fn(%arg0: tensor<f16>) -> tensor<f8E4M3FN> {
 func.func @f8e5m2(%arg0: tensor<f16>) -> tensor<f8E5M2> {
   %0 = "mhlo.convert"(%arg0) : (tensor<f16>) -> tensor<f8E5M2>
   func.return %0 : tensor<f8E5M2>
+}
+
+// -----
+
+func.func @top_k_1d(%arg0 : tensor<16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_nd(%arg0 : tensor<16x16xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<16x16xf32> -> (tensor<16x8xf32>, tensor<16x8xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_unbounded(%arg0 : tensor<?x16x?xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<?x16x?xf32> -> (tensor<?x16x8xf32>, tensor<?x16x8xi32>)
+  return
+}
+
+// -----
+
+func.func @top_k_bounded(%arg0 : tensor<?x?x?xf32, #stablehlo.bounds<?, 16, 16>>) {
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<?x?x?xf32, #stablehlo.bounds<?, 16, 16>> -> (tensor<16x?x8xf32, #stablehlo.bounds<?, 16, ?>>, tensor<16x?x8xi32, #stablehlo.bounds<?, 16, ?>>)
+  return
+}
+
+// -----
+
+func.func @top_k_unranked(%arg0 : tensor<*xf32>) {
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<*xf32> -> (tensor<*xf32>, tensor<*xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_rank_at_least_one(%arg0 : tensor<f32>) {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{operand's rank must be at least 1}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<f32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_last_dimension_at_least_k(%arg0 : tensor<4xf32>) {
+  // expected-error@+2 {{failed to infer returned types}}
+  // expected-error@+1 {{operand's last dimension must be at least 8}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<4xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_body_must_have_two_arguments(%arg0 : tensor<16xf32>) {
+  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>) -> tensor<i1>'}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg1 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_body_must_have_one_result(%arg0 : tensor<16xf32>) {
+  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>, tensor<f32>) -> (tensor<i1>, tensor<i1>)'}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate, %predicate : tensor<i1>, tensor<i1>
+  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_body_arguments_must_have_operand_element_type(%arg0 : tensor<16xf32>) {
+  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<i32>, tensor<i32>) -> tensor<i1>'}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<i32>, %arg2: tensor<i32>):
+      %predicate = mhlo.compare GT, %arg1, %arg2 : (tensor<i32>, tensor<i32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_body_results_must_have_i1_element_type(%arg0 : tensor<16xf32>) {
+  // expected-error@+1 {{unsupported body: expected: '(tensor<f32>, tensor<f32>) -> tensor<i1>', got '(tensor<f32>, tensor<f32>) -> tensor<f32>'}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      mhlo.return %arg1 : tensor<f32>
+  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
+}
+
+// -----
+
+func.func @topk_body_must_consist_of_compare_gt_or_compare_lt(%arg0 : tensor<16xf32>) {
+  // expected-error@+1 {{unsupported body: expected mhlo.compare of body arguments with GT or LT comparison_direction}}
+  %0:2 = mhlo.topk(%arg0, k=8) {
+    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+      %predicate = mhlo.compare EQ, %arg1, %arg2 : (tensor<f32>, tensor<f32>) -> tensor<i1>
+      mhlo.return %predicate : tensor<i1>
+  } : tensor<16xf32> -> (tensor<8xf32>, tensor<8xi32>)
+  return
 }

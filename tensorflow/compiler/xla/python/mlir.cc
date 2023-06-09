@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
+#include "tensorflow/compiler/xla/python/refine_polymorphic_shapes.h"
 #include "tensorflow/compiler/xla/python/status_casters.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -58,12 +59,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseModule(
   module = mlir::parseSourceString<mlir::ModuleOp>(
       llvm::StringRef(str.data(), str.size()), context);
   if (!module) {
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   return module;
 }
@@ -220,6 +221,20 @@ void BuildMlirSubmodule(py::module& m) {
   mlir_module.def("deserialize_portable_artifact",
                   xla::ValueOrThrowWrapper(PyDeserializePortableArtifact),
                   py::arg("mlir_module"));
+  mlir_module.def(
+      "refine_polymorphic_shapes",
+      [](std::string mlir_module) -> py::bytes {
+        std::string buffer;
+        llvm::raw_string_ostream os(buffer);
+        xla::ThrowIfError(RefinePolymorphicShapes(mlir_module, os));
+        return py::bytes(buffer);
+      },
+      py::arg("mlir_module"),
+      R"(Refines the dynamic shapes for a module.
+        The "main" function must have static shapes and all the
+        intermediate dynamic shapes depend only on the input static
+        shapes.
+      )");
 }
 
 }  // namespace xla

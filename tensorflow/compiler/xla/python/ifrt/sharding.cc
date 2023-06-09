@@ -301,10 +301,10 @@ StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
 
   // Calculate the device assignments.
   // `origins[i]` should go to `device_list[i]`.
-  static constexpr int64_t kInvalidIndex = -1;
-  llvm::SmallVector<int64_t, 4> device_list;
+  static constexpr int kInvalidIndex = -1;
+  llvm::SmallVector<int, 4> device_list;
   sharding_param_.minor_to_major().ToDeviceList(device_list);
-  std::vector<int64_t> device_to_index(device_list.size(), kInvalidIndex);
+  std::vector<int> device_to_index(device_list.size(), kInvalidIndex);
   for (int i = 0; i < device_list.size(); ++i) {
     device_to_index[device_list[i]] = i;
   }
@@ -316,7 +316,7 @@ StatusOr<std::vector<IndexDomain>> ShardingParamSharding::IndexDomains(
   std::vector<IndexDomain> result;
   result.reserve(device_to_index.size());
   for (int i = 0; i < device_to_index.size(); ++i) {
-    int64_t index = device_to_index[i];
+    int index = device_to_index[i];
     DCHECK_NE(index, kInvalidIndex);
     result.push_back(IndexDomain(origins[index / replication], local_shape));
   }

@@ -262,6 +262,7 @@ cc_library(
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -383,5 +384,16 @@ cc_library(
     deps = [
         ":tensor_layout",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_library(
+    name = "slice_util",
+    srcs = ["slice_util.cc"],
+    hdrs = ["slice_util.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:IR",
     ],
 )

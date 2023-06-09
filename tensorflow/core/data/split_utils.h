@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_DATA_SPLIT_UTILS_H_
 
 #include <functional>
+#include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/dataset.h"
 

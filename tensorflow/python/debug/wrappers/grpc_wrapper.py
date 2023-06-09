@@ -66,8 +66,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
                sess,
                grpc_debug_server_addresses,
                watch_fn=None,
-               thread_name_filter=None,
-               log_usage=True):
+               thread_name_filter=None):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -83,17 +82,11 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       thread_name_filter: Regular-expression white list for threads on which the
         wrapper session will be active. See doc of `BaseDebugWrapperSession` for
         more details.
-      log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
        TypeError: If `grpc_debug_server_addresses` is not a `str` or a `list`
          of `str`.
     """
-
-    if log_usage:
-      # TODO(juanantoniomc): Finalize log_usage deprecation by removing arg.
-      pass
-
     framework.NonInteractiveDebugWrapperSession.__init__(
         self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter)
 
@@ -168,8 +161,7 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
                sess,
                grpc_debug_server_addresses,
                thread_name_filter=None,
-               send_traceback_and_source_code=True,
-               log_usage=True):
+               send_traceback_and_source_code=True):
     """Constructor of TensorBoardDebugWrapperSession.
 
     Args:
@@ -180,8 +172,6 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
       thread_name_filter: Optional filter for thread names.
       send_traceback_and_source_code: Whether traceback of graph elements and
         the source code are to be sent to the debug server(s).
-      log_usage: Whether the usage of this class is to be logged (if
-        applicable).
     """
     def _gated_grpc_watch_fn(fetches, feeds):
       del fetches, feeds  # Unused.
@@ -192,8 +182,7 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
         sess,
         grpc_debug_server_addresses,
         watch_fn=_gated_grpc_watch_fn,
-        thread_name_filter=thread_name_filter,
-        log_usage=log_usage)
+        thread_name_filter=thread_name_filter)
 
     self._send_traceback_and_source_code = send_traceback_and_source_code
     # Keeps track of the latest version of Python graph object that has been

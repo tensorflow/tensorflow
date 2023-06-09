@@ -358,12 +358,7 @@ void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
       // rendezvous logic. At some point after Initialize() is called, a Tensor
       // is produced locally that will then be sent in response to the incoming
       // RPC.
-
-      // Keeps a reference to ensure current rendezvous won't be released before
-      // these pending calls are applied.
-      tsl::core::RefCountPtr<Rendezvous> rendez_ref = GetNewRef(this);
-      deferred_calls_.emplace_back(parsed, std::move(done),
-                                   std::move(rendez_ref));
+      deferred_calls_.emplace_back(parsed, std::move(done), GetNewRef(this));
       return;
     }
   }
@@ -485,8 +480,8 @@ void BaseRemoteRendezvous::RegisterCall(BaseRecvTensorCall* call,
       }
       if (!already_cancelled) {
         it = calls_
-                 .emplace(cm,
-                          std::make_unique<PendingCalls>(token, 0, num_shards_))
+                 .emplace(cm, std::make_unique<PendingCalls>(
+                                  token, 0, num_shards_, GetNewRef(this)))
                  .first;
       }
     }

@@ -50,6 +50,15 @@ class ConditionalPrinter : public BridgeLoggerConfig {
 
   void printAfterIfEnabled(mlir::Pass *pass, mlir::Operation *operation,
                            PrintCallbackFn print_callback) override {
+    // NOTE(b/284312504): Disable dumping of
+    // FunctionalToExecutorDialectConversionPass as it tends to get very large
+    // being a nested pass on FuncOp before inliner.
+    if (pass->getName() == "ExecutorDialectToFunctionalPass") {
+      return;
+    }
+    if (pass->getName() == "FunctionalToExecutorDialectConversionPass") {
+      return;
+    }
     mlir::ModuleOp module = mlir::dyn_cast<mlir::ModuleOp>(operation);
     if (!module) module = operation->getParentOfType<mlir::ModuleOp>();
     if (module && !module->hasAttr(dtensor::kDoNotLog) && !do_not_print_)
@@ -143,19 +152,25 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     func_pm.addPass(CreateDTensorDesignateResourceHandleMesh());
   }
 
+  // Clone Control Flow.
+  pm->addPass(CreateDTensorDecomposeControlflowPass());
+
   // Validates that all cross mesh data transfers are expressed via
   // DTensorLayout operation and lowers it to send/recvs.
   pm->addPass(CreateDTensorHandleCrossClusterDependencies());
+
+  // Merge Clusters
+  pm->addPass(CreateDTensorMergeClustersPass());
 
   // Mark all ops and functions with global shape attribute to preserve global
   // shape information as it is needed during Layout Propagation and SPMD
   // expansion.
   pm->addPass(CreateDTensorAnnotateGlobalShape());
 
-  // Propagate layout to all ops in graph.
-  pm->addPass(CreateDTensorMergeClustersPass());
-
   AddDTensorEmbeddingPassV2(pm);
+
+  ////////
+  // Propagate layout to all ops in graph.
 
   // For DTensor Checkpoint V2, the outputs of tf.RestoreV2 ops
   // do not have shape information. We can infer the shapes of these

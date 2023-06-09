@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/Linalg.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
@@ -69,142 +70,22 @@ void getIntegersFromDenseElements(Value v, SmallVectorImpl<int64_t>& values) {
   values.append(range.begin(), range.end());
 }
 
+Value getEmptyTensor(OpBuilder& b, Location loc, RankedTensorType type) {
+  auto t = b.create<tensor::EmptyOp>(loc, type.getShape(),
+                                     type.getElementType(), ValueRange{});
+  auto zero = b.getZeroAttr(type.getElementType());
+  auto c0 = b.create<arith::ConstantOp>(loc, zero);
+  return b.create<linalg::FillOp>(loc, ValueRange{c0}, ValueRange{t})
+      .getResult(0);
+}
+
 struct SparseBatchedPackCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 3 && "Need two arrays (data/indices)");
     assert(op.getResults().size() == 1 && "Must be packing into one tensor");
-    llvm::APInt batchedLvls =
-        *getDenseIntAttrFromConstant(op.getInputs()[2]).begin();
     Value ret_sp_tensor = op.getResults()[0];
     rewriter.replaceOpWithNewOp<sparse_tensor::PackOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1],
-        IntegerAttr::get(rewriter.getIndexType(), batchedLvls));
-    return success();
-  }
-};
-
-struct SparseUnpackCallRewriter {
-  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getResults().size() == 3 &&
-           "Must be unpacking into data/indices/nnz");
-    assert(op.getInputs().size() == 1 &&
-           "Must be unpacking from one sparse tensor");
-
-    SmallVector<Type, 3> unpack_ret_tp(op.getResults().getTypes());
-    // A scalar is treated as a zero-ranked tensor type from frontend.
-    auto nnz_type = unpack_ret_tp.back().cast<RankedTensorType>();
-    assert(nnz_type.getRank() == 0 && "nnz tensor must be zero ranked");
-    unpack_ret_tp.back() = nnz_type.getElementType();
-
-    // Constructs the UnpackOp.
-    auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
-        op.getLoc(), unpack_ret_tp, op.getInputs());
-
-    // Converts the scalar nnz returned from UnpackOp back to tensor type.
-    SmallVector<Value, 3> unpack_ret_v(unpack_op.getResults());
-    auto scalar_nnz = unpack_op.getNse();
-    Value tensor_nnz = rewriter.create<tensor::EmptyOp>(
-        op.getLoc(), ArrayRef<int64_t>{}, scalar_nnz.getType());
-    tensor_nnz = rewriter.create<tensor::InsertOp>(op.getLoc(), scalar_nnz,
-                                                   tensor_nnz, ValueRange{});
-    unpack_ret_v.back() = tensor_nnz;
-    rewriter.replaceOp(op, unpack_ret_v);
-    return success();
-  }
-};
-
-struct SparseTransposeCallRewriter {
-  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 2 && "Need argument and permutation");
-    assert(op.getResults().size() == 1 && "Need one output tensor");
-
-    // The permutation is passed in as a constant of dense int elements.
-    auto permutation_constant =
-        op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
-    auto permutation =
-        permutation_constant.getValue().cast<DenseIntElementsAttr>();
-
-    // Reconstruct the transpose operation.
-    Value ret_sp_tensor = op.getResults()[0];
-    rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0], permutation);
-    return success();
-  }
-};
-
-struct SparseDotCallRewriter {
-  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 6 && "Need arguments and metadata");
-    assert(op.getResults().size() == 1 && "Need one output tensor");
-    SmallVector<int64_t> lhs_contr, rhs_contr, lhs_batch, rhs_batch;
-    getIntegersFromDenseElements(op.getInputs()[2], lhs_contr);
-    getIntegersFromDenseElements(op.getInputs()[3], rhs_contr);
-    getIntegersFromDenseElements(op.getInputs()[4], lhs_batch);
-    getIntegersFromDenseElements(op.getInputs()[5], rhs_batch);
-    auto dot_dims = mlir::mhlo::DotDimensionNumbersAttr::get(
-        op.getContext(), lhs_batch, rhs_batch, lhs_contr, rhs_contr);
-    Value ret_sp_tensor = op.getResults()[0];
-    rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0], op.getInputs()[1],
-        dot_dims, /*defaultPrecision*/ ArrayAttr());
-    return success();
-  }
-};
-
-struct SparseConcatenateCallRewriter {
-  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getResults().size() == 1 && "Need one output tensor");
-
-    // The concatenation dimension.
-    auto concat_dim = op.getInputs().back().getDefiningOp<mhlo::ConstantOp>();
-    auto concat_dim_attr = concat_dim.getValue().cast<DenseIntElementsAttr>();
-    // Reconstruct the concatenate operation.
-    Value ret_sp_tensor = op.getResults()[0];
-    // Depending on test setup, we can get either a 32-bit integer or a 64-bit
-    // integer.
-    if (concat_dim_attr.getElementType().isInteger(32)) {
-      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
-          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
-          rewriter.getIndexAttr(concat_dim_attr.getValues<uint32_t>()[0]));
-    } else {
-      assert(concat_dim_attr.getElementType().isInteger(64));
-      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
-          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
-          rewriter.getIndexAttr(concat_dim_attr.getValues<uint64_t>()[0]));
-    }
-
-    return success();
-  }
-};
-
-struct SparseBroadcastInDimCallRewriter {
-  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 2 &&
-           "Need argument and broadcast dimensions");
-    assert(op.getResults().size() == 1 && "Need one output tensor");
-
-    // Broadcast dimensions are passed in as a constant of dense int elements.
-    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
-    auto broadcast_dimensions =
-        dims_constant.getValue().cast<DenseIntElementsAttr>();
-
-    // Reconstruct the broadcast_in_dim operation.
-    Value ret_sp_tensor = op.getResults()[0];
-    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0], broadcast_dimensions);
-    return success();
-  }
-};
-
-template <typename unaryChlo>
-struct SparseUnaryChloCallRewriter {
-  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 1 && "Need one argument");
-    assert(op.getResults().size() == 1 && "Need one output tensor");
-    // Reconstruct the unary chlo operation.
-    Value ret_sp_tensor = op.getResults()[0];
-    rewriter.replaceOpWithNewOp<unaryChlo>(op, ret_sp_tensor.getType(),
-                                           op.getInputs()[0]);
+        op, ret_sp_tensor.getType(), op.getInputs()[0],  // sparse tensor values
+        op.getInputs().drop_front());                    // sparse tensor levels
     return success();
   }
 };
@@ -222,53 +103,86 @@ struct SparseBinaryCallRewriter {
   }
 };
 
-struct SparseSliceCallRewriter {
+struct SparseBroadcastInDimCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 4 &&
-           "Need one operand and three slicing parameters");
+    assert(op.getInputs().size() == 2 &&
+           "Need argument and broadcast dimensions");
     assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Broadcast dimensions are passed in as a constant of dense int elements.
+    auto dims_constant = op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto broadcast_dimensions =
+        dims_constant.getValue().cast<DenseIntElementsAttr>();
+    // Reconstruct the broadcast_in_dim operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::BroadcastInDimOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], broadcast_dimensions);
+    return success();
+  }
+};
 
-    auto ctx = op.getContext();
-    auto loc = op.getLoc();
-    auto retTp = op.getResults().getTypes()[0].cast<RankedTensorType>();
-
-    auto offsets = getDenseIntAttrFromConstant(op.getInputs()[1]);
-    auto strides = getDenseIntAttrFromConstant(op.getInputs()[3]);
-
-    assert(offsets.getNumElements() == strides.getNumElements() &&
-           offsets.getNumElements() == retTp.getRank());
-
-    SmallVector<sparse_tensor::SparseTensorDimSliceAttr> slice_attrs;
-    SmallVector<int64_t> static_offsets, static_sizes, static_strides;
-    for (auto [offset, size, stride] :
-         llvm::zip(offsets, retTp.getShape(), strides)) {
-      int64_t o = offset.getZExtValue(), s = stride.getZExtValue();
-      // Converts limits to sizes.
-      slice_attrs.push_back(
-          sparse_tensor::SparseTensorDimSliceAttr::get(ctx, o, size, s));
-      static_offsets.push_back(o);
-      static_sizes.push_back(size);
-      static_strides.push_back(s);
+struct SparseConcatenateCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // The concatenation dimension.
+    auto concat_dim = op.getInputs().back().getDefiningOp<mhlo::ConstantOp>();
+    auto concat_dim_attr = concat_dim.getValue().cast<DenseIntElementsAttr>();
+    // Reconstruct the concatenate operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    // Depending on test setup, we can get either a 32-bit integer or a 64-bit
+    // integer.
+    if (concat_dim_attr.getElementType().isInteger(32)) {
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint32_t>()[0]));
+    } else {
+      assert(concat_dim_attr.getElementType().isInteger(64));
+      rewriter.replaceOpWithNewOp<sparse_tensor::ConcatenateOp>(
+          op, ret_sp_tensor.getType(), op.getInputs().drop_back(),
+          rewriter.getIndexAttr(concat_dim_attr.getValues<uint64_t>()[0]));
     }
+    return success();
+  }
+};
 
-    auto srcEnc =
-        retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
-    // TODO(peiming): add a getSliceEncodingFrom into MLIR upstream.
-    auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getDimLevelType(), srcEnc.getDimOrdering(),
-        srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
-        slice_attrs);
-    auto sliceTp = RankedTensorType::get(retTp.getShape(),
-                                         retTp.getElementType(), sliceEnc);
+struct SparseConvCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 2 && "Need two input tensors");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    auto rtp = op.getResults()[0].getType().cast<RankedTensorType>();
+    rewriter.replaceOpWithNewOp<linalg::Conv2DNchwFchwOp>(
+        op, op.getInputs(), getEmptyTensor(rewriter, op.getLoc(), rtp));
+    return success();
+  }
+};
 
-    auto slice = rewriter.create<tensor::ExtractSliceOp>(
-        loc, sliceTp, op.getInputs()[0], ValueRange(), ValueRange(),
-        ValueRange(), static_offsets, static_sizes, static_strides);
+struct SparseConvertCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 1 && "Need one input tensor");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0]);
+    return success();
+  }
+};
 
-    // TODO(peiming): This weakens the performance benefit we get from the
-    // sparse compiler by forcing every slice to be materizalized while the
-    // sparse compiler supports view-based slice.
-    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(op, retTp, slice);
+struct SparseDotCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 6 && "Need arguments and metadata");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    SmallVector<int64_t> lhs_contr, rhs_contr, lhs_batch, rhs_batch;
+    getIntegersFromDenseElements(op.getInputs()[2], lhs_contr);
+    getIntegersFromDenseElements(op.getInputs()[3], rhs_contr);
+    getIntegersFromDenseElements(op.getInputs()[4], lhs_batch);
+    getIntegersFromDenseElements(op.getInputs()[5], rhs_batch);
+    auto dot_dims = mlir::mhlo::DotDimensionNumbersAttr::get(
+        op.getContext(), lhs_batch, rhs_batch, lhs_contr, rhs_contr);
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::DotGeneralOp>(op, ret_sp_tensor.getType(),
+                                                    op.getInputs()[0],
+                                                    op.getInputs()[1], dot_dims,
+                                                    /*defaultPrecision*/
+                                                    ArrayAttr());
     return success();
   }
 };
@@ -276,7 +190,6 @@ struct SparseSliceCallRewriter {
 struct SparseDynSliceCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getResults().size() == 1 && "Need one output tensor");
-
     auto ctx = op.getContext();
     auto loc = op.getLoc();
     auto retTp = op.getResults().getTypes()[0].cast<RankedTensorType>();
@@ -312,9 +225,8 @@ struct SparseDynSliceCallRewriter {
     auto srcEnc =
         retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
     auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
-        ctx, srcEnc.getDimLevelType(), srcEnc.getDimOrdering(),
-        srcEnc.getHigherOrdering(), srcEnc.getPosWidth(), srcEnc.getCrdWidth(),
-        slice_attrs);
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getPosWidth(),
+        srcEnc.getCrdWidth(), slice_attrs);
     auto sliceTp = RankedTensorType::get(retTp.getShape(),
                                          retTp.getElementType(), sliceEnc);
 
@@ -330,11 +242,49 @@ struct SparseDynSliceCallRewriter {
   }
 };
 
+template <typename ReduceOp>
+struct SparseReduceCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 3 &&
+           "Need one input tensor, identity, and axes");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    SmallVector<int64_t> axes;
+    getIntegersFromDenseElements(op.getInputs()[2], axes);
+    Value result = op.getResults()[0];
+    auto resultType = result.getType().dyn_cast<RankedTensorType>();
+    auto elementType = resultType.getElementType();
+
+    Location loc = op.getLoc();
+    RankedTensorType blockArgumentType = RankedTensorType::get({}, elementType);
+    mhlo::ReduceOp reduce = rewriter.create<mhlo::ReduceOp>(
+        loc, result.getType(), op.getInputs()[0], op.getInputs()[1],
+        rewriter.getI64TensorAttr(axes));
+
+    // Setup the body for mhlo.reduce. Note that sparse reductions like
+    // add/or/xor are good to go, but the more complicated prod/min/max/and
+    // need semi-ring lowering when converting to linalg.
+    Region& region = reduce.getBody();
+    Block& block = region.emplaceBlock();
+    block.addArgument(blockArgumentType, loc);
+    block.addArgument(blockArgumentType, loc);
+    auto* firstArgument = block.args_begin();
+    auto secondArgument = block.args_rbegin();
+    {
+      OpBuilder::InsertionGuard guard(rewriter);
+      rewriter.setInsertionPointToStart(&block);
+      Value red =
+          rewriter.create<ReduceOp>(loc, *firstArgument, *secondArgument);
+      rewriter.create<mhlo::ReturnOp>(loc, red);
+    }
+    rewriter.replaceOp(op, reduce.getResults());
+    return success();
+  }
+};
+
 struct SparseReshapeCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
     assert(op.getInputs().size() == 1 && "Need one input tensor");
     assert(op.getResults().size() == 1 && "Need one output tensor");
-
     // Reconstruct the reshape operation.
     Value ret_sp_tensor = op.getResults()[0];
     // TODO(anlunx): Fix the issue that the reshape is rewritten to a collapse +
@@ -345,53 +295,91 @@ struct SparseReshapeCallRewriter {
   }
 };
 
-struct SparseConvertCallRewriter {
+struct SparseSliceCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 1 && "Need one input tensor");
+    assert(op.getInputs().size() == 4 &&
+           "Need one operand and three slicing parameters");
     assert(op.getResults().size() == 1 && "Need one output tensor");
-    Value ret_sp_tensor = op.getResults()[0];
-    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(
-        op, ret_sp_tensor.getType(), op.getInputs()[0]);
+    auto ctx = op.getContext();
+    auto loc = op.getLoc();
+    auto retTp = op.getResults().getTypes()[0].cast<RankedTensorType>();
+    auto offsets = getDenseIntAttrFromConstant(op.getInputs()[1]);
+    auto strides = getDenseIntAttrFromConstant(op.getInputs()[3]);
+    assert(offsets.getNumElements() == strides.getNumElements() &&
+           offsets.getNumElements() == retTp.getRank());
+    SmallVector<sparse_tensor::SparseTensorDimSliceAttr> slice_attrs;
+    SmallVector<int64_t> static_offsets, static_sizes, static_strides;
+    for (auto [offset, size, stride] :
+         llvm::zip(offsets, retTp.getShape(), strides)) {
+      int64_t o = offset.getZExtValue(), s = stride.getZExtValue();
+      // Converts limits to sizes.
+      slice_attrs.push_back(
+          sparse_tensor::SparseTensorDimSliceAttr::get(ctx, o, size, s));
+      static_offsets.push_back(o);
+      static_sizes.push_back(size);
+      static_strides.push_back(s);
+    }
+    auto srcEnc =
+        retTp.getEncoding().cast<sparse_tensor::SparseTensorEncodingAttr>();
+    // TODO(peiming): add a getSliceEncodingFrom into MLIR upstream.
+    auto sliceEnc = sparse_tensor::SparseTensorEncodingAttr::get(
+        ctx, srcEnc.getLvlTypes(), srcEnc.getDimToLvl(), srcEnc.getPosWidth(),
+        srcEnc.getCrdWidth(), slice_attrs);
+    auto sliceTp = RankedTensorType::get(retTp.getShape(),
+                                         retTp.getElementType(), sliceEnc);
+    auto slice = rewriter.create<tensor::ExtractSliceOp>(
+        loc, sliceTp, op.getInputs()[0], ValueRange(), ValueRange(),
+        ValueRange(), static_offsets, static_sizes, static_strides);
+    // TODO(peiming): This weakens the performance benefit we get from the
+    // sparse compiler by forcing every slice to be materialized while the
+    // sparse compiler supports view-based slice.
+    rewriter.replaceOpWithNewOp<sparse_tensor::ConvertOp>(op, retTp, slice);
     return success();
   }
 };
 
-struct SparseReduceSumCallRewriter {
+struct SparseTransposeCallRewriter {
   LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
-    assert(op.getInputs().size() == 2 && "Need one input tensor and axes");
+    assert(op.getInputs().size() == 2 && "Need argument and permutation");
     assert(op.getResults().size() == 1 && "Need one output tensor");
-    SmallVector<int64_t> axes;
-    getIntegersFromDenseElements(op.getInputs()[1], axes);
-    Value result = op.getResults()[0];
-    auto resultType = result.getType().dyn_cast<RankedTensorType>();
-    auto elementType = resultType.getElementType();
+    // The permutation is passed in as a constant of dense int elements.
+    auto permutation_constant =
+        op.getInputs()[1].getDefiningOp<mhlo::ConstantOp>();
+    auto permutation =
+        permutation_constant.getValue().cast<DenseIntElementsAttr>();
+    // Reconstruct the transpose operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<mhlo::TransposeOp>(
+        op, ret_sp_tensor.getType(), op.getInputs()[0], permutation);
+    return success();
+  }
+};
 
-    Location loc = op.getLoc();
-    RankedTensorType blockArgumentType = RankedTensorType::get({}, elementType);
-    Value zero = rewriter.create<mhlo::ConstantOp>(
-        loc, DenseElementsAttr::get(blockArgumentType,
-                                    rewriter.getZeroAttr(elementType)));
+template <typename unaryChlo>
+struct SparseUnaryChloCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getInputs().size() == 1 && "Need one argument");
+    assert(op.getResults().size() == 1 && "Need one output tensor");
+    // Reconstruct the unary chlo operation.
+    Value ret_sp_tensor = op.getResults()[0];
+    rewriter.replaceOpWithNewOp<unaryChlo>(op, ret_sp_tensor.getType(),
+                                           op.getInputs()[0]);
+    return success();
+  }
+};
 
-    mhlo::ReduceOp reduce = rewriter.create<mhlo::ReduceOp>(
-        loc, result.getType(), op.getInputs()[0], zero,
-        rewriter.getI64TensorAttr(axes));
-
-    // Setup the body for mhlo.reduce.
-    Region& region = reduce.getBody();
-    Block& block = region.emplaceBlock();
-    block.addArgument(blockArgumentType, loc);
-    block.addArgument(blockArgumentType, loc);
-    auto* firstArgument = block.args_begin();
-    auto secondArgument = block.args_rbegin();
-    {
-      OpBuilder::InsertionGuard guard(rewriter);
-      rewriter.setInsertionPointToStart(&block);
-      Value addResult =
-          rewriter.create<mhlo::AddOp>(loc, *firstArgument, *secondArgument);
-      rewriter.create<mhlo::ReturnOp>(loc, addResult);
-    }
-
-    rewriter.replaceOp(op, reduce.getResults());
+struct SparseUnpackCallRewriter {
+  LogicalResult operator()(mhlo::CustomCallOp op, PatternRewriter& rewriter) {
+    assert(op.getResults().size() + 1 == op.getInputs().size());
+    // Both jax.BCSR and jax.BCOO has three memref fields.
+    SmallVector<Type, 3> unpack_ret_tp(op.getResults().getTypes());
+    Value tensor = op.getInputs()[0];
+    Value out_vals = op.getInputs()[1];
+    ValueRange out_lvls = op.getInputs().drop_front(2);
+    // Constructs the UnpackOp.
+    auto unpack_op = rewriter.create<sparse_tensor::UnpackOp>(
+        op.getLoc(), unpack_ret_tp, tensor, out_vals, out_lvls);
+    rewriter.replaceOp(op, unpack_op.getResults());
     return success();
   }
 };
@@ -402,15 +390,8 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
       mhlo::CustomCallOp op, PatternRewriter& rewriter)>;
 
   const llvm::StringMap<SparseCustomTargetRewriter> rewriter_map_{
-      std::make_pair("sparse_tensor_sparse_pack",
-                     SparseBatchedPackCallRewriter()),
-      std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
-      std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
-      std::make_pair("sparse_tensor_dot_general", SparseDotCallRewriter()),
-      std::make_pair("sparse_tensor_concatenate",
-                     SparseConcatenateCallRewriter()),
-      std::make_pair("sparse_tensor_broadcast_in_dim",
-                     SparseBroadcastInDimCallRewriter()),
+      std::make_pair("sparse_tensor_add",
+                     SparseBinaryCallRewriter<mhlo::AddOp>()),
       std::make_pair("sparse_tensor_asin",
                      SparseUnaryChloCallRewriter<chlo::AsinOp>()),
       std::make_pair("sparse_tensor_asinh",
@@ -421,21 +402,44 @@ class SparseCustomCallRewriter : public OpRewritePattern<mhlo::CustomCallOp> {
                      SparseUnaryChloCallRewriter<chlo::AtanhOp>()),
       std::make_pair("sparse_tensor_bessel_i1e",
                      SparseUnaryChloCallRewriter<chlo::BesselI1eOp>()),
-      std::make_pair("sparse_tensor_sinh",
-                     SparseUnaryChloCallRewriter<chlo::SinhOp>()),
-      std::make_pair("sparse_tensor_tan",
-                     SparseUnaryChloCallRewriter<chlo::TanOp>()),
-      std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
+      std::make_pair("sparse_tensor_broadcast_in_dim",
+                     SparseBroadcastInDimCallRewriter()),
+      std::make_pair("sparse_tensor_concatenate",
+                     SparseConcatenateCallRewriter()),
+      std::make_pair("sparse_tensor_conv_general_dilated",
+                     SparseConvCallRewriter()),
+      std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
+      std::make_pair("sparse_tensor_dot_general", SparseDotCallRewriter()),
       std::make_pair("sparse_tensor_dynamic_slice",
                      SparseDynSliceCallRewriter()),
-      std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
-      std::make_pair("sparse_tensor_convert", SparseConvertCallRewriter()),
-      std::make_pair("sparse_tensor_add",
-                     SparseBinaryCallRewriter<mhlo::AddOp>()),
-      std::make_pair("sparse_tensor_sub",
-                     SparseBinaryCallRewriter<mhlo::SubtractOp>()),
       std::make_pair("sparse_tensor_mul",
                      SparseBinaryCallRewriter<mhlo::MulOp>()),
+      std::make_pair("sparse_tensor_reduce_and",
+                     SparseReduceCallRewriter<mhlo::AndOp>()),
+      std::make_pair("sparse_tensor_reduce_max",
+                     SparseReduceCallRewriter<mhlo::MaxOp>()),
+      std::make_pair("sparse_tensor_reduce_min",
+                     SparseReduceCallRewriter<mhlo::MinOp>()),
+      std::make_pair("sparse_tensor_reduce_or",
+                     SparseReduceCallRewriter<mhlo::OrOp>()),
+      std::make_pair("sparse_tensor_reduce_prod",
+                     SparseReduceCallRewriter<mhlo::MulOp>()),
+      std::make_pair("sparse_tensor_reduce_sum",
+                     SparseReduceCallRewriter<mhlo::AddOp>()),
+      std::make_pair("sparse_tensor_reduce_xor",
+                     SparseReduceCallRewriter<mhlo::XorOp>()),
+      std::make_pair("sparse_tensor_reshape", SparseReshapeCallRewriter()),
+      std::make_pair("sparse_tensor_sinh",
+                     SparseUnaryChloCallRewriter<chlo::SinhOp>()),
+      std::make_pair("sparse_tensor_slice", SparseSliceCallRewriter()),
+      std::make_pair("sparse_tensor_sparse_pack",
+                     SparseBatchedPackCallRewriter()),
+      std::make_pair("sparse_tensor_sparse_unpack", SparseUnpackCallRewriter()),
+      std::make_pair("sparse_tensor_sub",
+                     SparseBinaryCallRewriter<mhlo::SubtractOp>()),
+      std::make_pair("sparse_tensor_tan",
+                     SparseUnaryChloCallRewriter<chlo::TanOp>()),
+      std::make_pair("sparse_tensor_transpose", SparseTransposeCallRewriter()),
   };
 
   // Rewrites a CustomCallOp to corresponding sparse_tensor operation.

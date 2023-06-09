@@ -39,6 +39,10 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+static constexpr char kDefaultServingSignatureDefKey[] = "serving_default";
+}  // namespace
+
 TfLiteStatus Interpreter::SetCustomAllocationForTensor(
     int tensor_index, const TfLiteCustomAllocation& allocation, int64_t flags) {
   return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
@@ -174,11 +178,40 @@ SignatureRunner* Interpreter::GetSignatureRunner(const char* signature_key) {
 
 async::AsyncSignatureRunner* Interpreter::GetAsyncSignatureRunner(
     const char* signature_key) {
+  // Handles nullptr signature key.
+  // If the model does not have signature def, use default name as placeholder.
+  // Otherwise use the first signature key that points to primary subgraph.
+  bool empty_signature_fallback = false;
+  if (signature_key == nullptr) {
+    if (signature_defs_.empty()) {
+      signature_key = kDefaultServingSignatureDefKey;
+      empty_signature_fallback = true;
+    } else {
+      for (const auto& signature : signature_defs_) {
+        if (signature.subgraph_index == 0) {
+          signature_key = signature.signature_key.c_str();
+          break;
+        }
+      }
+    }
+  }
+
+  if (signature_key == nullptr) {
+    // The model has signature def but none of those points to primary subgraph.
+    return nullptr;
+  }
+
   auto iter = async_signature_runner_map_.find(signature_key);
   if (iter != async_signature_runner_map_.end()) {
     return &(iter->second);
   }
 
+  if (empty_signature_fallback) {
+    auto status = async_signature_runner_map_.insert(
+        {signature_key,
+         async::AsyncSignatureRunner(nullptr, &primary_subgraph())});
+    return &(status.first->second);
+  }
   for (const auto& signature : signature_defs_) {
     if (signature.signature_key == signature_key) {
       auto status = async_signature_runner_map_.insert(

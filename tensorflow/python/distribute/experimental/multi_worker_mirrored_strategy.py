@@ -39,18 +39,18 @@ class MultiWorkerMirroredStrategy(distribute_lib.Strategy):
   implementation (e.g. all-reduce), so that multiple workers can work together.
   """
 
-  def __init__(self, mesh=None, cluster_resolver=None,
-               communication_options=None):
+  def __init__(self, cluster_resolver=None, communication_options=None, *,
+               mesh=None):
     """Creates the strategy.
 
     Args:
-      mesh: optional Dtensor global mesh for the computation. Note that either
-        `mesh` or the `cluster_resolver` should be provided. and not both.
       cluster_resolver: optional
         `tf.distribute.cluster_resolver.ClusterResolver`. In case neither `mesh`
         nor `cluster_resolver` are provided,
         `tf.distribute.cluster_resolver.TFConfigClusterResolver` is used.
       communication_options: currently ignore.
+      mesh: optional Dtensor global mesh for the computation. Note that either
+        `mesh` or the `cluster_resolver` should be provided. and not both.
     """
     self._validate_init_args(mesh, cluster_resolver)
     if not mesh:
@@ -76,6 +76,9 @@ class MultiWorkerMirroredStrategy(distribute_lib.Strategy):
     if mesh and len(mesh.shape()) != 1:
       raise ValueError('The mesh for MultiWorkerMirroredStrategy must be 1D, '
                        f'received: {len(mesh.shape())}D')
+
+  def reduce(self, reduce_op, value, axis):
+    return dtensor_util.dtensor_reduce(self, reduce_op, value, axis)
 
 
 def _parse_dtensor_env_var_from_cluster_resolver(cluster_resolver):

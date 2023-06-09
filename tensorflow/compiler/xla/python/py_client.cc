@@ -22,24 +22,25 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/strings/numbers.h"
-#include "tensorflow/compiler/xla/python/ifrt/client.h"
-#include "tensorflow/compiler/xla/pjrt/host_callback.h"
 #include "tensorflow/compiler/xla/pjrt/mlir_to_hlo.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_stream_executor_client.h"
 #include "tensorflow/compiler/xla/python/callback.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
+#include "tensorflow/compiler/xla/python/ifrt/client.h"
+#include "tensorflow/compiler/xla/python/ifrt/compiler.h"
+#include "tensorflow/compiler/xla/python/ifrt/executable.h"
+#include "tensorflow/compiler/xla/python/ifrt/host_callback.h"
+#include "tensorflow/compiler/xla/python/pjrt_ifrt/xla_compiler.h"
 #include "tensorflow/compiler/xla/python/pprof_profile_builder.h"
 #include "tensorflow/compiler/xla/python/py_array.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
+#include "tensorflow/compiler/xla/python/py_host_callback.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/transfer_guard_lib.h"
-#include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -222,8 +223,7 @@ PyClient::GetDefaultDeviceAssignment1D(int num_replicas) {
 
 StatusOr<py::object> PyClient::BufferFromPyval(
     pybind11::handle argument, PjRtDevice* device, bool force_copy,
-    ifrt::Client::HostBufferSemantics host_buffer_semantics
-) {
+    ifrt::Client::HostBufferSemantics host_buffer_semantics) {
   if (device == nullptr) {
     TF_RET_CHECK(!ifrt_client_->addressable_devices().empty());
     device = ifrt_client_->addressable_devices().front();
@@ -337,11 +337,54 @@ PyClient::MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
   return result;
 }
 
+namespace {
+
+// Makes IFRT `CompileOptions` from XLA `CompileOptions` and optional host
+// callbacks.
+std::unique_ptr<ifrt::CompileOptions> MakeIfrtCompileOptions(
+    CompileOptions options, std::vector<pybind11::capsule> host_callbacks) {
+  std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>
+      ifrt_loaded_host_callbacks;
+  ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+  // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
+  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
+  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  for (auto& host_callback : host_callbacks) {
+    ifrt_loaded_host_callbacks.push_back(
+        tsl::FormRef(host_callback.get_pointer<ifrt::LoadedHostCallback>()));
+  }
+  return std::make_unique<ifrt::XlaCompileOptions>(
+      std::move(options), std::move(ifrt_loaded_host_callbacks));
+}
+
+// Makes IFRT `DeserializeOptions` from XLA `CompileOptions` and optional host
+// callbacks.
+std::unique_ptr<ifrt::DeserializeOptions> MakeIfrtDeserializeOptions(
+    std::optional<CompileOptions> options,
+    std::vector<pybind11::capsule> host_callbacks) {
+  std::vector<tsl::RCReference<ifrt::LoadedHostCallback>>
+      ifrt_loaded_host_callbacks;
+  ifrt_loaded_host_callbacks.reserve(host_callbacks.size());
+  // Extract `ifrt::LoadedHostCallback`s from host callback capsules that were
+  // created by `PyClient::MakePythonCallbackUsingHostSendAndRecv()` or
+  // `PyClient::GetEmitPythonCallbackDescriptor()`.
+  for (auto& host_callback : host_callbacks) {
+    ifrt_loaded_host_callbacks.push_back(
+        tsl::FormRef(host_callback.get_pointer<ifrt::LoadedHostCallback>()));
+  }
+  return std::make_unique<ifrt::XlaDeserializeOptions>(
+      std::move(options), std::move(ifrt_loaded_host_callbacks));
+}
+
+}  // namespace
+
 StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
     std::string mlir_module, CompileOptions options,
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
+  auto ifrt_compile_options =
+      MakeIfrtCompileOptions(std::move(options), std::move(host_callbacks));
   {
     py::gil_scoped_release gil_release;
     mlir::MLIRContext context;
@@ -349,13 +392,13 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::Compile(
                         ParseMlirModuleString(mlir_module, context));
     TF_ASSIGN_OR_RETURN(ifrt_loaded_executable,
                         ifrt_client_->GetDefaultCompiler()->Compile(
-                            module.get(), std::move(options)));
+                            module.get(), std::move(ifrt_compile_options)));
     TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   auto traceback = Traceback::Get();
   return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(ifrt_loaded_executable),
-      std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
+      std::move(traceback), std::move(fingerprint));
 }
 
 StatusOr<py::bytes> PyClient::SerializeExecutable(
@@ -368,19 +411,21 @@ StatusOr<std::shared_ptr<PyLoadedExecutable>> PyClient::DeserializeExecutable(
     std::vector<pybind11::capsule> host_callbacks) {
   std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable;
   std::optional<std::string> fingerprint;
+  auto ifrt_deserialize_options =
+      MakeIfrtDeserializeOptions(std::move(options), std::move(host_callbacks));
   {
     py::gil_scoped_release gil_release;
     TF_ASSIGN_OR_RETURN(
         ifrt_loaded_executable,
         ifrt_client_->GetDefaultCompiler()->DeserializeLoadedExecutable(
-            serialized, std::move(options)));
+            serialized, std::move(ifrt_deserialize_options)));
     TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   }
   TF_ASSIGN_OR_RETURN(fingerprint, ifrt_loaded_executable->Fingerprint());
   auto traceback = Traceback::Get();
   return std::make_shared<PyLoadedExecutable>(
       shared_from_this(), std::move(ifrt_loaded_executable),
-      std::move(traceback), std::move(fingerprint), std::move(host_callbacks));
+      std::move(traceback), std::move(fingerprint));
 }
 
 namespace {
@@ -497,114 +542,20 @@ StatusOr<py::bytes> PyClient::HeapProfile() {
   return py::bytes(builder.profile().SerializeAsString());
 }
 
-namespace {
-
-StatusOr<std::vector<CpuCallback::Arg>> CreateCallbackArgs(
-    absl::Span<Shape const> operand_shapes) {
-  std::vector<CpuCallback::Arg> callback_args(operand_shapes.size());
-  for (int i = 0; i < operand_shapes.size(); ++i) {
-    Shape shape = operand_shapes[i];
-
-    if (shape.IsArray()) {
-      Shape layout =
-          (shape.has_layout() ? shape
-                              : LayoutUtil::GetWithDefaultLayout(shape));
-      callback_args[i].dims.resize(shape.dimensions_size());
-      absl::c_copy(shape.dimensions(), callback_args[i].dims.begin());
-      callback_args[i].strides = ByteStridesForShape(layout);
-      callback_args[i].type = shape.element_type();
-      callback_args[i].size_in_bytes = ShapeUtil::ByteSizeOf(layout);
-      TF_ASSIGN_OR_RETURN(callback_args[i].dtype,
-                          PrimitiveTypeToDtype(shape.element_type()));
-    } else if (shape.IsToken()) {
-      callback_args[i].type = TOKEN;
-    } else {
-      return InvalidArgument(
-          "Only array and token arguments to Python callbacks are supported, "
-          "got %s",
-          shape.ToString());
-    }
-  }
-  return callback_args;
-}
-
-StatusOr<std::vector<CpuCallback::Result>> CreateCallbackResults(
-    absl::Span<Shape const> result_shapes) {
-  std::vector<CpuCallback::Result> callback_results(result_shapes.size());
-  for (int i = 0; i < result_shapes.size(); ++i) {
-    if (result_shapes[i].IsArray()) {
-      const Shape& shape =
-          result_shapes[i].has_layout()
-              ? result_shapes[i]
-              : LayoutUtil::GetWithDefaultLayout(result_shapes[i]);
-      callback_results[i].expected_dims.resize(shape.dimensions_size());
-      absl::c_copy(shape.dimensions(),
-                   callback_results[i].expected_dims.begin());
-      callback_results[i].expected_strides = ByteStridesForShapeInt64(shape);
-      callback_results[i].type = shape.element_type();
-      callback_results[i].size_in_bytes = ShapeUtil::ByteSizeOf(shape);
-      callback_results[i].reversed_layout.resize(shape.dimensions_size());
-      absl::c_reverse_copy(shape.layout().minor_to_major(),
-                           callback_results[i].reversed_layout.begin());
-    } else if (result_shapes[i].IsToken()) {
-      callback_results[i].type = TOKEN;
-    } else {
-      return InvalidArgument(
-          "Only array and token return values from Python callbacks are "
-          "supported, got %s",
-          result_shapes[i].ToString());
-    }
-  }
-  return callback_results;
-}
-
-}  // namespace
-
 StatusOr<pybind11::object> PyClient::MakePythonCallbackUsingHostSendAndRecv(
     pybind11::function callable, absl::Span<Shape const> operand_shapes,
     absl::Span<Shape const> result_shapes,
     absl::Span<uint16_t const> send_channel_ids,
-    absl::Span<uint16_t const> recv_channel_ids) {
-  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
-                "Expected 64-bit pointers");
-
-  TF_ASSIGN_OR_RETURN(auto callback_args, CreateCallbackArgs(operand_shapes));
-  TF_ASSIGN_OR_RETURN(auto callback_results,
-                      CreateCallbackResults(result_shapes));
-
-  auto callback = std::make_shared<CpuCallback>(
-      std::move(callable), callback_args, callback_results);
-
-  auto* host_callback = new HostCallback;
-
-  auto assign_arg_info = [](absl::Span<Shape const> shapes,
-                            absl::Span<uint16_t const> channel_ids,
-                            std::vector<HostCallbackArgInfo>& arg_infos) {
-    DCHECK_EQ(shapes.size(), channel_ids.size());
-    arg_infos.reserve(shapes.size());
-    for (int i = 0; i < shapes.size(); ++i) {
-      HostCallbackArgInfo host_callback_arg_info;
-      host_callback_arg_info.channel_id = channel_ids[i];
-      const auto& shape = shapes[i];
-      Shape layout =
-          (shape.has_layout() ? shape
-                              : LayoutUtil::GetWithDefaultLayout(shape));
-      host_callback_arg_info.shape = layout;
-      arg_infos.push_back(std::move(host_callback_arg_info));
-    }
-  };
-
-  assign_arg_info(operand_shapes, send_channel_ids, host_callback->operands);
-  assign_arg_info(result_shapes, recv_channel_ids, host_callback->results);
-
-  host_callback->callback = [callback = std::move(callback)](void** outputs,
-                                                             void** inputs) {
-    return callback->PrepareAndCall(outputs, inputs);
-  };
-
-  py::capsule callback_capsule(
-      host_callback, [](void* ptr) { delete static_cast<HostCallback*>(ptr); });
-
+    absl::Span<uint16_t const> recv_channel_ids,
+    pybind11::function serializer) {
+  TF_ASSIGN_OR_RETURN(
+      auto loaded_host_callback,
+      PyHostSendAndRecvLoadedHostCallback::Create(
+          ifrt_client(), std::move(callable), operand_shapes, result_shapes,
+          send_channel_ids, recv_channel_ids, std::move(serializer)));
+  py::capsule callback_capsule(loaded_host_callback.release(), [](void* ptr) {
+    static_cast<ifrt::LoadedHostCallback*>(ptr)->DropRef();
+  });
   return callback_capsule;
 }
 
@@ -612,25 +563,14 @@ StatusOr<std::pair<uint64_t, pybind11::object>>
 PyClient::GetEmitPythonCallbackDescriptor(
     pybind11::function callable, absl::Span<Shape const> operand_shapes,
     absl::Span<Shape const> result_shapes) {
-  ifrt::PlatformId platform_id = ifrt_client_->platform_id();
-  if (platform_id != GpuId() && platform_id != CpuId()) {
-    return Unimplemented(
-        "EmitPythonCallback is only implemented on CPU and GPU");
-  }
+  TF_ASSIGN_OR_RETURN(
+      auto loaded_host_callback,
+      PyCpuLoadedHostCallback::Create(ifrt_client(), std::move(callable),
+                                      operand_shapes, result_shapes));
+  const uint64_t descriptor = loaded_host_callback->descriptor();
 
-  static_assert(sizeof(uintptr_t) == sizeof(uint64_t),
-                "Expected 64-bit pointers");
-
-  TF_ASSIGN_OR_RETURN(auto callback_args, CreateCallbackArgs(operand_shapes));
-  TF_ASSIGN_OR_RETURN(auto callback_results,
-                      CreateCallbackResults(result_shapes));
-
-  auto callback = std::make_unique<CpuCallback>(
-      std::move(callable), callback_args, callback_results);
-  uint64_t descriptor = absl::bit_cast<std::uint64_t>(callback.get());
-
-  py::capsule callback_capsule(callback.release(), [](void* ptr) {
-    delete reinterpret_cast<CpuCallback*>(ptr);
+  py::capsule callback_capsule(loaded_host_callback.release(), [](void* ptr) {
+    static_cast<ifrt::LoadedHostCallback*>(ptr)->DropRef();
   });
   return std::make_pair(descriptor, py::object(std::move(callback_capsule)));
 }

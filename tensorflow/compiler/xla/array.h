@@ -38,6 +38,10 @@ namespace xla {
 
 namespace array_impl {
 
+template <typename T, typename T2>
+using overload_for_float = std::enable_if_t<
+    is_specialized_floating_point_v<T> && std::is_same<T2, float>::value, bool>;
+
 // A type trait that is valid when all elements in a parameter pack are of
 // integral type. Not using an alias template to work around MSVC 14.00 bug.
 template <typename... Ts>
@@ -110,12 +114,7 @@ class Array {
 
   // Creates a 1D array of a floating-point type (half, bfloat16, float,
   // or double) from an initializer list of float values.
-  template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
-                              std::is_same<T, bfloat16>::value ||
-                              std::is_same<T, float>::value ||
-                              std::is_same<T, double>::value) &&
-                             std::is_same<T2, float>::value>::type>
+  template <typename T2, array_impl::overload_for_float<T, T2> = true>
   Array(std::initializer_list<T2> values)
       : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
@@ -128,14 +127,7 @@ class Array {
 
   // Creates a 2D array of a floating-point type (float8, half, bfloat16, float,
   // or double) from an initializer list of float values.
-  template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, tsl::float8_e4m3fn>::value ||
-                              std::is_same<T, tsl::float8_e5m2>::value ||
-                              std::is_same<T, Eigen::half>::value ||
-                              std::is_same<T, bfloat16>::value ||
-                              std::is_same<T, float>::value ||
-                              std::is_same<T, double>::value) &&
-                             std::is_same<T2, float>::value>::type>
+  template <typename T2, array_impl::overload_for_float<T, T2> = true>
   Array(std::initializer_list<std::initializer_list<T2>> values)
       : Array(ToInt64Array(values), no_default_init_t{}) {
     int64_t idx = 0;
@@ -166,12 +158,7 @@ class Array {
 
   // Creates a 3D array of a floating-point type (half, bfloat16, float,
   // or double) from an initializer list of float values.
-  template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
-                              std::is_same<T, bfloat16>::value ||
-                              std::is_same<T, float>::value ||
-                              std::is_same<T, double>::value) &&
-                             std::is_same<T2, float>::value>::type>
+  template <typename T2, array_impl::overload_for_float<T, T2> = true>
   Array(std::initializer_list<std::initializer_list<std::initializer_list<T2>>>
             values)
       : Array(ToInt64Array(values), no_default_init_t{}) {
@@ -207,12 +194,7 @@ class Array {
 
   // Creates a 4D array of a floating-point type (half, bfloat16, float,
   // or double) from an initializer list of float values.
-  template <typename T2, typename = typename std::enable_if<
-                             (std::is_same<T, Eigen::half>::value ||
-                              std::is_same<T, bfloat16>::value ||
-                              std::is_same<T, float>::value ||
-                              std::is_same<T, double>::value) &&
-                             std::is_same<T2, float>::value>::type>
+  template <typename T2, array_impl::overload_for_float<T, T2> = true>
   Array(std::initializer_list<
         std::initializer_list<std::initializer_list<std::initializer_list<T2>>>>
             values)
@@ -510,6 +492,17 @@ class Array {
 
   // Performs a permutation of dimensions.
   void TransposeDimensions(absl::Span<const int64_t> permutation) {
+    return TransposeDimensionsImpl<int64_t>(permutation);
+  }
+  void TransposeDimensions(absl::Span<const int> permutation) {
+    return TransposeDimensionsImpl<int>(permutation);
+  }
+  void TransposeDimensions(std::initializer_list<int> permutation) {
+    return TransposeDimensionsImpl<int>(permutation);
+  }
+  template <typename IntT,
+            std::enable_if_t<std::is_integral_v<IntT>>* = nullptr>
+  void TransposeDimensionsImpl(absl::Span<const IntT> permutation) {
     CHECK_EQ(sizes_.size, permutation.size());
     OwnedBuffer<int64_t> permuted_dims(permutation.size());
     for (int64_t i = 0; i < permutation.size(); ++i) {

@@ -237,6 +237,10 @@ class PjRtStreamExecutorClient : public PjRtClient {
       absl::string_view serialized,
       std::optional<CompileOptions> options) override;
 
+  StatusOr<std::unique_ptr<PjRtLoadedExecutable>> LoadSerializedExecutable(
+      absl::string_view serialized, std::optional<CompileOptions> options,
+      const LoadOptions& load_options) override;
+
   StatusOr<std::unique_ptr<HloCostAnalysis>> GetHloCostAnalysis()
       const override;
 

@@ -21,13 +21,44 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_device_description.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/tsl/platform/fingerprint.h"
 
 namespace xla {
 
+using PjRtPlatformId = uint64_t;
+
+inline const char* CpuName() {
+  static constexpr char kCpuName[] = "cpu";
+  return kCpuName;
+}
+inline const char* GpuName() {
+  static constexpr char kGpuName[] = "gpu";
+  return kGpuName;
+}
+inline const char* TpuName() {
+  static constexpr char kTpuName[] = "tpu";
+  return kTpuName;
+}
+inline PjRtPlatformId CpuId() {
+  static const PjRtPlatformId kCpuId = tsl::Fingerprint64(CpuName());
+  return kCpuId;
+}
+inline PjRtPlatformId GpuId() {
+  static const PjRtPlatformId kGpuId = tsl::Fingerprint64(GpuName());
+  return kGpuId;
+}
+inline PjRtPlatformId TpuId() {
+  static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
+  return kTpuId;
+}
+
 class PjRtCompiler;
+class PjRtClient;
 
 // TODO(b/240299401): Move CompileOptions to this file.
 
@@ -52,12 +83,44 @@ class PjRtTopologyDescription {
   // Returns an unordered list of descriptions for all devices in this topology.
   virtual std::vector<std::unique_ptr<const PjRtDeviceDescription>>
   DeviceDescriptions() const = 0;
+
+  // Returns true if the topology represents subslice.
+  virtual bool is_subslice_topology() const { return false; }
+
+  // Returns the number of processes (usually the number of hosts, except in
+  // topologies with multiple processes per host).
+  virtual absl::StatusOr<int> ProcessCount() const {
+    return absl::UnimplementedError("ProcessCount is unsupported.");
+  }
+
+  // Returns the total number of cores of the default type.
+  virtual absl::StatusOr<int> CoreCountOfDefaultType() const {
+    return absl::UnimplementedError("CoreCountOfDefaultType is unsupported.");
+  }
+
+  // Returns the total number of logical devices of the default type.
+  virtual absl::StatusOr<int> LogicalDeviceCountOfDefaultType() const {
+    return absl::UnimplementedError(
+        "LogicalDeviceCountOfDefaultType is unsupported.");
+  }
+
+  // Returns the number of cores of the default type per process.
+  virtual absl::StatusOr<int> CoreCountOfDefaultTypePerProcess() const {
+    return absl::UnimplementedError(
+        "CoreCountOfDefaultTypePerProcess is unsupported.");
+  }
+
+  // Returns the number of cores per chip for the default type.
+  virtual absl::StatusOr<int> CoreCountOfDefaultTypePerChip() const {
+    return absl::UnimplementedError(
+        "CoreCountOfDefaultTypePerChip is unsupported.");
+  }
 };
 
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
  public:
-  virtual ~PjRtCompiler() {}
+  virtual ~PjRtCompiler() = default;
 
   // Compiles the 'computation' and returns a 'PjRtExecutable'. The returned
   // PjRtExecutable must be loaded by a compatible client before execution.

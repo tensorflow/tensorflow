@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/tsl/profiler/utils/tf_op_utils.h"
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/tsl/platform/test.h"
 

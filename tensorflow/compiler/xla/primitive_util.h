@@ -321,7 +321,27 @@ PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.
-PrimitiveType ComplexComponentType(PrimitiveType complex_type);
+constexpr PrimitiveType ComplexComponentType(PrimitiveType complex_type) {
+  switch (complex_type) {
+    case C64:
+      return F32;
+    case C128:
+      return F64;
+    default:
+      LOG(FATAL) << "Primitive type is not complex: "
+                 << PrimitiveType_Name(complex_type);
+  }
+}
+
+constexpr PrimitiveType ComplexType(PrimitiveType base_type) {
+  if (base_type == F32) {
+    return C64;
+  }
+  if (base_type == F64) {
+    return C128;
+  }
+  return PRIMITIVE_TYPE_INVALID;
+}
 
 // Returns the higher-precision element type if a and b are both floating
 // point types; otherwise, checks that they have the same element type

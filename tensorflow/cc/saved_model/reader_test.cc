@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/cc/saved_model/reader.h"
 
+#include <gmock/gmock.h>
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/metrics.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
@@ -24,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/resource_loader.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
@@ -37,6 +37,16 @@ string TestDataPbTxt() {
 string TestDataSharded() {
   return io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
                       "half_plus_two", "00000123");
+}
+
+string ChunkedSavedModel() {
+  return io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
+                      "chunked_saved_model", "chunked_model");
+}
+
+string NonChunkedSavedModel() {
+  return io::JoinPath("tensorflow", "cc", "saved_model", "testdata",
+                      "chunked_saved_model", "non_chunked_model");
 }
 
 class ReaderTest : public ::testing::Test {
@@ -88,15 +98,6 @@ TEST_F(ReaderTest, NoTagMatchMultiple) {
       << st.message();
 }
 
-TEST_F(ReaderTest, PbtxtFormat) {
-  MetaGraphDef meta_graph_def;
-
-  const string export_dir = GetDataDependencyFilepath(TestDataPbTxt());
-  TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(export_dir, {kSavedModelTagServe},
-                                              &meta_graph_def));
-  CheckMetaGraphDef(meta_graph_def);
-}
-
 TEST_F(ReaderTest, InvalidExportPath) {
   MetaGraphDef meta_graph_def;
 
@@ -135,6 +136,8 @@ TEST_F(ReaderTest, MetricsUpdatedSuccessfulRead) {
       ReadMetaGraphDefFromSavedModel(export_dir, {"serve"}, &meta_graph_def);
   EXPECT_EQ(metrics::SavedModelReadCount("1").value(), read_count_v1 + 1);
 }
+
+// Placeholder for protosplitter merger merge test.
 
 }  // namespace
 }  // namespace tensorflow

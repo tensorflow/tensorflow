@@ -16,16 +16,21 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CONTEXT_H_
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <functional>
 #include <map>
 #include <memory>
 #include <queue>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/core/common_runtime/composite_device.h"
@@ -155,7 +160,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   void SetJitCompileRewrite(bool enable) override;
 
-  void ListDevices(std::vector<DeviceAttributes>* devices) override;
+  void ListDevices(std::vector<DeviceAttributes>* device_attributes) override;
 
   Status AddDevices(std::vector<std::unique_ptr<Device>> devices) override;
 
@@ -173,7 +178,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Specify a executor for this thread.
   void SetExecutorForThread(EagerExecutor* executor) override;
 
-  const std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list()
+  std::shared_ptr<std::vector<DeviceType>> prioritized_device_type_list()
       const {
     mutex_lock l(device_type_list_mu_);
     return prioritized_device_type_list_;
@@ -351,9 +356,9 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
     return collective_executor_mgr_.Get();
   }
   std::unique_ptr<CollectiveExecutor::Handle> GetCollectiveExecutorHandle() {
-    return std::unique_ptr<CollectiveExecutor::Handle>(
-        new CollectiveExecutor::Handle(
-            collective_executor_mgr()->FindOrCreate(0), true /*inherit_ref*/));
+    return std::make_unique<CollectiveExecutor::Handle>(
+
+        collective_executor_mgr()->FindOrCreate(0), true /*inherit_ref*/);
   }
 
   void SetCollectiveExecutorMgr(CollectiveExecutorMgrInterface* mgr) {
@@ -390,7 +395,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   void EndStep() override;
   ScopedStepContainer* StepContainer();
 
-  FunctionLibraryDefinition* FuncLibDef() { return &func_lib_def_; }
+  FunctionLibraryDefinition* FuncLibDef() override { return &func_lib_def_; }
 
 #if !defined(IS_MOBILE_PLATFORM)
   // Assign the EagerClient pointer to `client` based on the given device / task
@@ -667,7 +672,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   template <typename T>
   struct OwnedOrUnownedHelper {
    public:
-    OwnedOrUnownedHelper() {}
+    OwnedOrUnownedHelper() = default;
     explicit OwnedOrUnownedHelper(T* object, const bool owned = false) {
       Reset(object, owned);
     }
@@ -753,7 +758,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   mutex device_cache_mu_;
   mutex remove_function_notifiers_mu_;
   struct RegisteredFunction : public core::RefCounted {
-    ~RegisteredFunction() override {}
+    ~RegisteredFunction() override = default;
 
     std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
   };
@@ -785,7 +790,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // Not owned.
   std::unordered_map<std::thread::id, EagerExecutor*> thread_local_executor_
       TF_GUARDED_BY(executor_map_mu_);
-  std::unordered_map<std::thread::id, std::unordered_set<EagerExecutor*>>
+  std::unordered_map<std::thread::id, absl::flat_hash_set<EagerExecutor*>>
       has_cleanup_ TF_GUARDED_BY(executor_map_mu_);
 
   const bool log_memory_;

@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
@@ -589,7 +592,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
+    auto error = EmitErrorAsync(exec_ctx, status);
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return error;
@@ -906,8 +909,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
           result_ref->ForwardTo(std::move(knfb_tensor));
           return;
         }
-        auto expected_tf_tensor =
-            TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
+        auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(knfb_tensor.get());
         if (!expected_tf_tensor) {
           auto error = tfrt::EmitErrorAsync(
               exec_ctx, toString(expected_tf_tensor.takeError()));
@@ -921,7 +923,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
       });
     } else {
       set_result(tf_tensor_results[i],
-                 TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host()));
+                 tfrt::TFRTTensorToTFTensor(knfb_tensor.get()));
     }
   }
 }

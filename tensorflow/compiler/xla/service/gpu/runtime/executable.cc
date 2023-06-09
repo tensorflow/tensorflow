@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
@@ -57,7 +56,6 @@ using ::xla::runtime::CustomCallAttrEncodingSet;
 using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
-using ::xla::runtime::success;
 using ::xla::runtime::Tagged;
 using ::xla::runtime::TypeIDNameRegistry;
 
@@ -100,6 +98,7 @@ void RegisterXlaGpuRuntimeCustomCalls(DirectCustomCallRegistry& registry) {
 #if GOOGLE_CUDA
   // Graph launch kernels depend on Cuda Graph API.
   RegisterGraphLaunchCustomCalls(registry);
+  RegisterConcurrentRegionCustomCalls(registry);
   RegisterMatmulCustomCalls(registry);
 #endif  // GOOGLE_CUDA
 
@@ -343,12 +342,16 @@ Status GpuRuntimeExecutable::Execute(
 
   // Get the async communications stream for async collectives.
   se::StreamExecutor* executor = run_options->stream()->parent();
-  int device_ordinal = executor->device_ordinal();
+  se::StreamPriority stream_priority = se::StreamPriority::Default;
+  if (debug_options_.xla_gpu_enable_highest_priority_async_stream()) {
+    stream_priority = se::StreamPriority::Highest;
+  }
+
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(device_ordinal);
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
-  // executable run, so that concurrent executions can run independenty using a
+  // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);
@@ -387,13 +390,13 @@ Status GpuRuntimeExecutable::Execute(
 #endif  // GOOGLE_CUDA
 
   // Initialize state required for running functions exported from FFI modules.
-  absl::StatusOr<FfiStateVector> ffi_state = ffi_modules_state_.state_vector();
-  if (!ffi_state.ok()) return FromAbslStatus(ffi_state.status());
+  TF_ASSIGN_OR_RETURN(FfiStateVector ffi_state,
+                      ffi_modules_state_.state_vector());
 
   // Pass auxiliary data to the custom call handlers.
   runtime::CustomCall::UserData user_data(
       run_options, &executable, &debug_options_, &temp_buffer, &asm_text,
-      &ffi_state.value(), &binary, &kernels, &gemm_configs, &conv_runners,
+      &ffi_state, &binary, &kernels, &gemm_configs, &conv_runners,
       &collectives_, &fft_plans, &send_recv_events, &gpu_lock,
 #if GOOGLE_CUDA
       // Auxiliary data that is available only if compiled with CUDA support.
@@ -413,10 +416,7 @@ Status GpuRuntimeExecutable::Execute(
   // Collect all emitted diagnostic messages.
   std::string diagnostic;
   runtime::DiagnosticEngine diagnostic_engine;
-  diagnostic_engine.AddHandler([&](runtime::Diagnostic& d) {
-    absl::StrAppend(&diagnostic, d.status().message());
-    return success();
-  });
+  AppendDiagnosticToString(diagnostic_engine, &diagnostic, true);
 
   // Prepare options for executing XLA Runtime program.
   runtime::Executable::ExecuteOpts opts;

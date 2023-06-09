@@ -85,7 +85,7 @@ class ClientLibrary {
   //   created, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       se::Platform* platform = nullptr,
-      const std::optional<std::set<int>>& allowed_devices = std::nullopt);
+      const std::optional<std::set<int>>& device_set = std::nullopt);
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 

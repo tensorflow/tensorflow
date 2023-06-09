@@ -220,9 +220,7 @@ message DebugOptions {
 
   reserved 171;  // Was xla_cpu_enable_mlir_lowering
 
-  // If true, use MLIR instead of IR emitter to generate device code for
-  // supported lmhlo.fusion ops. See xla::gpu::RewriteFusionOps() for details.
-  bool xla_gpu_enable_mlir_lowering = 173;
+  reserved 173;  // Was xla_gpu_enable_mlir_lowering
 
   reserved 179;  // Was xla_gpu_enable_softmax_fusion
 
@@ -376,8 +374,10 @@ message DebugOptions {
   bool xla_gpu_enable_async_reduce_scatter = 200;
   bool xla_gpu_enable_async_all_to_all = 201;
 
-  // Size threshold (in bytes) for the GPU all-reduce combiner.
+  // Size threshold (in bytes) for the GPU collective combiners.
   int64 xla_gpu_all_reduce_combine_threshold_bytes = 157;
+  int64 xla_gpu_all_gather_combine_threshold_bytes = 212;
+  int64 xla_gpu_reduce_scatter_combine_threshold_bytes = 213;
 
   // Combine GPU all-reduces into a single operation over a contiguous buffer.
   bool xla_gpu_all_reduce_contiguous = 158;
@@ -449,6 +449,9 @@ message DebugOptions {
   // graph.
   int32 xla_gpu_cuda_graph_capture_threshold = 208;
 
+  // Identify concurrent regions in cuda graphs and execute them concurrently.
+  bool xla_gpu_cuda_graph_enable_concurrent_region = 215;
+
   // Allocate temp buffers once during the first execution of an executable.
   // Reuse the allocated buffers in subsequent executions. Executables cannot
   // run concurrently if this is enabled.
@@ -500,8 +503,10 @@ message DebugOptions {
   bool xla_cpu_enable_experimental_deallocation = 191;
 
   bool xla_gpu_enable_latency_hiding_scheduler = 186;
+  bool xla_gpu_enable_highest_priority_async_stream = 216;
   bool xla_gpu_lhs_enable_gpu_async_tracker = 204;
   string xla_gpu_pgle_profile_file_or_directory_path = 210;
+  bool xla_gpu_enable_data_parallel_collective_optimizer = 217;
 
   enum PartitioningAlgorithm {
     PARTITIONING_ALGORITHM_NOOP = 0;
@@ -518,7 +523,13 @@ message DebugOptions {
 
   bool xla_gpu_triton_gemm_any = 190;
 
-  // Next id: 211
+  reserved 211;  // Was xla_gpu_enable_dot_strength_reduction
+
+  // Enables experimental heuristic of choosing block size for launching a
+  // kernel on GPU.
+  bool xla_gpu_enable_experimental_block_size = 214;
+
+  // Next id: 218
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

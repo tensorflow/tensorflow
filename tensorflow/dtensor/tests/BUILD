@@ -5,6 +5,23 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 tf_cc_test(
+    name = "slice_util_test",
+    srcs = ["slice_util_test.cc"],
+    deps = [
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:statusor",
+        "//tensorflow/dtensor/cc:slice_util",
+        "//tensorflow/dtensor/cc:tensor_layout",
+        "//tensorflow/dtensor/proto:layout_proto_cc",
+        "//tensorflow/tsl/platform:status_matchers",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+tf_cc_test(
     name = "tensor_layout_test",
     srcs = ["tensor_layout_test.cc"],
     deps = [
@@ -41,7 +58,7 @@ tf_cc_test(
         "//tensorflow/dtensor/cc:dtensor_device_util",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@llvm-project//mlir:IR",
     ],
 )
@@ -55,6 +72,6 @@ tf_cc_test(
         "//tensorflow/dtensor/mlir:spmd_expander",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )

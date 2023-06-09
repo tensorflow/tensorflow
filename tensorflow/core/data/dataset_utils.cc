@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -726,7 +727,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
                     IteratorContext* ctx, std::vector<Tensor>* output,
                     bool* end_of_sequence, std::vector<Tensor>* batch) {
   if (num_elements == 0) {
-    if (status.ok() || errors::IsOutOfRange(status)) {
+    if (status.ok() || absl::IsOutOfRange(status)) {
       *end_of_sequence = true;
       return OkStatus();
     } else {
@@ -734,7 +735,7 @@ Status ProcessBatch(int64_t batch_size, int64_t num_elements,
       return status;
     }
   }
-  if (!status.ok() && !errors::IsOutOfRange(status)) {
+  if (!status.ok() && !absl::IsOutOfRange(status)) {
     *end_of_sequence = false;
     return status;
   }
@@ -921,6 +922,16 @@ int64 GetAutotuneDefaultParallelism(IteratorContext* ctx) {
   return std::min(kAutotuneDefaultParallelism, ctx->runner_threadpool_size());
 }
 
+IteratorContext MakeNestedIteratorContext(IteratorContext* ctx) {
+  // Strips out any split providers so that they don't apply to sub-iterators.
+  if (ctx->split_providers().empty()) {
+    return *ctx;
+  }
+  IteratorContext::Params params(ctx);
+  params.split_providers.clear();
+  return IteratorContext(std::move(params));
+}
+
 // static
 void DatasetExperimentRegistry::Register(const string& experiment,
                                          JobSelector job_selector,
@@ -951,7 +962,7 @@ namespace {
 REGISTER_DATASET_EXPERIMENT("allow_small_function_optimizations",
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("autotune_buffer_optimization",
-                            RandomJobSamplePercentage<50>, AllTasks);
+                            RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT(kFilterParallelizationOpt,
                             RandomJobSamplePercentage<0>, AllTasks);
 REGISTER_DATASET_EXPERIMENT("min_outer_interleave_parallelism",
@@ -964,7 +975,7 @@ REGISTER_DATASET_EXPERIMENT("stage_based_autotune",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
 REGISTER_DATASET_EXPERIMENT("stage_based_autotune_v2",
                             RandomJobSamplePercentage<0>, IndependentHostTasks);
-REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<5>,
+REGISTER_DATASET_EXPERIMENT("data_transfer", RandomJobSamplePercentage<10>,
                             IndependentHostTasks);
 }  // namespace
 }  // namespace data

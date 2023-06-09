@@ -141,26 +141,7 @@ void Shape::DeleteDimension(int64_t dim_to_delete) {
   dimensions_.erase(dimensions_.begin() + dim_to_delete);
   dynamic_dimensions_.erase(dynamic_dimensions_.begin() + dim_to_delete);
   if (LayoutUtil::HasLayout(*this)) {
-    for (int64_t i = 0; i < layout_->minor_to_major().size();) {
-      if (layout_->minor_to_major(i) == dim_to_delete) {
-        layout_->mutable_minor_to_major()->erase(
-            layout_->mutable_minor_to_major()->begin() + i);
-        continue;
-      }
-      if (layout_->minor_to_major(i) > dim_to_delete) {
-        (*layout_->mutable_minor_to_major())[i] -= 1;
-      }
-      ++i;
-    }
-    // Delete the corresponding dim level types.
-    if (LayoutUtil::IsSparse(this->layout())) {
-      auto* mut_dlt = layout_->mutable_dim_level_types();
-      auto* mut_dim_unique = layout_->mutable_dim_unique();
-      auto* mut_dim_ordered = layout_->mutable_dim_ordered();
-      mut_dlt->erase(mut_dlt->begin() + dim_to_delete);
-      mut_dim_unique->erase(mut_dim_unique->begin() + dim_to_delete);
-      mut_dim_ordered->erase(mut_dim_ordered->begin() + dim_to_delete);
-    }
+    layout_->DeleteDimension(dim_to_delete);  // NOLINT: optional-access
   }
 }
 
@@ -220,6 +201,9 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
         }
         if (ignore_tiles_in_layout_) {
           equal.IgnoreTiles();
+        }
+        if (ignore_element_size_in_layout_) {
+          equal.IgnoreElementSize();
         }
         if (ignore_memory_space_in_layout_) {
           equal.IgnoreMemorySpace();

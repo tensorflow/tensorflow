@@ -49,7 +49,7 @@ class ReshapeDecomposerVisitor : public DfsHloRewriteVisitor {
       DCHECK(ShapeUtil::ReshapeIsBitcast(r->shape(), r->operand(0)->shape()));
       HloInstruction* copied_result = MakeCopyHlo(r, s);
       VLOG(3) << "Decomposing reshape into reshape-bitcast and a physical "
-                 "transposition on the operand: "
+                 "transposition on the result: "
               << copied_result->ToString();
       TF_RETURN_IF_ERROR(ReplaceInstruction(reshape, copied_result));
     } else {

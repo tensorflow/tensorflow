@@ -87,13 +87,13 @@ py_strict_binary(
     srcs = ["tests/generate_testdata.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
@@ -183,13 +183,11 @@ tf_cc_test(
     size = "medium",
     srcs = [
         "tests/runtime_test_core.cc",
-        "tests/runtime_test_tfrt.cc",
     ],
     deps = [
         ":runtime_test",
         "//tensorflow/cc/experimental/libtf/runtime",
         "//tensorflow/cc/experimental/libtf/runtime/core",
-        "//tensorflow/cc/experimental/libtf/runtime/tfrt",
     ],
 )
 

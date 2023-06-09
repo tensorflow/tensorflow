@@ -64,8 +64,7 @@ absl::Status MemcpyImpl(const ServiceExecutableRunOptions* run_options,
   // thread should return an async token that will become available when
   // transfer is completed.
   if (direction != MemcpyDirection::kD2D) {
-    auto st = stream->BlockHostUntilDone();
-    if (!st.ok()) return ToAbslStatus(st);
+    TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   }
 
   return absl::OkStatus();

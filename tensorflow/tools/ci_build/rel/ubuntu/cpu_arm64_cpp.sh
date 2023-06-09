@@ -19,12 +19,10 @@ set -x
 
 source tensorflow/tools/ci_build/release/common.sh
 
-sudo mkdir /tmpfs
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tmpfs
-sudo mkdir /tensorflow
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /tensorflow
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tmpfs
+sudo install -o ${CI_BUILD_USER} -g ${CI_BUILD_GROUP} -d /tensorflow
 sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/lib/python*
-sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
+sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/local/bin
 sudo chown -R ${CI_BUILD_USER}:${CI_BUILD_GROUP} /usr/lib/python3/dist-packages
 
 # Update bazel
@@ -73,7 +71,7 @@ source tensorflow/tools/ci_build/build_scripts/ARM_SKIP_TESTS_EXTENDED.sh
 export TF_BUILD_FLAGS="--config=mkl_aarch64_threadpool --copt=-flax-vector-conversions"
 export TF_TEST_FLAGS="${TF_BUILD_FLAGS} \
     --test_env=TF_ENABLE_ONEDNN_OPTS=1 --test_env=TF2_BEHAVIOR=1 --define=tf_api_version=2 \
-    --test_lang_filters=cc --flaky_test_attempts=2 --test_size_filters=small,medium \
+    --test_lang_filters=cc --test_size_filters=small,medium \
     --test_output=errors --verbose_failures=true --test_keep_going --notest_verbose_timeout_warnings"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} ${ARM_SKIP_TESTS}"
 export TF_FILTER_TAGS="-no_oss,-oss_excluded,-oss_serial,-v1only,-benchmark-test,-no_aarch64,-gpu,-tpu,-no_oss_py38,-no_oss_py39,-no_oss_py310"

@@ -1,4 +1,4 @@
-op {
+op 	 {
   name: "RelayoutLike"
   input_arg {
     name: "input"
@@ -6,7 +6,7 @@ op {
   }
   input_arg {
     name: "layout_input"
-    type_attr: "T"
+    type_attr: "U"
   }
   output_arg {
     name: "output"
@@ -14,6 +14,10 @@ op {
   }
   attr {
     name: "T"
+    type: "type"
+  }
+  attr {
+    name: "U"
     type: "type"
   }
 }

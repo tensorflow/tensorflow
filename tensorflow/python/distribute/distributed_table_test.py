@@ -37,7 +37,6 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.saving import save as keras_save
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -47,9 +46,6 @@ from tensorflow.python.saved_model import save as tf_save
 
 
 source_combination = combinations.combine(source=["textfile", "keyvaluetensor"])
-
-source_and_load_combination = combinations.combine(
-    source=["textfile", "keyvaluetensor"], load=["tf_load", "keras_load"])
 
 
 class DistributedTableTest(test.TestCase, parameterized.TestCase):
@@ -619,8 +615,8 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     for r in results:
       self.assertAllClose(-2400, r.fetch())
 
-  @combinations.generate(source_and_load_combination)
-  def testDistributeTableSaveAndServe(self, load, source):
+  @combinations.generate(source_combination)
+  def testDistributeTableSaveAndServe(self, source):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     file_path = os.path.join(self.get_temp_dir(), "text_file_initializer")
@@ -630,12 +626,7 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     model_dir = self.get_temp_dir()
     tf_save.save(model, model_dir)
 
-    if load == "tf_load":
-      load_fn = tf_load.load
-    else:
-      load_fn = keras_save.load_model
-
-    loaded_without_strategy = load_fn(model_dir)
+    loaded_without_strategy = tf_load.load(model_dir)
     loaded_func_captures_without_strategy = (
         loaded_without_strategy.use_table.get_concrete_function().graph
         .external_captures)
@@ -649,8 +640,8 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
         loaded_without_strategy.use_table(
             constant_op.constant([0, 1, 3], dtype=dtypes.int64)), [0, 1, -2])
 
-  @combinations.generate(source_and_load_combination)
-  def testDistributeTableSaveAndLoadUnderStrategy(self, load, source):
+  @combinations.generate(source_combination)
+  def testDistributeTableSaveAndLoadUnderStrategy(self, source):
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     coordinator = coordinator_lib.ClusterCoordinator(strategy)
@@ -660,13 +651,8 @@ class DistributedTableTest(test.TestCase, parameterized.TestCase):
     model_dir = self.get_temp_dir()
     tf_save.save(model, model_dir)
 
-    if load == "tf_load":
-      load_fn = tf_load.load
-    else:
-      load_fn = keras_save.load_model
-
     with strategy.scope():
-      loaded = load_fn(model_dir)
+      loaded = tf_load.load(model_dir)
 
     loaded_func_captures = (
         loaded.use_table.get_concrete_function().graph.external_captures)

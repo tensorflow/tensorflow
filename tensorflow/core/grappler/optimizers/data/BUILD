@@ -103,6 +103,8 @@ cc_library(
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + tf_protos_all(),
     alwayslink = 1,
 )

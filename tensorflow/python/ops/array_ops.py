@@ -59,11 +59,6 @@ tf_export("newaxis").export_constant(__name__, "newaxis")
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
-if flags.config().tf_shape_default_int64.value():
-  DEFAULT_OUT_TYPE = dtypes.int64
-else:
-  DEFAULT_OUT_TYPE = dtypes.int32
-
 
 @tf_export("reshape", v1=["reshape", "manip.reshape"])
 @dispatch.add_dispatch_support
@@ -595,7 +590,7 @@ def broadcast_static_shape(shape_x, shape_y):
 
 @tf_export("shape", v1=[])
 @dispatch.add_dispatch_support
-def shape_v2(input, out_type=DEFAULT_OUT_TYPE, name=None):
+def shape_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
   # TODO(b/274626120) Update `tf_shape_default_int64` comment when it is better
   # supported.
@@ -646,12 +641,17 @@ def shape_v2(input, out_type=DEFAULT_OUT_TYPE, name=None):
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape(input, name, out_type)
 
 
 @tf_export(v1=["shape"])
 @dispatch.add_dispatch_support
-def shape(input, name=None, out_type=dtypes.int32):
+def shape(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
 
@@ -673,6 +673,11 @@ def shape(input, name=None, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`.
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return shape_internal(input, name, optimize=True, out_type=out_type)
 
 
@@ -749,7 +754,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 
 @tf_export("size", v1=[])
 @dispatch.add_dispatch_support
-def size_v2(input, out_type=dtypes.int32, name=None):
+def size_v2(input, out_type=None, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
@@ -766,9 +771,11 @@ def size_v2(input, out_type=dtypes.int32, name=None):
 
   Args:
     input: A `Tensor` or `SparseTensor`.
-    name: A name for the operation (optional).
     out_type: (Optional) The specified non-quantized numeric output type of the
-      operation. Defaults to `tf.int32`.
+      operation. Defaults to `tf.int32`. (Note: there is an experimental
+      flag, `tf_shape_default_int64` that changes the default to `tf.int64`.
+      This is an unsupported, experimental setting that causes known breakages.)
+    name: A name for the operation (optional).
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
@@ -777,13 +784,17 @@ def size_v2(input, out_type=dtypes.int32, name=None):
   Equivalent to np.size()
   @end_compatibility
   """
-
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return size(input, name, out_type)
 
 
 @tf_export(v1=["size"])
 @dispatch.add_dispatch_support
-def size(input, name=None, out_type=dtypes.int32):
+def size(input, name=None, out_type=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
 
@@ -801,7 +812,9 @@ def size(input, name=None, out_type=dtypes.int32):
     input: A `Tensor` or `SparseTensor`.
     name: A name for the operation (optional).
     out_type: (Optional) The specified non-quantized numeric output type of the
-      operation. Defaults to `tf.int32`.
+      operation. Defaults to `tf.int32`. (Note: there is an experimental
+      flag, `tf_shape_default_int64` that changes the default to `tf.int64`.
+      This is an unsupported, experimental setting that causes known breakages.)
 
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
@@ -810,6 +823,11 @@ def size(input, name=None, out_type=dtypes.int32):
   Equivalent to np.size()
   @end_compatibility
   """
+  if out_type is None:
+    if flags.config().tf_shape_default_int64.value():
+      out_type = dtypes.int64
+    else:
+      out_type = dtypes.int32
   return size_internal(input, name, optimize=True, out_type=out_type)
 
 
@@ -5618,7 +5636,10 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     # grid of size B1 x B2.
     batch_dim_list = array_ops_stack.unstack(batch_shape, axis=0)
     dim_ranges = [
-        gen_math_ops.cast(gen_math_ops._range(0, x, 1), indices.dtype)
+        gen_math_ops.cast(
+            gen_math_ops._range(0, gen_math_ops.cast(x, dtypes.int32), 1),
+            indices.dtype,
+        )
         for x in batch_dim_list
     ]
     mesh_list = meshgrid(*dim_ranges, indexing="ij") if dim_ranges else []
@@ -5631,11 +5652,15 @@ def batch_gather_nd(params, indices, batch_dims, name=None):
     index_grid_shape = shape(index_grid)
     index_grid = reshape(
         index_grid,
-        concat([
-            index_grid_shape[:1],
-            ones(index_internal_ndims, dtype=dtypes.int32), index_grid_shape[1:]
-        ],
-               axis=0))
+        concat(
+            [
+                index_grid_shape[:1],
+                ones(index_internal_ndims, dtype=index_grid_shape.dtype),
+                index_grid_shape[1:],
+            ],
+            axis=0,
+        ),
+    )
     tile_shape = concat(((1,), indices_internal_shape, (1,)), axis=0)
     index_grid = tile(index_grid, multiples=tile_shape)
     # index_grid now has shape [(B1.B2), i1, ..., iK, 2]

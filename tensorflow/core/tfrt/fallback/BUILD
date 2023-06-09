@@ -69,7 +69,6 @@ cc_library(
     visibility = [
         ":friends",
         # copybara:uncomment "//tensorflow/core/runtime_fallback:internal",
-        # copybara:uncomment "//tensorflow/core/tfrt/eager:__pkg__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/lite/delegates/flex:__pkg__",
     ],
@@ -108,7 +107,17 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/util:env_var",
+        "//tensorflow/tsl/platform:mutex",
         "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
+    name = "device_with_custom_allocator",
+    hdrs = ["device_with_custom_allocator.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/tsl/framework:allocator",
     ],
 )
 

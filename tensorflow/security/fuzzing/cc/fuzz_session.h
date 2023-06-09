@@ -96,7 +96,7 @@ template <typename... T>
 class FuzzSession {
  public:
   FuzzSession() : initialized_(false) {}
-  virtual ~FuzzSession() {}
+  virtual ~FuzzSession() = default;
 
   // Constructs a Graph using the supplied Scope.
   // By convention, the graph should have inputs named "input1", ...

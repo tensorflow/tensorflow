@@ -1010,7 +1010,7 @@ class RestoreWeightShapePattern
     auto new_shape_const_attr =
         DenseElementsAttr::get(shape_spec_type, new_shape.getShape());
     rewriter.setInsertionPointAfter(weight_op);
-    auto new_shape_const = rewriter.create<arith::ConstantOp>(
+    auto new_shape_const = rewriter.create<TF::ConstOp>(
         weight_op->getLoc(), shape_spec_type, new_shape_const_attr);
     auto reshape_op = rewriter.create<TF::ReshapeOp>(
         weight_op->getLoc(), new_shape, weight_op->getResult(0),
@@ -1026,7 +1026,10 @@ class RestoreWeightShapePattern
     StringRef function_name = f_attr.getValue();
     // TODO(b/228928859): Improve the getter function to match attributes rather
     // than function name.
-    if (!function_name.startswith("quantized_")) {
+    // If enable_legacy_weight_only is enabled, QuantizeFunctionsPattern
+    // does not get called and function remains as composite
+    if (!function_name.startswith("quantized_") &&
+        !function_name.startswith("composite_")) {
       return failure();
     }
 

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/evaluator/hlo_evaluator.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -3645,7 +3646,7 @@ StatusOr<Literal> StochasticConvertOp(const Literal& operand_literal,
                                       const Shape& result_shape) {
   std::function<ResultT(Fp, Uint)> stochastic_convert_op =
       [](Fp operand, Uint random) -> ResultT {
-    bool is_negative = ToSignMagnitude(operand) < 0;
+    bool is_negative = static_cast<bool>(Eigen::numext::signbit(operand));
     if (Eigen::numext::isinf(operand)) {
       return is_negative ? std::numeric_limits<ResultT>::min()
                          : std::numeric_limits<ResultT>::max();
@@ -4199,8 +4200,8 @@ static StatusOr<bool> GenerateReduceOutputElement(
   return true;
 }
 
-Status HloEvaluator::HandleReduce(HloInstruction* instr) {
-  HloReduceInstruction* reduce = Cast<HloReduceInstruction>(instr);
+Status HloEvaluator::HandleReduce(HloInstruction* hlo) {
+  HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   int64_t num_args = reduce->inputs().size();
   absl::Span<const int64_t> dimensions_to_reduce(reduce->dimensions());
   HloComputation* function = reduce->to_apply();

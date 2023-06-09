@@ -449,7 +449,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "//third_party/py/tensorflow",
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
-                "//tensorflow/python:client_testlib",
+                "//tensorflow/python/platform:client_testlib",
             ] + flex_dep(target_op_sets),
         )
 

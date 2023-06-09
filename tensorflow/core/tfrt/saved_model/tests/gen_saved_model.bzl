@@ -15,6 +15,6 @@ def gen_saved_model(model_name = "", script = "", **kwargs):
             "$(location " + script + ") --saved_model_path=$(RULEDIR)/" + model_name,
             "touch $(OUTS)",  # TODO(b/188517768): fix model gen.
         ),
-        exec_tools = [script],
+        tools = [script],
         **kwargs
     )

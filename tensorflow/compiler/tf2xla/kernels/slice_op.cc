@@ -15,6 +15,8 @@ limitations under the License.
 
 // XLA-specific Slice Op.
 
+#include <vector>
+
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"

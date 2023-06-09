@@ -49,6 +49,16 @@ class CostGraph {
           size_t dst_idx = strategies->id;
           Matrix edge_cost = CreateEdgeCost(src_idx, dst_idx, i, strategies);
           AddEdgeCost(src_idx, dst_idx, edge_cost);
+        } else if (strategies->in_nodes[i]->is_tuple &&
+                   strategies->in_nodes.size() > 1) {
+          for (size_t l = 0; l < strategies->in_nodes[i]->childs.size(); l++) {
+            size_t src_idx = strategies->in_nodes[i]->childs.at(l)->id;
+            size_t dst_idx = strategies->id;
+            Matrix edge_cost =
+                CreateEdgeCost(src_idx, dst_idx, i, strategies, true);
+            AddEdgeCost(src_idx, dst_idx, edge_cost);
+          }
+
         } else {
           CHECK_EQ(strategies->in_nodes.size(), 1)
               << "Do not support instructions with more than one tuple "
@@ -99,7 +109,7 @@ class CostGraph {
   }
 
   Matrix CreateEdgeCost(size_t src_idx, size_t dst_idx, size_t in_node_idx,
-                        StrategyVector* strategies) {
+                        StrategyVector* strategies, bool zero_cost = false) {
     CHECK_GE(node_lens_.size(), src_idx);
     CHECK_GE(node_lens_.size(), dst_idx);
     Matrix edge_cost(node_lens_[src_idx], node_lens_[dst_idx]);
@@ -107,7 +117,8 @@ class CostGraph {
       const ShardingStrategy& strategy = strategies->leaf_vector[k];
       for (size_t j = 0; j < strategy.resharding_costs[in_node_idx].size();
            ++j) {
-        edge_cost(j, k) = strategy.resharding_costs[in_node_idx][j];
+        edge_cost(j, k) =
+            zero_cost ? 0 : strategy.resharding_costs[in_node_idx][j];
       }
     }
     return edge_cost;

@@ -181,13 +181,28 @@ class StackTraceWrapper : public AbstractStackTrace {
     if (stack_frames_cache_) {
       return *stack_frames_cache_;
     }
-    stack_frames_cache_ = ToFramesInternal(*source_map_);
+    stack_frames_cache_ = ToUncachedFrames();
     return *stack_frames_cache_;
   }
 
   std::vector<StackFrame> ToUncachedFrames() const override {
-    SourceMap source_map;
-    return ToFramesInternal(source_map);
+    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe,
+    // and 2) ToStackFrames and LineContents actually need it.
+    PyGILState_STATE state = PyGILState_Ensure();
+
+    std::vector<StackFrame> frames = captured_.ToStackFrames(
+        *source_map_, [&](const char* f) { return StackTraceFiltering(f); },
+        /*reverse_traversal=*/false, /*limit=*/-1);
+
+    // Drop last stack frames.
+    int newsize = frames.size() - stacklevel_;
+    if (newsize < 0) {
+      newsize = 0;
+    }
+    frames.resize(newsize);
+
+    PyGILState_Release(state);
+    return frames;
   }
 
   int get_stacklevel() const { return stacklevel_; }
@@ -294,25 +309,6 @@ class StackTraceWrapper : public AbstractStackTrace {
           absl::StrAppend(out,
                           StackFrameToString(frame, opts, shared_prefix_size));
         });
-  }
-
-  std::vector<StackFrame> ToFramesInternal(SourceMap& source_map) const {
-    // Grabbing the GIL solves two purposes: 1) makes the class thread-safe,
-    // and 2) ToStackFrames and LineContents actually need it.
-    PyGILState_STATE state = PyGILState_Ensure();
-
-    std::vector<StackFrame> frames = captured_.ToStackFrames(
-        source_map, [&](const char* f) { return StackTraceFiltering(f); });
-
-    // Drop last stack frames.
-    int newsize = frames.size() - stacklevel_;
-    if (newsize < 0) {
-      newsize = 0;
-    }
-    frames.resize(newsize);
-
-    PyGILState_Release(state);
-    return frames;
   }
 
   bool StackTraceFiltering(const char* file_name) const {

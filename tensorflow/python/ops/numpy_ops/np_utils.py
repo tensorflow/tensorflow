@@ -219,7 +219,7 @@ def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None,
   return doc
 
 
-_np_doc_form = os.getenv('TF_NP_DOC_FORM', '1.16')
+_np_doc_form = os.getenv('TF_NP_DOC_FORM', 'stable')
 
 
 def get_np_doc_form():
@@ -285,8 +285,7 @@ def generate_link(flag, np_fun_name):
         'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
   elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
     # `flag` is the version number
-    template = ('https://numpy.org/doc/' + flag +
-                '/reference/generated/numpy.%s.html')
+    template = (f'https://numpy.org/doc/{flag}/reference/generated/numpy.%s.html')
   else:
     return None
   return template % np_fun_name

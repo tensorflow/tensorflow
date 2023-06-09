@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -86,14 +87,6 @@ using ClusterMap = llvm::SmallDenseMap<llvm::StringRef, OpSetVector, 8>;
 
 #define GEN_PASS_DEF_TPUCLUSTERFORMATIONPASS
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_passes.h.inc"
-
-std::string OpString(Operation& op) {
-  std::string out;
-  llvm::raw_string_ostream op_stream(out);
-  op.print(op_stream,
-           OpPrintingFlags().enableDebugInfo(true, /*prettyForm=*/true));
-  return out;
-}
 
 struct TPUClusterFormationPass
     : public impl::TPUClusterFormationPassBase<TPUClusterFormationPass> {
@@ -246,8 +239,8 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
                        << " but conflicting fullname: " << device1 << " and "
                        << device2 << ".";
           LOG(WARNING) << "Previous assignment came from op: "
-                       << OpString(*previous_op)
-                       << ". Current op is: " << OpString(op);
+                       << tensorflow::OpAsString(*previous_op)
+                       << ". Current op is: " << tensorflow::OpAsString(op);
         }
         // Always keep the longer name.
         if (devices[device_local_name].device.size() <

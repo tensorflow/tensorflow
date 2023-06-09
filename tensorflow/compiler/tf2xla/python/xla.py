@@ -604,12 +604,54 @@ def custom_call_v2(
   )
 
 
-def call_module(args, *, version=4, module, Tout, Sout,
-                dim_args_spec=(), platforms=(), function_list=()):
-  # See documentation for the XlaCallModule op.
-  return gen_xla_ops.xla_call_module(
-      args, version=version, module=module, dim_args_spec=dim_args_spec,
-      Tout=Tout, Sout=Sout, platforms=platforms, function_list=function_list)
+# pylint: disable=g-doc-args
+# pylint: disable=g-doc-return-or-yield
+def call_module(
+    args,
+    *,
+    version=4,
+    module,
+    Tout,
+    Sout,
+    platforms=(),
+    function_list=(),
+    has_token_input_output=False,
+    disabled_checks=(),
+):
+  """See documentation for the XlaCallModule op.
+
+  https://github.com/search?q=repo%3Atensorflow%2Ftensorflow+path%3Axla_ops.cc+xlacallmodule&type=code
+  """
+  res = gen_xla_ops.xla_call_module(
+      args,
+      version=version,
+      module=module,
+      dim_args_spec=(),
+      Tout=Tout,
+      Sout=Sout,
+      platforms=platforms,
+      function_list=function_list,
+      has_token_input_output=has_token_input_output,
+      disabled_checks=disabled_checks,
+  )
+  # Since XLACallModule op is stateful, zero return function will return the TF
+  # op under tf.function. It creates trouble for downstream codes.
+  # Here we force it return empty tuple to work around it.
+  # TODO(johnqiangzhang): Figure out a better way to handle control dependency.
+  if isinstance(res, ops.Operation):
+    res = ()
+  return res
+# pylint: enable=g-doc-args
+# pylint: enable=g-doc-return-or-yield
+
+
+def call_module_maximum_supported_version():
+  return 6
+
+
+def call_module_disable_check_platform():
+  # For use with xla_call_module.disabled_checks.
+  return "platform"
 
 
 def gather(operand,

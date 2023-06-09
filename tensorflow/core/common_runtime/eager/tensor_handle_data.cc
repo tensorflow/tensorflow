@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
 
+#include <utility>
+#include <variant>
+
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -87,7 +90,7 @@ Status LocalTensorHandleData::SetTensor(tensorflow::Tensor&& t) {
   // Create copy of original tensor to avoid forwarding
   forwarding_protection_tensor_ = tensor_;
 
-  auto& state = absl::get<BlockingControl>(ctrl_);
+  auto& state = std::get<BlockingControl>(ctrl_);
   state.SetReady();
 
   return OkStatus();

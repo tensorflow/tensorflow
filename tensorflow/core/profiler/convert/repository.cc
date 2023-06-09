@@ -22,12 +22,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -80,8 +81,30 @@ StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpace(
   return xspace_from_file;
 }
 
+StatusOr<std::unique_ptr<XSpace>> SessionSnapshot::GetXSpaceByName(
+    absl::string_view name) const {
+  if (auto it = hostname_map_.find(name); it != hostname_map_.end()) {
+    return GetXSpace(it->second);
+  }
+
+  return errors::InvalidArgument("Can not find the XSpace by name: ", name,
+                                 ". The total number of XSpace is ",
+                                 xspace_paths_.size());
+}
+
 std::string SessionSnapshot::GetHostname(size_t index) const {
   return GetHostnameByPath(xspace_paths_.at(index));
+}
+
+std::optional<std::string> SessionSnapshot::GetFilePath(
+    absl::string_view toolname, absl::string_view hostname) const {
+  if (!has_accessible_run_dir_) return std::nullopt;
+  std::string file_name = "";
+  if (toolname == "trace_viewer@")
+    file_name = absl::StrCat(hostname, ".", "SSTABLE");
+  if (!file_name.empty())
+    return tensorflow::io::JoinPath(session_run_dir_, file_name);
+  return std::nullopt;
 }
 
 }  // namespace profiler

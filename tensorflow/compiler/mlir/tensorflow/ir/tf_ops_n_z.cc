@@ -17,8 +17,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -80,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -1083,7 +1086,7 @@ static Type InferSelectV2OpType(Value condition, Value e, Value t) {
   if (!cond_ranked_ty || !broadcasted_ranked_ty) return unranked_ty;
 
   // Explicitly get broadcasted output type as element types of condition may
-  // not be same as the broadcated type's element type.
+  // not be same as the broadcasted type's element type.
   SmallVector<int64_t, 4> result_shape;
   if (!OpTrait::util::getBroadcastedShape(cond_ranked_ty.getShape(),
                                           broadcasted_ranked_ty.getShape(),
@@ -2855,6 +2858,27 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.getX().getDefiningOp());
   if (!transpose) return {};
 
+  // If the transpose ops are on different devices, we don't fold them.
+  if (transpose->getBlock() != op->getBlock()) {
+    tensorflow::DataType dtype;
+    auto status = tensorflow::ConvertToDataType(
+        op.getX().getType().cast<TensorType>().getElementType(), &dtype);
+    if (status.ok()) {
+      // We can only leave the transpose op on host if its dtype is supported on
+      // host.
+      if (dtype == tensorflow::DT_UINT64 || dtype == tensorflow::DT_INT64 ||
+          dtype == tensorflow::DT_UINT32 || dtype == tensorflow::DT_INT32 ||
+          dtype == tensorflow::DT_UINT16 || dtype == tensorflow::DT_INT16 ||
+          dtype == tensorflow::DT_UINT8 || dtype == tensorflow::DT_INT8 ||
+          dtype == tensorflow::DT_HALF || dtype == tensorflow::DT_BFLOAT16 ||
+          dtype == tensorflow::DT_FLOAT || dtype == tensorflow::DT_DOUBLE ||
+          dtype == tensorflow::DT_COMPLEX64 ||
+          dtype == tensorflow::DT_COMPLEX128 || dtype == tensorflow::DT_BOOL) {
+        return {};
+      }
+    }
+  }
+
   // Permutations defined by constant operations.
   DenseIntElementsAttr perm0;
   DenseIntElementsAttr perm1;
@@ -2957,6 +2981,39 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
   results.add<ConvertFusedBatchNorm>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaCallModuleOp
+//===----------------------------------------------------------------------===//
+
+void XlaCallModuleOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  if (!getFunctionList().empty()) {
+    // The StableHLO module embedded in XlaCallModule contains
+    // `stablehlo.custom_call` calling TF host callback functions.
+    // `stablehlo.custom_call` will be lowered to `stablehlo.send` and
+    // `stablehlo.recv`.
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Send::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Recv::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::XlaHostCompute::get());
+  }
+}
+
+LogicalResult XlaCallModuleOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  for (auto f : getFunctionList()) {
+    auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+        getOperation(), f.cast<mlir::SymbolRefAttr>());
+    if (!func) {
+      return emitOpError() << "refers to an undefined function: " << f;
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -53,7 +53,7 @@ Status MlirToXlaComputation(mlir::ModuleOp module,
     if (failed(pm.run(module))) {
       VLOG(1) << "MHLO->HLO lowering passes failed.";
       module->dump();
-      return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+      return diagnostic_handler.ConsumeStatus();
     }
 
     VLOG(5) << "MHLO module after lowering, before HLO import ";
@@ -84,12 +84,12 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ParseMlirModuleString(
       llvm::StringRef(mlir_module_str.data(), mlir_module_str.size()),
       &context);
   if (!module) {
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   if (failed(module->verifyInvariants())) {
     VLOG(1) << "MLIR verification failed.";
     module->dump();
-    return FromAbslStatus(diagnostic_handler.ConsumeStatus());
+    return diagnostic_handler.ConsumeStatus();
   }
   return std::move(module);
 }

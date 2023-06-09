@@ -57,6 +57,19 @@ class ReduceTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(out_bf16, expected, 1e-3)
 
+  def testCountNonzero(self):
+    # simple case
+    x = np.array([[0, -2, 0], [4, 0, 0]], dtype=np.int32)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # boolean input
+    x = math_ops.not_equal(x, 0)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 2)
+
+    # would overflow if int8 would be used for internal calculations
+    x = 2 * np.ones(512, dtype=np.int8)
+    self.assertEqual(self.evaluate(math_ops.count_nonzero(x)), 512)
+
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):

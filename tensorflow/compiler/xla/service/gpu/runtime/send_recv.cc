@@ -167,11 +167,11 @@ static absl::Status SendImpl(const ServiceExecutableRunOptions* run_options,
 
   // Send buffer to a handler registered with the run options.
   if (auto* send = run_options->run_options().send_device_memory_function()) {
-    auto done_event =
+    TF_ASSIGN_OR_RETURN(
+        auto done_event,
         (*send)(channel.handle, stream, ToShape(arg), GetDeviceAddress(arg),
-                GenerateFrontEndAttributeMap(frontend_attrs));
-    if (!done_event.ok()) return ToAbslStatus(done_event.status());
-    return events->PushEvent(channel.handle, std::move(*done_event));
+                GenerateFrontEndAttributeMap(frontend_attrs)));
+    return events->PushEvent(channel.handle, std::move(done_event));
   }
 
   return InvalidArgumentError("SendDeviceMemoryFunction is not available");
@@ -198,10 +198,10 @@ static absl::Status RecvImpl(const ServiceExecutableRunOptions* run_options,
   // Recv buffer from a handler registered with the run options.
   if (auto* recv = run_options->run_options().recv_device_memory_function()) {
     auto dst = GetDeviceAddress(arg);
-    auto done_event = (*recv)(channel.handle, stream, ToShape(arg), &dst,
-                              GenerateFrontEndAttributeMap(frontend_attrs));
-    if (!done_event.ok()) return ToAbslStatus(done_event.status());
-    return events->PushEvent(channel.handle, std::move(*done_event));
+    TF_ASSIGN_OR_RETURN(auto done_event,
+                        (*recv)(channel.handle, stream, ToShape(arg), &dst,
+                                GenerateFrontEndAttributeMap(frontend_attrs)));
+    return events->PushEvent(channel.handle, std::move(done_event));
   }
 
   return InvalidArgumentError("RecvDeviceMemoryFunction is not available");
@@ -218,18 +218,17 @@ static absl::Status SendDoneImpl(const ServiceExecutableRunOptions* run_options,
                          {{"channel", channel.handle}});
   });
 
-  auto done_event = events->PopEvent(channel.handle);
-  if (!done_event.ok()) return done_event.status();
+  TF_ASSIGN_OR_RETURN(auto done_event, events->PopEvent(channel.handle));
 
   // Wait until send handler will record an event on the stream.
-  BlockUntilReady(done_event->GetAsyncValue());
-  if (done_event->IsError()) return done_event->GetError();
+  BlockUntilReady(done_event.GetAsyncValue());
+  if (done_event.IsError()) return done_event.GetError();
 
   VLOG(5) << "Completed Host Send operation: "
           << " channel=" << channel.handle;
 
   // Once event is recorded we can add a stream dependency.
-  run_options->stream()->ThenWaitFor(&done_event->get());
+  run_options->stream()->ThenWaitFor(&done_event.get());
   return absl::OkStatus();
 }
 
@@ -244,18 +243,17 @@ static absl::Status RecvDoneImpl(const ServiceExecutableRunOptions* run_options,
                          {{"channel", channel.handle}});
   });
 
-  auto done_event = events->PopEvent(channel.handle);
-  if (!done_event.ok()) return done_event.status();
+  TF_ASSIGN_OR_RETURN(auto done_event, events->PopEvent(channel.handle));
 
   // Wait until send handler will record an event on the stream.
-  BlockUntilReady(done_event->GetAsyncValue());
-  if (done_event->IsError()) return done_event->GetError();
+  BlockUntilReady(done_event.GetAsyncValue());
+  if (done_event.IsError()) return done_event.GetError();
 
   VLOG(5) << "Completed Host Recv operation: "
           << " channel=" << channel.handle;
 
   // Once event is recorded we can add a stream dependency.
-  run_options->stream()->ThenWaitFor(&done_event->get());
+  run_options->stream()->ThenWaitFor(&done_event.get());
   return absl::OkStatus();
 }
 

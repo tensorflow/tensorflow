@@ -1986,7 +1986,7 @@ tf_kernel_library(
 
 tf_cuda_cc_test(
     name = "gather_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["gather_op_test.cc"],
     deps = [
         ":gather_op",
@@ -3766,7 +3766,6 @@ tf_cuda_cc_test(
     srcs = ["matmul_op_test.cc"],
     tags = [
         "no_arm64",  # b/282068262
-        "no_armv7",  # b/280582913
     ],
     deps = [
         ":matmul_op",
@@ -6345,6 +6344,7 @@ filegroup(
         "dilation_ops.h",
         "fake_quant_ops_functor.h",
         "fill_empty_rows_functor.h",
+        "function_ops.h",
         "fused_batch_norm_op.h",
         "inplace_ops.cc",
         "inplace_ops_functor.h",
@@ -7803,7 +7803,6 @@ tf_cc_test(
         "//tensorflow/core/framework:fake_input",
         "//tensorflow/core/framework:types_proto_cc",
         "//third_party/eigen3",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

@@ -51,7 +51,6 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.tpu import functional as tpu_functional
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_replication
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu.ops import tpu_ops
 
 FLAGS = flags.FLAGS
@@ -72,7 +71,7 @@ def get_tpu_cluster_resolver():
 def get_tpu_strategy():
   resolver = get_tpu_cluster_resolver()
   remote.connect_to_cluster(resolver)
-  tpu_strategy_util.initialize_tpu_system(resolver)
+  tpu_cluster_resolver.initialize_tpu_system(resolver)
   return tpu_lib.TPUStrategyV2(resolver)
 
 

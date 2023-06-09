@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 
 #include <algorithm>
+#include <array>
+#include <complex>
 #include <cstdint>
 #include <functional>
 #include <iterator>
