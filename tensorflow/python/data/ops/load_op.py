@@ -54,32 +54,30 @@ def _load(path, element_spec, compression, reader_func):
     with gfile.GFile(
         os.path.join(path, dataset_ops.DATASET_SPEC_FILENAME), "rb") as f:
       encoded_spec = f.read()
-    struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
-    struct_pb.ParseFromString(encoded_spec)
-    spec = nested_structure_coder.decode_proto(struct_pb)
-    element_spec = spec
+    element_spec = _parse_element_spec(encoded_spec)
 
   distributed_snapshot_metadata = _get_distributed_snapshot_metadata()
   if distributed_snapshot_metadata:
-    _validate_snapshot(path)
-    if compression and compression != distributed_snapshot_metadata.compression:
-      raise ValueError(
-          f"Failed to load tf.data snapshot at {path}. User specified "
-          f"compression {compression}, but the actual compression is "
-          f"{distributed_snapshot_metadata.compression}.")
-
-    chunks_dir = os.path.join(path, "chunks")
-    chunk_files = [
-        os.path.join(chunks_dir, f) for f in gfile.ListDirectory(chunks_dir)]
-    dataset = dataset_ops.Dataset.from_tensor_slices(chunk_files)
-    # TODO(b/250921378): Use the element_spec from the metadata.
-    dataset = dataset.map(
-        lambda chunk_file: _SnapshotChunkDataset(  # pylint:disable=g-long-lambda
-            chunk_file,
-            element_spec=element_spec,
-            compression=distributed_snapshot_metadata.compression))
-    return reader_func(dataset)
+    _validate_snapshot(
+        path, distributed_snapshot_metadata, element_spec, compression)
+    return _load_distributed_snapshot(
+        path, distributed_snapshot_metadata, reader_func)
   return _LoadDataset(path, element_spec, compression, reader_func)
+
+
+def _load_distributed_snapshot(path, metadata, reader_func):
+  """Loads a distributed snapshot."""
+
+  chunks_dir = os.path.join(path, "chunks")
+  chunk_files = [
+      os.path.join(chunks_dir, f) for f in gfile.ListDirectory(chunks_dir)]
+  dataset = dataset_ops.Dataset.from_tensor_slices(chunk_files)
+  dataset = dataset.map(
+      lambda chunk_file: _SnapshotChunkDataset(  # pylint:disable=g-long-lambda
+          chunk_file,
+          element_spec=_parse_element_spec(metadata.element_spec),
+          compression=metadata.compression))
+  return reader_func(dataset)
 
 
 class _LoadDataset(dataset_ops.DatasetSource):
@@ -126,11 +124,14 @@ class _SnapshotChunkDataset(dataset_ops.DatasetSource):
     return self._element_spec
 
 
-def _validate_snapshot(path):
+def _validate_snapshot(path, metadata, element_spec, compression):
   """Validates a tf.data distributed snapshot.
 
   Args:
     path: Root path of the distributed snapshot.
+    metadata: The DistributedSnapshotMetadata of the snapshot.
+    element_spec: Dataset element_spec.
+    compression: Compression method used for saving.
 
   Raises:
     ValueError if the snapshot is invalid.
@@ -151,3 +152,22 @@ def _validate_snapshot(path):
     raise ValueError(
         f"Failed to load tf.data snapshot at {path}. The save job has not "
         "finished writing the snapshot.")
+
+  snapshot_element_spec = _parse_element_spec(metadata.element_spec)
+  if element_spec and element_spec != snapshot_element_spec:
+    raise ValueError(
+        f"Failed to load tf.data snapshot at {path}. User specified "
+        f"element_spec {element_spec}, but the actual element_spec is "
+        f"{snapshot_element_spec}.")
+
+  if compression and compression != metadata.compression:
+    raise ValueError(
+        f"Failed to load tf.data snapshot at {path}. User specified "
+        f"compression {compression}, but the actual compression is "
+        f"{metadata.compression}.")
+
+
+def _parse_element_spec(encoded_element_spec):
+  struct_pb = nested_structure_coder.struct_pb2.StructuredValue()
+  struct_pb.ParseFromString(encoded_element_spec)
+  return nested_structure_coder.decode_proto(struct_pb)

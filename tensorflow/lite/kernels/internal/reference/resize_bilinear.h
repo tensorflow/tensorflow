@@ -212,9 +212,14 @@ inline void ResizeBilinearInteger(
               (input_y - (1 << 10) * y0) * (input_x - (1 << 10) * x0);
           const int64_t output_20 =
               output_20_ll + output_20_lu + output_20_rl + output_20_ru;
+#if TFLITE_SINGLE_ROUNDING
+          const int64_t round = 1 << 19;
+          const T interpolation = static_cast<T>((output_20 + round) >> 20);
+#else
           const int64_t round = (output_20 > 0) ? (1 << 19) : -(1 << 19);
           const T interpolation =
               static_cast<T>((output_20 + round) / (1 << 20));
+#endif  // TFLITE_SINGLE_ROUNDING
           output_data[Offset(output_shape, b, y, x, c)] = interpolation;
         }
       }
