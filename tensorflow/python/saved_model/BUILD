@@ -895,6 +895,7 @@ tf_python_pybind_extension(
     deps = [
         ":pywrap_saved_model_headers",
         "//tensorflow/cc/experimental/libexport:save",
+        "//tensorflow/cc/saved_model:reader",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
