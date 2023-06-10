@@ -649,7 +649,7 @@ class Translator {
   // to a function's body or while op. Modifies *region by calling
   // ExtractControlEdges.
   std::optional<BufferOffset<tflite::SubGraph>> BuildSubGraph(
-      const std::string& name, Region* region, const int index);
+      const std::string& name, Region* region, int index);
 
   // Modifies *block by unwrapping all ControlNodeOps. The DAG of the control
   // dependencies is returned as a vector of its edges, with node indices into
@@ -674,8 +674,7 @@ class Translator {
   // 'items' is a map from tensor name in signatureDef to tensor name in
   // the subgraph, specified by the 'subgraph_index' argument.
   std::vector<BufferOffset<tflite::TensorMap>> GetList(
-      const int subgraph_index,
-      const std::map<std::string, std::string>& items);
+      int subgraph_index, const std::map<std::string, std::string>& items);
 
   // Uses the tf.entry_function attribute (if set) to initialize the op to name
   // mapping.

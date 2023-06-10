@@ -1387,7 +1387,7 @@ cc_library(
     visibility = ["//tensorflow/c:__pkg__"],
 )
 
-# All framewrok protos are self-contained, i.e. they only import other
+# All framework protos are self-contained, i.e. they only import other
 # protos from the same package, so we can build the protos here and then
 # link them from core:protos_all without circular dependencies.
 

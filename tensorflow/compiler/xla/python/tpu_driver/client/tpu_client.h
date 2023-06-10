@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <array>
 #include <functional>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -158,8 +160,8 @@ class PyTpuClient : public std::enable_shared_from_this<PyTpuClient> {
     return id_to_device_;
   }
   int process_index() const { return process_index_; }
-  const absl::string_view platform_name() const { return platform_name_; }
-  const absl::string_view platform_version() const { return platform_version_; }
+  absl::string_view platform_name() const { return platform_name_; }
+  absl::string_view platform_version() const { return platform_version_; }
 
   StatusOr<Shape> ChooseCompactLayoutForShape(Shape subshape) {
     return Unimplemented("ChooseCompactLayoutForShape not implemented.");
@@ -252,9 +254,7 @@ class PyTpuBuffer {
 
   const Shape& on_host_shape() const { return on_host_shape_; }
   std::shared_ptr<PjRtDevice> device() const { return device_; }
-  const absl::string_view platform_name() const {
-    return client_->platform_name();
-  }
+  absl::string_view platform_name() const { return client_->platform_name(); }
   std::shared_ptr<PyTpuClient> client() const { return client_; }
 
   // Returns the buffer's value as a tuple DAG of Python arrays. If the value
@@ -335,13 +335,13 @@ class PyTpuBuffer {
 // until the computation finishes.
 class PyTpuToken {
  public:
-  PyTpuToken() {}
+  PyTpuToken() = default;
   Status Await() { return OkStatus(); }
 };
 
 class PyShardedTpuToken {
  public:
-  PyShardedTpuToken() {}
+  PyShardedTpuToken() = default;
   Status Await() { return OkStatus(); }
   PyTpuToken GetPyToken(int i) { return PyTpuToken(); }
 };
@@ -444,7 +444,7 @@ class PyTpuExecutable {
   };
 
   ExecuteResult ExecuteHelper(
-      absl::Span<const std::vector<PyTpuBuffer*>> all_core_arguments,
+      absl::Span<const std::vector<PyTpuBuffer*>> maybe_tupled_args,
       absl::Span<PyTpuBuffer* const> this_core_arguments, int replica,
       int partition, const RunId& run_id);
 

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_context.h"
 
+#include <functional>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device/device_event_mgr.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_util.h"

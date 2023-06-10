@@ -320,6 +320,7 @@ def _tf_library(
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
             "//tensorflow/compiler/xla/service/cpu/runtime:convolution_ffi",
+            "//tensorflow/compiler/xla/service/cpu/runtime:rng_ffi",
             "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
             "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",

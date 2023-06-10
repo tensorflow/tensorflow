@@ -179,6 +179,10 @@ using XlaExecutableClosure =
     ExecutableClosure<xla::LocalExecutable, xla::LocalClient>;
 using XlaExecutableClosureStore =
     ExecutableClosureStore<xla::LocalExecutable, xla::LocalClient>;
+using PjRtExecutableClosure =
+    ExecutableClosure<xla::PjRtLoadedExecutable, xla::PjRtClient>;
+using PjRtExecutableClosureStore =
+    ExecutableClosureStore<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
 se::Stream* GetStream(OpKernelContext* ctx) {
   return ctx->op_device_context() ? ctx->op_device_context()->stream()
@@ -592,19 +596,23 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
                              compilation_result, done, inputs,
                              resources = resources_]() {
       auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
-      std::vector<VariableInfo> variable_infos;
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
-                              &variable_infos),
-          done);
-      OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                           done);
-      OP_REQUIRES_OK_ASYNC(
-          ctx,
-          RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
-                            *compilation_result, pjrt_executable, ctx),
-          done);
+      // Separate scope so that VariableInfo locks are released before done() is
+      // called.
+      {
+        std::vector<VariableInfo> variable_infos;
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                                &variable_infos),
+            done);
+        OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                             done);
+        OP_REQUIRES_OK_ASYNC(
+            ctx,
+            RunPjRtExecutable(*pjrt_client, inputs, variable_infos,
+                              *compilation_result, pjrt_executable, ctx),
+            done);
+      }
       VLOG(2) << "Done executing with PJRT.";
       done();
     };
@@ -623,65 +631,69 @@ void XlaLocalLaunchBase::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   // Continuation of the execution, may be run in a different thread.
   auto run_xla_cluster = [ctx, client, executable, compilation_result, done,
                           inputs, resources = resources_]() {
-    auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
-    std::vector<VariableInfo> variable_infos;
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
-                            &variable_infos),
-        done);
-    OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
-                         done);
-    std::map<int, const Tensor*> resource_var_ptrs;
-    for (int i = 0; i < resources.size(); i++) {
-      resource_var_ptrs[resources[i]] = variable_infos[i].var()->tensor();
-    }
-
-    std::shared_ptr<se::DeviceMemoryAllocator> allocator =
-        GetAllocator(ctx->device(), GetStream(ctx), platform_info);
-    XlaComputationLaunchContext launch_context =
-        GetLaunchContext(platform_info, ctx, client, allocator.get());
-
-    const xla::HloInputOutputAliasConfig& input_output_alias =
-        executable->executable()->module().input_output_alias_config();
-    StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
-        launch_context.PopulateInputs(
-            ctx, compilation_result, resource_var_ptrs,
-            /*missing_ctx_input_prefix=*/0, input_output_alias);
-    OP_REQUIRES_OK_ASYNC(ctx, execution_inputs.status(), done);
-
-    xla::gpu::GpuExecutableRunOptions gpu_options;
-    xla::DeviceAssignment device_assignment;
-    xla::ExecutableRunOptions run_options;
-    if (compilation_result->collective_info.has_value()) {
+    // Separate scope so that VariableInfo locks are released before done is
+    // called.
+    {
+      auto platform_info = XlaPlatformInfoFromDevice(ctx->device());
+      std::vector<VariableInfo> variable_infos;
       OP_REQUIRES_OK_ASYNC(
           ctx,
-          ResolveDeviceAssignment(ctx, *compilation_result->collective_info,
-                                  run_options, device_assignment, gpu_options),
+          GetUpdatedVariables(ctx, inputs, resources, *compilation_result,
+                              &variable_infos),
           done);
+      OP_REQUIRES_OK_ASYNC(ctx, LockVariables(absl::MakeSpan(variable_infos)),
+                           done);
+      std::map<int, const Tensor*> resource_var_ptrs;
+      for (int i = 0; i < resources.size(); i++) {
+        resource_var_ptrs[resources[i]] = variable_infos[i].var()->tensor();
+      }
+
+      std::shared_ptr<se::DeviceMemoryAllocator> allocator =
+          GetAllocator(ctx->device(), GetStream(ctx), platform_info);
+      XlaComputationLaunchContext launch_context =
+          GetLaunchContext(platform_info, ctx, client, allocator.get());
+
+      const xla::HloInputOutputAliasConfig& input_output_alias =
+          executable->executable()->module().input_output_alias_config();
+      StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+          launch_context.PopulateInputs(
+              ctx, compilation_result, resource_var_ptrs,
+              /*missing_ctx_input_prefix=*/0, input_output_alias);
+      OP_REQUIRES_OK_ASYNC(ctx, execution_inputs.status(), done);
+
+      xla::gpu::GpuExecutableRunOptions gpu_options;
+      xla::DeviceAssignment device_assignment;
+      xla::ExecutableRunOptions run_options;
+      if (compilation_result->collective_info.has_value()) {
+        OP_REQUIRES_OK_ASYNC(ctx,
+                             ResolveDeviceAssignment(
+                                 ctx, *compilation_result->collective_info,
+                                 run_options, device_assignment, gpu_options),
+                             done);
+      }
+
+      // Hardcode run id to always be zero: TF distributed strategy
+      // differentiates between subsequent runs using dependency edges. This
+      // is safe, as only TF dist-strat can produce distributed ops, and we
+      // can rely on TF dist-strat invariants.
+      xla::RunId run_id(0);
+      run_options.set_run_id(run_id);
+
+      StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
+          platform_info, launch_context, std::move(*execution_inputs),
+          run_options, executable, ctx, allocator.get());
+      OP_REQUIRES_ASYNC(ctx, execution_output.ok(), execution_output.status(),
+                        done);
+
+      OP_REQUIRES_OK_ASYNC(
+          ctx,
+          launch_context.PopulateOutputs(
+              ctx, compilation_result, execution_output->ConsumeResult(),
+              /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
+              input_output_alias, resource_var_ptrs),
+          done);
+      VLOG(1) << "Done";
     }
-
-    // Hardcode run id to always be zero: TF distributed strategy
-    // differentiates between subsequent runs using dependency edges. This
-    // is safe, as only TF dist-strat can produce distributed ops, and we
-    // can rely on TF dist-strat invariants.
-    xla::RunId run_id(0);
-    run_options.set_run_id(run_id);
-
-    StatusOr<xla::ExecutionOutput> execution_output = RunExecutable(
-        platform_info, launch_context, std::move(*execution_inputs),
-        run_options, executable, ctx, allocator.get());
-    OP_REQUIRES_ASYNC(ctx, execution_output.ok(), execution_output.status(),
-                      done);
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx,
-        launch_context.PopulateOutputs(
-            ctx, compilation_result, execution_output->ConsumeResult(),
-            /*missing_ctx_input_prefix=*/0, absl::MakeSpan(variable_infos),
-            input_output_alias, resource_var_ptrs),
-        done);
-    VLOG(1) << "Done";
     done();
   };
 
@@ -776,9 +788,11 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
 void XlaCompileOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaCompileOp " << def().name()
           << (must_compile_ ? "(must-compile)" : "");
-  xla::LocalClient* client;
-  const XlaCompiler::CompilationResult* kernel;
-  xla::LocalExecutable* executable;
+  const XlaCompiler::CompilationResult* kernel = nullptr;
+  xla::LocalClient* client = nullptr;
+  xla::LocalExecutable* executable = nullptr;
+  xla::PjRtClient* pjrt_client = nullptr;
+  xla::PjRtLoadedExecutable* pjrt_executable = nullptr;
   ResourceVarsSnapshot variables_snapshot;
 
   std::vector<const Tensor*> inputs = InputsFromContext(ctx);
@@ -796,6 +810,11 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
                : DeviceCompileMode::kLazy;
   }();
 
+  bool use_pjrt =
+      GetXlaOpsCommonFlags()
+          ->tf_xla_use_device_api.IsEnabledInXlaCompileAndRunForDevice(
+              platform_info_.device_type());
+
   if (GetXlaOpsCommonFlags()->tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
     executable = nullptr;
@@ -809,22 +828,33 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 
     // Do not alias resource updates as locking variables in XlaCompile and
     // unlocking them in XlaRun may lead to deadlocks.
-    const Status status = CompileToLocalExecutable(
-        ctx, function_, has_ref_vars_, platform_info_, args, compile_mode,
-        /*may_alias_resource_update=*/false, &client, &kernel, &executable);
+    Status status;
+    if (use_pjrt) {
+      VLOG(2) << "Using PJRT for compilation. Function name: "
+              << function_.name();
+      status = CompileToPjRtLoadedExecutable(
+          *ctx, platform_info_, function_, args, compile_mode, has_ref_vars_,
+          /*may_alias_resource_update=*/false, &kernel, &pjrt_client,
+          &pjrt_executable);
+    } else {
+      status = CompileToLocalExecutable(
+          ctx, function_, has_ref_vars_, platform_info_, args, compile_mode,
+          /*may_alias_resource_update=*/false, &client, &kernel, &executable);
+    }
     if (compile_mode != DeviceCompileMode::kLazy ||
         status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
     }
 
     if (status.code() == error::UNIMPLEMENTED) {
-      LOG(WARNING) << "Compilation failed:" << status.ToString()
+      LOG(WARNING) << "Compilation failed:" << status
                    << ".  Falling back to TF function call.";
 
       BroadcastOptimizationRemark(
           XlaOptimizationRemark::UNIMPLEMENTED_OPERATION, status.ToString())
           .IgnoreError();
       executable = nullptr;
+      pjrt_executable = nullptr;
       mutex_lock guard(cannot_compile_cluster_mu_);
       cannot_compile_cluster_ = true;
     }
@@ -836,28 +866,36 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   Allocator* cpu_allocator = ctx->device()->GetAllocator(host_alloc_attrs);
 
   // Async compilation returns nullptr executable without an error.
-  if (!executable) {
+  if (!executable && !pjrt_executable) {
     DCHECK(!must_compile_);
     Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
-
     Tensor compilation_successful(cpu_allocator, DT_BOOL, TensorShape({}));
     compilation_successful.scalar<bool>()() = false;
-    ctx->set_output(0, Tensor(cpu_allocator, DT_STRING, TensorShape({})));
+    ctx->set_output(0, compilation_key);
     ctx->set_output(1, compilation_successful);
     return;
   }
 
-  // Each execution of an XlaCompile op creates a new XlaExecutableClosure, even
+  // Each execution of an XlaCompile op creates a new ExecutableClosure, even
   // if it didn't have to compile the cluster because of a compilation-cache
   // hit.  This is because we at least need new snapshots of the resource
   // variables.
-  XlaExecutableClosureStore::KeyT key =
-      XlaExecutableClosureStore::Global()->Produce(XlaExecutableClosure(
-          client, executable, kernel, std::move(variables_snapshot),
-          constants_.size()));
-
   Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
-  compilation_key.flat<tstring>()(0) = key;
+  if (use_pjrt) {
+    PjRtExecutableClosureStore::KeyT key =
+        PjRtExecutableClosureStore::Global()->Produce(PjRtExecutableClosure(
+            pjrt_client, pjrt_executable, kernel, std::move(variables_snapshot),
+            constants_.size()));
+    compilation_key.flat<tstring>()(0) = key;
+    VLOG(2) << "Compiled with PJRT. compilation_key: " << key;
+  } else {
+    XlaExecutableClosureStore::KeyT key =
+        XlaExecutableClosureStore::Global()->Produce(XlaExecutableClosure(
+            client, executable, kernel, std::move(variables_snapshot),
+            constants_.size()));
+    compilation_key.flat<tstring>()(0) = key;
+    VLOG(2) << "Compiled with XLA. compilation_key: " << key;
+  }
 
   Tensor compilation_successful(cpu_allocator, DT_BOOL, TensorShape({}));
   compilation_successful.flat<bool>()(0) = true;

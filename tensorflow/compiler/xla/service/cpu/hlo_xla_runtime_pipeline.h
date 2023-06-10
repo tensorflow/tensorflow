@@ -33,7 +33,6 @@ struct HloXlaRuntimePipelineOptions {
   bool enable_tiling_and_fusion = false;
   bool enable_fusion_outlining = true;
   bool sparse_bufferization = true;
-  bool outline_with_xla_framework = false;
   bool experimental_deallocation = false;
   bool enable_avx2 = true;
   // Accelerate sparse computations with CUDA threading.

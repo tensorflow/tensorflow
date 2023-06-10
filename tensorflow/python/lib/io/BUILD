@@ -47,7 +47,7 @@ py_strict_library(
     deps = [
         ":_pywrap_file_io",
         ":_pywrap_record_io",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
@@ -80,7 +80,7 @@ tf_py_strict_test(
     ],
     deps = [
         ":lib",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl/testing:parameterized",
@@ -101,7 +101,7 @@ tf_py_strict_test(
     ],
     deps = [
         ":lib",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:compat",
     ],

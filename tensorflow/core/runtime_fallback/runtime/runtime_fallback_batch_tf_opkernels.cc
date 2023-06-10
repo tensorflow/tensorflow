@@ -12,9 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
 #include <cstdlib>
+#include <functional>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/framework/op_kernel.h"

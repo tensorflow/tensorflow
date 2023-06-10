@@ -157,7 +157,6 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:non_atomically_upgradeable_rw_lock",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/tsl/protobuf:dnn_proto_cc",
-        "@com_google_absl//absl/strings",
     ],
 )
 

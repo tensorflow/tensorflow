@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -124,7 +127,7 @@ TEST_F(PlacementTest, SelectDeviceExplicitHardPlacement) {
   NodeDef invalid_op = NDef("invalid_op", "InvalidOp", {}, {});
 
   Status status = context()->SelectDevice(requested, invalid_op, &dev);
-  LOG(ERROR) << status.ToString();
+  LOG(ERROR) << status;
   EXPECT_TRUE(errors::IsNotFound(status));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Could not find device for node"))
@@ -165,7 +168,7 @@ TEST_F(PlacementTest, SelectDeviceExplicitSoftPlacement) {
   NodeDef invalid_op = NDef("invalid_op", "InvalidOp", {}, {});
 
   Status status = context()->SelectDevice(requested, invalid_op, &dev);
-  LOG(ERROR) << status.ToString();
+  LOG(ERROR) << status;
   EXPECT_TRUE(errors::IsNotFound(status));
   EXPECT_TRUE(
       absl::StrContains(status.message(), "Could not find device for node"))

@@ -272,6 +272,10 @@ compiling to XLA.
 ### `-tf-embedding-pipelining`: Rewrite graph for embedding pipelining
 For architectures that support accelerated embedding lookups, this pass will
 rewrite the graph to use pipelining for better device utilization.
+### `-tf-embedding-sequencing`: Rewrite graph for sequential execution of embeddings
+This is a strictly sequential and formally correct fallback option for the
+embedding pipelining pass intended for debugging during pipelining
+development.
 ### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-check-control-dependencies`: Checks control dependencies
 This pass analyzes control dependencies between islands and warns about

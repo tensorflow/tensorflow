@@ -1092,8 +1092,17 @@ def ReshapeValueDroppingLastDim : NativeCodeCall<
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
-// Checks if the shape has shape with last dimension equals 1.
+// Checks if the shape has static shape with last dimension equals 1.
 def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
+// As above but if shape is not static and rank 2 with last dim 1.
+def IsLastDimensionEqualOneOrDynamicBatchDimRank2 : Constraint<
+  CPred<"IsLastDimensionEqualOne($0) || "
+        "(!$0.getType().cast<ShapedType>().hasStaticShape() && "
+        "  $0.getType().cast<ShapedType>().hasRank() && "
+        "  $0.getType().cast<ShapedType>().getRank() == 2 && "
+        "  !$0.getType().cast<ShapedType>().getShape().empty() && "
+        "  $0.getType().cast<ShapedType>().getShape()[1] == 1)">>;
 
 // Replace
 //   Equal(X, indices)
@@ -1109,7 +1118,7 @@ def ReshapeEqualOpToOneHotOp : Pat<
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastDimensionEqualOne $x),
+  [(IsLastDimensionEqualOneOrDynamicBatchDimRank2 $x),
    (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 
@@ -1322,4 +1331,19 @@ def SimplifyDoubleSelectFCZerosRHS : Pat<
   [(IsLastDimensionEqualOne $condition),
    (AllValuesAreZero $zeros_1),
    (AllValuesAreZero $zeros_2)
+  ]>;
+
+def FuseSigmoid : Pat<
+  (TFL_DivOp
+   (Arith_ConstantOp F32ElementsAttr:$ones),
+   (TFL_AddOp:$add_out
+    (TFL_ExpOp:$exp_out
+     (TFL_NegOp:$neg_out $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
+  (TFL_LogisticOp $arg),
+  [(FloatValueEquals<"1"> $ones_1),
+   (FloatValueEquals<"1"> $ones),
+   (HasOneUse $neg_out),
+   (HasOneUse $add_out),
+   (HasOneUse $exp_out),
   ]>;

@@ -44,7 +44,6 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
@@ -168,11 +167,8 @@ static Status CreateHloXlaPipeline(
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
-  // Outlined ABI doesn't support XLA Runtime FFI.
-  if (!options.outline_with_xla_framework) {
-    pm.addNestedPass<mlir::func::FuncOp>(
-        xla::cpu::createLegalizeLibraryOpsPass());
-  }
+  pm.addNestedPass<mlir::func::FuncOp>(
+      xla::cpu::createLegalizeLibraryOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -279,9 +275,6 @@ static Status CreateHloXlaPipeline(
   };
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
       out_params_options));
-  if (options.outline_with_xla_framework) {
-    pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
-  }
 
   if (options.experimental_deallocation) {
     pm.addNestedPass<FuncOp>(

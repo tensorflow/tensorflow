@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_UNLOADER_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_ENTRY_UNLOADER_H_
 
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/resource_mgr.h"

@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 #define TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 
+#include <functional>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/cancellation.h"

@@ -37,6 +37,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -77,10 +78,9 @@ absl::StatusOr<mlir::func::FuncOp> ImportXlaComputation(
   TF_RETURN_IF_ERROR(
       xla::ConvertHloToMlirHlo(*imported, &computation.proto(),
                                /*import_all_computations=*/true));
-  XLA_VLOG_LINES(
-      5, absl::StrCat(
-             "MHLO module lowered from TF function called by XlaCallModule: ",
-             mlir::debugString(*imported)));
+  if (VLOG_IS_ON(5)) {
+    DumpMlirOpToFile("xla_call_module.imported_tf_func", *imported);
+  }
 
   // Rename all functions beforehand in order to avoid conflicts.
   mlir::StringAttr main_func_name;
@@ -141,53 +141,36 @@ class XlaCallModuleOp : public XlaOpKernel {
                     "The size of Sout (", expected_output_shapes.size(),
                     ") must match the size of Tout (",
                     expected_output_dtypes.size(), ")")));
+    std::vector<string> disabled_checks;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("disabled_checks", &disabled_checks));
     std::vector<string> platforms;
-    // Index in platforms of the current platform, or -1 if module does not take
-    // a platform index arg.
-    int platform_index = -1;
-    if (ctx->HasAttr("platforms")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("platforms", &platforms));
-      if (!platforms.empty()) {
-        string current_device_type = ctx->device_type().type_string();
-        string current_platform = "";
-        if (current_device_type == DEVICE_CPU_XLA_JIT) {
-          current_platform = "CPU";
-        } else if (current_device_type == DEVICE_GPU_XLA_JIT) {
-#if GOOGLE_CUDA
-          current_platform = "CUDA";
-#elif TENSORFLOW_USE_ROCM
-          current_platform = "ROCM";
-#else
-          OP_REQUIRES(ctx, false,
-                      absl::UnimplementedError("CUDA or ROCM build required"));
-#endif
-        } else if (current_device_type == DEVICE_TPU_XLA_JIT) {
-          current_platform = "TPU";
-        } else {
-          OP_REQUIRES(ctx, false,
-                      absl::UnimplementedError(absl::StrCat(
-                          "Unexpected device type ", current_device_type)));
-        }
-        VLOG(3) << "Initialized XlaCallModuleOp on " << current_platform;
-        auto found_platform =
-            std::find(platforms.begin(), platforms.end(), current_platform);
-        OP_REQUIRES(ctx, found_platform != platforms.end(),
-                    absl::NotFoundError(absl::StrCat(
-                        "The current platform ", current_platform,
-                        " is not among the platforms required by the module: [",
-                        absl::StrJoin(platforms, ", "), "]")));
-        // We only use a platform index arguments if we support at least 2
-        // platforms.
-        if (platforms.size() > 1) {
-          platform_index = found_platform - platforms.begin();
-        }
-      }
-    }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("platforms", &platforms));
 
+    string loading_device_type = ctx->device_type().type_string();
+    string loading_platform = "";
+    if (loading_device_type == DEVICE_CPU_XLA_JIT) {
+      loading_platform = "CPU";
+    } else if (loading_device_type == DEVICE_GPU_XLA_JIT) {
+#if GOOGLE_CUDA
+      loading_platform = "CUDA";
+#elif TENSORFLOW_USE_ROCM
+      loading_platform = "ROCM";
+#else
+      OP_REQUIRES(ctx, false,
+                  absl::UnimplementedError("CUDA or ROCM build required"));
+#endif
+    } else if (loading_device_type == DEVICE_TPU_XLA_JIT) {
+      loading_platform = "TPU";
+    } else {
+      OP_REQUIRES(ctx, false,
+                  absl::UnimplementedError(absl::StrCat(
+                      "Unexpected device type ", loading_device_type)));
+    }
+    VLOG(3) << "Initialized XlaCallModuleOp on " << loading_platform;
     {
-      auto loader =
-          XlaCallModuleLoader::Create(&context_, version, std::move(module_str),
-                                      std::move(dim_args_spec), platform_index);
+      auto loader = XlaCallModuleLoader::Create(
+          &context_, version, std::move(module_str), std::move(dim_args_spec),
+          std::move(disabled_checks), std::move(platforms), loading_platform);
       OP_REQUIRES_OK(ctx, loader.status());
       loader_ = *std::move(loader);
     }
@@ -236,7 +219,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
     std::vector<xla::XlaOp> inputs;
     if (module_has_token_input_output_) {
-      // The main function expects a token input at the end.
+      // The main function expects a token input at the start.
       if (!token_input_nodes_.empty()) {
         std::vector<xla::XlaOp> token_inputs;
         for (const string &node_name : token_input_nodes_) {
@@ -290,7 +273,7 @@ class XlaCallModuleOp : public XlaOpKernel {
 
     xla::XlaOp token_output;
     if (module_has_token_input_output_) {
-      // The main function returns a token as the last output.
+      // The main function returns a token as the first output.
       token_output = outputs.front();
       outputs.erase(outputs.begin());
       auto shape = b->GetShape(token_output);
@@ -514,10 +497,9 @@ class XlaCallModuleOp : public XlaOpKernel {
           &context_, func.getArgumentTypes(), ret.getOperandTypes()));
     }
 
-    XLA_VLOG_LINES(
-        5, absl::StrCat(
-               "XlaCallModule MHLO module after TF function call import: ",
-               mlir::debugString(module)));
+    if (VLOG_IS_ON(5)) {
+      DumpMlirOpToFile("xla_call_module.after_tf_func_call_import", module);
+    }
     return absl::OkStatus();
   }
 

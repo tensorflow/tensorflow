@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_TF_THREADPOOL_CONCURRENT_WORK_QUEUE_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 

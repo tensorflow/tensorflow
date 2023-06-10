@@ -39,7 +39,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as framework_test_util
 from tensorflow.python.platform import flags
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import server_lib
 from tensorflow.python.util.tf_export import tf_export
 
@@ -105,7 +104,7 @@ def _get_tpu_strategy_creator(steps_per_run,
       if getattr(FLAGS, "tpu", "") or did_automatically_resolve:
         remote.connect_to_cluster(resolver)
         _did_connect_to_cluster = True
-      _topology = tpu_strategy_util.initialize_tpu_system(resolver)
+      _topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
 
     device_assignment = None
     if use_single_core:

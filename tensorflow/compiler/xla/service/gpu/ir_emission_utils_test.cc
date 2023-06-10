@@ -97,11 +97,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  Vector3 permutation;
-  EXPECT_EQ(FindTiledLogicalTranspose(*tr, permutation),
-            std::make_optional(Vector3{1, 64, 1536}));
-  Vector3 expected_permutation{0, 2, 1};
-  EXPECT_EQ(permutation, expected_permutation);
+
+  EXPECT_EQ(*FindTiledLogicalTranspose(*tr),
+            TransposeDescription(Vector3{1, 64, 1536}, Vector3{0, 2, 1}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTranspose) {
@@ -119,7 +117,7 @@ ENTRY entry {
   HloInstruction* tr = module->entry_computation()->root_instruction();
   EXPECT_EQ(FindAnyTiledTranspose(*tr),
             std::make_optional(
-                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
 }
 
 TEST_F(IrEmissionUtilsTest, FindAnyTiledTransposeWithIntermediateUnaryOp) {
@@ -138,7 +136,7 @@ ENTRY entry {
   HloInstruction* r = module->entry_computation()->root_instruction();
   EXPECT_EQ(FindAnyTiledTranspose(*r),
             std::make_optional(
-                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
   EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
 }
 
@@ -179,7 +177,7 @@ ENTRY entry {
   HloInstruction* r = module->entry_computation()->root_instruction();
   EXPECT_EQ(FindAnyTiledTranspose(*r),
             std::make_optional(
-                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
   EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0));
 }
 
@@ -202,7 +200,7 @@ ENTRY entry {
   HloInstruction* r = module->entry_computation()->root_instruction();
   EXPECT_EQ(FindAnyTiledTranspose(*r),
             std::make_optional(
-                std::make_pair(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
+                TransposeDescription(Vector3{64, 48, 32}, Vector3{2, 1, 0})));
   EXPECT_EQ(&FindNonTrivialHero(*r), r->operand(0)->operand(0));
 }
 
@@ -240,11 +238,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* copy = module->entry_computation()->root_instruction();
-  Vector3 permutation;
-  EXPECT_EQ(FindTiledTranspose(*copy, permutation),
-            std::make_optional(Vector3{8, 12, 1100}));
-  Vector3 expected_permutation{2, 1, 0};
-  EXPECT_EQ(permutation, expected_permutation);
+  EXPECT_EQ(FindTiledTranspose(*copy),
+            std::make_optional(
+                TransposeDescription{Vector3{8, 12, 1100}, Vector3{2, 1, 0}}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOneSwapDimIsSmall) {
@@ -260,11 +256,9 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  Vector3 permutation;
-  EXPECT_EQ(FindTiledLogicalTranspose(*tr, permutation),
-            std::make_optional(Vector3{8, 12, 1100}));
-  Vector3 expected_permutation{2, 1, 0};
-  EXPECT_EQ(permutation, expected_permutation);
+  EXPECT_EQ(FindTiledLogicalTranspose(*tr),
+            std::make_optional(
+                TransposeDescription{Vector3{8, 12, 1100}, Vector3{2, 1, 0}}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledTransposeOtherSwapDimIsSmall) {
@@ -280,11 +274,10 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* copy = module->entry_computation()->root_instruction();
-  Vector3 permutation;
-  EXPECT_EQ(FindTiledTranspose(*copy, permutation),
-            std::make_optional(Vector3{1100, 12, 8}));
-  Vector3 expected_permutation{2, 1, 0};
-  EXPECT_EQ(permutation, expected_permutation);
+
+  EXPECT_EQ(FindTiledTranspose(*copy),
+            std::make_optional(
+                TransposeDescription{Vector3{1100, 12, 8}, Vector3{2, 1, 0}}));
 }
 
 TEST_F(IrEmissionUtilsTest, FindTiledLogicalTransposeOtherSwapDimIsSmall) {
@@ -300,11 +293,10 @@ ENTRY entry {
                           ParseAndReturnVerifiedModule(hlo));
 
   HloInstruction* tr = module->entry_computation()->root_instruction();
-  Vector3 permutation;
-  EXPECT_EQ(FindTiledLogicalTranspose(*tr, permutation),
-            std::make_optional(Vector3{1100, 12, 8}));
-  Vector3 expected_permutation{2, 1, 0};
-  EXPECT_EQ(permutation, expected_permutation);
+
+  EXPECT_EQ(FindTiledLogicalTranspose(*tr),
+            std::make_optional(
+                TransposeDescription{Vector3{1100, 12, 8}, Vector3{2, 1, 0}}));
 }
 
 }  // namespace gpu

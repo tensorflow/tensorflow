@@ -604,10 +604,6 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   // node.
   virtual int64_t FusionParameterReadBytes(const HloInstruction* hlo) const;
 
-  // Same as above but takes in the parameter size as an additional argument.
-  int64_t FusionParameterReadBytes(const HloInstruction* hlo,
-                                   int64_t read_bytes) const;
-
   // Traverses a fusion counting total utilization of every instruction inside.
   // Currently implemented non-trivially only in the GPU cost analysis.
   virtual Status FusionCalculateUtilizations(const HloInstruction* fusion);

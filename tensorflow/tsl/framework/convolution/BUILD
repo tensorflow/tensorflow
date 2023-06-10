@@ -6,12 +6,12 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//visibility:public"],
     features = [
         # Required since headers are not self-contained.
         "-parse_headers",
     ],
-    licenses = ["notice"],
 )
 
 cc_library(

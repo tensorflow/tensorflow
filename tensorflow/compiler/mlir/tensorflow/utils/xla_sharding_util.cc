@@ -41,47 +41,6 @@ namespace {
 
 constexpr char kNumSplitAttr[] = "num_split";
 
-// Gets the proper tensor dimension from XLA OpSharding.
-// "replicate_on_last_tile_dim" and "last_tile_dims" should be deducted from the
-// real Tensor dimensions when tiled.
-// For example:
-// f32[8,512](sharding={devices=[1,1,2]0,1 last_tile_dims={REPLICATED})
-// also means a replicated tensor over all devices.
-//
-// See xla_data.proto for detailed explanations on the fields.
-int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding) {
-  return xla_sharding.tile_assignment_dimensions_size() -
-         (xla_sharding.replicate_on_last_tile_dim() ? 1 : 0) -
-         xla_sharding.last_tile_dims_size();
-}
-
-// A sharding with OTHER type may be REPLICATED if:
-// 'replicate_on_last_tile_dim' is true OR
-// 'last_tile_dims' is not empty
-// AND
-// other than replicated last tile dims, all other dims are not sharded.
-bool IsOtherReplicatedSharding(const xla::OpSharding& xla_sharding) {
-  int max_dim = GetDimsFromXLAShardingTiled(xla_sharding);
-  for (int i = 0; i < max_dim; ++i) {
-    if (xla_sharding.tile_assignment_dimensions(i) != 1) {
-      return false;
-    }
-  }
-  return xla_sharding.type() == xla::OpSharding::OTHER &&
-         (xla_sharding.replicate_on_last_tile_dim() ||
-          !xla_sharding.last_tile_dims().empty());
-}
-
-bool IsSplitSharding(const xla::OpSharding& sharding) {
-  return sharding.type() == xla::OpSharding::OTHER &&
-         !IsOtherReplicatedSharding(sharding);
-}
-
-bool IsReplicatedSharding(const xla::OpSharding& sharding) {
-  return sharding.type() == xla::OpSharding::REPLICATED ||
-         IsOtherReplicatedSharding(sharding);
-}
-
 // Creates a tf::SplitOp that splits 'src_input' into 'num_splits' ways
 // in 'split_dimension' dimension and returns the split values.
 mlir::LogicalResult CreateSplitOp(const int num_split,
@@ -240,6 +199,34 @@ bool UnsupportedPartitionedShardingType(xla::OpSharding::Type sharding) {
 }
 
 }  // namespace
+
+int GetDimsFromXLAShardingTiled(const xla::OpSharding& xla_sharding) {
+  return xla_sharding.tile_assignment_dimensions_size() -
+         (xla_sharding.replicate_on_last_tile_dim() ? 1 : 0) -
+         xla_sharding.last_tile_dims_size();
+}
+
+bool IsOtherReplicatedSharding(const xla::OpSharding& xla_sharding) {
+  int max_dim = GetDimsFromXLAShardingTiled(xla_sharding);
+  for (int i = 0; i < max_dim; ++i) {
+    if (xla_sharding.tile_assignment_dimensions(i) != 1) {
+      return false;
+    }
+  }
+  return xla_sharding.type() == xla::OpSharding::OTHER &&
+         (xla_sharding.replicate_on_last_tile_dim() ||
+          !xla_sharding.last_tile_dims().empty());
+}
+
+bool IsSplitSharding(const xla::OpSharding& sharding) {
+  return sharding.type() == xla::OpSharding::OTHER &&
+         !IsOtherReplicatedSharding(sharding);
+}
+
+bool IsReplicatedSharding(const xla::OpSharding& sharding) {
+  return sharding.type() == xla::OpSharding::REPLICATED ||
+         IsOtherReplicatedSharding(sharding);
+}
 
 mlir::LogicalResult ExtractInputsForLogicalDevices(
     const int num_cores_per_replica,

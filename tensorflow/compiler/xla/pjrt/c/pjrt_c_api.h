@@ -31,6 +31,41 @@ limitations under the License.
 extern "C" {
 #endif
 
+// --------------------------------- Version -----------------------------------
+
+// Incremented when an ABI-incompatible change is made to the interface.
+// Changes include:
+// * Deleting a method or argument
+// * Changing the type of an argument
+// * Rearranging fields in the PJRT_Api or argument structs
+#define PJRT_API_MAJOR 0
+
+// Incremented when the interface is updated in a way that is potentially
+// ABI-compatible with older versions, if supported by the caller and/or
+// implementation.
+//
+// Callers can implement forwards compatibility by using PJRT_Api_Version to
+// check if the implementation is aware of newer interface additions.
+//
+// Implementations can implement backwards compatibility by using the
+// `struct_size` fields to detect how many struct fields the caller is aware of.
+//
+// Changes include:
+// * Adding a new field to the PJRT_Api or argument structs
+// * Renaming a method or argument (doesn't affect ABI)
+#define PJRT_API_MINOR 1
+
+// The plugin should set the major_version and minor_version of
+// PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
+// this header that the implementation was compiled with.
+struct PJRT_Api_Version {
+  size_t struct_size;
+  void* priv;
+  int major_version;  // out
+  int minor_version;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Api_Version, minor_version);
+
 // ---------------------------------- Errors -----------------------------------
 
 // PJRT C API methods generally return a PJRT_Error*, which is nullptr if there
@@ -641,6 +676,55 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_LocalHardwareId_Args, local_hardware_id);
 // to be dense, and -1 if undefined.
 typedef PJRT_Error* PJRT_Device_LocalHardwareId(
     PJRT_Device_LocalHardwareId_Args* args);
+
+struct PJRT_Device_MemoryStats_Args {
+  size_t struct_size;
+  void* priv;
+  PJRT_Device* device;
+
+  // Number of bytes in use.
+  int64_t bytes_in_use;  // out
+
+  // The peak bytes in use.
+  int64_t peak_bytes_in_use;      // out
+  bool peak_bytes_in_use_is_set;  // out
+  // Number of allocations.
+  int64_t num_allocs;      // out
+  bool num_allocs_is_set;  // out
+  // The largest single allocation seen.
+  int64_t largest_alloc_size;      // out
+  bool largest_alloc_size_is_set;  // out
+  // The upper limit of user-allocatable device memory in bytes.
+  int64_t bytes_limit;      // out
+  bool bytes_limit_is_set;  // out
+
+  // Number of bytes reserved.
+  int64_t bytes_reserved;      // out
+  bool bytes_reserved_is_set;  // out
+  // The peak number of bytes reserved.
+  int64_t peak_bytes_reserved;      // out
+  bool peak_bytes_reserved_is_set;  // out
+  // The upper limit on the number bytes of reservable memory.
+  int64_t bytes_reservable_limit;      // out
+  bool bytes_reservable_limit_is_set;  // out
+
+  // Largest free block size in bytes.
+  int64_t largest_free_block_bytes;      // out
+  bool largest_free_block_bytes_is_set;  // out
+
+  // Number of bytes of memory held by the allocator.  This may be higher than
+  // bytes_in_use if the allocator holds a pool of memory (e.g. BFCAllocator).
+  int64_t pool_bytes;           // out
+  bool pool_bytes_is_set;       // out
+  int64_t peak_pool_bytes;      // out
+  bool peak_pool_bytes_is_set;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_MemoryStats_Args, peak_pool_bytes_is_set);
+
+// Device memory/allocator statistics. All returned stats except `bytes_in_use`
+// are optional and may not be returned by all platforms. Implementations may
+// also return PJRT_Error_Code_UNIMPLEMENTED. Intended for diagnostic purposes.
+typedef PJRT_Error* PJRT_Device_MemoryStats(PJRT_Device_MemoryStats_Args* args);
 
 // ------------------------------- Executables ---------------------------------
 
@@ -1396,6 +1480,8 @@ typedef struct {
   size_t struct_size;
   void* priv;
 
+  PJRT_Api_Version pjrt_api_version;
+
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_Message);
   _PJRT_API_STRUCT_FIELD(PJRT_Error_GetCode);
@@ -1429,6 +1515,7 @@ typedef struct {
   _PJRT_API_STRUCT_FIELD(PJRT_Device_GetDescription);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_IsAddressable);
   _PJRT_API_STRUCT_FIELD(PJRT_Device_LocalHardwareId);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_MemoryStats);
 
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Destroy);
   _PJRT_API_STRUCT_FIELD(PJRT_Executable_Name);

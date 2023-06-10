@@ -17,7 +17,9 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/types/span.h"
 #include "llvm/ADT/StringSet.h"

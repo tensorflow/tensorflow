@@ -17,7 +17,15 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include <algorithm>
+#include <iterator>
+#include <map>
+#include <memory>
+#include <set>
+#include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -26,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
+#include "tensorflow/tsl/profiler/protobuf/profile.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -411,8 +420,8 @@ void TFCode::AddNode(TFGraphNode* node) {
   }
 
   if (!root_) {
-    graph_root_.reset(new TFMultiGraphNode(kTFProfRoot));
-    root_.reset(new CodeNode(graph_root_.get(), nullptr, ""));
+    graph_root_ = std::make_unique<TFMultiGraphNode>(kTFProfRoot);
+    root_ = std::make_unique<CodeNode>(graph_root_.get(), nullptr, "");
   }
 
   CodeNode* pre_code_node = root_.get();
@@ -505,7 +514,7 @@ const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
 
   if (opts.output_type == kOutput[3]) {
     std::vector<uint64> call_ids;
-    pprof_profile_.reset(new PprofProfileImpl(&opts));
+    pprof_profile_ = std::make_unique<PprofProfileImpl>(&opts);
     Format(root, root->show_children, opts, &root->formatted_str,
            root->mutable_proto(), &call_ids);
     Status s = pprof_profile_->WritePprofProfile(

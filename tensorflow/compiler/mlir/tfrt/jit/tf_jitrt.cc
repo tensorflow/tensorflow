@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt.h"
 
+#include <optional>
 #include <string>
 
 #include "absl/time/time.h"

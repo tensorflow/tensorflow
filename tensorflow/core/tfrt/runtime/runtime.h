@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 #define TENSORFLOW_CORE_TFRT_RUNTIME_RUNTIME_H_
 
+#include <functional>
 #include <memory>
 #include <utility>
 #include <vector>

@@ -18,43 +18,12 @@
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/runtime/custom_call.h"
-#include "tensorflow/compiler/xla/runtime/custom_call_registry.h"
-#include "tensorflow/compiler/xla/runtime/executable.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace cpu {
 
-using ::xla::runtime::CustomCall;
-using ::xla::runtime::Executable;
 using ::xla::runtime::FlatMemrefView;
-
-// Disable all CustomCall checks in optimized build.
-static constexpr CustomCall::RuntimeChecks RuntimeChecks() {
-#if defined(NDEBUG)
-  return CustomCall::RuntimeChecks::kNone;
-#else
-  return CustomCall::RuntimeChecks::kDefault;
-#endif
-}
-
-namespace {
-struct XlaThreeFry {
-  absl::Status operator()(const ExecutableRunOptions*,
-                          FlatMemrefView state_buffer,
-                          FlatMemrefView state_out_buffer,
-                          FlatMemrefView values_buffer) const;
-};
-struct XlaPhilox {
-  absl::Status operator()(const ExecutableRunOptions*,
-                          FlatMemrefView state_buffer,
-                          FlatMemrefView state_out_buffer,
-                          FlatMemrefView values_buffer) const;
-};
-}  // namespace
 
 static std::array<uint32_t, 2> threefry2x32(std::array<uint32_t, 2> key,
                                             std::array<uint32_t, 2> ctr) {
@@ -223,35 +192,6 @@ absl::Status XlaPhilox::operator()(const ExecutableRunOptions*,
           "Type not implemented by PhiloxBitGenerator");
   }
   return absl::OkStatus();
-}
-
-static bool ThreeFry(xla::runtime::ExecutionContext* ctx, void** args,
-                     void** attrs, void** rets) {
-  static auto* handler = CustomCall::Bind("xla.cpu.rng.three_fry")
-                             .UserData<const ExecutableRunOptions*>()
-                             .Arg<FlatMemrefView>()
-                             .Arg<FlatMemrefView>()
-                             .Arg<FlatMemrefView>()
-                             .To<RuntimeChecks()>(XlaThreeFry())
-                             .release();
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-static bool Philox(xla::runtime::ExecutionContext* ctx, void** args,
-                   void** attrs, void** rets) {
-  static auto* handler = CustomCall::Bind("xla.cpu.rng.philox")
-                             .UserData<const ExecutableRunOptions*>()
-                             .Arg<FlatMemrefView>()
-                             .Arg<FlatMemrefView>()
-                             .Arg<FlatMemrefView>()
-                             .To<RuntimeChecks()>(XlaPhilox())
-                             .release();
-  return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));
-}
-
-void PopulateXlaCpuRngCall(xla::runtime::DirectCustomCallRegistry& registry) {
-  registry.Register("xla.cpu.rng.three_fry", &ThreeFry);
-  registry.Register("xla.cpu.rng.philox", &Philox);
 }
 
 }  // namespace cpu

@@ -2627,3 +2627,31 @@ func.func @batchmatmul2fullyconnected(%arg0: tensor<4x128x2xf32>) -> (tensor<4x1
   // CHECK:  return %2 : tensor<4x128x1xf32>
 }
 
+func.func @approx_top_k_with_max_k_last_reduction_dimension(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>) {
+  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
+
+  // CHECK-LABEL: approx_top_k_with_max_k_last_reduction_dimension
+  // CHECK-DAG:  %cst = arith.constant dense<4> : tensor<i32>
+  // CHECK:  %values, %indices = "tfl.topk_v2"(%arg0, %cst) : (tensor<1x4xf32>, tensor<i32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
+}
+
+func.func @approx_top_k_with_min_k(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>) {
+  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
+
+  // CHECK-LABEL: approx_top_k_with_min_k
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = false, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 1 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
+}
+
+func.func @approx_top_k_reduction_dimension_not_last_dim(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>) {
+  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  func.return %values, %indices: tensor<1x4xf32>, tensor<1x4xi32>
+
+  // CHECK-LABEL: approx_top_k_reduction_dimension_not_last_dim
+  // CHECK:  %values, %indices = "tf.ApproxTopK"(%arg0) {aggregate_to_topk = true, is_max_k = true, k = 4 : i64, recall_target = 8.500000e-01 : f32, reduction_dimension = 0 : i64, reduction_input_size_override = -1 : i64} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xi32>)
+  // CHECK:  return %values, %indices : tensor<1x4xf32>, tensor<1x4xi32>
+}
+

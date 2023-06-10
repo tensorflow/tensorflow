@@ -249,6 +249,9 @@ Status ConvertTfMlirToBef(const TfrtCompileOptions& options,
 std::unique_ptr<tensorflow::TfrtPipelineOptions> GetTfrtPipelineOptions(
     const TfrtCompileOptions& options) {
   auto pipeline_options = std::make_unique<tensorflow::TfrtPipelineOptions>();
+
+  pipeline_options->saved_model_dir = options.saved_model_dir;
+
   if (!options.default_device.empty()) {
     pipeline_options->default_device = options.default_device;
   }

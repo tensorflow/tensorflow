@@ -46,10 +46,10 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":constants",
-        "//tensorflow/python:control_flow_ops_gen",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops_gen",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
@@ -61,10 +61,10 @@ tf_py_strict_test(
     srcs = ["base_test.py"],
     deps = [
         ":base",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -81,10 +81,10 @@ py_strict_library(
     deps = [
         ":base",
         ":data_structures",
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager/polymorphic_function:saved_model_utils",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:resource_variable_ops",
     ],
 )
 
@@ -119,10 +119,10 @@ tf_py_strict_test(
         ":base",
         ":base_delegate",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
     ],
@@ -134,13 +134,13 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         ":base",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_conversion_registry",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/saved_model:path_helpers",
         "//tensorflow/python/util:tf_export",
     ],
@@ -167,10 +167,10 @@ tf_py_strict_test(
     deps = [
         ":autotrackable",
         ":data_structures",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
     ],
 )
@@ -195,11 +195,11 @@ tf_py_strict_test(
     srcs = ["resource_test.py"],
     deps = [
         ":resource",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -217,9 +217,9 @@ py_strict_library(
     deps = [
         ":base",
         ":layer_utils",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:tf_export",
         "@wrapt",
@@ -236,10 +236,6 @@ tf_py_strict_test(
     deps = [
         ":autotrackable",
         ":data_structures",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:layers",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
@@ -247,7 +243,11 @@ tf_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/layers",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:nest",
         "//tensorflow/python/util:serialization",
         "@absl_py//absl/testing:parameterized",
@@ -272,11 +272,11 @@ tf_py_strict_test(
     srcs = ["python_state_test.py"],
     deps = [
         ":python_state",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/module",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

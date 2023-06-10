@@ -17,9 +17,13 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

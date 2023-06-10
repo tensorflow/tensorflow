@@ -24,6 +24,8 @@ namespace tensorflow {
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {
+  Option<std::string> saved_model_dir{*this, "saved-model-dir",
+                                      llvm::cl::desc(""), llvm::cl::init("")};
   Option<std::string> default_device{
       *this, "default-device", llvm::cl::desc("default device assignment"),
       llvm::cl::init("/job:localhost/replica:0/task:0/device:CPU:0")};

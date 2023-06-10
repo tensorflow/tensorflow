@@ -821,6 +821,7 @@ xla_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
         "no_pip",

@@ -37,6 +37,7 @@ limitations under the License.
 
 #include "Python.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/python/util/stack_trace.h"
 
 struct StackFrame;  // Forward declaration.
@@ -84,7 +86,7 @@ class PyBindFileSet {
 //
 // Precondition: must be holding Python GIL.
 py::str LineContents(const StackFrame& frame) {
-  DCheckPyGilStateForStackTrace();
+  DCHECK(PyGILState_Check());
   // Pointers are to avoid static destruction of pybind::object, which
   // occurs in uncontrollable states.
   static const auto* inspect = new py::module(py::module::import("inspect"));
@@ -190,7 +192,7 @@ class StackTraceWrapper : public AbstractStackTrace {
     // and 2) ToStackFrames and LineContents actually need it.
     PyGILState_STATE state = PyGILState_Ensure();
 
-    std::vector<StackFrame> frames = captured_.ToStackFrames(
+    std::vector<StackFrame> frames = captured_->ToStackFrames(
         *source_map_, [&](const char* f) { return StackTraceFiltering(f); },
         /*reverse_traversal=*/false, /*limit=*/-1);
 
@@ -209,9 +211,9 @@ class StackTraceWrapper : public AbstractStackTrace {
 
   void set_stacklevel(int stacklevel) { stacklevel_ = stacklevel; }
 
-  std::vector<StackFrame> GetUserFrames(int limit = -1) const {
+  std::vector<StackFrame> GetUserFrames(int limit = -1) const override {
     PyGILState_STATE state = PyGILState_Ensure();
-    std::vector<StackFrame> user_frames = captured_.ToStackFrames(
+    std::vector<StackFrame> user_frames = captured_->ToStackFrames(
         *source_map_,
         [&](const char* file_name) {
           return StackTraceFiltering(file_name) ||
@@ -286,17 +288,17 @@ class StackTraceWrapper : public AbstractStackTrace {
 
   ~StackTraceWrapper() override {
     PyGILState_STATE state = PyGILState_Ensure();
-    captured_.Clear();
+    captured_.reset();
     source_map_.reset();
     filter_.reset();
     PyGILState_Release(state);
   }
 
  private:
-  StackTraceWrapper(StackTrace&& captured,
+  StackTraceWrapper(const std::shared_ptr<StackTrace>& captured,
                     const std::shared_ptr<SourceMap>& source_map,
                     const std::shared_ptr<StringSet>& filter, int stacklevel)
-      : captured_(std::move(captured)),
+      : captured_(captured),
         source_map_(source_map),
         filter_(filter),
         stacklevel_(stacklevel) {}
@@ -317,7 +319,7 @@ class StackTraceWrapper : public AbstractStackTrace {
 
   // Note: Make sure to update move constructor while adding new member
   // variables.
-  StackTrace captured_;
+  std::shared_ptr<const StackTrace> captured_;
   std::shared_ptr<SourceMap> source_map_;
   std::shared_ptr<StringSet> filter_;
   int stacklevel_;
@@ -409,7 +411,6 @@ PYBIND11_MODULE(_tf_stack, m) {
       .def("__len__", [](const StackFrame&) { return 4; });
 
   py::class_<StackTraceWrapper>(m, "StackTraceWrapper")
-      // TODO(slebedev): upstream negative indexing support into pybind11.
       .def(
           "__getitem__",
           [](const StackTraceWrapper& self, py::ssize_t index) {

@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
+#include "tensorflow/compiler/xla/service/data_parallel_collective_optimizer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dot_dimension_merger.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
@@ -342,8 +343,6 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
   // GPU only supports canonical convolutions.
   layout_insensitive_algsimp_opts.set_supports_non_canonical_dots(false);
-  layout_insensitive_algsimp_opts.set_enable_dot_strength_reduction(
-      debug_options.xla_gpu_enable_dot_strength_reduction());
 
   // "slow" minmax means we propagate nan.
   layout_insensitive_algsimp_opts.set_minmax_propagate_nan(
@@ -601,10 +600,21 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     collectives_pipeline.AddPass<AllReduceReassociate>(
         debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
+    const DebugOptions& debug_options = hlo_module->config().debug_options();
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
-        /*enable_reduce_scatter=*/hlo_module->config()
-            .debug_options()
+        /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
+    if (debug_options.xla_gpu_enable_data_parallel_collective_optimizer()) {
+      DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
+          /*level_to_operate_on=*/0,
+          /*max_pipelining_per_loop=*/INT64_MAX,
+          /*last_run=*/true,
+          /*process_different_sized_ops=*/true,
+          /*pipelining_direction=*/
+          DataParallelCollectiveOptimizer::PipeliningDirection::kForward,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
+      collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
+    }
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the
@@ -837,8 +847,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(
-        debug_options.xla_gpu_enable_dot_strength_reduction());
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
@@ -865,9 +873,7 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
             gpu_target_config.gpu_version)) {
       auto cuda_compute_capability =
           std::get<se::CudaComputeCapability>(gpu_target_config.gpu_version);
-      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA) &&
-          !cuda_compute_capability.IsAtLeast(
-              se::CudaComputeCapability::HOPPER)) {
+      if (cuda_compute_capability.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
         pipeline.AddPass<GemmRewriterTriton>(gpu_target_config.gpu_version);
       }
     }
@@ -978,8 +984,6 @@ Status GpuCompiler::OptimizeHloPostLayoutAssignment(
     // The LayoutAssignment pass may leave behind kCopy instructions which are
     // duplicate or NOPs, so remove them with algebraic simplification and CSE.
     AlgebraicSimplifierOptions options;
-    options.set_enable_dot_strength_reduction(
-        debug_options.xla_gpu_enable_dot_strength_reduction());
     options.set_supports_non_canonical_dots(false);
     options.set_is_layout_sensitive(true);
     options.set_enable_conv_operand_swap(false);
@@ -1175,6 +1179,14 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
     return result;
   };
+
+  // Disable multi-threading during deviceless AOT compilation.
+  // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
+  // enabled.
+  if (!stream_exec) {
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                                 /*shard_number=*/std::nullopt);
+  }
 
   tsl::thread::ThreadPool* thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;

@@ -122,6 +122,11 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   }
 
   if (op.outer == HloOpcode::kAsyncDone) {
+    // If there are parallel thread computations, always schedule.
+    if (hlo.IsAsynchronous() &&
+        hlo.async_execution_thread() != hlo.parent()->execution_thread()) {
+      return true;
+    }
     switch (op.inner) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
@@ -144,6 +149,11 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   }
 
   if (op.outer == HloOpcode::kAsyncStart) {
+    // If there are parallel thread computations, always schedule.
+    if (hlo.IsAsynchronous() &&
+        hlo.async_execution_thread() != hlo.parent()->execution_thread()) {
+      return true;
+    }
     switch (op.inner) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:

@@ -235,10 +235,10 @@ HloInstruction* HloComputation::ReplaceParameter(
   HloInstruction* new_instruction =
       AddInstructionInternal(std::move(instruction));
   HloInstruction* old_instruction = param_instructions_[param_no];
-  CHECK(
-      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction).ok());
+  TF_CHECK_OK(
+      old_instruction->ReplaceAllUsesWithDifferentShape(new_instruction));
   param_instructions_[param_no] = new_instruction;
-  CHECK(RemoveInstruction(old_instruction).ok());
+  TF_CHECK_OK(RemoveInstruction(old_instruction));
   return new_instruction;
 }
 
@@ -1302,6 +1302,16 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     context_ptr = std::make_unique<HloCloneContext>(parent(), suffix);
     context = context_ptr.get();
   }
+  return CloneInContext(*context, replacements, extra_parameters, suffix,
+                        new_root);
+}
+
+std::unique_ptr<HloComputation> HloComputation::CloneInContext(
+    HloCloneContext& context,
+    const absl::flat_hash_map<const HloInstruction*,
+                              std::unique_ptr<HloInstruction>>* replacements,
+    absl::Span<const HloInstruction* const> extra_parameters,
+    const std::string& suffix, const HloInstruction* new_root) const {
   if (new_root == nullptr) {
     new_root = root_instruction();
   }
@@ -1375,10 +1385,10 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
       CHECK_NE(replaced_operand, nullptr)
           << "replacements map tried to eliminate a used instruction "
           << operand->ToString() << ", used by " << instr->ToString();
-      new_operands.push_back(context->GetInstruction(replaced_operand));
+      new_operands.push_back(context.GetInstruction(replaced_operand));
     }
     std::unique_ptr<HloInstruction> new_instr =
-        instr->CloneWithNewOperands(instr->shape(), new_operands, context);
+        instr->CloneWithNewOperands(instr->shape(), new_operands, &context);
     if (instr->opcode() == HloOpcode::kParameter &&
         instr->parameter_replicated_at_leaf_buffers().has_value()) {
       new_instr->set_parameter_replicated_at_leaf_buffers(
@@ -1389,7 +1399,7 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
 
   // To make clone behavior match uncloned behavior, we reorder instructions to
   // match the order in instructions_.
-  SortClonedInstructions(*context, replace, *this, instructions_, instructions);
+  SortClonedInstructions(context, replace, *this, instructions_, instructions);
 
   Builder builder(suffix.empty() ? std::string(name())
                                  : absl::StrCat(name(), ".", suffix));
@@ -1397,27 +1407,27 @@ std::unique_ptr<HloComputation> HloComputation::CloneWithReplacements(
     builder.AddInstruction(std::move(instr));
   }
   auto result = builder.Build(
-      /*root_instruction=*/context->GetInstruction(replace(new_root)));
+      /*root_instruction=*/context.GetInstruction(replace(new_root)));
 
   // Clone control dependencies.
   for (auto instr : postorder) {
-    HloInstruction* new_instr = context->GetInstruction(instr);
+    HloInstruction* new_instr = context.GetInstruction(instr);
     for (auto successor : instr->control_successors()) {
       auto replaced_successor = replace(successor);
       // successor may not have been remapped, because it might have been
       // removed by the replacements map.
       if (replaced_successor != nullptr) {
         TF_CHECK_OK(new_instr->AddControlDependencyTo(
-            context->GetInstruction(replaced_successor)));
+            context.GetInstruction(replaced_successor)));
       }
     }
   }
 
   // To make clone behavior match uncloned behavior, we reorder the user and
   // control lists, kept by cloned instructions.
-  SortClonedInstructionUsersAndControlLists(*context, replace, instructions_);
+  SortClonedInstructionUsersAndControlLists(context, replace, instructions_);
 
-  context->MapComputation(this, result.get());
+  context.MapComputation(this, result.get());
   result->SetExecutionThread(execution_thread());
 
   return result;

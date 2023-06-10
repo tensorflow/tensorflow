@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/xla_call_module_loader.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
@@ -46,13 +48,14 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
+#include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
-#include "tensorflow/compiler/xla/mlir/utils/error_util.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/translate/hlo_to_mhlo/hlo_utils.h"
 #include "tensorflow/compiler/xla/translate/mhlo_to_hlo/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/regexp.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -73,24 +76,24 @@ constexpr int VERSION_START_PLATFORMS = 3;
 // March 28th, 2023 we stopped using dim_args_spec (cl/520033493).
 // TODO(b/283439649): Remove support for dim_args_spec.
 constexpr int VERSION_START_STABLE_HLO_COMPATIBILITY = 4;
-// Version 5 add support for call_tf_graph. This does not change the semantics
+// Version 5 adds support for call_tf_graph. This does not change the semantics
 // of the op, but it allows the `function_list` attribute.
 // Used in jax2tf from May 3rd, 2023 (cl/529106145).
 constexpr int VERSION_START_SUPPORT_CALL_TF_GRAPH = 5;
+// Version 6 adds support for the `disabled_checks` attribute. This version
+// mandates a non-empty `platforms` attribute.
+// Used in jax2tf since June 2023.
+constexpr int VERSION_START_SUPPORT_DISABLED_CHECKS = 6;
 constexpr int VERSION_MINIMUM_SUPPORTED =
     VERSION_START_STABLE_HLO_COMPATIBILITY;
-constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_CALL_TF_GRAPH;
 
-// Pretty-prints a module, optionally with debug information.
-std::string ModuleToString(mlir::ModuleOp mlir_module, bool with_debugging) {
-  std::string str;
-  llvm::raw_string_ostream stream(str);
-  mlir::OpPrintingFlags flags;
-  if (with_debugging) {
-    flags.enableDebugInfo();
-  }
-  mlir_module.print(stream, flags);
-  return str;
+constexpr int VERSION_MAXIMUM_SUPPORTED = VERSION_START_SUPPORT_DISABLED_CHECKS;
+
+constexpr absl::string_view DISABLED_CHECK_PLATFORM = "platform";
+
+bool IsPlatformCheckDisabled(absl::Span<const std::string> disabled_checks) {
+  return std::find(disabled_checks.begin(), disabled_checks.end(),
+                   DISABLED_CHECK_PLATFORM) != disabled_checks.end();
 }
 
 // Computes a dimension value from the dim_arg specification.
@@ -142,27 +145,14 @@ tsl::StatusOr<mlir::Value> ComputeDimensionValue(
 
 tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> XlaCallModuleLoader::Create(
     mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> dim_args_spec, int platform_index) {
-  if (version < VERSION_MINIMUM_SUPPORTED) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "XlaCallModuleOp with version ", version,
-        " is not supported anymore. Must be >= ", VERSION_MINIMUM_SUPPORTED));
-  }
-  if (version > VERSION_MAXIMUM_SUPPORTED) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("XlaCallModuleOp with version ", version,
-                     " is not supported by this build. Must be <= ",
-                     VERSION_MAXIMUM_SUPPORTED));
-  }
-
-  if (version < VERSION_START_PLATFORMS) {
-    platform_index = -1;
-  }
-
+    std::vector<std::string> dim_args_spec,
+    std::vector<std::string> disabled_checks,
+    std::vector<std::string> platforms, std::string loading_platform) {
   std::unique_ptr<XlaCallModuleLoader> loader(new XlaCallModuleLoader);
   TF_RETURN_IF_ERROR(loader->LoadAndPreprocessModule(
       context, version, std::move(module_str), std::move(dim_args_spec),
-      platform_index));
+      std::move(disabled_checks), std::move(platforms),
+      std::move(loading_platform)));
   return loader;
 }
 
@@ -290,8 +280,10 @@ tsl::Status XlaCallModuleLoader::AddMainWrapper() {
   mlir::func::CallOp call_op = op_builder.create<mlir::func::CallOp>(
       loc, orig_main.getResultTypes(), orig_main.getSymName(), call_args);
   op_builder.create<mlir::func::ReturnOp>(loc, call_op.getResults());
-  XLA_VLOG_LINES(5, absl::StrCat("XlaCallModule module with wrapper: ",
-                                 ModuleToString(*module_, VLOG_IS_ON(4))));
+
+  if (VLOG_IS_ON(5)) {
+    DumpMlirOpToFile("xla_call_module.after_add_main_wrapper", *module_);
+  }
 
   return tsl::OkStatus();
 }
@@ -369,13 +361,17 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   // shape refinement as explained below.
   // Before refining the argument types it is useful to run the inliner to
   // remove calls that may be called with the input arguments.
-  mlir::PassManager pm_inline(module_->getContext());
-  pm_inline.addPass(mlir::createInlinerPass());
-  if (!mlir::succeeded(pm_inline.run(*module_))) {
-    XLA_VLOG_LINES(3,
-                   absl::StrCat("XlaCallModule module with verification failed",
-                                ModuleToString(*module_, VLOG_IS_ON(4))));
-    return absl::InvalidArgumentError("Module inlining failed");
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
+
+    mlir::PassManager pm_inline(module_->getContext());
+    applyTensorflowAndCLOptions(pm_inline);
+    pm_inline.addPass(mlir::createInlinerPass());
+
+    if (mlir::failed(pm_inline.run(*module_))) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Module inlining failed: ", diag_handler.ConsumeStatus().ToString()));
+    }
   }
 
   auto static_array_output_types = llvm::to_vector(main_.getResultTypes());
@@ -396,51 +392,49 @@ tsl::Status XlaCallModuleLoader::RefineDynamicShapes(
   }
   main_.setType(builder.getFunctionType(static_array_input_types,
                                         static_array_output_types));
-  XLA_VLOG_LINES(
-      5, absl::StrCat(
-             "XlaCallModule module after setting input types and inlining: ",
-             ModuleToString(*module_, VLOG_IS_ON(4))));
+  if (VLOG_IS_ON(5)) {
+    DumpMlirOpToFile("xla_call_module.after_refined_input_types", *module_);
+  }
 
   // Verify the module before running passes on it.
   // If the module doesn't pass verification, all sorts of weirdness might
   // happen if we run the pass manager.
-  if (failed(verify(*module_))) {
-    XLA_VLOG_LINES(
-        3, absl::StrCat("XlaCallModule module with verification failed: ",
-                        ModuleToString(*module_, VLOG_IS_ON(4))));
-    return absl::InvalidArgumentError("Module verification failed");
-  }
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
-  mlir::PassManager pm(module_->getContext());
-  if (VLOG_IS_ON(5)) {
-    auto print_before = [](mlir::Pass *, mlir::Operation *) { return true; };
-    auto print_after = [](mlir::Pass *, mlir::Operation *) { return true; };
-    pm.enableIRPrinting(print_before, print_after, /*printModuleScope=*/true,
-                        /*printAfterOnlyOnChange=*/false);
-  }
-  pm.addPass(mlir::createCSEPass());
-  pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
-  pm.addNestedPass<mlir::func::FuncOp>(
-      mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
-  if (!mlir::succeeded(pm.run(*module_))) {
-    XLA_VLOG_LINES(
-        3, absl::StrCat("XlaCallModule module with verification failed: ",
-                        ModuleToString(*module_, VLOG_IS_ON(4))));
-    return absl::InvalidArgumentError("Module shape refinement failed");
-  }
+    if (failed(verify(*module_))) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Module verification failed: ",
+                       diag_handler.ConsumeStatus().ToString()));
+    }
 
-  XLA_VLOG_LINES(3, absl::StrCat("XlaCallModule module with refined shapes: ",
-                                 ModuleToString(*module_, VLOG_IS_ON(4))));
+    mlir::PassManager pm(module_->getContext());
+    applyTensorflowAndCLOptions(pm);
+    pm.addPass(mlir::createCSEPass());
+    pm.addPass(mlir::stablehlo::createStablehloRefineShapesPass());
+    pm.addNestedPass<mlir::func::FuncOp>(
+        mlir::stablehlo::createStablehloCanonicalizeDynamismPass());
+    if (mlir::failed(pm.run(*module_))) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Module shape refinement failed: ",
+                       diag_handler.ConsumeStatus().ToString()));
+    }
+
+    if (VLOG_IS_ON(3)) {
+      DumpMlirOpToFile("xla_call_module.after_shape_refinement", *module_);
+    }
+  }
   return tsl::OkStatus();
 }
 
 tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     mlir::MLIRContext *context, int version, std::string module_str,
-    std::vector<std::string> dim_args_spec, int platform_index) {
+    std::vector<std::string> dim_args_spec,
+    std::vector<std::string> disabled_checks,
+    std::vector<std::string> platforms, std::string loading_platform) {
   context_ = context;
   version_ = version;
   dim_args_spec_ = std::move(dim_args_spec);
-  platform_index_ = platform_index;
 
   // Load a superset of dialects; we should check at serialization time that
   // we only include allowable dialects.
@@ -449,6 +443,13 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
   context_->loadDialect<mlir::mhlo::MhloDialect>();
   context_->loadDialect<mlir::chlo::ChloDialect>();
   context_->loadDialect<mlir::vhlo::VhloDialect>();
+
+  if (version >= VERSION_START_SUPPORT_DISABLED_CHECKS && platforms.empty()) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("XlaCallModuleOp with version ", version,
+                     " must have non-empty platforms."));
+  }
+
   // Parses both IR text and bytecode.
   if (version >= VERSION_START_STABLE_HLO_COMPATIBILITY) {
     module_ =
@@ -457,24 +458,71 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
   }
 
+  std::vector<std::string> loading_disabled_checks = disabled_checks;
+  loading_disabled_checks.insert(
+      loading_disabled_checks.end(),
+      GetXlaCallModuleFlags()->disabled_checks.begin(),
+      GetXlaCallModuleFlags()->disabled_checks.end());
   if (!module_) {
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
-  XLA_VLOG_LINES(3, absl::StrCat("Parsed serialized module (version ", version,
-                                 ", platform_index = ", platform_index_,
-                                 ", dim_args_spec = [",
-                                 absl::StrJoin(dim_args_spec_, ", "), "])\n",
-                                 ModuleToString(*module_, VLOG_IS_ON(4))));
+
+  VLOG(3) << "Parsed serialized module (version " << version
+          << ", platforms = [" << absl::StrJoin(platforms, ", ")
+          << "], loading_platform = " << loading_platform
+          << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
+          << "], disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
+          << "], loading_disabled_checks = ["
+          << absl::StrJoin(loading_disabled_checks, ", ") << "]), module = "
+          << DumpMlirOpToFile("xla_call_module.parsed", *module_);
+
+  if (version < VERSION_MINIMUM_SUPPORTED) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XlaCallModuleOp with version ", version,
+        " is not supported anymore. Must be >= ", VERSION_MINIMUM_SUPPORTED));
+  }
+  if (version > VERSION_MAXIMUM_SUPPORTED) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("XlaCallModuleOp with version ", version,
+                     " is not supported by this build. Must be <= ",
+                     VERSION_MAXIMUM_SUPPORTED));
+  }
+
+  platform_index_ = -1;
+  if (!platforms.empty()) {
+    auto found_platform =
+        std::find(platforms.begin(), platforms.end(), loading_platform);
+    if (found_platform == platforms.end()) {
+      if (!IsPlatformCheckDisabled(loading_disabled_checks)) {
+        return absl::NotFoundError(absl::StrCat(
+            "The current platform ", loading_platform,
+            " is not among the platforms required by the module: [",
+            absl::StrJoin(platforms, ", "), "]"));
+      } else {
+        if (platforms.size() > 1) {
+          platform_index_ = 0;
+        }
+      }
+    } else {
+      // We only use a platform index arguments if we support at least 2
+      // platforms.
+      if (platforms.size() > 1) {
+        platform_index_ = found_platform - platforms.begin();
+      }
+    }
+  }
+
   if (version >= VERSION_START_SUPPORT_CALL_TF_GRAPH &&
       !dim_args_spec_.empty()) {
     return absl::InvalidArgumentError(
         "dim_args_spec not supported in this version");
   }
-  if (failed(module_->verifyInvariants())) {
-    XLA_VLOG_LINES(
-        3, absl::StrCat("XlaCallModule module with verification failed: ",
-                        ModuleToString(*module_, VLOG_IS_ON(4))));
-    return absl::InvalidArgumentError("Error verifying module");
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
+    if (mlir::failed(mlir::verify(*module_))) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Error verifying module: ", diag_handler.ConsumeStatus().ToString()));
+    }
   }
   main_ = module_->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_) {
@@ -489,6 +537,7 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
 }
 
 tsl::Status XlaCallModuleLoader::ValidateDialect() {
+  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
   bool moduleHasUnsupportedDialects = false;
 
   module_->walk([&](mlir::Operation *op) {
@@ -498,17 +547,20 @@ tsl::Status XlaCallModuleLoader::ValidateDialect() {
                    mlir::func::FuncDialect, mlir::stablehlo::StablehloDialect>(
             op->getDialect())) {
       moduleHasUnsupportedDialects = true;
-      VLOG(3) << "Operation has unsupported dialects: "
-              << mlir::debugString(*op);
+      op->emitOpError() << "is an op from an unsupported dialect";
     }
   });
 
-  if (moduleHasUnsupportedDialects)
-    return absl::InvalidArgumentError("Module has unsupported dialects");
+  if (moduleHasUnsupportedDialects) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Module has unsupported dialects: ",
+                     diag_handler.ConsumeStatus().ToString()));
+  }
   return tsl::OkStatus();
 }
 
 tsl::Status XlaCallModuleLoader::ValidateStaticShapes() {
+  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
   bool moduleHasDynamicShapes = false;
 
   module_->walk([&](mlir::Operation *op) {
@@ -526,19 +578,23 @@ tsl::Status XlaCallModuleLoader::ValidateStaticShapes() {
     }
     if (opHasDynamicShapes) {
       moduleHasDynamicShapes = true;
-      VLOG(3) << "Operation has dynamic shapes: " << mlir::debugString(*op);
+      op->emitOpError() << "has dynamic shapes";
     }
   });
 
-  if (moduleHasDynamicShapes)
-    return absl::InvalidArgumentError("Module has dynamic shapes");
+  if (moduleHasDynamicShapes) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Module has dynamic shapes: ",
+                     diag_handler.ConsumeStatus().ToString()));
+  }
   return tsl::OkStatus();
 }
 
 absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
-  mlir::BaseScopedDiagnosticHandler diagnostic_handler(module_->getContext());
+  mlir::StatusScopedDiagnosticHandler diag_handler(module_->getContext());
 
   mlir::PassManager pm(module_->getContext());
+  applyTensorflowAndCLOptions(pm);
   pm.addPass(mlir::mhlo::createStablehloLegalizeToHloPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeSparseChloToLinalgPass());
@@ -550,13 +606,13 @@ absl::Status XlaCallModuleLoader::LowerModuleToMhlo() {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createSinkConstantsToControlFlowPass());
   if (failed(pm.run(*module_))) {
-    VLOG(1) << "MHLO->HLO lowering passes failed.";
-    return diagnostic_handler.ConsumeStatus();
+    return absl::InternalError(
+        absl::StrCat("MHLO->HLO lowering passes failed: ",
+                     diag_handler.ConsumeStatus().ToString()));
   }
 
-  VLOG(5) << "MHLO module after lowering, before HLO import ";
   if (VLOG_IS_ON(5)) {
-    module_->dump();
+    DumpMlirOpToFile("xla_call_module.after_mhlo_lowering", *module_);
   }
 
   return absl::OkStatus();

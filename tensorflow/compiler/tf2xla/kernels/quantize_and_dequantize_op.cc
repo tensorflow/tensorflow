@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"

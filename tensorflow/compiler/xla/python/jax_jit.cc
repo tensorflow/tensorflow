@@ -346,7 +346,7 @@ void BuildJaxjitSubmodule(py::module& m) {
 
   // TODO(yashkatariya, phawkins): Remove after 3 months from March 20, 2023.
   struct CompiledFunction {};
-  py::class_<CompiledFunction>(m, "CompiledFunction");
+  py::class_<CompiledFunction> give_me_a_name(m, "CompiledFunction");
 
   py::class_<xla::PyArgSignature> arg_signature(jitlib, "PyArgSignature");
   arg_signature

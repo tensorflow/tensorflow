@@ -363,7 +363,7 @@ class ParallelFilterDatasetOp::Dataset : public DatasetBase {
       };
 
       // Apply the map function on `input_element`, storing the result in
-      // `result->return_values`, and invoking `done` when finished.
+      // `result->predicate_values`, and invoking `done` when finished.
       if (dataset()->captured_func_->use_inter_op_parallelism()) {
         instantiated_captured_func_->RunAsync(
             ctx.get(), std::move(input_element), &result->predicate_values,

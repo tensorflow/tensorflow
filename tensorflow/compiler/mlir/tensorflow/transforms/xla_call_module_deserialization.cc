@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
@@ -64,14 +65,25 @@ tsl::StatusOr<OwningOpRef<ModuleOp>> DeserializeStablehlo(MLIRContext *context,
   for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
     dim_args_spec.push_back(attr.getValue().str());
   }
+  std::vector<std::string> disabled_checks;
+  for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+    disabled_checks.push_back(attr.getValue().str());
+  }
+  std::vector<std::string> platforms;
+  for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+    platforms.push_back(attr.getValue().str());
+  }
   // XlaCallModuleOp OpKernel will determine platform index when running
   // TF2XLA. We don't know the device/platform type in this MLIR pass, so
-  // we set platform_index to -1.
-  TF_ASSIGN_OR_RETURN(auto loader,
-                      tensorflow::XlaCallModuleLoader::Create(
-                          context, static_cast<int>(op.getVersion()),
-                          op.getModule().str(), dim_args_spec,
-                          /*platform_index=*/-1));
+  // we set loading_platform to the first platform.
+  std::string loading_platform =
+      (platforms.empty() ? "CPU" : platforms.front());
+  TF_ASSIGN_OR_RETURN(
+      auto loader,
+      tensorflow::XlaCallModuleLoader::Create(
+          context, static_cast<int>(op.getVersion()), op.getModule().str(),
+          std::move(dim_args_spec), std::move(disabled_checks),
+          std::move(platforms), std::move(loading_platform)));
   return std::move(*loader).module();
 }
 
@@ -121,15 +133,15 @@ FailureOr<StringAttr> RenameStablehloFunctions(
   return new_main_func_name;
 }
 
-// Copies functions from one module to another.
-// The copied functions are set to private.
-void CopyFunctions(SymbolTableCollection &symbol_tables, ModuleOp from,
+// Moves functions from one module to another.
+// The moved functions are set to private.
+void MoveFunctions(SymbolTableCollection &symbol_tables, ModuleOp from,
                    ModuleOp to) {
   SymbolTable &to_sym_table = symbol_tables.getSymbolTable(to);
-  for (auto func : from.getOps<func::FuncOp>()) {
-    auto f = func.clone();
-    f.setPrivate();
-    to_sym_table.insert(f);
+  for (auto func : llvm::make_early_inc_range(from.getOps<func::FuncOp>())) {
+    func->remove();
+    func.setPrivate();
+    to_sym_table.insert(func);
   }
 }
 
@@ -212,7 +224,7 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
     return failure();
   }
 
-  CopyFunctions(symbol_tables, *stablehlo_module, module);
+  MoveFunctions(symbol_tables, *stablehlo_module, module);
 
   // Translate `called_index` in TF function custom calls into symbol
   // references. `function_list` attribute is needed after that.

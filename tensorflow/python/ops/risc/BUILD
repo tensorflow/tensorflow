@@ -11,7 +11,7 @@ py_strict_library(
     srcs = ["risc_grad.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python/framework:ops",
     ],
 )
 
@@ -20,6 +20,6 @@ py_strict_library(
     srcs = ["risc_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:risc_ops_gen",
+        "//tensorflow/python/ops:risc_ops_gen",
     ],
 )

@@ -89,6 +89,11 @@ TEST_F(PjrtCApiGpuTest, PlatformName) {
   ASSERT_EQ("gpu", platform_name);
 }
 
+TEST_F(PjrtCApiGpuTest, ApiVersion) {
+  CHECK_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
+  CHECK_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
+}
+
 }  // namespace
 }  // namespace pjrt
 }  // namespace xla

@@ -34,7 +34,9 @@ load("//third_party/icu:workspace.bzl", icu = "repo")
 load("//third_party/jpeg:workspace.bzl", jpeg = "repo")
 load("//third_party/libprotobuf_mutator:workspace.bzl", libprotobuf_mutator = "repo")
 load("//third_party/nasm:workspace.bzl", nasm = "repo")
+load("//third_party/py/ml_dtypes:workspace.bzl", ml_dtypes = "repo")
 load("//third_party/pybind11_abseil:workspace.bzl", pybind11_abseil = "repo")
+load("//third_party/pybind11_bazel:workspace.bzl", pybind11_bazel = "repo")
 load("//third_party/opencl_headers:workspace.bzl", opencl_headers = "repo")
 load("//third_party/kissfft:workspace.bzl", kissfft = "repo")
 load("//third_party/pasta:workspace.bzl", pasta = "repo")
@@ -73,11 +75,13 @@ def _initialize_third_party():
     jpeg()
     kissfft()
     libprotobuf_mutator()
+    ml_dtypes()
     nasm()
     opencl_headers()
     pasta()
     psimd()
     pybind11_abseil()
+    pybind11_bazel()
     ruy()
     sobol_data()
     stablehlo()
@@ -862,9 +866,9 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "pybind11",
-        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.10.0.tar.gz"),
-        sha256 = "eacf582fa8f696227988d08cfc46121770823839fe9e301a20fbce67e7cd70ec",
-        strip_prefix = "pybind11-2.10.0",
+        urls = tf_mirror_urls("https://github.com/pybind/pybind11/archive/v2.10.4.tar.gz"),
+        sha256 = "832e2f309c57da9c1e6d4542dedd34b24e4192ecb4d62f6f4866a737454c9970",
+        strip_prefix = "pybind11-2.10.4",
         build_file = "//third_party:pybind11.BUILD",
         system_build_file = "//third_party/systemlibs:pybind11.BUILD",
     )

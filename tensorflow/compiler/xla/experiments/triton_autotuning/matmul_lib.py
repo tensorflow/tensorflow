@@ -14,6 +14,7 @@
 # ==============================================================================
 
 """Library for running matmuls."""
+import enum
 import itertools
 import logging
 import math
@@ -36,6 +37,15 @@ logging.basicConfig(
 )
 
 
+@enum.unique
+class QuantizedInputType(enum.Enum):
+  """Type to use for quantized matmul inputs."""
+
+  FULL = 'full'
+  INT8 = 'int8'
+  FLOAT8 = 'float8'
+
+
 class MatmulTiling(typing.NamedTuple):
   """Tiling parameterization of a matmul."""
 
@@ -53,7 +63,7 @@ class MatmulSize(typing.NamedTuple):
   M: int
   N: int
   K: int
-  quantized_lhs: int
+  quantized_lhs: QuantizedInputType
 
 
 class MatmulTiming(typing.NamedTuple):
@@ -87,6 +97,15 @@ def generate_tiling_configs(
       num_warps,
   )
   return [MatmulTiling(*p) for p in product]
+
+
+@triton.jit
+def _fix_type_for_load(x):
+  """Bitcasts a pointer to a type that can be loaded by Triton."""
+  load_dtype = x.dtype
+  if x.dtype == tl.pointer_type(tl.float8e5):
+    load_dtype = tl.pointer_type(tl.int8)
+  return x.to(load_dtype, bitcast=True)
 
 
 @triton.jit
@@ -138,12 +157,12 @@ def _matmul_kernel(
   # for ki in range(0, k, block_k * split_k):  # pytype: disable=wrong-arg-types
   for ki in range(k, 0, -block_k * split_k):  # pytype: disable=wrong-arg-types
     if even_k:
-      a = tl.load(lhs)
+      a = tl.load(_fix_type_for_load(lhs))
       b = tl.load(rhs)
     else:
-      a = tl.load(lhs, mask=rk[None, :] < ki, other=0)
+      a = tl.load(_fix_type_for_load(lhs), mask=rk[None, :] < ki, other=0)
       b = tl.load(rhs, mask=rk[:, None] < ki, other=0)
-    casted_a = a.to(out.dtype.element_ty)
+    casted_a = a.to(lhs.dtype.element_ty, bitcast=True).to(out.dtype.element_ty)
     casted_b = b.to(out.dtype.element_ty)
     acc += tl.dot(casted_a, casted_b, allow_tf32=True)
     lhs += block_k * split_k * stride_ak
@@ -177,12 +196,34 @@ def _reduce_kernel(
   tl.store(dest + idx, acc, mask=idx < row_size)
 
 
+@triton.jit
+def _to_f8_kernel(src, dest, size, block_size: tl.constexpr):
+  pid = tl.program_id(0)
+  offs = pid * block_size + tl.arange(0, block_size)
+  mask = offs < size
+  x = tl.load(src + offs, mask=mask)
+  y = x.to(tl.float8e5)
+  tl.store(dest + offs, y, mask=mask)
+
+
+def to_triton_f8(x: torch.Tensor) -> triton.TensorWrapper:
+  """Converts torch tensors to triton.language.float8e5."""
+  assert x.is_contiguous(), 'Kernel only works for contiguous tensors'
+  ret = triton.reinterpret(
+      torch.empty(x.shape, dtype=torch.int8, device=x.device, layout=x.layout),
+      tl.float8e5,
+  )
+  grid = lambda META: (triton.cdiv(x.numel(), META['block_size']),)
+  _to_f8_kernel[grid](ret, x, x.numel(), block_size=1024)
+  return ret
+
+
 def benchmark_matmul_tiling(
     dims: MatmulSize,
     tiling: MatmulTiling,
     s: torch.cuda.Stream,
     shared_stream: torch.cuda.Stream,
-    a: torch.Tensor,
+    a: torch.Tensor | triton.TensorWrapper,
     b: torch.Tensor,
     c: torch.Tensor,
     scratchpad: torch.Tensor,  # Largest size: c * SPLIT_K
@@ -195,6 +236,7 @@ def benchmark_matmul_tiling(
       tiling.SPLIT_K,
       1,  # batch
   )
+  data_a = getattr(a, 'base', a)
 
   def run_matmul():
     used_output = c if tiling.SPLIT_K == 1 else scratchpad
@@ -205,8 +247,8 @@ def benchmark_matmul_tiling(
         m=int(dims.M),
         n=int(dims.N),
         k=int(dims.K),
-        stride_am=a.stride(0),
-        stride_ak=a.stride(1),
+        stride_am=data_a.stride(0),
+        stride_ak=data_a.stride(1),
         stride_bk=b.stride(0),
         stride_bn=b.stride(1),
         stride_cm=c.stride(0),
@@ -338,16 +380,21 @@ def benchmark_matmul(
 
   # Use our own stream for compilation.
   with torch.cuda.stream(s):
-    if dims.quantized_lhs:
+    if dims.quantized_lhs == QuantizedInputType.INT8:
       a = torch.randint(
           0, 128, (dims.M, dims.K), device='cuda', dtype=torch.int8
+      )
+    elif dims.quantized_lhs == QuantizedInputType.FLOAT8:
+      a = to_triton_f8(
+          torch.randn(dims.M, dims.K, device='cuda', dtype=torch.bfloat16)
       )
     else:
       a = torch.randn(dims.M, dims.K, device='cuda', dtype=torch.bfloat16)
 
     b = torch.randn(dims.K, dims.N, device='cuda', dtype=torch.bfloat16)
-    assert a.shape[1] == b.shape[0], 'incompatible dimensions'
-    assert a.is_contiguous(), 'matrix A must be contiguous'
+    data_a = getattr(a, 'base', a)
+    assert data_a.shape[1] == b.shape[0], 'incompatible dimensions'
+    assert data_a.is_contiguous(), 'matrix A must be contiguous'
     assert b.is_contiguous(), 'matrix B must be contiguous'
     c = torch.empty((dims.M, dims.N), device=a.device, dtype=torch.bfloat16)
     scratchpad = torch.empty(

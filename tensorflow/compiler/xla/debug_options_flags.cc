@@ -81,6 +81,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_cuda_graph_instantiation_threshold(2);
   opts.set_xla_gpu_enable_persistent_temp_buffers(false);
   opts.set_xla_gpu_cuda_graph_capture_threshold(2);
+  opts.set_xla_gpu_cuda_graph_enable_concurrent_region(true);
 
   // Despite the name, fast min/max on GPUs does not seem to be any faster, and
   // adds very counter-intuitive "NaN-swallowing" behavior.
@@ -113,6 +114,8 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_latency_hiding_scheduler(false);
   opts.set_xla_gpu_lhs_enable_gpu_async_tracker(false);
   opts.set_xla_gpu_pgle_profile_file_or_directory_path("");
+  opts.set_xla_gpu_enable_highest_priority_async_stream(false);
+  opts.set_xla_gpu_enable_data_parallel_collective_optimizer(false);
 
   opts.set_xla_cpu_enable_mlir_tiling_and_fusion(true);
   opts.set_xla_cpu_enable_custom_matmul_tiling(false);
@@ -128,8 +131,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_enable_triton_gemm(true);
   opts.set_xla_gpu_enable_cudnn_int8x32_convolution_reordering(true);
   opts.set_xla_gpu_triton_gemm_any(false);
-
-  opts.set_xla_gpu_enable_dot_strength_reduction(true);
 
   // Moving reduce-scatter out of while loops can increase memory footprint, so
   // turning it off by default.
@@ -857,6 +858,13 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_cuda_graph_capture_threshold(),
       "Capture a region as a function to be launched as cuda graph if the "
       "number of moved instructions reaches this threshold."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_cuda_graph_enable_concurrent_region",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_cuda_graph_enable_concurrent_region),
+      debug_options->xla_gpu_cuda_graph_enable_concurrent_region(),
+      "Identify concurrent regions in cuda graphs and execute them "
+      "concurrently."));
 
   flag_list->push_back(tsl::Flag(
       "xla_gpu_enable_persistent_temp_buffers",
@@ -989,6 +997,18 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_lhs_enable_gpu_async_tracker(),
       "Enable GPU async tracker for latency-hiding scheduler in XLA:GPU"));
   flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_highest_priority_async_stream",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_highest_priority_async_stream),
+      debug_options->xla_gpu_enable_highest_priority_async_stream(),
+      "Enable async stream to have the highest priority."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_data_parallel_collective_optimizer",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_data_parallel_collective_optimizer),
+      debug_options->xla_gpu_enable_data_parallel_collective_optimizer(),
+      "Enable data parallel collective optimizer."));
+  flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),
@@ -1011,13 +1031,8 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_triton_gemm_any(),
                 "Use Triton-based matrix multiplication for any GEMM it "
                 "supports without filtering only faster ones."));
-  flag_list->push_back(tsl::Flag(
-      "xla_gpu_enable_dot_strength_reduction",
-      bool_setter_for(&DebugOptions::set_xla_gpu_enable_dot_strength_reduction),
-      debug_options->xla_gpu_enable_dot_strength_reduction(),
-      "Enable dot strength reduction-related optimizations on GPU."));
   flag_list->push_back(
-      tsl::Flag("xla_gpu_enable_optimized_block_size",
+      tsl::Flag("xla_gpu_enable_experimental_block_size",
                 bool_setter_for(
                     &DebugOptions::set_xla_gpu_enable_experimental_block_size),
                 debug_options->xla_gpu_enable_experimental_block_size(),

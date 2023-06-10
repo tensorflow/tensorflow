@@ -15,6 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_IMPORT_INPUT_H_
 #define TENSORFLOW_CORE_TFRT_SAVED_MODEL_SAVED_MODEL_IMPORT_INPUT_H_
 
+#include <memory>
+#include <string>
+
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/utils/tfrt_graph_execution_state.h"

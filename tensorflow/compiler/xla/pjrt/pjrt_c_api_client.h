@@ -91,6 +91,8 @@ class PjRtCApiDevice : public PjRtDevice {
     return description_;
   }
 
+  StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
  private:
   PjRtCApiClient* client_ = nullptr;
   // `device_` is owned by the `PJRT_Client` wrapped by `client_`
@@ -511,7 +513,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   }
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
-      const;
+      const override;
 
  private:
   std::unique_ptr<PjRtCApiCompiler> compiler_;

@@ -26,7 +26,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/statusor.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
 namespace profiler {

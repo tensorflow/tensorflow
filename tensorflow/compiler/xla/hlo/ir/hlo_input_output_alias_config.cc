@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 

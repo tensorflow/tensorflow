@@ -485,6 +485,9 @@ class DistributedVariableTraceType(trace.TraceType):
   def _to_tensors(self, value):
     return []
 
+  def _cast(self, value, _):
+    return value
+
   def __hash__(self) -> int:
     return hash(self.components)
 

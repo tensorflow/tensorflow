@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include <gtest/gtest.h>

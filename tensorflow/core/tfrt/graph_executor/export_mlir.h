@@ -31,7 +31,7 @@ class XsymbolUploader {
 
   virtual tensorflow::StatusOr<std::string> MaybeUploadMlirToXsymbol(
       mlir::ModuleOp module) {
-    return absl::UnimplementedError("Not supported in OSS.");
+    return "";
   }
 };
 

@@ -55,7 +55,7 @@ class AlwaysFailOp : public OpKernel {
  public:
   explicit AlwaysFailOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-  ~AlwaysFailOp() override {}
+  ~AlwaysFailOp() override = default;
 
   void Compute(OpKernelContext* ctx) override {
     ctx->CtxFailure(errors::FailedPrecondition(

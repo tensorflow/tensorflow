@@ -14,10 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <deque>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <queue>
+#include <set>
 #include <string>
+#include <vector>
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
@@ -300,7 +304,7 @@ StatusOr<Layout> MergeLayouts(
 
 mlir::LogicalResult InsertLayoutsForDTensorLayout(
     mlir::ModuleOp& module,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseSet<mlir::Value>& is_locked) {
   return mlir::failure(
@@ -328,7 +332,7 @@ mlir::LogicalResult InsertInitialLayoutsFromComputeLayout(
     mlir::ModuleOp module,
     const llvm::DenseMap<mlir::Value, std::vector<mlir::OpOperand*>>& consumers,
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseSet<mlir::Value>& is_updated) {
@@ -419,7 +423,7 @@ mlir::LogicalResult InsertInitialLayouts(
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_request,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseSet<mlir::Value>& is_updated,
     llvm::DenseSet<mlir::Value>& is_locked) {
   std::queue<mlir::Operation*> operations;
@@ -437,7 +441,7 @@ mlir::LogicalResult InsertInitialLayouts(
 mlir::LogicalResult MergeAndGetUpdatedLayouts(
     const llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseMap<mlir::Value, Layout>& merged_layouts) {
@@ -512,7 +516,7 @@ mlir::LogicalResult MergeProducerLayouts(
     std::optional<Layout>* layout_out) {
   // If there is a single producer for mlir::Value, then return the layout
   // from the producer.
-  absl::optional<Layout> layout;
+  std::optional<Layout> layout;
   if (producer_values.size() == 1) {
     const auto it = merged_layouts.find(producer_values[0]);
     if (it != merged_layouts.end()) *layout_out = it->second;
@@ -543,7 +547,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
     mlir::Operation* op,
     const llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
     const llvm::DenseMap<mlir::Value, Layout>& merged_layouts,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseSet<mlir::Value>& is_updated) {
@@ -565,7 +569,7 @@ mlir::LogicalResult UpdateLayoutsForOp(
     if (producer_values == producers.end())
       return op->emitError() << "Unable to find producer for operand " << i;
 
-    absl::optional<Layout> layout;
+    std::optional<Layout> layout;
     if (mlir::failed(MergeProducerLayouts(merged_layouts,
                                           producer_values->getSecond(),
                                           op->getLoc(), &layout)))
@@ -1079,7 +1083,7 @@ mlir::LogicalResult InsertDTensorLayoutForIfRegionOp(
       std::set<Layout> layouts_set{layouts.begin(), layouts.end()};
       if (layouts_set.size() == 1) continue;
 
-      absl::optional<Layout> merged_layout;
+      std::optional<Layout> merged_layout;
       if (mlir::failed(GetMostShardedLayoutHelper(layouts, if_op.getLoc(),
                                                   &merged_layout)))
         return mlir::failure();
@@ -1213,31 +1217,6 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
   return mlir::success();
 }
 
-// For all constants with multiple usages, clone the constants so that each
-// constant operation has at most 1 usage.
-void DuplicateConstants(mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::ConstOp, 4> const_ops;
-  module.walk(
-      [&](mlir::TF::ConstOp const_op) { const_ops.emplace_back(const_op); });
-
-  for (mlir::TF::ConstOp const_op : const_ops) {
-    mlir::OpBuilder builder(const_op);
-    auto uses = const_op->getUses();
-    if (uses.empty()) return;
-
-    llvm::SmallDenseMap<mlir::Operation*, mlir::OpOperand*> const_use_map;
-    mlir::OpOperand& first_use = *uses.begin();
-    for (mlir::OpOperand& use : uses) {
-      if (&use == &first_use) continue;
-
-      mlir::Operation* new_const = builder.clone(*const_op);
-      const_use_map.try_emplace(new_const, &use);
-    }
-
-    for (const auto& it : const_use_map) it.second->set(it.first->getResult(0));
-  }
-}
-
 // Find the root(s) values of "current_value" within the cycle, and put it
 // into "roots".
 void FindRoot(
@@ -1332,7 +1311,7 @@ void FindRootsAndEmitError(
 Status RunOneIteration(
     llvm::DenseSet<mlir::Value>& is_locked,
     llvm::DenseSet<mlir::Value>& is_updated,
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>>& producer_request,
+    llvm::DenseMap<mlir::Value, std::optional<Layout>>& producer_request,
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>&
         consumer_requests,
     llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>>& producers,
@@ -1428,7 +1407,7 @@ struct DLayoutPropagationPassV2
     llvm::DenseMap<mlir::OpOperand*, std::vector<mlir::Value>> producers;
     // For each mlir::Value this is what the producer would like to have the
     // layout be.
-    llvm::DenseMap<mlir::Value, absl::optional<Layout>> producer_request;
+    llvm::DenseMap<mlir::Value, std::optional<Layout>> producer_request;
     // For each mlir::Value this is what the consumers would like to have the
     // layout be. Note the map is in 'parallel' to the consumers map above.
     llvm::DenseMap<mlir::Value, mlir::DenseMap<mlir::OpOperand*, Layout>>

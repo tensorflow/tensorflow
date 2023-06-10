@@ -15,9 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/types.h"
 
+#include <algorithm>
+#include <complex>
+#include <iterator>
+#include <memory>
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/exceptions.h"
