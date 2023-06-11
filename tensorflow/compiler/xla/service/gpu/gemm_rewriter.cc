@@ -505,7 +505,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     HloInstruction *optional_convert = nullptr;
     HloInstruction *optional_bitcast = nullptr;
     VLOG(1)<<"Yes, in HandleAdd!\n";
-    VLOG(1)<<"shuw:" << instr->GetModule()->ToString();
+    // VLOG(1)<<"shuw:" << instr->GetModule()->ToString(); // only on for rank3 debug
     // Attempt to elide broadcast and fuse addition of a vector bias into GEMM,
     // including when slicing is applied to the result.
     if (Match(instr,
@@ -1246,12 +1246,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                                    HloInstruction *convert = nullptr,
                                    HloInstruction *bitcast = nullptr) {
     VLOG(1) << "FuseVectorBiasAdd: 1";
-    VLOG(1) << bitcast->ToString();
-    VLOG(1) << instr->ToString();
-    VLOG(1) << broadcast->ToString();
-    VLOG(1) << gemm->ToString();
+    // Only for rank3 debug
+    // if(bitcast) VLOG(1) << bitcast->ToString();
+    // if(instr) VLOG(1) << instr->ToString();
+    // if(broadcast) VLOG(1) << broadcast->ToString();
+    // if(gemm) VLOG(1) << gemm->ToString();
     VLOG(1) << "FuseVectorBiasAdd: 1 ends";                            
-    if (!bitcast) {        
+    if (bitcast == nullptr) {        
     TF_RET_CHECK(ShapeUtil::Compatible(
         broadcast->shape(), (slice ? slice->shape() : gemm->shape())));
     }
