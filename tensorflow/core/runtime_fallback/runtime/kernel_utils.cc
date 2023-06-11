@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/runtime_fallback/runtime/kernel_utils.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #include "tensorflow/core/platform/status.h"
@@ -38,7 +42,7 @@ tfrt::Expected<OwnedEagerContext> InitEagerContext(
 
   if (device_mgr != nullptr) {
     Status s = device_mgr->AddDevices(std::move(devices));
-    DCHECK(s.ok()) << "Failed to initialize device manager.";
+    DCHECK_OK(s) << "Failed to initialize device manager.";
     auto r = tsl::core::RefCountPtr<IntraProcessRendezvous>(
         new tensorflow::IntraProcessRendezvous(device_mgr));
 

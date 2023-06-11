@@ -12,6 +12,7 @@ visibility = [
     "//tensorflow:__subpackages__",
     "//tensorflow/dtensor:dtensor-internal",
     "//learning/brain/python/platform:__subpackages__",
+    "//learning/brain/contrib/eager/numlib/benchmarks/kumamon:__subpackages__",
 ]
 
 package(
@@ -45,11 +46,12 @@ py_strict_library(
     name = "benchmark",
     srcs = ["benchmark.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":gfile",
         ":tf_logging",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
+        "//tensorflow/python/client",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/python/util:tf_inspect",
@@ -68,8 +70,8 @@ py_strict_library(
     srcs = ["device_context.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:control_flow_ops",
     ],
 )
 
@@ -77,6 +79,7 @@ py_strict_library(
     name = "test",
     srcs = ["googletest.py"],
     srcs_version = "PY3",
+    visibility = visibility + ["//tensorflow:internal"],
     deps = [
         ":benchmark",
         ":flags",
@@ -206,10 +209,17 @@ py_strict_library(
     name = "client_testlib",
     srcs = ["test.py"],
     srcs_version = "PY3",
+    visibility = visibility + [
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/mlperf:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
     deps = [
         ":test",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradient_checker",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/util:tf_export",
     ],
 )

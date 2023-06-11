@@ -64,6 +64,21 @@ class TFStackTest(test.TestCase):
     self.assertRegex(frames[-1].line, "# COMMENT")
     self.assertRegex(frames[-2].line, "# CALLSITE")
 
+  def testUncached(self):
+    def func(n):
+      if n == 0:
+        return tf_stack.extract_stack()  # COMMENT
+      else:
+        return func(n - 1)
+
+    trace = func(5)
+    full_list = list(trace)
+    del trace[-1]
+    self.assertLess(len(trace), len(full_list))
+    # Since stacktrace modifications are stored in the cache,
+    # the uncached representation doesn't have them.
+    self.assertEqual(len(trace.uncached()), len(full_list))
+
   def testGelItem(self):
 
     def func(n):
@@ -117,22 +132,28 @@ class TFStackTest(test.TestCase):
     with self.assertRaises(IndexError):
       del trace[len(trace)]
 
-  def testWipeCache(self):
+  def testSourceMap(self):
+    source_map = tf_stack._tf_stack.PyBindSourceMap()
+
     def func(n):
       if n == 0:
-        return tf_stack.extract_stack()  # COMMENT
+        return tf_stack._tf_stack.extract_stack(
+            source_map, tf_stack._tf_stack.PyBindFileSet()
+        )
       else:
         return func(n - 1)
 
     trace = func(5)
-    full_list = list(trace)
-    del trace[-1]
-    self.assertLess(len(trace), len(full_list))
-
-    # Wiping the "cache" restores the stack trace to its
-    # original representation.
-    trace.wipe_cache()
-    self.assertEqual(len(trace), len(full_list))
+    source_map.update_to((
+        (
+            (trace[0].filename, trace[0].lineno),
+            ("filename", 42, "function_name"),
+        ),
+    ))
+    trace = list(func(5).uncached())
+    self.assertEqual(
+        str(trace[0]), 'File "filename", line 42, in function_name'
+    )
 
 
 if __name__ == "__main__":

@@ -13,8 +13,9 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
   func.return %buf : memref<?x10x?xf32>
 }
 // Compute number of elements.
-// CHECK: [[SIZE_1:%.*]] = llvm.mlir.constant(10 : index) : i64
-// CHECK: [[NUM_ELEM_0:%.*]] = llvm.mul [[SIZE_0]], [[SIZE_1]] : i64
+// CHECK: [[SIZE_1A:%.*]] = llvm.mlir.constant(10 : index) : i64
+// CHECK: [[SIZE_1B:%.*]] = llvm.mlir.constant(10 : index) : i64
+// CHECK: [[NUM_ELEM_0:%.*]] = llvm.mul [[SIZE_0]], [[SIZE_1B]] : i64
 // CHECK: [[NUM_ELEMS:%.*]] = llvm.mul [[NUM_ELEM_0]], [[SIZE_2]] : i64
 
 // Compute the size of an individual element.
@@ -48,9 +49,9 @@ func.func @alloc(%ctx: !tf_framework.op_kernel_context,
 // CHECK: [[DESC_4:%.*]] = llvm.insertvalue [[SIZE_2]], [[DESC_3]][3, 2]
 // CHECK: [[DESC_5:%.*]] = llvm.insertvalue [[STRIDE_2]], [[DESC_4]][4, 2]
 // CHECK: [[STRIDE_1:%.*]] = llvm.mul [[STRIDE_2]], [[SIZE_2]] : i64
-// CHECK: [[DESC_6:%.*]] = llvm.insertvalue [[SIZE_1]], [[DESC_5]][3, 1]
+// CHECK: [[DESC_6:%.*]] = llvm.insertvalue [[SIZE_1A]], [[DESC_5]][3, 1]
 // CHECK: [[DESC_7:%.*]] = llvm.insertvalue [[STRIDE_1]], [[DESC_6]][4, 1]
-// CHECK: [[STRIDE_0:%.*]] = llvm.mul [[STRIDE_1]], [[SIZE_1]] : i64
+// CHECK: [[STRIDE_0:%.*]] = llvm.mul [[STRIDE_1]], [[SIZE_1A]] : i64
 // CHECK: [[DESC_8:%.*]] = llvm.insertvalue [[SIZE_0]], [[DESC_7]][3, 0]
 // CHECK: [[DESC_9:%.*]] = llvm.insertvalue [[STRIDE_0]], [[DESC_8]][4, 0]
 // CHECK: llvm.return [[DESC_9]] : [[DESC_TY]]
@@ -212,7 +213,7 @@ func.func @jit_execute(%ctx: !tf_framework.op_kernel_context,
   // CHECK: %[[ARG:.*]] = llvm.insertvalue %[[ARG_DESCR]], %[[T1]][1]
   // CHECK: %[[C1:.*]] = llvm.mlir.constant(1 : i64)
   // CHECK: %[[RESULT_PTR:.*]] = llvm.alloca %[[C1]] x !llvm.struct<(i64, ptr)>
-  
+
   // Copy argument(s) to stack-allocated buffer.
   // CHECK: %[[NUM_ARGS:.*]] = llvm.mlir.constant(1 : i64)
   // CHECK: %[[ARGS_PTR:.*]] = llvm.alloca %[[NUM_ARGS]] x !llvm.struct<(i64, ptr)>

@@ -31,6 +31,9 @@ from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
+# Data
+from tensorflow.python import data
+
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
@@ -71,6 +74,14 @@ from tensorflow.python.distribute.parameter_server_strategy_v2 import *
 from tensorflow.python.distribute.coordinator.cluster_coordinator import *
 from tensorflow.python.distribute.failure_handling.failure_handling import *
 from tensorflow.python.distribute.failure_handling.preemption_watcher import *
+
+from tensorflow.python.ops.numpy_ops import np_random
+from tensorflow.python.ops.numpy_ops import np_utils
+from tensorflow.python.ops.numpy_ops import np_array_ops
+from tensorflow.python.ops.numpy_ops import np_arrays
+from tensorflow.python.ops.numpy_ops import np_config
+from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_math_ops
 
 tf_export('__internal__.decorator.make_decorator', v1=[])(make_decorator)
 tf_export('__internal__.decorator.unwrap', v1=[])(unwrap)

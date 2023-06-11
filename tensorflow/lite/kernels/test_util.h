@@ -682,7 +682,7 @@ class SingleOpModel {
     if (reset_interpreter) {
       // Reconstruct interpreter as number of threads may affect internal state,
       // e.g. stratch buffer allocation.
-      BuildInterpreter(input_shapes_, num_threads, allocate_and_delegate_,
+      BuildInterpreter(input_shapes_, num_threads, allow_fp32_relax_to_fp16_,
                        apply_delegate_, allocate_and_delegate_);
     }
     interpreter_->SetNumThreads(num_threads);

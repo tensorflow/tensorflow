@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/ir/importexport/convert_tensor.h"
 
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"

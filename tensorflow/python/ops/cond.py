@@ -21,6 +21,8 @@ from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util as util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -28,18 +30,7 @@ from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import nest
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-# TODO(b/269483538): below lazy loads
-#   needed for references while refactors are in progress
-control_flow_ops = LazyLoader(
-    "control_flow_ops", globals(),
-    "tensorflow.python.ops.control_flow_ops")
-# This is to avoid a circular dependency:
-# cond_v2 -> gradients_util -> control_flow_ops
-cond_v2 = LazyLoader("cond_v2", globals(),
-                     "tensorflow.python.ops.cond_v2")
 
 
 # pylint: disable=redefined-outer-name

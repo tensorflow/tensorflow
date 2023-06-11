@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "flatbuffers/flexbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/ArrayRef.h"

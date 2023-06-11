@@ -16,26 +16,33 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/stream_pool.h"
 
 #include <memory>
-
-#include "tensorflow/tsl/platform/logging.h"
+#include <utility>
 
 namespace xla {
 
-StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
+StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
+                                         se::StreamPriority priority) {
   std::unique_ptr<se::Stream> stream;
+
   {
     absl::MutexLock lock(&mu_);
-    while (!streams_.empty() && !stream) {
-      // Re-use an existing stream from the pool.
-      stream = std::move(streams_.back());
-      streams_.pop_back();
-      if (stream->ok()) {
-        VLOG(1) << stream->DebugStreamPointers()
-                << " StreamPool reusing existing stream";
-      } else {
-        VLOG(1) << stream->DebugStreamPointers()
-                << " stream was not ok, StreamPool deleting";
-        stream = nullptr;
+    if (streams_with_pri_.find(priority) == streams_with_pri_.end()) {
+      stream = nullptr;
+    } else {
+      while (!streams_with_pri_[priority].empty() && !stream) {
+        // Re-use an existing stream from the pool.
+        stream = std::move(streams_with_pri_[priority].back());
+        streams_with_pri_[priority].pop_back();
+        if (stream->ok()) {
+          VLOG(1) << stream->DebugStreamPointers()
+                  << " StreamPool reusing existing stream with priority: "
+                  << se::StreamPriorityToString(priority);
+        } else {
+          VLOG(1) << stream->DebugStreamPointers()
+                  << " stream was not ok, StreamPool deleting with priority: "
+                  << se::StreamPriorityToString(priority);
+          stream = nullptr;
+        }
       }
     }
   }
@@ -43,6 +50,10 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
   if (!stream) {
     // Create a new stream.
     stream = std::make_unique<se::Stream>(executor);
+    auto stream_impl = stream->implementation();
+    stream_impl->SetPriority(priority);
+    VLOG(1) << "Set stream priority to: "
+            << se::StreamPriorityToString(priority);
     stream->Init();
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool created new stream";
@@ -58,7 +69,9 @@ void StreamPool::ReturnStream(se::Stream* stream) {
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool returning ok stream";
     absl::MutexLock lock(&mu_);
-    streams_.emplace_back(stream);
+    auto priority =
+        std::get<se::StreamPriority>(stream->implementation()->priority());
+    streams_with_pri_[priority].emplace_back(stream);
   } else {
     // If the stream has encountered any errors, all subsequent operations on it
     // will fail. So just delete the stream, and rely on new streams to be

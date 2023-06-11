@@ -459,6 +459,18 @@ ENTRY %CustomCall () -> f32[1,2,3] {
 
 )"
 },
+// CustomCall with backend_config in curly braces rather than double quotes.
+{
+"CustomCallWithBackendConfigInCurlyBraces",
+R"(HloModule custom_call, entry_computation_layout={()->f32[1,2,3]{0,2,1}}
+
+ENTRY %CustomCall () -> f32[1,2,3] {
+  %constant = f32[1]{0} constant({12345})
+  ROOT %custom-call = f32[1,2,3]{0,2,1} custom-call(f32[1]{0} %constant), custom_call_target="foo\"bar", backend_config={key: "value"}
+}
+
+)"
+},
 
 // CustomCall with literal.
 {
@@ -1598,6 +1610,23 @@ compare {
 ENTRY Sort {
   x = f32[1024]{0} parameter(0)
   ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
+}
+
+)"
+},
+{
+"TopK",
+R"(HloModule topk, entry_computation_layout={(f32[10,10]{0,1})->(f32[10,2]{0,1}, s32[10,2]{0,1})}
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+}
+
+ENTRY TopK {
+  x = f32[10,10]{0,1} parameter(0)
+  ROOT topk = (f32[10,2]{0,1}, s32[10,2]{0,1}) topk(x), k=2, to_apply=compare
 }
 
 )"
@@ -3965,12 +3994,23 @@ TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
                   "Dimensions size is 3, but minor to major size is 1.");
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithElementSizeInBits) {
+  // Tile, element size, and memory space.
+  std::string shape_string = "s4[123,456]{1,0:T(2,128)E(4)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected = ShapeUtil::MakeShapeWithDenseLayout(S4, {123, 456}, {1, 0},
+                                                       {Tile({2, 128})}, 4);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+}
+
 TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   // Tile, element size, and memory space.
   std::string shape_string = "pred[123,456]{1,0:T(2,128)S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
   Shape expected = ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0},
-                                                       {Tile({2, 128})}, 3);
+                                                       {Tile({2, 128})}, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3979,7 +4019,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -3988,7 +4028,7 @@ TEST_F(HloParserTest, ParseShapeStringWithMemorySpaceLayout) {
   shape_string = "pred[123,456]{1,0:S(3)}";
   TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
   expected =
-      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 3);
+      ShapeUtil::MakeShapeWithDenseLayout(PRED, {123, 456}, {1, 0}, {}, 0, 3);
   EXPECT_EQ(expected, actual)
       << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
       << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
@@ -4472,6 +4512,23 @@ comp2 {
   EXPECT_EQ(
       module->entry_computation()->ComputeProgramShape().result().layout(),
       Layout({1, 0, 2, 3}));
+}
+
+TEST_F(HloParserTest, LexesAsJsonDict) {
+  EXPECT_TRUE(LexesAsJsonDict("{}"));
+  EXPECT_TRUE(LexesAsJsonDict("{abc: 123}"));
+  EXPECT_TRUE(LexesAsJsonDict("{{abc: 123}, {{{d}}}}"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"}"})"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"\"}"})"));
+  EXPECT_TRUE(LexesAsJsonDict(R"({"\"{"})"));
+  EXPECT_FALSE(LexesAsJsonDict(""));
+  EXPECT_FALSE(LexesAsJsonDict("{"));
+  EXPECT_FALSE(LexesAsJsonDict("}"));
+  EXPECT_FALSE(LexesAsJsonDict("{{}"));
+  EXPECT_FALSE(LexesAsJsonDict("{}}"));
+  EXPECT_FALSE(LexesAsJsonDict("{}a"));
+  EXPECT_FALSE(LexesAsJsonDict("a{}"));
+  EXPECT_FALSE(LexesAsJsonDict("{{{{}}}"));
 }
 
 }  // namespace

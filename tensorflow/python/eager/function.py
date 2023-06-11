@@ -18,19 +18,19 @@
 
 # TODO(b/243822285): Reduce this list as much as possible.
 # Constants
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _BACKWARD_PREFIX
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _FORWARD_PREFIX
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _INFERENCE_PREFIX
+from tensorflow.python.eager.polymorphic_function.concrete_function import _BACKWARD_PREFIX
+from tensorflow.python.eager.polymorphic_function.concrete_function import _FORWARD_PREFIX
+from tensorflow.python.eager.polymorphic_function.concrete_function import _INFERENCE_PREFIX
 
 # Function Classes
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import ConcreteFunction
+from tensorflow.python.eager.polymorphic_function.concrete_function import ConcreteFunction
 from tensorflow.python.eager.polymorphic_function.tracing_compiler import TracingCompiler as Function
 from tensorflow.python.eager.polymorphic_function.atomic_function import from_func_graph
 from tensorflow.python.eager.polymorphic_function.atomic_function import AtomicFunction
 
 # Utilities
 from tensorflow.python.eager.polymorphic_function.tf_method_target import TfMethodTarget
-from tensorflow.python.eager.polymorphic_function.monomorphic_function import _inference_name
+from tensorflow.python.eager.polymorphic_function.concrete_function import _inference_name
 
 # TODO(b/244360504): Remove in favor of graph transformation API.
 # QUARANTINED - Function Callback Modification API

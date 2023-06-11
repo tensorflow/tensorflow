@@ -239,6 +239,22 @@ class LayoutPropagationV2Test(test_util.DTensorBaseTest):
     self.assertDTensorEqual(golden_accum, sharded_layout_0, dtensor_accum)
     self.assertDTensorEqual(golden_accum_2, sharded_layout_1, dtensor_accum_2)
 
+  def test_layout_like(self):
+    a = constant_op.constant([1, 2, 3, 4], dtype=dtypes.float32)
+    a = numpy_util.pack_numpy(a, self.unsharded_layout)
+
+    b = constant_op.constant([0, 1, 2, 3], dtype=dtypes.int64)
+    b = numpy_util.pack_numpy(b, self.x_layout)
+
+    @polymorphic_function.function
+    def layout_like_function(i, t):
+      i = math_ops.sqrt(i)
+      return api.relayout_like(i, t)
+
+    # Triggers relayout_like with different dtype.
+    dtensor_result = layout_like_function(a, b)
+    api.check_layout(dtensor_result, self.x_layout)
+
   def test_layout_prop_v2_if(self):
     a = constant_op.constant([0, 1, 2, 1], dtype=dtypes.float32)
     a = numpy_util.pack_numpy(a, self.unsharded_layout)

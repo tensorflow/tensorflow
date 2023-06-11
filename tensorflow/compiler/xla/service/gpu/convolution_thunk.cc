@@ -57,6 +57,7 @@ Status ConvolutionThunk::ExecuteOnStream(const ExecuteParams& params) {
   const auto& buffer_allocations = *params.buffer_allocations;
 
   std::vector<se::DeviceMemoryBase> operand_se_buffers;
+  operand_se_buffers.reserve(operand_buffers_.size());
   for (const auto& buffer : operand_buffers_) {
     operand_se_buffers.push_back(buffer_allocations.GetDeviceAddress(buffer));
   }

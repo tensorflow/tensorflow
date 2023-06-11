@@ -50,6 +50,10 @@ def ConvertToQuantTypeFromAttrs : NativeCodeCall<
 def convertIntAttrTo32Bit : NativeCodeCall<
     "$_builder.getI32IntegerAttr($0.cast<IntegerAttr>().getInt())">;
 
+// Builds a constant bool attribute.
+class GetBoolAttr<int value> :
+    NativeCodeCall<"$_builder.getBoolAttr(" # value #")">;
+
 // Converts an integer attribute $0 to 64-bit with builder.
 def convertIntAttrTo64Bit : NativeCodeCall<
     "$_builder.getI64IntegerAttr($0.cast<IntegerAttr>().getInt())">;
@@ -68,6 +72,10 @@ def CreateTFCastToInt32Op : NativeCodeCall<
 
 def CreateNoneValue : NativeCodeCall<
   "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
+
+// Creates an int32 constant op from an integer attribute $0.
+def CreateInt32ConstOpFromIntAttr
+  : NativeCodeCall<"$_builder.create<TF::ConstOp>($_loc, DenseElementsAttr::get(RankedTensorType::get({}, $_builder.getI32Type()), {static_cast<int32_t>($0.cast<IntegerAttr>().getInt())}))">;
 
 //===----------------------------------------------------------------------===//
 // Nullary ops patterns.
@@ -373,6 +381,16 @@ def LegalizeSum : Pat<(TF_SumOp $arg, $axes, BoolAttr:$arg2),
 def LegalizeTopKV2 : Pat<(TF_TopKV2Op $input, $k, $ignored_sorted),
                          (TFL_TopKV2Op $input, $k)>;
 
+def ReductionDimensionIsLastDim : Constraint<CPred<"($0.cast<IntegerAttr>().getInt() == "
+  "$1.getType().cast<ShapedType>().getRank() - 1 || $0.cast<IntegerAttr>().getInt() == -1)">>;
+
+// Legalizes TF_ApproxTopKOp to TFL_TopKV2Op with the following constraints:
+//    1. It computes max k
+//    2. The reduction dimension is the last dim of the input.
+def LegalizeApproxTopK : Pat<(TF_ApproxTopKOp $input, $k, $reduction_dimenstion, $ignored_recall_target, /*is_max_k*/ConstBoolAttrTrue, $ignored_reduction_input_size_override, $ignored_aggregate_to_topk),
+                         (TFL_TopKV2Op $input, (CreateInt32ConstOpFromIntAttr $k)),
+                         [(ReductionDimensionIsLastDim $reduction_dimenstion, $input)]>;
+
 def LegalizeMin : Pat<
   (TF_MinOp $arg0, $axes, BoolAttr:$arg2),
   (TFL_ReduceMinOp $arg0, (CreateTFCastToInt32Op $axes), $arg2)>;
@@ -534,7 +552,8 @@ def LegalizeStridedSlice : Pat<
     (CreateTFCastToInt32Op $strides), (convertIntAttrTo32Bit $begin_mask),
     (convertIntAttrTo32Bit $end_mask), (convertIntAttrTo32Bit $ellipsis_mask),
     (convertIntAttrTo32Bit $new_axis_mask),
-    (convertIntAttrTo32Bit $shrink_axis_mask))>;
+    (convertIntAttrTo32Bit $shrink_axis_mask),
+    (GetBoolAttr<false>))>;
 
 def LegalizeRfft2d : Pat<
   (TF_RFFT2DOp $input, $fft_length),

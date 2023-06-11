@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/profiler/convert/tool_options.h"
+#include "tensorflow/core/profiler/utils/hlo_module_utils.h"
 #include "tensorflow/core/profiler/utils/hlo_proto_to_module.h"
 
 namespace tensorflow {
@@ -44,36 +45,6 @@ using ::xla::HloPrintOptions;
 using ::xla::HloProto;
 using ::xla::HloRenderOptions;
 using ::xla::RenderedGraphFormat;
-
-const HloInstruction* FindInstruction(const HloModule& module,
-                                      std::string node_name) {
-  if (absl::StartsWith(node_name, "%")) {
-    node_name.erase(node_name.begin());
-  }
-  for (const HloComputation* computation : module.computations()) {
-    auto instrs = computation->instructions();
-    auto it = absl::c_find_if(instrs, [&](const HloInstruction* instr) {
-      // Try with and without "%" at the beginning of the node name.
-      return absl::EqualsIgnoreCase(instr->name(), node_name) ||
-             absl::EqualsIgnoreCase(instr->name(),
-                                    absl::StrCat("%", node_name));
-    });
-    if (it != instrs.end()) {
-      return *it;
-    }
-  }
-  return nullptr;
-}
-
-const HloComputation* FindComputation(const HloModule& module,
-                                      const std::string& comp_name) {
-  for (const HloComputation* computation : module.computations()) {
-    if (absl::EqualsIgnoreCase(computation->name(), comp_name)) {
-      return computation;
-    }
-  }
-  return nullptr;
-}
 
 void CleanUpHloModuleForGraphviz(HloModule* hlo_module) {
   // Infeed config is escaped serialized proto, and graphviz server complains.

@@ -136,8 +136,16 @@ StatusOr<FusedIrEmitter::IndexedGenerator> FusedIrEmitter::HandleTuple(
       [&, b, type](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         llvm::Value* ret = llvm::UndefValue::get(type);
         for (size_t i = 0; i < tuple.operand_count(); ++i) {
-          TF_ASSIGN_OR_RETURN(llvm::Value * value,
-                              indexed_generators_.at(tuple.operand(i))(index));
+          IrArray::Index used_index = index;
+          if (i > 0 &&
+              !ShapeUtil::EqualIgnoringElementType(tuple.operand(i)->shape(),
+                                                   tuple.operand(0)->shape())) {
+            used_index = used_index.SourceIndexOfBitcast(
+                tuple.operand(0)->shape(), tuple.operand(i)->shape(), b);
+          }
+          TF_ASSIGN_OR_RETURN(
+              llvm::Value * value,
+              indexed_generators_.at(tuple.operand(i))(used_index));
           ret = b->CreateInsertValue(ret, value, i);
         }
         return ret;

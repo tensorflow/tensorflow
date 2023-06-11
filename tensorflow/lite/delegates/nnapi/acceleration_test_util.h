@@ -27,8 +27,9 @@ namespace tflite {
 // NNAPI specific configuration for the validation allowlist.
 class NnapiAccelerationTestParams {
  public:
-  // Content in nnapi_acceleration_test_list.cc.
-  static const char* const kAccelerationTestConfig;
+  static const char* AccelerationTestConfig() {
+    return acceleration_test_config_;
+  }
 
   static NnapiAccelerationTestParams ParseConfigurationLine(
       const std::string& conf_line);
@@ -43,6 +44,8 @@ class NnapiAccelerationTestParams {
   int MinAndroidSdkVersion() { return min_android_sdk_version_; }
 
  private:
+  // Content in nnapi_acceleration_test_list.cc.
+  static const char* const acceleration_test_config_;
   int min_android_sdk_version_;
 };
 

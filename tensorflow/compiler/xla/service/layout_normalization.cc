@@ -225,7 +225,6 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     for (int64_t& d : br_dimensions) {
       d = FindIndex(orig_output_layout_as_permutation, d);
     }
-    absl::c_sort(br_dimensions);
     auto normalized_broadcast = MakeBroadcastHlo(
         normalized_input, br_dimensions, normalized_shape, &hlo->metadata());
     VLOG(3) << "Generated broadcast: " << normalized_broadcast->ToString();

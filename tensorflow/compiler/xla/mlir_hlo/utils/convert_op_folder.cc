@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "utils/convert_op_folder.h"
 
+#include <utility>
+
 #include "llvm/ADT/APSInt.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinTypes.h"

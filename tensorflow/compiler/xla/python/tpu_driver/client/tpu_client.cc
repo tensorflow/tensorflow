@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -591,7 +592,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
   }
 
   xla::DeviceAssignmentProto device_assignment;
-  CHECK(device_assignment_.Serialize(&device_assignment).ok());
+  TF_CHECK_OK(device_assignment_.Serialize(&device_assignment));
   std::shared_ptr<tpu_driver::Event> on_execute_finished =
       client_->driver()->ExecuteProgram(
           executables_.find(replica)->second.get(), inputs,

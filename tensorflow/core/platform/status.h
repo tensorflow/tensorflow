@@ -26,7 +26,6 @@ namespace tensorflow {
 // NOLINTBEGIN(misc-unused-using-decls)
 using tsl::FromAbslStatus;
 using tsl::OkStatus;
-using tsl::SourceLocation;
 using tsl::Status;
 using tsl::StatusCallback;
 using tsl::StatusGroup;

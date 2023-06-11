@@ -69,8 +69,7 @@ static absl::Status InfeedImpl(const ServiceExecutableRunOptions* run_options,
   }
 
   // TODO(ezhulenev): Make this function async?
-  Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) return ToAbslStatus(block_status);
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   VLOG(3) << "Infeeding to GPU complete";
 
@@ -143,8 +142,7 @@ static absl::Status OutfeedImpl(const ServiceExecutableRunOptions* run_options,
         .ThenDoHostCallback([&buffer]() { buffer->Done(); });
   }
 
-  Status block_status = stream->BlockHostUntilDone();
-  if (!block_status.ok()) return ToAbslStatus(block_status);
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   VLOG(3) << "Outfeeding from GPU complete";
 

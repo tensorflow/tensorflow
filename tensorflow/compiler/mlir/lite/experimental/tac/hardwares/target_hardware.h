@@ -44,7 +44,7 @@ constexpr static float kCrossHardwareTransferFixedCost = 10.f;
 // for registering the operation.
 class TargetHardwareOperation {
  public:
-  virtual ~TargetHardwareOperation() {}
+  virtual ~TargetHardwareOperation() = default;
 
   virtual double GetOpCost(mlir::Operation* op) const = 0;
 
@@ -64,7 +64,7 @@ class TargetHardwareOperation {
 // };
 class TargetHardware {
  public:
-  virtual ~TargetHardware() {}
+  virtual ~TargetHardware() = default;
 
   // Initializes all TargetHardwareOperation registered for this hardware.
   // Users overriding this function, should call the base class method to
@@ -111,20 +111,6 @@ std::function<std::unique_ptr<TargetHardware>()> GetTargetHardwareFactory(
     const std::string& hardware_name);
 
 namespace internal {
-// DEPRECATED: Do not use, prefer using RegisterTargetHardwareFactory instead.
-void RegisterTargetHardware(
-    const std::string& unique_name, const std::string& description,
-    mlir::TypeID type_id,
-    std::function<std::unique_ptr<TargetHardware>()> target_hardware_factory);
-
-// DEPRECATED: Do not use, prefer using RegisterTargetHardwareFactory instead.
-template <typename T>
-void RegisterTargetHardware(
-    const std::string& description,
-    std::function<std::unique_ptr<TargetHardware>()> target_hardware_factory) {
-  RegisterTargetHardware(T::kId, description, mlir::TypeID::get<T>(),
-                         target_hardware_factory);
-}
 
 void RegisterTargetHardwareFactory(
     const std::string& unique_name, const std::string& description,
@@ -158,9 +144,6 @@ struct TargetHardwareRegistration {
   TargetHardwareRegistration(const std::string& description,
                              std::function<std::unique_ptr<TargetHardware>()>
                                  target_hardware_factory) {
-    // TODO(b/177376459): remove this.
-    internal::RegisterTargetHardware<Hardware>(description,
-                                               target_hardware_factory);
     internal::RegisterTargetHardwareFactory<Hardware>(description,
                                                       target_hardware_factory);
   }
@@ -185,7 +168,7 @@ struct TargetHardwareOpRegistration {
 //======== util functions ==========
 
 // Process user specified device specs, will always add CPU if it's not there.
-// specified_deivce_specs: ',' separated, like "GPU,DSP,CPU".
+// specified_device_specs: ',' separated, like "GPU,DSP,CPU".
 // device_specs: processed device specs enum.
 bool ProcessTargetDevices(llvm::ArrayRef<std::string> specified_device_specs,
                           std::vector<std::string>* device_specs);

@@ -45,71 +45,73 @@ using tsl::CoordinationServiceAgent;
 
 class MockCoordinationServiceAgent : public CoordinationServiceAgent {
  public:
-  // NOLINTBEGIN(MOCK_METHOD does not work on Windows build, using deprecated
-  // MOCK_METHOD<N> instead)
-  MOCK_METHOD3(WaitAtBarrier,
-               Status(const std::string& barrier_id, absl::Duration timeout,
-                      const std::vector<CoordinatedTask>& tasks));
-  MOCK_METHOD1(CancelBarrier, Status(const std::string& barrier_id));
+  MOCK_METHOD(Status, WaitAtBarrier,
+              (const std::string& barrier_id, absl::Duration timeout,
+               const std::vector<CoordinatedTask>& tasks),
+              (override));
+  MOCK_METHOD(Status, CancelBarrier, (const std::string& barrier_id),
+              (override));
 
   // All the following member functions are not needed for testing.
-  MOCK_METHOD4(Initialize,
-               Status(Env* env, const CoordinationServiceConfig& config,
-                      std::unique_ptr<CoordinationClientCache> client_cache,
-                      StatusCallback error_fn));
-  MOCK_METHOD6(Initialize,
-               Status(Env* env, const std::string& job_name, int task_id,
-                      const CoordinationServiceConfig& configs,
-                      std::unique_ptr<CoordinationClient> leader_client,
-                      StatusCallback error_fn));
-  MOCK_METHOD5(Initialize,
-               Status(Env* env, const CoordinatedTask& task,
-                      const CoordinationServiceConfig& configs,
-                      std::unique_ptr<CoordinationClient> leader_client,
-                      StatusCallback error_fn));
-  MOCK_METHOD0(IsInitialized, bool());
-  MOCK_METHOD0(IsConnected, bool());
-  MOCK_METHOD0(IsError, bool());
-  MOCK_METHOD0(Connect, Status());
-  MOCK_METHOD1(WaitForAllTasks, Status(const DeviceInfo& local_devices));
-  MOCK_METHOD0(GetClusterDeviceInfo, const DeviceInfo&());
-  MOCK_METHOD0(GetOwnTask, StatusOr<CoordinatedTask>());
-  MOCK_METHOD1(GetTaskState, StatusOr<std::vector<CoordinatedTaskStateInfo>>(
-                                 const std::vector<CoordinatedTask>& task));
-  MOCK_METHOD1(ReportError, Status(const Status& error));
-  MOCK_METHOD0(Shutdown, Status());
-  MOCK_METHOD0(Reset, Status());
-  MOCK_METHOD1(GetKeyValue, StatusOr<std::string>(const std::string& key));
-  MOCK_METHOD2(GetKeyValue, StatusOr<std::string>(const std::string& key,
-                                                  absl::Duration timeout));
-  MOCK_METHOD2(GetKeyValueAsync,
-               std::shared_ptr<CallOptions>(const std::string& key,
-                                            StatusOrValueCallback done));
-  MOCK_METHOD1(TryGetKeyValue, StatusOr<std::string>(const std::string& key));
-  MOCK_METHOD1(GetKeyValueDir,
-               StatusOr<std::vector<KeyValueEntry>>(const std::string& key));
-  MOCK_METHOD2(GetKeyValueDirAsync,
-               void(const std::string& key, StatusOrValueDirCallback done));
-  MOCK_METHOD2(InsertKeyValue,
-               Status(const std::string& key, const std::string& value));
-  MOCK_METHOD1(DeleteKeyValue, Status(const std::string& key));
-  MOCK_METHOD2(UpdateKeyValue,
-               Status(const std::string& key, const std::string& value));
-  MOCK_METHOD2(StartWatchKey, Status(const std::string& key,
-                                     ChangedKeyValuesCallback on_change));
-  MOCK_METHOD1(StopWatchKey, Status(const std::string& key));
-  MOCK_METHOD4(WaitAtBarrierAsync,
-               void(const std::string& barrier_id, absl::Duration timeout,
-                    const std::vector<CoordinatedTask>& tasks,
-                    StatusCallback done));
-  MOCK_METHOD2(CancelBarrierAsync,
-               void(const std::string& barrier_id, StatusCallback done));
-  MOCK_METHOD0(GetEnv, StatusOr<Env*>());
-  MOCK_METHOD1(SetError, void(const Status& error));
-  MOCK_METHOD2(ActivateWatch,
-               Status(const std::string& key,
-                      const std::map<std::string, std::string>&));
-  // NOLINTEND
+  MOCK_METHOD(Status, Initialize,
+              (Env * env, const std::string& job_name, int task_id,
+               const CoordinationServiceConfig& configs,
+               std::unique_ptr<CoordinationClient> leader_client,
+               StatusCallback error_fn),
+              (override));
+  MOCK_METHOD(Status, Initialize,
+              (Env * env, const CoordinatedTask& task,
+               const CoordinationServiceConfig& configs,
+               std::unique_ptr<CoordinationClient> leader_client,
+               StatusCallback error_fn),
+              (override));
+  MOCK_METHOD(bool, IsInitialized, (), (override));
+  MOCK_METHOD(bool, IsConnected, (), (override));
+  MOCK_METHOD(bool, IsError, (), (override));
+  MOCK_METHOD(Status, Connect, (), (override));
+  MOCK_METHOD(Status, WaitForAllTasks, (const DeviceInfo& local_devices),
+              (override));
+  MOCK_METHOD(const DeviceInfo&, GetClusterDeviceInfo, (), (override));
+  MOCK_METHOD(StatusOr<CoordinatedTask>, GetOwnTask, (), (override));
+  MOCK_METHOD(StatusOr<std::vector<CoordinatedTaskStateInfo>>, GetTaskState,
+              (const std::vector<CoordinatedTask>& task), (override));
+  MOCK_METHOD(Status, ReportError, (const Status& error), (override));
+  MOCK_METHOD(Status, Shutdown, (), (override));
+  MOCK_METHOD(Status, Reset, (), (override));
+  MOCK_METHOD(StatusOr<std::string>, GetKeyValue, (const std::string& key),
+              (override));
+  MOCK_METHOD(StatusOr<std::string>, GetKeyValue,
+              (const std::string& key, absl::Duration timeout), (override));
+  MOCK_METHOD(std::shared_ptr<CallOptions>, GetKeyValueAsync,
+              (const std::string& key, StatusOrValueCallback done), (override));
+  MOCK_METHOD(StatusOr<std::string>, TryGetKeyValue, (const std::string& key),
+              (override));
+  MOCK_METHOD(StatusOr<std::vector<KeyValueEntry>>, GetKeyValueDir,
+              (const std::string& key), (override));
+  MOCK_METHOD(void, GetKeyValueDirAsync,
+              (const std::string& key, StatusOrValueDirCallback done),
+              (override));
+  MOCK_METHOD(Status, InsertKeyValue,
+              (const std::string& key, const std::string& value), (override));
+  MOCK_METHOD(Status, DeleteKeyValue, (const std::string& key), (override));
+  MOCK_METHOD(Status, UpdateKeyValue,
+              (const std::string& key, const std::string& value), (override));
+  MOCK_METHOD(Status, StartWatchKey,
+              (const std::string& key, ChangedKeyValuesCallback on_change),
+              (override));
+  MOCK_METHOD(Status, StopWatchKey, (const std::string& key), (override));
+  MOCK_METHOD(void, WaitAtBarrierAsync,
+              (const std::string& barrier_id, absl::Duration timeout,
+               const std::vector<CoordinatedTask>& tasks, StatusCallback done),
+              (override));
+  MOCK_METHOD(void, CancelBarrierAsync,
+              (const std::string& barrier_id, StatusCallback done), (override));
+  MOCK_METHOD(StatusOr<Env*>, GetEnv, (), (override));
+  MOCK_METHOD(void, SetError, (const Status& error), (override));
+  MOCK_METHOD(Status, ActivateWatch,
+              (const std::string& key,
+               (const std::map<std::string, std::string>&)),
+              (override));
 };
 
 constexpr auto kTestKey = "test_key";

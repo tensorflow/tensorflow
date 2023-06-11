@@ -167,6 +167,14 @@ class ExecutionEngine {
   llvm::JITEventListener *perf_listener_ = nullptr;
 };
 
+// Emits an interface function ('exported_name') that wraps all arguments
+// of a function ('original_name') into a single pointer to a ptr**,
+// thereby exposing a trivial ABI. The original function is also inlined,
+// if possible.
+absl::Status ExportWithXlaRuntimeAbi(llvm::Module &module,
+                                     std::string_view original_name,
+                                     std::string_view exported_name);
+
 }  // namespace runtime
 }  // namespace xla
 

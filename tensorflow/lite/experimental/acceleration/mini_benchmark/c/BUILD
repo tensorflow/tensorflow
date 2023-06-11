@@ -30,8 +30,8 @@ cc_library(
     hdrs = ["c_api.h"],
     deps = [
         ":c_api_types",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/experimental/acceleration/configuration/c:delegate_plugin",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:benchmark_result_evaluator",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:blocking_validator_runner",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
@@ -46,7 +46,7 @@ cc_test(
     srcs = ["c_api_test.cc"],
     deps = [
         ":c_api",
-        "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
+        "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_mobilenet_validation_model",
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:embedded_simple_addition_model",

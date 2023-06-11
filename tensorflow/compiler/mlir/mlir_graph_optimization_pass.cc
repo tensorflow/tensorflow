@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "absl/container/flat_hash_set.h"
@@ -137,7 +139,8 @@ static void RegisterDialects(mlir::DialectRegistry& registry) {
 
 Status MlirFunctionOptimizationPass::Run(
     const std::string& function_name, const DeviceSet& device_set,
-    const ConfigProto& config_proto, absl::string_view xla_compile_device_type,
+    const ConfigProto& config_proto,
+    const FunctionOptimizationPass::FunctionOptions& function_options,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
     std::vector<std::string>* control_ret_node_names,
     bool* control_rets_updated) {
@@ -208,7 +211,9 @@ Status MlirFunctionOptimizationPass::Run(
   // the shape inference pass is run early in the pass pipeline, shape inference
   // during import is not necessary.
   import_config.enable_shape_inference = false;
-  import_config.xla_compile_device_type = xla_compile_device_type;
+  import_config.xla_compile_device_type =
+      function_options.xla_compile_device_type;
+  import_config.enable_soft_placement = function_options.allow_soft_placement;
 
   static const char* kTfMlirCategory = "TfMlir";
   tensorflow::metrics::ScopedCounter<2> timings(

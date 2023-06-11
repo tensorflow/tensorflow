@@ -379,6 +379,21 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "op_all_reduce_tuple"
+func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (tensor<8xf32>, tensor<f32>) {
+  //      CHECK: "mhlo.all_reduce"(%[[ARG0:.*]], %[[ARG1:.*]]) ({
+  // CHECK-NEXT:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
+  // CHECK-NEXT:     %[[ADD:.*]] = "mhlo.add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:     "mhlo.return"(%[[ADD]]) : (tensor<f32>) -> ()
+  // CHECK-NEXT: }) {replica_groups = dense<> : tensor<0x0xi64>} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  %0:2 = stablehlo.custom_call @mhlo.all_reduce(%arg0, %arg1) {called_computations = [@all_reduce0], mhlo.attributes = {replica_groups = dense<> : tensor<0x0xi64>}} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  return %0#0, %0#1 : tensor<8xf32>, tensor<f32>
+}
+func.func @all_reduce0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
+  stablehlo.return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: "op_all_to_all"
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "mhlo.all_to_all"(%arg0) {
@@ -703,6 +718,19 @@ func.func @op_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f3
     mhlo.attributes = {api_version = 4 : i32, backend_config = {foo = "bar"}, call_target_name = "foo"}
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: op_custom_call_mhlo_backend_config
+func.func @op_custom_call_mhlo_backend_config(%arg0: tensor<16x256xbf16>) -> tensor<16x4xbf16> {
+  // CHECK: "mhlo.custom_call"(%arg0) {
+  // CHECK-SAME: api_version = 4 : i32,
+  // CHECK-SAME: backend_config = {aggregate_to_topk = true},
+  // CHECK-SAME: call_target_name = "foo"
+  // CHECK-SAME: } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  %4 = stablehlo.custom_call @foo(%arg0) {
+    "mhlo.backend_config" = {aggregate_to_topk = true}
+    } : (tensor<16x256xbf16>) -> tensor<16x4xbf16>
+  return %4 : tensor<16x4xbf16>
 }
 
 // CHECK-LABEL: "op_divide"
@@ -1810,9 +1838,9 @@ func.func @type_quantization(%arg0: tensor<!quant.uniform<i8:f32, 34.0:16>>, %ar
 }
 
 // CHECK-LABEL: "type_sparsity"
-func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32> {
-  // CHECK: "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32>
-  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>) -> tensor<16xf32>
+func.func @type_sparsity(%arg0: tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32> {
+  // CHECK: "mhlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
+  %0 = "stablehlo.abs"(%arg0) : (tensor<16xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>) -> tensor<16xf32>
   func.return %0 : tensor<16xf32>
 }
 
@@ -1869,6 +1897,40 @@ func.func @op_custom_call_botched_extensibility_protocol(%arg0: tensor<f32>) -> 
     call_target_name = "mhlo.custom_call",
     backend_config = "{api_version = 4 : i32, backend_config = {foo = \22bar\22}, call_target_name = \22foo\22}",
     has_side_effect = false
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_botched_mhlo_backend_config(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    mhlo.backend_config = "."
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_botched_mhlo_backend_config(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    mhlo.backend_config = 3
+  } : (tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// -----
+
+func.func @op_custom_call_botched_mhlo_backend_config_version(%arg0: tensor<f32>) -> tensor<f32> {
+  // expected-error@+1 {{failed to legalize operation 'stablehlo.custom_call' that was explicitly marked illegal}}
+  %0 = "stablehlo.custom_call"(%arg0) {
+    call_target_name = "mhlo.custom_call",
+    api_version = 2 : i32,
+    mhlo.backend_config = 3
   } : (tensor<f32>) -> tensor<f32>
   return %0 : tensor<f32>
 }

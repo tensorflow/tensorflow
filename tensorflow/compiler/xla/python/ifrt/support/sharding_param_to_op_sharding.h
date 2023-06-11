@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_SUPPORT_SHARDING_PARAM_TO_OP_SHARDING_H_
 
-#include <cstdint>
-
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,7 +32,7 @@ namespace support {
 // Returns error when `device_mapping` can't map the logical devices in
 // `sharding_param`.
 StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int64_t> device_mapping);
+                                  absl::Span<const int> device_mapping);
 
 }  // namespace support
 }  // namespace ifrt

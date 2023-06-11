@@ -15,7 +15,9 @@ limitations under the License.
 
 // XLA specific pooling ops.
 
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

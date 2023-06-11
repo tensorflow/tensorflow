@@ -124,11 +124,27 @@ inline void CopyPayloads(const ::tsl::Status& from, ::tsl::Status& to) {
 inline ::tsl::Status Create(
     absl::StatusCode code, ::tsl::StringPiece message,
     const std::unordered_map<std::string, std::string>& payloads,
-    SourceLocation loc = SourceLocation::current()) {
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
   Status status(code, message, loc);
   InsertPayloads(status, payloads);
   return status;
 }
+// Returns a new Status, replacing its message with the given.
+inline ::tsl::Status CreateWithUpdatedMessage(const ::tsl::Status& status,
+                                              ::tsl::StringPiece message) {
+  auto locations = status.GetSourceLocations();
+  auto initial_loc =
+      locations.empty() ? absl::SourceLocation::current() : locations[0];
+  Status new_status = Create(static_cast<absl::StatusCode>(status.code()),
+                             message, GetPayloads(status), initial_loc);
+  if (locations.size() > 1) {
+    for (auto loc : locations.subspan(1)) {
+      new_status.AddSourceLocation(loc);
+    }
+  }
+  return new_status;
+}
+
 #else
 inline ::absl::Status Create(
     absl::StatusCode code, ::tsl::StringPiece message,
@@ -137,32 +153,33 @@ inline ::absl::Status Create(
   InsertPayloads(status, payloads);
   return status;
 }
-#endif
-
 // Returns a new Status, replacing its message with the given.
 inline ::tsl::Status CreateWithUpdatedMessage(const ::tsl::Status& status,
                                               ::tsl::StringPiece message) {
   return Create(static_cast<absl::StatusCode>(status.code()), message,
                 GetPayloads(status));
 }
+#endif
 
 // Append some context to an error message.  Each time we append
 // context put it on a new line, since it is possible for there
 // to be several layers of additional context.
 template <typename... Args>
 void AppendToMessage(::tsl::Status* status, Args... args) {
-  auto new_status =
-      ::tsl::Status(status->code(),
-                    ::tsl::strings::StrCat(status->message(), "\n\t", args...));
+  auto new_status = CreateWithUpdatedMessage(
+      *status, ::tsl::strings::StrCat(status->message(), "\n\t", args...));
   CopyPayloads(*status, new_status);
   *status = std::move(new_status);
 }
 
 // For propagating errors when calling a function.
-#define TF_RETURN_IF_ERROR(...)                          \
-  do {                                                   \
-    ::tsl::Status _status = (__VA_ARGS__);               \
-    if (TF_PREDICT_FALSE(!_status.ok())) return _status; \
+#define TF_RETURN_IF_ERROR(...)             \
+  do {                                      \
+    ::absl::Status _status = (__VA_ARGS__); \
+    if (TF_PREDICT_FALSE(!_status.ok())) {  \
+      MAYBE_ADD_SOURCE_LOCATION(_status)    \
+      return _status;                       \
+    }                                       \
   } while (0)
 
 #define TF_RETURN_WITH_CONTEXT_IF_ERROR(expr, ...)           \
@@ -204,6 +221,18 @@ template <typename... Args>
 
 #if defined(PLATFORM_GOOGLE)
 // Specialized overloads to capture source location for up to three arguments.
+template <typename Arg1, typename Arg2, typename Arg3, typename Arg4>
+::absl::Status InvalidArgument(
+    Arg1 arg1, Arg2 arg2, Arg3 arg3, Arg4 arg4,
+    absl::SourceLocation loc = absl::SourceLocation::current()) {
+  return ::tsl::Status(
+      absl::StatusCode::kInvalidArgument,
+      ::tsl::strings::StrCat(::tsl::errors::internal::PrepareForStrCat(arg1),
+                             ::tsl::errors::internal::PrepareForStrCat(arg2),
+                             ::tsl::errors::internal::PrepareForStrCat(arg3),
+                             ::tsl::errors::internal::PrepareForStrCat(arg4)),
+      loc);
+}
 template <typename Arg1, typename Arg2, typename Arg3>
 ::absl::Status InvalidArgument(
     Arg1 arg1, Arg2 arg2, Arg3 arg3,

@@ -17,7 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_MLIR_GRAPH_OPTIMIZATION_PASS_H_
 
 #include <functional>
+#include <memory>
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tf2xla/mlir_bridge_rollout_policy.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -120,7 +124,7 @@ class MlirFunctionOptimizationPass : public FunctionOptimizationPass {
   // Executes all of the underlying registered MlirOptimizationPasses.
   Status Run(const std::string& function_name, const DeviceSet& device_set,
              const ConfigProto& config_proto,
-             absl::string_view xla_compile_device_type,
+             const FunctionOptimizationPass::FunctionOptions& function_options,
              std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
              std::vector<std::string>* control_ret_node_names,
              bool* control_rets_updated) override;

@@ -18,13 +18,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
-#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 #include "tfrt/cpp_tests/test_util.h""  // from @tf_runtime
 

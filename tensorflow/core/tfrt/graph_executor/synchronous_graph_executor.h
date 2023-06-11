@@ -19,13 +19,13 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "learning/infra/mira/mlrt/interpreter/context.h"
-#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include "absl/status/statusor.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tfrt/host_context/host_context.h"  // from @tf_runtime
 #include "tfrt/host_context/value.h"  // from @tf_runtime
@@ -61,6 +61,14 @@ class SynchronousGraphExecutor {
   tfrt::HostContext* host_context() {
     return graph_executor_->runtime().core_runtime()->GetHostContext();
   }
+
+  // Compiles graph for `graph_name` and runs any initializers.
+  absl::Status CompileGraph(
+      const std::string& graph_name,
+      absl::Span<const std::string> input_tensor_names,
+      absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+      absl::Span<const std::string> output_tensor_names,
+      absl::Span<const std::string> target_tensor_names);
 
  private:
   SynchronousGraphExecutor(

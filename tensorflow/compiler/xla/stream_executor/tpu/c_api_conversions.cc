@@ -298,6 +298,7 @@ void ToC(const xla::Layout& layout, XLA_Layout* c_layout) {
   CreateVector(layout.dim_ordered(), &c_layout->dim_ordered);
   c_layout->index_primitive_type = layout.index_primitive_type();
   c_layout->pointer_primitive_type = layout.pointer_primitive_type();
+  c_layout->element_size_in_bits = layout.element_size_in_bits();
   c_layout->memory_space = layout.memory_space();
   c_layout->dynamic_shape_metadata_prefix_bytes =
       layout.dynamic_shape_metadata_prefix_bytes();
@@ -331,7 +332,8 @@ xla::Layout FromC(const XLA_Layout* c_layout) {
       minor_to_major, dim_level_types, dim_unique, dim_ordered, tiles,
       static_cast<xla::PrimitiveType>(c_layout->index_primitive_type),
       static_cast<xla::PrimitiveType>(c_layout->pointer_primitive_type),
-      c_layout->memory_space, /*physical_shape=*/nullptr,
+      c_layout->element_size_in_bits, c_layout->memory_space,
+      /*physical_shape=*/nullptr,
       c_layout->dynamic_shape_metadata_prefix_bytes);
 }
 

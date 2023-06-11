@@ -17,7 +17,9 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <ostream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -36,10 +38,12 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -51,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/string_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -134,6 +139,11 @@ LogicalResult CollectMetadata(Block* block, MetadataMap* metadata_map) {
   return success();
 }
 
+struct OpDevice {
+  Operation* op;
+  std::string device;
+};
+
 // Collects and clusters ops either based on `_replication_info` attribute
 // (replicated case) or using one single cluster (non-replicated case). Also
 // sets `device_type` if there is any cluster (note that the device type must be
@@ -147,7 +157,7 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
   bool has_local_device_name_collisions = false;
   // Use ordered set here to make error message below deterministic.
   std::set<llvm::StringRef> device_types;
-  std::unordered_map<std::string, std::string> devices;
+  absl::flat_hash_map<std::string, OpDevice> devices;
   for (Operation& op : *block) {
     LogicalResult result = TF::HasValidCompilationAndReplicationAttributes(op);
     if (failed(result)) return result;
@@ -188,10 +198,25 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     }
     auto device_attr = op.getAttrOfType<StringAttr>(kDeviceAttr);
     std::string device_local_name;
+    bool is_tpu_device = false;
     if (device_attr && !device_attr.str().empty()) {
+      tensorflow::DeviceNameUtils::ParsedName parsed;
+      if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(device_attr.str(),
+                                                             &parsed)) {
+        op.emitWarning() << "Invalid device name " << device_attr.str();
+        return failure();
+      }
+
       device_local_name =
-          tensorflow::DeviceNameUtils::LocalName(device_attr.str());
+          tensorflow::DeviceNameUtils::LocalName(parsed.type, parsed.id);
+      is_tpu_device = parsed.type == "TPU";
     }
+
+    // Ignore non-TPU devices when clustering.
+    if (!is_tpu_device) {
+      continue;
+    }
+
     if (!has_replicated_compiled_op && !device_local_name.empty()) {
       // It is possible that a device may be same Local Name but
       // different fullname. Devices with same Local name are identical
@@ -200,24 +225,30 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
       // information such as task, replica, job etc. An example fullname is
       // "/job:foo_bar/replica:1/task:2/device:GPU:3"
       if (devices.count(device_local_name)) {
-        std::string device1 = devices[device_local_name];
+        std::string device1 = devices[device_local_name].device;
         std::string device2 = device_attr.str();
         // Is either of the two devices just a substring of the other? If
         // not, we treat them as different devices, and we have a collision.
         if (device1.find(device2) == std::string::npos &&
             device2.find(device1) == std::string::npos) {
+          Operation* previous_op = devices[device_local_name].op;
           has_local_device_name_collisions = true;
-          LOG(WARNING) << "found two devices with same local name "
+
+          LOG(WARNING) << "Found two devices with same local name "
                        << device_local_name
                        << " but conflicting fullname: " << device1 << " and "
-                       << device2;
+                       << device2 << ".";
+          LOG(WARNING) << "Previous assignment came from op: "
+                       << tensorflow::OpAsString(*previous_op)
+                       << ". Current op is: " << tensorflow::OpAsString(op);
         }
         // Always keep the longer name.
-        if (devices[device_local_name].size() < device_attr.str().size()) {
-          devices[device_local_name] = device_attr.str();
+        if (devices[device_local_name].device.size() <
+            device_attr.str().size()) {
+          devices[device_local_name] = {&op, device_attr.str()};
         }
       } else {
-        devices.insert({device_local_name, device_attr.str()});
+        devices.insert({device_local_name, {&op, device_attr.str()}});
       }
     }
   }
@@ -237,13 +268,14 @@ LogicalResult CollectAndGroupClusterOps(Block* block, ClusterMap* clusters,
     if (devices.size() > 1) {
       LOG(WARNING) << "found different devices for no replication: ";
       for (const auto& device_names : devices) {
-        LOG(WARNING) << device_names.first << ", " << device_names.second;
+        LOG(WARNING) << device_names.first << ", "
+                     << device_names.second.device;
       }
     } else if (has_local_device_name_collisions) {
       LOG(WARNING) << "Not assigning device because of conflicting fullnames.";
     } else if (devices.size() == 1 &&
-               absl::StrContains(devices.begin()->second, "TPU:")) {
-      device = devices.begin()->second;
+               absl::StrContains(devices.begin()->second.device, "TPU:")) {
+      device = devices.begin()->second.device;
     }
   }
   if (!clusters->empty()) {
@@ -697,7 +729,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas,
     }
   }
 
-  // Create `ordered_tpu_replicate_inputs` which constains the final ordered
+  // Create `ordered_tpu_replicate_inputs` which contains the final ordered
   // replicate inputs. All packed arguments are moved to the end of the arg
   // list.
   llvm::SmallVector<TF::TPUReplicatedInputOp, 8> ordered_tpu_replicate_inputs =

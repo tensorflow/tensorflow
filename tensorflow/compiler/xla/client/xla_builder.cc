@@ -2603,30 +2603,15 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
-    switch (output_shape.element_type()) {
-      case PrimitiveType::S8:
-      case PrimitiveType::U8:
-        output_shape.set_element_type(PrimitiveType::U8);
-        break;
-      case PrimitiveType::BF16:
-      case PrimitiveType::F16:
-      case PrimitiveType::S16:
-      case PrimitiveType::U16:
-        output_shape.set_element_type(PrimitiveType::U16);
-        break;
-      case PrimitiveType::F32:
-      case PrimitiveType::S32:
-      case PrimitiveType::U32:
-        output_shape.set_element_type(PrimitiveType::U32);
-        break;
-      case PrimitiveType::F64:
-      case PrimitiveType::S64:
-      case PrimitiveType::U64:
-        output_shape.set_element_type(PrimitiveType::U64);
-        break;
-      default:
-        return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
-                               PrimitiveType_Name(output_shape.element_type()));
+    output_shape.set_element_type(PRIMITIVE_TYPE_INVALID);
+    if (primitive_util::IsArrayType(shape.element_type())) {
+      output_shape.set_element_type(
+          primitive_util::UnsignedIntegralTypeForBitWidth(
+              primitive_util::BitWidth(shape.element_type())));
+    }
+    if (!primitive_util::IsUnsignedIntegralType(output_shape.element_type())) {
+      return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
+                             PrimitiveType_Name(shape.element_type()));
     }
     return RngBitGeneratorInternal(
         ShapeUtil::MakeTupleShapeWithPtrs({&state_shape, &output_shape}),
@@ -4992,6 +4977,18 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
   return operand.builder()->AllReduce(operand, computation, replica_groups,
                                       channel_id, shape_with_layout,
                                       use_global_device_ids);
+}
+
+XlaOp AllReduceTuple(const absl::Span<const XlaOp> operands,
+                     const XlaComputation& computation,
+                     absl::Span<const ReplicaGroup> replica_groups,
+                     const std::optional<ChannelHandle>& channel_id,
+                     const std::optional<Shape>& shape_with_layout,
+                     const std::optional<bool> use_global_device_ids) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->AllReduce(
+      operands[0].builder()->Tuple(operands), computation, replica_groups,
+      channel_id, shape_with_layout, use_global_device_ids);
 }
 
 XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,

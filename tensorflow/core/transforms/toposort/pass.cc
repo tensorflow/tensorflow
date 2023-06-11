@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/toposort/pass.h"
 
+#include <memory>
 #include <vector>
 
 #include "llvm/ADT/STLExtras.h"

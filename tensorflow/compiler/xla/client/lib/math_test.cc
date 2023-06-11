@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/math.h"
 
+#include <cmath>
+#include <complex>
+#include <functional>
 #include <limits>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -120,10 +127,6 @@ class MathTypedTest : public MathTest {
   //
   // For good measure, we also check pow with an exponent other than 0.5.
   void TestSqrtPowInequivalence() {
-    // TODO(b/145798892): test fails on GPU for double values.
-    if (std::is_same<T, double>::value) {
-      return;
-    }
     SetFastMathDisabled(true);
 
     // Tests disable constant folding by default, but this test needs it
@@ -220,10 +223,6 @@ XLA_TEST_F(MathTest, RealFpOnlyOps) {
     } else if (ty == PrimitiveType::TOKEN) {
       shape = ShapeUtil::MakeTokenShape();
     } else {
-      continue;
-    }
-    if (ty == F8E5M2 || ty == F8E4M3FN || ty == F8E4M3B11FNUZ) {
-      // TODO(b/259609697): Add FP8 support to math ops
       continue;
     }
 

@@ -410,7 +410,6 @@ def tf_copts(
     android_copts = [
         "-DTF_LEAN_BINARY",
         "-Wno-narrowing",
-        "-fomit-frame-pointer",
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
@@ -439,7 +438,7 @@ def tf_copts(
         if_mkldnn_aarch64_acl_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         if_zendnn(["-DAMD_ZENDNN"]) +
         if_enable_acl(["-DXLA_CPU_USE_ACL=1", "-fexceptions"]) +
-        if_android_arm(["-mfpu=neon"]) +
+        if_android_arm(["-mfpu=neon", "-fomit-frame-pointer"]) +
         if_linux_x86_64(["-msse3"]) +
         if_ios_x86_64(["-msse4.1"]) +
         if_no_default_logger(["-DNO_DEFAULT_LOGGER"]) +
@@ -1445,7 +1444,7 @@ def tf_gen_op_wrapper_py(
         srcs_version = "PY3",
         visibility = visibility,
         deps = [
-            clean_dep("//tensorflow/python:framework_for_generated_wrappers_v2"),
+            clean_dep("//tensorflow/python/framework:for_generated_wrappers_v2"),
         ],
         # Instruct build_cleaner to try to avoid using this rule; typically ops
         # creators will provide their own tf_custom_op_py_library based target
@@ -2242,26 +2241,6 @@ def tf_custom_op_library(
         }),
         **kwargs
     )
-
-# Placeholder to use until bazel supports py_strict_binary.
-def py_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_library.
-def py_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_binary.
-def pytype_strict_binary(name, **kwargs):
-    native.py_binary(name = name, **kwargs)
-
-# Placeholder to use until bazel supports pytype_strict_library.
-def pytype_strict_library(name, **kwargs):
-    native.py_library(name = name, **kwargs)
-
-# Placeholder to use until bazel supports py_strict_test.
-def py_strict_test(name, **kwargs):
-    py_test(name = name, **kwargs)
 
 def tf_custom_op_py_library(
         name,
@@ -3360,10 +3339,10 @@ def if_mlir(if_true, if_false = []):
 def tf_enable_mlir_bridge():
     return select({
         str(Label("//tensorflow:enable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_true",
+            "//tensorflow/python/framework:is_mlir_bridge_test_true",
         ],
         str(Label("//tensorflow:disable_mlir_bridge")): [
-            "//tensorflow/python:is_mlir_bridge_test_false",
+            "//tensorflow/python/framework:is_mlir_bridge_test_false",
         ],
         "//conditions:default": [],
     })

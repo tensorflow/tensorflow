@@ -61,10 +61,10 @@ py_strict_test(
     visibility = ["//visibility:private"],
     deps = [
         ":saved_model_utils",
-        "//tensorflow/python:variables",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:tag_constants",
@@ -73,34 +73,6 @@ py_strict_test(
 
 py_strict_library(
     name = "freeze_graph_lib",
-    srcs = ["freeze_graph.py"],
-    srcs_version = "PY3",
-    deps = [
-        ":saved_model_utils",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:py_checkpoint_reader",
-        "//tensorflow/python/checkpoint:checkpoint_management",
-        "//tensorflow/python/client:session",
-        "//tensorflow/python/framework",
-        "//tensorflow/python/framework:convert_to_constants",
-        "//tensorflow/python/platform:gfile",
-        "//tensorflow/python/saved_model:loader",
-        "//tensorflow/python/saved_model:tag_constants",
-        "//tensorflow/python/training:saver",
-        "@absl_py//absl:app",
-    ],
-)
-
-py_strict_binary(
-    name = "freeze_graph",
-    srcs = ["freeze_graph.py"],
-    python_version = "PY3",
-    srcs_version = "PY3",
-    deps = [":freeze_graph_main_lib"],
-)
-
-py_strict_library(
-    name = "freeze_graph_main_lib",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY3",
     deps = [
@@ -117,6 +89,14 @@ py_strict_library(
         "//tensorflow/python/training:saver",
         "@absl_py//absl:app",
     ],
+)
+
+py_strict_binary(
+    name = "freeze_graph",
+    srcs = ["freeze_graph.py"],
+    python_version = "PY3",
+    srcs_version = "PY3",
+    deps = [":freeze_graph_lib"],
 )
 
 py_strict_binary(
@@ -150,19 +130,18 @@ py_strict_test(
     deps = [
         ":freeze_graph_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variable_v1",
-        "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:parsing_ops",
+        "//tensorflow/python/ops:partitioned_variables",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:signature_constants",
@@ -186,9 +165,9 @@ py_strict_library(
     srcs = ["inspect_checkpoint.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:flags",
+        "//tensorflow/python/training:py_checkpoint_reader",
         "//third_party/py/numpy",
         "@absl_py//absl:app",
     ],
@@ -218,7 +197,7 @@ py_strict_binary(
     srcs_version = "PY3",
     deps = [
         ":strip_unused_lib",
-        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:for_generated_wrappers",
         "@absl_py//absl:app",
     ],
 )
@@ -233,13 +212,12 @@ py_strict_test(
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
 )
@@ -251,7 +229,7 @@ py_strict_library(
     deps = [
         ":strip_unused_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/platform:flags",
@@ -276,7 +254,7 @@ py_strict_library(
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/framework",
-        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/platform:gfile",
         "@absl_py//absl:app",
     ],
@@ -291,17 +269,16 @@ py_strict_test(
     deps = [
         ":optimize_for_inference_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:image_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
@@ -313,6 +290,9 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
+        # copybara:comment_begin(oss-only)
+        "//tensorflow/python",  # to fix libtensorflow_framework.so.2 import error.
+        # copybara:comment_end
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:tf_logging",
@@ -407,14 +387,14 @@ py_strict_library(
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:convert_to_constants",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:versions",
+        "//tensorflow/python/grappler:tf_optimizer",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:sysconfig",
         "//tensorflow/python/platform:tf_logging",
@@ -435,15 +415,15 @@ py_strict_test(
     deps = [
         ":saved_model_cli_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:parsing_config",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/debug/wrappers:local_cli_wrapper",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/ops:parsing_config",
+        "//tensorflow/python/ops:parsing_ops",
+        "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:save",
@@ -458,11 +438,11 @@ py_strict_binary(
     srcs = ["make_aot_compile_models.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_spec",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/trackable:autotrackable",
         "@absl_py//absl:app",

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_AUTOTUNE_BUFFER_SIZES_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
@@ -52,8 +53,9 @@ class AutotuneBufferSizes : public TFDataOptimizerBase {
     } else if (autotune == "false") {
       autotune_ = false;
     } else {
-      return errors::InvalidArgument("Received an invalid value for parameter ",
-                                     kAutotune, ": ", autotune);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Received an invalid value for parameter ", kAutotune,
+                       ": ", autotune));
     }
     return OkStatus();
   }

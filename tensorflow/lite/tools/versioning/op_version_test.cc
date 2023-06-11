@@ -274,6 +274,16 @@ TEST(OpVersionTest, VersioningUnpackTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+TEST(OpVersionTest, VersioningRangeTest) {
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_RANGE;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt64);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+
 TEST(OpVersionTest, VersioningReluTest) {
   OpSignature fake_op_sig = {
       .op = BuiltinOperator_RELU,
@@ -345,6 +355,9 @@ TEST(OpVersionTest, VersioningStridedSliceTest) {
 
   fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt32);
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 7);
+
+  strided_slice_params.offset = true;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 8);
 }
 
 TEST(OpVersionTest, VersioningSpaceToDepthTest) {
@@ -574,7 +587,19 @@ TEST(OpVersionTest, VersioningPadV2Test) {
 }
 
 TEST(OpVersionTest, VersioningConcatenationTest) {
-  SimpleVersioningTest(BuiltinOperator_CONCATENATION);
+  OpSignature fake_op_sig = {};
+  fake_op_sig.op = BuiltinOperator_CONCATENATION;
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteFloat32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt8);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteInt16);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig.inputs = CreateOpSignatureTensorSpecs(kTfLiteUInt32);
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
 }
 
 TEST(OpVersionTest, VersioningSelectTest) {

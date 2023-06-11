@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_RUNTIME_FALLBACK_RUNTIME_OP_LOGGER_H_
 
 #include <memory>
+#include <string>
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"

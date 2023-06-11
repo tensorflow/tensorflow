@@ -36,6 +36,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework.tensor_shape import TensorShape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -278,6 +279,13 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     self._output_shapes = []
     for feature in nest.flatten(feature_config):
       self._output_shapes.append(feature.output_shape)
+
+    device_assignment = getattr(
+        self._strategy.extended, "_device_assignment", None
+    )
+    self._num_cores_per_replica = (
+        device_assignment.num_cores_per_replica if device_assignment else None
+    )
 
     # The TPU embedding ops are slightly inconsistent with how they refer to
     # tables:
@@ -585,14 +593,23 @@ class TPUEmbedding(autotrackable.AutoTrackable):
     config_proto.mode = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.TRAINING)
 
+    num_replica = self._strategy.num_replicas_in_sync
+    num_cores_per_replica = self._num_cores_per_replica or 1
+
     config_proto.num_hosts = self._strategy.extended.num_hosts
-    config_proto.num_tensor_cores = self._strategy.num_replicas_in_sync
+    config_proto.num_tensor_cores = num_replica * num_cores_per_replica
 
     # TODO(bfontain): Allow users to pick MOD for the host sharding.
     config_proto.sharding_strategy = (
         tpu_embedding_configuration_pb2.TPUEmbeddingConfiguration.DIV_DEFAULT)
     config_proto.pipeline_execution_with_tensor_core = (
         self._pipeline_execution_with_tensor_core)
+
+    if self._num_cores_per_replica:
+      config_proto.spmd_sharding.enabled = True
+      config_proto.spmd_sharding.num_cores_per_replica = (
+          self._num_cores_per_replica
+      )
 
     return config_proto
 
@@ -660,12 +677,16 @@ class TPUEmbedding(autotrackable.AutoTrackable):
                          "object. Please either call enqueue first or manually "
                          "call the build method.")
 
+    num_cores_per_replica = self._num_cores_per_replica or 1
+
     nest.assert_same_structure(self._feature_config, gradients)
     updated_gradients = []
     for (path, gradient), feature, output_shape in zip(
         nest.flatten_with_joined_string_paths(gradients),
         nest.flatten(self._feature_config), self._output_shapes):
-      full_output_shape = list(output_shape) + [feature.table.dim]
+      full_output_shape = [x * num_cores_per_replica for x in output_shape] + [
+          feature.table.dim
+      ]
       if gradient is not None and not isinstance(gradient, ops.Tensor):
         raise ValueError(
             f"found non-tensor type: {type(gradient)} at path {path}.")
@@ -1233,6 +1254,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
             "the TPU for embeddings.")
     else:
       input_shapes = self._get_input_shapes(features, in_tpu_context)
+      if self._num_cores_per_replica:
+        input_shapes = [self._get_batch_dim_split_shape(
+            inp_shape) for inp_shape in input_shapes]
 
       self._maybe_build(input_shapes)
       # If is already built, we still need to check if the output shapes matches
@@ -1282,26 +1306,59 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       # We rely here on the fact that the devices in the PerReplica value occur
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
+
+      def _split_fn(ts, idx):
+        if ts is None:
+          return None
+        elif isinstance(ts, ops.Tensor):
+          return array_ops.split(
+              ts,
+              num_or_size_splits=self._num_cores_per_replica,
+              axis=0)[idx]
+        elif isinstance(ts, sparse_tensor.Tensor):
+          return sparse_ops.split(
+              ts,
+              num_or_size_splits=self._num_cores_per_replica,
+              axis=0)[idx]
+        else:
+          raise ValueError("SPMD does not support raggedTensor yet.")
+
+      def _maybe_split(ts_inputs, core_id):
+        if self._num_cores_per_replica is None:
+          return ts_inputs
+        else:
+          splitter = functools.partial(_split_fn, idx=core_id)
+          return nest.map_structure(splitter, ts_inputs)
+
       for replica_id in range(self._strategy.num_replicas_in_sync):
         replica_inputs = distribute_utils.select_replica(replica_id,
                                                          flat_inputs)
         replica_weights = distribute_utils.select_replica(replica_id,
                                                           flat_weights)
-        tpu_device = self._strategy.extended.worker_devices[replica_id]
+
+        if self._num_cores_per_replica:
+          tpu_devices = self._strategy.extended._tpu_devices[replica_id]   # pylint: disable=protected-access
+        else:
+          tpu_devices = [self._strategy.extended.worker_devices[replica_id]]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number
-        device_ordinal = (
-            tf_device.DeviceSpec.from_string(tpu_device).device_index)
 
-        with ops.device(device_util.get_host_for_device(tpu_device)):
-          enqueue_op = self._generate_enqueue_op(
-              replica_inputs, replica_weights, flat_features,
-              device_ordinal=device_ordinal, mode_override=mode_override)
+        for core_id in range(self._num_cores_per_replica or 1):
+          tpu_device = tpu_devices[core_id]
+          device_ordinal = (
+              tf_device.DeviceSpec.from_string(tpu_device).device_index)
 
-          # Apply the name tag to the op.
-          if name is not None:
-            _add_key_attr(enqueue_op, name)
-          enqueue_ops.append(enqueue_op)
+          with ops.device(device_util.get_host_for_device(tpu_device)):
+            enqueue_op = self._generate_enqueue_op(
+                _maybe_split(replica_inputs, core_id),
+                _maybe_split(replica_weights, core_id),
+                flat_features,
+                device_ordinal=device_ordinal, mode_override=mode_override)
+
+            # Apply the name tag to the op.
+            if name is not None:
+              _add_key_attr(enqueue_op, name)
+            enqueue_ops.append(enqueue_op)
     else:
       mode_override = "train" if training else "inference"
       device_spec = tf_device.DeviceSpec.from_string(device)
@@ -1467,6 +1524,11 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       else:
         output_shapes.append(TensorShape(per_replica_batch_size))
     return output_shapes
+
+  def _get_batch_dim_split_shape(self, input_shape):
+    shape_list = input_shape.as_list()
+    return TensorShape(
+        [shape_list[0] // self._num_cores_per_replica] + shape_list[1:])
 
   def _create_copy_for_async_checkpoint(
       self, feature_config, optimizer, pipeline_execution_with_tensor_core):

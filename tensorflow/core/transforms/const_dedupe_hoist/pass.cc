@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <forward_list>
 #include <memory>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"

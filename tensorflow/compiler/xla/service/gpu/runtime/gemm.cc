@@ -116,7 +116,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   Shape output_shape = ToShape(out);
 
   // Get the gemm config from the state.
-  absl::StatusOr<GemmConfig*> config_from_state = state.GetOrCreate([&] {
+  TF_ASSIGN_OR_RETURN(GemmConfig * gemm_config, state.GetOrCreate([&] {
     StatusOr<GemmConfig> gemm_config =
         GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
                       dot_dims.lhs_batch, dot_dims.lhs_contract,
@@ -124,10 +124,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                       precision.empty() ? se::blas::kDefaultComputePrecision
                                         : *absl::c_max_element(precision));
     return ToAbsl(gemm_config);
-  });
-
-  if (!config_from_state.ok()) return config_from_state.status();
-  GemmConfig* gemm_config = *config_from_state;
+  }));
 
   // Set the gemm algorithm by runtime autotuning. We do runtime autotuning
   // outside of state.GetOrCreate() because otherwise it would be a potential
@@ -146,12 +143,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 #endif
   }
 
-  Status executed =
-      RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
-
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
+  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

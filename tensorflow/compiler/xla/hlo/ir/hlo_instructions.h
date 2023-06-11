@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_INSTRUCTIONS_H_
 
 #include <functional>
+#include <list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -54,6 +55,7 @@ class HloDimensionsInstruction : public HloInstruction {
       case HloOpcode::kReduce:
       case HloOpcode::kReverse:
       case HloOpcode::kSort:
+      case HloOpcode::kTopK:
       case HloOpcode::kTranspose:
         return true;
       default:
@@ -440,6 +442,36 @@ class HloChannelInstruction : public HloInstruction {
           eq_computations) const final;
 
   std::optional<int64_t> channel_id_;
+};
+
+// Class that represents a top-k instruction.
+class HloTopKInstruction : public HloInstruction {
+ public:
+  HloTopKInstruction(const Shape& shape, HloInstruction* input, int64_t k,
+                     HloComputation* compare);
+
+  HloInstructionProto ToProto() const override;
+
+  static bool ClassOf(const HloInstruction* hlo) {
+    return hlo->opcode() == HloOpcode::kTopK;
+  }
+
+  // Returns how many K-s does it need.
+  int64_t k() const { return k_; }
+
+  void PrintExtraAttributesImpl(AttributePrinter& printer,
+                                const HloPrintOptions& options) const override;
+
+ private:
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  int64_t k_;
 };
 
 class HloSendRecvInstruction : public HloChannelInstruction {
@@ -1328,7 +1360,7 @@ class HloFusionInstruction : public HloCallableInstruction {
 
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
-  const bool IsMultiOutputFusion() const {
+  bool IsMultiOutputFusion() const {
     return fused_expression_root()->opcode() == HloOpcode::kTuple;
   }
 
@@ -1512,8 +1544,7 @@ class HloReducePrecisionInstruction : public HloInstruction {
  public:
   explicit HloReducePrecisionInstruction(const Shape& shape,
                                          HloInstruction* operand,
-                                         const int exponent_bits,
-                                         const int mantissa_bits);
+                                         int exponent_bits, int mantissa_bits);
   // Returns the number of exponent bits for a reduce-precision node.
   int32_t exponent_bits() const { return exponent_bits_; }
   // Returns the number of mantissa bits for a reduce-precision node.

@@ -434,6 +434,11 @@ std::string SanitizeFileName(std::string file_name) {
   return file_name;
 }
 
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
+  return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
+         seq.size() - 1;
+}
+
 // Utility function to split a double-precision float (F64) into a pair of F32s.
 // For a p-bit number, and a splitting point (p/2) <= s <= (p - 1), the
 // algorithm produces a (p - s)-bit value 'hi' and a non-overlapping (s - 1)-bit

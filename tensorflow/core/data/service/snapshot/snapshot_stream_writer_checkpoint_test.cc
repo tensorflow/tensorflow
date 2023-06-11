@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
 #include "tensorflow/core/data/service/snapshot/snapshot_stream_writer.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/random.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -126,6 +128,39 @@ TEST_P(SnapshotStreamWriterParameterizedTest,
               IsOkAndHolds(UnorderedElementsAre()));
 }
 
+TEST_P(SnapshotStreamWriterParameterizedTest, VaryingCheckpointInterval) {
+  const int64_t range = 10;
+  const std::string compression = GetParam();
+  const DatasetDef dataset = testing::RangeDataset(range);
+  const int64_t stream_index = 0;
+  TF_ASSERT_OK_AND_ASSIGN(const std::string snapshot_path,
+                          CreateSnapshotDirectory());
+  TF_ASSERT_OK_AND_ASSIGN(
+      testing::PartialSnapshotWriter partial_writer,
+      testing::PartialSnapshotWriter::Create(
+          dataset, snapshot_path, stream_index, compression,
+          /*max_chunk_size_bytes=*/1, /*checkpoint_interval=*/
+          absl::Milliseconds(tsl::random::New64() % 1000)));
+  TF_ASSERT_OK(
+      partial_writer.WriteCommittedChunks({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+  TF_ASSERT_OK(partial_writer.WriteCheckpoints({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_index=*/0,
+      compression,
+      Env::Default(),
+      /*max_chunk_size_bytes=*/1,
+      /*checkpoint_interval=*/absl::Milliseconds(tsl::random::New64() % 1000),
+      /*test_only_keep_temp_files=*/true};
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<StandaloneTaskIterator> iterator,
+                          testing::TestIterator(dataset));
+  SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
+  EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
+  EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
+              IsOkAndHolds(UnorderedElementsAre(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)));
+}
+
 INSTANTIATE_TEST_SUITE_P(Compression, SnapshotStreamWriterParameterizedTest,
                          ValuesIn<std::string>({tsl::io::compression::kNone,
                                                 tsl::io::compression::kGzip,
@@ -139,12 +174,14 @@ TEST(SnapshotStreamWriterCheckpointTest, NoCheckpoint) {
 
   const std::string compression = tsl::io::compression::kSnappy;
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path,
-                                     /*stream_index=*/0,
-                                     compression,
-                                     Env::Default(),
-                                     /*max_chunk_size_bytes=*/kint64max,
-                                     /*test_only_keep_temp_files=*/true};
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_index=*/0,
+      compression,
+      Env::Default(),
+      /*max_chunk_size_bytes=*/kint64max,
+      /*checkpoint_interval=*/absl::Microseconds(1),
+      /*test_only_keep_temp_files=*/true};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
@@ -162,12 +199,14 @@ TEST(SnapshotStreamWriterCheckpointTest, WithCheckpoint) {
 
   const std::string compression = tsl::io::compression::kSnappy;
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path,
-                                     /*stream_index=*/0,
-                                     compression,
-                                     Env::Default(),
-                                     /*max_chunk_size_bytes=*/20,
-                                     /*test_only_keep_temp_files=*/true};
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_index=*/0,
+      compression,
+      Env::Default(),
+      /*max_chunk_size_bytes=*/20,
+      /*checkpoint_interval=*/absl::Microseconds(1),
+      /*test_only_keep_temp_files=*/true};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),
@@ -192,12 +231,14 @@ TEST(SnapshotStreamWriterCheckpointTest, CleanupCheckpoint) {
 
   const std::string compression = tsl::io::compression::kSnappy;
   TF_ASSERT_OK_AND_ASSIGN(std::string snapshot_path, CreateSnapshotDirectory());
-  SnapshotWriterParams writer_params{snapshot_path,
-                                     /*stream_index=*/0,
-                                     compression,
-                                     Env::Default(),
-                                     /*max_chunk_size_bytes=*/20,
-                                     /*test_only_keep_temp_files=*/false};
+  SnapshotWriterParams writer_params{
+      snapshot_path,
+      /*stream_index=*/0,
+      compression,
+      Env::Default(),
+      /*max_chunk_size_bytes=*/20,
+      /*checkpoint_interval=*/absl::Microseconds(1),
+      /*test_only_keep_temp_files=*/false};
   SnapshotStreamWriter snapshot_writer(writer_params, std::move(iterator));
   EXPECT_THAT(snapshot_writer.Wait(), IsOkAndHolds(true));
   EXPECT_THAT(testing::ReadSnapshot<int64_t>(snapshot_path, compression),

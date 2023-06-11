@@ -1732,6 +1732,21 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
+  m.def("TF_GraphToGraphDefPybind", [](PyGraph* graph) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    // Release GIL.
+    py::gil_scoped_release release;
+    TF_Graph* tf_graph = graph->tf_graph();
+    auto def = new tensorflow::GraphDef();
+    {
+      tensorflow::mutex_lock l(tf_graph->mu);
+      tf_graph->graph.ToGraphDef(def);
+    }
+    tensorflow::MaybeRaiseRegisteredFromTFStatusWithGIL(status.get());
+    return def;
+  });
+
   m.def("TF_GraphToGraphDef", [](PyGraph* graph, TF_Buffer* output_graph_def) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());

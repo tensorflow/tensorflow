@@ -563,9 +563,10 @@ expected to invoke these operators.
 
 REGISTER_OP("ConcatOffset")
     .Input("concat_dim: int32")
-    .Input("shape: N * int32")
-    .Output("offset: N * int32")
+    .Input("shape: N * shape_type")
+    .Output("offset: N * shape_type")
     .Attr("N: int >= 2")
+    .Attr("shape_type: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       for (int i = 1; i < c->num_inputs(); ++i) {
         c->set_output(i - 1, c->input(i));

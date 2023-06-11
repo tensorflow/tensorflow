@@ -16,13 +16,17 @@ limitations under the License.
 
 #include <cmath>
 #include <complex>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/string_util.h"

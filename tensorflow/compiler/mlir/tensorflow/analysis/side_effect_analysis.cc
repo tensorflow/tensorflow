@@ -16,8 +16,12 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 
 #include <bitset>
+#include <limits>
+#include <map>
 #include <optional>
 #include <string>
+#include <unordered_map>
+#include <utility>
 
 #include "absl/container/node_hash_map.h"
 #include "llvm/ADT/DenseMap.h"
@@ -30,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -254,6 +259,14 @@ class OpSideEffectCollector {
                    CaseRegionOp>(op)) {
       for (Region& region : op->getRegions()) {
         AddRegionSideEffectsForOp(region, op);
+      }
+    } else if (auto xla_call_module_op = dyn_cast<XlaCallModuleOp>(op)) {
+      for (auto func_symbol : xla_call_module_op.getFunctionList().getAsRange<
+          mlir::FlatSymbolRefAttr>()) {
+        if (auto func = symbol_table_collection_.lookupNearestSymbolFrom<
+                mlir::func::FuncOp>(xla_call_module_op, func_symbol)) {
+          AddRegionSideEffectsForOp(func.getBody(), op);
+        }
       }
     } else {
       // Now handle all other ops.

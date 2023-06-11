@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -368,14 +370,11 @@ class AbstractStackTrace {
 
   virtual ~AbstractStackTrace() {}
 
-  // The returned span is alive until either the AbstractStackTrace gets
-  // destroyed or its cache gets flushed.
+  // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
 
-  // Remove all data that was generated for e.g. the result of ToFrames().
-  // Calling this will make the next ToFrames() run more slowly, but tends to
-  // save a large amount of memory.
-  virtual void WipeCache() {}
+  // Return the frames, but without caching any of the generated data.
+  virtual std::vector<StackFrame> ToUncachedFrames() const { return {}; }
 
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
@@ -388,13 +387,49 @@ class AbstractStackTrace {
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
 };
 
+// A frozen sequence of StackFrames; an adapter for a span of StackFrames that
+// conforms to the AbstractStackTrace contract. Unlike other AbstractStackTrace
+// subclasses that could return different results from ToFrames() and
+// GetUserFrames(), this class returns the same sequence of stack frames for
+// both calls.
+class FrozenStackTrace : public AbstractStackTrace {
+ public:
+  // Constructs a FrozenStackTrace from a span of StackFrames by making a copy
+  // of each stack frame.
+  explicit FrozenStackTrace(absl::Span<StackFrame const> frames);
+
+  // Constructs a FrozenStackTrace from serialized proto data.
+  FrozenStackTrace(const GraphDebugInfo::StackTrace& stack_trace,
+                   const GraphDebugInfo& debug_info);
+
+  ~FrozenStackTrace() override = default;
+
+  absl::Span<StackFrame const> ToFrames() const override;
+
+  std::vector<StackFrame> ToUncachedFrames() const override;
+
+  StackFrame LastUserFrame() const override;
+
+  std::vector<StackFrame> GetUserFrames(int limit) const override;
+
+  std::string ToString(const TracePrintingOptions& opts) const override;
+
+ private:
+  std::vector<StackFrame> frames_;
+};
+
 using StackTracesMap =
     std::unordered_map<std::string,
                        std::shared_ptr<tensorflow::AbstractStackTrace>>;
 
-// Generates a GraphDebugInfo proto from a StackTracesMap object.
+// Map of function names to StackTracesMaps.
+using FunctionDefLibraryStackTraces =
+    absl::flat_hash_map<std::string, StackTracesMap>;
+
+// Generates a GraphDebugInfo proto from a StackTracesMap object. Returns user
+// frames by default. If `user_frames` is false, returns all frames.
 tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
-    const tensorflow::StackTracesMap& map);
+    const tensorflow::StackTracesMap& map, bool user_frames = true);
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in
@@ -403,7 +438,7 @@ class FunctionRecord : public core::RefCounted {
  public:
   FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
                  bool finalized);
-  FunctionRecord(FunctionDef&& fdef, const StackTracesMap& stack_traces,
+  FunctionRecord(FunctionDef&& fdef, StackTracesMap&& stack_traces,
                  bool finalized);
 
   // Mark FunctionRecord as finalized (disable mutation).
@@ -532,9 +567,11 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
   Status AddLibrary(const FunctionDefLibrary& lib_def,
-                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
   Status AddLibrary(FunctionDefLibrary&& lib_def,
-                    const StackTracesMap& stack_traces) TF_LOCKS_EXCLUDED(mu_);
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
@@ -646,9 +683,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(FunctionDef&& fdef,
-                              const StackTracesMap& stack_traces, bool* added)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddFunctionDefHelper(FunctionDef&& fdef, StackTracesMap&& stack_traces,
+                              bool* added) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -866,6 +902,11 @@ class FunctionLibraryRuntime {
     // Instantiates the function for XLA compilation on device_type. If empty,
     // function is not compiled.
     std::string xla_compile_device_type;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function enabling soft placement or outside compilation.
+    bool allow_soft_placement = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,

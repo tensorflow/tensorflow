@@ -18,7 +18,6 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
 #include "learning/brain/tfrt/mlrt/application/vrooml/kernel.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_executor.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/utils/error_util.h"
 
@@ -98,6 +98,17 @@ absl::Status SynchronousGraphExecutor::Run(
   return tfrt::AbslStatusFromTfStatus(graph_executor_->RunWithSyncInterpreter(
       graph_name, input_values, input_names, input_dtypes, output_tensor_names,
       target_tensor_names, outputs));
+}
+
+absl::Status SynchronousGraphExecutor::CompileGraph(
+    const std::string& graph_name,
+    absl::Span<const std::string> input_tensor_names,
+    absl::Span<const tensorflow::DataType> input_tensor_dtypes,
+    absl::Span<const std::string> output_tensor_names,
+    absl::Span<const std::string> target_tensor_names) {
+  return tfrt::AbslStatusFromTfStatus(graph_executor_->CompileGraph(
+      graph_name, input_tensor_names, input_tensor_dtypes, output_tensor_names,
+      target_tensor_names));
 }
 
 }  // namespace tfrt_stub

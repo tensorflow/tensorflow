@@ -291,14 +291,15 @@ tsl::Status DoLoadFromLevelDbTable(
   }
 
   // Read events at the different zoom levels.
-  std::vector<std::vector<TraceEvent*>> loaded_events_by_level;
+  std::vector<std::unique_ptr<std::vector<TraceEvent*>>> loaded_events_by_level;
   size_t filtered = 0;
   TraceEvent event;  // Declared outside of the loop to avoid repeated calls to
                      // the constructor and destructor in the loop body. Cleared
                      // by every call to ParseFromCord.
   for (int i = 0;; ++i) {
-    loaded_events_by_level.emplace_back();
-    auto& loaded_events = loaded_events_by_level.back();
+    loaded_events_by_level.emplace_back(
+        std::make_unique<std::vector<TraceEvent*>>());
+    auto& loaded_events = *loaded_events_by_level.back();
     uint64_t resolution_ps = LayerResolutionPs(i);
     // Seek to the first element that might be in range. For the initial zoom
     // level, we don't know any bounds as events might be arbitrarily large.
@@ -341,12 +342,16 @@ tsl::Status DoLoadFromLevelDbTable(
              TraceEventsComparator());
   loaded_events_by_level.clear();
 
-  LOG(INFO) << "Loaded " << loaded_events.size() << " events and filtered "
+  LOG(INFO) << "Loaded " << loaded_events.size() << " events after filtering "
             << filtered << " events from LevelDb fast file: " << filename;
+  size_t visible_events_count = 0;
   for (TraceEvent* event : loaded_events) {
-    if (!visibility || !visibility->Filter(*event)) add_arena_event(event);
+    if (!visibility || !visibility->Filter(*event)) {
+      add_arena_event(event);
+      ++visible_events_count;
+    }
   }
-  LOG(INFO) << "Added " << trace.num_events()
+  LOG(INFO) << "Added " << visible_events_count
             << " visible events from LevelDb fast file: " << filename;
   return tsl::OkStatus();
 }

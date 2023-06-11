@@ -93,6 +93,9 @@ struct GraphImportConfig {
   // If set, use the value as the device type and mark the function graph for
   // XLA compilation.
   string xla_compile_device_type;
+  // If true, enables moving ops to different devices or moving unsupported ops
+  // out of a compilation cluster.
+  bool enable_soft_placement = false;
 };
 
 struct GraphExportConfig {

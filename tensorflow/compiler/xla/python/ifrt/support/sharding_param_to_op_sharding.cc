@@ -29,7 +29,7 @@ namespace ifrt {
 namespace support {
 
 StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
-                                  absl::Span<const int64_t> device_mapping) {
+                                  absl::Span<const int> device_mapping) {
   OpSharding op_sharding;
   op_sharding.set_type(OpSharding::OTHER);
 
@@ -41,8 +41,8 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
     cum_size *= dim_shard;
     tile_assignment_dims->Add(dim_shard);
   }
-  int64_t device_count = 1;
-  for (const int64_t axis_size : sharding_param.minor_to_major().axis_sizes) {
+  int device_count = 1;
+  for (const int axis_size : sharding_param.minor_to_major().axis_sizes) {
     device_count *= axis_size;
   }
   if (device_count != cum_size) {
@@ -51,11 +51,11 @@ StatusOr<OpSharding> ToOpSharding(const ShardingParam& sharding_param,
   }
 
   // Populate tile_assignment_devices.
-  llvm::SmallVector<int64_t, 4> devices;
+  llvm::SmallVector<int, 4> devices;
   sharding_param.minor_to_major().ToDeviceList(devices);
   auto* tile_assignment_devices = op_sharding.mutable_tile_assignment_devices();
   tile_assignment_devices->Reserve(devices.size());
-  for (const int64_t device : devices) {
+  for (const int device : devices) {
     if (device < 0 || device >= device_mapping.size()) {
       return tsl::errors::OutOfRange("Can't map device ", device);
     }

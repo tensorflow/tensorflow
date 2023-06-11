@@ -62,6 +62,7 @@ constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
 constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
+constexpr int kPendingTaskLogLimit = 20;
 
 std::string GetTaskName(absl::string_view job_name, int task_id) {
   return strings::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
@@ -440,9 +441,22 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
             // Pass these barriers with the time out error.
             for (const auto& [barrier_id, barrier] : expired_barriers) {
+              std::string pending_tasks;
+              int pending_task_count = 0;
+              for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
+                if (!at_barrier) {
+                  ++pending_task_count;
+                  if (pending_task_count <= kPendingTaskLogLimit) {
+                    absl::StrAppend(&pending_tasks, GetTaskName(task), "\n");
+                  } else {
+                    break;
+                  }
+                }
+              }
               const Status error =
                   MakeCoordinationError(errors::DeadlineExceeded(absl::StrCat(
-                      "Barrier timed out. Barrier_id: ", barrier_id)));
+                      "Barrier timed out. Barrier_id: ", barrier_id,
+                      ". Timed out task names:\n", pending_tasks)));
               PassBarrier(barrier_id, error, barrier);
             }
           }

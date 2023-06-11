@@ -85,7 +85,7 @@ TfLiteStatus SelectPrepare(TfLiteContext* context, TfLiteNode* node) {
       GetTensorShape(input_x).FlatSize() == 1 &&
       GetTensorShape(input_y).FlatSize() == 1 &&
       GetTensorShape(output).FlatSize() == 1) {
-    return kTfLiteOk;
+    return context->ResizeTensor(context, output, output->dims);
   }
 
   bool same_shape = HaveSameShapes(input_condition, input_x) &&

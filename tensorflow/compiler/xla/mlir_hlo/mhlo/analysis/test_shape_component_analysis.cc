@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/analysis/shape_component_analysis.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"

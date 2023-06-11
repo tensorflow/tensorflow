@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -141,6 +141,13 @@ class GpuDriver {
   // TODO(leary) verify an error will be returned if the location wasn't
   // previously registered.
   static bool HostUnregister(GpuContext* context, void* location);
+
+  // Queries the priority range and returns the corresponding integer value via
+  // cuCtxGetStreamPriorityRange
+  //
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g137920ab61a71be6ce67605b9f294091
+  static int GetGpuStreamPriority(
+      GpuContext* context, stream_executor::StreamPriority stream_priority);
 
   // Virtual memory support was added to CUDA in 10.2
 #if CUDA_VERSION >= 10020

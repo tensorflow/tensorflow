@@ -103,7 +103,6 @@ cc_library(
         ":custom_call_encoding",
         ":passes",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
@@ -197,6 +196,7 @@ cc_library(
     hdrs = ["custom_call_encoding.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:tracing",
@@ -293,7 +293,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
-        "//tensorflow/compiler/xla/runtime:errors",
         "//tensorflow/compiler/xla/runtime:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
