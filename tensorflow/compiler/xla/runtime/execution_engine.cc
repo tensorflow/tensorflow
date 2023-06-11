@@ -35,7 +35,6 @@ limitations under the License.
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
@@ -312,13 +311,6 @@ ExecutionEngine::CreateFromModule(std::unique_ptr<llvm::LLVMContext> ctx,
 
   llvm::orc::JITDylib &main_jd = (*jit)->getMainJITDylib();
   llvm::DataLayout data_layout = (*jit)->getDataLayout();
-
-  // Register symbols that are statically linked in the current process.
-  auto generator = DynamicLibrarySearchGenerator::GetForCurrentProcess(
-      data_layout.getGlobalPrefix());
-  if (auto err = generator.takeError())
-    return InternalError("failed to construct DyLib search generator");
-  main_jd.addGenerator(std::move(*generator));
 
   // Register user-provided symbols.
   if (options.symbols_binding) {
