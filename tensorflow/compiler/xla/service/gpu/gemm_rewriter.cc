@@ -1190,7 +1190,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         }
         return;
       };
+      if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget){
       pad_operand(broadcast_bias);
+      }
     VLOG(1) << "FuseMatrixBiasAdd:44444444444444444444\n";
     // if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
     //   operands.at(2) = broadcast_bias;
