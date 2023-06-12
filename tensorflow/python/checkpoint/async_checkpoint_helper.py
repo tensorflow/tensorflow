@@ -77,6 +77,9 @@ class AsyncCheckpointHelper:
       root: The root object to checkpoint. `root` may be a trackable object or
         `WeakRef` of a trackable object.
       **kwargs: The keyword arguments representing the checkpointed variables.
+
+    Raises:
+      AttributeError: when checkpointer_impl is None.
     """
     # TODO(chienchunh): Make sure the processing for the root object is
     #   consistent when integrating with the public API, e.g., adding all kwarg
@@ -86,12 +89,20 @@ class AsyncCheckpointHelper:
       kwargs["root"] = trackable_root
       trackable_root._maybe_initialize_trackable()
 
+    # The underlying Checkpoint instance and its items.
+    if checkpointer_impl is None:
+      raise AttributeError(
+          "checkpointer_impl cannot be None for AsyncCheckpointHelper."
+      )
     self._checkpointer_impl = checkpointer_impl
     self._checkpoint_items = kwargs
-
-    # The underlying Checkpoint instance and its items.
     self._checkpoint = None
+    self.checkpointer()
     self._checkpoint_options = None
+
+    # Indicate whether async checkpoint has finished traversing the variable
+    # list and created the object map between the original and copied variables.
+    self._initialized = False
 
     # The callback function that needs to be executed after checkpoint write.
     # Currently this is only applied to the scenario where CheckpointManager is
@@ -192,9 +203,15 @@ class AsyncCheckpointHelper:
         to_traverse.append(child)
     # pylint: enable=protected-access
 
+  def checkpointer(self):
+    """Gets or creates the underlying Checkpoint instance."""
+    if self._checkpoint is None:
+      self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
+    return self._checkpoint
+
   def _ensure_initialized(self):
     """Initialize the async checkpoint internal state."""
-    if self._checkpoint is not None:
+    if self._initialized:
       return
 
     self._original_nodes = []
@@ -231,20 +248,20 @@ class AsyncCheckpointHelper:
             if isinstance(original_slot_variable, (Variable, ShardedVariable)):
               self._copy_trackable(original_slot_variable)
 
-    # Initiate the underlying Checkpoint instance with the copied items.
-    self._checkpoint = self._checkpointer_impl(**self._checkpoint_items)
     # Initiate the underlying Checkpoint instance's save_counter.
-    save_counter = self._checkpoint.save_counter.numpy()
+    save_counter = self.checkpointer().save_counter.numpy()
     logging.info("Initializing async checkpoint's save_counter: %d",
                  save_counter)
 
     # Pass the object map of the copied variables to the underlying Checkpoint.
-    self._checkpoint._saver._object_map = self._object_map  # pylint: disable=protected-access
+    self.checkpointer()._saver._object_map = self._object_map  # pylint: disable=protected-access
 
     # Initiate the async thread for checkpoint saving.
     self._async_save_thread = threading.Thread(
         target=self._async_save, daemon=True)
     self._async_save_thread.start()
+
+    self._initialized = True
 
   def _check_async_thread_error(self):
     """Expose the most recent error from the async saving thread to the caller.
@@ -301,13 +318,15 @@ class AsyncCheckpointHelper:
           with ops.device(self._default_device):
             with checkpoint_context.async_metrics_context():
               if self._use_checkpoint_save:
-                self._checkpoint.save(self._save_file_prefix,
-                                      self._checkpoint_options)
+                self.checkpointer().save(
+                    self._save_file_prefix, self._checkpoint_options
+                )
               else:
-                self._checkpoint._write(  # pylint: disable=protected-access
+                self.checkpointer()._write(  # pylint: disable=protected-access
                     self._save_file_prefix,
                     options=self._checkpoint_options,
-                    write_done_callback=self._async_write_done_callback)
+                    write_done_callback=self._async_write_done_callback,
+                )
         except Exception as e:   # # pylint: disable=broad-except
           self._async_error = e
         finally:
@@ -423,12 +442,7 @@ class AsyncCheckpointHelper:
     Returns:
       The save counter variable.
     """
-    # TODO(sagunb): Improve the solution for initializing save_counter.
-    # If save_counter() is called before all the variables are created,
-    # self._ensure_initialized() would construct the object_map without some
-    # variables that need to be checkpointed, e.g., slot variables.
-    self._ensure_initialized()
-    return self._checkpoint.save_counter
+    return self.checkpointer().save_counter
 
   def write(self, save_path, options=None):
     """Save the checkpointed variables.
@@ -531,7 +545,7 @@ class AsyncCheckpointHelper:
     # re-construct the full path of the checkpoint file.
     # This step has to happen before triggerting the underlying checkpoint;
     # otherwise, the save_counter value may or may not have been updated.
-    save_counter = self._checkpoint.save_counter.numpy() + 1
+    save_counter = self.checkpointer().save_counter.numpy() + 1
     full_path = "{}-{}".format(save_path, save_counter)
 
     # Trigger the async thread to checkpoint the cpu-copied variables.
@@ -593,18 +607,15 @@ class AsyncCheckpointHelper:
 
     # Wait for any ongoing checkpoint event to finish.
     with self._writer_sem:
-      # If _checkpoint has not been initialized yet, it means the restore() is
-      # called right after the coordinator is restarted. We directly restore
-      # the checkpointed items through tf.train.Checkpoint.restore().
-      if self._checkpoint is None:
-        tmp_checkpoint = self._checkpointer_impl(**self._checkpoint_items)
-        return tmp_checkpoint.restore(save_path, self._checkpoint_options)
-
       # Restore the values of the cpu-copied variables.
-      status = self._checkpoint.restore(save_path, self._checkpoint_options)
+      status = self.checkpointer().restore(save_path, self._checkpoint_options)
 
-      # Restore the values of the original model.
-      self._copy_from_cpu()
+      # Copy the values back to the original variables.
+      # This is only executed if the copies of the variables have been created,
+      # i.e., object_map is created.
+      if self._initialized:
+        self._copy_from_cpu()
+
       return status
 
   def sync(self):
