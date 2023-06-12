@@ -59,6 +59,17 @@ tf_python_pybind_extension(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_snapshot_utils",
+    srcs = ["snapshot_utils_wrapper.cc"],
+    deps = [
+        "//tensorflow/core/data/service/snapshot:path_utils",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 py_strict_library(
     name = "service",
     srcs = ["__init__.py"],

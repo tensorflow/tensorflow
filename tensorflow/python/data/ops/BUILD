@@ -99,6 +99,7 @@ py_strict_library(
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:checkpoint_management",
         "//tensorflow/python/data/experimental/ops:take_while_ops",
+        "//tensorflow/python/data/experimental/service:_pywrap_snapshot_utils",
         "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:random_seed",
