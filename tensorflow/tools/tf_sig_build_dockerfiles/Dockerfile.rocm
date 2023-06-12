@@ -8,7 +8,7 @@ COPY setup.packages.rocm.cs7.sh setup.packages.rocm.cs7.sh
 COPY builder.packages.rocm.cs7.txt builder.packages.rocm.cs7.txt
 RUN /setup.packages.rocm.cs7.sh /builder.packages.rocm.cs7.txt
 
-ARG GPU_DEVICE_TARGETS="gfx900 gfx906 gfx908 gfx90a gfx1030"
+ARG GPU_DEVICE_TARGETS="gfx900 gfx906 gfx908 gfx90a gfx1030 gfx1100"
 ENV GPU_DEVICE_TARGETS=${GPU_DEVICE_TARGETS}
 
 # Install ROCM
