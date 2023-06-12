@@ -89,10 +89,10 @@ py_strict_test(
         "no_pip",
     ],
     deps = [
+        "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
-        "//tensorflow/python:dtensor",
         "//tensorflow/python:modules_with_exports",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",

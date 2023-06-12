@@ -19,6 +19,7 @@ import os
 from google.protobuf import message
 from google.protobuf import text_format
 from tensorflow.core.protobuf import snapshot_pb2
+from tensorflow.python.data.experimental.service import _pywrap_snapshot_utils
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -38,7 +39,9 @@ def _load(path, element_spec, compression, reader_func):
       Returns None if it is a non-distributed snapshot.
     """
     try:
-      with gfile.GFile(os.path.join(path, "snapshot.metadata"), "r") as f:
+      with gfile.GFile(
+          _pywrap_snapshot_utils.TF_DATA_SnapshotMetadataFilePath(path), "r"
+      ) as f:
         return text_format.ParseLines(
             f, snapshot_pb2.DistributedSnapshotMetadata())
     except (text_format.ParseError, message.DecodeError, UnicodeDecodeError):
@@ -68,7 +71,7 @@ def _load(path, element_spec, compression, reader_func):
 def _load_distributed_snapshot(path, metadata, reader_func):
   """Loads a distributed snapshot."""
 
-  chunks_dir = os.path.join(path, "chunks")
+  chunks_dir = _pywrap_snapshot_utils.TF_DATA_CommittedChunksDirectory(path)
   chunk_files = [
       os.path.join(chunks_dir, f) for f in gfile.ListDirectory(chunks_dir)]
   dataset = dataset_ops.Dataset.from_tensor_slices(chunk_files)
@@ -142,13 +145,15 @@ def _validate_snapshot(path, metadata, element_spec, compression):
         f"Failed to load tf.data snapshot at {path}: The snapshot directory "
         "does not exist.")
 
-  if gfile.Exists(os.path.join(path, "ERROR")):
-    with gfile.GFile(os.path.join(path, "ERROR"), "r") as f:
+  error_file = _pywrap_snapshot_utils.TF_DATA_SnapshotErrorFilePath(path)
+  if gfile.Exists(error_file):
+    with gfile.GFile(error_file, "r") as f:
       raise ValueError(
           f"Failed to load tf.data snapshot at {path}. The save job failed to "
           f"write it. Status: {f.read()}")
 
-  if not gfile.Exists(os.path.join(path, "DONE")):
+  done_file = _pywrap_snapshot_utils.TF_DATA_SnapshotDoneFilePath(path)
+  if not gfile.Exists(done_file):
     raise ValueError(
         f"Failed to load tf.data snapshot at {path}. The save job has not "
         "finished writing the snapshot.")

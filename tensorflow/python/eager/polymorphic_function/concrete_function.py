@@ -1701,14 +1701,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     Returns:
       The actual call output.
     """
-    if self._func_graph.structured_outputs is None:
+    if self.function_type is None:
       return result
 
-    if isinstance(result, ops.Operation):
-      # We get an op when there are no tensor outputs.
-      return self.function_type.pack_output([])
-    else:
-      return self.function_type.pack_output(result)
+    return self.function_type.pack_output(result)
 
   @property
   def _as_name_attr_list(self):

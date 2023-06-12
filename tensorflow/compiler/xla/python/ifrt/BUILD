@@ -88,6 +88,7 @@ xla_cc_test(
     name = "array_test",
     size = "small",
     srcs = ["array_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -99,6 +100,7 @@ xla_cc_test(
     name = "future_test",
     size = "small",
     srcs = ["future_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -112,6 +114,7 @@ xla_cc_test(
     name = "index_domain_test",
     size = "small",
     srcs = ["index_domain_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -122,6 +125,7 @@ xla_cc_test(
     name = "index_test",
     size = "small",
     srcs = ["index_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -132,6 +136,7 @@ xla_cc_test(
     name = "shape_test",
     size = "small",
     srcs = ["shape_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "@com_google_googletest//:gtest_main",
@@ -142,6 +147,7 @@ xla_cc_test(
     name = "sharding_test",
     size = "small",
     srcs = ["sharding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ifrt",
         "//tensorflow/compiler/xla/python/ifrt/ir",
@@ -198,6 +204,7 @@ cc_library(
 xla_cc_test(
     name = "array_test_no_impl",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":array_impl_test_lib",
         ":no_impl_test_main",
@@ -219,6 +226,7 @@ cc_library(
 xla_cc_test(
     name = "client_test_no_impl",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":client_impl_test_lib",
         ":no_impl_test_main",
@@ -245,6 +253,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_test_no_impl",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":no_impl_test_main",
         ":tuple_impl_test_lib",

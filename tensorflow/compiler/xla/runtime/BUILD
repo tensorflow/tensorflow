@@ -31,6 +31,7 @@ cc_library(
 xla_cc_test(
     name = "arguments_test",
     srcs = ["arguments_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         "//tensorflow/tsl/platform:test_benchmark",
@@ -55,6 +56,7 @@ cc_library(
 xla_cc_test(
     name = "async_runtime_test",
     srcs = ["async_runtime_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_runtime",
         "//tensorflow/tsl/platform:test",
@@ -148,6 +150,7 @@ cc_library(
 xla_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         ":async_runtime",
@@ -193,6 +196,7 @@ cc_library(
 xla_cc_test(
     name = "diagnostics_test",
     srcs = ["diagnostics_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":diagnostics",
         "//tensorflow/tsl/platform:test",
@@ -317,6 +321,7 @@ cc_library(
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         ":async_runtime",
@@ -374,6 +379,7 @@ cc_library(
 xla_cc_test(
     name = "map_by_type_test",
     srcs = ["map_by_type_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":map_by_type",
         "//tensorflow/tsl/platform:test",
@@ -431,6 +437,7 @@ cc_library(
 xla_cc_test(
     name = "module_test",
     srcs = ["module_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":custom_call",
         ":module",
@@ -452,6 +459,7 @@ cc_library(
 xla_cc_test(
     name = "results_test",
     srcs = ["results_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":logical_result",
         ":results",
@@ -481,6 +489,7 @@ cc_library(
 xla_cc_test(
     name = "state_test",
     srcs = ["state_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":state",
         "//tensorflow/tsl/platform:test",
@@ -508,6 +517,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_shape_test",
     srcs = ["symbolic_shape_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         ":constraints",
@@ -570,6 +580,7 @@ cc_library(
 xla_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":type_id",
         "//tensorflow/tsl/platform:test",

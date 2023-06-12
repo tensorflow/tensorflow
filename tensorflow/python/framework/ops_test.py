@@ -688,7 +688,7 @@ class OperationTest(test_util.TensorFlowTestCase):
     op1 = ops.Operation.from_node_def(
         ops._NodeDef("None", "op1"), g, [], [dtypes.float32_ref, dtypes.float32]
     )
-    self.assertIn("testTraceback", op1.traceback[-1])
+    self.assertIn("testTraceback", op1.traceback[-2])
 
   @test_util.run_deprecated_v1
   def testNoInputs(self):

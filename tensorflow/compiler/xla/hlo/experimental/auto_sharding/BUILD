@@ -162,6 +162,7 @@ build_test(
 xla_cc_test(
     name = "auto_sharding_test",
     srcs = ["auto_sharding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":auto_sharding",
         ":auto_sharding_util",

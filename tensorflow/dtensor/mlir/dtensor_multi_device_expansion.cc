@@ -373,6 +373,12 @@ struct DTensorMultiDeviceExpansion
           DTensorMultiDeviceExpansion> {
   void runOnOperation() override {
     mlir::ModuleOp module = getOperation();
+    auto multi_device_mode =
+        module->getAttrOfType<mlir::BoolAttr>(dtensor::kEnableMultiDeviceMode);
+    if (!multi_device_mode || !multi_device_mode.getValue()) {
+      return;  // Skip modules for whom multi-device mode is disabled.
+    }
+
     mlir::SymbolTable symbol_table(module);
     mlir::func::FuncOp main_func =
         module.lookupSymbol<mlir::func::FuncOp>(kMainFuncName);

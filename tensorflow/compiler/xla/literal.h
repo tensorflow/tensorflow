@@ -1222,8 +1222,6 @@ template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
   DCHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
-  // TODO(b/286368819): Explicitly support or not support element_size_in_bits
-  // in Literal.
   DCHECK(!subshape().has_layout() ||
          subshape().layout().element_size_in_bits() == 0)
       << __func__
@@ -1242,8 +1240,6 @@ template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
   DCHECK(LayoutUtil::IsDenseArray(subshape()))
       << __func__ << " is only supported for dense arrays: " << subshape();
-  // TODO(b/286368819): Explicitly support or not support element_size_in_bits
-  // in Literal.
   DCHECK(!subshape().has_layout() ||
          subshape().layout().element_size_in_bits() == 0)
       << __func__

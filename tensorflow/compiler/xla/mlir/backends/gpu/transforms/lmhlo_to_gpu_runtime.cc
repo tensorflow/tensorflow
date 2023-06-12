@@ -586,11 +586,11 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     return success();
   }
 
-  template <typename ThunkT, typename OpT>
-  static LogicalResult TryDegenerateCollectivePermuteToMemCopy(
-      OpT op, const NcclCollectiveConfig& config, int replica_count,
-      int num_partitions, PatternRewriter& rewriter) {
-    if (!ThunkT::IsDegenerate(op, replica_count, num_partitions)) {
+  static LogicalResult TryDegenerateToMemCopy(
+      CollectivePermuteStartOp op, const NcclCollectiveConfig& config,
+      int replica_count, int num_partitions, PatternRewriter& rewriter) {
+    if (!NcclCollectivePermuteStartThunk::IsDegenerate(op, replica_count,
+                                                       num_partitions)) {
       return failure();
     }
 
@@ -599,14 +599,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         ValueRange({op.getOutput(), op.getOperand()}));
 
     return success();
-  }
-
-  static LogicalResult TryDegenerateToMemCopy(
-      CollectivePermuteStartOp op, const NcclCollectiveConfig& config,
-      int replica_count, int num_partitions, PatternRewriter& rewriter) {
-    return TryDegenerateCollectivePermuteToMemCopy<
-        NcclCollectivePermuteStartThunk>(op, config, replica_count,
-                                         num_partitions, rewriter);
   }
 
   static Status CheckImplementable(AllGatherStartOp op, int64_t replica_count,

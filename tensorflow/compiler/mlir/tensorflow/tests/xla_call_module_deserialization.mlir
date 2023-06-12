@@ -18,7 +18,7 @@ module {
   // CHECK-SAME:    %[[ARG0:.*]]: tensor<10xi32>, %[[ARG1:.*]]: tensor<10xi32>
   func.func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32> {
     // CHECK:      %[[RESULT:.*]] = "tf.XlaCallModule"(%[[ARG0]], %[[ARG1]])
-    // CHECK-SAME:   _entry_function = @_stablehlo_main_0
+    // CHECK-SAME:   _entry_function = @main0,
     // CHECK-NOT:    function_list
     // CHECK-SAME:   module = ""
 
@@ -32,7 +32,7 @@ module {
     func.return %0 : tensor<10xi32>
   }
 
-  // CHECK-LABEL: func private @_stablehlo_main_0
+  // CHECK-LABEL: func private @main0
   // CHECK-SAME:    (%[[ARG0:.*]]: tensor<?xi32> {jax.arg_info = "x", mhlo.sharding = "{replicated}"}, %[[ARG1:.*]]: tensor<*xi32>) -> (tensor<?xi32> {jax.result_info = ""}) attributes {_from_xla_call_module} {
   // CHECK:         stablehlo.custom_call @tf.call_tf_function(%[[ARG0]], %[[ARG1]]) {api_version = 2 : i32, has_side_effect = true, tf.backend_config = {called_func = @_tf_func}} : (tensor<?xi32>, tensor<*xi32>) -> ()
   // CHECK:         return %arg0 : tensor<?xi32>

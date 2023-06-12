@@ -740,7 +740,9 @@ static bool IsIntermediate(const HloInstruction* instr,
       instr->operand_count() > 0 &&
       instr->operand_count() <= allowed_operand_count &&
       instr->user_count() <= 1 &&
-      ((instr->IsElementwise() && instr->opcode() != HloOpcode::kCopy) ||
+      ((instr->IsElementwise() &&
+        (instr->opcode() != HloOpcode::kCopy ||
+         instr->shape() == instr->operand(0)->shape())) ||
        instr->opcode() == HloOpcode::kBitcast ||
        (instr->opcode() == HloOpcode::kReshape &&
         ShapeUtil::ReshapeIsBitcast(instr->operand(0)->shape(),

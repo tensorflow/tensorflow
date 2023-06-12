@@ -2902,6 +2902,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       @def_function.function
       def increment_v(x):
         obj.v.assign_add(x)
+        return x
 
       session.run(increment_v(constant_op.constant(3.0)))  # generate signatures
       self.assertAllClose(8, total())

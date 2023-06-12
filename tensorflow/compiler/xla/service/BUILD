@@ -120,6 +120,7 @@ cc_library(
 xla_cc_test(
     name = "async_collective_creator_test",
     srcs = ["async_collective_creator_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_collective_creator",
         ":pattern_matcher",
@@ -145,6 +146,7 @@ cc_library(
 xla_cc_test(
     name = "async_op_canonicalizer_test",
     srcs = ["async_op_canonicalizer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_op_canonicalizer",
         ":hlo_dce",
@@ -173,6 +175,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_promotion_test",
     srcs = ["all_reduce_promotion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_promotion",
         ":pattern_matcher",
@@ -204,6 +207,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_reassociate_test",
     srcs = ["all_reduce_reassociate_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_reassociate",
         ":pattern_matcher_gmock",
@@ -236,6 +240,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_folder_test",
     srcs = ["all_reduce_folder_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_folder",
         "//tensorflow/compiler/xla:test",
@@ -269,6 +274,7 @@ cc_library(
 xla_cc_test(
     name = "broadcast_canonicalizer_test",
     srcs = ["broadcast_canonicalizer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":broadcast_canonicalizer",
         "//tensorflow/compiler/xla:test",
@@ -298,6 +304,7 @@ cc_library(
 xla_cc_test(
     name = "bfloat16_conversion_folding_test",
     srcs = ["bfloat16_conversion_folding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":bfloat16_conversion_folding",
         ":float_support",
@@ -332,6 +339,7 @@ cc_library(
 xla_cc_test(
     name = "float_normalization_test",
     srcs = ["float_normalization_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":float_normalization",
         ":float_support",
@@ -373,6 +381,7 @@ cc_library(
 xla_cc_test(
     name = "bfloat16_propagation_test",
     srcs = ["bfloat16_propagation_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":bfloat16_propagation",
         ":float_support",
@@ -401,6 +410,7 @@ cc_library(
 xla_cc_test(
     name = "constant_value_test",
     srcs = ["constant_value_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":constant_value",
         "//tensorflow/compiler/xla:literal_util",
@@ -438,6 +448,7 @@ cc_library(
 xla_cc_test(
     name = "value_range_test",
     srcs = ["value_range_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_config",
         ":hlo_parser",
@@ -451,6 +462,7 @@ xla_cc_test(
 xla_cc_test(
     name = "convert_async_collectives_to_sync_test",
     srcs = ["convert_async_collectives_to_sync_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":convert_async_collectives_to_sync",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -494,6 +506,7 @@ cc_library(
 xla_cc_test(
     name = "data_parallel_collective_optimizer_test",
     srcs = ["data_parallel_collective_optimizer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":data_parallel_collective_optimizer",
         ":hlo_dce",
@@ -561,6 +574,7 @@ cc_library(
 xla_cc_test(
     name = "shape_inference_test",
     srcs = ["shape_inference_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_inference",
         "//tensorflow/compiler/xla:shape_util",
@@ -580,6 +594,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_opcode_test",
     srcs = ["hlo_opcode_test.cc"],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
@@ -627,6 +642,7 @@ xla_cc_test(
     srcs = [
         "sharding_propagation_test.cc",
     ],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":sharding_propagation",
@@ -663,6 +679,7 @@ xla_cc_test(
     srcs = [
         "sharding_remover_test.cc",
     ],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":sharding_remover",
@@ -691,6 +708,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_parameter_binding_test",
     srcs = ["dynamic_parameter_binding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dce",
         ":hlo_memory_scheduler",
@@ -727,6 +745,7 @@ xla_test(
 xla_cc_test(
     name = "dfs_hlo_visitor_with_default_test",
     srcs = ["dfs_hlo_visitor_with_default_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_runner",
         "//tensorflow/compiler/xla:shape_util",
@@ -755,6 +774,7 @@ cc_library(
 xla_cc_test(
     name = "pattern_matcher_test",
     srcs = ["pattern_matcher_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":pattern_matcher",
@@ -781,6 +801,7 @@ cc_library(
 xla_cc_test(
     name = "pattern_matcher_gmock_test",
     srcs = ["pattern_matcher_gmock_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pattern_matcher",
         ":pattern_matcher_gmock",
@@ -794,6 +815,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_reachability_test",
     srcs = ["hlo_reachability_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":computation_placer",
         "//tensorflow/compiler/xla:test",
@@ -808,6 +830,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_instruction_test",
     srcs = ["hlo_instruction_test.cc"],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -828,6 +851,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_sharding_test",
     srcs = ["hlo_sharding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         "//tensorflow/compiler/xla:protobuf_util",
@@ -861,6 +885,7 @@ cc_library(
 xla_cc_test(
     name = "call_graph_test",
     srcs = ["call_graph_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":call_graph",
         "//tensorflow/compiler/xla:literal",
@@ -912,6 +937,7 @@ xla_cc_test(
     name = "call_inliner_test",
     size = "small",
     srcs = ["call_inliner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":call_inliner",
         ":hlo_pass",
@@ -942,6 +968,7 @@ xla_cc_test(
     name = "hlo_computation_deduplicator_test",
     size = "small",
     srcs = ["hlo_computation_deduplicator_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_computation_deduplicator",
         ":hlo_pass",
@@ -962,6 +989,7 @@ xla_cc_test(
 xla_cc_test(
     name = "flatten_call_graph_test",
     srcs = ["flatten_call_graph_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":call_graph",
         ":flatten_call_graph",
@@ -1141,6 +1169,7 @@ cc_library(
 xla_cc_test(
     name = "latency_hiding_scheduler_test",
     srcs = ["latency_hiding_scheduler_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_collective_creator",
         ":latency_hiding_scheduler",
@@ -1167,6 +1196,7 @@ cc_library(
 xla_cc_test(
     name = "profile_guided_latency_estimator_test",
     srcs = ["profile_guided_latency_estimator_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":latency_hiding_scheduler",
         ":profile_guided_latency_estimator",
@@ -1283,6 +1313,7 @@ cc_library(
 xla_cc_test(
     name = "shaped_buffer_test",
     srcs = ["shaped_buffer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cpu_plugin",
         ":platform_util",
@@ -1473,6 +1504,7 @@ cc_library(
 xla_cc_test(
     name = "name_uniquer_test",
     srcs = ["name_uniquer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":name_uniquer",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -1523,6 +1555,7 @@ cc_library(
 xla_cc_test(
     name = "buffer_assignment_test",
     srcs = ["buffer_assignment_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_op_canonicalizer",
         ":buffer_assignment",
@@ -1581,6 +1614,7 @@ xla_cc_test(
     name = "hlo_ordering_test",
     size = "small",
     srcs = ["hlo_ordering_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dataflow_analysis",
         ":hlo_ordering",
@@ -1628,6 +1662,7 @@ cc_library(
 xla_cc_test(
     name = "heap_simulator_test",
     srcs = ["heap_simulator_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":buffer_value",
         ":heap_simulator",
@@ -1650,7 +1685,10 @@ xla_cc_test(
     name = "hlo_module_group_test",
     srcs = ["hlo_module_group_test.cc"],
     # TODO(b/148211710) Test fails in OSS.
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "nomsan",
+    ],
     deps = [
         ":hlo_module_group_metadata",
         ":hlo_proto_cc",
@@ -1725,6 +1763,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_schedule_test",
     srcs = ["hlo_schedule_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dce",
         ":hlo_memory_scheduler",
@@ -1743,6 +1782,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_input_output_alias_config_test",
     srcs = ["hlo_input_output_alias_config_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dce",
         ":hlo_memory_scheduler",
@@ -1785,6 +1825,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_memory_scheduler_test",
     srcs = ["hlo_memory_scheduler_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":heap_simulator",
         ":hlo_dce",
@@ -1836,6 +1877,7 @@ cc_library(
 xla_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":instruction_fusion",
@@ -1905,6 +1947,7 @@ cc_library(
 xla_cc_test(
     name = "fusion_node_indexing_evaluation_test",
     srcs = ["fusion_node_indexing_evaluation_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":fusion_node_indexing_evaluation",
         ":hlo_parser",
@@ -1920,6 +1963,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_creation_utils_test",
     srcs = ["hlo_creation_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_creation_utils",
         ":pattern_matcher",
@@ -2028,6 +2072,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_expander_test",
     srcs = ["scatter_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":scatter_expander",
         "//tensorflow/compiler/xla:literal",
@@ -2069,6 +2114,7 @@ xla_cc_test(
     size = "medium",
     srcs = ["triangular_solve_expander_test.cc"],
     shard_count = 12,
+    tags = ["nomsan"],
     deps = [
         ":triangular_solve_expander",
         "//tensorflow/compiler/xla:literal",
@@ -2142,6 +2188,7 @@ xla_cc_test(
     name = "real_imag_expander_test",
     size = "small",
     srcs = ["real_imag_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_creation_utils",
         ":pattern_matcher",
@@ -2202,6 +2249,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_4d_expander_test",
     srcs = ["convolution_4d_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         "convolution_4d_expander",
         "//tensorflow/compiler/xla:test",
@@ -2232,6 +2280,7 @@ cc_library(
 xla_cc_test(
     name = "convolution_pred_expander_test",
     srcs = ["convolution_pred_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":convolution_pred_expander",
         ":pattern_matcher",
@@ -2323,6 +2372,7 @@ cc_library(
 xla_cc_test(
     name = "algebraic_simplifier_test",
     srcs = ["algebraic_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":algebraic_simplifier",
         ":hlo_creation_utils",
@@ -2373,6 +2423,7 @@ cc_library(
 xla_cc_test(
     name = "simplify_fp_conversions_test",
     srcs = ["simplify_fp_conversions_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":simplify_fp_conversions",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2410,6 +2461,7 @@ cc_library(
 xla_cc_test(
     name = "logistic_expander_test",
     srcs = ["logistic_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_creation_utils",
         ":hlo_parser",
@@ -2453,6 +2505,7 @@ cc_library(
 xla_cc_test(
     name = "collectives_schedule_linearizer_test",
     srcs = ["collectives_schedule_linearizer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":collectives_schedule_linearizer",
         ":pattern_matcher",
@@ -2538,6 +2591,7 @@ cc_library(
 xla_cc_test(
     name = "bitcast_dtypes_expander_test",
     srcs = ["bitcast_dtypes_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":bitcast_dtypes_expander",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
@@ -2552,6 +2606,7 @@ xla_cc_test(
 xla_cc_test(
     name = "all_gather_broadcast_reorder_test",
     srcs = ["all_gather_broadcast_reorder_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_gather_broadcast_reorder",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
@@ -2587,6 +2642,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_combiner_test",
     srcs = ["all_gather_combiner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_gather_combiner",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -2624,6 +2680,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_combiner_test",
     srcs = ["all_reduce_combiner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_combiner",
         "//tensorflow/compiler/xla:literal",
@@ -2654,6 +2711,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_contiguous_test",
     srcs = ["all_reduce_contiguous_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_contiguous",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2691,6 +2749,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_combiner_test",
     srcs = ["reduce_scatter_combiner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":reduce_scatter_combiner",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2717,6 +2776,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_simplifier_test",
     srcs = ["all_reduce_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_simplifier",
         ":hlo_parser",
@@ -2753,6 +2813,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_decomposer_test",
     srcs = ["reduce_scatter_decomposer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":collective_ops_utils",
         ":reduce_scatter_decomposer",
@@ -2784,6 +2845,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_scatter_reassociate_test",
     srcs = ["reduce_scatter_reassociate_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":reduce_scatter_reassociate",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2808,6 +2870,7 @@ cc_library(
 xla_cc_test(
     name = "batch_dot_simplification_test",
     srcs = ["batch_dot_simplification_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":batch_dot_simplification",
         "//tensorflow/compiler/xla:test",
@@ -2820,6 +2883,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gather_expander_test",
     srcs = ["gather_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":gather_expander",
         "//tensorflow/compiler/xla:test",
@@ -2856,6 +2920,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_simplifier_test",
     srcs = ["conditional_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":conditional_simplifier",
         "//tensorflow/compiler/xla:literal_util",
@@ -2900,6 +2965,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_code_motion_test",
     srcs = ["conditional_code_motion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":conditional_code_motion",
         "//tensorflow/compiler/xla:literal_util",
@@ -2943,6 +3009,7 @@ xla_cc_test(
     name = "convolution_group_converter_test",
     size = "small",
     srcs = ["convolution_group_converter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":convolution_group_converter",
         "//tensorflow/compiler/xla:test",
@@ -3000,6 +3067,7 @@ xla_cc_test(
     name = "space_to_batch_converter_test",
     size = "small",
     srcs = ["space_to_batch_converter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":space_to_batch_converter",
         "//tensorflow/compiler/xla:test",
@@ -3027,6 +3095,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_analysis_test",
     srcs = ["while_loop_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":while_loop_analysis",
@@ -3061,6 +3130,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_simplifier_test",
     srcs = ["while_loop_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":algebraic_simplifier",
         ":hlo_cse",
@@ -3094,6 +3164,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_trip_count_annotator_test",
     srcs = ["while_loop_trip_count_annotator_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pattern_matcher",
         ":while_loop_simplifier",
@@ -3127,6 +3198,7 @@ cc_library(
 xla_cc_test(
     name = "defuser_test",
     srcs = ["defuser_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":defuser",
         "//tensorflow/compiler/xla:literal",
@@ -3140,6 +3212,7 @@ xla_cc_test(
 xla_cc_test(
     name = "despecializer_test",
     srcs = ["despecializer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":despecializer",
         "//tensorflow/compiler/xla:literal",
@@ -3173,6 +3246,7 @@ cc_library(
 xla_cc_test(
     name = "dot_decomposer_test",
     srcs = ["dot_decomposer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":dot_decomposer",
         ":hlo_parser",
@@ -3201,6 +3275,7 @@ cc_library(
 xla_cc_test(
     name = "dot_dimension_merger_test",
     srcs = ["dot_dimension_merger_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":dot_dimension_merger",
         ":hlo_parser",
@@ -3224,6 +3299,7 @@ cc_library(
 xla_cc_test(
     name = "dot_merger_test",
     srcs = ["dot_merger_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":algebraic_simplifier",
         ":dot_merger",
@@ -3251,6 +3327,7 @@ cc_library(
 xla_cc_test(
     name = "convert_mover_test",
     srcs = ["convert_mover_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":convert_mover",
         ":pattern_matcher",
@@ -3294,6 +3371,7 @@ cc_library(
 xla_cc_test(
     name = "all_gather_decomposer_test",
     srcs = ["all_gather_decomposer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_gather_decomposer",
         ":hlo_parser",
@@ -3319,6 +3397,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_simplifier_test",
     srcs = ["tuple_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tuple_simplifier",
         "//tensorflow/compiler/xla:literal",
@@ -3376,6 +3455,7 @@ cc_library(
 xla_cc_test(
     name = "reduce_decomposer_test",
     srcs = ["reduce_decomposer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":reduce_decomposer",
@@ -3390,6 +3470,7 @@ xla_cc_test(
 xla_cc_test(
     name = "reshape_decomposer_test",
     srcs = ["reshape_decomposer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":reshape_decomposer",
@@ -3456,6 +3537,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_dimension_simplifier_test",
     srcs = ["dynamic_dimension_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":dynamic_dimension_simplifier",
         ":hlo_creation_utils",
@@ -3549,6 +3631,7 @@ xla_test(
 xla_cc_test(
     name = "dynamic_dimension_inference_test",
     srcs = ["dynamic_dimension_inference_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":dynamic_dimension_inference",
         ":hlo_runner",
@@ -3571,6 +3654,7 @@ xla_cc_test(
 xla_cc_test(
     name = "reshape_mover_test",
     srcs = ["reshape_mover_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":algebraic_simplifier",
         ":hlo_pass",
@@ -3704,6 +3788,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cost_analysis_test",
     srcs = ["hlo_cost_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -3747,7 +3832,10 @@ cc_library(
 xla_cc_test(
     name = "hlo_execution_profile_test",
     srcs = ["hlo_execution_profile_test.cc"],
-    tags = ["no_mac_arm64"],
+    tags = [
+        "no_mac_arm64",
+        "nomsan",
+    ],
     deps = [
         ":cpu_plugin",
         ":hlo_cost_analysis",
@@ -3761,6 +3849,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pattern_matcher",
         ":pattern_matcher_gmock",
@@ -3781,6 +3870,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_test",
     srcs = ["hlo_module_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":computation_placer_hdr",
         ":hlo_memory_scheduler",
@@ -3807,6 +3897,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_metadata_test",
     srcs = ["hlo_module_metadata_test.cc"],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
@@ -3912,6 +4003,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_dataflow_analysis_test",
     srcs = ["hlo_dataflow_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_op_canonicalizer",
         ":flatten_call_graph",
@@ -3952,6 +4044,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_phi_graph_test",
     srcs = ["hlo_phi_graph_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_graph_dumper",
         ":hlo_phi_graph",
@@ -3986,6 +4079,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_value_semantics_analysis_test",
     srcs = ["hlo_value_semantics_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_value_semantics_analysis",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -4014,6 +4108,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_replication_analysis_test",
     srcs = ["hlo_replication_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_replication_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -4051,6 +4146,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_liveness_analysis_test",
     srcs = ["hlo_liveness_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_liveness_analysis",
         "//tensorflow/compiler/xla:literal",
@@ -4115,6 +4211,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_alias_analysis_test",
     srcs = ["hlo_alias_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":flatten_call_graph",
         ":hlo_alias_analysis",
@@ -4183,6 +4280,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_points_to_analysis_test",
     srcs = ["tuple_points_to_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_creation_utils",
         ":instruction_fusion",
@@ -4305,6 +4403,7 @@ cc_library(
 xla_cc_test(
     name = "copy_insertion_test",
     srcs = ["copy_insertion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":copy_insertion",
         ":hlo_graph_dumper",
@@ -4326,6 +4425,7 @@ xla_cc_test(
 xla_cc_test(
     name = "loop_schedule_linearizer_test",
     srcs = ["loop_schedule_linearizer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":copy_insertion",
         ":hlo_graph_dumper",
@@ -4380,6 +4480,7 @@ cc_library(
 xla_cc_test(
     name = "memory_space_assignment_best_fit_repacker_test",
     srcs = ["memory_space_assignment_best_fit_repacker_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":memory_space_assignment_best_fit_repacker",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -4418,6 +4519,7 @@ cc_library(
 xla_cc_test(
     name = "memory_space_assignment_test",
     srcs = ["memory_space_assignment_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":instruction_hoister",
         ":memory_space_assignment",
@@ -4444,6 +4546,7 @@ cc_library(
 xla_cc_test(
     name = "memory_space_propagation_test",
     srcs = ["memory_space_propagation_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":memory_space_propagation",
@@ -4519,6 +4622,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_verifier_test",
     srcs = ["hlo_verifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_config",
         ":hlo_parser",
@@ -4590,6 +4694,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_rematerialization_test_utils_test",
     srcs = ["hlo_rematerialization_test_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_ordering",
         ":hlo_rematerialization_test_utils",
@@ -4607,6 +4712,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_ordering",
         ":hlo_rematerialization",
@@ -4624,6 +4730,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_dce_test",
     srcs = ["hlo_dce_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dce",
         "//tensorflow/compiler/xla:literal_util",
@@ -4642,6 +4749,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_module_dce_test",
     srcs = ["hlo_module_dce_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_dce",
         "//tensorflow/compiler/xla:shape_util",
@@ -4658,6 +4766,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_assignment_test",
     srcs = ["layout_assignment_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":algebraic_simplifier",
         ":computation_layout",
@@ -4731,6 +4840,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_pass_pipeline_test",
     srcs = ["hlo_pass_pipeline_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":hlo_pass_pipeline",
@@ -4762,6 +4872,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cpu_plugin",
         ":hlo_cse",
@@ -4803,6 +4914,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_constant_folding_test",
     srcs = ["hlo_constant_folding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_constant_folding",
         ":hlo_parser",
@@ -4883,6 +4995,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_domain_test",
     srcs = ["hlo_domain_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":call_inliner",
         ":hlo_domain_isolator",
@@ -4918,6 +5031,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_element_type_converter_test",
     srcs = ["hlo_element_type_converter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_element_type_converter",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
@@ -4940,6 +5054,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_canonicalizer_test",
     srcs = ["conditional_canonicalizer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":conditional_canonicalizer",
         ":hlo_parser",
@@ -5105,6 +5220,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_graph_dumper_test",
     srcs = ["hlo_graph_dumper_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_graph_dumper",
         "//tensorflow/compiler/xla:literal_util",
@@ -5140,6 +5256,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_folding_test",
     srcs = ["transpose_folding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_inference",
         ":transpose_folding",
@@ -5181,6 +5298,7 @@ cc_library(
 xla_cc_test(
     name = "zero_sized_hlo_elimination_test",
     srcs = ["zero_sized_hlo_elimination_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_inference",
         ":zero_sized_hlo_elimination",
@@ -5207,6 +5325,7 @@ cc_library(
 xla_cc_test(
     name = "stream_pool_test",
     srcs = ["stream_pool_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":stream_pool",
         "//tensorflow/compiler/xla:test_helpers",
@@ -5233,6 +5352,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_proto_util_test",
     srcs = ["hlo_proto_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_proto_cc",
         ":hlo_proto_util",
@@ -5341,6 +5461,7 @@ cc_library(
 xla_cc_test(
     name = "sort_simplifier_test",
     srcs = ["sort_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":pattern_matcher",
@@ -5371,6 +5492,7 @@ cc_library(
 xla_cc_test(
     name = "stable_sort_expander_test",
     srcs = ["stable_sort_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":algebraic_simplifier",
         ":hlo_parser",
@@ -5399,6 +5521,7 @@ cc_library(
 xla_cc_test(
     name = "tuple_util_test",
     srcs = ["tuple_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_config",
         ":hlo_parser",
@@ -5426,6 +5549,7 @@ cc_library(
 xla_cc_test(
     name = "root_instruction_sinker_test",
     srcs = ["root_instruction_sinker_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":root_instruction_sinker",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
@@ -5455,6 +5579,7 @@ cc_library(
 xla_cc_test(
     name = "while_util_test",
     srcs = ["while_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":while_util",
         "//tensorflow/compiler/xla:test",
@@ -5493,6 +5618,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_all_reduce_code_motion_test",
     srcs = ["while_loop_all_reduce_code_motion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_verifier",
         ":while_loop_all_reduce_code_motion",
@@ -5535,6 +5661,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_concat_code_motion_test",
     srcs = ["while_loop_concat_code_motion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_verifier",
         ":while_loop_concat_code_motion",
@@ -5577,6 +5704,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_invariant_code_motion_test",
     srcs = ["while_loop_invariant_code_motion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":while_loop_invariant_code_motion",
@@ -5610,6 +5738,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_expensive_invariant_code_motion_test",
     srcs = ["while_loop_expensive_invariant_code_motion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":while_loop_expensive_invariant_code_motion",
@@ -5637,6 +5766,7 @@ cc_library(
 xla_cc_test(
     name = "while_loop_constant_sinking_test",
     srcs = ["while_loop_constant_sinking_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":while_loop_constant_sinking",
         "//tensorflow/compiler/xla:test",
@@ -5695,6 +5825,7 @@ cc_library(
 xla_cc_test(
     name = "indexed_array_analysis_test",
     srcs = ["indexed_array_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":indexed_array_analysis",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -5738,6 +5869,7 @@ xla_cc_test(
     name = "hlo_parser_test",
     size = "small",
     srcs = ["hlo_parser_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":pattern_matcher",
@@ -5813,6 +5945,7 @@ cc_library(
 xla_cc_test(
     name = "optimize_input_output_buffer_alias_test",
     srcs = ["optimize_input_output_buffer_alias_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":optimize_input_output_buffer_alias",
         "//tensorflow/compiler/xla:shape_util",
@@ -5880,6 +6013,7 @@ cc_library(
 xla_cc_test(
     name = "dynamic_index_splitter_test",
     srcs = ["dynamic_index_splitter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":dynamic_index_splitter",
         "//tensorflow/compiler/xla:test",
@@ -5894,6 +6028,7 @@ xla_cc_test(
 xla_cc_test(
     name = "ar_crs_combiner_test",
     srcs = ["ar_crs_combiner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ar_crs_combiner",
         "//tensorflow/compiler/xla:statusor",
@@ -5907,6 +6042,7 @@ xla_cc_test(
 xla_cc_test(
     name = "map_inliner_test",
     srcs = ["map_inliner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":map_inliner",
         "//tensorflow/compiler/xla:literal",
@@ -5924,6 +6060,7 @@ xla_cc_test(
 xla_cc_test(
     name = "hlo_casting_utils_test",
     srcs = ["hlo_casting_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -5952,6 +6089,7 @@ cc_library(
 xla_cc_test(
     name = "conditional_to_select_test",
     srcs = ["conditional_to_select_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":conditional_to_select",
         "//tensorflow/compiler/xla:literal",
@@ -6042,6 +6180,7 @@ cc_library(
 xla_cc_test(
     name = "custom_call_status_test",
     srcs = ["custom_call_status_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":custom_call_status_internal",
         ":custom_call_status_test_c_caller",
@@ -6061,6 +6200,7 @@ cc_library(
 xla_cc_test(
     name = "slice_sinker_test",
     srcs = ["slice_sinker_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dce",
         ":hlo_parser",
@@ -6159,6 +6299,7 @@ cc_library(
 xla_cc_test(
     name = "collective_transformation_reorderer_test",
     srcs = ["collective_transformation_reorderer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":collective_transformation_reorderer",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
@@ -6171,6 +6312,7 @@ xla_cc_test(
 xla_cc_test(
     name = "collective_ops_utils_test",
     srcs = ["collective_ops_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":collective_ops_utils",
         ":computation_placer",
@@ -6203,6 +6345,7 @@ cc_library(
 xla_cc_test(
     name = "topk_rewriter_test",
     srcs = ["topk_rewriter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_dce",
         ":pattern_matcher",
@@ -6237,6 +6380,7 @@ cc_library(
 xla_cc_test(
     name = "operand_upcaster_test",
     srcs = ["operand_upcaster_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":operand_upcaster",
         "//tensorflow/compiler/xla:shape_util",
@@ -6261,6 +6405,7 @@ cc_library(
 xla_cc_test(
     name = "result_caster_test",
     srcs = ["result_caster_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":result_caster",
         "//tensorflow/compiler/xla:shape_util",
@@ -6299,6 +6444,7 @@ cc_library(
 xla_cc_test(
     name = "convert_operand_folding_test",
     srcs = ["convert_operand_folding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":convert_operand_folding",
         "//tensorflow/compiler/xla:shape_util",
@@ -6329,6 +6475,7 @@ cc_library(
 xla_cc_test(
     name = "xla_debug_info_manager_test",
     srcs = ["xla_debug_info_manager_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_proto_cc",
         ":xla_debug_info_manager",
@@ -6386,6 +6533,7 @@ cc_library(
 xla_cc_test(
     name = "mapped_ptr_container_sorter_test",
     srcs = ["mapped_ptr_container_sorter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":mapped_ptr_container_sorter",
         "//tensorflow/compiler/xla:test",
@@ -6446,6 +6594,7 @@ tf_proto_library(
 xla_cc_test(
     name = "compilation_environments_test",
     srcs = ["compilation_environments_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":compilation_environments",
         ":test_compilation_environment_proto_cc",
@@ -6511,6 +6660,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_simplifier_test",
     srcs = ["scatter_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_pass",
         ":hlo_pass_pipeline",
@@ -6535,6 +6685,7 @@ cc_library(
 xla_cc_test(
     name = "select_and_scatter_expander_test",
     srcs = ["select_and_scatter_expander_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":select_and_scatter_expander",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -6548,6 +6699,7 @@ xla_cc_test(
     srcs = [
         "layout_normalization_test.cc",
     ],
+    tags = ["nomsan"],
     deps = [
         ":layout_normalization",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -6617,6 +6769,7 @@ cc_library(
 xla_cc_test(
     name = "stochastic_convert_decomposer_test",
     srcs = ["stochastic_convert_decomposer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_parser",
         ":stochastic_convert_decomposer",
@@ -6654,6 +6807,7 @@ cc_library(
 xla_cc_test(
     name = "gather_simplifier_test",
     srcs = ["gather_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":gather_simplifier",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -6664,6 +6818,7 @@ xla_cc_test(
 xla_cc_test(
     name = "change_op_data_type_test",
     srcs = ["change_op_data_type_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":change_op_data_type",
         ":pattern_matcher",
@@ -6692,6 +6847,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/tsl/platform:env",
@@ -6773,7 +6929,10 @@ xla_cc_test(
     name = "xla_aot_compile_cpu_test",
     srcs = ["xla_aot_compile_cpu_test.cc"],
     data = [":xla_aot_compile_test_cpu_executable"],
-    tags = ["no_oss"],
+    tags = [
+        "no_oss",
+        "nomsan",
+    ],
     deps = [
         ":cpu_plugin",
         ":platform_util",
@@ -6795,6 +6954,7 @@ xla_cc_test(
     name = "xla_aot_compile_stablehlo_cpu_test",
     srcs = ["xla_aot_compile_stablehlo_cpu_test.cc"],
     data = [":xla_aot_compile_stablehlo_test_cpu_executable"],
+    tags = ["nomsan"],
     deps = [
         ":cpu_plugin",
         ":platform_util",

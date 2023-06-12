@@ -46,6 +46,14 @@ class QuantizedInputType(enum.Enum):
   FLOAT8 = 'float8'
 
 
+@enum.unique
+class MatrixLayout(enum.Enum):
+  """Layout to use for matrix inputs."""
+
+  ROW_MAJOR = 'row_major'
+  COLUMN_MAJOR = 'column_major'
+
+
 class MatmulTiling(typing.NamedTuple):
   """Tiling parameterization of a matmul."""
 
@@ -53,6 +61,9 @@ class MatmulTiling(typing.NamedTuple):
   BLOCK_N: int
   BLOCK_K: int
   SPLIT_K: int
+  lhs_layout: MatrixLayout
+  rhs_layout: MatrixLayout
+  result_layout: MatrixLayout
   num_stages: int
   num_warps: int
 
@@ -64,6 +75,7 @@ class MatmulSize(typing.NamedTuple):
   N: int
   K: int
   quantized_lhs: QuantizedInputType
+  quantized_rhs: QuantizedInputType
 
 
 class MatmulTiming(typing.NamedTuple):
@@ -79,10 +91,18 @@ def parse_int_list(v: str) -> typing.List[int]:
   return list(map(int, v.split(',')))
 
 
+def parse_layout_list(v: str) -> typing.List[MatrixLayout]:
+  """Converts a string of comma-separated layouts into a list of enums."""
+  return list(map(MatrixLayout, v.split(',')))
+
+
 def generate_tiling_configs(
     tilings_m: typing.List[int],
     tilings_n: typing.List[int],
     tilings_k: typing.List[int],
+    lhs_layouts: typing.List[MatrixLayout],
+    rhs_layouts: typing.List[MatrixLayout],
+    result_layouts: typing.List[MatrixLayout],
     split_ks: typing.List[int],
     num_stages: typing.List[int],
     num_warps: typing.List[int],
@@ -92,6 +112,9 @@ def generate_tiling_configs(
       tilings_m,
       tilings_n,
       tilings_k,
+      lhs_layouts,
+      rhs_layouts,
+      result_layouts,
       split_ks,
       num_stages,
       num_warps,
@@ -158,10 +181,10 @@ def _matmul_kernel(
   for ki in range(k, 0, -block_k * split_k):  # pytype: disable=wrong-arg-types
     if even_k:
       a = tl.load(_fix_type_for_load(lhs))
-      b = tl.load(rhs)
+      b = tl.load(_fix_type_for_load(rhs))
     else:
       a = tl.load(_fix_type_for_load(lhs), mask=rk[None, :] < ki, other=0)
-      b = tl.load(rhs, mask=rk[:, None] < ki, other=0)
+      b = tl.load(_fix_type_for_load(rhs), mask=rk[:, None] < ki, other=0)
     casted_a = a.to(lhs.dtype.element_ty, bitcast=True).to(out.dtype.element_ty)
     casted_b = b.to(out.dtype.element_ty)
     acc += tl.dot(casted_a, casted_b, allow_tf32=True)
@@ -224,7 +247,7 @@ def benchmark_matmul_tiling(
     s: torch.cuda.Stream,
     shared_stream: torch.cuda.Stream,
     a: torch.Tensor | triton.TensorWrapper,
-    b: torch.Tensor,
+    b: torch.Tensor | triton.TensorWrapper,
     c: torch.Tensor,
     scratchpad: torch.Tensor,  # Largest size: c * SPLIT_K
     repetitions_ms: int,
@@ -237,6 +260,10 @@ def benchmark_matmul_tiling(
       1,  # batch
   )
   data_a = getattr(a, 'base', a)
+  data_b = getattr(b, 'base', b)
+
+  is_rm = lambda x: x == MatrixLayout.ROW_MAJOR
+  m, n, k = int(dims.M), int(dims.N), int(dims.K)
 
   def run_matmul():
     used_output = c if tiling.SPLIT_K == 1 else scratchpad
@@ -244,15 +271,19 @@ def benchmark_matmul_tiling(
         a,
         b,
         used_output,
-        m=int(dims.M),
-        n=int(dims.N),
-        k=int(dims.K),
-        stride_am=data_a.stride(0),
-        stride_ak=data_a.stride(1),
-        stride_bk=b.stride(0),
-        stride_bn=b.stride(1),
-        stride_cm=c.stride(0),
-        stride_cn=c.stride(1),
+        m=m,
+        n=n,
+        k=k,
+        # This won't quite compute with the correct values, since we're not
+        # transposing the data beforehand for column-major layout, but we're
+        # never actually checking the correctness of the result here, so it's
+        # fine for now.
+        stride_am=k if is_rm(tiling.lhs_layout) else 1,
+        stride_ak=1 if is_rm(tiling.lhs_layout) else m,
+        stride_bk=n if is_rm(tiling.rhs_layout) else 1,
+        stride_bn=1 if is_rm(tiling.rhs_layout) else k,
+        stride_cm=n if is_rm(tiling.result_layout) else 1,
+        stride_cn=1 if is_rm(tiling.result_layout) else m,
         block_m=int(tiling.BLOCK_M),
         block_n=int(tiling.BLOCK_N),
         block_k=int(tiling.BLOCK_K),
@@ -308,10 +339,12 @@ def benchmark_matmul_tiling(
   )['max_shared_mem']
 
   required_shared_memory = (
-      (tiling.BLOCK_M + tiling.BLOCK_N)
+      (
+          tiling.BLOCK_M * data_a.element_size()
+          + tiling.BLOCK_N * data_b.element_size()
+      )
       * tiling.BLOCK_K
       * tiling.num_stages
-      * b.element_size()
   )
   if required_shared_memory > max_shared_memory:
     if debug:
@@ -352,6 +385,19 @@ def benchmark_cublas(dims: MatmulSize) -> MatmulTiming:
   return min_ms
 
 
+def _init_matmul_argument(
+    rows: int, cols: int, quantization: QuantizedInputType
+) -> torch.Tensor | triton.TensorWrapper:
+  if quantization == QuantizedInputType.INT8:
+    return torch.randint(0, 128, (rows, cols), device='cuda', dtype=torch.int8)
+  elif quantization == QuantizedInputType.FLOAT8:
+    return to_triton_f8(
+        torch.randn(rows, cols, device='cuda', dtype=torch.bfloat16)
+    )
+  else:
+    return torch.randn(rows, cols, device='cuda', dtype=torch.bfloat16)
+
+
 def benchmark_matmul(
     dims: MatmulSize,
     pbar: tqdm.std.tqdm,
@@ -380,22 +426,14 @@ def benchmark_matmul(
 
   # Use our own stream for compilation.
   with torch.cuda.stream(s):
-    if dims.quantized_lhs == QuantizedInputType.INT8:
-      a = torch.randint(
-          0, 128, (dims.M, dims.K), device='cuda', dtype=torch.int8
-      )
-    elif dims.quantized_lhs == QuantizedInputType.FLOAT8:
-      a = to_triton_f8(
-          torch.randn(dims.M, dims.K, device='cuda', dtype=torch.bfloat16)
-      )
-    else:
-      a = torch.randn(dims.M, dims.K, device='cuda', dtype=torch.bfloat16)
-
-    b = torch.randn(dims.K, dims.N, device='cuda', dtype=torch.bfloat16)
+    a = _init_matmul_argument(dims.M, dims.K, dims.quantized_lhs)
+    b = _init_matmul_argument(dims.K, dims.N, dims.quantized_rhs)
     data_a = getattr(a, 'base', a)
-    assert data_a.shape[1] == b.shape[0], 'incompatible dimensions'
+    data_b = getattr(b, 'base', b)
+
+    assert data_a.shape[1] == data_b.shape[0], 'incompatible dimensions'
     assert data_a.is_contiguous(), 'matrix A must be contiguous'
-    assert b.is_contiguous(), 'matrix B must be contiguous'
+    assert data_b.is_contiguous(), 'matrix B must be contiguous'
     c = torch.empty((dims.M, dims.N), device=a.device, dtype=torch.bfloat16)
     scratchpad = torch.empty(
         (largest_splitk, dims.M, dims.N), device=a.device, dtype=torch.bfloat16

@@ -617,6 +617,7 @@ xla_cc_test(
     name = "outfeed_receiver_test_cpu",
     size = "small",
     srcs = ["outfeed_receiver_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":outfeed_receiver",
         "//tensorflow/compiler/xla:test",

@@ -60,6 +60,7 @@ cc_library(
 xla_cc_test(
     name = "padding_test",
     srcs = ["padding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":padding",
         "//tensorflow/tsl/platform:test",
@@ -139,7 +140,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:stream_pool",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
-        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_pimpl",  # fixdeps: keep
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -280,6 +281,7 @@ cc_library(
 xla_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":sharding_builder",
         ":value_inference",

@@ -535,9 +535,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
   Value rhs = fn.getArgument(hlo_rhs_param->parameter_number());
   Value out = fn.getArguments().back();
 
-  auto pid0 = b.create<mt::GetProgramIdOp>(0);
-  auto pid1 = b.create<mt::GetProgramIdOp>(1);
-  auto pid2 = b.create<mt::GetProgramIdOp>(2);
+  auto pid0 = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::X);
+  auto pid1 = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Y);
+  auto pid2 = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z);
 
   auto group_id = b.create<ma::DivSIOp>(pid0, CreateConst(b, i32_ty, width));
   ma::ConstantOp group_m_op = CreateConst(b, i32_ty, group_m);

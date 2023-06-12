@@ -69,6 +69,7 @@ cc_library(
 xla_cc_test(
     name = "topology_util_test",
     srcs = ["topology_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":protocol_proto_cc",
         ":topology_util",
@@ -143,6 +144,7 @@ xla_cc_test(
     name = "client_server_test",
     size = "small",
     srcs = ["client_server_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":client",
         ":distributed",

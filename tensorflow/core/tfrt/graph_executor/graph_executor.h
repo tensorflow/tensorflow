@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
 #include "tensorflow/core/tfrt/fallback/fallback_state.h"
 #include "tensorflow/core/tfrt/fallback/op_kernel_runner.h"
+#include "tensorflow/core/tfrt/graph_executor/executable_context.h"
 #include "tensorflow/core/tfrt/graph_executor/graph_execution_options.h"
 #include "tensorflow/core/tfrt/graph_executor/sync_resource_state.h"
 #include "tensorflow/core/tfrt/mlrt/bytecode/bytecode.h"
@@ -120,38 +121,6 @@ class GraphExecutor {
  public:
   using Options = GraphExecutionOptions;
   using RunOptions = GraphExecutionRunOptions;
-
-  // Stores executable-related data.
-  struct ExecutableContext {
-    ExecutableContext(
-        mlrt::bc::Buffer bytecode_buffer,
-        std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable)
-        : bytecode_buffer(std::move(bytecode_buffer)),
-          bytecode_executable(std::move(bytecode_executable)) {}
-
-    ExecutableContext(tfrt::BefBuffer bef,
-                      tfrt::RCReference<tfrt::BEFFile> bef_file)
-        : bef(std::move(bef)), bef_file(std::move(bef_file)) {}
-
-    bool IsForMlrt() const { return bytecode_executable != nullptr; }
-
-    // Only one set of values will be filled.
-
-    // For the MLRT path.
-    mlrt::bc::Buffer bytecode_buffer;
-    std::unique_ptr<mlrt::LoadedExecutable> bytecode_executable = nullptr;
-
-    // For the TFRT path.
-    tfrt::BefBuffer bef;
-    tfrt::RCReference<tfrt::BEFFile> bef_file;
-
-    // There are some resources that need re-creating when the executable is
-    // re-created, so a resource context is stored along with the executable.
-    // This resource context is meant to be passed to the op kernels for their
-    // references. See the comment above `GraphExecutor::resource_context_`
-    // about the todo to merge that resource context with this one.
-    tfrt::ResourceContext resource_context;
-  };
 
   // The loading result of a `ClientGraph`.
   class LoadedClientGraph {

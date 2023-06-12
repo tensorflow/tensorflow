@@ -68,6 +68,9 @@ bool EnableAllToAllForRelayout();
 
 // Returns the maximum number of AllReduce ops to merge into a group.
 int AllReduceCombineOptimizationGroupSize();
+
+// Returns whether to perform multi-device expansion.
+bool EnableMultiDeviceMode();
 }  // namespace dtensor
 }  // namespace tensorflow
 

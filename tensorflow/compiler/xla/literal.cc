@@ -36,6 +36,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/compiler/xla/index_util.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -273,6 +274,9 @@ Literal::Literal(const Shape& shape, bool allocate_arrays,
   }
   CHECK(leaf_array_value_state != ArrayValueState::kKnown ||
         LayoutUtil::HasLayout(*shape_));
+  // Currently we do nibble packing/unpacking in TPU host/device transfer.
+  CHECK(!LayoutUtil::HasCustomElementSizeInBits(*shape_))
+      << "Literal does not support layouts with custom bit size: " << *shape_;
   root_piece_.set_subshape(shape_.get());
   CHECK(&root_piece_.subshape() == shape_.get());
 

@@ -22,6 +22,7 @@ from absl import flags
 from matmul_lib import benchmark_matmul
 from matmul_lib import MatmulSize
 from matmul_lib import MatmulTiling
+from matmul_lib import MatrixLayout
 from matmul_lib import QuantizedInputType
 import pandas as pd
 import torch
@@ -43,10 +44,22 @@ _QUANTIZED_LHS = flags.DEFINE_enum_class(
     QuantizedInputType,
     'Type to use for LHS quantization',
 )
+_QUANTIZED_RHS = flags.DEFINE_enum_class(
+    'quantized_rhs',
+    QuantizedInputType.FULL,
+    QuantizedInputType,
+    'Type to use for RHS quantization',
+)
 
 
 def get_actual_time(r, s, pbar):
-  dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
+  dims = MatmulSize(
+      M=_M.value,
+      N=_N.value,
+      K=_K.value,
+      quantized_lhs=_QUANTIZED_LHS.value,
+      quantized_rhs=_QUANTIZED_RHS.value,
+  )
   return benchmark_matmul(
       dims=dims,
       pbar=pbar,
@@ -57,6 +70,9 @@ def get_actual_time(r, s, pbar):
               r.block_n,
               r.block_k,
               r.split_k,
+              MatrixLayout(r.lhs_layout),
+              MatrixLayout(r.rhs_layout),
+              MatrixLayout(r.result_layout),
               r.num_stages,
               r.num_warps,
           )

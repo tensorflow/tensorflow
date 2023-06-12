@@ -20,7 +20,10 @@ package(
 py_library(
     name = "dtensor",
     srcs = ["__init__.py"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
+    ],
     deps = [
         ":accelerator_util",
         ":api",

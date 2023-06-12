@@ -73,6 +73,7 @@ cc_library(
 xla_cc_test(
     name = "xla_executable_test_no_impl",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":xla_executable_impl_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:no_impl_test_main",
@@ -140,6 +141,7 @@ xla_cc_test(
     name = "pjrt_array_impl_test_tfrt_cpu",
     size = "small",
     srcs = ["pjrt_array_impl_test_tfrt_cpu.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:array_impl_test_lib",
@@ -151,6 +153,7 @@ xla_cc_test(
     name = "pjrt_client_impl_test_tfrt_cpu",
     size = "small",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:client_impl_test_lib",
@@ -162,6 +165,7 @@ xla_cc_test(
     name = "pjrt_executable_impl_test_tfrt_cpu",
     size = "small",
     srcs = ["pjrt_executable_impl_test_tfrt_cpu.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tfrt_cpu_client_test_lib",
         ":xla_executable_impl_test_lib",
@@ -173,6 +177,7 @@ xla_cc_test(
     name = "pjrt_tuple_impl_test_tfrt_cpu",
     size = "small",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":tfrt_cpu_client_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:tuple_impl_test_lib",
