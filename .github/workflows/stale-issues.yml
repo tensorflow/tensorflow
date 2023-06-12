@@ -41,6 +41,8 @@ jobs:
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
+          # List of labels to remove when issues/PRs unstale. 
+          labels-to-remove-when-unstale: 'stat:awaiting response'
           only-labels: "stat:awaiting response"
           stale-issue-message: > 
             This issue is stale because it has been open for 7 days with no activity.
@@ -67,6 +69,8 @@ jobs:
           stale-issue-label: "stale"
           # reason for closed the issue default value is not_planned
           close-issue-reason: completed
+          # List of labels to remove when issues/PRs unstale. 
+          labels-to-remove-when-unstale: "stat:contribution welcome,stat:good first issue"
           any-of-labels: "stat:contribution welcome,stat:good first issue"
           stale-issue-message: > 
             This issue is stale because it has been open for 180 days with no activity.
