@@ -6162,24 +6162,24 @@ class GemmRewriteAllocationTest : public GpuCodegenTest {
   }
 };
 
-// TEST_F(GemmRewriteAllocationTest, SharedBufferAssignment) {
-//   const char* hlo_text = R"(
-// HloModule SharedBufferAssignment
+TEST_F(GemmRewriteAllocationTest, SharedBufferAssignment) {
+  const char* hlo_text = R"(
+HloModule SharedBufferAssignment
 
-// ENTRY AddDotsFunc {
-//   x = f32[2,2] parameter(0)
-//   y = f32[2,2] parameter(1)
-//   bias = f32[2,2] add(x, y)
-//   dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-//   ROOT out = f32[2,2] add(dot, bias)
-// }
+ENTRY AddDotsFunc {
+  x = f32[2,2] parameter(0)
+  y = f32[2,2] parameter(1)
+  bias = f32[2,2] add(x, y)
+  dot = f32[2,2] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT out = f32[2,2] add(dot, bias)
+}
 
-// )";
+)";
 
-//   // Bias should be fused into the multiplication.
-//   CheckNumberOfAllocations(hlo_text, 3);
-//   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
-// }
+  // Bias should be fused into the multiplication.
+  CheckNumberOfAllocations(hlo_text, 3);
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
+}
 
 }  // namespace
 }  // namespace gpu
