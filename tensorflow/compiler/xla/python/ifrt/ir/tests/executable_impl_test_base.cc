@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_dialect.h"
 #include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "tensorflow/compiler/xla/python/ifrt/test_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/tsl/platform/statusor.h"
@@ -39,6 +40,7 @@ IfrtIrExecutableImplTestBase::IfrtIrExecutableImplTestBase() {
   mlir::registerAllDialects(registry);
   mlir::mhlo::registerAllMhloDialects(registry);
   registry.insert<xla::ifrt::IfrtDialect>();
+  xla::ifrt::AttachBuiltInSpmdExpansions(registry);
   mlir_context_.appendDialectRegistry(registry);
 }
 

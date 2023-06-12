@@ -28,6 +28,7 @@ cc_binary(
     srcs = ["ifrt-opt.cc"],
     deps = [
         "//tensorflow/compiler/xla/python/ifrt/ir",
+        "//tensorflow/compiler/xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//tensorflow/compiler/xla/python/ifrt/ir/transforms:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
@@ -47,6 +48,7 @@ cc_library(
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
+        "//tensorflow/compiler/xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
