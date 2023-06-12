@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/types/span.h"
 #include "tensorflow/lite/core/c/common.h"
 
 using testing::ElementsAreArray;
