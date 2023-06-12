@@ -784,6 +784,7 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "@pybind11",
     ],
 )
