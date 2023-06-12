@@ -43,10 +43,22 @@ _QUANTIZED_LHS = flags.DEFINE_enum_class(
     QuantizedInputType,
     'Type to use for LHS quantization',
 )
+_QUANTIZED_RHS = flags.DEFINE_enum_class(
+    'quantized_rhs',
+    QuantizedInputType.FULL,
+    QuantizedInputType,
+    'Type to use for RHS quantization',
+)
 
 
 def get_actual_time(r, s, pbar):
-  dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
+  dims = MatmulSize(
+      M=_M.value,
+      N=_N.value,
+      K=_K.value,
+      quantized_lhs=_QUANTIZED_LHS.value,
+      quantized_rhs=_QUANTIZED_RHS.value,
+  )
   return benchmark_matmul(
       dims=dims,
       pbar=pbar,

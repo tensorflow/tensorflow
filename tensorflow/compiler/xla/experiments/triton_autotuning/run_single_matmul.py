@@ -38,6 +38,12 @@ _QUANTIZED_LHS = flags.DEFINE_enum_class(
     QuantizedInputType,
     'Type to use for LHS quantization',
 )
+_QUANTIZED_RHS = flags.DEFINE_enum_class(
+    'quantized_rhs',
+    QuantizedInputType.FULL,
+    QuantizedInputType,
+    'Type to use for RHS quantization',
+)
 
 _BLOCK_M = flags.DEFINE_integer('block_m', 16, 'Tiling in M-dimension')
 _BLOCK_N = flags.DEFINE_integer('block_n', 16, 'Tiling in N-dimension')
@@ -58,7 +64,13 @@ _DEBUG = flags.DEFINE_bool('debug', False, 'Print debug information')
 def main():
   s = torch.cuda.Stream()
   pbar = tqdm.tqdm(ncols=0)
-  dims = MatmulSize(_M.value, _N.value, _K.value, _QUANTIZED_LHS.value)
+  dims = MatmulSize(
+      M=_M.value,
+      N=_N.value,
+      K=_K.value,
+      quantized_lhs=_QUANTIZED_LHS.value,
+      quantized_rhs=_QUANTIZED_RHS.value,
+  )
   timing = benchmark_matmul(
       dims=dims,
       pbar=pbar,

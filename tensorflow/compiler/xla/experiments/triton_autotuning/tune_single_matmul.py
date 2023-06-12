@@ -40,6 +40,12 @@ _QUANTIZED_LHS = flags.DEFINE_enum_class(
     QuantizedInputType,
     'Type to use for LHS quantization',
 )
+_QUANTIZED_RHS = flags.DEFINE_enum_class(
+    'quantized_rhs',
+    QuantizedInputType.FULL,
+    QuantizedInputType,
+    'Type to use for RHS quantization',
+)
 
 _TILINGS_M = flags.DEFINE_string(
     'tilings_m', '32, 64, 128, 256', 'Tilings to try for M'
@@ -67,7 +73,11 @@ _APPEND_TO_CSV = flags.DEFINE_string(
 
 def main() -> None:
   dims = MatmulSize(
-      M=_M.value, N=_N.value, K=_K.value, quantized_lhs=_QUANTIZED_LHS.value
+      M=_M.value,
+      N=_N.value,
+      K=_K.value,
+      quantized_lhs=_QUANTIZED_LHS.value,
+      quantized_rhs=_QUANTIZED_RHS.value,
   )
   s = torch.cuda.Stream()
   tilings = generate_tiling_configs(
@@ -125,7 +135,7 @@ def main() -> None:
 
   if _APPEND_TO_CSV.value:
     fields = (
-        ['M', 'N', 'K', 'quantized_lhs']
+        ['M', 'N', 'K', 'quantized_lhs', 'quantized_rhs']
         + features_list
         + ['min_time_ms', 'cublas_time_ms']
     )
