@@ -40,6 +40,8 @@
     than 2**32 elements.
     *   Unary GPU kernels: Abs, Atanh, Acos, Acosh, Asin, Asinh, Atan, Cos,
         Cosh, Sin, Sinh, Tan, Tanh.
+    *   Binary GPU kernels: AddV2, Sub, Div, DivNoNan, Mul, MulNoNan, FloorDiv,
+        Equal, NotEqual, Greater, GreaterEqual, LessEqual, Less.
 
 # Bug Fixes and Other Changes
 * `tf.lite`
