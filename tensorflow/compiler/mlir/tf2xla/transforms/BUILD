@@ -358,7 +358,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_module_importer",
         "//tensorflow/compiler/xla/translate/hlo_to_mhlo:hlo_to_mlir_hlo",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:mlir_hlo_builder",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:type_to_shape",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
