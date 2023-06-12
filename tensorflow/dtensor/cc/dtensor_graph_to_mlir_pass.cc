@@ -122,6 +122,11 @@ DTensorMlirPassRunner::ImportGraphToMlir(
       mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
                              group_size));
 
+  if (dtensor::EnableMultiDeviceMode()) {
+    module->setAttr(dtensor::kEnableMultiDeviceMode,
+                    mlir::BoolAttr::get(&context_, true));
+  }
+
   return module_ref;
 }
 
