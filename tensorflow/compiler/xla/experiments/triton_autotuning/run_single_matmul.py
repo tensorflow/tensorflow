@@ -23,6 +23,7 @@ from matmul_lib import benchmark_cublas
 from matmul_lib import benchmark_matmul
 from matmul_lib import MatmulSize
 from matmul_lib import MatmulTiling
+from matmul_lib import MatrixLayout
 from matmul_lib import print_roofline_performance
 from matmul_lib import QuantizedInputType
 import torch
@@ -48,9 +49,26 @@ _QUANTIZED_RHS = flags.DEFINE_enum_class(
 _BLOCK_M = flags.DEFINE_integer('block_m', 16, 'Tiling in M-dimension')
 _BLOCK_N = flags.DEFINE_integer('block_n', 16, 'Tiling in N-dimension')
 _BLOCK_K = flags.DEFINE_integer('block_k', 16, 'Tiling in K-dimension')
-
 _SPLIT_K = flags.DEFINE_integer(
     'split_k', 1, 'Number of splits for contracting dimension'
+)
+_LHS_LAYOUT = flags.DEFINE_enum_class(
+    'lhs_layout',
+    MatrixLayout.ROW_MAJOR,
+    MatrixLayout,
+    'Layout to use for LHS',
+)
+_RHS_LAYOUT = flags.DEFINE_enum_class(
+    'rhs_layout',
+    MatrixLayout.ROW_MAJOR,
+    MatrixLayout,
+    'Layout to use for RHS',
+)
+_RESULT_LAYOUT = flags.DEFINE_enum_class(
+    'result_layout',
+    MatrixLayout.ROW_MAJOR,
+    MatrixLayout,
+    'Layout to use for the result',
 )
 _NUM_STAGES = flags.DEFINE_integer(
     'num_stages', 1, 'Number of pipelining stages'
@@ -58,6 +76,7 @@ _NUM_STAGES = flags.DEFINE_integer(
 _NUM_WARPS = flags.DEFINE_integer(
     'num_warps', 4, 'Number of warps to allocate in a given block'
 )
+
 _DEBUG = flags.DEFINE_bool('debug', False, 'Print debug information')
 
 
@@ -81,6 +100,9 @@ def main():
               _BLOCK_N.value,
               _BLOCK_K.value,
               _SPLIT_K.value,
+              _LHS_LAYOUT.value,
+              _RHS_LAYOUT.value,
+              _RESULT_LAYOUT.value,
               _NUM_STAGES.value,
               _NUM_WARPS.value,
           )

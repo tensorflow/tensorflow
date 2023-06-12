@@ -26,6 +26,7 @@ from matmul_lib import generate_tiling_configs
 from matmul_lib import MatmulSize
 from matmul_lib import MatmulTiming
 from matmul_lib import parse_int_list
+from matmul_lib import parse_layout_list
 from matmul_lib import print_roofline_performance
 from matmul_lib import QuantizedInputType
 import torch
@@ -56,6 +57,15 @@ _TILINGS_N = flags.DEFINE_string(
 _TILINGS_K = flags.DEFINE_string(
     'tilings_k', '32, 64, 128, 256, 512', 'Tilings to try for K'
 )
+_LHS_LAYOUTS = flags.DEFINE_string(
+    'lhs_layouts', 'row_major', 'Layouts to try for LHS'
+)
+_RHS_LAYOUTS = flags.DEFINE_string(
+    'rhs_layouts', 'row_major', 'Layouts to try for RHS'
+)
+_RESULT_LAYOUTS = flags.DEFINE_string(
+    'result_layouts', 'row_major', 'Layouts to try for the result'
+)
 _NUM_STAGES = flags.DEFINE_string(
     'num_stages', '1,2,3', 'Number of stages to try'
 )
@@ -85,6 +95,9 @@ def main() -> None:
       parse_int_list(_TILINGS_N.value),
       parse_int_list(_TILINGS_K.value),
       parse_int_list(_SPLIT_KS.value),
+      parse_layout_list(_LHS_LAYOUTS.value),
+      parse_layout_list(_RHS_LAYOUTS.value),
+      parse_layout_list(_RESULT_LAYOUTS.value),
       parse_int_list(_NUM_STAGES.value),
       parse_int_list(_NUM_WARPS.value),
   )
@@ -103,6 +116,9 @@ def main() -> None:
       'BLOCK_N',
       'BLOCK_K',
       'SPLIT_K',
+      'lhs_layout',
+      'rhs_layout',
+      'result_layout',
       'num_stages',
       'num_warps',
   ]

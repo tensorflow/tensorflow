@@ -46,6 +46,14 @@ class QuantizedInputType(enum.Enum):
   FLOAT8 = 'float8'
 
 
+@enum.unique
+class MatrixLayout(enum.Enum):
+  """Layout to use for matrix inputs."""
+
+  ROW_MAJOR = 'row_major'
+  COLUMN_MAJOR = 'column_major'
+
+
 class MatmulTiling(typing.NamedTuple):
   """Tiling parameterization of a matmul."""
 
@@ -53,6 +61,9 @@ class MatmulTiling(typing.NamedTuple):
   BLOCK_N: int
   BLOCK_K: int
   SPLIT_K: int
+  lhs_layout: MatrixLayout
+  rhs_layout: MatrixLayout
+  result_layout: MatrixLayout
   num_stages: int
   num_warps: int
 
@@ -80,10 +91,18 @@ def parse_int_list(v: str) -> typing.List[int]:
   return list(map(int, v.split(',')))
 
 
+def parse_layout_list(v: str) -> typing.List[MatrixLayout]:
+  """Converts a string of comma-separated layouts into a list of enums."""
+  return list(map(MatrixLayout, v.split(',')))
+
+
 def generate_tiling_configs(
     tilings_m: typing.List[int],
     tilings_n: typing.List[int],
     tilings_k: typing.List[int],
+    lhs_layouts: typing.List[MatrixLayout],
+    rhs_layouts: typing.List[MatrixLayout],
+    result_layouts: typing.List[MatrixLayout],
     split_ks: typing.List[int],
     num_stages: typing.List[int],
     num_warps: typing.List[int],
@@ -93,6 +112,9 @@ def generate_tiling_configs(
       tilings_m,
       tilings_n,
       tilings_k,
+      lhs_layouts,
+      rhs_layouts,
+      result_layouts,
       split_ks,
       num_stages,
       num_warps,
@@ -240,21 +262,28 @@ def benchmark_matmul_tiling(
   data_a = getattr(a, 'base', a)
   data_b = getattr(b, 'base', b)
 
+  is_rm = lambda x: x == MatrixLayout.ROW_MAJOR
+  m, n, k = int(dims.M), int(dims.N), int(dims.K)
+
   def run_matmul():
     used_output = c if tiling.SPLIT_K == 1 else scratchpad
     _matmul_kernel[grid](
         a,
         b,
         used_output,
-        m=int(dims.M),
-        n=int(dims.N),
-        k=int(dims.K),
-        stride_am=data_a.stride(0),
-        stride_ak=data_a.stride(1),
-        stride_bk=data_b.stride(0),
-        stride_bn=data_b.stride(1),
-        stride_cm=c.stride(0),
-        stride_cn=c.stride(1),
+        m=m,
+        n=n,
+        k=k,
+        # This won't quite compute with the correct values, since we're not
+        # transposing the data beforehand for column-major layout, but we're
+        # never actually checking the correctness of the result here, so it's
+        # fine for now.
+        stride_am=k if is_rm(tiling.lhs_layout) else 1,
+        stride_ak=1 if is_rm(tiling.lhs_layout) else m,
+        stride_bk=n if is_rm(tiling.rhs_layout) else 1,
+        stride_bn=1 if is_rm(tiling.rhs_layout) else k,
+        stride_cm=n if is_rm(tiling.result_layout) else 1,
+        stride_cn=1 if is_rm(tiling.result_layout) else m,
         block_m=int(tiling.BLOCK_M),
         block_n=int(tiling.BLOCK_N),
         block_k=int(tiling.BLOCK_K),
