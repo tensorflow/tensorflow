@@ -530,6 +530,7 @@ cc_library(
     srcs = if_cuda_is_configured(["triton_autotuner.cc"]),
     hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
     deps = if_cuda_is_configured([
+        ":bitcast_remover",
         ":buffer_comparator",
         ":compile_module_to_llvm_ir",
         ":gemm_rewriter_triton",
@@ -557,13 +558,20 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:ir_headers",
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
@@ -572,7 +580,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:statusor",
@@ -2750,6 +2760,35 @@ xla_cc_test(
         ":gpu_performance_model",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "bitcast_remover",
+    srcs = ["bitcast_remover.cc"],
+    hdrs = ["bitcast_remover.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+xla_cc_test(
+    name = "bitcast_remover_test",
+    srcs = ["bitcast_remover_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":bitcast_remover",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
