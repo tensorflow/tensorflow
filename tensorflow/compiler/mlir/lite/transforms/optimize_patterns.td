@@ -1347,3 +1347,26 @@ def FuseSigmoid : Pat<
    (HasOneUse $add_out),
    (HasOneUse $exp_out),
   ]>;
+
+def FuseEluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero)),
+   $arg,
+   (TFL_SubOp:$sub_out
+    (TFL_ExpOp:$exp_out
+     (TFL_SelectOp:$select_out
+      (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero_1)),
+      (Arith_ConstantOp F32ElementsAttr:$zero_2),
+      $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$one),
+    TFL_AF_None)),
+  (TFL_EluOp $arg),
+  [
+    (FloatValueEquals<"0"> $zero_2),
+    (FloatValueEquals<"0"> $zero_1),
+    (FloatValueEquals<"0"> $zero),
+    (FloatValueEquals<"1"> $one),
+    (HasOneUse $select_out),
+    (HasOneUse $exp_out),
+    (HasOneUse $sub_out),
+  ]>;
