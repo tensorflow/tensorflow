@@ -122,9 +122,10 @@ build --define=grpc_no_ares=true
 # hope to provide a better mechanism for control over symbol exporting, and
 # then tackle this issue again.
 #
-# TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
-# archives in -whole_archive -no_whole_archive.
+# TODO: Remove the following two lines once TF doesn't depend on Bazel wrapping
+# all library archives in -whole_archive -no_whole_archive.
 build --noincompatible_remove_legacy_whole_archive
+build --features=-force_no_whole_archive
 
 # TODO(mihaimaruseac): Document this option or remove if no longer needed
 build --enable_platform_specific_config
