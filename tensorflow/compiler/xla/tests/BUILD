@@ -222,6 +222,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:logging",

@@ -6692,6 +6692,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/mlir_hlo",
         "//tensorflow/compiler/xla/pjrt:mlir_to_hlo",
+        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_executable",
         "//tensorflow/tsl/platform:env",
