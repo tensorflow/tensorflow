@@ -36,45 +36,6 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-<<<<<<< HEAD
-TFE_Context* GetContextForConstantFold() {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
-      TFE_NewContextOptions(), TFE_DeleteContextOptions);
-  // Only initialize single CPU.
-  tensorflow::ConfigProto config_proto;
-  // This is conceptually equal to what we do in python/eager/context.py but
-  // with all GPU/TPU devices ignored and CPU only set to 1.
-  (*config_proto.mutable_device_count())["CPU"] = 1;
-#if TENSORFLOW_USE_ROCM
-  (*config_proto.mutable_device_count())["GPU"] = 0;
-#endif
-  config_proto.add_device_filters("/device:CPU:*");
-  // Limit the thread pool size. Without this, TF by default creates as many
-  // threads as the number of CPUs (`port::MaxParallelism()`). This can be
-  // expensive since this TFE context persists the entire program execution.
-  config_proto.set_inter_op_parallelism_threads(2);
-  std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
-      TF_NewBuffer(), TF_DeleteBuffer);
-  DCHECK(config->data == nullptr);
-
-  // Copy config_proto into config.
-  {
-    const size_t proto_size = config_proto.ByteSizeLong();
-    void* buf = tsl::port::Malloc(proto_size);
-    if (buf == nullptr) {
-      LOG(ERROR) << "Failed to allocate memory to serialize ConfigProto "
-                    "while creating context options for constant folding";
-      return nullptr;
-    }
-    if (!config_proto.SerializeWithCachedSizesToArray(
-            static_cast<uint8_t*>(buf))) {
-      tsl::port::Free(buf);
-      LOG(ERROR) << "Unable to serialize ConfigProto while creating context "
-                    "options for constant folding";
-      return nullptr;
-=======
 using tensorflow::tfrt_stub::FallbackState;
 using tensorflow::tfrt_stub::OpKernelRunner;
 
@@ -108,7 +69,6 @@ bool CanBeFolded(Operation* inst) {
       if (tensor_type.getElementType().isa<VariantType>()) {
         return false;
       }
->>>>>>> upstream/master
     }
   }
 

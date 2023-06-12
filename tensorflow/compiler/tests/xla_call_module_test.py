@@ -293,7 +293,7 @@ module @jit_f.0 {
   def test_platforms_basic(self):
     x = np.float32(0.)
 
-    #  returns x + 2. on CPU, x + 3. on GPU (CUDA or ROCM) and x + 4. on TPU
+    #  returns x + 2. on CPU, x + 3. on GPU (CUDA) and x + 4. on TPU and ROCM
     module, version = serialize("""
 module @jit_f.0 {
   func.func public @main(%arg_platform_idx: tensor<i32>, %arg0: tensor<f32>) -> tensor<f32> {
@@ -321,13 +321,9 @@ module @jit_f.0 {
                              Sout=[()],
                              platforms=platforms)
 
-<<<<<<< HEAD
-    expected_value = x + dict(CPU=2., CUDA=3., ROCM=4., TPU=4.)[self.testing_platform()]
-=======
     expected_value = (
-        x + dict(CPU=2.0, CUDA=3.0, ROCM=3.0, TPU=4.0)[self.testing_platform()]
+        x + dict(CPU=2.0, CUDA=3.0, ROCM=4.0, TPU=4.0)[self.testing_platform()]
     )
->>>>>>> upstream/master
     self._assertOpOutputMatchesExpected(f, (x,), (expected_value,))
 
   def test_platforms_errors(self):
@@ -373,8 +369,6 @@ module @jit_f.0 {
         'The current platform .* is not among the platforms'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
-<<<<<<< HEAD
-=======
     # Disable the check but have two platforms
     platforms = ['RANDOM_PLATFORM_1', 'RANDOM_PLATFORM_2']
     disabled_checks = [xla.call_module_disable_check_platform()]
@@ -395,7 +389,6 @@ module @jit_f.0 {
         'must have non-empty platforms'):
       self._assertOpOutputMatchesExpected(f, (x,), (x,))
 
->>>>>>> upstream/master
     platforms = ['CPU', 'CUDA', 'ROCM']
     if self.testing_platform() not in platforms:
       with self.assertRaisesRegex(
