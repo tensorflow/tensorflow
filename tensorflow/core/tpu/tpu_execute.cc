@@ -15,41 +15,60 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_execute.h"
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
+#include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/executable.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/c_api_defn.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/status_helper.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_executor_c_api.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_node_context.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_op_executable.h"
+#include "tensorflow/compiler/xla/stream_executor/tpu/tpu_ops_c_api.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_platform_interface.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_execute_op_options.h"
+#include "tensorflow/tsl/framework/cancellation.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 
@@ -81,7 +100,7 @@ class HostTransferManager {
 
 xla::StatusOr<HostTransferManager::HostCommandHandler>
 HostTransferManager::Initialize(const TPUHostTransferInfoProto& program,
-                                const string& rendezvous_key_base,
+                                const std::string& rendezvous_key_base,
                                 OpKernelContext* ctx) {
   return HostCommandHandler([](uint32_t, int64_t) {
     LOG(WARNING) << "HostTransferManager is unimplemented.";
@@ -423,7 +442,7 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
     const TPUHostTransferInfoProto& host_transfers,
     const xla::HloProto& hlo_metadata,
     std::vector<xla::ExecutionInput> arguments,
-    const string& rendezvous_key_base, uint32 rng_seed,
+    const std::string& rendezvous_key_base, uint32_t rng_seed,
     TpuNodeContext* node_context, xla::DeviceAssignment* device_assignment,
     CancellationManager* cancellation_manager, OpKernelContext* ctx,
     stream_executor::Stream* stream,
@@ -487,6 +506,36 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
 
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
+
+  // Retrieve the TPU embedding memory addresses to be fed to the TPU. The
+  // memory addresses are communicated with a dynamically allocated C array
+  // (which needs to be free'd once the function terminates).
+  SE_DeviceMemoryBase* device_memory_addrs;
+  size_t device_memory_addrs_count;
+  auto device_memory_cleanup = absl::MakeCleanup([&device_memory_addrs]() {
+    stream_executor::tpu::OpsApiFn()->SE_DeviceMemoryBase_FreeArrayFn(
+        device_memory_addrs);
+  });
+
+  SE_StreamExecutor executor{stream->parent()};
+  StatusHelper status;
+  stream_executor::tpu::OpsApiFn()
+      ->TpuExecute_GetTpuEmbeddingMemoryWordAddressesFn(
+          &executor, &device_memory_addrs, &device_memory_addrs_count,
+          status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+
+  // Add the TPU embedding memory addresses as additional arguments for the TPU
+  // executable.
+  for (int i = 0; i < device_memory_addrs_count; ++i) {
+    xla::ShapeTree<xla::MaybeOwningDeviceMemory> tree(
+        xla::ShapeUtil::MakeOpaqueShape());
+    *tree.mutable_element({}) = ApiConverter::FromC(device_memory_addrs[i]);
+    xla::ExecutionInput input(std::move(tree));
+    arguments.push_back(std::move(input));
+  }
 
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
