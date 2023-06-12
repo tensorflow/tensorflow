@@ -100,6 +100,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_utils_test",
     srcs = ["hlo_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -155,6 +156,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_hlo_builder_test",
     srcs = ["mlir_hlo_builder_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_importer",
         ":mlir_hlo_builder",

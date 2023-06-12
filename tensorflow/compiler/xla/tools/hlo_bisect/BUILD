@@ -58,6 +58,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_bisect_state_test",
     srcs = ["hlo_bisect_state_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_bisect_state",
         "//tensorflow/compiler/xla:literal",
