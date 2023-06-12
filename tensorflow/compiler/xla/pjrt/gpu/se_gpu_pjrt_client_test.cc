@@ -342,7 +342,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
                                               /*node_id=*/0));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
@@ -363,7 +363,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
                                               /*node_id=*/0));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
   void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
@@ -381,7 +381,7 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
                                               /*node_id=*/0));
   auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
 
-  ASSERT_OK_AND_ASSIGN(
+  TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
   void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
