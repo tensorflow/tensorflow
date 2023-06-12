@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/eliminate_passthrough_iter_args/pass.h"
 
+#include <memory>
 #include <utility>
 
 #include "llvm/ADT/BitVector.h"

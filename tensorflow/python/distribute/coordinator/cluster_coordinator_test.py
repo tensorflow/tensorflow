@@ -773,19 +773,21 @@ class ClusterCoordinatorTest(
     var_sum = sum(self.coordinator.fetch(worker_local_var._values))
     self.assertEqual(var_sum, 10.0)
 
-  def testPerWorkerVariableCreation(self):
+  @parameterized.parameters(True, False)
+  def testPerWorkerVariableCreation(self, define_shape):
     var_dtype = dtypes.float32
     var_name = 'var'
+    shape = [1] if define_shape else None
 
     with self.strategy.scope():
       var = variables.Variable(
-          initial_value=0.0, dtype=var_dtype, name=var_name,
+          initial_value=[0.0], shape=shape, dtype=var_dtype, name=var_name,
           per_worker_variable=True)
 
     # Use per-worker variable as a capture
     @def_function.function
     def worker_fn():
-      var.assign_add(1.0)
+      var.assign_add(constant_op.constant([1.0]))
       return var
 
     num_closures = 10

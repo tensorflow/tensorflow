@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -84,6 +85,17 @@ class BaseGPUDevice : public LocalDevice {
                 bool sync_every_op);
 
   ~BaseGPUDevice() override;
+
+  struct StreamGroup {
+    se::Stream* compute = nullptr;
+#if TENSORFLOW_USE_ROCM
+    se::Stream* nccl = nullptr;
+#endif
+    se::Stream* host_to_device = nullptr;
+    se::Stream* device_to_host = nullptr;
+    gtl::InlinedVector<se::Stream*, 4> device_to_device;
+    int priority = 0;
+  };
 
   // Initialize the device and return the status of initialization.
   Status Init(const SessionOptions& options);
@@ -150,6 +162,8 @@ class BaseGPUDevice : public LocalDevice {
     return stream_->compute->implementation()->GpuStreamMemberHack();
   }
 
+  se::Stream* compute_stream() { return stream_->compute; }
+
   // Given the compute stream for a GPU or virtual GPU, return the TfDeviceId
   // for the GPU or vGPU.
   static std::optional<tsl::TfDeviceId> FindTfDeviceId(se::Stream* compute);
@@ -163,16 +177,6 @@ class BaseGPUDevice : public LocalDevice {
 
  private:
   friend class GPUDeviceTestHelper;
-  struct StreamGroup {
-    se::Stream* compute = nullptr;
-#if TENSORFLOW_USE_ROCM
-    se::Stream* nccl = nullptr;
-#endif
-    se::Stream* host_to_device = nullptr;
-    se::Stream* device_to_host = nullptr;
-    gtl::InlinedVector<se::Stream*, 4> device_to_device;
-    int priority = 0;
-  };
   class StreamGroupFactory;
 
   StreamGroup* stream_;
@@ -387,13 +391,14 @@ class BaseGPUDeviceFactory : public DeviceFactory {
       LocalityMap* localities);
 
  private:
-  // Creates a BaseGPUDevice associated with 'tf_device_id', allocates
-  // (strictly) 'memory_limit' bytes of GPU memory to it, and adds it to the
-  // 'devices' vector.
+  // Creates a BaseGPUDevice associated with 'tf_device_id', and adds it to the
+  // 'devices' vector. The 'gpu_allocator' is created by the caller and usually
+  // preallocates a set amount of GPU memory.
   Status CreateGPUDevice(const SessionOptions& options,
                          const std::string& name_prefix,
-                         tsl::TfDeviceId tf_device_id, int64_t memory_limit,
-                         const DeviceLocality& dev_locality, size_t num_tf_gpus,
+                         tsl::TfDeviceId tf_device_id,
+                         const DeviceLocality& dev_locality,
+                         Allocator* gpu_allocator,
                          std::vector<std::unique_ptr<Device>>* devices);
 
   virtual std::unique_ptr<BaseGPUDevice> CreateGPUDevice(

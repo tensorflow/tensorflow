@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_TARGETS_H_
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <optional>
 #include <string>

@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project

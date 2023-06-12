@@ -402,6 +402,16 @@ def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> 
   }];
 }
 
+def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for sequential execution of embeddings";
+  let constructor = "TFDevice::CreateEmbeddingSequencingPass()";
+    let description = [{
+    This is a strictly sequential and formally correct fallback option for the
+    embedding pipelining pass intended for debugging during pipelining
+    development.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";

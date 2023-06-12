@@ -1105,7 +1105,7 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
-  CreateDefaultXlaCpuAOTCompilationPipeline(xla_pm, cpu_pipeline_opts);
+  CreateDefaultXlaCpuRuntimeCompilationPipeline(xla_pm, cpu_pipeline_opts);
 
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();

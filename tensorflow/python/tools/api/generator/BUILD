@@ -49,8 +49,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":doc_srcs",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:tf_decorator",
         "//tensorflow/python/util:tf_export",
     ],
@@ -68,8 +68,8 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":doc_srcs",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:no_contrib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -92,9 +92,9 @@ py_strict_test(
         "//tensorflow/lite/python:analyzer",
         "//tensorflow/lite/python:lite",
         "//tensorflow/lite/python/authoring",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtensor",
         "//tensorflow/python:modules_with_exports",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/util:tf_decorator",
     ],

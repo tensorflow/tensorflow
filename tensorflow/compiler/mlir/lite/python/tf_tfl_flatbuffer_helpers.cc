@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project

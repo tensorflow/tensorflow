@@ -614,7 +614,7 @@ class TFLiteConverterBase:
     self._saved_model_exported_names = []
     self._tflite_metrics = metrics.TFLiteConverterMetrics()
     self._collected_converter_params = {}
-    self._experimental_disable_batchmatmul_unfold = False
+    self.unfold_batchmatmul = False
     self._experimental_lower_tensor_list_ops = True
     self._experimental_default_to_single_batch_in_tensor_list_ops = False
     self._experimental_unfold_large_splat_constant = False
@@ -754,7 +754,7 @@ class TFLiteConverterBase:
         "enable_mlir_converter": self.experimental_new_converter,
         "select_user_tf_ops": self.target_spec.experimental_select_user_tf_ops,
         "supported_backends": self.target_spec.experimental_supported_backends,
-        "unfold_batchmatmul": not self._experimental_disable_batchmatmul_unfold,
+        "unfold_batchmatmul": self.unfold_batchmatmul,
         "lower_tensor_list_ops": self._experimental_lower_tensor_list_ops,
         "unfold_large_splat_constant": (
             self._experimental_unfold_large_splat_constant

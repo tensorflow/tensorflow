@@ -147,5 +147,15 @@ bool EnableAllToAllForRelayout() {
   return is_enabled;
 }
 
+int AllReduceCombineOptimizationGroupSize() {
+  char* group_size_str =
+      std::getenv("DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE");
+  if (group_size_str == nullptr) return 0;
+  int group_size;
+  if (absl::SimpleAtoi(group_size_str, &group_size)) return group_size;
+  LOG(WARNING) << "Invalid DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE, "
+                  "using the default value 0.";
+  return 0;
+}
 }  // namespace dtensor
 }  // namespace tensorflow

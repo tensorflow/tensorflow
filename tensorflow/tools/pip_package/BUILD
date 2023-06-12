@@ -228,6 +228,7 @@ filegroup(
         "@llvm-project//llvm:LICENSE.TXT",
         "@llvm-project//mlir:LICENSE.TXT",
         "@local_config_tensorrt//:LICENSE",
+        "@ml_dtypes//:LICENSE",
         "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@png//:LICENSE",

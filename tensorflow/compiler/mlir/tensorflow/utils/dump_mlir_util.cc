@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
@@ -166,7 +167,8 @@ Status CreateFileForDumping(llvm::StringRef name,
 
   if (dir == kCrashReproducerStdErr) {
     *os = std::make_unique<LogInfoRawStream>();
-    *filepath = "(stderr)";
+    *filepath =
+        llvm::formatv("(stderr; requested filename: '{0}')", name).str();
     return Status();
   }
 

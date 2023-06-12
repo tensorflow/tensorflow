@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <string>
 
 #include "absl/types/optional.h"
@@ -49,5 +50,6 @@ PYBIND11_MODULE(flags_pybind, m) {
   TF_PY_DECLARE_FLAG(op_building_optimization);
   TF_PY_DECLARE_FLAG(saved_model_fingerprinting);
   TF_PY_DECLARE_FLAG(tf_shape_default_int64);
+  TF_PY_DECLARE_FLAG(more_stack_traces);
   // LINT.ThenChange(//tensorflow/core/config/flag_defs.h)
 };

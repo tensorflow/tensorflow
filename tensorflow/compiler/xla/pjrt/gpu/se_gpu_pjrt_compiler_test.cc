@@ -73,7 +73,6 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameXla) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), computation, topology,
@@ -86,7 +85,6 @@ TEST(StreamExecutorGpuCompilerTest, SuccessXla) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
   TF_ASSERT_OK_AND_ASSIGN(auto computation, GetXlaComputation(kProgram));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
@@ -141,7 +139,6 @@ TEST(StreamExecutorGpuCompilerTest, TopologyNotSameMlir) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
   EXPECT_THAT(compiler.Compile(xla::CompileOptions(), mlir_module.get(),
                                topology, client.get()),
@@ -159,7 +156,6 @@ TEST(StreamExecutorGpuCompilerTest, SuccessMlir) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
   TF_ASSERT_OK_AND_ASSIGN(auto topology, client->GetTopologyDescription());
   TF_ASSERT_OK_AND_ASSIGN(

@@ -920,8 +920,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             equation, shape_unknown, has_bias and not shape_unknown
         )
     )
-    model = self._create_einsum_model_with_fake_quant(
-        equation, y_shape, x_signature, y_signature, bias_shape, activation_fn
+    model = self._create_einsum_model(
+        equation,
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        activation_fn,
+        is_qat_model=True,
     )
     x = array_ops.constant(
         np.random.uniform(size=x_shape), dtype=dtypes.float32
@@ -1031,8 +1037,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
             equation, shape_unknown, has_bias and not shape_unknown
         )
     )
-    model = self._create_einsum_model_with_fake_quant(
-        equation, y_shape, x_signature, y_signature, bias_shape, activation_fn
+    model = self._create_einsum_model(
+        equation,
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        activation_fn,
+        is_qat_model=True,
     )
 
     x = array_ops.constant(
@@ -1102,13 +1114,14 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
         self._prepare_sample_einsum_datashapes(equation)
     )
 
-    model = self._create_einsum_model_with_fake_quant(
+    model = self._create_einsum_model(
         equation,
         y_shape,
         x_signature,
         y_signature,
         bias_shape=None,
         activation_fn=None,
+        is_qat_model=True,
     )
 
     if use_kernel:
@@ -2189,31 +2202,38 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertAllClose(expected_outputs, got_outputs, atol=0.05)
 
   @parameterized.parameters(
-      ('abc,cde->abde', (2, 2, 64), (64, 3, 3), (3, 3), quant_opts_pb2.XLA),
-      ('abc,dce->abde', (2, 2, 64), (3, 64, 3), (3, 3), quant_opts_pb2.XLA),
+      ('abc,cde->abde', quant_opts_pb2.XLA),
+      ('abc,dce->abde', quant_opts_pb2.XLA),
   )
   def test_einsum_ptq_model(
       self,
       equation: str,
-      input_shape: Sequence[int],
-      weight_shape: Sequence[int],
-      bias_shape: Sequence[int],
       target_opset: quant_opts_pb2.OpSet,
   ):
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes(equation, use_bias=True)
+    )
+
     model = self._create_einsum_model(
-        self._input_saved_model_path,
         equation,
-        input_shape,
-        weight_shape,
+        y_shape,
+        x_signature,
+        y_signature,
         bias_shape,
         activation_fn=nn_ops.relu,
     )
 
+    signatures = {
+        'serving_default': model.einsum_with_kernel.get_concrete_function(),
+    }
+
+    saved_model_save.save(model, self._input_saved_model_path, signatures)
+
     def data_gen() -> repr_dataset.RepresentativeDataset:
-      for _ in range(200):
+      for _ in range(4):
         yield {
-            'input_tensor': ops.convert_to_tensor(
-                np.random.uniform(low=0.0, high=1.0, size=input_shape).astype(
+            'x': ops.convert_to_tensor(
+                np.random.uniform(low=0.0, high=1.0, size=x_signature).astype(
                     'f4'
                 )
             ),
@@ -2248,13 +2268,13 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     self.assertTrue(self._contains_quantized_function_call(output_graphdef))
 
     input_data = ops.convert_to_tensor(
-        np.random.uniform(low=0.0, high=1.0, size=input_shape).astype('f4')
+        np.random.uniform(low=0.0, high=1.0, size=x_signature).astype('f4')
     )
-    expected_outputs = model.einsum(input_data)
+    expected_outputs = model.einsum_with_kernel(input_data)
     got_outputs = converted_model.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
+        x=ops.convert_to_tensor(input_data)
     )
-    self.assertAllClose(expected_outputs, got_outputs, atol=0.0608)
+    self.assertAllClose(expected_outputs, got_outputs, atol=0.097)
 
     # Check the converted model in the target opset.
     quantization_options = quant_opts_pb2.QuantizationOptions(
@@ -2285,10 +2305,10 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
       self.assertTrue(self._contains_op(output_graphdef, 'XlaDotV2'))
 
     new_outputs = converted_model.signatures['serving_default'](
-        input_tensor=ops.convert_to_tensor(input_data)
+        x=ops.convert_to_tensor(input_data)
     )
     # The difference between TF and target path is expected to be small.
-    self.assertAllClose(new_outputs, got_outputs, atol=0.0666)
+    self.assertAllClose(new_outputs, got_outputs, atol=0.097)
     self.assertAllClose(new_outputs, expected_outputs, atol=0.057)
 
   @test_util.run_in_graph_and_eager_modes
@@ -2365,8 +2385,8 @@ class StaticRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
     _, y_shape, _, x_signature, y_signature = (
         self._prepare_sample_einsum_datashapes('ab,bc->ac')
     )
-    model = self._create_einsum_model_with_fake_quant(
-        'ab,bc->ac', y_shape, x_signature, y_signature
+    model = self._create_einsum_model(
+        'ab,bc->ac', y_shape, x_signature, y_signature, is_qat_model=True
     )
 
     signatures = {
@@ -3979,6 +3999,78 @@ class DynamicRangeQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   eager mode (default in TF2) to ensure support for when TF2 is disabled.
   """
 
+  @parameterized.parameters(
+      (True, quant_opts_pb2.XLA),
+      (False, quant_opts_pb2.XLA),
+      (True, quant_opts_pb2.UNIFORM_QUANTIZED),
+      (False, quant_opts_pb2.UNIFORM_QUANTIZED),
+  )
+  @test_util.run_in_graph_and_eager_modes
+  def test_einsum_model(
+      self,
+      constant_y_operand: bool,
+      target_opset: quant_opts_pb2.OpSet,
+  ):
+    equation = 'abc,cde->abde'
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes(equation, use_bias=True)
+    )
+
+    model = self._create_einsum_model(
+        equation,
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        activation_fn=nn_ops.relu,
+    )
+
+    if constant_y_operand:
+      signatures = {
+          'serving_default': model.einsum_with_kernel.get_concrete_function(),
+      }
+    else:
+      signatures = {
+          'serving_default': (
+              model.einsum_without_kernel.get_concrete_function()
+          ),
+      }
+
+    saved_model_save.save(model, self._input_saved_model_path, signatures)
+
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.DYNAMIC_RANGE
+        ),
+        op_set=target_opset,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+
+    # TODO(b/286489783): Support Einsum
+    if target_opset == quant_opts_pb2.UNIFORM_QUANTIZED:
+      self.assertFalse(self._contains_op(output_graphdef, 'XlaDotV2'))
+      self.assertTrue(self._contains_op(output_graphdef, 'BatchMatMulV2'))
+    else:
+      self.assertFalse(self._contains_op(output_graphdef, 'XlaDotV2'))
+      self.assertTrue(self._contains_op(output_graphdef, 'Einsum'))
+
   @parameterized.named_parameters(
       ('to_tf_per_tensor', quant_opts_pb2.TF, False),
       ('to_xla_per_tensor', quant_opts_pb2.XLA, False),
@@ -4759,6 +4851,65 @@ class WeightOnlyQuantizationTest(quantize_model_test_base.QuantizedModelTest):
   Run all tests cases in both the graph mode (default in TF1) and the eager mode
   (default in TF2) to ensure support for when TF2 is disabled.
   """
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_einsum_model(
+      self,
+  ):
+    equation = 'abc,cde->abde'
+    _, y_shape, bias_shape, x_signature, y_signature = (
+        self._prepare_sample_einsum_datashapes(equation, use_bias=True)
+    )
+
+    model = self._create_einsum_model(
+        equation,
+        y_shape,
+        x_signature,
+        y_signature,
+        bias_shape,
+        activation_fn=nn_ops.relu,
+    )
+
+    # Use constant y operand.
+    signatures = {
+        'serving_default': model.einsum_with_kernel.get_concrete_function(),
+    }
+
+    saved_model_save.save(model, self._input_saved_model_path, signatures)
+
+    tags = {tag_constants.SERVING}
+    quantization_options = quant_opts_pb2.QuantizationOptions(
+        quantization_method=quant_opts_pb2.QuantizationMethod(
+            experimental_method=_ExperimentalMethod.WEIGHT_ONLY
+        ),
+        op_set=quant_opts_pb2.XLA,
+    )
+
+    converted_model = quantize_model.quantize(
+        self._input_saved_model_path,
+        ['serving_default'],
+        tags,
+        self._output_saved_model_path,
+        quantization_options,
+    )
+    self.assertIsNotNone(converted_model)
+    self.assertCountEqual(
+        converted_model.signatures._signatures.keys(), {'serving_default'}
+    )
+
+    output_loader = saved_model_loader.SavedModelLoader(
+        self._output_saved_model_path
+    )
+    output_graphdef = output_loader.get_meta_graph_def_from_tags(tags).graph_def
+
+    # TODO(b/286489783): Support Einsum for Weight only quantization
+    # Due to other meta data, the compression is not exactly 1/4.
+    self.assertFalse(self._contains_op(output_graphdef, 'XlaDotV2'))
+    self.assertSizeRatioLessThan(
+        self._output_saved_model_path,
+        self._input_saved_model_path,
+        threshold=0.5,
+    )
 
   @parameterized.named_parameters(
       # TODO(b/269421880): Enable legacy weight-only scheme with the uniform

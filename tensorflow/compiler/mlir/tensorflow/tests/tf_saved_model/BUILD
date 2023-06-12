@@ -62,6 +62,7 @@ test_files = glob(
 ]
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_size = "medium",
     default_tags = [

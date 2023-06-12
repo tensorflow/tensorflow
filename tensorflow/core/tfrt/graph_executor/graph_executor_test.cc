@@ -19,11 +19,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel/kernel.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/math_kernels.h"
 #include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_fallback_kernels.h"
-#include "learning/infra/mira/mlrt/interpreter/context.h"
-#include "learning/infra/mira/mlrt/interpreter/value.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/cc/ops/array_ops.h"
@@ -33,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/context.h"
+#include "tensorflow/core/tfrt/mlrt/interpreter/value.h"
+#include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -146,12 +146,14 @@ INSTANTIATE_TEST_SUITE_P(GraphExecutorTestSuite, GraphExecutorTest,
 
 TEST_F(GraphExecutorTest, DoOnlineCostAnalysisExactlyOnce) {
   GraphExecutor::LoadedClientGraph loaded_client_graph_0(
-      "name0", /*symbol_uid=*/"", /*graph_executor=*/nullptr,
+      "name0", /*symbol_uids=*/{},
+      /*graph_executor=*/nullptr,
       /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
       /*executable_context=*/nullptr);
   GraphExecutor::LoadedClientGraph loaded_client_graph_1(
-      "name1", /*symbol_uid=*/"", /*graph_executor=*/nullptr,
+      "name1", /*symbol_uids=*/{},
+      /*graph_executor=*/nullptr,
       /*mlir_context=*/nullptr,
       /*tf_mlir_with_op_keys=*/{}, /*tfrt_mlir=*/{},
       /*executable_context=*/nullptr);

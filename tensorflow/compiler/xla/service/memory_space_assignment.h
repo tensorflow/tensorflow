@@ -558,6 +558,7 @@ class MemorySpaceAssignment {
       std::function<bool(const HloPosition&)>;
   using ReservedScopedMemoryFunction =
       std::function<int64_t(const HloInstruction*)>;
+  using UpdateLayoutFunction = std::function<void(Shape*)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
@@ -770,6 +771,49 @@ class MemorySpaceAssignment {
     std::optional<int64_t> cross_program_prefetch_index_;
   };
 
+  // The parameters for slicing a single dimension of a tensor.
+  struct SliceParam {
+    std::string ToString() const;
+    bool operator==(const SliceParam& other) const;
+
+    int64_t start_inclusive;
+    int64_t end_exclusive;
+  };
+
+  // A proposed way to slice a buffer.
+  struct SliceProposal {
+    std::string ToString() const;
+    std::tuple<const Shape&,
+               const std::vector<MemorySpaceAssignment::SliceParam>&, int64_t>
+    ToTuple() const;
+    bool operator==(const SliceProposal& other) const;
+
+    // Shape resulting from the slice.
+    Shape slice_shape;
+
+    // slice_params map to the parameters that would be passed to a slice
+    // instruction. Thus:
+    // * There should be a slice parameter for every dimension in the shape of
+    //   the tensor being sliced.
+    // * The ith slice_param applies to the ith logical dimension in the shape
+    //   being sliced.
+    // * If a dimension is not being sliced, it should have a SliceParam of
+    //   {0, dim size}.
+    std::vector<MemorySpaceAssignment::SliceParam> slice_params;
+
+    // The size to be allocated for the slice. Note, this may be > the size of
+    // the slice shape, due to additional padding that may occur when the slices
+    // are concatenated back together.
+    int64_t slice_size;
+  };
+
+  // A SliceProposalCollection proposes a way to to slice an AllocationRequest.
+  // A SliceProposalCollection is generated from a SliceProposalFunction and is
+  // used when we want to slice a prefetch.
+  using SliceProposalCollection = std::vector<SliceProposal>;
+  using SliceProposalFunction = std::function<StatusOr<SliceProposalCollection>(
+      const Shape& shape, const SlicedPrefetchOptions& options)>;
+
   // This class represents an allocation resulting from asynchronous sliced
   // copies.
   //
@@ -796,14 +840,6 @@ class MemorySpaceAssignment {
   // - end_time = t4
   class SlicedCopyAllocation : public Allocation {
    public:
-    struct SliceParam {
-      std::string ToString() const;
-      bool operator==(const SliceParam& other) const;
-
-      int64_t start_inclusive;
-      int64_t end_exclusive;
-    };
-
     // Input description of 1 slice.
     struct SliceInput {
       Chunk chunk;
@@ -814,7 +850,7 @@ class MemorySpaceAssignment {
     // Details about a slice in the sliced allocation.
     struct SliceDetails {
       std::string ToString() const;
-      std::tuple<const Chunk&, int64_t, int64_t, const std::vector<SliceParam>,
+      std::tuple<const Chunk&, int64_t, int64_t, const std::vector<SliceParam>&,
                  const HloInstruction*, const HloInstruction*>
       ToTuple() const;
       bool operator==(const SliceDetails& other) const;
@@ -1422,6 +1458,15 @@ struct Options {
 
   // Options for the memory-bound loop optimizer feature.
   MemoryBoundLoopOptimizerOptions memory_bound_loop_optimizer_options;
+
+  // A function for updating shape layouts.
+  MemorySpaceAssignment::UpdateLayoutFunction update_layout_fn = [](Shape*) {};
+
+  MemorySpaceAssignment::SliceProposalFunction propose_slice_fn =
+      [](const Shape&, const SlicedPrefetchOptions&)
+      -> xla::StatusOr<MemorySpaceAssignment::SliceProposalCollection> {
+    return UnimplementedStrCat("Generation of SliceProposals unimplemented");
+  };
 };
 
 // A struct representing an asynchronous copy with its logical start and end

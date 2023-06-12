@@ -32,9 +32,8 @@ message CudnnConvBackendConfig {
   // Below are the fields related to cuDNN's fused convolution. Refer to
   // GpuConvParams for their meanings.
 
-  // The requested activation (e.g. relu) after the convolution. It is with type
-  // stream_executor::dnn::ActivationMode.
-  int64 activation_mode = 3;
+  // The requested activation (e.g. relu) after the convolution.
+  stream_executor.dnn.ActivationMode activation_mode = 3;
 
   // The scaling factor multiplied with the side input. If no side input buffer
   // is provided, this field must be 0.

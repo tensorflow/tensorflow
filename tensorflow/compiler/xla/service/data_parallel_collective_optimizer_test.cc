@@ -874,11 +874,76 @@ ENTRY entry {
   EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
   XLA_VLOG_LINES(1, module->ToString());
   const HloInstruction* root = module->entry_computation()->root_instruction();
-  EXPECT_THAT(root,
-              op::DynamicUpdateSlice(
-                  _, op::DynamicSlice(op::AllReduce(), _, _, _), _, _, _));
-  const HloInstruction* sliced = root->operand(1)->operand(0)->operand(0);
-  EXPECT_EQ(sliced->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_THAT(
+      root,
+      op::DynamicUpdateSlice(
+          _, op::DynamicSlice(op::AllReduce(op::GetTupleElement()), _, _, _), _,
+          _, _));
+}
+
+TEST_F(DataParallelCollectiveOptimizerTest,
+       TransformIncrementByTwoFormatTranspose) {
+  constexpr absl::string_view hlo_string = R"(
+HloModule module
+
+add {
+  lhs = bf16[] parameter(0)
+  rhs = bf16[] parameter(1)
+  ROOT add = bf16[] add(lhs, rhs)
+}
+
+while_cond {
+  param = (s32[], bf16[3,16,128], bf16[3,16,128]) parameter(0)
+  gte = s32[] get-tuple-element(param), index=0
+  constant.1 = s32[] constant(3)
+  ROOT cmp = pred[] compare(gte, constant.1), direction=LT
+}
+
+while_body {
+  param = (s32[], bf16[3,16,128], bf16[3,16,128]) parameter(0)
+  get-tuple-element.394 = s32[] get-tuple-element(param), index=0
+  get-tuple-element.395 = bf16[3,16,128] get-tuple-element(param), index=1
+  get-tuple-element.396 = bf16[3,16,128] get-tuple-element(param), index=2
+  constant.2557 = s32[] constant(2)
+  add.230 = s32[] add(get-tuple-element.394, constant.2557)
+  constant.2559 = s32[] constant(3)
+  subtract.139 = s32[] subtract(constant.2559, get-tuple-element.394)
+  constant.2560 = s32[] constant(-1)
+  add.231 = s32[] add(subtract.139, constant.2560)
+  constant.2561 = s32[] constant(0)
+  compare.747 = pred[] compare(add.231, constant.2561), direction=LT
+  constant.2562 = s32[] constant(2)
+  add.232 = s32[] add(subtract.139, constant.2562)
+  select.1348 = s32[] select(compare.747, add.232, add.231)
+  dynamic-slice.99 = bf16[1,16,128] dynamic-slice(get-tuple-element.396, select.1348, constant.2561, constant.2561), dynamic_slice_sizes={1,16,128}
+  mul = bf16[1,16,128] multiply(dynamic-slice.99, dynamic-slice.99)
+  reshape.1 = bf16[2,16,64] reshape(mul)
+  ar.1 = bf16[2,16,64] all-reduce(reshape.1), replica_groups={}, to_apply=add, channel_id=1
+  transpose.1 = bf16[64,2,16] transpose(ar.1), dimensions={2,0,1}
+  reshape.2 = bf16[1,16,128] reshape(transpose.1)
+  dynamic-update-slice.35 = bf16[3,16,128] dynamic-update-slice(get-tuple-element.395, reshape.2, select.1348, constant.2561, constant.2561)
+  ROOT tuple = (s32[], bf16[3,16,128], bf16[3,16,128]) tuple(add.230, dynamic-update-slice.35, get-tuple-element.396)
+}
+
+ENTRY entry {
+  c0 = s32[] constant(0)
+  p0 = bf16[3,16,128] parameter(0)
+  c1 = bf16[] constant(0)
+  b1 = bf16[3,16,128] broadcast(c1), dimensions={}
+  tuple.1 = (s32[], bf16[3,16,128], bf16[3,16,128]) tuple(c0, b1, p0)
+  while = (s32[], bf16[3,16,128], bf16[3,16,128]) while(tuple.1), condition=while_cond, body=while_body
+  ROOT gte1 = bf16[3,16,128] get-tuple-element(while), index=1
+}
+)";
+  auto module = ParseAndReturnUnverifiedModule(hlo_string, config_).value();
+  EXPECT_TRUE(RunOptimizer(module.get(), /*last_run=*/true).value());
+  XLA_VLOG_LINES(1, module->ToString());
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      op::DynamicUpdateSlice(
+          _, op::Reshape(op::Transpose(op::AllReduce(op::GetTupleElement()))),
+          _, _, _));
 }
 
 TEST_F(DataParallelCollectiveOptimizerTest,

@@ -291,9 +291,9 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
 
   ENTRY kernel_entry {
     constant0 = f32[] constant(0)
-    arg1 = f16[1024,512]{1,0} parameter(0)
-    arg1_conv = f32[1024,512]{1,0} convert(arg1)
-    ROOT reduce = f32[512]{0} reduce(arg1_conv, constant0), dimensions={0}, to_apply=reduction
+    arg1 = f16[1024,512,128]{2,1,0} parameter(0)
+    arg1_conv = f32[1024,512,128]{2,1,0} convert(arg1)
+    ROOT reduce = f32[512,128]{1,0} reduce(arg1_conv, constant0), dimensions={0}, to_apply=reduction
   })";
 
   // Check that two calls to llvm.nvvm.atomic are generated.
@@ -322,23 +322,23 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
 
   fused_computation {
     constant0 = f32[] constant(0)
-    arg.1 = f16[1024,512]{1,0} parameter(0)
-    arg.2 = f16[1024,512]{1,0} parameter(1)
-    arg1.conv = f32[1024,512]{1,0} convert(arg.1)
-    arg2.conv = f32[1024,512]{1,0} convert(arg.2)
-    reduce1 = f32[512]{0} reduce(arg1.conv, constant0), dimensions={0},
+    arg.1 = f16[1024,512,128]{2,1,0} parameter(0)
+    arg.2 = f16[1024,512,128]{2,1,0} parameter(1)
+    arg1.conv = f32[1024,512,128]{2,1,0} convert(arg.1)
+    arg2.conv = f32[1024,512,128]{2,1,0} convert(arg.2)
+    reduce1 = f32[512,128]{1,0} reduce(arg1.conv, constant0), dimensions={0},
       to_apply=reduction22
-    reduce2 = f32[512]{0} reduce(arg2.conv, constant0), dimensions={0},
+    reduce2 = f32[512,128]{1,0} reduce(arg2.conv, constant0), dimensions={0},
       to_apply=reduction22
-    add = f32[1024,512]{1,0} add(arg1.conv, arg2.conv)
-    ROOT tuple = (f32[512]{0}, f32[512]{0}, f32[1024,512]{1,0})
+    add = f32[1024,512,128]{2,1,0} add(arg1.conv, arg2.conv)
+    ROOT tuple = (f32[512,128]{1,0}, f32[512,128]{1,0}, f32[1024,512,128]{2,1,0})
       tuple(reduce1, reduce2, add)
   }
 
   ENTRY kernel_entry {
-    arg1 = f16[1024,512]{1,0} parameter(0)
-    arg2 = f16[1024,512]{1,0} parameter(1)
-    ROOT fusion = (f32[512]{0}, f32[512]{0}, f32[1024,512]{1,0})
+    arg1 = f16[1024,512,128]{2,1,0} parameter(0)
+    arg2 = f16[1024,512,128]{2,1,0} parameter(1)
+    ROOT fusion = (f32[512,128]{1,0}, f32[512,128]{1,0}, f32[1024,512,128]{2,1,0})
       fusion(arg1, arg2), kind=kInput, calls=fused_computation
   })";
 
@@ -731,8 +731,8 @@ reduction {
 
 ENTRY kernel_entry {
     constant0 = f32[] constant(0)
-    arg1 = f32[1024,512]{1,0} parameter(0)
-    ROOT reduce = f32[512]{0} reduce(arg1, constant0), dimensions={0}, to_apply=reduction
+    arg1 = f32[1024,512,128]{2,1,0} parameter(0)
+    ROOT reduce = f32[512,128]{1,0} reduce(arg1, constant0), dimensions={0}, to_apply=reduction
 }
   )";
   auto expected_ir = R"(

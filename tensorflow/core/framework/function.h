@@ -373,9 +373,6 @@ class AbstractStackTrace {
   // The returned span is alive as long as the AbstractStackTrace is alive.
   virtual absl::Span<StackFrame const> ToFrames() const = 0;
 
-  // Return the frames, but without caching any of the generated data.
-  virtual std::vector<StackFrame> ToUncachedFrames() const { return {}; }
-
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
   virtual StackFrame LastUserFrame() const = 0;
@@ -388,15 +385,16 @@ class AbstractStackTrace {
 };
 
 // A frozen sequence of StackFrames; an adapter for a span of StackFrames that
-// conforms to the AbstractStackTrace contract. Unlike other AbstractStackTrace
-// subclasses that could return different results from ToFrames() and
-// GetUserFrames(), this class returns the same sequence of stack frames for
-// both calls.
+// conforms to the AbstractStackTrace contract.
 class FrozenStackTrace : public AbstractStackTrace {
  public:
   // Constructs a FrozenStackTrace from a span of StackFrames by making a copy
   // of each stack frame.
-  explicit FrozenStackTrace(absl::Span<StackFrame const> frames);
+  explicit FrozenStackTrace(absl::Span<StackFrame const> frames,
+                            absl::Span<StackFrame const> user_frames = {});
+
+  explicit FrozenStackTrace(std::vector<StackFrame>&& frames)
+      : frames_(std::move(frames)), user_frames_({}) {}
 
   // Constructs a FrozenStackTrace from serialized proto data.
   FrozenStackTrace(const GraphDebugInfo::StackTrace& stack_trace,
@@ -406,8 +404,6 @@ class FrozenStackTrace : public AbstractStackTrace {
 
   absl::Span<StackFrame const> ToFrames() const override;
 
-  std::vector<StackFrame> ToUncachedFrames() const override;
-
   StackFrame LastUserFrame() const override;
 
   std::vector<StackFrame> GetUserFrames(int limit) const override;
@@ -416,6 +412,7 @@ class FrozenStackTrace : public AbstractStackTrace {
 
  private:
   std::vector<StackFrame> frames_;
+  std::vector<StackFrame> user_frames_;
 };
 
 using StackTracesMap =

@@ -379,6 +379,21 @@ func.func @op_all_reduce(%arg0: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: "op_all_reduce_tuple"
+func.func @op_all_reduce_tuple(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> (tensor<8xf32>, tensor<f32>) {
+  //      CHECK: "mhlo.all_reduce"(%[[ARG0:.*]], %[[ARG1:.*]]) ({
+  // CHECK-NEXT:   ^bb0(%[[ARG2:.*]]: tensor<f32>, %[[ARG3:.*]]: tensor<f32>):
+  // CHECK-NEXT:     %[[ADD:.*]] = "mhlo.add"(%arg2, %arg3) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK-NEXT:     "mhlo.return"(%[[ADD]]) : (tensor<f32>) -> ()
+  // CHECK-NEXT: }) {replica_groups = dense<> : tensor<0x0xi64>} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  %0:2 = stablehlo.custom_call @mhlo.all_reduce(%arg0, %arg1) {called_computations = [@all_reduce0], mhlo.attributes = {replica_groups = dense<> : tensor<0x0xi64>}} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  return %0#0, %0#1 : tensor<8xf32>, tensor<f32>
+}
+func.func @all_reduce0(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32> {
+  %0 = stablehlo.add %arg0, %arg1 : tensor<f32>
+  stablehlo.return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: "op_all_to_all"
 func.func @op_all_to_all(%arg0: tensor<4x16xf32>) -> tensor<16x4xf32> {
   //               CHECK: "mhlo.all_to_all"(%arg0) {

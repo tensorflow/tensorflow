@@ -1,7 +1,5 @@
 """Helpers for defining multi-platform DTensor test targets."""
 
-load("//tensorflow:tensorflow.bzl", "py_strict_test")
-
 # LINT.IfChange
 ALL_BACKENDS = [
     "cpu",  # 1 physical CPU,
@@ -106,7 +104,7 @@ def dtensor_test(
         shard_count = None,
         size = None,
         get_configurations = _get_configurations,
-        test_rule = py_strict_test):
+        test_rule = native.py_test):
     """Defines a set of per-platform DTensor test targets.
 
     Generates test targets named:

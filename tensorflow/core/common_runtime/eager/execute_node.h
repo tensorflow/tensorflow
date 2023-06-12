@@ -207,7 +207,9 @@ class AsyncExecuteNode : public EagerNode {
         cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
-        errors::SetStackTrace(status, stack_trace_->ToStackFrames({}, {}));
+        errors::SetStackTrace(
+            status, stack_trace_->ToStackFrames(
+                        {}, {}, /*reverse_traversal=*/false, /*limit=*/-1));
       }
       Abort(status);
       return status;

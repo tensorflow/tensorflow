@@ -282,6 +282,9 @@ class HloParserImpl : public HloParser {
     kInstructionAliasing,
     kCustomCallSchedule,
     kCustomCallApiVersion,
+    // A double-quoted string, or a string that looks like a JSON dictionary
+    // enclosed in matching curly braces (returned value includes the curlies).
+    kStringOrJsonDict,
   };
 
   struct AttrConfig {
@@ -498,6 +501,7 @@ class HloParserImpl : public HloParser {
   bool ParseName(std::string* result);
   bool ParseAttributeName(std::string* result);
   bool ParseString(std::string* result);
+  bool ParseJsonDict(std::string* result);
   bool ParseDimensionSizes(std::vector<int64_t>* dimension_sizes,
                            std::vector<bool>* dynamic_dimensions);
   bool ParseShape(Shape* result);
@@ -1215,7 +1219,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
   attrs["metadata"] = {/*required=*/false, AttrTy::kMetadata, &metadata};
 
   optional<std::string> backend_config;
-  attrs["backend_config"] = {/*required=*/false, AttrTy::kString,
+  attrs["backend_config"] = {/*required=*/false, AttrTy::kStringOrJsonDict,
                              &backend_config};
 
   std::optional<Shape> maybe_shape;
@@ -4433,7 +4437,25 @@ bool HloParserImpl::ParseAttributeHelper(
         if (!ParseString(&result)) {
           return false;
         }
-        static_cast<optional<std::string>*>(attr_out_ptr)->emplace(result);
+        static_cast<optional<std::string>*>(attr_out_ptr)
+            ->emplace(std::move(result));
+        return true;
+      }
+      case AttrTy::kStringOrJsonDict: {
+        std::string result;
+        if (lexer_.GetKind() == TokKind::kString) {
+          if (!ParseString(&result)) {
+            return false;
+          }
+        } else if (lexer_.GetKind() == TokKind::kLbrace) {
+          if (!ParseJsonDict(&result)) {
+            return false;
+          }
+        } else {
+          return false;
+        }
+        static_cast<optional<std::string>*>(attr_out_ptr)
+            ->emplace(std::move(result));
         return true;
       }
       case AttrTy::kMetadata: {
@@ -5559,6 +5581,16 @@ bool HloParserImpl::ParseString(std::string* result) {
   VLOG(3) << "ParseString";
   if (lexer_.GetKind() != TokKind::kString) {
     return TokenError("expects string");
+  }
+  *result = lexer_.GetStrVal();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseJsonDict(std::string* result) {
+  VLOG(3) << "ParseJsonDict";
+  if (lexer_.LexJsonDict() != TokKind::kString) {
+    return TokenError("expects JSON dict");
   }
   *result = lexer_.GetStrVal();
   lexer_.Lex();

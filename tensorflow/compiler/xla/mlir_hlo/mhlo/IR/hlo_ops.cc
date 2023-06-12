@@ -373,7 +373,6 @@ void ReduceScatterOp::build(OpBuilder& odsBuilder, OperationState& odsState,
   }
 
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AddOp)
-INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AllReduceOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(AndOp)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(Atan2Op)
 INFER_RETURN_TYPE_COMPONENTS_FROM_OPERANDS(CbrtOp)
@@ -2066,9 +2065,52 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 // AllReduceOp
 //===----------------------------------------------------------------------===//
 
-LogicalResult AllReduceOp::verify() {
-  return hlo::verifyAllReduceOp(getLoc(), getOperand(), getReplicaGroups(),
-                                getUseGlobalDeviceIds(), getComputation());
+void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Type resultType, Value operand,
+                        DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle,
+                        bool useGlobalDeviceIds) {
+  AllReduceOp::build(odsBuilder, odsState, resultType, ValueRange(operand),
+                     replicaGroups, channelHandle, useGlobalDeviceIds);
+}
+
+void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
+                        Value operand, DenseIntElementsAttr replicaGroups,
+                        ChannelHandleAttr channelHandle,
+                        bool useGlobalDeviceIds) {
+  AllReduceOp::build(odsBuilder, odsState, operand.getType(),
+                     ValueRange(operand), replicaGroups, channelHandle,
+                     useGlobalDeviceIds);
+}
+
+LogicalResult AllReduceOp::inferReturnTypeComponents(
+    MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
+  AllReduceOp::Adaptor adaptor(operands, attributes, {}, regions);
+
+  // Verify constraints
+  if (adaptor.getOperands().empty())
+    return emitOptionalError(location,
+                             "AllReduce must have have at least one operand");
+  for (auto operand : adaptor.getOperands()) {
+    if (failed(hlo::verifyAllReduceOp(
+            location, operand, adaptor.getReplicaGroups(),
+            adaptor.getUseGlobalDeviceIds(), adaptor.getComputation())))
+      return failure();
+  }
+
+  // Populate inferred return shapes
+  for (auto resultType : adaptor.getOperands().getTypes()) {
+    auto rankedResult = resultType.dyn_cast<RankedTensorType>();
+    if (rankedResult)
+      inferredReturnShapes.emplace_back(rankedResult.getShape(),
+                                        rankedResult.getElementType(),
+                                        rankedResult.getEncoding());
+    else
+      inferredReturnShapes.emplace_back(resultType.cast<ShapedType>());
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

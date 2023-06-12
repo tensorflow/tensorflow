@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -39,10 +40,10 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
+#include "tensorflow/dtensor/mlir/op_utils.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -379,8 +380,11 @@ struct DTensorMultiDeviceExpansion
       return;
     }
 
+    std::string translated_func_name =
+        llvm::formatv("_multi_device_func_{0}_{1}", OpHash(module),
+                      OpHash(main_func))
+            .str();
     mlir::OpBuilder builder = mlir::OpBuilder::atBlockEnd(module.getBody());
-    const char* translated_func_name = "multi_device_main";
     mlir::func::FuncOp translated_func =
         mlir::func::FuncOp::create(main_func.getLoc(), translated_func_name,
                                    builder.getFunctionType({}, {}));

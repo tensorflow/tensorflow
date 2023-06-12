@@ -1332,3 +1332,18 @@ def SimplifyDoubleSelectFCZerosRHS : Pat<
    (AllValuesAreZero $zeros_1),
    (AllValuesAreZero $zeros_2)
   ]>;
+
+def FuseSigmoid : Pat<
+  (TFL_DivOp
+   (Arith_ConstantOp F32ElementsAttr:$ones),
+   (TFL_AddOp:$add_out
+    (TFL_ExpOp:$exp_out
+     (TFL_NegOp:$neg_out $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
+  (TFL_LogisticOp $arg),
+  [(FloatValueEquals<"1"> $ones_1),
+   (FloatValueEquals<"1"> $ones),
+   (HasOneUse $neg_out),
+   (HasOneUse $add_out),
+   (HasOneUse $exp_out),
+  ]>;

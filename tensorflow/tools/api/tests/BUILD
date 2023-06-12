@@ -39,8 +39,8 @@ py_test(
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v1_estimator",
         # copybara:uncomment "//third_party/py/tensorflow:tensorflow_compat_v2_estimator",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:lib",
+        "//tensorflow/python/lib/io:lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
@@ -59,7 +59,7 @@ py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

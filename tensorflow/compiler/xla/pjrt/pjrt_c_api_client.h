@@ -91,6 +91,8 @@ class PjRtCApiDevice : public PjRtDevice {
     return description_;
   }
 
+  StatusOr<tsl::AllocatorStats> GetAllocatorStats() const override;
+
  private:
   PjRtCApiClient* client_ = nullptr;
   // `device_` is owned by the `PJRT_Client` wrapped by `client_`

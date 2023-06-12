@@ -909,8 +909,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
           result_ref->ForwardTo(std::move(knfb_tensor));
           return;
         }
-        auto expected_tf_tensor =
-            TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
+        auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(knfb_tensor.get());
         if (!expected_tf_tensor) {
           auto error = tfrt::EmitErrorAsync(
               exec_ctx, toString(expected_tf_tensor.takeError()));
@@ -924,7 +923,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
       });
     } else {
       set_result(tf_tensor_results[i],
-                 TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host()));
+                 tfrt::TFRTTensorToTFTensor(knfb_tensor.get()));
     }
   }
 }

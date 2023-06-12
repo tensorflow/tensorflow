@@ -207,6 +207,12 @@ struct XlaOpsCommonFlags {
   } tf_xla_use_device_api;
 };
 
+// Flags for the XlaCallModule kernel.
+struct XlaCallModuleFlags {
+  // Used by XlaCallModuleOp to specify safety checks to disable.
+  absl::flat_hash_set<std::string> disabled_checks;
+};
+
 // Flags for the build_xla_ops pass.
 struct BuildXlaOpsPassFlags {
   // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
@@ -228,6 +234,10 @@ struct BuildXlaOpsPassFlags {
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
   bool tf_xla_disable_constant_folding;
+
+  // Disables full embedding pipelining when true. Instead, strict SparseCore
+  // TensorCore sequencing will be used.
+  bool tf_xla_disable_full_embedding_pipelining;
 };
 
 // Flags for common MLIR configurations.
@@ -266,6 +276,7 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 BuildXlaOpsPassFlags* GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 XlaOpsCommonFlags* GetXlaOpsCommonFlags();
+XlaCallModuleFlags* GetXlaCallModuleFlags();
 
 MlirCommonFlags* GetMlirCommonFlags();
 
