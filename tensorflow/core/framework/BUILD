@@ -1880,7 +1880,6 @@ tf_cc_fuzz_test(
     srcs = ["tensor_fuzz.cc"],
     tags = ["no_oss"],
     deps = [
-        ":tensor_testutil",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/security/fuzzing/cc/core/framework:datatype_domains",

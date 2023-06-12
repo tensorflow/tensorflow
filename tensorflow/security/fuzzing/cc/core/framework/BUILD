@@ -22,7 +22,6 @@ cc_library(
     hdrs = ["tensor_domains.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":datatype_domains",
         ":tensor_shape_domains",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:types_proto_cc",
