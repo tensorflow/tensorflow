@@ -108,7 +108,7 @@ REQUIRED_PACKAGES = [
     'setuptools',
     'six >= 1.12.0',
     'termcolor >= 1.1.0',
-    'typing_extensions >= 3.6.6',
+    'typing_extensions>=3.6.6,<4.6.0',
     # TODO(b/266362323): wrapt==1.15.0rc0 incompatible with TF 2.12.0 RC0 (and
     # nightly, but works with TF 2.11)
     'wrapt >= 1.11.0, <1.15',
