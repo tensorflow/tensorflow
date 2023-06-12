@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
@@ -11,6 +11,7 @@ package(
 package_group(
     name = "friends",
     packages = [
+        # copybara:uncomment "//learning/brain/experimental/tfrt/native_lowering/...",
         # copybara:uncomment "//learning/brain/tfrt/support/...",
         # copybara:uncomment "//smartass/brain/inference/...",
         "//tensorflow/core/tfrt/...",
@@ -36,16 +37,28 @@ cc_library(
 )
 
 cc_library(
+    name = "executable_context",
+    hdrs = ["executable_context.h"],
+    deps = [
+        "//tensorflow/core/tfrt/mlrt/bytecode",
+        "//tensorflow/core/tfrt/mlrt/interpreter:context",
+        "@tf_runtime//:bef",
+        "@tf_runtime//:befexecutor",
+        "@tf_runtime//:hostcontext",
+        "@tf_runtime//:support",
+    ],
+)
+
+cc_library(
     name = "graph_executor",
     srcs = ["graph_executor.cc"],
     hdrs = ["graph_executor.h"],
     tags = ["no_oss"],
     deps = [
+        ":executable_context",
         ":export_mlir",
         ":graph_execution_options",
         ":sync_resource_state",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels:sync_context",
-        "//learning/brain/experimental/tfrt/native_lowering/saved_model:saved_model_translate",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tfrt:import_model",
@@ -75,6 +88,7 @@ cc_library(
         "//tensorflow/core/tfrt/mlrt/kernel:context",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
+        "//tensorflow/core/tfrt/stubs:tfrt_native_lowering_stub",
         "//tensorflow/core/tfrt/utils",
         "//tensorflow/core/tfrt/utils:fallback_tensor",
         "//tensorflow/core/tfrt/utils:tfrt_graph_execution_state",
@@ -95,7 +109,11 @@ cc_library(
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:mlirtobef",
         "@tf_runtime//:support",
-    ],
+    ] + if_google(
+        [
+            "//learning/brain/experimental/tfrt/native_lowering/stubs:tfrt_native_lowering_impl",
+        ],
+    ),
 )
 
 tf_cc_test(
@@ -127,30 +145,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "synchronous_graph_executor",
-    srcs = ["synchronous_graph_executor.cc"],
-    hdrs = ["synchronous_graph_executor.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":graph_executor",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
-        "//learning/brain/tfrt/mlrt/application/vrooml:kernel",
-        "//tensorflow/core/framework:graph_proto_cc",
-        "//tensorflow/core/framework:types_proto_cc",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/core/tfrt/fallback:fallback_state",
-        "//tensorflow/core/tfrt/mlrt/interpreter:context",
-        "//tensorflow/core/tfrt/mlrt/interpreter:value",
-        "//tensorflow/core/tfrt/mlrt/kernel",
-        "//tensorflow/core/tfrt/runtime",
-        "//tensorflow/core/tfrt/utils:error_util",
-        "@com_google_absl//absl/status:statusor",
-        "@tf_runtime//:hostcontext",
-    ],
-)
-
-cc_library(
     name = "config",
     srcs = ["config.cc"],
     hdrs = ["config.h"],
@@ -161,21 +155,6 @@ cc_library(
         "//google/protobuf:any_cc_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-    ],
-)
-
-tf_cc_test(
-    name = "synchronous_graph_executor_test",
-    srcs = ["synchronous_graph_executor_test.cc"],
-    deps = [
-        ":synchronous_graph_executor",
-        "//learning/brain/experimental/tfrt/native_lowering/kernels:kernels_alwayslink",
-        "//tensorflow/cc:array_ops",
-        "//tensorflow/core/tfrt/mlrt/interpreter:value",
-        "//tensorflow/core/tfrt/mlrt/kernel",
-        "//tensorflow/core/tfrt/utils:error_util",
-        "@com_google_googletest//:gtest_main",
-        "@tf_runtime//cpp_tests:common",
     ],
 )
 

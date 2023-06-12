@@ -25,8 +25,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "learning/brain/experimental/tfrt/native_lowering/kernels/sync_context.h"
-#include "learning/brain/experimental/tfrt/native_lowering/saved_model/saved_model_translate.h"
 #include "absl/base/call_once.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -68,6 +66,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
+#include "tensorflow/core/tfrt/stubs/tfrt_native_lowering_stub.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -121,8 +120,8 @@ tensorflow::Status RunMlrtFunction(
   //
   // TODO(chky, rohitju): Unify tfrt::SyncContext with tf_mlrt::Context.
   tfrt::ExecutionContext exec_ctx(request_context);
-  execution_context.AddUserContext(std::make_unique<tfrt::SyncContext>(
-      *request_context->host(), sync_resource_state));
+  AddSyncContext(execution_context, *request_context->host(),
+                 sync_resource_state);
 
   // Set up tf_mlrt::Context which is used for executing tensorflow::OpKernel.
   execution_context.AddUserContext(std::make_unique<tf_mlrt::Context>(
@@ -608,15 +607,10 @@ GraphExecutor::ImportAndCompileClientGraph(
     if (kernel_registry_ == nullptr) {
       return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
     }
-
     ASSIGN_OR_RETURN_IN_COMPILE(
-        auto bytecode_buffer,
-        tfrt::CompileTfMlirModuleToBytecode(module.get()));
-    mlrt::bc::Executable executable(bytecode_buffer.data());
-    auto bytecode_executable =
-        std::make_unique<mlrt::LoadedExecutable>(executable, *kernel_registry_);
-    executable_context = std::make_shared<ExecutableContext>(
-        std::move(bytecode_buffer), std::move(bytecode_executable));
+        executable_context,
+        tfrt::BuildExecutableContext(module.get(), *kernel_registry_));
+
   } else if (options_.enable_mlrt) {
     if (kernel_registry_ == nullptr) {
       return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
@@ -866,10 +860,9 @@ tensorflow::Status GraphExecutor::RunWithSyncInterpreter(
   mlrt::ExecutionContext execution_context(
       executable_context->bytecode_executable.get());
 
-  auto sync_context = std::make_unique<tfrt::SyncContext>(
-      *options_.runtime->core_runtime()->GetHostContext(),
-      &loaded_client_graph.sync_resource_state());
-  execution_context.AddUserContext(std::move(sync_context));
+  AddSyncContext(execution_context,
+                 *options_.runtime->core_runtime()->GetHostContext(),
+                 &loaded_client_graph.sync_resource_state());
 
   tensorflow::tfd::KernelFallbackCompatRequestState kernel_fallback_state(
       tfd::GetDefaultRunner(), &fallback_state_.get().device_manager(),
