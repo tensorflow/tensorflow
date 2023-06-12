@@ -53,7 +53,7 @@ TensorUniquePtr MakeTensorWithData(std::vector<int> dims,
 }
 
 TensorArray MakeTensorArrayForTest(const std::vector<int>& dims) {
-  return TensorArray(kTfLiteInt32, BuildTfLiteIntArray(dims));
+  return TensorArray(kTfLiteInt32, BuildTfLiteArray(dims));
 }
 
 TEST(TensorArrayTest, InsertSingleElement) {

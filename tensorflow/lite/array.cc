@@ -12,27 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/delegates/utils/utils.h"
 
-#include <algorithm>
-#include <memory>
-#include <utility>
-#include <vector>
-
-#include "absl/status/status.h"
 #include "tensorflow/lite/array.h"
-#include "tensorflow/lite/minimal_logging.h"
 
-namespace tflite::delegates::utils {
+namespace tflite {
+namespace array_internal {
 
-TfLiteStatus ConvertToTfLiteStatus(absl::Status status) {
-  if (!status.ok()) {
-    TFLITE_LOG_PROD(
-        TFLITE_LOG_ERROR, "%s",
-        status.ToString(absl::StatusToStringMode::kWithEverything).c_str());
-    return kTfLiteError;
+void TfLiteArrayDeleter::operator()(TfLiteIntArray* a) {
+  if (a) {
+    TfLiteIntArrayFree(a);
   }
-  return kTfLiteOk;
+}
+void TfLiteArrayDeleter::operator()(TfLiteFloatArray* a) {
+  if (a) {
+    TfLiteFloatArrayFree(a);
+  }
 }
 
-}  // namespace tflite::delegates::utils
+}  // namespace array_internal
+}  // namespace tflite
