@@ -1,5 +1,37 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
+# Library of list ops
+cc_library(
+    name = "list_ops_lib",
+    srcs = glob(
+        ["list_kernels/*.cc"],
+        exclude = ["list_kernels/*_test.cc"],
+    ),
+    hdrs = ["list_ops_lib.h"],
+    deps = [
+        ":list_ops_util",
+        ":tensor_array",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_test(
+    name = "list_reserve_test",
+    srcs = ["list_kernels/list_reserve_test.cc"],
+    deps = [
+        ":list_ops_lib",
+        ":tensor_array",
+        "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "list_ops_util",
     srcs = ["list_ops_util.cc"],
@@ -30,6 +62,7 @@ cc_library(
     srcs = ["list_ops_subgraph_test_util.cc"],
     hdrs = ["list_ops_subgraph_test_util.h"],
     deps = [
+        ":list_ops_lib",
         "//tensorflow/lite:builtin_ops",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
@@ -39,6 +72,7 @@ cc_library(
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:subgraph_test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
     ],
@@ -49,9 +83,11 @@ cc_test(
     srcs = ["list_ops_subgraph_test.cc"],
     deps = [
         ":list_ops_subgraph_test_util",
+        ":tensor_array",
         "//tensorflow/lite/c:c_api_types",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )
