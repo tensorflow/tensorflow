@@ -66,6 +66,11 @@
 
 *   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
 
+*   TensorFlow now supports C++ RTTI on mobile and Android. To enable this
+    feature, pass the flag `--define=tf_force_rtti=true` to Bazel when building
+    TensorFlow. This may be needed when linking TensorFlow into RTTI-enabled
+    programs since mixing RTTI and non-RTTI code can cause ABI issues.
+
 # Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
