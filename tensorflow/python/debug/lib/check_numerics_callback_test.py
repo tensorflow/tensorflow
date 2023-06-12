@@ -265,6 +265,7 @@ class CheckNumericsCallbackUnhealthyTest(test_util.TensorFlowTestCase):
       while math_ops.less(counter, lim):
         accum.assign(accum * 2.0)
         counter.assign_add(1)
+      return 1
 
     counter = variables.Variable(0, dtype=dtypes.int32)
     # Repeated `* 2.0` overflows a float32 tensor in 128 steps. So the
