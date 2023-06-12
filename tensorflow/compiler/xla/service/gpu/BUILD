@@ -2112,6 +2112,7 @@ cc_library(
         ":all_reduce_blueconnect",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
+        ":copy_fusion",
         ":dot_dimension_sorter",
         ":executable_proto_cc",
         ":fusion_merger",
@@ -3588,6 +3589,32 @@ xla_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "copy_fusion",
+    srcs = ["copy_fusion.cc"],
+    hdrs = ["copy_fusion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+xla_cc_test(
+    name = "copy_fusion_test",
+    srcs = ["copy_fusion_test.cc"],
+    deps = [
+        ":copy_fusion",
+        ":gpu_device_info_for_tests",
+        ":gpu_fusible",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
     ],
 )
