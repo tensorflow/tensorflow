@@ -1,1 +1,101 @@
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -39,15 +39,14 @@
+   let cppNamespace = "::mlir::vhlo";
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
+--- stablehlo/stablehlo/dialect/VhloEnums.td
++++ stablehlo/stablehlo/dialect/VhloEnums.td
+@@ -32,15 +32,14 @@
+   : EnumAttr<VHLO_Dialect, enumInfo, name, [VHLO_VersionedAttrInterface]> {
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -40,15 +40,14 @@
+       [DeclareOpInterfaceMethods<VHLO_VersionedOpInterface>] # traits> {
+   let extraClassDefinition = [{
+     mlir::vhlo::Version $cppClass::getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # mnemonic # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version $cppClass::getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # mnemonic # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
+--- stablehlo/stablehlo/dialect/VhloTypes.td
++++ stablehlo/stablehlo/dialect/VhloTypes.td
+@@ -38,15 +38,14 @@
+   let mnemonic = name;
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
 
