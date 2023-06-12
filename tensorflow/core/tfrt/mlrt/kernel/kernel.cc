@@ -119,7 +119,9 @@ void MapFnOp::Invoke() {
   DCHECK_GE(results().size(), 1);
 
   std::vector<mlrt::AsyncHandle> handles;
+  std::vector<mlrt::ExecutionContext*> execution_contexts;
   handles.reserve(max_iteration());
+  execution_contexts.reserve(max_iteration());
 
   std::vector<mlrt::Promise> initializer_promises;
   initializer_promises.reserve(num_tensor_list_or_flow_in());
@@ -156,6 +158,7 @@ void MapFnOp::Invoke() {
 
     auto& thread_execution_context = handle.execution_context();
     handles.push_back(std::move(handle));
+    execution_contexts.push_back(&thread_execution_context);
 
     thread_execution_context.set_exit_handler(
         [&execution_context = thread_execution_context,
@@ -209,18 +212,47 @@ void MapFnOp::Invoke() {
     }
   }
 
-  // Run the first iteration inline while the rest iterations are enqueued to
-  // the thread pool.
-  for (int i = 1; i < max_iteration(); ++i) {
-    work_queue->AddTask(
-        [&execution_context = handles[i].execution_context()]() {
-          Execute(execution_context);
-        });
+  int num_threads = work_queue->GetParallelismLevel();
+  int batch_size = (max_iteration() + num_threads - 1) / num_threads;
+  int num_batch = (max_iteration() + batch_size - 1) / batch_size;
+  DCHECK_GE(num_batch, 1);
+  int epilog_size = max_iteration() % batch_size;
+  if (epilog_size == 0) {
+    epilog_size = batch_size;
+  }
+  int prolog_size = num_batch > 1 ? batch_size : epilog_size;
+  DCHECK_GT(batch_size, 0);
+  DCHECK_GT(epilog_size, 0);
+  DCHECK_LE(epilog_size, batch_size);
+  DCHECK_GT(prolog_size, 0);
+  DCHECK_LE(prolog_size, batch_size);
+
+  auto run_batch = [execution_contexts = absl::MakeSpan(execution_contexts)](
+                       int begin, int end) {
+    DCHECK_LE(end, execution_contexts.size());
+    for (int i = begin; i < end; ++i) {
+      Execute(*execution_contexts[i]);
+    }
+  };
+
+  // Run the first batch inline while the rest iterations are enqueued to the
+  // thread pool.
+  for (int batch_id = 1; batch_id < num_batch - 1; ++batch_id) {
+    work_queue->AddTask([=]() {
+      run_batch(batch_id * batch_size, batch_id * batch_size + batch_size);
+    });
   }
 
-  if (!handles.empty()) {
-    Execute(handles[0].execution_context());
+  // epilog
+  if (num_batch > 1) {
+    work_queue->AddTask([=]() {
+      int batch_id = num_batch - 1;
+      run_batch(batch_id * batch_size, batch_id * batch_size + epilog_size);
+    });
   }
+
+  // prolog
+  run_batch(0, prolog_size);
 
   mlrt::Future await_all = mlrt::AwaitAll(absl::MakeSpan(handles));
 
@@ -230,13 +262,11 @@ void MapFnOp::Invoke() {
   auto all_done_promise = mlrt::Promise::Allocate<mlrt::Control>();
   auto all_done_future = all_done_promise.GetFuture();
 
-  // TODO(deqiangc): remove std::move(handles).
   std::move(await_all).Then([results = results(),
                              last_iter_futures = std::move(last_iter_futures),
-                             handles = std::move(handles),
+                             execution_contexts = std::move(execution_contexts),
                              done_promise = std::move(all_done_promise)](
                                 absl::Status status) mutable {
-    // Keep handles alive
     DCHECK_EQ(results.size(), last_iter_futures.size());
     // TODO(deqiangc): future.then outside so that we can avoid this copy.
     for (int j = 0; j < last_iter_futures.size(); j++) {
