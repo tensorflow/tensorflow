@@ -26,7 +26,8 @@ namespace {
 
 // Calculate ordering for HLO, for fast online checking of whether adding
 // additional dependencies would create cycles.
-struct ComputationInstructionOrdering {
+class ComputationInstructionOrdering {
+ public:
   explicit ComputationInstructionOrdering(const HloComputation& computation) {
     for (const HloInstruction* instr : computation.instructions()) {
       for (const HloInstruction* control_pred : instr->control_predecessors()) {
@@ -44,13 +45,13 @@ struct ComputationInstructionOrdering {
 
   int32_t NodeIdForInstruction(const HloInstruction& instr) {
     int32_t instruction_id = instr.unique_id();
-    auto it = node_id_to_graph_id.find(instruction_id);
+    auto it = node_id_to_graph_id_.find(instruction_id);
 
-    if (it != node_id_to_graph_id.end()) {
+    if (it != node_id_to_graph_id_.end()) {
       return it->second;
     }
-    int32_t node_id = graph_cycles.NewNode();
-    node_id_to_graph_id[instruction_id] = node_id;
+    int32_t node_id = graph_cycles_.NewNode();
+    node_id_to_graph_id_[instruction_id] = node_id;
     return node_id;
   }
 
@@ -59,12 +60,12 @@ struct ComputationInstructionOrdering {
   bool InsertEdge(const HloInstruction& source, const HloInstruction& dest) {
     int32_t source_id = NodeIdForInstruction(source);
     int32_t dest_id = NodeIdForInstruction(dest);
-    return graph_cycles.InsertEdge(source_id, dest_id);
+    return graph_cycles_.InsertEdge(source_id, dest_id);
   }
 
-  absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id;
-
-  tensorflow::GraphCycles graph_cycles;
+ private:
+  absl::flat_hash_map<int32_t, int32_t> node_id_to_graph_id_;
+  tensorflow::GraphCycles graph_cycles_;
 };
 
 }  // namespace
@@ -82,7 +83,7 @@ static StatusOr<bool> AddControlEdgesForLoopWrites(
   // computations is because it is hard to extract the underlying graph from
   // those abstractions.
   ComputationInstructionOrdering ordering(*body);
-  ShapeTree<bool> indices_to_copy(xla_while->shape());
+  ShapeTree<bool> indices_to_copy(&xla_while->shape());
 
   for (auto& p : indices_to_copy) {
     const ShapeIndex& index = p.first;
@@ -154,8 +155,7 @@ StatusOr<bool> LoopScheduleLinearizer::Run(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    for (HloInstruction* instruction :
-         computation->MakeInstructionPostOrder()) {
+    for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->opcode() != HloOpcode::kWhile) {
         continue;
       }

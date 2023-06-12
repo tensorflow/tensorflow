@@ -259,16 +259,13 @@ class DistributedSaveTest(
             processing_mode=sharding_policy,
             service=cluster.dispatcher_address()))
 
+    ignore_order = num_workers > 0
+    expected = list(range(10))
     if sharding_policy == data_service_ops.ShardingPolicy.OFF:
-      ignore_order = num_workers > 0
-      self.assertDatasetProduces(
-          dataset,
-          list(range(10)) * num_workers,
-          assert_items_equal=ignore_order)
-    else:
-      # TODO(b/280442285): Support dynamic sharding.
-      with self.assertRaises(errors.UnimplementedError):
-        self.getDatasetOutput(dataset)
+      expected *= num_workers
+    self.assertDatasetProduces(
+        dataset, expected, assert_items_equal=ignore_order
+    )
 
   @combinations.generate(test_base.default_test_combinations())
   def testImbalancedZipAndRepeat(self):
@@ -332,7 +329,7 @@ class DistributedSaveTest(
     _wait_for_error(self._test_dir)
 
     with self.assertRaisesRegex(
-        errors.InvalidArgumentError, "the save job failed to write it."):
+        ValueError, "The save job failed to write it."):
       dataset = dataset_ops.Dataset.load(self._test_dir)
       self.getDatasetOutput(dataset)
 
@@ -355,6 +352,39 @@ class DistributedSaveTest(
       self.evaluate(distributed_save_op.distributed_save(
           dataset, self._test_dir, cluster.dispatcher_address()
       ))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testBadElementSpec(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset, self._test_dir,
+        cluster.dispatcher_address(),
+        compression="AUTO"))
+    _wait_for_snapshot(self._test_dir)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "User specified element_spec bad_element_spec, but the actual "
+        "element_spec is TensorSpec"):
+      _ = dataset_ops.Dataset.load(self._test_dir,
+                                   element_spec="bad_element_spec")
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testBadCompression(self):
+    cluster = data_service_test_base.TestCluster(num_workers=1)
+    dataset = dataset_ops.Dataset.range(10)
+    self.evaluate(distributed_save_op.distributed_save(
+        dataset, self._test_dir,
+        cluster.dispatcher_address(),
+        compression="AUTO"))
+    _wait_for_snapshot(self._test_dir)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        "User specified compression ZLIB, but the actual compression is "
+        "SNAPPY."):
+      _ = dataset_ops.Dataset.load(self._test_dir, compression="ZLIB")
 
 
 class LoadCheckpointTest(

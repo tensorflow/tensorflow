@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project  // IWYU pragma: keep
@@ -132,15 +133,15 @@ FailureOr<StringAttr> RenameStablehloFunctions(
   return new_main_func_name;
 }
 
-// Copies functions from one module to another.
-// The copied functions are set to private.
-void CopyFunctions(SymbolTableCollection &symbol_tables, ModuleOp from,
+// Moves functions from one module to another.
+// The moved functions are set to private.
+void MoveFunctions(SymbolTableCollection &symbol_tables, ModuleOp from,
                    ModuleOp to) {
   SymbolTable &to_sym_table = symbol_tables.getSymbolTable(to);
-  for (auto func : from.getOps<func::FuncOp>()) {
-    auto f = func.clone();
-    f.setPrivate();
-    to_sym_table.insert(f);
+  for (auto func : llvm::make_early_inc_range(from.getOps<func::FuncOp>())) {
+    func->remove();
+    func.setPrivate();
+    to_sym_table.insert(func);
   }
 }
 
@@ -223,7 +224,7 @@ LogicalResult DeserializeXlaCallModule(MLIRContext *context,
     return failure();
   }
 
-  CopyFunctions(symbol_tables, *stablehlo_module, module);
+  MoveFunctions(symbol_tables, *stablehlo_module, module);
 
   // Translate `called_index` in TF function custom calls into symbol
   // references. `function_list` attribute is needed after that.

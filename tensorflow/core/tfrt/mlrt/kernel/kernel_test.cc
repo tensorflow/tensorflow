@@ -1120,7 +1120,7 @@ mlrt::bc::Buffer CreateExecutableForPromiseFutureOp() {
     kernel_ctor.construct_last_uses(2).Assign({0, 0});
   }
   {
-    // promise_future()
+    // tf_mlrt.promise_future
     auto kernel_ctor = kernels_ctor.ConstructAt(3);
     kernel_ctor.set_code(kernels.Use("tf_mlrt.promise_future"));
     kernel_ctor.construct_arguments(2).Assign(
@@ -1130,19 +1130,23 @@ mlrt::bc::Buffer CreateExecutableForPromiseFutureOp() {
   {
     auto kernel_ctor = kernels_ctor.ConstructAt(4);
     kernel_ctor.set_code(kernels.Use("tf_mlrt.await_all"));
-    kernel_ctor.construct_arguments(1).Assign(regs.Use({"future"}));
-    kernel_ctor.construct_last_uses(1).Assign({true});
-    kernel_ctor.construct_results(1).Assign({regs.Def("result_0")});
+    kernel_ctor.construct_arguments(2).Assign(
+        regs.Use({"future", "result_future_0"}));
+    kernel_ctor.construct_last_uses(2).Assign({true, true});
+    kernel_ctor.construct_results(2).Assign(
+        {regs.Def("result_0"), regs.Def("result_1")});
   }
 
   {
     auto kernel_ctor = kernels_ctor.ConstructAt(5);
     kernel_ctor.set_code(kernels.Use("return"));
-    kernel_ctor.construct_arguments(1).Assign(regs.Use({"result_0"}));
+    kernel_ctor.construct_arguments(2).Assign(
+        regs.Use({"result_0", "result_1"}));
   }
 
   function_ctor.set_num_regs(regs.size());
-  function_ctor.construct_output_regs(1).Assign(regs.Use({"result_0"}));
+  function_ctor.construct_output_regs(2).Assign(
+      regs.Use({"result_0", "result_1"}));
 
   return buffer;
 }
@@ -1185,14 +1189,14 @@ TEST(KernelTest, PromiseFutureOp) {
   int32_t input = 100;
   tensorflow::Tensor input_tensor(input);
   mlrt::Value arg(tfrt_stub::FallbackTensor(std::move(input_tensor)));
-  mlrt::Value result;
+  mlrt::Value results[2];
 
   absl::Notification notification;
   execution_context.set_exit_handler(
       [&notification]() { notification.Notify(); });
   std::vector<uint8_t> last_uses = {true};
   execution_context.Call(executable.functions()[0], last_uses,
-                         absl::MakeSpan(&arg, 1), absl::MakeSpan(&result, 1));
+                         absl::MakeSpan(&arg, 1), absl::MakeSpan(results));
   mlrt::Execute(execution_context);
 
   notification.WaitForNotification();
@@ -1201,7 +1205,9 @@ TEST(KernelTest, PromiseFutureOp) {
   int32_t output = 100;
   tensorflow::Tensor expected(output);
   tensorflow::test::ExpectEqual(
-      result.Get<tfrt_stub::FallbackTensor>().tensor(), expected);
+      results[0].Get<tfrt_stub::FallbackTensor>().tensor(), expected);
+  tensorflow::test::ExpectEqual(
+      results[1].Get<tfrt_stub::FallbackTensor>().tensor(), expected);
 }
 
 mlrt::bc::Buffer CreateExecutableForBatchFunctionOp() {

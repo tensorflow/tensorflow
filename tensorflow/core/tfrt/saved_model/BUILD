@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/utils:tfrt_runtime",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
@@ -162,6 +163,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime",
         "@tf_runtime//:hostcontext",
     ] + if_google([
+        "//learning/brain/tfrt/support:export_mlir",
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )

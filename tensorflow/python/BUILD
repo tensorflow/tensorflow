@@ -489,21 +489,6 @@ py_strict_library(
 )
 
 # TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "math_ops_gen",
-    actual = "//tensorflow/python/ops:math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/google/python/ops:__pkg__",
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/math_ops:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
 py_strict_library(
     name = "sets",
     tags = ["avoid_dep"],
@@ -543,20 +528,6 @@ py_strict_library(
 )
 
 # TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "init_ops_v2",
-    actual = "//tensorflow/python/ops:init_ops_v2",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "math_ops",
-    actual = "//tensorflow/python/ops:math_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
 py_strict_library(
     name = "nn",
     tags = ["avoid_dep"],
@@ -585,13 +556,6 @@ py_strict_library(
         "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:metrics_impl",
     ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "variables",
-    actual = "//tensorflow/python/ops:variables",
-    tags = ["avoid_dep"],
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for

@@ -1062,6 +1062,7 @@ cc_library(
         ":tensorflow_ops",
         ":tensorflow_passes",
         ":tensorflow_types",
+        ":tf_saved_model_asset_sinking_pass",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -2831,6 +2832,23 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "tf_saved_model_asset_sinking_pass",
+    srcs = ["transforms/tf_saved_model_asset_sinking_pass.cc"],
+    hdrs = ["transforms/tf_saved_model_asset_sinking_pass.h"],
+    deps = [
+        ":tensorflow",
+        ":tensorflow_types",
+        ":tf_savedmodel_pass_inc_gen",
+        "//tensorflow/tsl/platform:path",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
     ],
 )
 

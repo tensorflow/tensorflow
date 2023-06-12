@@ -596,7 +596,7 @@ void PromiseTensor(mlrt::KernelFrame frame) {
 void PromiseFuture(mlrt::KernelFrame frame) {
   tsl::profiler::TraceMe trace_me("tf_mlrt.promise_future");
   auto& promise = frame.arguments()[0].Get<mlrt::Promise>();
-  auto& incoming_future = frame.arguments()[1].Get<mlrt::Future>();
+  auto incoming_future = frame.arguments()[1].Get<mlrt::Future>();
   std::move(incoming_future)
       .Then([promise = std::move(promise)](
                 absl::StatusOr<tensorflow::tfrt_stub::FallbackTensor>
