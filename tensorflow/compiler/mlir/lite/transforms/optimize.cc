@@ -646,6 +646,15 @@ bool AllValuesAreZero(mlir::Value value) {
   return true;
 }
 
+bool IsF32Splat(Attribute input_splat) {
+  if (!input_splat) return false;
+  auto val = dyn_cast_or_null<DenseElementsAttr>(input_splat);
+  if (val) {
+    return !val.empty() && val.getElementType().isF32() && val.isSplat();
+  }
+  return false;
+}
+
 // Converts an Attribute with a single value of float or integral type to an
 // Attribute holding a single value of float type. If attr has no elements, the
 // result is 0.0f.

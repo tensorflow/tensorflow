@@ -3414,3 +3414,24 @@ func.func @fuseHardSwishJAX(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes 
   %4 = tfl.mul %arg0, %3 {fused_activation_function = "NONE"} : tensor<10xf32>
   return %4 : tensor<10xf32>
 }
+// CHECK-LABEL:   func @fuseLeakyRelu
+func.func @fuseLeakyRelu(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK: "tfl.leaky_relu"
+  %cst = arith.constant dense<0.000000e+00> : tensor<10xf32>
+  %cst_0 = arith.constant dense<[0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977]> : tensor<10xf32>
+  %0 = tfl.greater_equal(%arg0, %cst) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  %1 = tfl.mul %arg0, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
+  %2 = "tfl.select"(%0, %arg0, %1) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %2 : tensor<10xf32>
+}
+
+// CHECK-LABEL:   func @fuseLeakyReluNotSplat
+func.func @fuseLeakyReluNotSplat(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK-NOT: "tfl.leaky_relu"
+  %cst = arith.constant dense<0.000000e+00> : tensor<10xf32>
+  %cst_0 = arith.constant dense<[0.000000e+00, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977]> : tensor<10xf32>
+  %0 = tfl.greater_equal(%arg0, %cst) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  %1 = tfl.mul %arg0, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
+  %2 = "tfl.select"(%0, %arg0, %1) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %2 : tensor<10xf32>
+}
