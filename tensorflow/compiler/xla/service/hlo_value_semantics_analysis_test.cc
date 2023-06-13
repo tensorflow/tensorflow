@@ -20,42 +20,50 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 namespace {
 
 class HloValueSemanticsAnalysisTest : public HloTestBase {
  public:
-  bool IsStatic(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
-                HloModule* module, absl::string_view instruction_name) {
+  bool HasLabel(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+                HloModule* module, absl::string_view instruction_name,
+                const HloValueSemanticLabel& expected_label) {
     HloInstruction* instruction = FindInstruction(module, instruction_name);
     const HloValueSemantics* semantics =
         hlo_value_semantics_analysis.GetSemantics(instruction);
     LOG(INFO) << "instruction: " << instruction->ToString()
               << semantics->ToString();
-    return semantics->label() == HloValueSemanticLabel::kStatic;
+    return semantics->label() == expected_label;
+  }
+  bool IsStatic(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+                HloModule* module, absl::string_view instruction_name) {
+    return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
+                    HloValueSemanticLabel::kStatic);
   }
   bool IsWeight(const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
                 HloModule* module, absl::string_view instruction_name) {
-    HloInstruction* instruction = FindInstruction(module, instruction_name);
-    const HloValueSemantics* semantics =
-        hlo_value_semantics_analysis.GetSemantics(instruction);
-    LOG(INFO) << "instruction: " << instruction->ToString()
-              << semantics->ToString();
-    return semantics->label() == HloValueSemanticLabel::kWeight;
+    return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
+                    HloValueSemanticLabel::kWeight);
   }
   bool IsActivation(
       const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
       HloModule* module, absl::string_view instruction_name) {
-    HloInstruction* instruction = FindInstruction(module, instruction_name);
-    const HloValueSemantics* semantics =
-        hlo_value_semantics_analysis.GetSemantics(instruction);
-    LOG(INFO) << "instruction: " << instruction->ToString()
-              << semantics->ToString();
-    return semantics->label() == HloValueSemanticLabel::kActivation;
+    return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
+                    HloValueSemanticLabel::kActivation);
   }
-  // TODO(b/275902523): add test cases with activation and weight gradients.
+  bool IsActivationGradient(
+      const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+      HloModule* module, absl::string_view instruction_name) {
+    return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
+                    HloValueSemanticLabel::kActivationGradient);
+  }
+  bool IsWeightGradient(
+      const HloValueSemanticsAnalysis& hlo_value_semantics_analysis,
+      HloModule* module, absl::string_view instruction_name) {
+    return HasLabel(hlo_value_semantics_analysis, module, instruction_name,
+                    HloValueSemanticLabel::kWeightGradient);
+  }
 };
 
 TEST_F(HloValueSemanticsAnalysisTest, OneMatmul) {
@@ -382,6 +390,172 @@ ENTRY entry {
       HloValueSemanticsAnalysis::Run(*module));
   EXPECT_TRUE(
       IsWeight(*hlo_value_semantics_analysis, module.get(), "convert.219"));
+}
+
+TEST_F(HloValueSemanticsAnalysisTest, MnistTrainingLoop) {
+  const std::string module_str = R"(
+HloModule MnistTrainingLoopWithInfeed.140, entry_computation_layout={(f32[784,128]{1,0:T(8,128)},f32[128]{0:T(256)},f32[128,32]{1,0:T(8,128)},f32[32]{0:T(256)},f32[32,10]{1,0:T(8,128)},f32[10]{0:T(256)})->(f32[784,128]{1,0:T(8,128)}, f32[128]{0:T(256)}, f32[128,32]{1,0:T(8,128)}, f32[32]{0:T(256)}, f32[32,10]{1,0:T(8,128)}, /*index=5*/f32[10]{0:T(256)})}
+
+relu.9 {
+  x.10 = f32[] parameter(0)
+  constant.11 = f32[] constant(0)
+  ROOT maximum.12 = f32[] maximum(x.10, constant.11)
+}
+
+max_F32.17 {
+  lhs.18 = f32[] parameter(0)
+  rhs.19 = f32[] parameter(1)
+  ROOT maximum.20 = f32[] maximum(lhs.18, rhs.19)
+}
+
+add_F32.1 {
+  lhs.22 = f32[] parameter(0)
+  rhs.23 = f32[] parameter(1)
+  ROOT add.24 = f32[] add(lhs.22, rhs.23)
+}
+
+relu_gradients.29 {
+  activation.30 = f32[] parameter(0)
+  constant.32 = f32[] constant(0)
+  compare.33 = pred[] compare(activation.30, constant.32), direction=GT
+  backprop.31 = f32[] parameter(1)
+  ROOT select.34 = f32[] select(compare.33, backprop.31, constant.32)
+}
+
+body.49 {
+  after-all.51 = token[] after-all()
+  infeed.52 = ((f32[100,784]{1,0}, f32[100,10]{1,0}, pred[]), token[]) infeed(after-all.51)
+  get.53 = (f32[100,784]{1,0}, f32[100,10]{1,0}, pred[]) get-tuple-element(infeed.52), index=0
+  get.54 = f32[100,784]{1,0} get-tuple-element(get.53), index=0
+  prev.50 = (f32[784,128]{1,0}, f32[128]{0}, f32[128,32]{1,0}, f32[32]{0}, f32[32,10]{1,0}, /*index=5*/f32[10]{0}, pred[]) parameter(0)
+  get.57 = f32[784,128]{1,0} get-tuple-element(prev.50), index=0
+  dot.63 = f32[100,128]{1,0} dot(get.54, get.57), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  get.58 = f32[128]{0} get-tuple-element(prev.50), index=1
+  broadcast.64 = f32[100,128]{1,0} broadcast(get.58), dimensions={1}
+  add.65 = f32[100,128]{1,0} add(dot.63, broadcast.64)
+  map.66 = f32[100,128]{1,0} map(add.65), dimensions={0,1}, to_apply=relu.9
+  get.59 = f32[128,32]{1,0} get-tuple-element(prev.50), index=2
+  dot.67 = f32[100,32]{1,0} dot(map.66, get.59), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  get.60 = f32[32]{0} get-tuple-element(prev.50), index=3
+  broadcast.68 = f32[100,32]{1,0} broadcast(get.60), dimensions={1}
+  add.69 = f32[100,32]{1,0} add(dot.67, broadcast.68)
+  map.70 = f32[100,32]{1,0} map(add.69), dimensions={0,1}, to_apply=relu.9
+  get.61 = f32[32,10]{1,0} get-tuple-element(prev.50), index=4
+  dot.71 = f32[100,10]{1,0} dot(map.70, get.61), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  get.62 = f32[10]{0} get-tuple-element(prev.50), index=5
+  broadcast.72 = f32[100,10]{1,0} broadcast(get.62), dimensions={1}
+  add.73 = f32[100,10]{1,0} add(dot.71, broadcast.72)
+  constant.74 = f32[] constant(-inf)
+  reduce.75 = f32[100]{0} reduce(add.73, constant.74), dimensions={1}, to_apply=max_F32.17
+  broadcast.76 = f32[100,10]{1,0} broadcast(reduce.75), dimensions={0}
+  subtract.77 = f32[100,10]{1,0} subtract(add.73, broadcast.76)
+  exponential.78 = f32[100,10]{1,0} exponential(subtract.77)
+  constant.79 = f32[] constant(0)
+  reduce.80 = f32[100]{0} reduce(exponential.78, constant.79), dimensions={1}, to_apply=add_F32.1
+  broadcast.81 = f32[100,10]{1,0} broadcast(reduce.80), dimensions={0}
+  divide.82 = f32[100,10]{1,0} divide(exponential.78, broadcast.81)
+  get.55 = f32[100,10]{1,0} get-tuple-element(get.53), index=1
+  subtract.83 = f32[100,10]{1,0} subtract(divide.82, get.55)
+  transpose.88 = f32[10,32]{0,1} transpose(get.61), dimensions={1,0}
+  dot.89 = f32[100,32]{1,0} dot(subtract.83, transpose.88), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  map.90 = f32[100,32]{1,0} map(map.70, dot.89), dimensions={0,1}, to_apply=relu_gradients.29
+  transpose.95 = f32[32,128]{0,1} transpose(get.59), dimensions={1,0}
+  dot.96 = f32[100,128]{1,0} dot(map.90, transpose.95), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  map.97 = f32[100,128]{1,0} map(map.66, dot.96), dimensions={0,1}, to_apply=relu_gradients.29
+  transpose.102 = f32[128,784]{0,1} transpose(get.57), dimensions={1,0}
+  dot.103 = f32[100,784]{1,0} dot(map.97, transpose.102), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  transpose.98 = f32[784,100]{0,1} transpose(get.54), dimensions={1,0}
+  dot.99 = f32[784,128]{1,0} dot(transpose.98, map.97), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  constant.104 = f32[] constant(0.01)
+  broadcast.105 = f32[784,128]{1,0} broadcast(constant.104), dimensions={}
+  multiply.106 = f32[784,128]{1,0} multiply(dot.99, broadcast.105)
+  subtract.107 = f32[784,128]{1,0} subtract(get.57, multiply.106)
+  constant.100 = f32[] constant(0)
+  reduce.101 = f32[128]{0} reduce(map.97, constant.100), dimensions={0}, to_apply=add_F32.1
+  constant.108 = f32[] constant(0.01)
+  broadcast.109 = f32[128]{0} broadcast(constant.108), dimensions={}
+  multiply.110 = f32[128]{0} multiply(reduce.101, broadcast.109)
+  subtract.111 = f32[128]{0} subtract(get.58, multiply.110)
+  transpose.91 = f32[128,100]{0,1} transpose(map.66), dimensions={1,0}
+  dot.92 = f32[128,32]{1,0} dot(transpose.91, map.90), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  constant.112 = f32[] constant(0.01)
+  broadcast.113 = f32[128,32]{1,0} broadcast(constant.112), dimensions={}
+  multiply.114 = f32[128,32]{1,0} multiply(dot.92, broadcast.113)
+  subtract.115 = f32[128,32]{1,0} subtract(get.59, multiply.114)
+  constant.93 = f32[] constant(0)
+  reduce.94 = f32[32]{0} reduce(map.90, constant.93), dimensions={0}, to_apply=add_F32.1
+  constant.116 = f32[] constant(0.01)
+  broadcast.117 = f32[32]{0} broadcast(constant.116), dimensions={}
+  multiply.118 = f32[32]{0} multiply(reduce.94, broadcast.117)
+  subtract.119 = f32[32]{0} subtract(get.60, multiply.118)
+  transpose.84 = f32[32,100]{0,1} transpose(map.70), dimensions={1,0}
+  dot.85 = f32[32,10]{1,0} dot(transpose.84, subtract.83), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  constant.120 = f32[] constant(0.01)
+  broadcast.121 = f32[32,10]{1,0} broadcast(constant.120), dimensions={}
+  multiply.122 = f32[32,10]{1,0} multiply(dot.85, broadcast.121)
+  subtract.123 = f32[32,10]{1,0} subtract(get.61, multiply.122)
+  constant.86 = f32[] constant(0)
+  reduce.87 = f32[10]{0} reduce(subtract.83, constant.86), dimensions={0}, to_apply=add_F32.1
+  constant.124 = f32[] constant(0.01)
+  broadcast.125 = f32[10]{0} broadcast(constant.124), dimensions={}
+  multiply.126 = f32[10]{0} multiply(reduce.87, broadcast.125)
+  subtract.127 = f32[10]{0} subtract(get.62, multiply.126)
+  get.56 = pred[] get-tuple-element(get.53), index=2
+  ROOT tuple.128 = (f32[784,128]{1,0}, f32[128]{0}, f32[128,32]{1,0}, f32[32]{0}, f32[32,10]{1,0}, /*index=5*/f32[10]{0}, pred[]) tuple(subtract.107, subtract.111, subtract.115, subtract.119, subtract.123, subtract.127, get.56)
+}
+
+condition.129 {
+  prev.130 = (f32[784,128]{1,0}, f32[128]{0}, f32[128,32]{1,0}, f32[32]{0}, f32[32,10]{1,0}, /*index=5*/f32[10]{0}, pred[]) parameter(0)
+  ROOT get.131 = pred[] get-tuple-element(prev.130), index=6
+}
+
+ENTRY MnistTrainingLoopWithInfeed.140 {
+  layer1_weights.1 = f32[784,128]{1,0} parameter(0)
+  layer1_biases.2 = f32[128]{0} parameter(1)
+  layer2_weights.3 = f32[128,32]{1,0} parameter(2)
+  layer2_biases.4 = f32[32]{0} parameter(3)
+  layer3_weights.5 = f32[32,10]{1,0} parameter(4)
+  layer3_biases.6 = f32[10]{0} parameter(5)
+  constant.7 = pred[] constant(true)
+  tuple.8 = (f32[784,128]{1,0}, f32[128]{0}, f32[128,32]{1,0}, f32[32]{0}, f32[32,10]{1,0}, /*index=5*/f32[10]{0}, pred[]) tuple(layer1_weights.1, layer1_biases.2, layer2_weights.3, layer2_biases.4, layer3_weights.5, layer3_biases.6, constant.7)
+  while.132 = (f32[784,128]{1,0}, f32[128]{0}, f32[128,32]{1,0}, f32[32]{0}, f32[32,10]{1,0}, /*index=5*/f32[10]{0}, pred[]) while(tuple.8), condition=condition.129, body=body.49
+  get.133 = f32[784,128]{1,0} get-tuple-element(while.132), index=0
+  get.134 = f32[128]{0} get-tuple-element(while.132), index=1
+  get.135 = f32[128,32]{1,0} get-tuple-element(while.132), index=2
+  get.136 = f32[32]{0} get-tuple-element(while.132), index=3
+  get.137 = f32[32,10]{1,0} get-tuple-element(while.132), index=4
+  get.138 = f32[10]{0} get-tuple-element(while.132), index=5
+  ROOT tuple.139 = (f32[784,128]{1,0}, f32[128]{0}, f32[128,32]{1,0}, f32[32]{0}, f32[32,10]{1,0}, /*index=5*/f32[10]{0}) tuple(get.133, get.134, get.135, get.136, get.137, get.138)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(module_str,
+                                                       /*replica_count=*/1,
+                                                       /*num_partitions=*/1));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloValueSemanticsAnalysis> hlo_value_semantics_analysis,
+      HloValueSemanticsAnalysis::Run(*module));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.63"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.67"));
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.71"));
+  // TODO(b/280359884): Should be a WeightGradient and not an Activation.
+  EXPECT_TRUE(
+      IsActivation(*hlo_value_semantics_analysis, module.get(), "dot.85"));
+  EXPECT_TRUE(IsActivationGradient(*hlo_value_semantics_analysis, module.get(),
+                                   "dot.89"));
+  EXPECT_TRUE(
+      IsWeightGradient(*hlo_value_semantics_analysis, module.get(), "dot.92"));
+  EXPECT_TRUE(IsActivationGradient(*hlo_value_semantics_analysis, module.get(),
+                                   "dot.96"));
+  // TODO(b/272597866) Should technically be a WeightGradient, but this
+  // classification is coming from it's input (the input data tensor) being
+  // classified as a Weight.
+  EXPECT_TRUE(IsActivationGradient(*hlo_value_semantics_analysis, module.get(),
+                                   "dot.99"));
 }
 
 }  // namespace

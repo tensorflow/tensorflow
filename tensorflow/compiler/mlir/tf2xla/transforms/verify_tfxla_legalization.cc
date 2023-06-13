@@ -48,7 +48,7 @@ class VerifyTFXLALegalization
     : public impl::VerifyTFXLALegalizationBase<VerifyTFXLALegalization> {
  public:
   explicit VerifyTFXLALegalization(bool legalize_chlo) {
-    legalize_chlo_ = legalize_chlo_;
+    legalize_chlo_ = legalize_chlo;
   }
 
   void runOnOperation() override;

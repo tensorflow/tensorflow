@@ -105,7 +105,8 @@ class RewriteXlaHostComputeMlir
       auto recv_at_host = rewriter.create<TF::_XlaRecvAtHostOp>(
           func.getLoc(), op.getOperandTypes(), /*dynamic_key=*/dynamic_key,
           op.getSendKeyAttr(),
-          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
+          rewriter.getStringAttr("TPU"));
       for (auto result :
            llvm::zip(cloned_func.getArguments(), recv_at_host->getResults())) {
         std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
@@ -116,7 +117,8 @@ class RewriteXlaHostComputeMlir
           func.getLoc(),
           cloned_func.getBody().front().getTerminator()->getOperands(),
           /*dynamic_key=*/dynamic_key, op.getRecvKeyAttr(),
-          /*device_ordinal=*/rewriter.getI64IntegerAttr(0));
+          /*device_ordinal=*/rewriter.getI64IntegerAttr(0),
+          rewriter.getStringAttr("TPU"));
     }
 
     constexpr int64_t kDefaultCostEstimate = 1000000;

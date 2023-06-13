@@ -2485,6 +2485,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
           b.getNamedAttr("_xla_compile_device_type",
                          b.getStringAttr(specs.xla_compile_device_type)));
     }
+    attrs.push_back(b.getNamedAttr("allow_soft_placement",
+                                   b.getBoolAttr(specs.enable_soft_placement)));
   } else {
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.

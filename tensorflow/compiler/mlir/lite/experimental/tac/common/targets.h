@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_TAC_COMMON_TARGETS_H_
 
 #include <algorithm>
+#include <cctype>
 #include <functional>
 #include <optional>
 #include <string>
@@ -35,6 +36,9 @@ constexpr char kDevice[] = "tac.device";
 
 // Inference type.
 constexpr char kInferenceType[] = "tac.inference_type";
+
+// Inference type.
+constexpr char kSkipTargetAnnotation[] = "tac.skip_target_annotation";
 
 // TODO(renjieliu): Add more inference types.
 enum InferenceType {

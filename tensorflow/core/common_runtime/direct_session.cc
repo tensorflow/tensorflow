@@ -68,6 +68,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
@@ -576,7 +577,8 @@ Status DirectSession::RunInternal(
     }
     if (!collective_executor_mgr_) {
       collective_executor_mgr_ = CreateProdLocalCollectiveExecutorMgr(
-          options_.config, device_mgr_.get());
+          options_.config, device_mgr_.get(),
+          MaybeCreateNcclCommunicator(options_.config));
     }
     run_state.collective_executor.reset(new CollectiveExecutor::Handle(
         collective_executor_mgr_->FindOrCreate(step_id), true /*inherit_ref*/));
@@ -1408,11 +1410,12 @@ Status DirectSession::CreateExecutors(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       /*parent=*/nullptr, session_metadata,
-      Rendezvous::Factory{
-          [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-            *r = new IntraProcessRendezvous(device_mgr);
-            return OkStatus();
-          }}));
+      Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                             tsl::core::RefCountPtr<Rendezvous>* r) {
+        *r = tsl::core::RefCountPtr<Rendezvous>(
+            new IntraProcessRendezvous(device_mgr));
+        return OkStatus();
+      }}));
 
   size_t max_stream_num = device_mgr_->GetMaxStreamNum();
   func_info->stream_proc_flr.reserve(max_stream_num);
@@ -1422,13 +1425,14 @@ Status DirectSession::CreateExecutors(
         absl::make_unique<ProcessFunctionLibraryRuntime>(
             device_mgr_.get(), options_.env, &options_.config,
             graph_def_version, func_info->flib_def.get(), optimizer_opts,
-            thread_pools_[executor_index % thread_pools_.size()].first, nullptr,
-            session_metadata,
-            Rendezvous::Factory{
-                [](const int64_t, const DeviceMgr* device_mgr, Rendezvous** r) {
-                  *r = new IntraProcessRendezvous(device_mgr);
-                  return OkStatus();
-                }},
+            thread_pools_[executor_index % thread_pools_.size()].first,
+            /*parent=*/nullptr, session_metadata,
+            Rendezvous::Factory{[](const int64_t, const DeviceMgr* device_mgr,
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+              *r = tsl::core::RefCountPtr<Rendezvous>(
+                  new IntraProcessRendezvous(device_mgr));
+              return OkStatus();
+            }},
             CreateNoOpStatsPublisher, executor_index));
   }
 

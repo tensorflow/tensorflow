@@ -487,13 +487,18 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z;
   RETURN_IF_CUDA_RES_ERROR(
+      cuFuncSetAttribute(function,
+                         CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                         shared_mem_bytes),
+      "Failed to set shared memory size");
+  RETURN_IF_CUDA_RES_ERROR(
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
       "Failed to launch CUDA kernel: ", kernel_name,
       " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
       block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
-      grid_dim_z);
+      grid_dim_z, " and shared memory size: ", shared_mem_bytes);
   return ::tsl::OkStatus();
 }
 
@@ -864,6 +869,23 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return false;
   }
   return true;
+}
+
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  ScopedActivateContext activation(context);
+  if (stream_priority == stream_executor::StreamPriority::Default) {
+    return 0;
+  }
+  int lowest, highest;
+  CUresult res = cuCtxGetStreamPriorityRange(&lowest, &highest);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR)
+        << "Could not query stream priority range. Returning default priority.";
+    return 0;
+  }
+  return stream_priority == stream_executor::StreamPriority::Highest ? highest
+                                                                     : lowest;
 }
 
 #if CUDA_VERSION >= 10020
@@ -1500,6 +1522,12 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
+}
+
+tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
+    CUdevice device) {
+  return GetSimpleAttribute<int64_t>(
+      device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
 }
 
 /* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(

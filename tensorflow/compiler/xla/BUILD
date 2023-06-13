@@ -29,6 +29,7 @@ package_group(
         "//third_party/mlir_edge/model_curriculum/...",
         "//third_party/py/jax/...",
         "//third_party/py/t5x/...",
+        "//third_party/py/tpu_graphs/...",
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
     ],
@@ -117,11 +118,10 @@ cc_library(
 xla_cc_test(
     name = "bit_cast_test",
     srcs = ["bit_cast_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":bit_cast",
         ":test",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -152,6 +152,7 @@ cc_library(
 xla_cc_test(
     name = "comparison_util_test",
     srcs = ["comparison_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":comparison_util",
         ":test",
@@ -214,11 +215,11 @@ xla_cc_test(
     name = "types_test",
     size = "small",
     srcs = ["types_test.cc"],
+    tags = ["nomsan"],
     visibility = [":friends"],
     deps = [
         ":test",
         ":types",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -230,7 +231,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":status",
-        ":xla_cc_grpc_proto",
         ":xla_data_proto_cc",
         ":xla_proto_cc",
     ],
@@ -256,13 +256,13 @@ xla_cc_test(
     name = "status_macros_test",
     size = "small",
     srcs = ["status_macros_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":status_macros",
         ":statusor",
         ":test",
         ":test_helpers",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -331,6 +331,7 @@ cc_library(
 xla_cc_test(
     name = "util_test",
     srcs = ["util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":test",
         ":types",
@@ -356,6 +357,7 @@ cc_library(
 xla_cc_test(
     name = "permutation_util_test",
     srcs = ["permutation_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":permutation_util",
         ":test",
@@ -376,7 +378,6 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:protobuf",
         "@com_google_absl//absl/hash",
@@ -386,6 +387,7 @@ cc_library(
 xla_cc_test(
     name = "iterator_util_test",
     srcs = ["iterator_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":test",
         ":util",
@@ -453,6 +455,7 @@ cc_library(
 xla_cc_test(
     name = "shape_test",
     srcs = ["shape_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":status_macros",
@@ -471,6 +474,7 @@ xla_cc_test(
 xla_cc_test(
     name = "shape_util_test",
     srcs = ["shape_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":permutation_util",
         ":shape_util",
@@ -491,6 +495,7 @@ xla_cc_test(
 xla_cc_test(
     name = "primitive_util_test",
     srcs = ["primitive_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":status_macros",
@@ -499,7 +504,6 @@ xla_cc_test(
         ":types",
         ":util",
         ":xla_data_proto_cc",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -507,6 +511,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_util_test",
     srcs = ["layout_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":test_helpers",
@@ -518,6 +523,7 @@ xla_cc_test(
 xla_cc_test(
     name = "layout_test",
     srcs = ["layout_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":status",
@@ -530,6 +536,7 @@ xla_cc_test(
 xla_cc_test(
     name = "index_util_test",
     srcs = ["index_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_util",
         ":test",
@@ -562,6 +569,7 @@ cc_library(
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/util:byte_swap_array",
+        "//third_party/eigen3",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
@@ -573,6 +581,7 @@ cc_library(
 xla_cc_test(
     name = "literal_test",
     srcs = ["literal_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":array2d",
         ":array3d",
@@ -584,7 +593,6 @@ xla_cc_test(
         ":types",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:float8",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base",
@@ -652,7 +660,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -678,7 +685,6 @@ cc_library(
     deps = [
         ":status",
         ":types",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -688,6 +694,7 @@ cc_library(
 xla_cc_test(
     name = "array_test",
     srcs = ["array_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":array",
         ":test",
@@ -711,6 +718,7 @@ cc_library(
 xla_cc_test(
     name = "array2d_test",
     srcs = ["array2d_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":array2d",
         ":test",
@@ -732,6 +740,7 @@ cc_library(
 xla_cc_test(
     name = "array3d_test",
     srcs = ["array3d_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":array3d",
         ":test",
@@ -757,6 +766,7 @@ cc_library(
 xla_cc_test(
     name = "array4d_test",
     srcs = ["array4d_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":array4d",
         ":test",
@@ -771,6 +781,10 @@ cc_library(
     hdrs = ["executable_run_options.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
 
 cc_library(
@@ -833,6 +847,7 @@ cc_library(
 xla_cc_test(
     name = "text_literal_reader_test",
     srcs = ["text_literal_reader_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":literal",
         ":shape_util",
@@ -866,6 +881,7 @@ cc_library(
 xla_cc_test(
     name = "text_literal_writer_test",
     srcs = ["text_literal_writer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":literal",
         ":literal_util",
@@ -875,8 +891,6 @@ xla_cc_test(
         ":types",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -902,15 +916,14 @@ cc_library(
 xla_cc_test(
     name = "shape_tree_test",
     srcs = ["shape_tree_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":shape_tree",
         ":shape_util",
         ":test",
         ":xla_data_proto_cc",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -949,6 +962,7 @@ cc_library(
 xla_cc_test(
     name = "window_util_test",
     srcs = ["window_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":test",
         ":window_util",
@@ -985,6 +999,7 @@ cc_library(
 xla_cc_test(
     name = "reference_util_test",
     srcs = ["reference_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":array2d",
         ":array3d",
@@ -992,12 +1007,10 @@ xla_cc_test(
         ":literal",
         ":reference_util",
         ":test",
-        ":util",
         ":xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/memory",
     ],
 )
 
@@ -1020,6 +1033,7 @@ cc_library(
 xla_cc_test(
     name = "parse_flags_from_env_test",
     srcs = ["parse_flags_from_env_test.cc"],
+    tags = ["nomsan"],
     deps =
         [
             ":parse_flags_from_env",
@@ -1073,15 +1087,13 @@ xla_cc_test(
         "debug_options_parsers.h",
         "debug_options_parsers_test.cc",
     ],
+    tags = ["nomsan"],
     deps =
         [
             ":xla_proto_cc",
-            "//tensorflow/compiler/xla/hlo/ir:hlo",
-            "//tensorflow/tsl/platform:logging",
             "//tensorflow/tsl/platform:test",
             "@com_google_absl//absl/container:flat_hash_map",
             "@com_google_absl//absl/strings",
-            "@com_google_absl//absl/strings:str_format",
         ],
 )
 
@@ -1100,6 +1112,7 @@ cc_library(
 xla_cc_test(
     name = "refcounting_hash_map_test",
     srcs = ["refcounting_hash_map_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":refcounting_hash_map",
         ":test",
@@ -1178,7 +1191,9 @@ filegroup(
         "runlit.cfg.py",
         "runlit.site.cfg.py",
     ],
-    visibility = ["//tensorflow/compiler/xla:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler/xla:__subpackages__",  # Scheuklappen: keep
+    ],
 )
 
 # -----------------------------------------------------------------------------

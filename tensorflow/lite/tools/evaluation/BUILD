@@ -63,23 +63,23 @@ cc_library_with_stable_tflite_abi(
         "//conditions:default": [],
     }),
     tflite_deps = [
-        "//tensorflow/lite/core/shims:c_api",
-        "//tensorflow/lite/core/shims:delegate_plugin",
-        "//tensorflow/lite/core/shims:common",
+        "//tensorflow/lite/c:c_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/acceleration/configuration/c:delegate_plugin",
         "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/delegates:delegate_provider_lib",
     ],
     tflite_deps_selects = [{
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
-            "//tensorflow/lite/core/shims:xnnpack_plugin",
+            "//tensorflow/lite/acceleration/configuration/c:xnnpack_plugin",
         ],
     }],
     deps = select({
         "//tensorflow/lite:tflite_with_xnnpack_explicit_false": [],
         "//conditions:default": [
+            "//tensorflow/lite/acceleration/configuration:configuration_fbs",
             "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate_hdrs_only",
-            "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
         ],
     }),
 )

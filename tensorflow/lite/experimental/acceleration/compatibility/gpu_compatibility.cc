@@ -18,6 +18,7 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/string_view.h"
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
@@ -45,6 +46,12 @@ GPUCompatibilityList::GPUCompatibilityList(
       flatbuffers::GetRoot<DeviceDatabase>(compatibility_list_flatbuffer);
 }
 
+GPUCompatibilityList::GPUCompatibilityList(
+    std::string compatibility_list_flatbuffer)
+    : fbcontent_(std::move(compatibility_list_flatbuffer)) {
+  database_ = flatbuffers::GetRoot<DeviceDatabase>(fbcontent_.data());
+}
+
 std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create() {
   return Create(g_tflite_acceleration_gpu_compatibility_binary,
                 g_tflite_acceleration_gpu_compatibility_binary_len);
@@ -58,6 +65,17 @@ std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
   }
   return std::unique_ptr<GPUCompatibilityList>(
       new GPUCompatibilityList(compatibility_list_flatbuffer));
+}
+
+std::unique_ptr<GPUCompatibilityList> GPUCompatibilityList::Create(
+    std::string compatibility_list_flatbuffer) {
+  if (!IsValidFlatbuffer(reinterpret_cast<const unsigned char*>(
+                             compatibility_list_flatbuffer.data()),
+                         compatibility_list_flatbuffer.size())) {
+    return nullptr;
+  }
+  return std::unique_ptr<GPUCompatibilityList>(
+      new GPUCompatibilityList(std::move(compatibility_list_flatbuffer)));
 }
 
 std::map<std::string, std::string> GPUCompatibilityList::CalculateVariables(

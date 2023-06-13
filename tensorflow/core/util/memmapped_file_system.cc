@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/util/memmapped_file_system.h"
 
+#include <algorithm>
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -84,7 +89,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 }  // namespace
 
-MemmappedFileSystem::MemmappedFileSystem() {}
+MemmappedFileSystem::MemmappedFileSystem() = default;
 
 Status MemmappedFileSystem::FileExists(const string& fname,
                                        TransactionToken* token) {
@@ -108,9 +113,9 @@ Status MemmappedFileSystem::NewRandomAccessFile(
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  result->reset(new RandomAccessFileFromMemmapped(
+  *result = std::make_unique<RandomAccessFileFromMemmapped>(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length));
+      dir_element->second.length);
   return OkStatus();
 }
 
@@ -124,9 +129,9 @@ Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
   if (dir_element == directory_.end()) {
     return errors::NotFound("Region ", filename, " is not found");
   }
-  result->reset(new ReadOnlyMemoryRegionFromMemmapped(
+  *result = std::make_unique<ReadOnlyMemoryRegionFromMemmapped>(
       GetMemoryWithOffset(dir_element->second.offset),
-      dir_element->second.length));
+      dir_element->second.length);
   return OkStatus();
 }
 

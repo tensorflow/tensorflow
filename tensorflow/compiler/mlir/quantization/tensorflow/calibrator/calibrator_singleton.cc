@@ -15,7 +15,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/quantization/tensorflow/calibrator/calibrator_singleton.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
+#include <utility>
 
 namespace tensorflow {
 namespace calibrator {

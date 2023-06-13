@@ -332,7 +332,7 @@ size_t DynamicDeviceMgr::GetStreamNum(const Device* device) const {
 }
 
 Device* DynamicDeviceMgr::LookupStream(const Device* device,
-                                      const int stream_id) const {
+                                       const int stream_id) const {
   tf_shared_lock l(mgrs_mu_);
   if (stream_id < 0 ||
       stream_device_map_.find(device) == stream_device_map_.end() ||
@@ -354,7 +354,7 @@ int DynamicDeviceMgr::RequireStreamGroup(const Device* device) const {
 }
 
 void DynamicDeviceMgr::ReleaseStreamGroup(const Device* device,
-                                         const int stream_id) const {
+                                          const int stream_id) const {
   if (device->parsed_name().type == "GPU" ||
       device->parsed_name().type == "gpu") {
     tf_shared_lock l(mgrs_mu_);
@@ -375,7 +375,7 @@ DynamicDeviceMgr::StreamGroupMgr::StreamGroupMgr(const size_t total_num)
 }
 
 void DynamicDeviceMgr::StreamGroupMgr::swap(const size_t idx1,
-                                           const size_t idx2) {
+                                            const size_t idx2) {
   id2heap_map_[stream_group_heap_[idx1]->id_] = idx2;
   id2heap_map_[stream_group_heap_[idx2]->id_] = idx1;
   std::swap(stream_group_heap_[idx1], stream_group_heap_[idx2]);

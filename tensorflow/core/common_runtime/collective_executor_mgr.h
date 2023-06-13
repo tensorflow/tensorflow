@@ -89,7 +89,8 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
 // supports a single host. For distributed use case, use
 // CreateProdRpcCollectiveExecutorMgr() instead.
 std::unique_ptr<CollectiveExecutorMgr> CreateProdLocalCollectiveExecutorMgr(
-    const ConfigProto& config, const DeviceMgr* device_mgr);
+    const ConfigProto& config, const DeviceMgr* device_mgr,
+    std::unique_ptr<NcclCommunicatorInterface> nccl_communicator);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_EXECUTOR_MGR_H_

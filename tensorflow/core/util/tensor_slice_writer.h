@@ -19,7 +19,10 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_TENSOR_SLICE_WRITER_H_
 #define TENSORFLOW_CORE_UTIL_TENSOR_SLICE_WRITER_H_
 
+#include <functional>
+#include <map>
 #include <unordered_map>
+#include <utility>
 
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
@@ -44,7 +47,7 @@ class TensorSliceWriter {
   // Abstract interface that TensorSliceWriter uses for building
   class Builder {
    public:
-    virtual ~Builder() {}
+    virtual ~Builder() = default;
     virtual void Add(StringPiece key, StringPiece value) = 0;
     virtual Status Finish(int64_t* file_size) = 0;
   };
@@ -52,7 +55,7 @@ class TensorSliceWriter {
 
   TensorSliceWriter(const string& filename,
                     CreateBuilderFunction create_builder);
-  virtual ~TensorSliceWriter() {}
+  virtual ~TensorSliceWriter() = default;
   // Adds a slice. We support float and int32 for now.
   // TODO(yangke): add more supports
   template <typename T>

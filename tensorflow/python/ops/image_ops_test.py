@@ -4785,6 +4785,18 @@ class PngTest(test_util.TensorFlowTestCase):
       expected = np.broadcast_to(png0, (3, 4))
       self.assertAllEqual(png_stack, expected)
 
+  def testBatchedZeroLengthEncodeSynthetic(self):
+    with self.cached_session():
+      image0 = simple_color_ramp()
+      image_stack = np.broadcast_to(image0, (3, 4) + image0.shape)
+      image_stack = image_stack[:0]
+
+      png_stack = self.evaluate(
+          image_ops.encode_png(image_stack, compression=7)
+      )
+
+      self.assertAllEqual(png_stack.shape, (0, 4))
+
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():

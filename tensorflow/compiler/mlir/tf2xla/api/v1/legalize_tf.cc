@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -193,9 +194,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   // phase has not identified unsupported features.
   // Enabling op fallback also enables whole graph fallback if op by op
   // fallback failed.
-  bool enable_op_fallback =
-      std::get<0>(computation).rollout_state !=
-      ConfigProto::Experimental::MLIR_BRIDGE_ROLLOUT_ENABLED;
+  bool enable_op_fallback = true;
 
   Status mlir_bridge_status = tsl::OkStatus();
   {
@@ -264,6 +263,27 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
           ->IncrementBy(1);
     }
     return old_bridge_status;
+  }
+
+  if (VLOG_IS_ON(2)) {
+    xla::DebugOptions debug_options;
+    TF_ASSIGN_OR_RETURN(
+        auto hlo_module_config,
+        xla::HloModule::CreateModuleConfigFromProto(
+            compilation_result.computation->proto(), debug_options));
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::HloModule> hlo_module,
+        xla::HloModule::CreateFromProto(compilation_result.computation->proto(),
+                                        hlo_module_config));
+
+    std::string all_computations;
+    for (auto computation : hlo_module->computations()) {
+      all_computations += computation->ToString() + "\n\n";
+    }
+
+    tensorflow::DumpRawStringToFile("legalize_tf_fallback_hlo",
+                                    all_computations);
   }
 
   if (filtered_graph) {

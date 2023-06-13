@@ -19,7 +19,19 @@
 
 #include <gtest/gtest.h>
 #include "fuzztest/fuzztest.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/c/eager/immediate_execution_context.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/device_factory.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/function/runtime_client/runtime_client.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/platform/status.h"
 
 namespace tensorflow {
 namespace fuzzing {
@@ -55,17 +67,17 @@ FunctionDef EmptyFunctionDefGenerator(int number_of_input_arguments,
                                    body_nodes, ret_def);
 }
 
-fuzztest::Domain<FunctionDef> FunctionDefDomain() {
-  return fuzztest::Map(EmptyFunctionDefGenerator, fuzztest::InRange(0, 7),
-                       fuzztest::InRange(1, 7));
-}
-
 class FuzzRuntimeClient {
  public:
   FuzzRuntimeClient()
       : ctx_(InitLocalEagerContextPtr()), rt_(core::function::Runtime(*ctx_)) {}
 
-  void CreateFunctionFuzz(FunctionDef def) {
+  void CreateFunctionInnerFuzz(int in_args, int out_args) {
+    TF_CHECK_OK(
+        rt_.CreateFunction(EmptyFunctionDefGenerator(in_args, out_args)));
+  }
+
+  void CreateFunctionOuterFuzz(FunctionDef def) {
     TF_CHECK_OK(rt_.CreateFunction(def));
   }
 
@@ -90,8 +102,10 @@ class FuzzRuntimeClient {
   }
 };
 
-FUZZ_TEST_F(FuzzRuntimeClient, CreateFunctionFuzz)
-    .WithDomains(FunctionDefDomain());
+FUZZ_TEST_F(FuzzRuntimeClient, CreateFunctionInnerFuzz)
+    .WithDomains(fuzztest::InRange(0, 7), fuzztest::InRange(1, 7));
+
+FUZZ_TEST_F(FuzzRuntimeClient, CreateFunctionOuterFuzz);
 
 }  // end namespace fuzzing
 }  // end namespace tensorflow

@@ -140,7 +140,7 @@ tf_custom_op_py_library(
     srcs_version = "PY3",
     deps = [
         ":gen_double_op_wrapper",
-        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/framework:for_generated_wrappers",
     ],
 )
 

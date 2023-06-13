@@ -1183,6 +1183,9 @@ class OpKernelContext {
     return params_->coordination_service_agent;
   }
 
+  // Obtain the tensor holder.
+  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
+
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);
   void CtxFailureWithWarning(const Status& s);
@@ -1256,7 +1259,17 @@ class OpKernelContext {
 
   Allocator* get_allocator(AllocatorAttributes attr);
 
-  TensorHolder* tensor_holder() const { return params_->tensor_holder; }
+  Params* params() const { return params_; }
+  void set_params(Params* params) { params_ = params; }
+
+  void ResetOutputs(int num_outputs = 0) {
+    for (TensorValue& value : outputs_) {
+      DCHECK(!value.is_ref());
+      delete value.tensor;
+      value.tensor = nullptr;
+    }
+    outputs_.resize(num_outputs);
+  }
 
  private:
   bool record_memory_consumption_ = false;

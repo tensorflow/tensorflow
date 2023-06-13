@@ -172,8 +172,8 @@ struct TilePartialSoftmaxPattern
                 return tileSizeValues;
               });
           // Tile.
-          FailureOr<GMLSTTilingResult> tilingResult =
-              tileUsingSCFForallOp(rewriter, op, tilingOptions);
+          FailureOr<GMLSTTilingResult> tilingResult = tileUsingSCFForallOp(
+              rewriter, cast<TilingInterface>(op), tilingOptions);
           if (failed(tilingResult)) return failure();
 
           rewriter.replaceOp(op, tilingResult->loop->getResults());
@@ -202,7 +202,7 @@ struct FusePartialSoftmaxPattern
     if (!llvm::isa<TilingInterface>(def)) return failure();
 
     return tilePartialSoftmax(
-        def, rewriter,
+        cast<TilingInterface>(def), rewriter,
         [&](Operation *cwiseOp,
             int64_t /*commonReductionDim*/) -> FailureOr<TilingResult> {
           auto iface = llvm::dyn_cast_or_null<TilingInterface>(cwiseOp);

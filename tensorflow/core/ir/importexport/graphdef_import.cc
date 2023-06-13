@@ -15,8 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/ir/importexport/graphdef_import.h"
 
+#include <iterator>
+#include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "llvm/ADT/STLExtras.h"

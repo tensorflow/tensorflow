@@ -20,10 +20,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -811,6 +813,118 @@ PyTreeDef PyTreeDef::FromPickleable(py::object pickleable) {
   return tree;
 }
 
+void PyTreeDef::SetNumLeavesAndNumNodes() {
+  // num_leaves and num_nodes are fully determined by arity.
+  std::vector<std::pair<int, int>> starts;
+  int num_leaves = 0;
+  for (int i = 0; i < traversal_.size(); ++i) {
+    std::pair<int, int> start = {num_leaves, i};
+    if (traversal_[i].kind == PyTreeKind::kLeaf) {
+      num_leaves += 1;
+    }
+    if (traversal_[i].arity == 0) {
+      starts.push_back(start);
+    } else {
+      starts.resize(starts.size() - (traversal_[i].arity - 1));
+    }
+    traversal_[i].num_leaves = num_leaves - starts.back().first;
+    traversal_[i].num_nodes = i + 1 - starts.back().second;
+  }
+}
+
+void PyTreeDef::SerializeTo(jax::PyTreeDefProto& result) const {
+  absl::flat_hash_map<std::string, uint32_t> interned_strings;
+  auto intern_str = [&](const std::string& key) {
+    auto [it, added] =
+        interned_strings.emplace(key, result.interned_strings_size());
+    if (added) {
+      result.add_interned_strings(key);
+    }
+    return it->second;
+  };
+  for (const auto& node : traversal_) {
+    auto* node_data = result.add_nodes();
+    node_data->set_arity(node.arity);
+    switch (node.kind) {
+      case PyTreeKind::kLeaf:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_LEAF);
+        break;
+      case PyTreeKind::kList:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_LIST);
+        break;
+      case PyTreeKind::kNone:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_NONE);
+        break;
+      case PyTreeKind::kTuple:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_TUPLE);
+        break;
+      case PyTreeKind::kDict:
+        node_data->set_type(jax::PyTreeNodeType::PY_TREE_KIND_DICT);
+        for (auto& key : node.sorted_dict_keys) {
+          if (!py::isinstance<py::str>(key)) {
+            throw std::invalid_argument(
+                "Only string keys are supported in proto pytree "
+                "serialization.");
+          }
+          node_data->mutable_dict_keys()->add_str_id(
+              intern_str(py::cast<std::string>(key)));
+        }
+        break;
+      default:
+        throw std::invalid_argument(
+            "User-defined nodes are not supported when serializing pytrees as "
+            "protocol buffers. You should either convert the user-defined "
+            "nodes to another type or use pickle instead.");
+        break;
+    }
+  }
+}
+
+PyTreeDef PyTreeDef::DeserializeFrom(const jax::PyTreeDefProto& input) {
+  std::vector<py::str> interned_strings;
+  interned_strings.reserve(input.interned_strings().size());
+  for (auto& s : input.interned_strings()) {
+    interned_strings.push_back(py::str(s));
+  }
+  PyTreeDef result;
+  for (auto& node_proto : input.nodes()) {
+    result.traversal_.emplace_back();
+    auto& node = result.traversal_.back();
+    node.arity = node_proto.arity();
+    node.custom = nullptr;
+    switch (node_proto.type()) {
+      case jax::PyTreeNodeType::PY_TREE_KIND_LEAF:
+        node.kind = PyTreeKind::kLeaf;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_LIST:
+        node.kind = PyTreeKind::kList;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_NONE:
+        node.kind = PyTreeKind::kNone;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_TUPLE:
+        node.kind = PyTreeKind::kTuple;
+        break;
+      case jax::PyTreeNodeType::PY_TREE_KIND_DICT:
+        node.kind = PyTreeKind::kDict;
+        for (uint32_t str_id : node_proto.dict_keys().str_id()) {
+          if (str_id >= interned_strings.size()) {
+            throw std::invalid_argument(
+                "Malformed pytree proto (dict_key out of range).");
+          }
+          node.sorted_dict_keys.push_back(interned_strings.at(str_id));
+        }
+        break;
+      default:
+        throw std::invalid_argument(
+            "Malformed pytree proto (invalid node type)");
+        break;
+    }
+  }
+  result.SetNumLeavesAndNumNodes();
+  return result;
+}
+
 void BuildPytreeSubmodule(py::module& m) {
   py::module pytree = m.def_submodule("pytree", "Python tree library");
   pytree.attr("version") = py::int_(3);
@@ -839,6 +953,27 @@ void BuildPytreeSubmodule(py::module& m) {
       .def("__ne__",
            [](const PyTreeDef& a, const PyTreeDef& b) { return a != b; })
       .def("__hash__", [](const PyTreeDef& t) { return absl::HashOf(t); })
+      .def("serialize_using_proto",
+           [](const PyTreeDef& a) {
+             jax::PyTreeDefProto result;
+             a.SerializeTo(result);
+             return py::bytes(result.SerializeAsString());
+           })
+      .def_static(
+          "deserialize_using_proto",
+          [](py::bytes data) {
+            jax::PyTreeDefProto input;
+            std::string_view serialized = data;
+            if (serialized.size() > std::numeric_limits<int>::max()) {
+              throw xla::XlaRuntimeError(
+                  "Pytree serialization too large to deserialize.");
+            }
+            if (!input.ParseFromArray(serialized.data(), serialized.size())) {
+              throw xla::XlaRuntimeError(
+                  "Could not deserialize PyTreeDefProto.");
+            }
+            return PyTreeDef::DeserializeFrom(input);
+          })
       .def(py::pickle(
           [](const PyTreeDef& t) { return t.ToPickleable(); },
           [](py::object o) { return PyTreeDef::FromPickleable(o); }));

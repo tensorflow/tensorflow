@@ -13,10 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// TODO(b/282059652): Merge google internal and open-source code path once TF
+// dependency issue is resolved.
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -127,7 +135,8 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
     for (const tsl::TfDeviceId tf_device_id : peer_gpu_ids) {
       tsl::PlatformDeviceId platform_device_id;
-      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
+      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(tf_device_id,
+                                                     &platform_device_id));
       platform_peer_gpu_ids.insert(platform_device_id);
     }
     std::vector<tsl::PlatformDeviceId> platform_peer_gpu_ids_vec(
@@ -198,7 +207,7 @@ Allocator* GPUProcessState::GetGPUAllocator(
         total_bytes, peer_gpu_ids, stream_id);
     SubAllocator* sub_allocator_ptr = sub_allocator.get();
 
-    auto gpu_bfc_allocator = absl::make_unique<GPUBFCAllocator>(
+    auto gpu_bfc_allocator = std::make_unique<GPUBFCAllocator>(
         std::move(sub_allocator), total_bytes,
         strings::StrCat("GPU_", tf_device_id.value(), "_", stream_id, "_bfc"),
         [&] {
@@ -255,6 +264,14 @@ Allocator* GPUProcessState::GetGPUAllocator(
       recording_allocator = new internal::RecordingAllocator(
           &process_state_->mem_desc_map_, gpu_allocator, md, &mu_);
     }
+#ifdef TF_GPU_USE_PJRT
+    // Owning allocator is not set if `allocator_not_owned` is set.
+    allocator_parts.allocator_not_owned = gpu_allocator;
+    allocator_parts.counter.reset(timing_counter);
+    allocator_parts.bfc_allocator = gpu_bfc_allocator.release();
+    allocator_parts.sub_allocator = sub_allocator_ptr;
+    allocator_parts.recording_allocator.reset(recording_allocator);
+#else
     allocator_parts = {
         std::unique_ptr<Allocator>(gpu_allocator),
         std::unique_ptr<SharedCounter>(timing_counter),
@@ -262,11 +279,16 @@ Allocator* GPUProcessState::GetGPUAllocator(
         sub_allocator_ptr,
         std::unique_ptr<Allocator>(recording_allocator),
     };
+#endif  // TF_GPU_USE_PJRT
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
     return allocator_parts.recording_allocator.get();
   } else {
+#ifdef TF_GPU_USE_PJRT
+    return allocator_parts.allocator_not_owned;
+#else
     return allocator_parts.allocator.get();
+#endif  // TF_GPU_USE_PJRT
   }
 #else
   LOG(FATAL) << "GPUAllocator unavailable. Not compiled with --config=cuda or "
@@ -357,7 +379,11 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
     if (static_cast<int>(gpu_host_allocators_.size()) > numa_node &&
         static_cast<int>(gpu_host_allocators_[0].size()) > stream_id &&
         gpu_host_allocators_[0][stream_id].allocator != nullptr) {
+#ifdef TF_GPU_USE_PJRT
+      return gpu_host_allocators_[0][stream_id].allocator_not_owned;
+#else
       return gpu_host_allocators_[0][stream_id].allocator.get();
+#endif  // TF_GPU_USE_PJRT
     }
   }
 
@@ -372,7 +398,11 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
   se::StreamExecutor* se = nullptr;
   for (int i = 0; i < static_cast<int>(gpu_allocators_.size()); ++i) {
     for (int j = 0; j < static_cast<int>(gpu_allocators_[i].size()); ++j) {
+#ifdef TF_GPU_USE_PJRT
+      if (gpu_allocators_[i][j].allocator_not_owned != nullptr) {
+#else
       if (gpu_allocators_[i][j].allocator != nullptr) {
+#endif  // TF_GPU_USE_PJRT
         se = se::DeviceIdUtil::ExecutorForTfDeviceId(
                  DEVICE_GPU, se::GPUMachineManager(), tsl::TfDeviceId(i), j)
                  .value();
@@ -443,10 +473,23 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
            stream_id) {
       gpu_host_allocators_[numa_idx].push_back({});
     }
-    gpu_host_allocators_[numa_idx][stream_id] = {
-        std::unique_ptr<Allocator>(allocator),
-        std::unique_ptr<SharedCounter>(nullptr), nullptr, sub_allocator,
-        std::unique_ptr<Allocator>(nullptr)};
+#ifdef TF_GPU_USE_PJRT
+    // Ownership of the GPU host allocator will be transferred to PJRT.
+    AllocatorParts gpu_host_allocator({
+        /*allocator=*/nullptr,
+        std::unique_ptr<SharedCounter>(nullptr),
+        /*bfc_allocator=*/nullptr,
+        sub_allocator,
+        /*recording_allocator=*/nullptr,
+        /*allocator_not_owned=*/allocator,
+    });
+#else
+    AllocatorParts gpu_host_allocator({std::unique_ptr<Allocator>(allocator),
+                                       std::unique_ptr<SharedCounter>(nullptr),
+                                       /*bfc_allocator=*/nullptr, sub_allocator,
+                                       /*recording_allocator=*/nullptr});
+#endif  // TF_GPU_USE_PJRT
+    gpu_host_allocators_[numa_idx][stream_id] = std::move(gpu_host_allocator);
     AllocatorParts& allocator_parts = gpu_host_allocators_[numa_idx][stream_id];
     if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
       ProcessState::MemDesc md;
@@ -454,16 +497,20 @@ Allocator* GPUProcessState::GetGpuHostAllocator(const GPUOptions& options,
       md.dev_index = 0;
       md.gpu_registered = true;
       md.nic_registered = false;
-      allocator_parts.recording_allocator.reset(
-          new internal::RecordingAllocator(&process_state_->mem_desc_map_,
-                                           allocator_parts.allocator.get(), md,
-                                           &mu_));
+      allocator_parts.recording_allocator =
+          std::make_unique<internal::RecordingAllocator>(
+              &process_state_->mem_desc_map_, allocator_parts.allocator.get(),
+              md, &mu_);
     }
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
     return gpu_host_allocators_[0][stream_id].recording_allocator.get();
   } else {
+#ifdef TF_GPU_USE_PJRT
+    return gpu_host_allocators_[0][stream_id].allocator_not_owned;
+#else
     return gpu_host_allocators_[0][stream_id].allocator.get();
+#endif  // TF_GPU_USE_PJRT
   }
 }
 

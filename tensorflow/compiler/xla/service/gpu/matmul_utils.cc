@@ -264,8 +264,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     std::optional<int64_t> algorithm, int64_t compute_precision) {
   return GemmConfig::For(lhs_shape, lhs_batch_dims, lhs_contracting_dims,
                          rhs_shape, rhs_batch_dims, rhs_contracting_dims,
-                         output_shape, output_shape, alpha_real, alpha_imag,
-                         beta, algorithm, compute_precision);
+                         /*c_shape=*/output_shape, /*bias_shape_ptr=*/nullptr,
+                         output_shape, alpha_real, alpha_imag, beta, algorithm,
+                         compute_precision);
 }
 
 /*static*/ StatusOr<GemmConfig> GemmConfig::For(
@@ -273,8 +274,9 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
     absl::Span<const int64_t> lhs_contracting_dims, const Shape& rhs_shape,
     absl::Span<const int64_t> rhs_batch_dims,
     absl::Span<const int64_t> rhs_contracting_dims, const Shape& c_shape,
-    const Shape& output_shape, double alpha_real, double alpha_imag,
-    double beta, std::optional<int64_t> algorithm, int64_t compute_precision) {
+    const Shape* bias_shape_ptr, const Shape& output_shape, double alpha_real,
+    double alpha_imag, double beta, std::optional<int64_t> algorithm,
+    int64_t compute_precision) {
   absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
   TF_ASSIGN_OR_RETURN(
       std::vector<int64_t> lhs_row_dims,
@@ -312,9 +314,21 @@ StatusOr<bool> CanFoldTransposeOperandIntoDot(const HloInstruction& dot,
   TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
                       MatrixLayout::For(output_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
+  Shape c_matrix_shape = c_shape;
+  if (primitive_util::IsF8Type(lhs_shape.element_type()) &&
+      primitive_util::IsF8Type(output_shape.element_type()) && beta == 0.0) {
+    // By default, if c is not present (i.e., beta is 0), c_shape will be the
+    // output shape. cublasLT requires a valid c_shape to be passed, even if c
+    // is not present, and normally setting it to the output shape is fine. But
+    // for matmuls with FP8 inputs and outputs, C must instead have the same
+    // dtype as the vector bias if present, and either BF16 or F16 otherwise. So
+    // we set the dtype of C here.
+    c_matrix_shape.set_element_type(
+        bias_shape_ptr != nullptr ? bias_shape_ptr->element_type() : BF16);
+  }
 
   TF_ASSIGN_OR_RETURN(MatrixLayout c_layout,
-                      MatrixLayout::For(c_shape, output_batch_dims,
+                      MatrixLayout::For(c_matrix_shape, output_batch_dims,
                                         output_row_dims, output_col_dims));
 
   // TODO(cjfj): We should also check that the batch, contracting and
@@ -571,11 +585,13 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Input> output_data(output.data);
 
+#if GOOGLE_CUDA
   if (algorithm) {
     return DoGemmWithAlgorithm<Input, Input>(
         batch_size, m, n, k, lhs, rhs, output, alpha, beta, stream, *algorithm,
         compute_precision, profile_result);
   }
+#endif
 
   if (batch_size != 1) {
     return stream->ThenBlasGemmStridedBatched(

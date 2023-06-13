@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_METRICS_ERROR_COLLECTOR_INST_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_METRICS_ERROR_COLLECTOR_INST_H_
 
+#include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "mlir/IR/Location.h"  // from @llvm-project

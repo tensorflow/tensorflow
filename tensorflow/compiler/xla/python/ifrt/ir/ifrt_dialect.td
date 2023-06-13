@@ -26,6 +26,8 @@ def Ifrt_Dialect : Dialect {
   let cppNamespace = "::xla::ifrt";
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
+  let hasOperationAttrVerify = 1;
+  let hasRegionArgAttrVerify = 1;
 }
 
 def Ifrt_ShardingParameter :
@@ -40,7 +42,7 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let parameters = (ins
     Builtin_RankedTensor:$shape,
     Ifrt_ShardingParameter:$sharding,
-    ArrayRefParameter<"int64_t">:$devices);
+    ArrayRefParameter<"int">:$devices);
 
   let assemblyFormat = "`<` $shape`,` $sharding`,` `[`$devices`]` `>`";
 

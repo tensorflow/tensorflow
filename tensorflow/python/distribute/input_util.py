@@ -19,13 +19,16 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 
 
-def get_distributed_dataset(dataset,
-                            input_workers,
-                            strategy,
-                            num_replicas_in_sync=None,
-                            input_context=None,
-                            options=None,
-                            build=True):
+def get_distributed_dataset(
+    dataset,
+    input_workers,
+    strategy,
+    num_replicas_in_sync=None,
+    input_context=None,
+    options=None,
+    build=True,
+    replica_order=None,
+):
   """Returns a distributed dataset from the given tf.data.Dataset instance.
 
   This is a common function that is used by all strategies to return a
@@ -52,6 +55,8 @@ def get_distributed_dataset(dataset,
       options on how this dataset is distributed.
     build: whether to build underlying datasets when a DistributedDataset is
       created. This is only useful for `ParameterServerStrategy` now.
+    replica_order: the order of the replicas, which will be used to reorder the
+      iterators to match the device order.
 
   Returns:
     A distributed dataset instance.
@@ -64,7 +69,9 @@ def get_distributed_dataset(dataset,
         num_replicas_in_sync=num_replicas_in_sync,
         input_context=input_context,
         build=build,
-        options=options)
+        options=options,
+        replica_order=replica_order,
+    )
   else:
     return input_lib_v1.DistributedDatasetV1(
         dataset,
@@ -75,12 +82,15 @@ def get_distributed_dataset(dataset,
         options=options)
 
 
-def get_distributed_datasets_from_function(dataset_fn,
-                                           input_workers,
-                                           input_contexts,
-                                           strategy,
-                                           options=None,
-                                           build=True):
+def get_distributed_datasets_from_function(
+    dataset_fn,
+    input_workers,
+    input_contexts,
+    strategy,
+    options=None,
+    build=True,
+    replica_order=None,
+):
   """Returns a distributed dataset from the given input function.
 
   This is a common function that is used by all strategies to return a
@@ -103,6 +113,8 @@ def get_distributed_datasets_from_function(dataset_fn,
     build: whether to build underlying datasets when a
       `DistributedDatasetFromFunction` is created. This is only useful for
       `ParameterServerStrategy` now.
+    replica_order: the order of the replicas, which will be used to reorder the
+      iterators to match the device order.
 
   Returns:
     A distributed dataset instance.
@@ -136,6 +148,7 @@ def get_distributed_datasets_from_function(dataset_fn,
         dataset_fn=dataset_fn,
         options=options,
         build=build,
+        replica_order=replica_order,
     )
   else:
     return input_lib_v1.DistributedDatasetsFromFunctionV1(

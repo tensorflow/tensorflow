@@ -89,6 +89,15 @@ func.func @xla_all_reduce_mul(%input: tensor<f32>) -> tensor<f32> {
   func.return %0 : tensor<f32>
 }
 
+// -----
+
+func.func @xla_all_reduce_tuple(%input: tuple<tensor<f32>, tensor<f32>>) -> tuple<tensor<f32>, tensor<f32>> {
+  %group_assignment = "tf.Const"() { value = dense<[[0],[1]]> : tensor<2x1xi32> } : () -> tensor<2x1xi32>
+  // expected-error@+1 {{'tf.XlaAllReduce' op operand #0 must be tensor of bfloat16 or 16-bit float or 32-bit float or 32-bit integer or 32-bit unsigned integer values, but got 'tuple<tensor<f32>, tensor<f32>>'}}
+  %0 = "tf.XlaAllReduce"(%input, %group_assignment) {reduce_op = "Add", mode = "CrossReplica"} : (tuple<tensor<f32>, tensor<f32>>, tensor<2x1xi32>) -> tuple<tensor<f32>, tensor<f32>>
+  func.return %0 : tuple<tensor<f32>, tensor<f32>> 
+}
+
 
 // -----
 

@@ -58,6 +58,20 @@ tf_proto_library(
     protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/stream_executor:dnn_proto",
+        "//tensorflow/tsl/protobuf:autotuning_proto",
+    ],
+)
+
+xla_cc_test(
+    name = "backend_configs_test",
+    srcs = ["backend_configs_test.cc"],
+    tags = ["nomsan"],
+    deps = [
+        ":backend_configs_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:status_matchers",
     ],
 )
 
@@ -107,8 +121,12 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":gpu_device_info",
+        "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo",
+        "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
         "//tensorflow/tsl/platform:logging",
+        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -161,6 +179,20 @@ xla_cc_test(
     ]),
 )
 
+xla_cc_test(
+    name = "gpu_copy_insertion_test",
+    srcs = ["gpu_copy_insertion_test.cc"],
+    tags = ["nomsan"],
+    deps = [
+        ":gpu_compiler",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
 cc_library(
     name = "hlo_to_ir_bindings",
     srcs = ["hlo_to_ir_bindings.cc"],
@@ -204,6 +236,7 @@ cc_library(
 xla_cc_test(
     name = "target_util_test",
     srcs = ["target_util_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":target_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -236,20 +269,24 @@ cc_library(
 
 xla_cc_test(
     name = "gpu_device_info_test",
-    srcs = if_cuda_is_configured(["gpu_device_info_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
-    deps = if_cuda_is_configured([
+    srcs = ["gpu_device_info_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
         ":gpu_device_info",
         ":gpu_device_info_for_tests",
-        "@com_google_absl//absl/strings",
-        "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
-        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:device_description",
-        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ] + if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cuda_gpu_executor_header",
+    ]) + if_rocm_is_configured([
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/compiler/xla/stream_executor/rocm:rocm_gpu_executor_header",
     ]),
 )
 
@@ -405,13 +442,13 @@ cc_library(
         "@llvm-project//mlir:SCFToControlFlow",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
-    ] + if_cuda_is_configured([
         "@triton//:TritonDialect",
+        "@triton//:TritonTransforms",
+    ] + if_cuda_is_configured([
         "@triton//:TritonGPUToLLVM",
         "@triton//:TritonGPUTransforms",
         "@triton//:TritonLLVMIR",
         "@triton//:TritonToTritonGPU",
-        "@triton//:TritonTransforms",
     ]),
 )
 
@@ -424,23 +461,69 @@ xla_test(
     backends = [
         "gpu",
     ],
+    shard_count = 10,
     tags = ["nomac"],
     deps = [
-        ":gpu_device_info",
+        ":backend_configs_cc",
+        ":gpu_device_info_for_tests",
         ":ir_emitter_triton",
-        "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        ":launch_dimensions",
+        "//tensorflow/compiler/xla:error_spec",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//tensorflow/tsl/lib/core:status_test_util",
-        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status_matchers",
-        "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
+        "@llvm-project//llvm:ir_headers",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+xla_test(
+    name = "ir_emitter_triton_large_test",
+    srcs = if_cuda_is_configured(["ir_emitter_triton_large_test.cc"]),
+    backend_tags = {"gpu": [
+        "requires-gpu-sm70",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    tags = [
+        "large",
+        "no_oss",
+        "nomac",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+xla_test(
+    name = "ir_emitter_triton_parametrized_test",
+    srcs = if_cuda_is_configured(["ir_emitter_triton_parametrized_test.cc"]),
+    backend_tags = {"gpu": [
+        "requires-gpu-sm70",
+    ]},
+    backends = [
+        "gpu",
+    ],
+    shard_count = 10,
+    tags = ["nomac"],
+    deps = [
+        "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
+        "//tensorflow/compiler/xla/stream_executor:device_description",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "@com_google_absl//absl/strings",
     ],
 )
@@ -450,6 +533,7 @@ cc_library(
     srcs = if_cuda_is_configured(["triton_autotuner.cc"]),
     hdrs = if_cuda_is_configured(["triton_autotuner.h"]),
     deps = if_cuda_is_configured([
+        ":bitcast_remover",
         ":buffer_comparator",
         ":compile_module_to_llvm_ir",
         ":gemm_rewriter_triton",
@@ -477,12 +561,20 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:ir_headers",
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
+        "//tensorflow/compiler/xla:permutation_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:call_inliner",
+        "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:float_normalization",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/service:hlo_verifier",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
         "//tensorflow/compiler/xla/stream_executor:device_description",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
@@ -491,7 +583,9 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer_header",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
+        "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:blocking_counter",
         "//tensorflow/tsl/platform:statusor",
@@ -511,6 +605,7 @@ xla_test(
     ],
     tags = ["nomac"],
     deps = [
+        ":backend_configs_cc",
         ":gemm_rewriter_triton",
         ":triton_autotuner",
         "//tensorflow/compiler/xla:xla_proto_cc",
@@ -735,6 +830,7 @@ cc_library(
 xla_cc_test(
     name = "non_atomically_upgradeable_rw_lock_test",
     srcs = ["non_atomically_upgradeable_rw_lock_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":non_atomically_upgradeable_rw_lock",
         "//tensorflow/tsl/platform:test",
@@ -810,26 +906,17 @@ cc_library(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_gpu",
         "//tensorflow/compiler/xla/mlir/runtime/transforms:type_converter",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo_gpu",
-        "//tensorflow/compiler/xla/runtime:diagnostics",
         "//tensorflow/compiler/xla/runtime:executable",
-        "//tensorflow/compiler/xla/runtime:jit_executable",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:custom_call_status_internal",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
         "//tensorflow/compiler/xla/service:hlo_parser",
-        "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
-        "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:xla_debug_info_manager",
-        "//tensorflow/compiler/xla/service/gpu/runtime:collectives",
-        "//tensorflow/compiler/xla/service/gpu/runtime:cublas_lt_matmul",
         "//tensorflow/compiler/xla/service/gpu/runtime:executable",
-        "//tensorflow/compiler/xla/service/gpu/runtime:gemm",
-        "//tensorflow/compiler/xla/service/gpu/runtime:kernel_launch",
         "//tensorflow/compiler/xla/service/gpu/runtime:support",
-        "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
@@ -840,8 +927,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_types_header",
-        "//tensorflow/tsl/lib/gtl:map_util",
-        "//tensorflow/tsl/platform:casts",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
@@ -850,7 +935,6 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
@@ -868,15 +952,16 @@ cc_library(
         ":precompiled_kernels",
         ":triangular_solve_thunk",
     ]) + if_cuda_is_configured([
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_stream",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
-        "//tensorflow/tsl/platform/default/build_config:cudnn_plugin",
-        "//tensorflow/tsl/platform/default/build_config:cufft_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cudnn_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cufft_plugin",
         "//tensorflow/compiler/xla/stream_executor/cuda:stream_executor_cuda",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm_is_configured([
         "//tensorflow/compiler/xla/stream_executor/rocm:stream_executor_rocm",
         "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/tsl/platform:random",
     ]),
 )
 
@@ -905,6 +990,7 @@ cc_library(
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
@@ -1026,6 +1112,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:statusor",
@@ -1040,6 +1127,8 @@ cc_library(
     srcs = ["gemm_rewriter_triton.cc"],
     hdrs = ["gemm_rewriter_triton.h"],
     deps = [
+        ":backend_configs_cc",
+        ":gpu_types",
         ":ir_emission_utils",
         ":matmul_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -1066,6 +1155,7 @@ cc_library(
 xla_cc_test(
     name = "gemm_rewriter_triton_test",
     srcs = ["gemm_rewriter_triton_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":gemm_rewriter_triton",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -1106,10 +1196,10 @@ cc_library(
         ":thunk",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
     ]) + ["//tensorflow/tsl/platform:logging"],
 )
 
@@ -1135,12 +1225,12 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
         "//tensorflow/tsl/platform:logger",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:statusor",
@@ -1213,7 +1303,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ] + if_cuda_is_configured([
         "//tensorflow/compiler/xla/stream_executor/cuda:cublas_lt_header",
-        "//tensorflow/tsl/platform/default/build_config:cublas_plugin",
+        "//tensorflow/compiler/xla/stream_executor/cuda:cublas_plugin",
         "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/compiler/xla/stream_executor:host_or_device_scalar",
         "//tensorflow/compiler/xla/stream_executor:scratch_allocator",
@@ -1225,6 +1315,7 @@ cc_library(
 xla_cc_test(
     name = "matmul_utils_test",
     srcs = ["matmul_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":matmul_utils",
         "//tensorflow/compiler/xla:test",
@@ -1243,6 +1334,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
@@ -1264,6 +1356,63 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service/gpu/tests:gpu_codegen_test",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+    ],
+)
+
+cc_library(
+    name = "gpu_async_collective_annotator",
+    srcs = ["gpu_async_collective_annotator.cc"],
+    hdrs = ["gpu_async_collective_annotator.h"],
+    deps = [
+        ":backend_configs_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_async_collective_annotator_test",
+    srcs = ["gpu_async_collective_annotator_test.cc"],
+    tags = ["nomsan"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_async_collective_annotator",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "gpu_convert_async_collectives_to_sync",
+    srcs = ["gpu_convert_async_collectives_to_sync.cc"],
+    hdrs = ["gpu_convert_async_collectives_to_sync.h"],
+    deps = [
+        ":backend_configs_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_convert_async_collectives_to_sync_test",
+    srcs = ["gpu_convert_async_collectives_to_sync_test.cc"],
+    tags = ["nomsan"],
+    deps = [
+        ":backend_configs_cc",
+        ":gpu_convert_async_collectives_to_sync",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_header",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1394,6 +1543,7 @@ cc_library(
 xla_cc_test(
     name = "move_copy_to_users_test",
     srcs = ["move_copy_to_users_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":move_copy_to_users",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -1411,6 +1561,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_rewriter",
@@ -1494,7 +1645,10 @@ cc_library(
 xla_cc_test(
     name = "instruction_fusion_test",
     srcs = ["instruction_fusion_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":gpu_device_info_for_tests",
         ":gpu_fusible",
@@ -1534,7 +1688,10 @@ cc_library(
 xla_cc_test(
     name = "multi_output_fusion_test",
     srcs = ["multi_output_fusion_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":gpu_device_info_for_tests",
         ":gpu_fusible",
@@ -1562,6 +1719,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_sanitize_constant_names_test",
     srcs = ["gpu_sanitize_constant_names_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":gpu_sanitize_constant_names",
         ":ir_emission_utils",
@@ -1607,7 +1765,10 @@ cc_library(
 xla_cc_test(
     name = "fusion_merger_test",
     srcs = ["fusion_merger_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":fusion_merger",
         ":gpu_device_info",
@@ -1645,6 +1806,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_conv_padding_legalization_test",
     srcs = ["gpu_conv_padding_legalization_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cublas_cudnn",
         ":gpu_conv_padding_legalization",
@@ -1677,6 +1839,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_support_utils_test",
     srcs = ["cudnn_support_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cudnn_support_utils",
         "//tensorflow/compiler/xla:status_macros",
@@ -1721,6 +1884,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_pad_for_convolutions_test",
     srcs = ["cudnn_pad_for_convolutions_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -1757,6 +1921,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_vectorize_convolutions_test",
     srcs = ["cudnn_vectorize_convolutions_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
@@ -1791,6 +1956,7 @@ cc_library(
 xla_cc_test(
     name = "cudnn_simplify_padding_test",
     srcs = ["cudnn_simplify_padding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":cublas_cudnn",
         ":cudnn_pad_for_convolutions",
@@ -1801,6 +1967,7 @@ xla_cc_test(
         "//tensorflow/compiler/xla/service:algebraic_simplifier",
         "//tensorflow/compiler/xla/service:call_inliner",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:pattern_matcher_gmock",
         "//tensorflow/compiler/xla/service:reshape_mover",
@@ -1831,7 +1998,10 @@ cc_library(
 xla_cc_test(
     name = "cublas_pad_for_gemms_test",
     srcs = ["cublas_pad_for_gemms_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":cublas_pad_for_gemms",
         ":ir_emission_utils",
@@ -1897,8 +2067,8 @@ cc_library(
     hdrs = ["gpu_reduce_scatter_creator.h"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:reduce_scatter_utils",
     ],
 )
@@ -1923,6 +2093,7 @@ cc_library(
     deps = [
         ":executable_proto_cc",
         ":gpu_constants",
+        ":gpu_convert_async_collectives_to_sync",
         ":gpu_device_info",
         ":gpu_executable",
         ":gpu_float_support",
@@ -1940,7 +2111,6 @@ cc_library(
         "//tensorflow/compiler/xla/mlir_hlo:transforms_gpu_passes",
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
         "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:convert_async_collectives_to_sync",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
@@ -1981,12 +2151,14 @@ cc_library(
         ":all_reduce_blueconnect",
         ":compile_module_to_llvm_ir",
         ":conv_layout_normalization",
+        ":copy_fusion",
         ":dot_dimension_sorter",
         ":executable_proto_cc",
         ":fusion_merger",
         ":gemm_broadcast_folding_rewriter",
         ":gemm_rewriter",
         ":gemm_rewriter_triton",
+        ":gpu_async_collective_annotator",
         ":gpu_constants",
         ":gpu_conv_algorithm_picker",
         ":gpu_conv_rewriter",
@@ -2017,6 +2189,8 @@ cc_library(
         ":reduction_splitter",
         ":runtime_intrinsics",
         ":scatter_slice_simplifier",
+        ":topk_specializer",
+        ":topk_splitter",
         ":tree_reduction_rewriter",
         ":variadic_op_splitter",
         "//tensorflow/compiler/xla:autotune_results_proto_cc",
@@ -2025,6 +2199,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/transforms:hlo_constant_splitter",
         "//tensorflow/compiler/xla/mlir/backends/gpu/transforms:passes",
@@ -2039,7 +2214,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:all_reduce_folder",
         "//tensorflow/compiler/xla/service:all_reduce_promotion",
         "//tensorflow/compiler/xla/service:all_reduce_reassociate",
-        "//tensorflow/compiler/xla/service:all_to_all_decomposer",
         "//tensorflow/compiler/xla/service:async_collective_creator",
         "//tensorflow/compiler/xla/service:batchnorm_expander",
         "//tensorflow/compiler/xla/service:bitcast_dtypes_expander",
@@ -2055,7 +2229,9 @@ cc_library(
         "//tensorflow/compiler/xla/service:convolution_4d_expander",
         "//tensorflow/compiler/xla/service:convolution_pred_expander",
         "//tensorflow/compiler/xla/service:copy_insertion",
+        "//tensorflow/compiler/xla/service:data_parallel_collective_optimizer",
         "//tensorflow/compiler/xla/service:dot_decomposer",
+        "//tensorflow/compiler/xla/service:dot_dimension_merger",
         "//tensorflow/compiler/xla/service:dot_merger",
         "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:dynamic_dimension_simplifier",
@@ -2072,6 +2248,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dataflow_analysis",
         "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
@@ -2127,9 +2304,11 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/profiler/lib:traceme",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:AsmParser",
@@ -2346,9 +2525,9 @@ cc_library(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/types:span",
@@ -2358,6 +2537,7 @@ cc_library(
 xla_cc_test(
     name = "all_reduce_blueconnect_test",
     srcs = ["all_reduce_blueconnect_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":all_reduce_blueconnect",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2467,15 +2647,17 @@ cc_library(
     srcs = ["gpu_hlo_schedule.cc"],
     hdrs = ["gpu_hlo_schedule.h"],
     deps = [
+        ":backend_configs_cc",
         ":cublas_cudnn",
         ":gpu_device_info",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:buffer_value",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_memory_scheduler",
         "//tensorflow/compiler/xla/service:hlo_ordering",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:latency_hiding_scheduler",
+        "//tensorflow/compiler/xla/service:profile_guided_latency_estimator",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -2490,8 +2672,8 @@ xla_cc_test(
         ":gpu_device_info",
         ":gpu_hlo_schedule",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:gpu_plugin",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -2503,7 +2685,10 @@ xla_cc_test(
 xla_cc_test(
     name = "while_transformer_test",
     srcs = ["while_transformer_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
@@ -2542,7 +2727,6 @@ cc_library(
         "//tensorflow/tsl/platform:regexp",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
-        "//tensorflow/tsl/util:determinism_for_kernels",
         "//tensorflow/tsl/util:env_var",
         "//tensorflow/tsl/util/proto:proto_utils",
         "@com_google_absl//absl/memory",
@@ -2582,6 +2766,7 @@ cc_library(
 xla_cc_test(
     name = "gpu_hlo_cost_analysis_test",
     srcs = ["gpu_hlo_cost_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":gpu_hlo_cost_analysis",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -2604,11 +2789,41 @@ cc_library(
 xla_cc_test(
     name = "gpu_performance_model_test",
     srcs = ["gpu_performance_model_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":gpu_device_info_for_tests",
         ":gpu_performance_model",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+    ],
+)
+
+cc_library(
+    name = "bitcast_remover",
+    srcs = ["bitcast_remover.cc"],
+    hdrs = ["bitcast_remover.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+    ],
+)
+
+xla_cc_test(
+    name = "bitcast_remover_test",
+    srcs = ["bitcast_remover_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":bitcast_remover",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2663,7 +2878,10 @@ cc_library(
 xla_cc_test(
     name = "gpu_fusible_test",
     srcs = ["gpu_fusible_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":gpu_fusible",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -2787,7 +3005,10 @@ cc_library(
 xla_cc_test(
     name = "variadic_op_splitter_test",
     srcs = ["variadic_op_splitter_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":ir_emission_utils",
         ":variadic_op_splitter",
@@ -2833,7 +3054,10 @@ xla_cc_test(
     name = "hlo_algorithm_denylist_test",
     srcs = ["hlo_algorithm_denylist_test.cc"],
     data = ["data/hlo_algorithm_denylist.pbtxt"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":hlo_algorithm_denylist",
         "//tensorflow/compiler/xla/stream_executor:dnn",
@@ -2860,7 +3084,10 @@ cc_library(
 xla_cc_test(
     name = "alias_passthrough_params_test",
     srcs = ["alias_passthrough_params_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":alias_passthrough_params",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -2993,6 +3220,7 @@ cc_library(
 xla_cc_test(
     name = "reduction_splitter_test",
     srcs = ["reduction_splitter_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":reduction_splitter",
         "//tensorflow/compiler/xla:shape_util",
@@ -3037,6 +3265,7 @@ cc_library(
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/gpu:gpu_types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/numeric:bits",
         "@com_google_absl//absl/strings",
@@ -3073,7 +3302,6 @@ test_suite(
         "//tensorflow/compiler/xla/service/gpu:custom_call_test",
         # copybara:uncomment "//tensorflow/compiler/xla/service/gpu:gpu_aot_compilation_test",
         "//tensorflow/compiler/xla/service/gpu/tests:add_preds.hlo.test",
-        "//tensorflow/compiler/xla/service/gpu/tests:all_reduce.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:concat.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:constant.hlo.test",
         "//tensorflow/compiler/xla/service/gpu/tests:copy.hlo.test",
@@ -3314,7 +3542,10 @@ cc_library(
 xla_cc_test(
     name = "hlo_fusion_stats_test",
     srcs = ["hlo_fusion_stats_test.cc"],
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "nomsan",
+    ],
     deps = [
         ":hlo_fusion_stats",
         "//tensorflow/compiler/xla:status_macros",
@@ -3344,6 +3575,7 @@ cc_library(
 xla_cc_test(
     name = "scatter_slice_simplifier_test",
     srcs = ["scatter_slice_simplifier_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":scatter_slice_simplifier",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
@@ -3357,6 +3589,7 @@ cc_library(
     srcs = ["conv_layout_normalization.cc"],
     hdrs = ["conv_layout_normalization.h"],
     deps = [
+        ":cublas_cudnn",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -3366,9 +3599,114 @@ cc_library(
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_creation_utils",
-        "//tensorflow/compiler/xla/service/gpu:cublas_cudnn",
         "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "topk_specializer",
+    srcs = if_cuda_is_configured(
+        ["topk_specializer.cc"],
+        ["topk_specializer_nocuda.cc"],
+    ),
+    hdrs = ["topk_specializer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:executable_run_options",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/runtime:custom_call",
+        "//tensorflow/compiler/xla/runtime:custom_call_registry",
+        "//tensorflow/compiler/xla/runtime:executable",
+        "//tensorflow/compiler/xla/runtime:state",
+        "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/compiler/xla/service:tuple_util",
+        "//tensorflow/compiler/xla/service/gpu/runtime:support",
+        "//tensorflow/compiler/xla/service/gpu/runtime:topk_kernel",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "topk_splitter",
+    srcs = ["topk_splitter.cc"],
+    hdrs = ["topk_splitter.h"],
+    deps = [
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_creation_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/numeric:bits",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "topk_splitter_test",
+    srcs = ["topk_splitter_test.cc"],
+    tags = ["nomsan"],
+    deps = [
+        ":topk_splitter",
+        "//tensorflow/compiler/xla:error_spec",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_dce",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service:topk_rewriter",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:verified_hlo_module",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "copy_fusion",
+    srcs = ["copy_fusion.cc"],
+    hdrs = ["copy_fusion.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ],
+)
+
+xla_cc_test(
+    name = "copy_fusion_test",
+    srcs = ["copy_fusion_test.cc"],
+    deps = [
+        ":copy_fusion",
+        ":gpu_device_info_for_tests",
+        ":gpu_fusible",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
     ],
 )

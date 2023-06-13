@@ -67,9 +67,6 @@ platform, as given below:
 *   [Micro speech](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/micro_speech) -
     Captures audio with a microphone to detect the words "yes" and "no"
     *   [Tutorial using SparkFun Edge](https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0)
-*   [Magic wand](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/magic_wand) -
-    Captures accelerometer data to classify three different physical gestures
-    *   [Tutorial using Arduino Nano 33 BLE Sense](https://codelabs.developers.google.com/codelabs/ai-magicwand/#0)
 *   [Person detection](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/person_detection) -
     Captures camera data with an image sensor to detect the presence or absence
     of a person

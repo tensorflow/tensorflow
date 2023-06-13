@@ -15,7 +15,10 @@ limitations under the License.
 
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <optional>
+#include <unordered_set>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/STLExtras.h"

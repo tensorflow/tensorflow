@@ -589,21 +589,30 @@ void AggregateXPlane(const XPlane& full_trace, XPlane& aggregated_trace) {
   }
 }
 
-bool IsHostPlane(const XPlane& plane) {
+bool IsCustomPlane(const XPlane& plane) {
   // NOTE: remove me after all legacy traces are gone (i.e. 2022/08/04).
   constexpr absl::string_view kLegacyCustomPlanePrefix = "/custom:";
+  return absl::StartsWith(plane.name(), kCustomPlanePrefix) ||
+         absl::StartsWith(plane.name(), kLegacyCustomPlanePrefix);
+}
+
+bool IsHostPlane(const XPlane& plane) {
   return plane.name() == kHostThreadsPlaneName ||
          plane.name() == kHostCpusPlaneName ||
          plane.name() == kTFStreamzPlaneName ||
          plane.name() == kMetadataPlaneName ||
          plane.name() == kSyscallsPlaneName ||
          plane.name() == kPythonTracerPlaneName ||
-         plane.name() == kCuptiDriverApiPlaneName ||
-         absl::StartsWith(plane.name(), kCustomPlanePrefix) ||
-         absl::StartsWith(plane.name(), kLegacyCustomPlanePrefix);
+         plane.name() == kCuptiDriverApiPlaneName;
 }
 
-bool IsDevicePlane(const XPlane& plane) { return !IsHostPlane(plane); }
+bool IsDevicePlane(const XPlane& plane) {
+  // Device and host planes should be mutually exclusive.
+  if (IsHostPlane(plane)) return false;
+  return absl::StartsWith(plane.name(), "/device") ||
+         absl::StartsWith(plane.name(), kTpuNonCorePlaneNamePrefix) ||
+         IsCustomPlane(plane);
+}
 
 }  // namespace profiler
 }  // namespace tsl

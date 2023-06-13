@@ -423,7 +423,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/nccl:collective_communicator",
         "@com_google_absl//absl/memory",
     ],
 )
@@ -623,6 +622,7 @@ cc_library(
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -798,6 +798,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -811,6 +812,7 @@ cc_library(
         ":device_factory",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -2054,6 +2056,7 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/nccl:collective_communicator",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:device_profiler_session",
         "//tensorflow/core/profiler/lib:profiler_backends",
@@ -2912,6 +2915,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3357,11 +3361,7 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         ":core",
-        ":core_cpu",
-        ":graph_constructor",
         ":session",
-        ":session_options",
-        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",

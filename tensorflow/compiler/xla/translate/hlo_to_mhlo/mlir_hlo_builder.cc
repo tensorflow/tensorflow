@@ -92,21 +92,23 @@ void AddFrontendAttributesToOperation(
   op->setAttr(kFrontendAttributesAttr, updated_attributes);
 }
 
-void AddShapeAttributeToOperation(mlir::OpBuilder builder, mlir::Operation* op,
-                                  std::optional<xla::OpSharding> sharding) {
-  if (sharding) {
-    op->setAttr(kShardingAttr, builder.getStringAttr(
-                                   HloSharding::FromProto(*sharding)->ToString(
-                                       /*include_metadata=*/true)));
-  }
+Status AddShardingAttributeToOperation(
+    mlir::OpBuilder builder, mlir::Operation* op,
+    std::optional<xla::OpSharding> sharding) {
+  if (!sharding) return OkStatus();
+  auto shardingAttr = ConvertSharding(*sharding, &builder);
+  if (!shardingAttr)
+    return absl::InvalidArgumentError("Failed to convert sharding");
+  op->setAttr(kShardingAttr, shardingAttr);
+  return OkStatus();
 }
 
 // Adds sharding and frontend_attributes to op.
-void AddAttributesToOperation(mlir::OpBuilder builder, mlir::Operation* op,
-                              std::optional<xla::OpSharding> sharding,
-                              mlir::DictionaryAttr& frontend_attributes) {
-  AddShapeAttributeToOperation(builder, op, sharding);
+Status AddAttributesToOperation(mlir::OpBuilder builder, mlir::Operation* op,
+                                std::optional<xla::OpSharding> sharding,
+                                mlir::DictionaryAttr& frontend_attributes) {
   AddFrontendAttributesToOperation(op, frontend_attributes);
+  return AddShardingAttributeToOperation(builder, op, sharding);
 }
 
 static std::string GetMlirOpName(HloOpcode opcode) {
@@ -147,8 +149,8 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
     return InvalidArgument("unsupported type: %s", llvm_ir::DumpToString(ty));
   }
 
-  AddAttributesToOperation(builder_, val.getDefiningOp(), sharding(),
-                           frontend_attributes_);
+  TF_RETURN_IF_ERROR(AddAttributesToOperation(
+      builder_, val.getDefiningOp(), sharding(), frontend_attributes_));
   int64_t handle = reinterpret_cast<int64_t>(val.getAsOpaquePointer());
   handle_to_shape_[handle] = std::move(shape);
   return XlaOp(handle, this);
@@ -315,7 +317,8 @@ StatusOr<XlaOp> MlirHloBuilder::ReduceInternal(
   if (op.getNumResults() == 1) return MakeXlaOp(op.getResult(0));
   // Add frontend attributes to the ReduceOp as no MakeXlaOp is called.
   // TODO(hinsu): Avoid this duplicated call for ops returning multiple results.
-  AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_);
+  TF_RETURN_IF_ERROR(
+      AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_));
   auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
   return MakeXlaOp(tuple);
 }
@@ -411,7 +414,8 @@ StatusOr<XlaOp> MlirHloBuilder::SortInternal(const Shape& shape,
     // Add frontend attributes to the SortOp as no MakeXlaOp is called.
     // TODO(hinsu): Avoid this duplicated call for ops returning multiple
     // results.
-    AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_);
+    TF_RETURN_IF_ERROR(AddAttributesToOperation(builder_, op, sharding(),
+                                                frontend_attributes_));
     auto tuple = builder_.create<mlir::mhlo::TupleOp>(loc_, op.getResults());
     return MakeXlaOp(tuple);
   }
@@ -445,7 +449,8 @@ StatusOr<XlaOp> MlirHloBuilder::WhileInternal(const Shape& shape,
     // Add frontend attributes to the WhileOp as no MakeXlaOp is called.
     // TODO(hinsu): Avoid this duplicated call for ops returning multiple
     // results.
-    AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_);
+    TF_RETURN_IF_ERROR(AddAttributesToOperation(builder_, op, sharding(),
+                                                frontend_attributes_));
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
     llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
     auto result = HloFunctionImporter::CreateTupleValue(
@@ -565,7 +570,8 @@ StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
     // called.
     // TODO(hinsu): Avoid this duplicated call for ops returning multiple
     // results.
-    AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_);
+    TF_RETURN_IF_ERROR(AddAttributesToOperation(builder_, op, sharding(),
+                                                frontend_attributes_));
     llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
     llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
     auto result = HloFunctionImporter::CreateTupleValue(
@@ -707,7 +713,8 @@ StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
 
   // Add frontend attributes to the InfeedOp as no MakeXlaOp is called.
   // TODO(hinsu): Avoid this duplicated call for ops returning multiple results.
-  AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_);
+  TF_RETURN_IF_ERROR(
+      AddAttributesToOperation(builder_, op, sharding(), frontend_attributes_));
   llvm::SmallVector<mlir::Value> flattened_results = op->getResults();
   llvm::MutableArrayRef<mlir::Value> flattened_results_ref(flattened_results);
   auto result = HloFunctionImporter::CreateTupleValue(

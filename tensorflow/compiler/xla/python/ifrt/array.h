@@ -74,6 +74,12 @@ class Array : public llvm::RTTIExtends<Array, Value> {
   // counterpart of `Client::AssembleArrayFromSingleDeviceArrays()`.
   virtual StatusOr<std::vector<tsl::RCReference<Array>>>
   DisassembleIntoSingleDeviceArrays(ArrayCopySemantics semantics) = 0;
+  // Returns a shard of an Array which is fully replicated. This is an
+  // optimization so that instead of disassembling into all the shards when
+  // the Array is fully replicated, we can just get 1 shard out and create an
+  // Array from it.
+  virtual StatusOr<tsl::RCReference<Array>> FullyReplicatedShard(
+      ArrayCopySemantics semantics);
 
   // Fetches the array to host and stores it as unreplicated, unsharded data.
   //

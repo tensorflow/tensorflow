@@ -184,9 +184,11 @@ class Pooling3DOp : public UnaryOp<T> {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> padding, out;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     TensorShape out_shape;
     OP_REQUIRES_OK(context, ShapeFromFormatWithStatus(
@@ -362,9 +364,11 @@ class MaxPooling3dGradOp : public OpKernel {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> out, padding;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     const int64_t depth = GetTensorDim(tensor_in, data_format_, 'C');
     const int64_t in_batch = GetTensorDim(tensor_in, data_format_, 'N');
@@ -546,9 +550,11 @@ class AvgPooling3dGradOp : public OpKernel {
                                    GetTensorDim(stride_, data_format_, '1'),
                                    GetTensorDim(stride_, data_format_, '0')}};
     std::array<int64_t, 3> padding, out;
+    std::array<int64_t, 3> dilations{1, 1, 1};
 
-    OP_REQUIRES_OK(context, Get3dOutputSize(input_size, window, stride,
-                                            padding_, &out, &padding));
+    OP_REQUIRES_OK(context,
+                   Get3dOutputSizeV2(input_size, window, dilations, stride,
+                                     padding_, &out, &padding));
 
     LaunchAvgPooling3dGradOp<Device, T>::launch(
         context, output_shape, out_backprop, window, stride, out, padding,

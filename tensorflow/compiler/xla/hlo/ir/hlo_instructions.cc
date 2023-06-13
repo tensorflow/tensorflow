@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <deque>
 #include <functional>
+#include <iterator>
+#include <list>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -628,6 +630,41 @@ bool HloChannelInstruction::IdenticalSlowPath(
   }
   const auto& casted_other = static_cast<const HloChannelInstruction&>(other);
   return channel_id() == casted_other.channel_id();
+}
+
+HloTopKInstruction::HloTopKInstruction(const Shape& shape,
+                                       HloInstruction* input, int64_t k,
+                                       HloComputation* compare)
+    : HloInstruction(HloOpcode::kTopK, shape), k_(k) {
+  AppendOperand(input);
+  AppendComputation(compare);
+}
+
+HloInstructionProto HloTopKInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_k(k_);
+  return proto;
+}
+
+void HloTopKInstruction::PrintExtraAttributesImpl(
+    AttributePrinter& printer, const HloPrintOptions& options) const {
+  printer.Next([this](Printer* printer) { AppendCat(printer, "k=", k_); });
+}
+
+std::unique_ptr<HloInstruction> HloTopKInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  return std::make_unique<HloTopKInstruction>(shape, new_operands[0], k(),
+                                              to_apply());
+}
+
+bool HloTopKInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    absl::FunctionRef<bool(const HloComputation*, const HloComputation*)>
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloTopKInstruction&>(other);
+  return k() == casted_other.k() &&
+         eq_computations(to_apply(), casted_other.to_apply());
 }
 
 HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,

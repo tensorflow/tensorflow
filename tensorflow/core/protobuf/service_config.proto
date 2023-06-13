@@ -7,7 +7,7 @@ import "tensorflow/core/protobuf/data_service.proto";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Configuration for a tf.data service DispatchServer.
-// Next id: 11
+// Next id: 12
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
   // dispatcher may bind to any available port.
@@ -35,8 +35,15 @@ message DispatcherConfig {
   // How long a job needs to be unused before it becomes a candidate for garbage
   // collection. A value of -1 indicates that jobs should never be garbage
   // collected. A value of 0 indicates that the decision should be left up to
-  // the runtime.
+  // the runtime. Note: This does not apply to dynamic sharding unless users
+  // explicitly opt-in by enabling `gc_dynamic_sharding_jobs` below.
   int64 job_gc_timeout_ms = 6;
+  // Whether dynamically sharded jobs should be eligible for garbage collection.
+  // These jobs are not garbage collected by default, since if a job is garbage
+  // collected and then re-created, it will revisit all data from the start. If
+  // revisiting data is acceptible and you want automatic reclamation of
+  // iterator memory, set `gc_dynamic_sharding_jobs` to `true`.
+  bool gc_dynamic_sharding_jobs = 11;
   // How long to wait before garbage-collecting a client that hasn't
   // heartbeated to the dispatcher. A value of 0 indicates that the timeout
   // should be left to the runtime.

@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/fake_session.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "llvm/Support/CommandLine.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"

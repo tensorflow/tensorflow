@@ -168,6 +168,7 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_reduce_scatter_creator_test",
     srcs = ["gpu_reduce_scatter_creator_test.cc"],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -191,8 +192,8 @@ xla_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_codegen_test",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_module_config",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test_main",
     ],
@@ -267,6 +268,7 @@ xla_cc_test(
     srcs = [
         "reduction_degenerate_dim_remover_test.cc",
     ],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -315,6 +317,7 @@ xla_cc_test(
     srcs = [
         "tree_reduction_rewriter_test.cc",
     ],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -393,6 +396,7 @@ xla_cc_test(
     srcs = [
         "reduction_dimension_grouper_test.cc",
     ],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -803,6 +807,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/stream_executor:dnn",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_impl",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
+        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/compiler/xla/tools:hlo_module_loader",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:platform_port",
@@ -820,6 +825,7 @@ xla_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     default_tags = tf_cuda_tests_tags() + [
         "no_pip",

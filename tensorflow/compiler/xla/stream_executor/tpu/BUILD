@@ -264,7 +264,10 @@ cc_library(
     name = "tpu_library_init_fns",
     hdrs = ["tpu_library_init_fns.inc"],
     visibility = ["//visibility:public"],
-    deps = [":tpu_executor_init_fns"],
+    deps = [
+        ":tpu_executor_init_fns",
+        ":tpu_ops_c_api_hdrs",
+    ],
 )
 
 cc_library(

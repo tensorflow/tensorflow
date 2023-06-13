@@ -18,6 +18,8 @@ limitations under the License.
 // sizes of operands with equal shapes.
 
 #include <memory>
+#include <tuple>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMapInfo.h"

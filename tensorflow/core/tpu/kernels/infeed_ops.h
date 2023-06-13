@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_INFEED_OPS_H_
 
+#include <memory>
+#include <vector>
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"

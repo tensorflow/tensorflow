@@ -49,6 +49,10 @@ enum class PlatformKind {
   kSize,
 };
 
+// An enum to represent different levels of stream priorities.
+// This is to avoid platform-specific representations in abstractions.
+enum class StreamPriority { Default = 0, Lowest, Highest };
+
 // Returns true if kind represents a valid platform capable of enqueuing items
 // on a stream, but not necessarily on an accelerator device.
 // Returns false for kMock and any invalid PlatformKind values.
@@ -61,6 +65,9 @@ bool PlatformIsRunnableOnDevice(PlatformKind kind);
 
 // Returns a printable description of a PlatformKind.
 std::string PlatformKindString(PlatformKind kind);
+
+// Returns a printable description of StreamPriority.
+std::string StreamPriorityToString(StreamPriority priority);
 
 // Returns the PlatformKind corresponding to the input string; returns kInvalid
 // in the case of no match.

@@ -490,6 +490,15 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   for (int64_t i = 0; i < target_shape.rank(); ++i) {
     target_dims_stack[i] = target_shape.dimensions(target_shape.rank() - 1 - i);
   }
+  bool inplace_add_sharding_dim = false;
+  auto append_sharding_dim = [&](int64_t size) {
+    if (inplace_add_sharding_dim) {
+      target_tile_assignment_dimensions.back() *= size;
+    } else {
+      target_tile_assignment_dimensions.push_back(size);
+    }
+    inplace_add_sharding_dim = false;
+  };
   while (!source_dims_stack.empty() || !target_dims_stack.empty()) {
     if (target_dims_stack.empty()) {
       if (Product(sharding_tile_dims_stack) != 1) {
@@ -510,15 +519,26 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     target_dims_stack.pop_back();
     if (s_partitions * Product(sharding_tile_dims_stack) == 1) {
       // No more partitions left.
-      target_tile_assignment_dimensions.push_back(1);
+      append_sharding_dim(1);
+      continue;
+    }
+    if (s_partitions > 1 && s_size % s_partitions == 0 &&
+        t_size % s_partitions == 0) {
+      // If s_partitions evenly divides both s_size and t_size, we can add this
+      // sharding dim and work on shard sized shapes in the next iteration.
+      source_dims_stack.push_back(s_size / s_partitions);
+      target_dims_stack.push_back(t_size / s_partitions);
+      sharding_tile_dims_stack.push_back(1);
+      append_sharding_dim(s_partitions);
+      inplace_add_sharding_dim = true;
       continue;
     }
     if (s_size == t_size) {
       // Same dimension.
-      target_tile_assignment_dimensions.push_back(s_partitions);
+      append_sharding_dim(s_partitions);
     } else if (t_size == 1) {
       // Trivial dimension added.
-      target_tile_assignment_dimensions.push_back(1);
+      append_sharding_dim(1);
       source_dims_stack.push_back(s_size);
       sharding_tile_dims_stack.push_back(s_partitions);
     } else if (s_size == 1) {
@@ -533,12 +553,12 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
         return std::nullopt;
       }
       if (t_size % s_partitions == 0) {
-        target_tile_assignment_dimensions.push_back(s_partitions);
+        append_sharding_dim(s_partitions);
         // We have part of the s_size unprocessed, so put it back to stack.
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(1);
       } else if (s_partitions % t_size == 0) {
-        target_tile_assignment_dimensions.push_back(t_size);
+        append_sharding_dim(t_size);
         // We have part of the s_size unprocessed, so put it back to stack.
         source_dims_stack.push_back(s_size / t_size);
         sharding_tile_dims_stack.push_back(s_partitions / t_size);
@@ -595,6 +615,68 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
   new_tile_assignment.Reshape(target_tile_assignment_dimensions);
   return HloSharding::Subgroup(new_tile_assignment, subgroup_types,
                                sharding.metadata());
+}
+
+HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
+                                            const Shape& target_shape,
+                                            const HloSharding& sharding) {
+  HloSharding result = HloSharding::Replicate();
+  if (sharding.IsTileMaximal() || sharding.IsManual()) {
+    return sharding;
+  }
+  if (sharding.IsManualSubgroup()) {
+    auto group =
+        GroupShardingOnDims(sharding, {sharding.SubgroupManualDim()}, true);
+    HloSharding inner_reshaped = PropagateShardingThroughReshape(
+        source_shape, target_shape, group.sharding);
+    group.sharding = std::move(inner_reshaped);
+    group.data_rank = target_shape.rank();
+    group.group_dims[0] += target_shape.rank() - source_shape.rank();
+    return UngroupSharding(group);
+  }
+  // Find intervals of consecutive dimensions that could use ReshapeSharding().
+  // then merge the results. We start with the longest interval (whole shape),
+  // and if it fails, we find a sub-interval of it or a disjoint interval.
+  int64_t start_dim = 0;
+  while (start_dim < source_shape.rank()) {
+    int64_t found_compatible = false;
+    // For each start_dim, try to use all dims after it. If that fails, reduce
+    // the range.
+    for (int64_t end_dim = source_shape.rank(); end_dim > start_dim;
+         --end_dim) {
+      std::vector<int64_t> preserved_dims(end_dim - start_dim);
+      absl::c_iota(preserved_dims, start_dim);
+      auto group = GroupShardingOnAllDimsExcept(sharding, preserved_dims);
+      if (auto reshaped =
+              ReshapeSharding(source_shape, target_shape, group.sharding)) {
+        group.sharding = std::move(*reshaped);
+        group.group_dims.clear();
+        // Replication dim.
+        group.group_dims.push_back(target_shape.rank());
+        group.data_rank = target_shape.rank();
+        int64_t group_size = Product(group.group_dim_sizes);
+        group.group_dim_sizes.clear();
+        group.group_dim_sizes.push_back(group_size);
+        if (MergeShardingIfCompatible(UngroupSharding(group),
+                                      result.NumTiles() + 1, &result)) {
+          // If the current interval works, we can skip all dimensions within
+          // or before it in future intervals, since they have been considered
+          // already. Set start_dim to end_dim to start with the next disjoint
+          // interval.
+          result.metadata() = sharding.metadata();
+          start_dim = end_dim;
+          found_compatible = true;
+          break;
+        }
+      }
+    }
+    if (!found_compatible) {
+      // All sub-intervals with the current start_dim failed. Try the next
+      // start_dim.
+      start_dim += 1;
+    }
+  }
+  return result;
 }
 
 HloSharding ReverseSharding(const HloSharding& sharding,

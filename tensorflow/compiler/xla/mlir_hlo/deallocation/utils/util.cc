@@ -105,6 +105,11 @@ RegionBranchOpInterface moveRegionsToNewOpButKeepOldOp(
         op.getLoc(),
         TypeRange{op->getRegion(0).front().getTerminator()->getOperands()},
         op->getOperands()[0], op->getNumRegions() > 1);
+  } else if (llvm::isa<scf::ParallelOp>(op)) {
+    auto parallel = llvm::cast<scf::ParallelOp>(op);
+    newOp = b.create<scf::ParallelOp>(
+        op.getLoc(), parallel.getLowerBound(), parallel.getUpperBound(),
+        parallel.getStep(), parallel.getInitVals());
   } else {
     llvm_unreachable("unsupported");
   }

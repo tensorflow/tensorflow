@@ -145,14 +145,6 @@ StatusOr<LocalDeviceState*> PjRtStreamExecutorDevice::GetLocalDeviceState()
   return InvalidArgument("Device %s is not a local device.", DebugString());
 }
 
-absl::string_view PjRtStreamExecutorDevice::DebugString() const {
-  return debug_string_;
-}
-
-absl::string_view PjRtStreamExecutorDevice::ToString() const {
-  return to_string_;
-}
-
 StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
     absl::Span<const std::vector<PjRtDevice*>> devices) {
   if (devices.empty()) {
@@ -1978,8 +1970,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     tsl::thread::ThreadPool* thread_pool) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                            const se::DeviceMemoryBase&) {
+    return [device_ordinal](
+               int64_t channel_id, se::Stream*, const Shape&,
+               const se::DeviceMemoryBase&,
+               const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to send a buffer to the channel_id=%d, there was no send "
           "callbacks registered for the device_ordinal=%d",
@@ -1991,9 +1985,10 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
   absl::Span<const SendCallback> callbacks =
       options.send_callbacks[device_ordinal];
 
-  return [callbacks, thread_pool](int64_t channel_id, se::Stream* stream,
-                                  const Shape& shape,
-                                  const se::DeviceMemoryBase& src)
+  return [callbacks, thread_pool](
+             int64_t channel_id, se::Stream* stream, const Shape& shape,
+             const se::DeviceMemoryBase& src,
+             const absl::flat_hash_map<std::string, std::string>&)
              -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Send " << src.size() << " bytes to channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
@@ -2039,7 +2034,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
                                  /*done=*/true);
 
       if (!sent.ok()) {
-        done_event.SetError(ToAbslStatus(sent));
+        done_event.SetError(sent);
       } else {
         done_event.SetStateConcrete();
       }
@@ -2079,7 +2074,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
       done_.SetError(absl::InvalidArgumentError(absl::StrFormat(
           "Chunk size (%d) was not a multiple of the granule size (%d)",
           chunk.size(), granule_size_in_bytes())));
-      return PjRtFuture<Status>(FromAbslStatus(done_.GetError()));
+      return PjRtFuture<Status>(done_.GetError());
     }
 
     if (current_bytes_ + chunk.size() > total_bytes_) {
@@ -2087,7 +2082,7 @@ class StreamExecutorCopyToDeviceStream : public CopyToDeviceStream {
           absl::StrFormat("Adding chunk of size %d would overflow buffer of "
                           "size %d (%d already transferred)",
                           chunk.size(), total_bytes_, current_bytes_)));
-      return PjRtFuture<Status>(FromAbslStatus(done_.GetError()));
+      return PjRtFuture<Status>(done_.GetError());
     }
 
     se::DeviceMemoryBase dst(
@@ -2130,8 +2125,10 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
     int device_ordinal, const ExecuteOptions& options) {
   // Check if we have callbacks registered for the given device ordinal.
   if (device_ordinal >= options.send_callbacks.size()) {
-    return [device_ordinal](int64_t channel_id, se::Stream*, const Shape&,
-                            se::DeviceMemoryBase*) {
+    return [device_ordinal](
+               int64_t channel_id, se::Stream*, const Shape&,
+               se::DeviceMemoryBase*,
+               const absl::flat_hash_map<std::string, std::string>&) {
       return InvalidArgument(
           "Failed to receive a buffer from the channel_id=%d, there was no "
           "recv callbacks registered for the device_ordinal=%d",
@@ -2143,9 +2140,10 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
   absl::Span<const RecvCallback> callbacks =
       options.recv_callbacks[device_ordinal];
 
-  return [callbacks](
-             int64_t channel_id, se::Stream* stream, const Shape& shape,
-             se::DeviceMemoryBase* dst) -> StatusOr<AsyncValueRef<se::Event>> {
+  return [callbacks](int64_t channel_id, se::Stream* stream, const Shape& shape,
+                     se::DeviceMemoryBase* dst,
+                     const absl::flat_hash_map<std::string, std::string>&)
+             -> StatusOr<AsyncValueRef<se::Event>> {
     VLOG(3) << "Recv from channel #" << channel_id
             << " (shape=" << shape.ToString() << ")";
 
@@ -2179,6 +2177,8 @@ static RecvDeviceMemoryFunction ConvertRecvCallbacksToRecvFunction(
 // Enqueues a computation onto the compute stream. Each buffer returned in
 // device_buffers has a usage hold added that must be dropped on error or
 // converted on success.
+// When `options` has non-zero `launch_id`, use `launch_id` instead of `run_id`
+// to initialize `run_options`.
 StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     absl::Span<PjRtBuffer* const> argument_handles, int replica, int partition,
     int executable_idx, const RunId& run_id, const ExecuteOptions& options,
@@ -2255,6 +2255,12 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
     // before the buffer is mutated. Usage holds are excluded during a donation
     // hold so we know that the set of usage events won't be modified while we
     // are enqueueing.
+    if (device_state->allocation_model() ==
+        LocalDeviceState::kComputeSynchronized) {
+      GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/false,
+                            &events);
+    }
+
     GetDeviceBufferEvents(*device_buffer, /*get_usage_events=*/must_donate,
                           &events);
   }
@@ -2298,7 +2304,11 @@ StatusOr<ScopedShapedBuffer> PjRtStreamExecutorExecutable::EnqueueExecution(
   run_options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
   run_options.set_device_assignment(device_assignment.get());
-  run_options.set_run_id(run_id);
+  if (options.launch_id != 0) {
+    run_options.set_run_id(RunId(options.launch_id));
+  } else {
+    run_options.set_run_id(run_id);
+  }
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
   run_options.set_launch_id(options.launch_id);
@@ -2925,6 +2935,13 @@ PjRtStreamExecutorClient::DeserializeExecutable(
   TF_RETURN_IF_ERROR(
       executable->SetUpDonation(compile_options.parameter_is_tupled_arguments));
   return std::unique_ptr<PjRtLoadedExecutable>(std::move(executable));
+}
+
+StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
+PjRtStreamExecutorClient::LoadSerializedExecutable(
+    absl::string_view serialized, std::optional<CompileOptions> options,
+    const LoadOptions& load_options) {
+  return DeserializeExecutable(serialized, options);
 }
 
 }  // namespace xla

@@ -25,11 +25,11 @@ load(
 )
 
 package(
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = ["//tensorflow/compiler/xla:internal"],
     features = [
         "-layering_check",
     ],
-    licenses = ["notice"],
 )
 
 tsl_gpu_library(

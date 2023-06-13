@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/eager/c_api_experimental.h"
 
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/time/time.h"
 #include "tensorflow/c/c_api.h"
@@ -29,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/distributed_runtime/coordination/coordination_service_error_util.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
@@ -618,6 +622,30 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
     return;
   }
   string str = function_def->SerializeAsString();
+  void* data = tensorflow::port::Malloc(str.length());
+  str.copy(static_cast<char*>(data), str.length(), 0);
+  buf->data = data;
+  buf->length = str.length();
+  buf->data_deallocator = [](void* data, size_t length) {
+    tensorflow::port::Free(data);
+  };
+  status->status = ::tensorflow::OkStatus();
+}
+
+void TFE_ContextGetGraphDebugInfo(TFE_Context* ctx, const char* function_name,
+                                  TF_Buffer* buf, TF_Status* status) {
+  auto function_record = tensorflow::unwrap(ctx)->FindRecord(function_name);
+  if (function_record == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find function with name: ", function_name);
+    return;
+  }
+
+  tensorflow::GraphDebugInfo debug_info =
+      tensorflow::StackTracesMapToGraphDebugInfo(
+          function_record->stack_traces());
+
+  string str = debug_info.SerializeAsString();
   void* data = tensorflow::port::Malloc(str.length());
   str.copy(static_cast<char*>(data), str.length(), 0);
   buf->data = data;
