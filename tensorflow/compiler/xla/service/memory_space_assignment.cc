@@ -24,6 +24,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <set>
 #include <string>
 #include <tuple>
@@ -5879,6 +5880,12 @@ std::string MemorySpaceAssignment::SliceProposal::ToString() const {
                       absl::StrAppend(out, param.ToString());
                     }),
       " }, slice_size: ", slice_size, " }");
+}
+
+std::ostream& operator<<(std::ostream& os,
+                         const MemorySpaceAssignment::SliceProposal& proposal) {
+  os << proposal.ToString();
+  return os;
 }
 
 std::tuple<const Shape&, const std::vector<MemorySpaceAssignment::SliceParam>&,

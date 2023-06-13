@@ -4495,6 +4495,7 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        ":hlo_proto_cc",
         ":hlo_value",
         ":memory_space_assignment_proto_cc",
         ":memory_space_assignment_repacking",
@@ -4502,7 +4503,9 @@ cc_library(
         ":memory_space_assignment_utils",
         ":tuple_util",
         "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/tsl/platform:errors",
