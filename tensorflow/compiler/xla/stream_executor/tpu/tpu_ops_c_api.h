@@ -274,8 +274,9 @@ TFTPU_CAPI_EXPORT void TpuExecute_GetTpuEmbeddingMemoryAllocations(
     int device_ordinal, SE_DeviceMemoryBase** addrs, size_t* addrs_count,
     TF_Status* status);
 
-TFTPU_CAPI_EXPORT void TpuExecute_FreeTpuEmbeddingMemoryAllocations(
-    int device_ordinal, SE_DeviceMemoryBase* addrs);
+TFTPU_CAPI_EXPORT void TpuExecute_GetTpuEmbeddingMemoryWordAddresses(
+    int32_t device_ordinal, SE_DeviceMemoryBase** addrs, size_t* addrs_count,
+    TF_Status* status);
 
 typedef struct ConfigureDistributedTpuOp_DoWork_Params {
   int32_t struct_size;
