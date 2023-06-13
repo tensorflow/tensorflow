@@ -2227,8 +2227,11 @@ std::unique_ptr<HloInstruction> HloFusionInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   auto new_fused_computation = GetOrCloneCalledComputations(context);
   CHECK_EQ(new_fused_computation.size(), 1);
-  return std::make_unique<HloFusionInstruction>(
+  auto new_fusion_instruction = std::make_unique<HloFusionInstruction>(
       shape, fusion_kind(), new_operands, new_fused_computation.front());
+  new_fusion_instruction->set_output_to_operand_aliasing(
+      output_to_operand_aliasing());
+  return new_fusion_instruction;
 }
 
 Status HloFusionInstruction::DeduplicateFusionOperands() {
