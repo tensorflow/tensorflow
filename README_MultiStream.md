@@ -15,7 +15,7 @@ In the native TF, one computation stream and multiple copy streams are introduce
 
 3. Resources management among streams
 
-In the design, we make all stream groups reuse the same set of model parameters to avoid taking up too much GPU memory. For other resources, we separate them between stream groups as much as possible to reduce the dependencies and achieve better speedups, e.g.
+In the design, we make all stream groups reuse the same set of model parameters to avoid taking up too much GPU memory, which is achieved by setting `TF_SEGMENT_OWN_CONST=true`. For other resources, we separate them between stream groups as much as possible to reduce the dependencies and achieve better speedups, e.g.
 
 * Per-stream GPU allocator
 * Per-stream host allocator if `TF_PER_STREAM_HOST_ALLOCATOR=true`

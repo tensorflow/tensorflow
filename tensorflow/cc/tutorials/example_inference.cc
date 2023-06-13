@@ -107,7 +107,7 @@ void RandomInitialize(Tensor &t) {
   } else if (t.dtype() == DT_INT32) {
     int *data = t.flat<int>().data();
     for (int i = 0; i < num_elements; i++) {
-      int value = static_cast<int>(rand() % 10);
+      int value = static_cast<int>(rand() % 10000);
       data[i] = value;
     }
   } else if (t.dtype() == DT_BOOL) {
@@ -119,7 +119,7 @@ void RandomInitialize(Tensor &t) {
   } else if (t.dtype() == DT_INT64) {
     int64 *data = t.flat<int64>().data();
     for (int i = 0; i < num_elements; i++) {
-      int64 value = static_cast<int64>(rand() % 10);
+      int64 value = static_cast<int64>(rand() % 10000);
       data[i] = value;
     }
   } else {
@@ -138,6 +138,8 @@ void PrintTensorData(Tensor &t) {
     data = static_cast<void *>(t.flat<bool>().data());
   } else if (t.dtype() == DT_INT32) {
     data = static_cast<void *>(t.flat<int>().data());
+  } else if (t.dtype() == DT_INT64) {
+    data = static_cast<void *>(t.flat<int64>().data());
   } else {
     LOG(WARNING) << "Print Tensor: Unsupported data type!";
     return;
@@ -160,6 +162,8 @@ void PrintTensorData(Tensor &t) {
       value = static_cast<float>(static_cast<Eigen::half *>(data)[i]);
     } else if (t.dtype() == DT_INT32) {
       value = static_cast<int *>(data)[i];
+    } else if (t.dtype() == DT_INT64) {
+      value = static_cast<int64 *>(data)[i];
     } else if (t.dtype() == DT_BOOL) {
       value = static_cast<bool *>(data)[i];
     } else {
@@ -291,7 +295,7 @@ Status Test(GraphDef &graph_def, std::vector<std::string> &input_names,
         &output_tensors_tf[0]);
   sleep(1);
 
-  // The seconed session run can be used to compare single thread performance.
+  // The second session run can be used to compare single thread performance.
   auto start = system_clock::now();
   TFRun(session.get(), num_infers_per_thread, &inputs_tf, &output_names,
         &output_tensors_tf[0]);

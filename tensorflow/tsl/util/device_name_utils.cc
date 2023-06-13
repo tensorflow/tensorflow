@@ -621,12 +621,12 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
 
 /*static*/ bool DeviceNameUtils::IsStreamDeviceName(
     const std::string& device_name) {
-  size_t pos = device_name.rfind("STREAM_CPU_");
+  size_t pos = device_name.rfind("STREAM_GPU_");
   if (pos == string::npos) {
-    pos = device_name.rfind("STREAM_GPU_");
-  }
-  if (pos == string::npos) {
-    return false;
+    pos = device_name.rfind("STREAM_CPU_");
+    if (pos == string::npos) {
+      return false;
+    }
   }
   size_t pos_colon = device_name.find_last_of(":");
   if (pos_colon == string::npos || pos > pos_colon) {
@@ -649,13 +649,13 @@ DeviceNameUtils::GetDeviceNameFromStreamDeviceName(const string& device_name) {
         absl::StrCat("Invalid stream device name: ", device_name));
   }
   string output = device_name;
-  size_t pos = output.rfind("STREAM_CPU_");
+  size_t pos = output.rfind("STREAM_GPU_");
   if (pos != string::npos) {
-    output.replace(pos, 11, "CPU:");
+    output.replace(pos, 11, "GPU:");
     output.erase(output.find_last_of(":"));
   } else {
-    pos = output.rfind("STREAM_GPU_");
-    output.replace(pos, 11, "GPU:");
+    pos = output.rfind("STREAM_CPU_");
+    output.replace(pos, 11, "CPU:");
     output.erase(output.find_last_of(":"));
   }
   return output;
@@ -668,9 +668,9 @@ DeviceNameUtils::GetDeviceNameFromStreamDeviceName(const string& device_name) {
         absl::StatusCode::kInvalidArgument,
         absl::StrCat("Invalid stream device name: ", device_name));
   }
-  size_t pos = device_name.rfind("STREAM_CPU_");
+  size_t pos = device_name.rfind("STREAM_GPU_");
   if (pos == string::npos) {
-    pos = device_name.rfind("STREAM_GPU_");
+    pos = device_name.rfind("STREAM_CPU_");
   }
   size_t pos_colon = device_name.find_last_of(":");
   return std::stoi(device_name.substr(pos + 11, pos_colon - pos - 11));

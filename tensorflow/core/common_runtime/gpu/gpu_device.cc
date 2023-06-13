@@ -1098,8 +1098,8 @@ int64_t ContextMinSystemMemory(int64_t available_memory, int cc_major,
                                tsl::PlatformDeviceId platform_device_id) {
   int64_t gpu_context_count;
   TF_CHECK_OK(tensorflow::ReadInt64FromEnvVar("TF_GPU_CONTEXT_COUNT",
-                                               /*default_val=*/1,
-                                               &gpu_context_count));
+                                              /*default_val=*/1,
+                                              &gpu_context_count));
   return gpu_context_count * MinSystemMemory(available_memory, cc_major);
 }
 

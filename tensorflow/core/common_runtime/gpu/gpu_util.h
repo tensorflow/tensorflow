@@ -89,7 +89,7 @@ class GPUUtil {
                                  const DeviceContext* device_context,
                                  Device* gpu_device, Tensor* gpu_tensor,
                                  StatusCallback done, bool sync_dst_compute,
-                                 bool sync_dst_recv);
+                                 bool sync_dst_recv = true);
 
   static void DeviceToDeviceCopy(
       DeviceContext* send_dev_context, DeviceContext* recv_dev_context,
