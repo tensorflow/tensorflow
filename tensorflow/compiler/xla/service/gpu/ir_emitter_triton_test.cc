@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "llvm/IR/LLVMContext.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -30,11 +31,55 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
 #include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+class TritonGemmNoTF32Test : public GpuCodegenTest {
+ public:
+  void SetUp() override {
+    tf32_state_ = tsl::tensor_float_32_execution_enabled();
+    tsl::enable_tensor_float_32_execution(false);
+  }
+  void TearDown() override {
+    tsl::enable_tensor_float_32_execution(tf32_state_);
+  }
+
+ private:
+  bool tf32_state_;
+};
+
+TEST_F(TritonGemmNoTF32Test, DoNotUseTensorCoresForF32) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm_r {
+  parameter_0 = s8[80,15]{1,0} parameter(0)
+  convert.3 = f32[80,15]{1,0} convert(parameter_0)
+  parameter_1 = f32[16,15]{1,0} parameter(1)
+  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p1 = f32[16,15]{1,0} parameter(1)
+  p0 = s8[80,15]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+})";
+  CHECK(!tsl::tensor_float_32_execution_enabled());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                R"(
+CHECK-NOT: mma
+)");
+}
 
 class TritonGemmTest : public GpuCodegenTest {
  public:
@@ -45,6 +90,42 @@ class TritonGemmTest : public GpuCodegenTest {
         .cuda_compute_capability();
   }
 };
+
+TEST_F(TritonGemmTest, UseTensorCoresForF32OnAmpere) {
+  const std::string kHloText = R"(
+HloModule t, is_scheduled=true
+
+triton_gemm_r {
+  parameter_0 = s8[80,15]{1,0} parameter(0)
+  convert.3 = f32[80,15]{1,0} convert(parameter_0)
+  parameter_1 = f32[16,15]{1,0} parameter(1)
+  ROOT r.1 = f32[80,16]{1,0} dot(convert.3, parameter_1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+
+ENTRY e {
+  p1 = f32[16,15]{1,0} parameter(1)
+  p0 = s8[80,15]{1,0} parameter(0)
+  ROOT triton_gemm_r = f32[80,16]{1,0} fusion(p0, p1), kind=kCustom,
+    calls=triton_gemm_r,
+    backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":32,"block_n":32,"block_k":32,"split_k":1,"num_stages":1,"num_warps":2}}
+})";
+  CHECK(tsl::tensor_float_32_execution_enabled());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+
+  if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::AMPERE)) {
+    CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                  R"(
+CHECK: mma
+)");
+  } else {
+    CompileAndOptionallyVerifyPtx(std::move(verified_module),
+                                  R"(
+CHECK: fma
+)");
+  }
+}
 
 TEST_F(TritonGemmTest, FailIfTooMuchShmem) {
   const std::string kHloText = R"(

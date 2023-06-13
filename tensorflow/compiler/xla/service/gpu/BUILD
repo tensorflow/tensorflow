@@ -425,6 +425,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@llvm-project//llvm:Linker",
@@ -477,6 +478,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
+        "//tensorflow/tsl/platform:tensor_float_32_hdr_lib",
         "//tensorflow/tsl/protobuf:autotuning_proto_cc",
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
