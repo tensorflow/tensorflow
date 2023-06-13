@@ -531,7 +531,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // add(bitcast(gemm(a, b)), broadcast(bias)) ->
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
-    //
     if (Match(
             instr,
             m::AddAnyOrder(
@@ -787,16 +786,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // a matrix bias is only supported with CUDA 12 and above.
     HloInstruction *c = nullptr, *add = nullptr;
 
-    if (instr->user_count() == 1 &&
-        instr->users()[0]->opcode() == HloOpcode::kAdd) {
-      HloInstruction *bias = instr->users()[0]->mutable_operand(
-          !instr->users()[0]->operand_index(instr));
-      if (bias->opcode() != HloOpcode::kBroadcast) {
-        c = bias;
-        gemm_backend_config.set_beta(1.0);
-        add = instr->users()[0];
-      }
-    }
+    // if (instr->user_count() == 1 &&
+    //     instr->users()[0]->opcode() == HloOpcode::kAdd) {
+    //   HloInstruction *bias = instr->users()[0]->mutable_operand(
+    //       !instr->users()[0]->operand_index(instr));
+    //   if (bias->opcode() != HloOpcode::kBroadcast) {
+    //     c = bias;
+    //     gemm_backend_config.set_beta(1.0);
+    //     add = instr->users()[0];
+    //   }
+    // }
 
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
@@ -925,6 +924,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           instr->shape(), new_custom_call, start_indices,
           instr->shape().dimensions(), strides));
     }
+
     TF_RETURN_IF_ERROR(
         ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
     return true;
@@ -1074,7 +1074,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                            const HloInstruction *gemm,
                            HloInstruction *bitcast = nullptr,
                            HloInstruction *slice = nullptr) {
-    TF_RET_CHECK(bias->shape() == (bitcast ? bitcast->shape() : gemm->shape()));
+    TF_RET_CHECK(
+        (bias->shape() == (bitcast ? bitcast->shape() : gemm->shape())) ||
+        (bias->shape() == (slice ? slice->shape() : gemm->shape())));
+
     // Do not fuse bias into S32 GEMM, as for this datatype cuBLAS only
     // supports fixed values for alpha/beta.
     if (gemm->shape().element_type() == S32) {
@@ -1122,13 +1125,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         (gemm->user_count() != 1) || !supported_epilogue) {
       return OkStatus();
     }
-
     config.set_beta(1.0);
 
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
     HloInstruction *broadcast_bias = MaybeConstantFoldBias(bias);
-    if (slice) {
+    if (slice && bitcast) {
       broadcast_bias = instr->AddInstruction(
           HloInstruction::CreateBitcast(slice->shape(), broadcast_bias));
     }
@@ -1177,7 +1179,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           bitcast->shape(),
           {bitcast->parent()->AddInstruction(std::move(fused_op))});
     }
-
     return ReplaceWithNewInstruction(instr, std::move(fused_op));
   }
 
