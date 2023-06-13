@@ -135,7 +135,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadStreamName(self, bad_stream_dir_name):
     cluster, _ = self.setup(num_workers=0)
     self._make_stream_dir(bad_stream_dir_name)
-    with self.assertRaisesRegex(ValueError, "can't parse"):
+    with self.assertRaisesRegex(ValueError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -149,14 +149,14 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadSourceName(self, bad_source_dir_name):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), bad_source_dir_name))
-    with self.assertRaisesRegex(ValueError, "can't parse"):
+    with self.assertRaisesRegex(ValueError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithOutOfBoundsSourceName(self):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), "source_1"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
+    with self.assertRaisesRegex(ValueError, "Found conflict"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -192,7 +192,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_0_1"))
-    with self.assertRaisesRegex(ValueError, "found missing global"):
+    with self.assertRaisesRegex(ValueError, "Found missing global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -202,7 +202,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     write_file(
         os.path.join(self.source_dir(stream_idx=1, worker=1), "split_0_1")
     )
-    with self.assertRaisesRegex(ValueError, "found duplicate global"):
+    with self.assertRaisesRegex(ValueError, "Found duplicate global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
