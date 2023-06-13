@@ -269,6 +269,8 @@ cc_library(
         "//tensorflow/core/tpu/kernels:tpu_execute_op_options",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
