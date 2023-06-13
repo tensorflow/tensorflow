@@ -28,16 +28,16 @@ namespace tensorflow {
 
 template <class T, class U>
 __device__ void apply_dropout(T& out, half2 rng, half2 rate, half2 scale, uint8* pmask) {
-  pmask[0] = (__low2half(rng) > __low2half(rate)) ? 1 : 0;
-  pmask[1] = (__high2half(rng) > __high2half(rate)) ? 1 : 0;
+  pmask[0] = (__low2half(rng) >= __low2half(rate)) ? 1 : 0;
+  pmask[1] = (__high2half(rng) >= __high2half(rate)) ? 1 : 0;
   half2 mask = make_half2(pmask[0], pmask[1]);
   out = __hmul2(__hmul2(mask, scale), out);
 }
 
 template <class T, class U>
 __device__ void apply_dropout(T& out, half2 rng, half2 rate, float2 scale, uint8* pmask) {
-  pmask[0] = (__low2half(rng) > __low2half(rate)) ? 1 : 0;
-  pmask[1] = (__high2half(rng) > __high2half(rate)) ? 1 : 0;
+  pmask[0] = (__low2half(rng) >= __low2half(rate)) ? 1 : 0;
+  pmask[1] = (__high2half(rng) >= __high2half(rate)) ? 1 : 0;
   out.x *= scale.x;
   out.y *= scale.y;
   out.x = pmask[0] ? U(out.x) : 0.0f;
@@ -47,8 +47,8 @@ __device__ void apply_dropout(T& out, half2 rng, half2 rate, float2 scale, uint8
 template <>
 __device__ void apply_dropout<half2, half>(half2& out, half2 rng, half2 rate,
                                            float2 scale, uint8* pmask) {
-  pmask[0] = (__low2half(rng) > __low2half(rate)) ? 1 : 0;
-  pmask[1] = (__high2half(rng) > __high2half(rate)) ? 1 : 0;
+  pmask[0] = (__low2half(rng) >= __low2half(rate)) ? 1 : 0;
+  pmask[1] = (__high2half(rng) >= __high2half(rate)) ? 1 : 0;
   half2 mask = make_half2(pmask[0], pmask[1]);
   out = __hmul2(__hmul2(mask, __float22half2_rn(scale)), out);
 }
