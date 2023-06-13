@@ -480,6 +480,22 @@ class DTensorDevice {
       const TFE_OpAttrs* attributes, int* num_outputs,
       std::vector<TensorHandlePtr>& outputs, TF_Status* status);
 
+  // Helper that calls `ExecuteSingleDeviceOperation` with the right parameters.
+  void ExecuteEagerOperation(
+      TFE_Context* context, const TFE_OpAttrs* attributes,
+      const TranslatedFunction& function,
+      const std::vector<TensorWithLayoutTf*>& inputs_tf,
+      std::vector<std::unique_ptr<TensorWithLayout>>& output_with_layout,
+      TF_Status* status);
+
+  // Helper that calls `ParallelDevice::Execute` with the right parameters.
+  void ExecuteParallelDeviceOperation(
+      TFE_Context* context, const TFE_OpAttrs* attributes,
+      const ExecutionFunctions* execution_functions,
+      const std::vector<const TranslatedFunction*>& function_list,
+      const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
+      int num_inputs, uint64 step_id, TF_Status* status);
+
   // Wraps a TensorWithLayout into a TFE_TensorHandle.
   TFE_TensorHandle* MakeLayoutTensorHandle(TFE_Context* context,
                                            std::unique_ptr<TensorWithLayout> t,
@@ -1943,6 +1959,96 @@ void DTensorDevice::ExecuteEPUFunctions(
   }
 }
 
+void DTensorDevice::ExecuteParallelDeviceOperation(
+    TFE_Context* context, const TFE_OpAttrs* attributes,
+    const ExecutionFunctions* execution_functions,
+    const std::vector<const TranslatedFunction*>& function_list,
+    const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
+    int num_inputs, uint64 step_id, TF_Status* status) {
+  // Execute all functions in parallel.
+  for (const TranslatedFunction* function : function_list) {
+    const Mesh& mesh = function->function_mesh;
+    const std::string& translated_function_name =
+        function->translated_function_name;
+
+    VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
+
+    ASSIGN_OR_RETURN_C_STATUS(
+        const parallel_device::ParallelDevice* parallel_device,
+        GetParallelDevice(mesh, /*strict=*/false), status);
+
+    // Gather the local inputs for this function.
+    std::vector<std::vector<TFE_TensorHandle*>> parallel_inputs;
+    parallel_inputs.reserve(num_inputs + 1);
+    auto input_mapping = function->input_index_map;
+
+    // We sort here because by this time, the function graph we are executing
+    // is a reduced version of the main function, that includes the
+    // StatefulPartitionedCall that we are executing for this mesh.
+    // Thus, the ordering is the same as the main function ordering, which
+    // is sorted increasingly.
+    std::sort(input_mapping.begin(), input_mapping.end());
+
+    for (const int global_index : input_mapping) {
+      auto input_index = global_index - execution_functions->num_device_ids;
+
+      if (global_index < execution_functions->num_device_ids) {
+        parallel_device::ParallelTensor* device_ids =
+            GetDeviceIDs(context, status, mesh, parallel_device);
+        if (TF_GetCode(status) != TF_OK) return;
+        parallel_inputs.emplace_back(device_ids->tensors());
+      } else {
+        parallel_inputs.emplace_back(global_parallel_inputs[input_index]);
+      }
+    }
+
+    parallel_device->StartExecute(
+        context, parallel_inputs, translated_function_name.c_str(), attributes,
+        /*expected_max_outputs=*/function->local_output_shapes.size(),
+        *cancellation_manager_, /*step_id=*/step_id);
+  }
+}
+
+void DTensorDevice::ExecuteEagerOperation(
+    TFE_Context* context, const TFE_OpAttrs* attributes,
+    const TranslatedFunction& function,
+    const std::vector<TensorWithLayoutTf*>& inputs_tf,
+    std::vector<std::unique_ptr<TensorWithLayout>>& output_with_layout,
+    TF_Status* status) {
+  const Mesh& mesh = function.function_mesh;
+  const std::string device_name = std::string{mesh.single_device()};
+
+  std::vector<TFE_TensorHandle*> single_device_inputs;
+  single_device_inputs.reserve(inputs_tf.size());
+  for (auto input_tf : inputs_tf) {
+    if (!input_tf->layout().IsSingleDevice()) {
+      Set_TF_Status_from_Status(
+          status, absl::InvalidArgumentError(
+                      "Some of the inputs are not single device"));
+      return;
+    }
+    single_device_inputs.push_back(input_tf->single_tensor());
+  }
+
+  int num_outputs = function.output_index_map.size();
+  std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
+  ExecuteSingleDeviceOperation(
+      context, single_device_inputs, function.translated_function_name,
+      device_name, attributes, &num_outputs, single_device_outputs, status);
+  if (TF_GetCode(status) != TF_OK) {
+    return;
+  }
+
+  for (const TensorHandlePtr& output : single_device_outputs) {
+    std::unique_ptr<TensorWithLayout> output_tensor =
+        Broadcast(context, output.get(), mesh, status);
+    if (TF_GetCode(status) != TF_OK) {
+      break;
+    }
+    output_with_layout.push_back(std::move(output_tensor));
+  }
+}
+
 void DTensorDevice::ExecuteRegularOperation(
     TFE_Context* context, const std::vector<TensorWithLayout*>& inputs,
     const DTensorOperation& doperation, const TFE_OpAttrs* attributes,
@@ -2050,62 +2156,31 @@ void DTensorDevice::ExecuteRegularOperation(
                                 global_parallel_sparse_inputs.begin(),
                                 global_parallel_sparse_inputs.end());
 
-  // Execute all functions in parallel.
-  for (const TranslatedFunction& function :
-       execution_functions->function_list) {
+  // Calculate the number of global outputs.
+  const std::vector<TranslatedFunction>& function_list =
+      execution_functions->function_list;
+  std::vector<const TranslatedFunction*> functions_to_execute;
+  for (const TranslatedFunction& function : function_list) {
     const Mesh& mesh = function.function_mesh;
     const std::string& translated_function_name =
         function.translated_function_name;
 
-    VLOG(4) << "Launching computation for mesh : " << mesh.ToString();
-
     num_global_outputs += function.local_output_shapes.size();
 
-    if (is_remote_mesh(mesh) ||
+    if (is_remote_mesh(mesh) || mesh.IsSingleDevice() ||
         (excluded_fn_names.find(translated_function_name) !=
          excluded_fn_names.end())) {
-      // Skip execution for a translated function has remote mesh or when it is
-      // excluded.
+      // Skip execution for a translated function has remote mesh, when it is
+      // excluded, or if it is for a single device.
       continue;
+    } else {
+      functions_to_execute.emplace_back(&function);
     }
-    if (mesh.IsSingleDevice()) {
-      continue;
-    }
-
-    ASSIGN_OR_RETURN_C_STATUS(
-        const parallel_device::ParallelDevice* parallel_device,
-        GetParallelDevice(mesh, /*strict=*/false), status);
-
-    // Gather the local inputs for this function.
-    std::vector<std::vector<TFE_TensorHandle*>> parallel_inputs;
-    parallel_inputs.reserve(inputs.size() + 1);
-    auto input_mapping = function.input_index_map;
-
-    // We sort here because by this time, the function graph we are executing
-    // is a reduced version of the main function, that includes the
-    // StatefulPartitionedCall that we are executing for this mesh.
-    // Thus, the ordering is the same as the main function ordering, which
-    // is sorted increasingly.
-    std::sort(input_mapping.begin(), input_mapping.end());
-
-    for (const int global_index : input_mapping) {
-      auto input_index = global_index - execution_functions->num_device_ids;
-
-      if (global_index < execution_functions->num_device_ids) {
-        parallel_device::ParallelTensor* device_ids =
-            GetDeviceIDs(context, status, mesh, parallel_device);
-        if (TF_GetCode(status) != TF_OK) return;
-        parallel_inputs.emplace_back(device_ids->tensors());
-      } else {
-        parallel_inputs.emplace_back(global_parallel_inputs[input_index]);
-      }
-    }
-
-    parallel_device->StartExecute(
-        context, parallel_inputs, translated_function_name.c_str(), attributes,
-        /*expected_max_outputs=*/function.local_output_shapes.size(),
-        *cancellation_manager_, /*step_id=*/step_id);
   }
+
+  ExecuteParallelDeviceOperation(context, attributes, execution_functions,
+                                 functions_to_execute, global_parallel_inputs,
+                                 inputs.size(), step_id, status);
 
   *num_outputs = num_global_outputs;
   std::vector<std::unique_ptr<TensorWithLayout>> typed_outputs;
@@ -2132,36 +2207,8 @@ void DTensorDevice::ExecuteRegularOperation(
     VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
 
     if (mesh.IsSingleDevice()) {
-      const std::string device_name = std::string{mesh.single_device()};
-      std::vector<TFE_TensorHandle*> single_device_inputs;
-      single_device_inputs.reserve(inputs_tf.size());
-      for (auto input_tf : inputs_tf) {
-        if (!input_tf->layout().IsSingleDevice()) {
-          Set_TF_Status_from_Status(
-              status, errors::InvalidArgument(
-                          "Some of the inputs are not single device"));
-          break;
-        }
-        single_device_inputs.push_back(input_tf->single_tensor());
-      }
-      int num_outputs = function.output_index_map.size();
-
-      std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
-
-      if (TF_GetCode(status) == TF_OK) {
-        ExecuteSingleDeviceOperation(context, single_device_inputs,
-                                     function.translated_function_name,
-                                     device_name, attributes, &num_outputs,
-                                     single_device_outputs, status);
-        for (const TensorHandlePtr& output : single_device_outputs) {
-          std::unique_ptr<TensorWithLayout> output_tensor =
-              Broadcast(context, output.get(), mesh, status);
-          if (TF_GetCode(status) != TF_OK) {
-            break;
-          }
-          output_with_layout.push_back(std::move(output_tensor));
-        }
-      }
+      ExecuteEagerOperation(context, attributes, function, inputs_tf,
+                            output_with_layout, status);
     } else if (is_remote_mesh(mesh)) {
       // Create dummy outputs on a remote mesh.
       for (int i = 0; i < function.output_index_map.size(); ++i) {
