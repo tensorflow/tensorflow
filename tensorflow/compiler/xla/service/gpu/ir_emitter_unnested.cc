@@ -5555,11 +5555,24 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 
 Status IrEmitterUnnested::EmitDynamicUpdateSlice(
     mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation) {
-  // Fusion node with dynamic-update-slice as the root where the op's input
-  // (i.e. array to update) shares the same slice as its output.  In this case
-  // we have a special algorithm that modifies the output in place without
-  // touching the un-updated elements.
-  CHECK_EQ(1, GetHloOutputs(fusion_op).size());
+  // Fusion node where the root is either:
+  // 1. a dynamic-update-slice op
+  // 2. a bitcast of a dynamic-update-slice op
+  // 3. a tuple op returning the result of several dynamic-update-slice ops
+  // 4. a tuple op returning the result of several bitcasted
+  //    dynamic-update-slice ops
+  //
+  // Additionally, all the dynamic-update-slice ops have exactly one user, and
+  // they are themselves each the unique user of the fusion parameter that they
+  // update.
+  //
+  // The assumption is that each op's input (i.e. array to update) shares the
+  // same slice as its output. In this case, we have a special algorithm that
+  // modifies the output in place without touching the un-updated elements.
+  // The update slice is assumed to be the exact same for all the
+  // dynamic-update-slice ops.
+  auto dus_ops = GetOutputDefiningDynamicUpdateSlices(fused_computation);
+  CHECK_EQ(dus_ops.size(), GetHloOutputs(fusion_op).size());
 
   // Shape of the dynamic-update-slice's "update" operand.
   Shape update_shape =
@@ -5591,12 +5604,18 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
         });
   }
 
-  // Array to write into.  Because this is an in-place operation, this is the
-  // same as operand 0's array.
-  const IrArray& output_array = ir_arrays.back();
+  std::vector<std::pair<const HloInstruction*, const IrArray>>
+      dus_and_output_array;
+  dus_and_output_array.reserve(dus_ops.size());
+
+  for (int i = 0; i < dus_ops.size(); i++) {
+    dus_and_output_array.push_back(std::make_pair(
+        dus_ops[i], ir_arrays[ir_arrays.size() - dus_ops.size() + i]));
+  }
 
   return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
-      fused_computation, output_array, &fused_emitter, launch_dimensions, &b_);
+      fused_computation, dus_and_output_array, &fused_emitter,
+      launch_dimensions, &b_);
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
