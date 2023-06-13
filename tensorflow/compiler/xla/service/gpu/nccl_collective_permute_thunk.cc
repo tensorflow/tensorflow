@@ -214,7 +214,12 @@ Status RunCollectivePermute(
                                 device_string, current_id,
                                 source_id.value_or(-1), target_id.value_or(-1));
 
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  // ncclGroupStart/end API is needed only if we will issue both ncclSend and
+  // ncclRecv API calls.
+  const bool is_nccl_group_needed = (target_id && source_id);
+  if (is_nccl_group_needed) {
+    XLA_CUDA_RETURN_IF_ERROR(ncclGroupStart());
+  }
 
   TF_ASSIGN_OR_RETURN(auto dtype_and_multiplier,
                       ToNcclDataTypeAndCountMultiplier(
@@ -224,7 +229,7 @@ Status RunCollectivePermute(
 
   se::gpu::GpuStreamHandle gpu_stream = se::gpu::AsGpuStreamValue(&stream);
 
-  // send source buffer to target peer if needed.
+  // Send source buffer to target peer if needed.
   if (target_id) {
     VLOG(3) << absl::StreamFormat(
         "%s : Calling ncclSend(sendbuff=%p, count=%d, peer=%d "
@@ -245,7 +250,9 @@ Status RunCollectivePermute(
     XLA_CUDA_RETURN_IF_ERROR(ncclRecv(dest_addr.opaque(), element_count, dtype,
                                       *source_id, comm, gpu_stream));
   }
-  XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
+  if (is_nccl_group_needed) {
+    XLA_CUDA_RETURN_IF_ERROR(ncclGroupEnd());
+  }
 
   if (!source_id) {
     // If there is no source peer, i.e. no one send us any data, zero out dest
