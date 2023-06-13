@@ -321,6 +321,8 @@ Status SnapshotStreamWriter::DeleteCheckpoints() {
   if (params_.test_only_keep_temp_files) {
     return OkStatus();
   }
+  LOG(INFO) << "Deleting tf.data snapshot checkpoints directory: "
+            << params_.CheckpointsDirectory();
   if (params_.env->FileExists(params_.CheckpointsDirectory()).ok()) {
     int64_t undeleted_files, undeleted_dirs;
     return params_.env->DeleteRecursively(params_.CheckpointsDirectory(),
