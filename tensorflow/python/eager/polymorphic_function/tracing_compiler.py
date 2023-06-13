@@ -126,12 +126,11 @@ class TracingCompiler:
   def __call__(self, *args, **kwargs):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
-      (concrete_function, filtered_flat_args) = self._maybe_define_function(
-          args, kwargs
-      )
-    return concrete_function._call_flat(
-        filtered_flat_args, captured_inputs=concrete_function.captured_inputs
-    )  # pylint: disable=protected-access
+      concrete_function = self._maybe_define_function(args, kwargs)
+    args, kwargs = function_type_utils.canonicalize_function_inputs(
+        args, kwargs, self._function_type, self._default_values, self._is_pure
+    )
+    return concrete_function(*args, **kwargs)
 
   @property
   def python_function(self):
@@ -184,7 +183,7 @@ class TracingCompiler:
       )
 
     with self._lock:
-      concrete_function, _ = self._maybe_define_concrete_function(args, kwargs)
+      concrete_function = self._maybe_define_concrete_function(args, kwargs)
       _set_arg_keywords(concrete_function)
 
     if not bind_graph_to_function:
@@ -273,14 +272,12 @@ class TracingCompiler:
       RuntimeError: If there's an internal bug (inconsistency) in handling
         shape relaxation retracing.
     """
-    args, kwargs, filtered_flat_args = (
-        function_type_utils.canonicalize_function_inputs(
-            args,
-            kwargs,
-            self._function_type,
-            self._default_values,
-            self._is_pure,
-        )
+    args, kwargs = function_type_utils.canonicalize_function_inputs(
+        args,
+        kwargs,
+        self._function_type,
+        self._default_values,
+        self._is_pure,
     )
 
     if self.input_signature is not None:
@@ -300,7 +297,7 @@ class TracingCompiler:
         lookup_func_type, current_func_context
     )
     if concrete_function is not None:
-      return concrete_function, filtered_flat_args
+      return concrete_function
 
     # Use a timer for graph building only if not already inside a function. This
     # avoids double counting graph building time for nested functions.
@@ -337,7 +334,7 @@ class TracingCompiler:
 
           self._function_cache.add(concrete_function, current_func_context)
 
-          return concrete_function, filtered_flat_args
+          return concrete_function
 
 
 def _set_arg_keywords(concrete_function):
