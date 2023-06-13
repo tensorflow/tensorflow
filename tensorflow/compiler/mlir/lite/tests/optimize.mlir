@@ -3401,3 +3401,16 @@ func.func @fuseElu(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry
   %4 = "tfl.select"(%0, %arg0, %3) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   return %4 : tensor<10xf32>
 }
+
+// CHECK-LABEL:   func @fuseHardSwishJAX
+func.func @fuseHardSwishJAX(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK: "tfl.hard_swish"
+  %cst = arith.constant dense<3.000000e+00> : tensor<10xf32>
+  %cst_0 = arith.constant dense<6.000000e+00> : tensor<10xf32>
+  %0 = tfl.add %arg0, %cst {fused_activation_function = "NONE"} : tensor<10xf32>
+  %1 = "tfl.relu"(%0) : (tensor<10xf32>) -> tensor<10xf32>
+  %2 = "tfl.minimum"(%1, %cst_0) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  %3 = tfl.div %2, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
+  %4 = tfl.mul %arg0, %3 {fused_activation_function = "NONE"} : tensor<10xf32>
+  return %4 : tensor<10xf32>
+}
