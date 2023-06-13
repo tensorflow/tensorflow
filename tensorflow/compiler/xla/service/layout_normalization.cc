@@ -227,6 +227,16 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // BitcastConvert is only layout-preserving if it doesn't change the rank.
+  Status HandleBitcastConvert(HloInstruction* hlo) override {
+    // If the rank isn't changing this is just an unary op.
+    if (hlo->shape().rank() == hlo->operand(0)->shape().rank()) {
+      return HandleElementwiseUnary(hlo);
+    }
+
+    return DefaultAction(hlo);
+  }
+
   // Pushes down the bitcast across the unary.
   // That is, converts:
   //
