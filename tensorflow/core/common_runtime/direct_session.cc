@@ -553,7 +553,7 @@ Status DirectSession::RunInternal(
   }
 
   if (run_metadata == nullptr) {
-    return errors::Internal("Metadata output is not set.");
+    return absl::InternalError("Metadata output is not set.");
   }
 
   if (options_.config.experimental().has_session_metadata()) {
