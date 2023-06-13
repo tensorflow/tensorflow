@@ -37,7 +37,6 @@ cuda_py_strict_test(
         "no_gpu",  #  Flaky: b/80127739, b/127001953
     ],
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -45,6 +44,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
@@ -294,7 +294,6 @@ cuda_py_strict_test(
     ],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:nn",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
@@ -308,6 +307,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:nn_ops_gen",
         "//tensorflow/python/ops:random_ops",
@@ -411,7 +411,6 @@ py_strict_library(
     name = "depthwise_conv_op_base",
     srcs = ["depthwise_conv_op_base.py"],
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -419,6 +418,7 @@ py_strict_library(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
@@ -434,13 +434,13 @@ cuda_py_strict_test(
     shard_count = 8,
     deps = [
         ":depthwise_conv_op_base",
-        "//tensorflow/python:nn",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:random_seed",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -565,7 +565,6 @@ cuda_py_strict_test(
     size = "medium",
     srcs = ["lrn_op_test.py"],
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -573,6 +572,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:gradient_checker",
         "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/platform:client_testlib",
@@ -721,7 +721,6 @@ cuda_py_strict_test(
     tags = ["no_windows"],  # b/139739217
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:rnn_cell",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
@@ -739,6 +738,8 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:rnn",
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:rnn_cell_impl",
         "//tensorflow/python/ops:rnn_ops_gen",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:tensor_array_ops",
@@ -764,7 +765,6 @@ cuda_py_strict_test(
     shard_count = 10,
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:rnn_cell",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -778,6 +778,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:init_ops",
         "//tensorflow/python/ops:nn_grad",
         "//tensorflow/python/ops:rnn",
+        "//tensorflow/python/ops:rnn_cell_impl",
         "//tensorflow/python/ops:sparse_grad",
         "//tensorflow/python/ops:tensor_array_grad",
         "//tensorflow/python/ops:tensor_array_ops",
