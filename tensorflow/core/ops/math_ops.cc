@@ -1231,6 +1231,9 @@ Status SparseSegmentReductionGradShapeFnImpl(InferenceContext* c,
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
   c->set_output(0, out);
+  if (outputs_unique_indices) {
+    c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+  }
   return OkStatus();
 }
 
