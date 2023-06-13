@@ -138,7 +138,7 @@ struct FuseDilatedConv3DPattern : public OpRewritePattern<TF::Conv3DOp> {
     for (uint64_t i = 0; i < m; i++) {
       for (uint64_t j = 0; j < 2; j++) {
         if (paddings.getValues<APInt>()[{i, j}].getSExtValue() !=
-            crops.getValues<APInt>()[i, j].getSExtValue()) {
+            crops.getValues<APInt>()[{i, j}].getSExtValue()) {
           op->setAttr("padding", rewriter.getStringAttr("SAME"));
           break;
         }
