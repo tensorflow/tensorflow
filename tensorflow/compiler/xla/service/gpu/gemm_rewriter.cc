@@ -658,6 +658,43 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return OkStatus();
   }
 
+  // Get the padded shape.
+  Shape pad_shape(const Shape old_shape,
+                  const absl::Span<const int64_t> batch_dims) {
+    Shape padded_shape = old_shape;
+    for (int i = 0; i < old_shape.rank(); ++i) {
+      if (!absl::c_linear_search(batch_dims, i)) {
+        int64_t padded_dimension =
+            RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
+        padded_shape.set_dimensions(i, padded_dimension);
+      }
+    }
+    return padded_shape;
+  }
+
+  // Pad the non-batch dimensions of the operands to multiples of 16 as
+  // required by cuBLASLt.
+  void pad_operand(absl::Span<const int64_t> batch_dims, HloInstruction *&instr,
+                   HloInstruction *&x) {
+    PaddingConfig padding_config;
+    Shape padded_shape = pad_shape(x->shape(), batch_dims);
+    for (int i = 0; i < x->shape().rank(); ++i) {
+      auto dimension = padding_config.add_dimensions();
+      dimension->set_edge_padding_low(0);
+      dimension->set_edge_padding_high(padded_shape.dimensions(i) -
+                                       x->shape().dimensions(i));
+      dimension->set_interior_padding(0);
+    }
+    if (!ShapeUtil::Equal(padded_shape, x->shape())) {
+      HloInstruction *zero =
+          instr->AddInstruction(HloInstruction::CreateConstant(
+              LiteralUtil::Zero(x->shape().element_type())));
+      x = instr->AddInstruction(
+          HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
+    }
+    return;
+  }
+
   StatusOr<bool> CreateF8CustomCall(HloInstruction *instr,
                                     GemmBackendConfig &gemm_backend_config,
                                     HloInstruction *a, HloInstruction *b,
@@ -855,47 +892,12 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
 
-    // Get the padded shape.
-    auto pad_shape = [&batch_dims](const Shape old_shape) {
-      Shape padded_shape = old_shape;
-      for (int i = 0; i < old_shape.rank(); ++i) {
-        if (!absl::c_linear_search(batch_dims, i)) {
-          int64_t padded_dimension =
-              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
-          padded_shape.set_dimensions(i, padded_dimension);
-        }
-      }
-      return padded_shape;
-    };
-
-    // Pad the non-batch dimensions of the operands to multiples of 16 as
-    // required by cuBLASLt.
-    auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = pad_shape(x->shape());
-      for (int i = 0; i < x->shape().rank(); ++i) {
-        auto dimension = padding_config.add_dimensions();
-        dimension->set_edge_padding_low(0);
-        dimension->set_edge_padding_high(padded_shape.dimensions(i) -
-                                         x->shape().dimensions(i));
-        dimension->set_interior_padding(0);
-      }
-      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
-        HloInstruction *zero =
-            instr->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(x->shape().element_type())));
-        x = instr->AddInstruction(
-            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
-      }
-      return;
-    };
-
-    pad_operand(a);
-    pad_operand(b);
+    pad_operand(batch_dims, instr, a);
+    pad_operand(batch_dims, instr, b);
     if (c != nullptr) {
-      pad_operand(c);
+      pad_operand(batch_dims, instr, c);
     }
-    Shape new_output_shape = pad_shape(instr->shape());
+    Shape new_output_shape = pad_shape(instr->shape(), batch_dims);
 
     std::vector<HloInstruction *> operands_list = {
         a, b, scales_f32[0], scales_f32[1], one, one};
@@ -1130,44 +1132,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       broadcast_bias = instr->AddInstruction(
           HloInstruction::CreateBitcast(slice->shape(), broadcast_bias));
     }
-    absl::Span<const int64_t> batch_dims =
-        config.dot_dimension_numbers().rhs_batch_dimensions();
-    // Get the padded shape.
-    auto pad_shape = [&batch_dims](const Shape old_shape) {
-      Shape padded_shape = old_shape;
-      for (int i = 0; i < old_shape.rank(); ++i) {
-        if (!absl::c_linear_search(batch_dims, i)) {
-          int64_t padded_dimension =
-              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
-          padded_shape.set_dimensions(i, padded_dimension);
-        }
-      }
-      return padded_shape;
-    };
 
-    // Pad the non-batch dimensions of the operands to multiples of 16 as
-    // required by cuBLASLt.
-    auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = pad_shape(x->shape());
-      for (int i = 0; i < x->shape().rank(); ++i) {
-        auto dimension = padding_config.add_dimensions();
-        dimension->set_edge_padding_low(0);
-        dimension->set_edge_padding_high(padded_shape.dimensions(i) -
-                                         x->shape().dimensions(i));
-        dimension->set_interior_padding(0);
-      }
-      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
-        HloInstruction *zero =
-            instr->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(x->shape().element_type())));
-        x = instr->AddInstruction(
-            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
-      }
-      return;
-    };
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget) {
-      pad_operand(broadcast_bias);
+      pad_operand(config.dot_dimension_numbers().rhs_batch_dimensions(), instr,
+                  broadcast_bias);
     }
 
     operands.insert(operands.begin() + 2, broadcast_bias);
@@ -1291,44 +1259,9 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    absl::Span<const int64_t> batch_dims =
-        config.dot_dimension_numbers().rhs_batch_dimensions();
-    // Get the padded shape.
-    auto pad_shape = [&batch_dims](const Shape old_shape) {
-      Shape padded_shape = old_shape;
-      for (int i = 0; i < old_shape.rank(); ++i) {
-        if (!absl::c_linear_search(batch_dims, i)) {
-          int64_t padded_dimension =
-              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
-          padded_shape.set_dimensions(i, padded_dimension);
-        }
-      }
-      return padded_shape;
-    };
-
-    // Pad the non-batch dimensions of the operands to multiples of 16 as
-    // required by cuBLASLt.
-    auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = pad_shape(x->shape());
-      for (int i = 0; i < x->shape().rank(); ++i) {
-        auto dimension = padding_config.add_dimensions();
-        dimension->set_edge_padding_low(0);
-        dimension->set_edge_padding_high(padded_shape.dimensions(i) -
-                                         x->shape().dimensions(i));
-        dimension->set_interior_padding(0);
-      }
-      if (!ShapeUtil::Equal(padded_shape, x->shape())) {
-        HloInstruction *zero =
-            instr->AddInstruction(HloInstruction::CreateConstant(
-                LiteralUtil::Zero(x->shape().element_type())));
-        x = instr->AddInstruction(
-            HloInstruction::CreatePad(padded_shape, x, zero, padding_config));
-      }
-      return;
-    };
     if (bitcast) {
-      pad_operand(bias);
+      pad_operand(config.dot_dimension_numbers().rhs_batch_dimensions(), instr,
+                  bias);
     }
     // Replace add(gemm, broadcast) with fused new_gemm.
     operands.push_back(bias);
