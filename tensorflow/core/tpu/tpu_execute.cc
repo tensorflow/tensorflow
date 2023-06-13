@@ -517,12 +517,11 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         device_memory_addrs);
   });
 
-  SE_StreamExecutor executor{stream->parent()};
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()
       ->TpuExecute_GetTpuEmbeddingMemoryWordAddressesFn(
-          &executor, &device_memory_addrs, &device_memory_addrs_count,
-          status.c_status);
+          node_context->device_ordinal(), &device_memory_addrs,
+          &device_memory_addrs_count, status.c_status);
   if (!status.ok()) {
     return status.status();
   }
