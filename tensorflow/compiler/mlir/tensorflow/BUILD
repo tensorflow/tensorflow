@@ -1325,6 +1325,7 @@ cc_library(
         "transforms/einsum.h",
         "transforms/passes.h",
         "translate/split_into_island_per_op_pass.h",
+        "utils/call_graph_util.h",
     ],
     includes = ["include"],
     textual_hdrs = [
@@ -1377,6 +1378,7 @@ cc_library(
         ":verify_suitable_for_graph_export",
         ":visitor",
         ":xla_call_module_attrs",
+        ":xla_rewrite_util",
         ":xla_sharding_util",
         "//tensorflow/compiler/jit:flags_headers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
@@ -2849,6 +2851,48 @@ cc_library(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+    ],
+)
+
+cc_library(
+    name = "xla_rewrite_util",
+    srcs = ["utils/xla_rewrite_util.cc"],
+    hdrs = ["utils/xla_rewrite_util.h"],
+    deps = [
+        ":device_util",
+        ":tensorflow",
+        ":tensorflow_types",
+        "//tensorflow/compiler/mlir/utils:string_container_utils",
+        "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "xla_rewrite_util_test",
+    size = "small",
+    srcs = ["utils/xla_rewrite_util_test.cc"],
+    deps = [
+        ":device_util",
+        ":serialize_mlir_module_utils",
+        ":tensorflow",
+        ":tpu_rewrite_device_util",
+        ":xla_rewrite_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )
 
