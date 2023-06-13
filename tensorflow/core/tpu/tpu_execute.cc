@@ -488,6 +488,45 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
+  // Retrieve the TPU embedding memory addresses to be fed to the TPU. The
+  // memory addresses are communicated with a dynamically allocated C array
+  // (which needs to be free'd once the function terminates).
+  VLOG(1) << "TPUExecute: Updating TPUEmbedding memory addresses on "
+          << node_context->device_ordinal();
+
+  SE_DeviceMemoryBase* device_memory_addrs = nullptr;
+  size_t device_memory_addrs_count;
+  auto device_memory_cleanup = absl::MakeCleanup([&device_memory_addrs]() {
+    if (device_memory_addrs != nullptr) {
+      stream_executor::tpu::OpsApiFn()->SE_DeviceMemoryBase_FreeArrayFn(
+          device_memory_addrs);
+    }
+  });
+
+  StatusHelper status;
+  stream_executor::tpu::OpsApiFn()
+      ->TpuExecute_GetTpuEmbeddingMemoryWordAddressesFn(
+          node_context->device_ordinal(), &device_memory_addrs,
+          &device_memory_addrs_count, status.c_status);
+  if (!status.ok()) {
+    return status.status();
+  }
+
+  // Add the TPU embedding memory addresses as additional arguments for the TPU
+  // executable.
+  VLOG(1) << "TPUExecute: Adding " << device_memory_addrs_count
+          << " TPUEmbedding memory addresses to HLO parameters.";
+  for (int i = 0; i < device_memory_addrs_count; ++i) {
+    xla::ShapeTree<xla::MaybeOwningDeviceMemory> tree(
+        xla::ShapeUtil::MakeOpaqueShape());
+    const SE_DeviceMemoryBase& addr = device_memory_addrs[i];
+    VLOG(2) << absl::StrFormat("Device memory addr[%i] = {%p, %llu, %llu}", i,
+                               addr.opaque, addr.size, addr.payload);
+    *tree.mutable_element({}) = ApiConverter::FromC(addr);
+    xla::ExecutionInput input(std::move(tree));
+    arguments.push_back(std::move(input));
+  }
+
   auto tpu_executable = std::make_unique<TpuOpExecutable>(
       tpu_program, std::move(module), /*host_command_handler=*/handler);
 
