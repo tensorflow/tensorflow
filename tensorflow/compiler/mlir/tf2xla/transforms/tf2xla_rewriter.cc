@@ -89,10 +89,7 @@ namespace mlir {
 namespace mhlo {
 namespace {
 
-using ::mlir::FunctionType;
 using ::mlir::ModuleOp;
-using ::mlir::OwningOpRef;
-using ::mlir::func::FuncOp;
 using ::tensorflow::Tensor;
 using ::tsl::StatusOr;
 using ::xla::XlaComputation;
