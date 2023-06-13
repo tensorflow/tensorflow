@@ -81,6 +81,7 @@ limitations under the License.
 #include "tensorflow/dtensor/cc/dstatus.h"
 #include "tensorflow/dtensor/cc/dtensor_device_util.h"
 #include "tensorflow/dtensor/cc/dtensor_graph_to_mlir_pass.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/parallel_executor.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
@@ -472,6 +473,15 @@ class DTensorDevice {
                            const TFE_OpAttrs* attributes, uint64 step_id,
                            absl::flat_hash_set<std::string>* executed_fn_names,
                            TF_Status* status);
+
+  // Executes a multi-device function.
+  void ExecuteMultiDeviceOperation(
+      TFE_Context* context,
+      const DTensorOperationLoweringContext& lowering_context,
+      const TFE_OpAttrs* attributes, const TranslatedFunction& function,
+      const std::vector<TensorWithLayoutTf*>& inputs,
+      std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
+      TF_Status* status);
 
   // Executes a single device Operation, on a single device.
   void ExecuteSingleDeviceOperation(
@@ -1825,6 +1835,50 @@ void DTensorDevice::ParallelExecuteRegularOperation(
   }
 }
 
+void DTensorDevice::ExecuteMultiDeviceOperation(
+    TFE_Context* context,
+    const DTensorDevice::DTensorOperationLoweringContext& lowering_context,
+    const TFE_OpAttrs* attributes, const TranslatedFunction& function,
+    const std::vector<TensorWithLayoutTf*>& inputs,
+    std::vector<std::unique_ptr<TensorWithLayout>>& outputs,
+    TF_Status* status) {
+  std::vector<TFE_TensorHandle*> eager_inputs;
+  for (TensorWithLayoutTf* input : inputs) {
+    std::vector<TFE_TensorHandle*> tensors(input->tensors());
+    eager_inputs.insert(eager_inputs.end(), tensors.begin(), tensors.end());
+  }
+
+  int num_outputs = function.local_output_shapes.size();
+  int num_output_layouts = function.output_layouts.size();
+
+  std::vector<TensorHandlePtr> eager_outputs(num_outputs);
+  ExecuteSingleDeviceOperation(
+      context, eager_inputs, function.translated_function_name,
+      /*device_name=*/"", attributes, &num_outputs, eager_outputs, status);
+
+  int output_offset = 0;
+  for (int i = 0; i < num_output_layouts; i++) {
+    const auto& dim_sizes =
+        lowering_context.global_output_shapes[i].dim_sizes();
+    std::vector<int64_t> output_shape =
+        std::vector<int64_t>(dim_sizes.begin(), dim_sizes.end());
+    const Layout& output_layout = function.output_layouts[i];
+    std::vector<TensorHandlePtr> layout_outputs;
+    const int num_devices = output_layout.num_devices();
+    for (int j = 0; j < num_devices; j++) {
+      const int output_idx = output_offset + j;
+      layout_outputs.emplace_back(std::move(eager_outputs[output_idx]));
+    }
+    output_offset += num_devices;
+    ASSIGN_OR_RETURN_C_STATUS(
+        auto local_output,
+        CreateTensorWithLayout(std::move(layout_outputs), output_layout,
+                               output_shape),
+        status);
+    outputs[i] = std::move(local_output);
+  }
+}
+
 void DTensorDevice::ExecuteSingleDeviceOperation(
     TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
     const std::string& operation_name, const std::string& device_name,
@@ -2159,13 +2213,26 @@ void DTensorDevice::ExecuteRegularOperation(
   // Calculate the number of global outputs.
   const std::vector<TranslatedFunction>& function_list =
       execution_functions->function_list;
+  const bool multi_device_mode = EnableMultiDeviceMode();
+  if (multi_device_mode && function_list.size() != 1) {
+    Set_TF_Status_from_Status(
+        status,
+        absl::InvalidArgumentError(
+            "There should only be one function after multi-device expansion."));
+    return;
+  }
+
   std::vector<const TranslatedFunction*> functions_to_execute;
   for (const TranslatedFunction& function : function_list) {
     const Mesh& mesh = function.function_mesh;
     const std::string& translated_function_name =
         function.translated_function_name;
 
-    num_global_outputs += function.local_output_shapes.size();
+    if (multi_device_mode) {
+      num_global_outputs += function.output_layouts.size();
+    } else {
+      num_global_outputs += function.local_output_shapes.size();
+    }
 
     if (is_remote_mesh(mesh) || mesh.IsSingleDevice() ||
         (excluded_fn_names.find(translated_function_name) !=
@@ -2178,9 +2245,11 @@ void DTensorDevice::ExecuteRegularOperation(
     }
   }
 
-  ExecuteParallelDeviceOperation(context, attributes, execution_functions,
-                                 functions_to_execute, global_parallel_inputs,
-                                 inputs.size(), step_id, status);
+  if (!multi_device_mode) {
+    ExecuteParallelDeviceOperation(context, attributes, execution_functions,
+                                   functions_to_execute, global_parallel_inputs,
+                                   inputs.size(), step_id, status);
+  }
 
   *num_outputs = num_global_outputs;
   std::vector<std::unique_ptr<TensorWithLayout>> typed_outputs;
@@ -2206,7 +2275,10 @@ void DTensorDevice::ExecuteRegularOperation(
     output_with_layout.reserve(function.output_index_map.size());
     VLOG(4) << "Joining computation result from mesh : " << mesh.ToString();
 
-    if (mesh.IsSingleDevice()) {
+    if (multi_device_mode) {
+      ExecuteMultiDeviceOperation(context, lowering_context, attributes,
+                                  function, inputs_tf, typed_outputs, status);
+    } else if (mesh.IsSingleDevice()) {
       ExecuteEagerOperation(context, attributes, function, inputs_tf,
                             output_with_layout, status);
     } else if (is_remote_mesh(mesh)) {
@@ -2264,6 +2336,8 @@ void DTensorDevice::ExecuteRegularOperation(
       continue;
     }
 
+    // This loop will not execute under multi device mode (since it doesn't
+    // set the output index map).
     for (int i = 0; i < function.output_index_map.size(); ++i) {
       // TODO(b/162744844): Generalize this pattern so that the extraction is
       // not special cased.
