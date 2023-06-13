@@ -36,8 +36,8 @@ llvm::SmallVector<func::FuncOp> GetEntryFunctions(ModuleOp module);
 LogicalResult GetCallees(SymbolUserOpInterface op, SymbolTable &symtab,
                          llvm::SmallVector<func::FuncOp> &callees);
 
-// Find the first op with any of the specified types on the paths rooted at the
-// `root` node in a tree. Additional filters can be applied via `predicate`. The
+// Find the first op with any of the specified types on each path rooted at the
+// `root` node in a tree. Additional checks can be applied via `predicate`. The
 // results are stored in `ops`.
 template <typename T, typename... Types>
 LogicalResult GetFirstOpsOfType(
@@ -53,6 +53,45 @@ LogicalResult GetFirstOpsOfType(
       if (llvm::isa<T, Types...>(op) && (!predicate || predicate(op))) {
         ops.push_back(op);
         return WalkResult::advance();
+      }
+      llvm::SmallVector<func::FuncOp> callees;
+      if (GetCallees(op, symtab, callees).failed()) {
+        return WalkResult::interrupt();
+      }
+      for (auto callee : callees) {
+        worklist.push(callee);
+      }
+      return WalkResult::advance();
+    });
+    if (result.wasInterrupted()) return failure();
+  }
+  return success();
+}
+
+// Find the nodes with any of the specified types on the tree rooted at `root`
+// node. Additional checks can be applied via `predicate`. The search skips
+// the current path if a node with the specified types fails the check, and
+// continues on the next path. The passing ops are stored in `hits`, while the
+// first failing on on each path is stored in `first_misses`.
+template <typename T, typename... Types>
+LogicalResult GetOpsOfTypeUntilMiss(
+    func::FuncOp root, SymbolTable &symtab,
+    const std::function<bool(SymbolUserOpInterface)> &predicate,
+    llvm::SmallVector<SymbolUserOpInterface> &hits,
+    llvm::SmallVector<SymbolUserOpInterface> &first_misses) {
+  std::stack<func::FuncOp> worklist;
+  worklist.push(root);
+  while (!worklist.empty()) {
+    func::FuncOp u = worklist.top();
+    worklist.pop();
+    auto result = u.walk([&](SymbolUserOpInterface op) {
+      if (llvm::isa<T, Types...>(op)) {
+        if (!predicate || predicate(op)) {
+          hits.push_back(op);
+        } else {
+          first_misses.push_back(op);
+          return WalkResult::advance();
+        }
       }
       llvm::SmallVector<func::FuncOp> callees;
       if (GetCallees(op, symtab, callees).failed()) {
