@@ -284,3 +284,32 @@ module attributes {gpu.container_module} {
 
   func.func private @external()
 }
+
+// -----
+// Check that memcpies are added to concurrent regions.
+
+module attributes {gpu.container_module} {
+
+  // CHECK: func @xla.gpu.cuda.graph.capture
+  func.func @xla.gpu.cuda.graph.capture(%arg0: memref<16xi8>,
+                   %arg1: memref<16xi8>,
+                   %arg2: memref<16xi8>) {
+    %c0 = arith.constant 0 : index
+    %view_0 = memref.view %arg0[%c0][] : memref<16xi8> to memref<2x2xf32>
+    %c1 = arith.constant 0 : index
+    %view_1 = memref.view %arg1[%c1][] : memref<16xi8> to memref<2x2xf32>
+    %c2 = arith.constant 0 : index
+    %view_2 = memref.view %arg2[%c2][] : memref<16xi8> to memref<2x2xf32>
+
+    // CHECK: @xla.gpu.concurrent_region.begin()
+    // CHECK-NEXT: gpu.memcpy
+    // CHECK-NEXT: gpu.memcpy
+    // CHECK-NEXT: @xla.gpu.concurrent_region.end()
+    // CHECK-NEXT: return
+    gpu.memcpy %view_1, %view_0 : memref<2x2xf32>, memref<2x2xf32>
+    gpu.memcpy %view_2, %view_0 : memref<2x2xf32>, memref<2x2xf32>
+    return
+  }
+
+  func.func private @external()
+}

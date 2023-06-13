@@ -432,6 +432,7 @@ cc_library(
     srcs = ["memcpy.cc"],
     hdrs = ["memcpy.h"],
     deps = [
+        ":concurrent_region",
         ":support",
         "//tensorflow/compiler/xla/runtime:custom_call",
         "//tensorflow/compiler/xla/runtime:custom_call_registry",

@@ -204,6 +204,11 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
       operand_buffer_uses.push_back(buffer_use_0);
       operand_buffer_uses.push_back(buffer_use_1);
       operand_buffer_uses.push_back(buffer_use_2);
+    } else if (auto memcpy = dyn_cast<mlir::gpu::MemcpyOp>(operation)) {
+      BufferUse src_buffer = GetBufferUse(memcpy.getSrc(), /*read_only=*/true);
+      BufferUse dst_buffer = GetBufferUse(memcpy.getDst(), /*read_only=*/false);
+      operand_buffer_uses.push_back(src_buffer);
+      operand_buffer_uses.push_back(dst_buffer);
     } else {
       store_region_and_start_new_region();
       continue;
