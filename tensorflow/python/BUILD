@@ -146,7 +146,6 @@ py_library(
         ":pywrap_tensorflow",
         ":pywrap_tfe",
         ":rnn_cell",
-        ":sets",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/dtensor/python:dtensor",
@@ -231,6 +230,8 @@ py_library(
         "//tensorflow/python/ops:script_ops",
         "//tensorflow/python/ops:sendrecv_ops_gen",
         "//tensorflow/python/ops:session_ops",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:sets_impl",
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:standard_ops",
         "//tensorflow/python/ops:state_ops",
@@ -486,16 +487,6 @@ py_strict_library(
     name = "distributed_framework_test_lib",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/framework:test_lib"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "sets",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:sets",
-        "//tensorflow/python/ops:sets_impl",
-    ],
 )
 
 # TODO(b/285020435): Update usages and then remove.
