@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -329,6 +330,7 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
+  InitPassManager(pass_manager, toco_flags.debug_options());
 
   if (pass_config.enable_stablehlo_conversion) {
     // return to avoid adding TFL converter path

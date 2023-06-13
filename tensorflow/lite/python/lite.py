@@ -649,6 +649,12 @@ class TFLiteConverterBase:
     self._experimental_variable_quantization = False
     self._experimental_disable_fuse_mul_and_fc = False
 
+    # Debug parameters
+    self.mlir_dump_dir = None
+    self.mlir_dump_pass_regex = None
+    self.mlir_dump_func_regex = None
+    self.mlir_enable_timing = False
+
   def _grappler_config(self, optimizers=None):
     """Creates a tf.compat.v1.ConfigProto for configuring Grappler.
 
@@ -780,6 +786,10 @@ class TFLiteConverterBase:
         "enable_hlo_to_tf_conversion": (
             self._experimental_enable_hlo_to_tf_conversion
         ),
+        "mlir_dump_dir": self.mlir_dump_dir,
+        "mlir_dump_pass_regex": self.mlir_dump_pass_regex,
+        "mlir_dump_func_regex": self.mlir_dump_func_regex,
+        "mlir_enable_timing": self.mlir_enable_timing,
     }
 
     if self.saved_model_dir:
