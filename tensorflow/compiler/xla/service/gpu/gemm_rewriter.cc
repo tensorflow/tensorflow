@@ -500,7 +500,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   }
 
   Status HandleAdd(HloInstruction *instr) override {
-    HloInstruction *bias, *existing_gemm(nullptr);
+    HloInstruction *bias, *existing_gemm = nullptr;
     HloInstruction *optional_slice = nullptr;
     HloInstruction *optional_convert = nullptr;
     HloInstruction *optional_bitcast = nullptr;
@@ -531,6 +531,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     // add(bitcast(gemm(a, b)), broadcast(bias)) ->
     //   bitcast(add(gemm(a, b), bitcast(broadcast(bias)))) ->
     //   bitcast(gemm(a, b, bitcast(broadcast(bias)))) (FuseMatrixBiasAdd)
+    // 
     if (Match(
             instr,
             m::AddAnyOrder(
@@ -547,6 +548,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Continue below.
       instr = new_add;
     }
+
     // Do not fuse broadcast unless we can fuse its input, as it will cause
     // broadcast materialization.
     auto is_not_broadcast = [](const HloInstruction *instr) {
@@ -581,12 +583,14 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       // Continue below transforming new_add.
       instr = new_add;
     }
+
     if (Match(instr,
               m::AddAnyOrder(
                   GemmOrCublasLtMatmulMaybeF8(&existing_gemm).WithOneUser(),
                   m::Op(&bias).WithPredicate(is_not_broadcast)))) {
       return FuseMatrixBiasAdd(instr, bias, existing_gemm);
     }
+
     HloInstruction *optional_bitcast_matrix = nullptr;
     HloInstruction *optional_slice_matrix = nullptr;
     if (Match(instr,
@@ -781,22 +785,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         return false;
     }
 
-    // Fuse the possible addition of a matrix bias here to enable the subsequent
-    // fusion of the scaling and conversion of D into the Custom Call. Fusing
-    // a matrix bias is only supported with CUDA 12 and above.
-    HloInstruction *c = nullptr, *add = nullptr;
-
-    // if (instr->user_count() == 1 &&
-    //     instr->users()[0]->opcode() == HloOpcode::kAdd) {
-    //   HloInstruction *bias = instr->users()[0]->mutable_operand(
-    //       !instr->users()[0]->operand_index(instr));
-    //   if (bias->opcode() != HloOpcode::kBroadcast) {
-    //     c = bias;
-    //     gemm_backend_config.set_beta(1.0);
-    //     add = instr->users()[0];
-    //   }
-    // }
-
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
     absl::Span<const int64_t> a_contracting_dims =
@@ -893,16 +881,10 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     pad_operand(batch_dims, instr, a);
     pad_operand(batch_dims, instr, b);
-    if (c != nullptr) {
-      pad_operand(batch_dims, instr, c);
-    }
     Shape new_output_shape = pad_shape(instr->shape(), batch_dims);
 
     std::vector<HloInstruction *> operands_list = {
         a, b, scales_f32[0], scales_f32[1], one, one};
-    if (c != nullptr) {
-      operands_list.insert(operands_list.begin() + 2, c);
-    }
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
@@ -926,7 +908,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     TF_RETURN_IF_ERROR(
-        ReplaceInstruction(add ? add : instr, slice ? slice : new_custom_call));
+        ReplaceInstruction(instr, slice ? slice : new_custom_call));
     return true;
   }
 
@@ -1083,6 +1065,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (gemm->shape().element_type() == S32) {
       return OkStatus();
     }
+
     // Cublas gemm overwrites the bias matrix, so fusion is only possible if the
     // gemm is the only user. CublasLt gemm can operate out-of-place.
     bool can_overwrite_bias = [bias]() {
@@ -1116,15 +1099,18 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
                              IsCublasLtMatmul(*gemm) || can_overwrite_bias;
 
     auto config = gemm->backend_config<GemmBackendConfig>().value();
+
     // It is possible to fuse into a cublasLt matmul that already has a vector
     // bias, but no other epilogue will commute with the matrix bias add.
     bool supported_epilogue =
         ((config.epilogue() == GemmBackendConfig::DEFAULT) ||
          (config.epilogue() == GemmBackendConfig::BIAS));
+
     if ((config.beta() != 0) || !want_to_fuse_bias ||
         (gemm->user_count() != 1) || !supported_epilogue) {
       return OkStatus();
     }
+
     config.set_beta(1.0);
 
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
@@ -1179,6 +1165,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
           bitcast->shape(),
           {bitcast->parent()->AddInstruction(std::move(fused_op))});
     }
+
     return ReplaceWithNewInstruction(instr, std::move(fused_op));
   }
 
@@ -1198,6 +1185,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     }
 
     HloInstruction *bias = broadcast->mutable_operand(0);
+
     TF_ASSIGN_OR_RETURN(auto config, gemm->backend_config<GemmBackendConfig>());
 
     // # output column dims == # non-contracting rhs operand dims.
@@ -1218,6 +1206,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     if (bitcast) {
       broadcast_dims = gemm->shape().dimensions();
     }
+
     std::vector<HloInstruction *> operands(gemm->operands().begin(),
                                            gemm->operands().end());
     // When (non-trivial) matrix and vector bias co-exist for FP8 matmul, just
@@ -1226,11 +1215,13 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         config.beta() != 0.0) {
       return true;
     }
+
     if (gemm->custom_call_target() == kCublasLtMatmulF8CallTarget &&
         bias->shape().element_type() == F32) {
       if (convert == nullptr) {
         return false;
       }
+
       HloInstruction *bias_f16_or_bf16 = convert->mutable_operand(0);
       auto compatible_bias_type = [](const PrimitiveType bias_type,
                                      const PrimitiveType output_type) {
