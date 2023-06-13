@@ -40,10 +40,19 @@ Traceback::Traceback() {
   PyThreadState* thread_state = PyThreadState_GET();
 
 #if PY_VERSION_HEX < 0x030b0000
+  // The representation of frame->f_lasti changed from bytes to words in Python
+  // 3.10, see https://docs.python.org/3/whatsnew/3.10.html#changes-in-the-c-api
+  // This should match sizeof(_Py_CODEUNIT) which is unfortunately private.
+#if PY_VERSION_HEX < 0x030a0000
+  constexpr int kLastiWordBytes = 1;
+#else   // PY_VERSION_HEX < 0x030a0000
+  constexpr int kLastiWordBytes = 2;
+#endif  // PY_VERSION_HEX < 0x030a0000
+
   for (PyFrameObject* py_frame = thread_state->frame; py_frame != nullptr;
        py_frame = py_frame->f_back) {
     Py_INCREF(py_frame->f_code);
-    frames_.emplace_back(py_frame->f_code, py_frame->f_lasti);
+    frames_.emplace_back(py_frame->f_code, py_frame->f_lasti * kLastiWordBytes);
   }
 #else   // PY_VERSION_HEX < 0x030b0000
   PyFrameObject* next;
@@ -93,7 +102,7 @@ std::vector<Traceback::Frame> Traceback::Frames() const {
         std::string(py::reinterpret_borrow<py::str>(frame.first->co_filename)),
         std::string(py::reinterpret_borrow<py::str>(frame.first->co_name)),
         frame.first->co_firstlineno,
-        PyCode_Addr2Line(frame.first, frame.second * kLastiWordBytes)});
+        PyCode_Addr2Line(frame.first, frame.second)});
   }
   return frames;
 }
@@ -120,17 +129,30 @@ py::object Traceback::AsPythonTraceback() const {
   py::dict globals;
   py::handle traceback_type(reinterpret_cast<PyObject*>(&PyTraceBack_Type));
   for (const std::pair<PyCodeObject*, int>& frame : frames_) {
-    PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), frame.first,
+    int lineno = PyCode_Addr2Line(frame.first, frame.second);
+    // Under Python 3.11 we observed crashes when using a fake PyFrameObject
+    // with a real PyCodeObject (https://github.com/google/jax/issues/16027).
+    // because the frame does not have fields necessary to compute the locals,
+    // notably the closure object, leading to crashes in CPython in
+    // _PyFrame_FastToLocalsWithError
+    // https://github.com/python/cpython/blob/deaf509e8fc6e0363bd6f26d52ad42f976ec42f2/Objects/frameobject.c#LL1116C2-L1116C2
+    // We therefore always build a fake code object to go along with our fake
+    // frame.
+    PyCodeObject* py_code =
+        PyCode_NewEmpty(PyUnicode_AsUTF8(frame.first->co_filename),
+                        PyUnicode_AsUTF8(frame.first->co_name), lineno);
+    PyFrameObject* py_frame = PyFrame_New(PyThreadState_Get(), py_code,
                                           globals.ptr(), /*locals=*/nullptr);
+    Py_DECREF(py_code);
 
     traceback = traceback_type(
         /*tb_next=*/std::move(traceback),
         /*tb_frame=*/
         py::reinterpret_steal<py::object>(
             reinterpret_cast<PyObject*>(py_frame)),
-        /*tb_lasti=*/frame.second,
+        /*tb_lasti=*/0,
         /*tb_lineno=*/
-        PyCode_Addr2Line(frame.first, frame.second * kLastiWordBytes));
+        PyCode_Addr2Line(frame.first, frame.second));
   }
   return traceback;
 }
@@ -193,7 +215,7 @@ void BuildTracebackSubmodule(py::module& m) {
           throw xla::XlaRuntimeError("code argument must be a code object");
         }
         return PyCode_Addr2Line(reinterpret_cast<PyCodeObject*>(code.ptr()),
-                                lasti * kLastiWordBytes);
+                                lasti);
       },
       "Python wrapper around the Python C API function PyCode_Addr2Line");
 

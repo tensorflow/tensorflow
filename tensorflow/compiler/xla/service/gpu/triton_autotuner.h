@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
@@ -62,6 +63,11 @@ GetPossibleMatmulAutotuneConfigs(se::CudaComputeCapability compute_capability);
 // with parameter instructions.
 std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
     const HloInstruction& hlo);
+
+// Extracts an HLO computation into a new HLO module, using its clone as the
+// root computation.
+std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
+    const HloComputation& computation);
 
 }  // namespace gpu
 }  // namespace xla

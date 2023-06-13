@@ -30,7 +30,6 @@ cc_library(
     hdrs = ["worker_thread.h"],
     deps = [
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -44,7 +43,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/stream_executor",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -56,7 +54,6 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:types",
         "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -64,11 +61,11 @@ cc_library(
 xla_cc_test(
     name = "semaphore_test",
     srcs = ["semaphore_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":semaphore",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/tsl/platform:env",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/synchronization",
     ],
@@ -92,7 +89,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/compiler/xla/stream_executor:event",
-        "//tensorflow/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
     ],
@@ -101,6 +97,7 @@ cc_library(
 xla_cc_test(
     name = "tracked_device_buffer_test",
     srcs = ["tracked_device_buffer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tracked_device_buffer",
         "//tensorflow/compiler/xla:literal_util",
@@ -109,7 +106,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/stream_executor:device_memory",
         "//tensorflow/compiler/xla/stream_executor:device_memory_allocator",
         "//tensorflow/tsl/platform:test_main",
     ],
@@ -130,7 +126,6 @@ cc_library(
         "//tensorflow/compiler/xla/stream_executor:event",
         "//tensorflow/tsl/profiler/lib:traceme",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -153,6 +148,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_api_test",
     srcs = ["pjrt_api_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pjrt_api",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -183,7 +179,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/tsl/framework:allocator",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:fingerprint",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -214,6 +209,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_client_test_cpu",
     srcs = ["pjrt_client_test_cpu.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pjrt_client_test_common",
         ":tfrt_cpu_pjrt_client",
@@ -241,6 +237,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_executable_test",
     srcs = ["pjrt_executable_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":compile_options_proto_cc",
         ":pjrt_executable",
@@ -280,6 +277,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_compiler_test",
     srcs = ["pjrt_compiler_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pjrt_client",
         ":pjrt_compiler",
@@ -382,6 +380,7 @@ cc_library(
 xla_cc_test(
     name = "pjrt_stream_executor_client_test",
     srcs = ["pjrt_stream_executor_client_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":pjrt_client",
         ":pjrt_stream_executor_client",
@@ -489,7 +488,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/types:span",
         "@tf_runtime//:hostcontext",
         "@tf_runtime//:support",
     ],
@@ -516,10 +514,10 @@ cc_library(
 xla_cc_test(
     name = "tracked_tfrt_cpu_device_buffer_test",
     srcs = ["tracked_tfrt_cpu_device_buffer_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tracked_tfrt_cpu_device_buffer",
         "@com_google_googletest//:gtest_main",
-        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -630,6 +628,7 @@ cc_library(
 xla_cc_test(
     name = "tfrt_cpu_pjrt_client_test",
     srcs = ["tfrt_cpu_pjrt_client_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tfrt_cpu_pjrt_client",
         "//tensorflow/compiler/xla:literal",
@@ -664,10 +663,10 @@ cc_library(
 xla_cc_test(
     name = "lru_cache_test",
     srcs = ["lru_cache_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":lru_cache",
         "//tensorflow/compiler/xla:test",
-        "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test_main",
     ],
 )
@@ -702,6 +701,7 @@ cc_library(
 xla_cc_test(
     name = "transpose_test",
     srcs = ["transpose_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":transpose",
         "//tensorflow/compiler/xla:array",
@@ -759,10 +759,10 @@ cc_library(
 xla_cc_test(
     name = "tf_pjrt_client_test",
     srcs = ["tf_pjrt_client_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":tf_pjrt_client",
         ":tfrt_cpu_pjrt_client",
-        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/tsl/platform:env",
@@ -782,6 +782,7 @@ cc_library(
 xla_cc_test(
     name = "host_callback_test",
     srcs = ["host_callback_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":host_callback",
         ":pjrt_client",

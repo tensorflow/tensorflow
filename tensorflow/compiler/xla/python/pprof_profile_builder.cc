@@ -61,7 +61,7 @@ int PprofProfileBuilder::LocationId(PyCodeObject* code, int instruction) {
     location->set_id(ret.first->second);
     auto* line = location->add_line();
     line->set_function_id(FunctionId(code));
-    line->set_line(PyCode_Addr2Line(code, instruction * kLastiWordBytes));
+    line->set_line(PyCode_Addr2Line(code, instruction));
   }
   return ret.first->second;
 }

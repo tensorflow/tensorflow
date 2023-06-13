@@ -48,6 +48,7 @@ limitations under the License.
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/transforms/Passes.h"  // from @stablehlo
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
@@ -457,6 +458,11 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     module_ = mlir::parseSourceString<mlir::ModuleOp>(module_str, context_);
   }
 
+  std::vector<std::string> loading_disabled_checks = disabled_checks;
+  loading_disabled_checks.insert(
+      loading_disabled_checks.end(),
+      GetXlaCallModuleFlags()->disabled_checks.begin(),
+      GetXlaCallModuleFlags()->disabled_checks.end());
   if (!module_) {
     return absl::InvalidArgumentError("Cannot deserialize computation");
   }
@@ -466,7 +472,8 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
           << "], loading_platform = " << loading_platform
           << ", dim_args_spec = [" << absl::StrJoin(dim_args_spec_, ", ")
           << "], disabled_checks = [" << absl::StrJoin(disabled_checks, ", ")
-          << "]), module = "
+          << "], loading_disabled_checks = ["
+          << absl::StrJoin(loading_disabled_checks, ", ") << "]), module = "
           << DumpMlirOpToFile("xla_call_module.parsed", *module_);
 
   if (version < VERSION_MINIMUM_SUPPORTED) {
@@ -486,7 +493,7 @@ tsl::Status XlaCallModuleLoader::LoadAndPreprocessModule(
     auto found_platform =
         std::find(platforms.begin(), platforms.end(), loading_platform);
     if (found_platform == platforms.end()) {
-      if (!IsPlatformCheckDisabled(disabled_checks)) {
+      if (!IsPlatformCheckDisabled(loading_disabled_checks)) {
         return absl::NotFoundError(absl::StrCat(
             "The current platform ", loading_platform,
             " is not among the platforms required by the module: [",

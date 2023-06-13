@@ -161,6 +161,32 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 
 // -----
 
+// expected-error@-3 {{'mhlo.async_start' op can't be translated to XLA HLO}}
+func.func @all_reduce_0(%arg0: tensor<10xf32>, %arg1: tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>) attributes {execution_thread = "main"} {
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  ^bb0(%lhs: tensor<f32>, %rhs: tensor<f32>):
+    %max = mhlo.maximum %lhs, %rhs : tensor<f32>
+    "mhlo.return"(%max) : (tensor<f32>) -> ()
+  })
+  {
+    replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>,
+    channel_handle = #mhlo.channel_handle<
+      handle = 5,
+      type = 2
+    >,
+    use_global_device_ids
+  } : (tensor<10xf32>, tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>)
+  func.return %0#0, %0#1 : tensor<10xf32>, tensor<1xf32>
+}
+
+func.func @main(%arg0: tensor<10xf32>, %arg1: tensor<1xf32>) -> (tensor<10xf32>, tensor<1xf32>) {
+  %0 = "mhlo.async_start"(%arg0, %arg1) {called_computation = @all_reduce_0, execution_thread = "main"} : (tensor<10xf32>, tensor<1xf32>) -> !mhlo.async_bundle<tuple<tensor<10xf32>,tensor<1xf32>>, tuple<tensor<10xf32>,tensor<1xf32>>>
+  %1:2 = "mhlo.async_done"(%0) {called_computation = @all_reduce_0, execution_thread = "main"} : (!mhlo.async_bundle<tuple<tensor<10xf32>,tensor<1xf32>>, tuple<tensor<10xf32>,tensor<1xf32>>>) -> (tensor<10xf32>, tensor<1xf32>)
+  return %1#0, %1#1 : tensor<10xf32>, tensor<1xf32>
+}
+
+// -----
+
 // CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
   %0 = "mhlo.all_reduce"(%arg0) ({
@@ -245,6 +271,24 @@ func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
 // CHECK-SAME{LITERAL}:  replica_groups={{0,2,4,6},{1,3,5,7}}
 // CHECK-SAME:  use_global_device_ids=true
 // CHECK-SAME:  to_apply=%[[COMPUTATION]]
+
+// -----
+
+func.func private @main(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tuple<tensor<8xf32>, tensor<f32>> {
+  // CHECK:      %[[ARG0:.*]] = f32[8] parameter(0)
+  // CHECK-NEXT: %[[ARG1:.*]] = f32[] parameter(1)
+  // CHECK-NEXT: %[[TUPLE:.*]] = (f32[8], f32[]) tuple
+  // CHECK-NEXT: %[[TUPLE_ARG0:.*]] = f32[8] get-tuple-element((f32[8], f32[]) %[[TUPLE]]), index=0
+  // CHECK-NEXT: %[[TUPLE_ARG1:.*]] = f32[] get-tuple-element((f32[8], f32[]) %[[TUPLE]]), index=1
+  // CHECK-NEXT: (f32[8], f32[]) all-reduce(f32[8] %[[TUPLE_ARG0]], f32[] %[[TUPLE_ARG1]]), replica_groups={}, to_apply={{.*}}
+  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+    mhlo.return %2 : tensor<f32>
+  }) {replica_groups = dense<> : tensor<0x0xi64>} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+  %1 = mhlo.tuple %0#0, %0#1 {xla_shape = "(f32[8]{0}, f32[])"} : tuple<tensor<8xf32>, tensor<f32>>
+  return %1 : tuple<tensor<8xf32>, tensor<f32>>
+}
 
 // -----
 

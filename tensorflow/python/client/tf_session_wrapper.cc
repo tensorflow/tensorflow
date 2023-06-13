@@ -1471,6 +1471,12 @@ PYBIND11_MODULE(_pywrap_tf_session, m) {
       },
       py::return_value_policy::reference);
 
+  m.def("TF_SetOpStackTrace",
+        [](TF_Operation* op,
+           std::shared_ptr<tensorflow::AbstractStackTrace> trace) {
+          op->node.SetStackTrace(trace);
+        });
+
   m.def("TF_OperationGetAttrInt",
         [](TF_Operation* oper, const char* attr_name) {
           tensorflow::Safe_TF_StatusPtr status =

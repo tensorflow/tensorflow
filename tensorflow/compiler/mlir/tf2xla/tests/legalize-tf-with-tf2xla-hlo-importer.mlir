@@ -677,6 +677,14 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %6 : tensor<2x2xf32>
   }
 
+  // CHECK-LABEL: func @concat_v2
+  func.func @concat_v2(%arg0: tensor<3x3xf32>, %arg1: tensor<3x3xf32>) -> tensor<6x3xf32> {
+    // CHECK: "mhlo.concatenate"({{.*}}) {dimension = 0 : i64} : (tensor<3x3xf32>, tensor<3x3xf32>) -> tensor<6x3xf32>
+    %axis = "tf.Const"() { value = dense<0> : tensor<i64> } : () -> tensor<i64>
+    %1 = "tf.ConcatV2"(%arg0, %arg1, %axis) : (tensor<3x3xf32>, tensor<3x3xf32>, tensor<i64>) -> tensor<6x3xf32>
+    func.return %1 : tensor<6x3xf32>
+  }
+
   // CHECK-LABEL: func @xla_call_module
   func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
     // Equivalent to the following:

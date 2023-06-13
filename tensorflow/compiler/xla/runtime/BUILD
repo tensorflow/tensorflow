@@ -19,15 +19,11 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     deps = [
         ":async_runtime",
-        ":errors",
         ":types",
         "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/mlir/runtime/transforms:type_converter",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
     ],
 )
@@ -35,13 +31,11 @@ cc_library(
 xla_cc_test(
     name = "arguments_test",
     srcs = ["arguments_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
-        ":types",
-        "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -54,7 +48,6 @@ cc_library(
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@com_google_absl//absl/status",
         "@tf_runtime//:async_value",
         "@tf_runtime//:ref_count",
     ],
@@ -63,11 +56,11 @@ cc_library(
 xla_cc_test(
     name = "async_runtime_test",
     srcs = ["async_runtime_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":async_runtime",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
-        "@com_google_absl//absl/status",
         "@tf_runtime//:async_value",
     ],
 )
@@ -90,7 +83,6 @@ cc_library(
     hdrs = ["constraints.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":errors",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
@@ -158,13 +150,13 @@ cc_library(
 xla_cc_test(
     name = "custom_call_test",
     srcs = ["custom_call_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         ":async_runtime",
         ":custom_call",
         ":custom_call_registry",
         ":diagnostics",
-        ":executable",
         ":jit_executable",
         ":module",
         ":state",
@@ -204,6 +196,7 @@ cc_library(
 xla_cc_test(
     name = "diagnostics_test",
     srcs = ["diagnostics_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":diagnostics",
         "//tensorflow/tsl/platform:test",
@@ -219,7 +212,6 @@ cc_library(
     deps = [
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -268,11 +260,12 @@ xla_cc_test(
         "//tensorflow/compiler/xla/mlir/runtime/transforms:compilation_pipeline_options",
         "//tensorflow/compiler/xla/mlir/runtime/transforms/tests:testlib_pipeline",
         "//tensorflow/compiler/xla/mlir/runtime/utils:async_runtime_api",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/base:dynamic_annotations",
-        "@llvm-project//mlir:Support",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
@@ -325,13 +318,11 @@ cc_library(
 xla_cc_test(
     name = "ffi_test",
     srcs = ["ffi_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         ":async_runtime",
-        ":custom_call",
         ":custom_call_registry",
-        ":diagnostics",
-        ":executable",
         ":ffi",
         ":jit_executable",
         ":results",
@@ -339,7 +330,6 @@ xla_cc_test(
         "//tensorflow/compiler/xla/runtime/ffi:ffi_api",
         "//tensorflow/compiler/xla/runtime/ffi:ffi_c_api_hdrs",
         "//tensorflow/tsl/platform:test",
-        "//tensorflow/tsl/platform:test_benchmark",
         "//tensorflow/tsl/platform:test_main",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
@@ -352,7 +342,6 @@ cc_library(
     hdrs = ["jit_executable.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":arguments",
         ":async_values_cache",
         ":constraints",
         ":errors",
@@ -387,6 +376,7 @@ cc_library(
 xla_cc_test(
     name = "map_by_type_test",
     srcs = ["map_by_type_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":map_by_type",
         "//tensorflow/tsl/platform:test",
@@ -425,7 +415,6 @@ cc_library(
     hdrs = ["module.h"],
     compatible_with = get_compatible_with_cloud(),
     deps = [
-        ":custom_call",
         ":custom_call_registry",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -445,6 +434,7 @@ cc_library(
 xla_cc_test(
     name = "module_test",
     srcs = ["module_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":custom_call",
         ":module",
@@ -466,6 +456,7 @@ cc_library(
 xla_cc_test(
     name = "results_test",
     srcs = ["results_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":logical_result",
         ":results",
@@ -495,6 +486,7 @@ cc_library(
 xla_cc_test(
     name = "state_test",
     srcs = ["state_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":state",
         "//tensorflow/tsl/platform:test",
@@ -522,6 +514,7 @@ cc_library(
 xla_cc_test(
     name = "symbolic_shape_test",
     srcs = ["symbolic_shape_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":arguments",
         ":constraints",
@@ -574,9 +567,6 @@ cc_library(
     name = "compiler",
     hdrs = ["compiler.h"],
     compatible_with = get_compatible_with_cloud(),
-    deps = [
-        "@llvm-project//llvm:Support",
-    ],
 )
 
 cc_library(
@@ -587,6 +577,7 @@ cc_library(
 xla_cc_test(
     name = "type_id_test",
     srcs = ["type_id_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":type_id",
         "//tensorflow/tsl/platform:test",

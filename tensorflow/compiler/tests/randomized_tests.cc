@@ -43,8 +43,19 @@ limitations under the License.
 // * StridedSliceGrad (need to use shape function to compute sensible inputs)
 
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <functional>
+#include <iterator>
+#include <limits>
+#include <memory>
+#include <numeric>
+#include <optional>
 #include <random>
+#include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -504,7 +515,7 @@ OpTest::OpTest() {
              << ". To reproduce the "
                 "results of this test, pass flag --tf_xla_random_seed="
              << seed;
-  generator_.reset(new std::mt19937(seed));
+  generator_ = std::make_unique<std::mt19937>(seed);
 }
 
 namespace {
@@ -532,7 +543,7 @@ template <typename T>
 class TensorGenerator {
  public:
   explicit TensorGenerator(OpTest& test) : test_(test) {}
-  virtual ~TensorGenerator() {}
+  virtual ~TensorGenerator() = default;
   virtual DataType dtype() = 0;
   virtual void RandomVals(std::optional<T> lo, std::optional<T> hi,
                           bool needs_unique_values,

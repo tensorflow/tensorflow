@@ -26,6 +26,7 @@ limitations under the License.
 
 // clang-format off
 // Must be included first
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/tsl/python/lib/core/numpy.h"  //NOLINT
 // clang-format on
@@ -382,7 +383,7 @@ PYBIND11_MODULE(xla_extension, m) {
                &PyClient::MakePythonCallbackUsingHostSendAndRecv),
            py::arg("callable"), py::arg("operand_shapes"),
            py::arg("result_shapes"), py::arg("send_channel_ids"),
-           py::arg("recv_channel_ids"))
+           py::arg("recv_channel_ids"), py::arg("serializer") = py::none())
       // Deprecated: please use `get_emit_python_callback_descriptor` instead.
       .def("emit_python_callback",
            xla::ValueOrThrowWrapper(&PyClient::EmitPythonCallback),
@@ -432,21 +433,42 @@ PYBIND11_MODULE(xla_extension, m) {
       "get_gpu_client",
       [](bool asynchronous, const GpuAllocatorConfig& allocator_config,
          std::shared_ptr<DistributedRuntimeClient> distributed_client,
-         int node_id, std::optional<std::set<int>> allowed_devices,
+         int node_id, int num_nodes,
+         std::optional<std::set<int>> allowed_devices,
          std::optional<std::string> platform_name)
           -> std::shared_ptr<PyClient> {
         py::gil_scoped_release gil_release;
+        PjRtClient::KeyValueGetCallback kv_get = nullptr;
+        PjRtClient::KeyValuePutCallback kv_put = nullptr;
+        if (distributed_client != nullptr) {
+          // Use the plugin name as key prefix.
+          std::string key_prefix = "gpu:";
+          kv_get = [distributed_client, key_prefix](
+                       const std::string& k,
+                       absl::Duration timeout) -> xla::StatusOr<std::string> {
+            return distributed_client->BlockingKeyValueGet(
+                absl::StrCat(key_prefix, k), timeout);
+          };
+          kv_put = [distributed_client, key_prefix](
+                       const std::string& k,
+                       const std::string& v) -> xla::Status {
+            return distributed_client->KeyValueSet(absl::StrCat(key_prefix, k),
+                                                   v);
+          };
+        }
         std::unique_ptr<PjRtClient> client =
             xla::ValueOrThrow(GetStreamExecutorGpuClient(
-                asynchronous, allocator_config, std::move(distributed_client),
-                node_id, allowed_devices, platform_name));
+                asynchronous, allocator_config, node_id, num_nodes,
+                allowed_devices, platform_name,
+                /*should_stage_host_to_device_transfers=*/true, kv_get,
+                kv_put));
         return std::make_shared<PyClient>(
             ifrt::PjRtClient::Create(std::move(client)));
       },
       py::arg("asynchronous") = true,
       py::arg("allocator_config") = GpuAllocatorConfig(),
       py::arg("distributed_client") = nullptr, py::arg("node_id") = 0,
-      py::arg("allowed_devices") = std::nullopt,
+      py::arg("num_nodes") = 1, py::arg("allowed_devices") = std::nullopt,
       py::arg("platform_name") = std::nullopt);
 #endif  // XLA_PYTHON_ENABLE_GPU
 

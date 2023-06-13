@@ -75,9 +75,10 @@ SnapshotTaskDef TestSnapshotTask() {
 }
 
 Status WriteSplits(const SnapshotTaskDef& snapshot_task, int64_t num_splits) {
-  std::string source_dir = RepetitionDirectory(
-      snapshot_task.base_path(), snapshot_task.stream_index(), /*source_id=*/0,
-      /*repetition_index=*/0);
+  std::string source_dir =
+      RepetitionDirectory(snapshot_task.base_path(),
+                          snapshot_task.stream_index(), /*source_index=*/0,
+                          /*repetition_index=*/0);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(source_dir));
   for (int64_t i = 0; i < num_splits; ++i) {
     std::string split_filename = absl::StrCat("split_", i, "_", i);

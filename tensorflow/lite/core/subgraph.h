@@ -978,7 +978,7 @@ class Subgraph {
 
   // In the future, we'd like a TfLiteIntArray compatible representation.
   // TODO(aselle): replace execution_plan_ with this.
-  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
+  IntArrayUniquePtr plan_cache_;
 
   // Used by PreviewDelegateParitioning.
   std::vector<TfLiteDelegateParams> partitioning_preview_cache_;

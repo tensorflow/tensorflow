@@ -451,6 +451,17 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     for original, reconstructed in zip(flat_original, flat_reconstructed):
       self.assertIs(original, reconstructed)
 
+  def testCastDoesntRecreateCompositeTensor(self):
+    value = TwoComposites(
+        ragged_factory_ops.constant([[1, 2], [3]], dtypes.int32),
+        ragged_factory_ops.constant([[5], [6, 7, 8]], dtypes.float32),
+    )
+    spec = type_spec.type_spec_from_value(value)
+
+    casted_value = spec._cast(value, trace_type.InternalCastContext())
+
+    self.assertIs(value, casted_value)
+
   @parameterized.named_parameters(
       ("SameValue",
        TwoTensorsSpec([5, 3], dtypes.int32, [None], dtypes.bool),

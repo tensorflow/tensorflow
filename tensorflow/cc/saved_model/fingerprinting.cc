@@ -120,23 +120,29 @@ uint64 HashCheckpointIndexFile(absl::string_view model_dir) {
 
 StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
                                               absl::string_view export_dir) {
+  SavedModel copy = saved_model;
+  return CreateFingerprintDef(&copy, export_dir);
+}
+
+StatusOr<FingerprintDef> CreateFingerprintDef(SavedModel* saved_model,
+                                              absl::string_view export_dir) {
   // Create a copy of `metagraph` which will be used and mutated for fingerprint
   // computation.
-  MetaGraphDef metagraph_copy = saved_model.meta_graphs(0);
   FingerprintDef fingerprint_def;
+  MetaGraphDef* metagraph = saved_model->mutable_meta_graphs(0);
   // Set fingerprint field #1.
-  fingerprint_def.set_saved_model_checksum(HashSavedModel(saved_model));
+  fingerprint_def.set_saved_model_checksum(HashSavedModel(*saved_model));
   // Set fingerprint field #2.
-  graph_regularization::SimpleDelete(*metagraph_copy.mutable_graph_def());
+  graph_regularization::SimpleDelete(*metagraph->mutable_graph_def());
   fingerprint_def.set_graph_def_program_hash(
-      graph_regularization::ComputeHash(metagraph_copy.graph_def()));
+      graph_regularization::ComputeHash(metagraph->graph_def()));
   // Set fingerprint field #3.
   fingerprint_def.set_signature_def_hash(
-      RegularizeAndHashSignatureDefs(metagraph_copy.signature_def()));
+      RegularizeAndHashSignatureDefs(metagraph->signature_def()));
   // Set fingerprint field #4.
   TF_ASSIGN_OR_RETURN(
       StatusOr<uint64> object_graph_hash,
-      RegularizeAndHashSavedObjectGraph(metagraph_copy.object_graph_def()));
+      RegularizeAndHashSavedObjectGraph(metagraph->object_graph_def()));
   fingerprint_def.set_saved_object_graph_hash(object_graph_hash.value());
   // Set fingerprint field #5.
   fingerprint_def.set_checkpoint_hash(HashCheckpointIndexFile(export_dir));

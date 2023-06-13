@@ -114,6 +114,18 @@ DTensorMlirPassRunner::ImportGraphToMlir(
       dtensor::kCacheKey,
       mlir::StringAttr::get(&context_, absl::StrCat("_", cache_key.low64, "_",
                                                     cache_key.high64)));
+  // Set the all_reduce_combine_optimization environment variable as module
+  // attribute
+  int group_size = dtensor::AllReduceCombineOptimizationGroupSize();
+  module->setAttr(
+      dtensor::kAllReduceNumOpsInGroup,
+      mlir::IntegerAttr::get(mlir::IntegerType::get(&context_, /*width=*/64),
+                             group_size));
+
+  if (dtensor::EnableMultiDeviceMode()) {
+    module->setAttr(dtensor::kEnableMultiDeviceMode,
+                    mlir::BoolAttr::get(&context_, true));
+  }
 
   return module_ref;
 }

@@ -18,12 +18,10 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "tensorflow/tsl/platform/logging.h"
-
 namespace xla {
 
-StreamPool::Ptr StreamPool::BorrowStream(
-    se::StreamExecutor* executor, stream_executor::StreamPriority priority) {
+StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor,
+                                         se::StreamPriority priority) {
   std::unique_ptr<se::Stream> stream;
 
   {
@@ -38,11 +36,11 @@ StreamPool::Ptr StreamPool::BorrowStream(
         if (stream->ok()) {
           VLOG(1) << stream->DebugStreamPointers()
                   << " StreamPool reusing existing stream with priority: "
-                  << stream_executor::StreamPriorityToString(priority);
+                  << se::StreamPriorityToString(priority);
         } else {
           VLOG(1) << stream->DebugStreamPointers()
                   << " stream was not ok, StreamPool deleting with priority: "
-                  << stream_executor::StreamPriorityToString(priority);
+                  << se::StreamPriorityToString(priority);
           stream = nullptr;
         }
       }
@@ -55,7 +53,7 @@ StreamPool::Ptr StreamPool::BorrowStream(
     auto stream_impl = stream->implementation();
     stream_impl->SetPriority(priority);
     VLOG(1) << "Set stream priority to: "
-            << stream_executor::StreamPriorityToString(priority);
+            << se::StreamPriorityToString(priority);
     stream->Init();
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool created new stream";
@@ -71,8 +69,8 @@ void StreamPool::ReturnStream(se::Stream* stream) {
     VLOG(1) << stream->DebugStreamPointers()
             << " StreamPool returning ok stream";
     absl::MutexLock lock(&mu_);
-    auto priority = std::get<stream_executor::StreamPriority>(
-        stream->implementation()->priority());
+    auto priority =
+        std::get<se::StreamPriority>(stream->implementation()->priority());
     streams_with_pri_[priority].emplace_back(stream);
   } else {
     // If the stream has encountered any errors, all subsequent operations on it

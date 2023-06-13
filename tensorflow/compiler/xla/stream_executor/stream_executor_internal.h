@@ -22,8 +22,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_STREAM_EXECUTOR_INTERNAL_H_
 
 #include <cstdint>
-#include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -60,7 +58,7 @@ class Timer;
 // An instance of this is returned from StreamExecutor::GetModule.
 class ModuleHandle {
  public:
-  /*implicit*/ ModuleHandle(void* id = nullptr) : id_(id) {}
+  explicit ModuleHandle(void* id = nullptr) : id_(id) {}
 
   // A ModuleHandle with id() == nullptr is an invalid module handle, akin to a
   // null pointer.
@@ -78,8 +76,8 @@ namespace internal {
 // the PIMPL style.
 class EventInterface {
  public:
-  EventInterface() {}
-  virtual ~EventInterface() {}
+  EventInterface() = default;
+  virtual ~EventInterface() = default;
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(EventInterface);
@@ -92,10 +90,10 @@ class EventInterface {
 class KernelInterface {
  public:
   // Default constructor for the abstract interface.
-  KernelInterface() {}
+  KernelInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~KernelInterface() {}
+  virtual ~KernelInterface() = default;
 
   // Returns the number of formal parameters that this kernel accepts.
   virtual unsigned Arity() const = 0;
@@ -117,10 +115,10 @@ class KernelInterface {
 class StreamInterface {
  public:
   // Default constructor for the abstract interface.
-  StreamInterface() {}
+  StreamInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~StreamInterface() {}
+  virtual ~StreamInterface() = default;
 
   // Sets priority for a stream.
   virtual void SetPriority(StreamPriority priority) {
@@ -155,10 +153,10 @@ class StreamInterface {
 class TimerInterface {
  public:
   // Default constructor for the abstract interface.
-  TimerInterface() {}
+  TimerInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~TimerInterface() {}
+  virtual ~TimerInterface() = default;
 
   // Returns the number of microseconds elapsed in a completed timer.
   virtual uint64_t Microseconds() const = 0;
@@ -176,10 +174,10 @@ class TimerInterface {
 class StreamExecutorInterface {
  public:
   // Default constructor for the abstract interface.
-  StreamExecutorInterface() {}
+  StreamExecutorInterface() = default;
 
   // Default destructor for the abstract interface.
-  virtual ~StreamExecutorInterface() {}
+  virtual ~StreamExecutorInterface() = default;
 
   // Returns the (transitively) wrapped executor if this executor is
   // wrapping another executor; otherwise, returns this.

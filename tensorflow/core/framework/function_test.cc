@@ -1743,17 +1743,6 @@ TEST(FrozenStackTrace, GetUserFramesWithLowLimitSlicesFrames) {
               ElementsAre(Eq(frames[0]), Eq(frames[1])));
 }
 
-TEST(FrozenStackTrace, ToUncachedFramesReturnsAllFrames) {
-  std::vector<StackFrame> frames = std::vector<StackFrame>{
-      {"some/path/alpha.cc", 20, "bar"},
-      {"some/path/beta.cc", 30, "fox"},
-      {"some/path/subdir/gamma.cc", 40, "trot"},
-  };
-  FrozenStackTrace frozen_stack_trace(frames);
-
-  EXPECT_THAT(frozen_stack_trace.ToUncachedFrames(), ElementsAreArray(frames));
-}
-
 TEST(FrozenStackTrace, LastUserFrameReturnsLastFrame) {
   std::vector<StackFrame> frames = std::vector<StackFrame>{
       {"some/path/alpha.cc", 20, "bar"},

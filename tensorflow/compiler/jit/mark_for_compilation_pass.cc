@@ -1203,7 +1203,7 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_set<string> GetOrCreateClusterExcludeList() {
+absl::flat_hash_set<string> CreateClusterExcludeList() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   absl::flat_hash_set<string> excludelist;
   for (auto s : absl::StrSplit(flags->tf_xla_cluster_exclude_ops, ',')) {
@@ -1294,6 +1294,19 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
     }
   }
 
+  auto cluster_exclude_op_list = CreateClusterExcludeList();
+  bool allow_where_op = true;
+  for (const auto& s : cluster_exclude_op_list) {
+    if (s == "Where") {
+      allow_where_op = false;
+    } else {
+      return errors::InvalidArgument(
+          "The operation '", s,
+          "' passed to --tf_xla_cluster_exclude_ops is not supported by "
+          "XLA.");
+    }
+  }
+
   for (Node* node : sorted_nodes) {
     if (*debug_options_.fuel <= 0) {
       VLOG(1)
@@ -1321,25 +1334,13 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    auto cluster_exclude_op_list = GetOrCreateClusterExcludeList();
     RecursiveCompilabilityChecker::OperationFilter filter =
         CreateOperationFilter(*registration);
     filter.require_always_compilable = true;
     filter.allow_string_consts = false;
     filter.allow_collective_reduce_v2 = false;
     filter.allow_unique_op = false;
-    filter.allow_where_op = true;
-
-    for (const auto& s : cluster_exclude_op_list) {
-      if (s == "Where") {
-        filter.allow_where_op = false;
-      } else {
-        return errors::InvalidArgument(
-            "The operation '", s,
-            "' passed to --tf_xla_cluster_exclude_ops is not supported by "
-            "XLA.");
-      }
-    }
+    filter.allow_where_op = allow_where_op;
 
     RecursiveCompilabilityChecker checker(
         filter, DeviceType{registration->compilation_device_name});

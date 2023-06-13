@@ -239,15 +239,17 @@ CheckStoreIntoSliceIsCompatible(HloInstruction* instr,
   HloInstruction* folded_instr = instr;
   std::vector<HloInstruction*> formatting_ops;
   // Look through and register formatting op.
-  while (folded_instr->user_count() == 1 &&
-         (folded_instr->users()[0]->opcode() == HloOpcode::kSlice ||
-          folded_instr->users()[0]->opcode() == HloOpcode::kDynamicSlice ||
-          folded_instr->users()[0]->opcode() == HloOpcode::kPad ||
-          folded_instr->users()[0]->opcode() == HloOpcode::kCollectivePermute ||
-          folded_instr->users()[0]->opcode() == HloOpcode::kReshape ||
-          folded_instr->users()[0]->IsCustomCall(
-              DataParallelCollectiveOptimizer::kInsertedByPreviousStep))) {
+  while (folded_instr->user_count() == 1) {
     HloInstruction* folded_user = folded_instr->users()[0];
+    if (!HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
+                          HloOpcode::kPad, HloOpcode::kCollectivePermute,
+                          HloOpcode::kReshape, HloOpcode::kTranspose>(
+            folded_user) &&
+        !folded_user->IsCustomCall(
+            DataParallelCollectiveOptimizer::kInsertedByPreviousStep)) {
+      break;
+    }
+
     if (folded_user->opcode() == HloOpcode::kDynamicSlice) {
       auto indices = CollectDynamicSliceIndicesIfConstant(folded_user);
       if (!indices.has_value()) {
@@ -417,7 +419,7 @@ std::vector<HloInstruction*> MapNewOperands(
   return new_operands;
 }
 
-// Collect information regading movement of data either backward or forward
+// Collect information regarding movement of data either backward or forward
 // through loop iterations. Except collective_to_move every other information
 // here can be empty/null/-1 to indicate absence.
 struct WhileMoveInfo {

@@ -7,6 +7,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/xla:run_lit.sh",
     test_file_exts = ["mlir"],
@@ -27,6 +28,7 @@ cc_binary(
     srcs = ["ifrt-opt.cc"],
     deps = [
         "//tensorflow/compiler/xla/python/ifrt/ir",
+        "//tensorflow/compiler/xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//tensorflow/compiler/xla/python/ifrt/ir/transforms:passes",
         "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
@@ -46,6 +48,7 @@ cc_library(
         "//tensorflow/compiler/xla/python/ifrt",
         "//tensorflow/compiler/xla/python/ifrt:test_util",
         "//tensorflow/compiler/xla/python/ifrt/ir",
+        "//tensorflow/compiler/xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:test",
         "@com_google_absl//absl/status:statusor",
@@ -85,6 +88,7 @@ cc_library(
 xla_cc_test(
     name = "executable_test_no_impl",
     srcs = [],
+    tags = ["nomsan"],
     deps = [
         ":executable_impl_test_lib",
         "//tensorflow/compiler/xla/python/ifrt:no_impl_test_main",

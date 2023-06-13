@@ -122,7 +122,6 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
-        "//tensorflow/tsl/platform:errors",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/status",
@@ -163,6 +162,7 @@ build_test(
 xla_cc_test(
     name = "auto_sharding_test",
     srcs = ["auto_sharding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":auto_sharding",
         ":auto_sharding_util",

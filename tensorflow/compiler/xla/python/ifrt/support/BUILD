@@ -23,6 +23,7 @@ cc_library(
 xla_cc_test(
     name = "sharding_param_to_op_sharding_test",
     srcs = ["sharding_param_to_op_sharding_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":sharding_param_to_op_sharding",
         "//tensorflow/compiler/xla:statusor",

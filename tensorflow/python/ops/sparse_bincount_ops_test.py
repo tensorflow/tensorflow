@@ -21,6 +21,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.platform import test
 
 
 class TestSparseCount(test_util.TensorFlowTestCase, parameterized.TestCase):
@@ -445,3 +446,7 @@ class TestSparseCountFailureModes(test_util.TensorFlowTestCase):
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 "must have the same dense shape"):
       self.evaluate(sparse_ops.sparse_bincount(x, weights=weights, axis=-1))
+
+
+if __name__ == "__main__":
+  test.main()

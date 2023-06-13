@@ -2,6 +2,7 @@ load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = ["//tensorflow/compiler/xla/python/ifrt:friends"],
     licenses = ["notice"],
 )
 
@@ -29,15 +30,26 @@ cc_library(
         "spmd_expandable_interface_verification_pass.cc",
     ],
     hdrs = ["passes.h"],
-    visibility = ["//tensorflow/compiler/xla/python/ifrt:friends"],
     deps = [
         ":passes_inc_gen",
         "//tensorflow/compiler/xla/python/ifrt/ir",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "built_in_spmd_expansions",
+    srcs = ["built_in_spmd_expansions.cc"],
+    hdrs = ["built_in_spmd_expansions.h"],
+    deps = [
+        "//tensorflow/compiler/xla/python/ifrt/ir/transforms/spmd_expanders:spmd_expander",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
     ],
 )

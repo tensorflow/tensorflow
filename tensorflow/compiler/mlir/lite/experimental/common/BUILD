@@ -1,5 +1,7 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "outline_operations",
     srcs = ["outline_operations.cc"],

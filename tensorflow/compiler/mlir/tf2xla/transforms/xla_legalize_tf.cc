@@ -735,6 +735,7 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::FusedBatchNormGradV3Op>(),
     TypeID::get<TF::XlaReduceScatterOp>(),
     TypeID::get<TF::ModOp>(),
+    TypeID::get<TF::ConcatV2Op>(),
 
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
     TypeID::get<TF::AbsOp>(),

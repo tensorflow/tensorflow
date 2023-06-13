@@ -7,7 +7,9 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
+    default_tags = ["nomsan"],
     driver = "//tensorflow/compiler/xla:run_lit.sh",
     test_file_exts = ["mlir"],
 )

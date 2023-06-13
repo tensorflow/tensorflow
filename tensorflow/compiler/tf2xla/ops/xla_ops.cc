@@ -1408,6 +1408,9 @@ disabled_checks: A list of strings describing the safety checks that were
   following directives are recognized: "platform" (allow a compilation platform
   that is not among the `platforms`); "custom_call:xxx" (allow a custom call
   with target function name "xxx" even if it is not known to JAX to be stable).
+  This list, supplemented with a comma-separate list of directives specified
+  using the flag --tf_xla_call_module_disabled_checks,
+  is used at module loading time to skip the corresponding checks.
 )doc");
 
 }  // namespace

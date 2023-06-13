@@ -15,13 +15,14 @@ package_group(
         # copybara:uncomment "//learning/infra/mira/...",
         # copybara:uncomment "//learning/serving/...",
         "//tensorflow/core/runtime_fallback/...",
+        "//tensorflow/core/tfrt/mlrt/application/tensorflow/tests/...",
         "//tensorflow/core/tfrt/saved_model/tests/...",
         "//tensorflow/core/tfrt/graph_executor/...",
         "//tensorflow/core/tfrt/tfrt_session/...",
         "//tensorflow/core/tfrt/utils/debug/...",
         "//tensorflow_serving/...",
         "//tensorflow/core/tfrt/saved_model/python/...",
-        "//platforms/xla/tests/saved_models/...",
+        # copybara:uncomment "//platforms/xla/tests/saved_models/...",
         # copybara:uncomment "//quality/webanswers/servo2/...",
     ],
 )
@@ -45,6 +46,7 @@ cc_library(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/runtime_fallback/kernel:kernel_fallback_execute_compat",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/utils:tfrt_runtime",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/status",
@@ -70,6 +72,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
+        "//tensorflow/compiler/mlir/tfrt/transforms/mlrt:import_model",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_base",
@@ -88,6 +91,9 @@ cc_library(
         "//tensorflow/core/tfrt/graph_executor",
         "//tensorflow/core/tfrt/graph_executor:export_mlir",
         "//tensorflow/core/tfrt/graph_executor:graph_execution_options",
+        "//tensorflow/core/tfrt/mlrt/bytecode",
+        "//tensorflow/core/tfrt/mlrt/kernel",
+        "//tensorflow/core/tfrt/mlrt/kernel:batch_kernel",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tfrt/runtime:work_queue_interface",
         "//tensorflow/core/tfrt/utils",
@@ -110,11 +116,7 @@ cc_library(
         "@tf_runtime//:support",
     ] + if_google([
         "//third_party/tf_runtime_google:streamz_metrics_registry_alwayslink",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/compiler/transforms:import_model",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel",
-        "//learning/brain/experimental/tfrt/mlrt/application/tensorflow/kernel:batch_kernel",
         "//learning/brain/experimental/tfrt/native_lowering/kernels",
-        "//learning/infra/mira/mlrt/bytecode",
     ]),
 )
 
@@ -161,6 +163,7 @@ cc_library(
         "//tensorflow/core/tfrt/runtime",
         "@tf_runtime//:hostcontext",
     ] + if_google([
+        "//learning/brain/tfrt/support:export_mlir",
         "//learning/brain/tfrt/tpu/compiler/mlir:tf_to_tfrt_tpu",
     ]),
 )

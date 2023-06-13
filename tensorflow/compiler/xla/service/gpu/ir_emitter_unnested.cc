@@ -1960,9 +1960,10 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
 
   // TODO(cheshire): avoid duplication of FindTiledTranspose function, is it
   // possible?
-  auto dims_and_order = FindAnyTiledTranspose(**absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
+  std::optional<TransposeDescription> dims_and_order = FindAnyTiledTranspose(
+      **absl::c_find_if(hlo_roots, [](HloInstruction* instr) {
+        return FindAnyTiledTranspose(*instr);
+      }));
 
   // TODO(cheshire): have a more robust way of checking this.
   CHECK(dims_and_order.has_value());
@@ -1971,8 +1972,9 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   CHECK_EQ(WarpSize() % kNumRows, 0);
 
   // 3D view over the input shape.
-  Vector3 dims = dims_and_order->first;
-  Vector3 order = dims_and_order->second;
+  Vector3 dims = dims_and_order->dimensions;
+  Vector3 order = dims_and_order->permutation;
+
   // We expect that the last dimension is swapped with a different dimension.
   CHECK_NE(order[2], 2);
   Vector3 permuted_dims = {dims[order[0]], dims[order[1]], dims[order[2]]};
@@ -2010,6 +2012,41 @@ Status IrEmitterUnnested::EmitUnnestedTranspose(
   return OkStatus();
 }
 
+// Returns true if the fusion has consistent transpose heros.
+static bool HasConsistentTransposeHeros(HloComputation* fusion) {
+  std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion);
+  if (!HasAnyTiledTransposeRoot(fusion)) {
+    return false;
+  }
+  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
+      hlo_roots,
+      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
+  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
+  std::optional<TransposeDescription> first_tiled_transpose =
+      FindAnyTiledTranspose(*first_transpose);
+
+  // We need the following invariant:
+  // For every tuple element:
+  //  -> EITHER it's a kCopy: S{L} -> S{L'}
+  //  -> OR it's an elementwise op of shape S{L}
+  for (HloInstruction* root : hlo_roots) {
+    std::optional<TransposeDescription> tiled_transpose =
+        FindAnyTiledTranspose(*root);
+    if (tiled_transpose) {
+      if (*tiled_transpose != *first_tiled_transpose) {
+        return false;
+      }
+    } else {
+      if (!ShapeUtil::IsReshapeOrTransposeBitcast(
+              root->shape(), transpose_in_shape,
+              /*ignore_element_type=*/true)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
   auto fusion_op = mlir::cast<mlir::lmhlo::FusionOp>(op);
 
@@ -2035,7 +2072,8 @@ Status IrEmitterUnnested::EmitFusion(mlir::Operation* op) {
     return EmitUnnestedReduction(fusion_op, fused_computation);
   }
 
-  if (HasAnyTiledTransposeRoot(fused_computation)) {
+  // TODO(b/286029825): Do not generate fusions with inconsistent transposes.
+  if (HasConsistentTransposeHeros(fused_computation)) {
     return EmitUnnestedTranspose(fusion_op, fused_computation);
   }
 
@@ -3346,9 +3384,12 @@ StatusOr<KernelThunk*> IrEmitterUnnested::BuildKernelThunkImpl(
     Thunk::ThunkInfo thunk_info, const LaunchDimensions& launch_dimensions) {
   std::vector<BufferAllocation::Slice> arg_slices;
   arg_slices.reserve(kernel_arguments.size());
+  std::vector<bool> written;
+  written.reserve(kernel_arguments.size());
   for (const auto& kernel_argument : kernel_arguments) {
     if (!kernel_argument.first_with_same_slice.has_value()) {
       arg_slices.push_back(kernel_argument.slice);
+      written.push_back(kernel_argument.written);
     }
   }
 
@@ -3363,8 +3404,8 @@ StatusOr<KernelThunk*> IrEmitterUnnested::BuildKernelThunkImpl(
   }
 
   auto thunk_ptr = std::make_unique<KernelThunk>(
-      std::move(thunk_info), std::move(arg_slices), std::string(kernel_name),
-      launch_dimensions, std::move(values));
+      std::move(thunk_info), std::move(arg_slices), std::move(written),
+      std::string(kernel_name), launch_dimensions, std::move(values));
   KernelThunk* raw_thunk_ptr = thunk_ptr.get();
   AddThunkToThunkSequence(std::move(thunk_ptr));
 
@@ -3832,8 +3873,8 @@ static IrArray::Index GetUnnormalizedIndex(
     return IrArray::Index({multidim[2], multidim[1]}, unnormalized_shape,
                           normalized_shape_index.GetType());
   }
-  llvm::Value* linear = normalized_shape_index.Linearize(dims_in_elems, b_);
-  return IrArray::Index(linear, unnormalized_shape, b_);
+  return normalized_shape_index.SourceIndexOfBitcast(
+      ShapeUtil::MakeShape(F32, dims_in_elems), unnormalized_shape, b_);
 }
 
 static int GetNumOutputs(const Shape& shape) {
@@ -4495,28 +4536,6 @@ Status IrEmitterUnnested::EmitTransposeTile(
     const TilingScheme& tiling_scheme,
     const LaunchDimensions& launch_dimensions) {
   std::vector<HloInstruction*> hlo_roots = GetFusionRoots(fusion_hlo);
-  const HloInstruction* first_transpose = &FindNonTrivialHero(**absl::c_find_if(
-      hlo_roots,
-      [](HloInstruction* instr) { return FindAnyTiledTranspose(*instr); }));
-
-  const Shape& transpose_in_shape = first_transpose->operand(0)->shape();
-  auto first_tiled_transpose = FindAnyTiledTranspose(*first_transpose);
-
-  // We need the following invariant:
-  // For every tuple element:
-  //  -> EITHER it's a kCopy: S{L} -> S{L'}
-  //  -> OR it's an elementwise op of shape S{L}
-  for (HloInstruction* root : hlo_roots) {
-    auto tiled_transpose = FindAnyTiledTranspose(*root);
-    if (tiled_transpose) {
-      CHECK(*tiled_transpose == *first_tiled_transpose);
-    } else {
-      CHECK(ShapeUtil::IsReshapeOrTransposeBitcast(
-          root->shape(), transpose_in_shape,
-          /*ignore_element_type=*/true));
-    }
-  }
-
   FusedIrEmitter fused_emitter(elemental_emitter_);
   for (int i = 0; i < fusion_hlo->num_parameters(); i++) {
     llvm_ir::IrArray ir_array = operand_arrays[i];
@@ -4533,7 +4552,7 @@ Status IrEmitterUnnested::EmitTransposeTile(
   Vector3 permutation;
   for (const auto& [tile_idx, root] : llvm::enumerate(hlo_roots)) {
     if (auto tr = FindAnyTiledTranspose(*root)) {
-      permutation = tr->second;
+      permutation = tr->permutation;
       const HloInstruction& hero = FindNonTrivialHero(*root);
       tiles[&hero] =
           AllocateShared(tiling_scheme,
@@ -4562,35 +4581,26 @@ Status IrEmitterUnnested::EmitTransposeTile(
               scheduled_writes;
 
           for (const auto& [output_idx, root] : llvm::enumerate(hlo_roots)) {
-            IrArray::Index input_index = GetUnnormalizedIndex(
-                index, transpose_in_shape, &b_, tiling_scheme.GetDimsInElems());
             if (FindAnyTiledTranspose(*root)) {
               const HloInstruction& hero = FindNonTrivialHero(*root);
               llvm_ir::ElementGenerator input_gen =
                   *fused_emitter.GetGenerator(*hero.operand(0));
-              IrArray::Index used_index = input_index;
-              if (!ShapeUtil::EqualIgnoringElementType(hero.operand(0)->shape(),
-                                                       transpose_in_shape)) {
-                used_index = used_index.SourceIndexOfBitcast(
-                    transpose_in_shape, hero.operand(0)->shape(), &b_);
-              }
-              llvm::Value* value = *input_gen(used_index);
+              IrArray::Index untiled_index =
+                  GetUnnormalizedIndex(index, hero.operand(0)->shape(), &b_,
+                                       tiling_scheme.GetDimsInElems());
+              llvm::Value* value = *input_gen(untiled_index);
               llvm::Value* addr = thread_id_info.GEPIntoSharedMemory(
                   &b_, tiles[&hero], {y_loc, x_loc});
 
               b_.CreateStore(value, addr);
             } else {
-              IrArray::Index used_index = input_index;
-              if (!ShapeUtil::EqualIgnoringElementType(root->shape(),
-                                                       transpose_in_shape)) {
-                used_index = used_index.SourceIndexOfBitcast(
-                    transpose_in_shape, root->shape(), &b_);
-              }
+              IrArray::Index untiled_index = GetUnnormalizedIndex(
+                  index, root->shape(), &b_, tiling_scheme.GetDimsInElems());
               llvm_ir::ElementGenerator output_gen =
                   *fused_emitter.GetGenerator(*root);
-              llvm::Value* output_value = *output_gen(used_index);
+              llvm::Value* output_value = *output_gen(untiled_index);
               scheduled_writes.emplace_back(output_arrays[output_idx],
-                                            used_index, output_value);
+                                            untiled_index, output_value);
             }
           }
 
@@ -4616,9 +4626,6 @@ Status IrEmitterUnnested::EmitTransposeTile(
             if (FindAnyTiledTranspose(*root)) {
               const HloInstruction& hero = FindNonTrivialHero(*root);
 
-              IrArray::Index untiled_index = GetUnnormalizedIndex(
-                  index, hero.shape(), &b_,
-                  Permute(tiling_scheme.GetDimsInElems(), permutation));
               std::vector<llvm::Value*> idx = {x_loc, y_loc};
               llvm::Value* gep =
                   thread_id_info.GEPIntoSharedMemory(&b_, tiles[&hero], idx);
@@ -4647,13 +4654,11 @@ Status IrEmitterUnnested::EmitTransposeTile(
 
               // Both for emission and writing it should be index-as-transformed
               // by the computation.
-              IrArray::Index output_index = untiled_index;
-              if (root->shape() != hero.shape()) {
-                output_index = output_index.SourceIndexOfBitcast(
-                    hero.shape(), root->shape(), &b_);
-              }
-              TF_ASSIGN_OR_RETURN(llvm::Value * generated, gen(output_index));
-              output_arrays[output_idx].EmitWriteArrayElement(output_index,
+              IrArray::Index untiled_index = GetUnnormalizedIndex(
+                  index, root->shape(), &b_,
+                  Permute(tiling_scheme.GetDimsInElems(), permutation));
+              TF_ASSIGN_OR_RETURN(llvm::Value * generated, gen(untiled_index));
+              output_arrays[output_idx].EmitWriteArrayElement(untiled_index,
                                                               generated, &b_);
             }
           }

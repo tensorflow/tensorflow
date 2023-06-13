@@ -21,9 +21,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
-#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
+namespace se = ::stream_executor;
 
 // Pool of stream_executor::Streams, which are created as needed and
 // destroyed when the pool is destroyed.
@@ -38,7 +38,7 @@ class StreamPool {
   // stream to the pool on destruction.
   using Ptr = std::unique_ptr<se::Stream, PtrDeleter>;
 
-  StreamPool() {}
+  StreamPool() = default;
 
   // Returns a pointer to a stream in the pool, creating a new stream
   // if none are available in the pool. The returned smart pointer
@@ -46,8 +46,7 @@ class StreamPool {
   //
   // This method is thread-safe.
   Ptr BorrowStream(se::StreamExecutor* executor,
-                   stream_executor::StreamPriority priority =
-                       stream_executor::StreamPriority::Default);
+                   se::StreamPriority priority = se::StreamPriority::Default);
 
  private:
   // Puts a pointer to a stream back into the pool, leaving it free
@@ -59,7 +58,7 @@ class StreamPool {
 
   absl::Mutex mu_;
   // This stores streams with user-specified priority.
-  std::unordered_map<stream_executor::StreamPriority,
+  std::unordered_map<se::StreamPriority,
                      std::vector<std::unique_ptr<se::Stream>>>
       streams_with_pri_ ABSL_GUARDED_BY(mu_);
 };

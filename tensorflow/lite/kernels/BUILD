@@ -2611,6 +2611,8 @@ cc_test(
         ":test_main",
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite/core:framework_stable",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/profiling:memory_info",
         "@com_google_googletest//:gtest",
     ],
@@ -2723,6 +2725,8 @@ cc_library(
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_googletest//:gtest",
     ],
 )

@@ -236,8 +236,7 @@ void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
 
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
   return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(),
-      /*distributed_client=*/nullptr, /*node_id=*/0);
+      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
 }
 
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(

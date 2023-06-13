@@ -1007,11 +1007,19 @@ ENTRY int8gemm {
 
 TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
   std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
-      type_combinations = {
-          {"s8", "s32", true},    {"s8", "s8", true},   {"s32", "s32", true},
-          {"bf16", "bf16", true}, {"f16", "f16", true}, {"f32", "f32", true},
-          {"f64", "f64", true},   {"c64", "c64", true}, {"c128", "c128", true},
-      };
+      type_combinations = {{"s8", "s8", true},
+                           {"s32", "s32", true},
+                           {"bf16", "bf16", true},
+                           {"f16", "f16", true},
+                           {"f32", "f32", true},
+                           {"f64", "f64", true},
+                           {"c64", "c64", true},
+                           {"c128", "c128", true},
+                           // add mix type gemm
+                           {"s8", "s32", true},
+                           {"s8", "f32", true},
+                           {"f16", "f32", true},
+                           {"bf16", "f32", true}};
 
   if (GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
     // For compute capabilities before volta, we always do upcasting, so it
@@ -1020,15 +1028,14 @@ TEST_P(ParameterizedGemmRewriteTest, GemmTypeCombinationCheck) {
     std::vector<std::tuple<absl::string_view, absl::string_view, bool>>
         more_type_combinations = {
             {"s8", "bf16", false},  {"s8", "f16", false},
-            {"s8", "f32", false},   {"s8", "f64", false},
-            {"s8", "c64", false},   {"s8", "c128", false},
+            {"s8", "f64", false},   {"s8", "c64", false},
+            {"s8", "c128", false},
 
             {"s32", "f32", false},  {"s32", "f64", false},
             {"s32", "c64", false},  {"s32", "c128", false},
 
-            {"f16", "bf16", false}, {"f16", "f32", false},
-            {"f16", "f64", false},  {"f16", "c64", false},
-            {"f16", "c128", false},
+            {"f16", "bf16", false}, {"f16", "f64", false},
+            {"f16", "c64", false},  {"f16", "c128", false},
 
             {"bf16", "f16", false}, {"bf16", "f64", false},
             {"bf16", "c64", false}, {"bf16", "c128", false},
@@ -1176,6 +1183,94 @@ ENTRY test {
   // GemmRewriter to choose legacy cublas.
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::CustomCall({"__cublas$gemm"})));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, SupportedMixTypeGemm) {
+  if (!GetCudaComputeCapability().IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+    GTEST_SKIP() << "Mixed type cublas calls are only used on Volta and above";
+  }
+
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  param_0 = f16[240,88]{1,0} parameter(0)
+  param_1 = f16[88,4]{1,0} parameter(1)
+  dot = f16[240,4]{1,0} dot(param_0, param_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  constant_255 = f16[] constant(255)
+  broadcast = f16[240,4]{1,0} broadcast(constant_255), dimensions={}
+  multiply = f16[240,4]{1,0} multiply(dot, broadcast)
+  ROOT result = f32[240,4]{1,0} convert(multiply)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // input fp16 and output fp32 combination is supported by legacy cublas and
+  // cublasLt, expect GemmRewriter to fuse the convert into gemm.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::CustomCall({CustomCallTarget()})));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, UnsupportedMixTypeGemm) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  param_0 = f32[240,88]{1,0} parameter(0)
+  param_1 = f32[88,4]{1,0} parameter(1)
+  dot = f32[240,4]{1,0} dot(param_0, param_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest,highest}
+  constant_255 = f32[] constant(255)
+  broadcast = f32[240,4]{1,0} broadcast(constant_255), dimensions={}
+  multiply = f32[240,4]{1,0} multiply(dot, broadcast)
+  ROOT result = u8[240,4]{1,0} convert(multiply)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // u8 is not supported by legacy cublas and cublasLt, expect
+  // GemmRewriter to not fuse the convert into gemm.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
+}
+
+TEST_P(ParameterizedGemmRewriteTest, CheckIsGemmAliasedBeforeFusion) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY main {
+  Arg_0.1 = f16[8,16]{1,0} parameter(0)
+  Arg_1.2 = f16[16,32]{1,0} parameter(1)
+  dot.8 = f16[8,32]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  Arg_2.3 = f16[8,32]{1,0} parameter(2)
+  constant.5 = f16[] constant(1)
+  broadcast.6 = f16[8,32]{1,0} broadcast(constant.5), dimensions={}
+  add.7 = f16[8,32]{1,0} add(Arg_2.3, broadcast.6)
+  add.9 = f16[8,32]{1,0} add(dot.8, add.7)
+  convert.10 = f32[8,32]{1,0} convert(add.9)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text));
+  GemmRewriter pass(GetCudaComputeCapability());
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, this->RunHloPass(&pass, module.get()));
+  EXPECT_TRUE(changed);
+
+  // input fp16 and output fp32 combination is supported by legacy cublas and
+  // cublasLt, but gemm output is already aliased with one of the input expect
+  // GemmRewriter to not fuse the convert into gemm.
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Convert(m::CustomCall({CustomCallTarget()}))));
 }
 
 INSTANTIATE_TEST_SUITE_P(CublasTestsBothLegacyAndLt,
@@ -1608,6 +1703,187 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"DEFAULT"
 ; CHECK:           }
 )");
+}
+
+// Test gemm matrix bias add fusion with mix type
+TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixType) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[16,32] parameter(0)
+  y = <<ABType>>[32,16] parameter(1)
+  z = <<DType>>[16,16] parameter(2)
+  dot_a = <<ABType>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = <<DType>>[16,16] negate(z)
+  convert = <<DType>>[16,16] convert(dot_a)
+  ROOT out = <<DType>>[16,16] add(convert, bias)
+}
+
+)";
+  const char* matched_text_template = R"(
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[16,32], y: <<ABType>>[32,16], z: <<DType>>[16,16]) -> <<DType>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = <<DType>>[16,16]{1,0} negate([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[16,16]{1,0} custom-call([[P0]], [[P1]], [[N1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test batch gemm matrix bias add fusion with mix type
+TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeBatched) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[4,16,32] parameter(0)
+  y = <<ABType>>[4,32,16] parameter(1)
+  z = <<DType>>[4,16,16] parameter(2)
+  dot_a = <<ABType>>[4,16,16] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  bias = <<DType>>[4,16,16] negate(z)
+  convert = <<DType>>[4,16,16] convert(dot_a)
+  ROOT out = <<DType>>[4,16,16] add(convert, bias)
+}
+
+)";
+  const char* matched_text_template = R"(
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[4,16,32], y: <<ABType>>[4,32,16], z: <<DType>>[4,16,16]) -> <<DType>>[4,16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[4,16,32]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[4,32,16]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} parameter(2)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} negate([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} custom-call([[P0]], [[P1]], [[N1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test batch gemm matrix bias add fusion with mix type that is not supported
+TEST_F(LegacyCublasGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  z = f64[16,16] parameter(2)
+  dot_a = bf16[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = f64[16,16] negate(z)
+  convert = f64[16,16] convert(dot_a)
+  ROOT out = f64[16,16] add(convert, bias)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f64[16,16], [[DUMMY1:[^ ]+]]: bf16[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f64[16,16]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f64[16,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = f64[16,16]{1,0} negate([[P0]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} add([[C1]], [[N1]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: bf16[16,32], y: bf16[32,16], z: f64[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = bf16[16,16]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$gemm",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} fusion([[P2]], [[DOT]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
+      )");
 }
 
 TEST_F(LegacyCublasGemmRewriteTest, MergeBitcastAndAdd) {
@@ -4178,6 +4454,249 @@ ENTRY main {
   MatchOptimizedHlo(hlo_text,
                     R"(
 ; CHECK:           custom_call_target="__cublas$lt$matmul",
+      )");
+}
+
+// Test gemm matrix bias add fusion with mix type and out of place update(C !=
+// D)
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlace) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[16,32] parameter(0)
+  y = <<ABType>>[32,16] parameter(1)
+  z = <<DType>>[16,16] parameter(2)
+  dot_a = <<ABType>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  convert = <<DType>>[16,16] convert(dot_a)
+  ROOT out = <<DType>>[16,16] add(convert, z)
+}
+
+)";
+  const char* matched_text_template = R"(
+
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[16,32], y: <<ABType>>[32,16], z: <<DType>>[16,16]) -> <<DType>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[16,16]{1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test batch gemm matrix bias add fusion with mix type and out of place
+// update(C != D)
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeOutOfPlaceBatched) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[4,16,32] parameter(0)
+  y = <<ABType>>[4,32,16] parameter(1)
+  z = <<DType>>[4,16,16] parameter(2)
+  dot_a = <<ABType>>[4,16,16] dot(x, y), lhs_contracting_dims={2}, rhs_contracting_dims={1}, lhs_batch_dims={0}, rhs_batch_dims={0}
+  convert = <<DType>>[4,16,16] convert(dot_a)
+  ROOT out = <<DType>>[4,16,16] add(convert, z)
+}
+
+)";
+  const char* matched_text_template = R"(
+
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[4,16,32], y: <<ABType>>[4,32,16], z: <<DType>>[4,16,16]) -> <<DType>>[4,16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[4,16,32]{2,1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[4,32,16]{2,1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} parameter(2)
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[4,16,16]{2,1,0} custom-call([[P0]], [[P1]], [[P2]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["2"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "lhs_batch_dimensions":["0"]
+; CHECK-DAG:           "rhs_batch_dimensions":["0"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test gemm matrix bias add fusion with mix type and in place update(C = D)
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeInPlace) {
+  std::vector<std::tuple<absl::string_view, absl::string_view>>
+      type_combinations = {
+          {"f16", "f32"},
+          {"bf16", "f32"},
+      };
+  const char* hlo_text_template = R"(
+HloModule test
+
+ENTRY test {
+  x = <<ABType>>[16,32] parameter(0)
+  y = <<ABType>>[32,16] parameter(1)
+  z = <<DType>>[16,16] parameter(2)
+  dot_a = <<ABType>>[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = <<DType>>[16,16] negate(z)
+  convert = <<DType>>[16,16] convert(dot_a)
+  ROOT out = <<DType>>[16,16] add(convert, bias)
+}
+
+)";
+  const char* matched_text_template = R"(
+
+; CHECK-LABEL: ENTRY %test (x: <<ABType>>[16,32], y: <<ABType>>[32,16], z: <<DType>>[16,16]) -> <<DType>>[16,16] {
+; CHECK-NEXT:    [[P0:%[^ ]+]] = <<ABType>>[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = <<ABType>>[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[P2:%[^ ]+]] = <<DType>>[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = <<DType>>[16,16]{1,0} negate([[P2]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = <<DType>>[16,16]{1,0} custom-call([[P0]], [[P1]], [[N1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           output_to_operand_aliasing={{{{}: \(2, {}\)}}},
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":1
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+      )";
+  for (const auto& type_combination : type_combinations) {
+    absl::flat_hash_map<absl::string_view, absl::string_view> replacements;
+    replacements["<<ABType>>"] = std::get<0>(type_combination);
+    replacements["<<DType>>"] = std::get<1>(type_combination);
+    const auto hlo_text = absl::StrReplaceAll(hlo_text_template, replacements);
+    const auto matched_text =
+        absl::StrReplaceAll(matched_text_template, replacements);
+    EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+    if (GetCudaComputeCapability().IsAtLeast(
+            se::CudaComputeCapability::VOLTA)) {
+      // The convert is only removed only Volta and above, since mixed type
+      // matmuls have precision issues on Pascal.
+      MatchOptimizedHlo(hlo_text, matched_text);
+    }
+  }
+}
+
+// Test gemm matrix bias add fusion with mix type that is not supported
+TEST_F(CublasLtGemmRewriteTest, MatrixBiasMixTypeNotSupported) {
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = bf16[16,32] parameter(0)
+  y = bf16[32,16] parameter(1)
+  z = f64[16,16] parameter(2)
+  dot_a = bf16[16,16] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bias = f64[16,16] negate(z)
+  convert = f64[16,16] convert(dot_a)
+  ROOT out = f64[16,16] add(convert, bias)
+}
+
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-3, 1e-3}));
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK:        [[FUSED_COMPUTATION:%[^ ]+]] ([[DUMMY0:[^ ]+]]: f64[16,16], [[DUMMY1:[^ ]+]]: bf16[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[16,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[C1:%[^ ]+]] = f64[16,16]{1,0} convert([[P1]])
+; CHECK-NEXT:    [[P0:%[^ ]+]] = f64[16,16]{1,0} parameter(0)
+; CHECK-NEXT:    [[N1:%[^ ]+]] = f64[16,16]{1,0} negate([[P0]])
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} add([[C1]], [[N1]])
+}
+
+; CHECK-LABEL: ENTRY %test (x: bf16[16,32], y: bf16[32,16], z: f64[16,16]) -> f64[16,16] {
+; CHECK-NEXT:    [[P2:%[^ ]+]] = f64[16,16]{1,0} parameter(2)
+; CHECK-NEXT:    [[P0:%[^ ]+]] = bf16[16,32]{1,0} parameter(0)
+; CHECK-NEXT:    [[P1:%[^ ]+]] = bf16[32,16]{1,0} parameter(1)
+; CHECK-NEXT:    [[DOT:%[^ ]+]] = bf16[16,16]{1,0} custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"DEFAULT"
+; CHECK:           }
+; CHECK-NEXT:    ROOT [[OUT:%[^ ]+]] = f64[16,16]{1,0} fusion([[P2]], [[DOT]]), kind=kLoop, calls=[[FUSED_COMPUTATION]]
       )");
 }
 

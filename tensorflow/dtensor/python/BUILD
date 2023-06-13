@@ -20,7 +20,10 @@ package(
 py_library(
     name = "dtensor",
     srcs = ["__init__.py"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/tools/api/generator:__pkg__",
+    ],
     deps = [
         ":accelerator_util",
         ":api",
@@ -239,16 +242,13 @@ pytype_strict_library(
         "//tensorflow/dtensor:dtensor-users",
     ],
     deps = [
-        ":api",
         ":config",
         ":dtensor_device",
         ":gen_dtensor_ops",
-        ":heartbeat",
         ":layout",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/eager:function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:errors",

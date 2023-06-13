@@ -1217,31 +1217,6 @@ mlir::LogicalResult InsertRelayoutForWhileLoops(
   return mlir::success();
 }
 
-// For all constants with multiple usages, clone the constants so that each
-// constant operation has at most 1 usage.
-void DuplicateConstants(mlir::ModuleOp module) {
-  llvm::SmallVector<mlir::TF::ConstOp, 4> const_ops;
-  module.walk(
-      [&](mlir::TF::ConstOp const_op) { const_ops.emplace_back(const_op); });
-
-  for (mlir::TF::ConstOp const_op : const_ops) {
-    mlir::OpBuilder builder(const_op);
-    auto uses = const_op->getUses();
-    if (uses.empty()) return;
-
-    llvm::SmallDenseMap<mlir::Operation*, mlir::OpOperand*> const_use_map;
-    mlir::OpOperand& first_use = *uses.begin();
-    for (mlir::OpOperand& use : uses) {
-      if (&use == &first_use) continue;
-
-      mlir::Operation* new_const = builder.clone(*const_op);
-      const_use_map.try_emplace(new_const, &use);
-    }
-
-    for (const auto& it : const_use_map) it.second->set(it.first->getResult(0));
-  }
-}
-
 // Find the root(s) values of "current_value" within the cycle, and put it
 // into "roots".
 void FindRoot(

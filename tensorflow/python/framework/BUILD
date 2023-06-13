@@ -474,6 +474,7 @@ py_strict_library(
         "//tensorflow/python/types:doc_typealias",
         "//tensorflow/python/util:tf_export",
         "//tensorflow/tools/docs:doc_controls",
+        "@ml_dtypes",
     ],
 )
 
@@ -1992,6 +1993,7 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = visibility + [
         "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
         "//third_party/py/keras:__subpackages__",
         "//third_party/py/keras_cv:__subpackages__",
     ],

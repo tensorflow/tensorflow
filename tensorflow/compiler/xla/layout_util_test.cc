@@ -557,5 +557,33 @@ TEST_F(LayoutUtilTest, StridesNotMajorToMinor) {
   EXPECT_FALSE(LayoutUtil::ByteStridesIsMajorToMinor(
       byte_strides, {8, 9, 10, 11}, PrimitiveType::F32));
 }
+
+TEST_F(LayoutUtilTest, HasCustomElementSizeInBits) {
+  Shape shape = ShapeUtil::MakeShape(F32, {1, 2});
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeShape(F32, {1, 2});
+  shape.mutable_layout()->set_element_size_in_bits(0);
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeShape(F32, {1, 2});
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 2}),
+                                  ShapeUtil::MakeShape(F32, {1, 2})}),
+       ShapeUtil::MakeShape(F32, {1, 2})});
+  EXPECT_FALSE(LayoutUtil::HasCustomElementSizeInBits(shape));
+
+  shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {1, 2}),
+                                  ShapeUtil::MakeShape(F32, {1, 2})}),
+       ShapeUtil::MakeShape(F32, {1, 2})});
+  ShapeUtil::GetMutableSubshape(&shape, {0, 1})
+      ->mutable_layout()
+      ->set_element_size_in_bits(32);
+  EXPECT_TRUE(LayoutUtil::HasCustomElementSizeInBits(shape));
+}
 }  // namespace
 }  // namespace xla

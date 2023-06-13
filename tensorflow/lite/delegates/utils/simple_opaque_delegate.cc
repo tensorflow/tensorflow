@@ -115,7 +115,7 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
 
   return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
       opaque_context, delegate_kernel_registration,
-      BuildTfLiteIntArray(supported_nodes).get(), opaque_delegate);
+      BuildTfLiteArray(supported_nodes).get(), opaque_delegate);
 }
 }  // namespace
 

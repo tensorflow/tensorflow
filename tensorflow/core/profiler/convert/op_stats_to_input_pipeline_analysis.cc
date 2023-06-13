@@ -18,6 +18,8 @@ limitations under the License.
 #include <math.h>
 
 #include <algorithm>
+#include <optional>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -359,7 +361,7 @@ double RatioOfHostToDeviceTimeToStepTime(
     const OpMetricsDb& host_tf_metrics_db,
     const InputPipelineAnalysisResult& input_pipeline_analysis) {
   // For TPU execution that uses infeed.
-  absl::optional<double> host_infeed_enqueue_ratio =
+  std::optional<double> host_infeed_enqueue_ratio =
       HostInfeedEnqueueRatio(host_tf_metrics_db);
   if (host_infeed_enqueue_ratio.has_value()) {
     return host_infeed_enqueue_ratio.value();

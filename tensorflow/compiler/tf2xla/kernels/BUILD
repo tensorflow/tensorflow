@@ -386,6 +386,7 @@ cc_library(
     srcs = ["xla_call_module_loader.cc"],
     hdrs = ["xla_call_module_loader.h"],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/compiler/mlir/tensorflow:dump_mlir_util",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/xla/client:xla_computation",

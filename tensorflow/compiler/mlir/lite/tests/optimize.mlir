@@ -3378,3 +3378,39 @@ func.func @dontFuseAddAndStridedSliceEllipsisMask(%arg0: tensor<4xi32>, %arg1: t
   %1 = "tfl.strided_slice"(%arg0, %arg1, %0, %cst_1) {begin_mask = 0 : i32, ellipsis_mask = 1 : i32, end_mask = 0 : i32, new_axis_mask = 0 : i32, shrink_axis_mask = 0 : i32, offset = false} : (tensor<4xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<4xi32>
   func.return %1 : tensor<4xi32>
 }
+
+// CHECK-LABEL:   func @fuseSigmoid
+func.func @fuseSigmoid(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  // CHECK: "tfl.logistic"
+  %cst = arith.constant dense<1.000000e+00> : tensor<10xf32>
+  %0 = "tfl.neg"(%arg0) : (tensor<10xf32>) -> tensor<10xf32>
+  %1 = "tfl.exp"(%0) : (tensor<10xf32>) -> tensor<10xf32>
+  %2 = tfl.add %1, %cst {fused_activation_function = "NONE"} : tensor<10xf32>
+  %3 = tfl.div %cst, %2 {fused_activation_function = "NONE"} : tensor<10xf32>
+  return %3 : tensor<10xf32>
+}
+// CHECK-LABEL:   func @fuseElu
+func.func @fuseElu(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK: "tfl.elu"
+  %cst = arith.constant dense<1.000000e+00> : tensor<f32>
+  %cst_0 = arith.constant dense<0.000000e+00> : tensor<10xf32>
+  %0 = tfl.greater(%arg0, %cst_0) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  %1 = "tfl.select"(%0, %cst_0, %arg0) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  %2 = "tfl.exp"(%1) : (tensor<10xf32>) -> tensor<10xf32>
+  %3 = tfl.sub(%2, %cst) {fused_activation_function = "NONE"} : (tensor<10xf32>, tensor<f32>) -> tensor<10xf32>
+  %4 = "tfl.select"(%0, %arg0, %3) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %4 : tensor<10xf32>
+}
+
+// CHECK-LABEL:   func @fuseHardSwishJAX
+func.func @fuseHardSwishJAX(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK: "tfl.hard_swish"
+  %cst = arith.constant dense<3.000000e+00> : tensor<10xf32>
+  %cst_0 = arith.constant dense<6.000000e+00> : tensor<10xf32>
+  %0 = tfl.add %arg0, %cst {fused_activation_function = "NONE"} : tensor<10xf32>
+  %1 = "tfl.relu"(%0) : (tensor<10xf32>) -> tensor<10xf32>
+  %2 = "tfl.minimum"(%1, %cst_0) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  %3 = tfl.div %2, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
+  %4 = tfl.mul %arg0, %3 {fused_activation_function = "NONE"} : tensor<10xf32>
+  return %4 : tensor<10xf32>
+}

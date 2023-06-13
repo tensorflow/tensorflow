@@ -14,7 +14,6 @@ package(
 
 HARD_FP_FLAGS_IF_APPLICABLE = select({
     "//tensorflow:android_arm": ["-mfloat-abi=softfp"],
-    "//tensorflow:android_arm64": ["-mfloat-abi=softfp"],
     "//tensorflow:android_armeabi": ["-mfloat-abi=softfp"],
     "//conditions:default": [],
 })
@@ -1216,6 +1215,24 @@ cc_test(
 cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=0",
+    ],
+    deps = [
+        ":optimized_base",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "resize_bilinear_test_single_rounding",
+    srcs = ["resize_bilinear_test.cc"],
+    defines = [
+        "TFLITE_SINGLE_ROUNDING=1",
+    ],
     deps = [
         ":optimized_base",
         ":reference_base",

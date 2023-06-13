@@ -1695,6 +1695,7 @@ BuildStrategyAndCost(const HloInstructionSequence& sequence,
         }
 
         if (strategies->leaf_vector.empty()) {
+          strategies->following = nullptr;
           AddReplicatedStrategy(ins, ins->shape(), cluster_env, strategy_map,
                                 strategies, 0);
         }
@@ -2959,16 +2960,6 @@ void SetHloShardingPostProcessing(const HloInstructionSequence& sequence,
             }
           }
         }
-      }
-    }
-  }
-
-  for (HloInstruction* inst : sequence.instructions()) {
-    if (inst->opcode() == HloOpcode::kIota) {
-      if (inst->sharding().IsReplicated()) {
-        // For fully replicated iota, leave its sharding annotation to the
-        // ShardingPropagation pass, which can typically do a better job.
-        inst->clear_sharding();
       }
     }
   }

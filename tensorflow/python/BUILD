@@ -72,10 +72,10 @@ py_library(
         "//tensorflow/tools/quantization:__pkg__",  # TODO(b/34059704): remove when fixed
     ],
     deps = [
-        ":gradient_checker_v2",
         ":no_contrib",
-        ":stateful_random_ops",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:stateful_random_ops",
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/platform:app",
         "//tensorflow/python/platform:client_testlib",
@@ -114,62 +114,10 @@ py_strict_library(
         "//third_party/py/tensorflow_privacy:__subpackages__",  # TODO(b/163395075): remove when fixed
     ],
     deps = [
-        ":layers",
-        ":rnn",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
-    ],
-)
-
-py_strict_library(
-    name = "tmp_alias_for_pip",
-    tags = ["avoid_dep"],
-    visibility = ["//visibility:private"],
-    deps = [
-        ":array_grad",
-        ":batch_ops",
-        ":candidate_sampling_ops",
-        ":checkpoint_ops_gen",
-        ":composite_tensor_ops_gen",
-        ":control_flow_ops_gen",
-        ":control_flow_util_v2",
-        ":control_flow_v2_toggles",
-        ":critical_section_ops",
-        ":data_flow_grad",
-        ":data_flow_ops_gen",
-        ":function",
-        ":functional_ops_gen",
-        ":image_ops_gen",
-        ":indexed_slices",
-        ":inplace_ops",
-        ":io_ops_gen",
-        ":kernels",
-        ":linalg_ops_gen",
-        ":linalg_ops_impl",
-        ":list_ops_gen",
-        ":logging_ops_gen",
-        ":lookup_ops_gen",
-        ":math_grad",
-        ":nn_ops",
-        ":nn_ops_gen",
-        ":numerics",
-        ":optional_ops_gen",
-        ":parsing_config",
-        ":partitioned_variables",
-        ":random_grad",
-        ":random_index_shuffle_ops_gen",
-        ":resource_variable_ops_gen",
-        ":set_ops_gen",
-        ":shape_util",
-        ":sort_ops",
-        ":sparse_grad",
-        ":special_math_ops",
-        ":state_ops_gen",
-        ":stateful_random_ops_gen",
-        ":template",
-        ":tensor_array_grad",
-        ":test_ops",
-        ":training_util",
+        "//tensorflow/python/layers",
+        "//tensorflow/python/ops:rnn",
     ],
 )
 
@@ -191,74 +139,16 @@ py_library(
     deps = [
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
-        ":_pywrap_utils",
-        ":array_ops",
-        ":array_ops_stack",
-        ":audio_ops_gen",
-        ":bincount_ops",
-        ":bitwise_ops",
-        ":boosted_trees_ops",
-        ":check_ops",
-        ":client_testlib",
-        ":clustering_ops",
-        ":collective_ops",
-        ":composite_tensor_ops",
-        ":cond",
-        ":cond_v2",
-        ":confusion_matrix",
-        ":control_flow_assert",
-        ":control_flow_case",
-        ":control_flow_ops",
-        ":control_flow_switch_case",
-        ":cudnn_rnn_ops_gen",
         ":distributed_framework_test_lib",
-        ":dtensor",
-        ":filesystem_ops",
-        ":functional_ops",
-        ":gradient_checker",
-        ":gradient_checker_v2",
-        ":histogram_ops",
-        ":image_ops",
-        ":initializers_ns",
-        ":io_ops",
         ":keras_lib",
-        ":lib",
-        ":list_ops",
-        ":manip_ops",
-        ":map_fn",
-        ":map_ops",
-        ":math_ops",
         ":metrics",
-        ":nccl_ops",
         ":nn",
-        ":ops",
-        ":proto_ops",
         ":pywrap_tensorflow",
         ":pywrap_tfe",
-        ":random_crop_ops",
-        ":ref_variable",
         ":rnn_cell",
-        ":rnn_ops_gen",
-        ":saver",
-        ":script_ops",
-        ":sendrecv_ops_gen",
-        ":session_ops",
-        ":sets",
-        ":sparse_ops",
-        ":standard_ops",
-        ":state_ops",
-        ":stateful_random_ops",
-        ":string_ops",
-        ":tensor_array_ops",
-        ":tensor_spec",
-        ":tmp_alias_for_pip",
-        ":training",
-        ":uniform_quant_ops_gen",
-        ":variable_v1",
-        ":weights_broadcast_ops",
-        ":while_loop",
         ":while_v2",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/dtensor/python:dtensor",
         "//tensorflow/python/autograph",
         "//tensorflow/python/autograph/utils:testing",
         "//tensorflow/python/client",
@@ -294,11 +184,64 @@ py_library(
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:kernels",
         "//tensorflow/python/framework:subscribe",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:test_ops",  # TODO(b/183988750): Break testing code out into separate rule.
         "//tensorflow/python/grappler:tf_cluster",
         "//tensorflow/python/grappler:tf_item",
         "//tensorflow/python/grappler:tf_optimizer",
+        "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:audio_ops_gen",
+        "//tensorflow/python/ops:bincount_ops",
+        "//tensorflow/python/ops:bitwise_ops",
+        "//tensorflow/python/ops:boosted_trees_ops",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:clustering_ops",
+        "//tensorflow/python/ops:collective_ops",
+        "//tensorflow/python/ops:composite_tensor_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:cond_v2",
+        "//tensorflow/python/ops:confusion_matrix",
+        "//tensorflow/python/ops:control_flow_assert",
+        "//tensorflow/python/ops:control_flow_case",
+        "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:control_flow_switch_case",
+        "//tensorflow/python/ops:cudnn_rnn_ops_gen",
+        "//tensorflow/python/ops:filesystem_ops",
+        "//tensorflow/python/ops:functional_ops",
+        "//tensorflow/python/ops:gradient_checker",
+        "//tensorflow/python/ops:gradient_checker_v2",
+        "//tensorflow/python/ops:histogram_ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:initializers_ns",
+        "//tensorflow/python/ops:io_ops",
+        "//tensorflow/python/ops:list_ops",
+        "//tensorflow/python/ops:manip_ops",
+        "//tensorflow/python/ops:map_fn",
+        "//tensorflow/python/ops:map_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nccl_ops",
+        "//tensorflow/python/ops:proto_ops",
+        "//tensorflow/python/ops:random_crop_ops",
+        "//tensorflow/python/ops:ref_variable",
+        "//tensorflow/python/ops:rnn_ops_gen",
+        "//tensorflow/python/ops:script_ops",
+        "//tensorflow/python/ops:sendrecv_ops_gen",
+        "//tensorflow/python/ops:session_ops",
+        "//tensorflow/python/ops:sets",
+        "//tensorflow/python/ops:sets_impl",
+        "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/ops:standard_ops",
+        "//tensorflow/python/ops:state_ops",
+        "//tensorflow/python/ops:stateful_random_ops",
+        "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/ops:tensor_array_ops",
+        "//tensorflow/python/ops:uniform_quant_ops_gen",
+        "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/ops:weights_broadcast_ops",
+        "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/distributions:bijector_test_util",
         "//tensorflow/python/ops/distributions:identity_bijector",
@@ -324,6 +267,7 @@ py_library(
         "//tensorflow/python/ops/structured:structured_ops",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
         "//tensorflow/python/platform:app",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:flags",
         "//tensorflow/python/platform:gfile",
         "//tensorflow/python/platform:resource_loader",
@@ -342,11 +286,14 @@ py_library(
         "//tensorflow/python/tpu:functional",
         "//tensorflow/python/tpu:preempted_hook_py",
         "//tensorflow/python/tpu:tpu_noestimator",
+        "//tensorflow/python/training",
+        "//tensorflow/python/training:saver",
         "//tensorflow/python/training:saver_test_utils",
         "//tensorflow/python/types:core",
         "//tensorflow/python/types:data",
         "//tensorflow/python/types:distribute",
         "//tensorflow/python/types:trace",
+        "//tensorflow/python/user_ops:ops",
         "//tensorflow/python/util:_pywrap_checkpoint_reader",
         "//tensorflow/python/util:_pywrap_kernel_registry",
         "//tensorflow/python/util:_pywrap_nest",
@@ -354,6 +301,7 @@ py_library(
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:_pywrap_transform_graph",
         "//tensorflow/python/util:_pywrap_util_port",
+        "//tensorflow/python/util:_pywrap_utils",
         "//tensorflow/python/util:all_util",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:dispatch",
@@ -407,21 +355,6 @@ py_library(
     ],
 )
 
-alias(
-    name = "tf_decorator",
-    actual = "//tensorflow/python/util:tf_decorator",
-)
-
-# Deprecated.  Use
-#   //third_party/tensorflow/tsl/python/lib/core:bfloat16_lib
-# for the bfloat16-specific dependency, or
-#   //third_party/tensorflow/tsl/python/lib/core
-# for all custom types and python utilities.
-alias(
-    name = "bfloat16_lib",
-    actual = "//tensorflow/python/lib/core:bfloat16_lib",
-)
-
 # Necessary for the pywrap inclusion below.
 tf_pybind_cc_library_wrapper(
     name = "tfcompile_headers_lib",
@@ -450,16 +383,6 @@ tf_python_pybind_extension(
         # The headers here cannot be brought in via cc_header_only_library
         "//tensorflow/compiler/aot:llvm_targets",
     ],
-)
-
-alias(
-    name = "pywrap_tf_session",
-    actual = "//tensorflow/python/client:pywrap_tf_session",
-)
-
-alias(
-    name = "_pywrap_utils",
-    actual = "//tensorflow/python/util:_pywrap_utils",
 )
 
 tf_python_pybind_extension(
@@ -492,14 +415,14 @@ tf_python_pybind_extension(
         "//tensorflow:windows": [],
     }),
     static_deps = tf_python_pybind_static_deps(),
+    # Do not sort: core:py_exception_registry must come before platform:status
     deps = [
-        ":py_exception_registry",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/platform:status",
-        "//tensorflow/python/lib/core:py_exception_registry",
-        "//third_party/python_runtime:headers",
         "@com_google_absl//absl/container:fixed_array",
         "@pybind11",
+        "//third_party/python_runtime:headers",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/python/lib/core:py_exception_registry",
+        "//tensorflow/core/platform:status",
     ],
 )
 
@@ -541,13 +464,6 @@ cc_header_only_library(
     ],
 )
 
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "map_fn",
-    actual = "//tensorflow/python/ops:map_fn",
-    tags = ["avoid_dep"],
-)
-
 py_strict_library(
     name = "extra_py_tests_deps",
     srcs_version = "PY3",
@@ -574,821 +490,6 @@ py_strict_library(
 )
 
 # TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "functional_ops_gen",
-    actual = "//tensorflow/python/ops:functional_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/eager/polymorphic_function:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "functional_ops",
-    actual = "//tensorflow/python/ops:functional_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "debug_ops_gen",
-    actual = "//tensorflow/python/ops:debug_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/debug:__subpackages__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "array_ops_gen",
-    actual = "//tensorflow/python/ops:array_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/kernel_tests/v1_compat_tests:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-        "//tensorflow/security/fuzzing/google:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "bitwise_ops_gen",
-    actual = "//tensorflow/python/ops:bitwise_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/contrib/quantization:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "boosted_trees_ops_gen",
-    actual = "//tensorflow/python/ops:boosted_trees_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "summary_ops_gen",
-    actual = "//tensorflow/python/ops:summary_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "audio_ops_gen",
-    actual = "//tensorflow/python/ops:audio_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "cudnn_rnn_ops_gen",
-    actual = "//tensorflow/python/ops:cudnn_rnn_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "candidate_sampling_ops_gen",
-    actual = "//tensorflow/python/ops:candidate_sampling_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "checkpoint_ops_gen",
-    actual = "//tensorflow/python/ops:checkpoint_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/io_ops:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "clustering_ops_gen",
-    actual = "//tensorflow/python/ops:clustering_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "collective_ops_gen",
-    actual = "//tensorflow/python/ops:collective_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_ops_gen",
-    actual = "//tensorflow/python/ops:control_flow_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "ctc_ops_gen",
-    actual = "//tensorflow/python/ops:ctc_ops_gen",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "data_flow_ops_gen",
-    actual = "//tensorflow/python/ops:data_flow_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/kernel_tests/data_structures:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "dataset_ops_gen",
-    actual = "//tensorflow/python/ops:dataset_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "optional_ops_gen",
-    actual = "//tensorflow/python/ops:optional_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "experimental_dataset_ops_gen",
-    actual = "//tensorflow/python/ops:experimental_dataset_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow:__subpackages__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "filesystem_ops_gen",
-    actual = "//tensorflow/python/ops:filesystem_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "image_ops_gen",
-    actual = "//tensorflow/python/ops:image_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/kernel_tests/image_ops:__pkg__",
-        "//tensorflow/python/ops/parallel_for:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "io_ops_gen",
-    actual = "//tensorflow/python/ops:io_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/checkpoint:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/io_ops:__pkg__",
-        "//tensorflow/python/trackable:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "linalg_ops_gen",
-    actual = "//tensorflow/python/ops:linalg_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "logging_ops_gen",
-    actual = "//tensorflow/python/ops:logging_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/framework:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/summary:__pkg__",
-        "//tensorflow/python/summary/writer:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "lookup_ops_gen",
-    actual = "//tensorflow/python/ops:lookup_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/data_structures:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "batch_ops_gen",
-    actual = "//tensorflow/python/ops:batch_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "batch_ops",
-    actual = "//tensorflow/python/ops:batch_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "manip_ops_gen",
-    actual = "//tensorflow/python/ops:manip_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "math_ops_gen",
-    actual = "//tensorflow/python/ops:math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/google/python/ops:__pkg__",
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/math_ops:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "nn_ops_gen",
-    actual = "//tensorflow/python/ops:nn_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/nn_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/sparse_ops:__pkg__",
-        "//tensorflow/python/tools:__pkg__",
-        "//tensorflow/security/fuzzing/google:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "count_ops_gen",
-    actual = "//tensorflow/python/ops:count_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/security/fuzzing/google:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "parsing_ops_gen",
-    actual = "//tensorflow/python/ops:parsing_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/python/autograph/operators:__pkg__",
-        "//tensorflow/python/data/ops:__pkg__",
-        "//tensorflow/python/ops/parallel_for:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "random_ops_gen",
-    actual = "//tensorflow/python/ops:random_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/eager/polymorphic_function:__pkg__",
-        "//tensorflow/python/kernel_tests/random:__pkg__",
-        "//tensorflow/python/ops/parallel_for:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "special_math_ops_gen",
-    actual = "//tensorflow/python/ops:special_math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//learning/brain/python/ops:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "stateful_random_ops_gen",
-    actual = "//tensorflow/python/ops:stateful_random_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/kernel_tests/random:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "resource_variable_ops_gen",
-    actual = "//tensorflow/python/ops:resource_variable_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/compiler/tf2xla:internal",
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/distribute:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "stateless_random_ops_gen",
-    actual = "//tensorflow/python/ops:stateless_random_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/data/experimental/ops:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "stateless_random_ops_v2_gen",
-    actual = "//tensorflow/python/ops:stateless_random_ops_v2_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "random_index_shuffle_ops_gen",
-    actual = "//tensorflow/python/ops:random_index_shuffle_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests/random:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "list_ops_gen",
-    actual = "//tensorflow/python/ops:list_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "map_ops_gen",
-    actual = "//tensorflow/python/ops:map_ops_gen",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "script_ops_gen",
-    actual = "//tensorflow/python/ops:script_ops_gen",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sdca_ops_gen",
-    actual = "//tensorflow/python/ops:sdca_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow_estimator/python/estimator/canned/linear_optimizer:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "set_ops_gen",
-    actual = "//tensorflow/python/ops:set_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests/math_ops:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "state_ops_gen",
-    actual = "//tensorflow/python/ops:state_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//learning/brain/python/ops:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/framework:__pkg__",
-        "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/kernel_tests/array_ops:__pkg__",
-        "//tensorflow/python/kernel_tests/control_flow:__pkg__",
-        "//tensorflow/python/kernel_tests/variables:__pkg__",
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sparse_ops_gen",
-    actual = "//tensorflow/python/ops:sparse_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests/sparse_ops:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "spectral_ops_gen",
-    actual = "//tensorflow/python/ops:spectral_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/dtensor:dtensor-internal",
-        "//tensorflow/python/ops/signal:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "string_ops_gen",
-    actual = "//tensorflow/python/ops:string_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/dtensor:dtensor-internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "training_ops_gen",
-    actual = "//tensorflow/python/ops:training_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/training:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "composite_tensor_ops_gen",
-    actual = "//tensorflow/python/ops:composite_tensor_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//tensorflow/python/kernel_tests:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "ragged_array_ops_gen",
-    actual = "//tensorflow/python/ops:ragged_array_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "ragged_math_ops_gen",
-    actual = "//tensorflow/python/ops:ragged_math_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "ragged_conversion_ops_gen",
-    actual = "//tensorflow/python/ops:ragged_conversion_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/ops/ragged:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "risc_ops_gen",
-    actual = "//tensorflow/python/ops:risc_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow/python/ops/risc:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "rnn_ops_gen",
-    actual = "//tensorflow/python/ops:rnn_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow/python/kernel_tests/nn_ops:__pkg__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sendrecv_ops_gen",
-    actual = "//tensorflow/python/ops:sendrecv_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "tpu_ops_gen",
-    actual = "//tensorflow/python/ops:tpu_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//smartass/brain/configure/python:__pkg__",
-        "//tensorflow/compiler/tests:__pkg__",
-        "//tensorflow/python/tpu:__pkg__",
-        "//tensorflow/python/tpu/ops:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "tpu_partition_ops_gen",
-    actual = "//tensorflow/python/ops:tpu_partition_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:internal",
-        "//tensorflow/python/tpu:__pkg__",
-        "//tensorflow/python/tpu/ops:__pkg__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "uniform_quant_ops_gen",
-    actual = "//tensorflow/python/ops:uniform_quant_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:__subpackages__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sync_ops_gen",
-    actual = "//tensorflow/python/ops:sync_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = [
-        "//tensorflow:internal",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "array_grad",
-    actual = "//tensorflow/python/ops:array_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "array_ops",
-    actual = "//tensorflow/python/ops:array_ops",
-    tags = ["avoid_dep"],
-    visibility = visibility,
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "array_ops_stack",
-    actual = "//tensorflow/python/ops:array_ops_stack",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "inplace_ops",
-    actual = "//tensorflow/python/ops:inplace_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "bitwise_ops",
-    actual = "//tensorflow/python/ops:bitwise_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "boosted_trees_ops",
-    actual = "//tensorflow/python/ops:boosted_trees_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "optional_grad",
-    actual = "//tensorflow/python/ops:optional_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "sets",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:sets",
-        "//tensorflow/python/ops:sets_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "candidate_sampling_ops",
-    actual = "//tensorflow/python/ops:candidate_sampling_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "check_ops",
-    actual = "//tensorflow/python/ops:check_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "clip_ops",
-    actual = "//tensorflow/python/ops:clip_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "clustering_ops",
-    actual = "//tensorflow/python/ops:clustering_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "collective_ops",
-    actual = "//tensorflow/python/ops:collective_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_assert",
-    actual = "//tensorflow/python/ops:control_flow_assert",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_grad",
-    actual = "//tensorflow/python/ops:control_flow_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_ops",
-    actual = "//tensorflow/python/ops:control_flow_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_case",
-    actual = "//tensorflow/python/ops:control_flow_case",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_switch_case",
-    actual = "//tensorflow/python/ops:control_flow_switch_case",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "cond",
-    actual = "//tensorflow/python/ops:cond",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "while_loop",
-    actual = "//tensorflow/python/ops:while_loop",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_util",
-    actual = "//tensorflow/python/ops:control_flow_util",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_util_v2",
-    actual = "//tensorflow/python/ops:control_flow_util_v2",
-    tags = ["avoid_dep"],
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_v2_func_graphs",
-    actual = "//tensorflow/python/ops:control_flow_v2_func_graphs",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_v2_toggles",
-    actual = "//tensorflow/python/ops:control_flow_v2_toggles",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "cond_v2",
-    actual = "//tensorflow/python/ops:cond_v2",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
 py_strict_library(
     name = "while_v2",
     tags = ["avoid_dep"],
@@ -1398,55 +499,6 @@ py_strict_library(
     ],
 )
 
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "bincount_ops",
-    actual = "//tensorflow/python/ops:bincount_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "ctc_ops",
-    actual = "//tensorflow/python/ops:ctc_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "cudnn_rnn_grad",
-    actual = "//tensorflow/python/ops:cudnn_rnn_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "data_flow_grad",
-    actual = "//tensorflow/python/ops:data_flow_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "data_flow_ops",
-    actual = "//tensorflow/python/ops:data_flow_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "embedding_ops",
-    actual = "//tensorflow/python/ops:embedding_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "handle_data_util",
-    actual = "//tensorflow/python/ops:handle_data_util",
-    tags = ["avoid_dep"],
-)
-
 py_strict_library(
     name = "gradients",
     tags = ["avoid_dep"],
@@ -1454,62 +506,6 @@ py_strict_library(
         "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:gradients",
     ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "gradients_impl",
-    actual = "//tensorflow/python/ops:gradients_impl",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "gradients_util",
-    actual = "//tensorflow/python/ops:gradients_util",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "default_gradient",
-    actual = "//tensorflow/python/ops:default_gradient",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "control_flow_state",
-    actual = "//tensorflow/python/ops:control_flow_state",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "unconnected_gradients",
-    actual = "//tensorflow/python/ops:unconnected_gradients",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "filesystem_ops",
-    actual = "//tensorflow/python/ops:filesystem_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "histogram_ops",
-    actual = "//tensorflow/python/ops:histogram_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "image_grad",
-    actual = "//tensorflow/python/ops:image_grad",
-    tags = ["avoid_dep"],
 )
 
 # TODO(b/285020435): Update usages and then remove.
@@ -1523,139 +519,6 @@ py_strict_library(
 )
 
 # TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "init_ops",
-    actual = "//tensorflow/python/ops:init_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "init_ops_v2",
-    actual = "//tensorflow/python/ops:init_ops_v2",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "initializers_ns",
-    actual = "//tensorflow/python/ops:initializers_ns",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "io_ops",
-    actual = "//tensorflow/python/ops:io_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "linalg_grad",
-    actual = "//tensorflow/python/ops:linalg_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "linalg_ops",
-    actual = "//tensorflow/python/ops:linalg_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "linalg_ops_impl",
-    actual = "//tensorflow/python/ops:linalg_ops_impl",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "manip_grad",
-    actual = "//tensorflow/python/ops:manip_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "manip_ops",
-    actual = "//tensorflow/python/ops:manip_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "logging_ops",
-    actual = "//tensorflow/python/ops:logging_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "lookup_ops",
-    actual = "//tensorflow/python/ops:lookup_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "math_grad",
-    actual = "//tensorflow/python/ops:math_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "op_selector",
-    actual = "//tensorflow/python/ops:op_selector",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "math_ops",
-    actual = "//tensorflow/python/ops:math_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "resources",
-    actual = "//tensorflow/python/ops:resources",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "resource_variable_ops",
-    actual = "//tensorflow/python/ops:resource_variable_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "critical_section_ops",
-    actual = "//tensorflow/python/ops:critical_section_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "list_ops",
-    actual = "//tensorflow/python/ops:list_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "map_ops",
-    actual = "//tensorflow/python/ops:map_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
 py_strict_library(
     name = "nn",
     tags = ["avoid_dep"],
@@ -1663,90 +526,6 @@ py_strict_library(
         "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_impl",
     ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "nn_grad",
-    actual = "//tensorflow/python/ops:nn_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "nn_ops",
-    actual = "//tensorflow/python/ops:nn_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "numerics",
-    actual = "//tensorflow/python/ops:numerics",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "parsing_config",
-    actual = "//tensorflow/python/ops:parsing_config",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "parsing_ops",
-    actual = "//tensorflow/python/ops:parsing_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "partitioned_variables",
-    actual = "//tensorflow/python/ops:partitioned_variables",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "random_grad",
-    actual = "//tensorflow/python/ops:random_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "random_ops",
-    actual = "//tensorflow/python/ops:random_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "random_crop_ops",
-    actual = "//tensorflow/python/ops:random_crop_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "stateful_random_ops",
-    actual = "//tensorflow/python/ops:stateful_random_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "stateless_random_ops",
-    actual = "//tensorflow/python/ops:stateless_random_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "rnn",
-    actual = "//tensorflow/python/ops:rnn",
-    tags = ["avoid_dep"],
 )
 
 # TODO(b/285020435): Update usages and then remove.
@@ -1761,69 +540,6 @@ py_strict_library(
 )
 
 # TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "script_ops",
-    actual = "//tensorflow/python/ops:script_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sdca_ops",
-    actual = "//tensorflow/python/ops:sdca_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "session_ops",
-    actual = "//tensorflow/python/ops:session_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "shape_util",
-    actual = "//tensorflow/python/ops:shape_util",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sparse_grad",
-    actual = "//tensorflow/python/ops:sparse_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sparse_ops",
-    actual = "//tensorflow/python/ops:sparse_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "sort_ops",
-    actual = "//tensorflow/python/ops:sort_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "confusion_matrix",
-    actual = "//tensorflow/python/ops:confusion_matrix",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "weights_broadcast_ops",
-    actual = "//tensorflow/python/ops:weights_broadcast_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
 py_strict_library(
     name = "metrics",
     tags = ["avoid_dep"],
@@ -1831,131 +547,6 @@ py_strict_library(
         "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:metrics_impl",
     ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "special_math_ops",
-    actual = "//tensorflow/python/ops:special_math_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "rnn_grad",
-    actual = "//tensorflow/python/ops:rnn_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "standard_ops",
-    actual = "//tensorflow/python/ops:standard_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "state_grad",
-    actual = "//tensorflow/python/ops:state_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "state_ops",
-    actual = "//tensorflow/python/ops:state_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "string_ops",
-    actual = "//tensorflow/python/ops:string_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "summary_ops_v2",
-    actual = "//tensorflow/python/ops:summary_ops_v2",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "template",
-    actual = "//tensorflow/python/ops:template",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "tensor_array_grad",
-    actual = "//tensorflow/python/ops:tensor_array_grad",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "tensor_array_ops",
-    actual = "//tensorflow/python/ops:tensor_array_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "composite_tensor_ops",
-    actual = "//tensorflow/python/ops:composite_tensor_ops",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "variable_scope",
-    actual = "//tensorflow/python/ops:variable_scope",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "variables",
-    actual = "//tensorflow/python/ops:variables",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "ref_variable",
-    actual = "//tensorflow/python/ops:ref_variable",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "variable_v1",
-    actual = "//tensorflow/python/ops:variable_v1",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "gradient_checker",
-    actual = "//tensorflow/python/ops:gradient_checker",
-    tags = ["avoid_dep"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "gradient_checker_v2",
-    actual = "//tensorflow/python/ops:gradient_checker_v2",
-    tags = ["avoid_dep"],
-)
-
-alias(
-    name = "client",
-    actual = "//tensorflow/python/client:client",
 )
 
 # Note: this is a heavyweight library specialized for TensorFlow graphs. Do not use for
@@ -1983,11 +574,6 @@ tf_proto_library(
     ),
     protodeps = ["//tensorflow/python/training:checkpoint_state"],
     visibility = visibility,
-)
-
-alias(
-    name = "device_lib",
-    actual = "//tensorflow/python/client:device_lib",
 )
 
 py_strict_library(
@@ -2032,7 +618,7 @@ pywrap_tensorflow_macro(
         "@eigen_archive//:__subpackages__",
     ]),
     roots = [
-        ":py_exception_registry",
+        "//tensorflow/python/lib/core:py_exception_registry",
     ],
     static_deps = [
         "@arm_neon_2_x86_sse//:__subpackages__",
@@ -2099,7 +685,6 @@ pywrap_tensorflow_macro(
     ] + tsl_async_value_deps() + if_onednn_v3(["@onednn_v3//:__subpackages__"]),
     win_def_file = ":pywrap_tensorflow_filtered_def_file",
     deps = [
-        ":safe_pyobject_ptr",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_experimental",
         "//tensorflow/c:checkpoint_reader",
@@ -2215,9 +800,6 @@ pywrap_tensorflow_macro(
 filegroup(
     name = "win_lib_files_for_exported_symbols",
     srcs = [
-        ":ndarray_tensor",  # checkpoint_reader
-        ":py_exception_registry",  # py_exception_registry
-        ":safe_pyobject_ptr",  # checkpoint_reader
         "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
         "//tensorflow/c:python_api",  # tf_session
         "//tensorflow/c:safe_ptr",  # checkpoint_reader
@@ -2287,7 +869,10 @@ filegroup(
         "//tensorflow/python/framework:python_tensor_converter",  # python_tensor_converter
         "//tensorflow/python/grappler:cost_analyzer_lib",
         "//tensorflow/python/grappler:model_analyzer_lib",  # model_analyzer
+        "//tensorflow/python/lib/core:ndarray_tensor",  # checkpoint_reader
+        "//tensorflow/python/lib/core:py_exception_registry",  # py_exception_registry
         "//tensorflow/python/lib/core:py_func_lib",
+        "//tensorflow/python/lib/core:safe_pyobject_ptr",  # checkpoint_reader
         "//tensorflow/python/util:cpp_nest",
         "//tensorflow/python/util:cpp_python_util",
         "//tensorflow/python/util:kernel_registry",
@@ -2406,59 +991,6 @@ cc_import(
 
 # ** Targets for Windows build (end) **
 
-alias(
-    name = "session",
-    actual = "//tensorflow/python/client:session",
-)
-
-alias(
-    name = "timeline",
-    actual = "//tensorflow/python/client:timeline",
-    visibility = [
-        "//visibility:public",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "summary_op_util",
-    actual = "//tensorflow/python/ops:summary_op_util",
-    tags = ["avoid_dep"],
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "fake_summary_writer",
-    actual = "//tensorflow/python/summary/writer:fake_summary_writer",
-    visibility = ["//visibility:public"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "nccl_ops_gen",
-    actual = "//tensorflow/python/ops:nccl_ops_gen",
-    tags = ["avoid_dep"],
-    visibility = ["//tensorflow:internal"],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "nccl_ops",
-    actual = "//tensorflow/python/ops:nccl_ops",
-    tags = ["avoid_dep"],
-    visibility = visibility + [
-        "//learning/deepmind/tensorflow:__subpackages__",
-        "//third_party/car/deep_nets/tensorflow:__subpackages__",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-alias(
-    name = "proto_ops",
-    actual = "//tensorflow/python/ops:proto_ops",
-    tags = ["avoid_dep"],
-)
-
 py_strict_library(
     name = "pywrap_mlir",
     srcs = ["pywrap_mlir.py"],
@@ -2509,9 +1041,9 @@ tf_python_pybind_extension(
     srcs = ["//tensorflow/core/config:flags_api_wrapper.cc"],
     visibility = ["//tensorflow/core/config:__subpackages__"],
     deps = [
-        ":pybind11_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/config:flags_headers",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
@@ -2750,16 +1282,6 @@ py_strict_library(
     ],
 )
 
-alias(
-    name = "platform_benchmark",
-    actual = "//tensorflow/python/platform:benchmark",
-)
-
-alias(
-    name = "platform_analytics",
-    actual = "//tensorflow/python/platform:analytics",
-)
-
 py_strict_library(
     name = "platform_test",
     srcs_version = "PY3",
@@ -2767,459 +1289,9 @@ py_strict_library(
 )
 
 alias(
-    name = "client_testlib",
-    actual = "//tensorflow/python/platform:client_testlib",
-)
-
-alias(
-    name = "pybind11_absl",
-    actual = "//tensorflow/python/lib/core:pybind11_absl",
-)
-
-alias(
-    name = "pybind11_proto",
-    actual = "//tensorflow/python/lib/core:pybind11_proto",
-)
-
-alias(
-    name = "py_func_lib",
-    actual = "//tensorflow/python/lib/core:py_func_lib",
-)
-
-alias(
-    name = "py_seq_tensor",
-    actual = "//tensorflow/python/lib/core:py_seq_tensor",
-)
-
-alias(
-    name = "py_util",
-    actual = "//tensorflow/python/lib/core:py_util",
-)
-
-alias(
-    name = "py_exception_registry",
-    actual = "//tensorflow/python/lib/core:py_exception_registry",
-)
-
-alias(
-    name = "pybind11_lib",
-    actual = "//tensorflow/python/lib/core:pybind11_lib",
-)
-
-alias(
-    name = "pybind11_status_headers",
-    actual = "//tensorflow/python/lib/core:pybind11_status_headers",
-)
-
-alias(
-    name = "pybind11_status",
-    actual = "//tensorflow/python/lib/core:pybind11_status",
-)
-
-alias(
-    name = "lib",
-    actual = "//tensorflow/python/lib/io:lib",
-)
-
-alias(
-    name = "safe_pyobject_ptr",
-    actual = "//tensorflow/python/lib/core:safe_pyobject_ptr",
-)
-
-alias(
-    name = "ndarray_tensor",
-    actual = "//tensorflow/python/lib/core:ndarray_tensor",
-)
-
-alias(
-    name = "ndarray_tensor_bridge",
-    actual = "//tensorflow/python/lib/core:ndarray_tensor_bridge",
-)
-
-alias(
-    name = "ndarray_tensor_headers",
-    actual = "//tensorflow/python/lib/core:ndarray_tensor_headers",
-)
-
-alias(
-    name = "python_op_gen_main",
-    actual = "//tensorflow/python/framework:python_op_gen_main",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "framework",
-    actual = "//tensorflow/python/framework",
-)
-
-alias(
-    name = "c_api_util",
-    actual = "//tensorflow/python/framework:c_api_util",
-)
-
-alias(
-    name = "constant_op",
-    actual = "//tensorflow/python/framework:constant_op",
-)
-
-alias(
-    name = "device_spec",
-    actual = "//tensorflow/python/framework:device_spec",
-)
-
-alias(
-    name = "device",
-    actual = "//tensorflow/python/framework:device",
-)
-
-alias(
-    name = "_dtypes",
-    actual = "//tensorflow/python/framework:_dtypes",
-)
-
-alias(
-    name = "dtypes",
-    actual = "//tensorflow/python/framework:dtypes",
-    visibility = visibility + ["//smartass:__subpackages__"],
-)
-
-alias(
-    name = "errors",
-    actual = "//tensorflow/python/framework:errors",
-)
-
-alias(
-    name = "error_interpolation",
-    actual = "//tensorflow/python/framework:error_interpolation",
-)
-
-alias(
-    name = "function",
-    actual = "//tensorflow/python/framework:function",
-    visibility = visibility + ["//smartass/brain:__subpackages__"],
-)
-
-alias(
-    name = "graph_to_function_def",
-    actual = "//tensorflow/python/framework:graph_to_function_def",
-)
-
-alias(
-    name = "function_def_to_graph",
-    actual = "//tensorflow/python/framework:function_def_to_graph",
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
-)
-
-alias(
-    name = "graph_util",
-    actual = "//tensorflow/python/framework:graph_util",
-)
-
-alias(
-    name = "convert_to_constants",
-    actual = "//tensorflow/python/framework:convert_to_constants",
-    visibility = visibility + ["//waymo/ml:__subpackages__"],
-)
-
-alias(
-    name = "kernels",
-    actual = "//tensorflow/python/framework:kernels",
-)
-
-alias(
-    name = "op_def_registry",
-    actual = "//tensorflow/python/framework:op_def_registry",
-)
-
-alias(
-    name = "framework_ops",
-    actual = "//tensorflow/python/framework:ops",
-)
-
-alias(
-    name = "framework_indexed_slices",
-    actual = "//tensorflow/python/framework:indexed_slices",
-)
-
-alias(
     name = "framework_for_generated_wrappers",
     actual = "//tensorflow/python/framework:for_generated_wrappers",
     visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "framework_for_generated_wrappers_v2",
-    actual = "//tensorflow/python/framework:for_generated_wrappers_v2",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "op_callbacks",
-    actual = "//tensorflow/python/framework:op_callbacks",
-)
-
-alias(
-    name = "indexed_slices",
-    actual = "//tensorflow/python/framework:indexed_slices",
-)
-
-alias(
-    name = "func_graph",
-    actual = "//tensorflow/python/framework:func_graph",
-)
-
-alias(
-    name = "auto_control_deps",
-    actual = "//tensorflow/python/framework:auto_control_deps",
-)
-
-alias(
-    name = "config",
-    actual = "//tensorflow/python/framework:config",
-)
-
-alias(
-    name = "random_seed",
-    actual = "//tensorflow/python/framework:random_seed",
-)
-
-alias(
-    name = "smart_cond",
-    actual = "//tensorflow/python/framework:smart_cond",
-)
-
-alias(
-    name = "sparse_tensor",
-    actual = "//tensorflow/python/framework:sparse_tensor",
-)
-
-alias(
-    name = "composite_tensor",
-    actual = "//tensorflow/python/framework:composite_tensor",
-    visibility = visibility,
-)
-
-alias(
-    name = "graph_building_benchmark",
-    actual = "//tensorflow/python/framework:graph_building_benchmark",
-)
-
-alias(
-    name = "tensor_shape",
-    actual = "//tensorflow/python/framework:tensor_shape",
-    visibility = visibility + ["//smartass/brain/configure/python:__pkg__"],
-)
-
-alias(
-    name = "type_spec",
-    actual = "//tensorflow/python/framework:type_spec",
-    visibility = visibility,
-)
-
-alias(
-    name = "tensor_spec",
-    actual = "//tensorflow/python/framework:tensor_spec",
-)
-
-alias(
-    name = "tensor_util",
-    actual = "//tensorflow/python/framework:tensor_util",
-)
-
-alias(
-    name = "versions",
-    actual = "//tensorflow/python/framework:versions",
-)
-
-alias(
-    name = "framework_test_lib",
-    actual = "//tensorflow/python/framework:test_lib",
-    visibility = visibility + [
-        "//tensorflow_estimator/python/estimator:__subpackages__",
-    ],
-)
-
-alias(
-    name = "is_mlir_bridge_test_true",
-    actual = "//tensorflow/python/framework:is_mlir_bridge_test_true",
-    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
-)
-
-alias(
-    name = "tfrt_utils",
-    actual = "//tensorflow/python/framework:tfrt_utils",
-)
-
-alias(
-    name = "framework_combinations",
-    actual = "//tensorflow/python/framework:combinations",
-)
-
-alias(
-    name = "framework_importer_test",
-    actual = "//tensorflow/python/framework:importer_test",
-)
-
-alias(
-    name = "framework_test_combinations_lib",
-    actual = "//tensorflow/python/framework:test_combinations_lib",
-)
-
-alias(
-    name = "framework_kernels_test",
-    actual = "//tensorflow/python/framework:kernels_test",
-)
-
-alias(
-    name = "framework_ops_test",
-    actual = "//tensorflow/python/framework:ops_test",
-)
-
-alias(
-    name = "framework_test_util_test",
-    actual = "//tensorflow/python/framework:test_util_test",
-)
-
-alias(
-    name = "function_def_to_graph_test",
-    actual = "//tensorflow/python/framework:function_def_to_graph_test",
-)
-
-alias(
-    name = "op_def_library_test",
-    actual = "//tensorflow/python/framework:op_def_library_test",
-)
-
-alias(
-    name = "config_test",
-    actual = "//tensorflow/python/framework:config_test",
-)
-
-alias(
-    name = "is_mlir_bridge_test_false",
-    actual = "//tensorflow/python/framework:is_mlir_bridge_test_false",
-    visibility = visibility + ["//tensorflow/compiler/tests:friends"],
-)
-
-alias(
-    name = "memory_checker",
-    actual = "//tensorflow/python/framework:memory_checker",
-)
-
-alias(
-    name = "test_ops",
-    actual = "//tensorflow/python/framework:test_ops",
-)
-
-alias(
-    name = "test_ops_kernels",
-    actual = "//tensorflow/python/framework:test_ops_kernels",
-)
-
-alias(
-    name = "basic_session_run_hooks",
-    actual = "//tensorflow/python/training:basic_session_run_hooks",
-)
-
-alias(
-    name = "checkpoint_management",
-    actual = "//tensorflow/python/training:checkpoint_management",
-)
-
-alias(
-    name = "py_checkpoint_reader",
-    actual = "//tensorflow/python/training:py_checkpoint_reader",
-)
-
-alias(
-    name = "saver",
-    actual = "//tensorflow/python/training:saver",
-)
-
-alias(
-    name = "session_run_hook",
-    actual = "//tensorflow/python/training:session_run_hook",
-)
-
-alias(
-    name = "checkpoint",
-    actual = "//tensorflow/python/checkpoint:checkpoint",
-)
-
-alias(
-    name = "checkpoint_lib",
-    actual = "//tensorflow/python/checkpoint:checkpoint_lib",
-)
-
-alias(
-    name = "trackable",
-    actual = "//tensorflow/python/trackable:trackable",
-)
-
-alias(
-    name = "training",
-    actual = "//tensorflow/python/training:training",
-)
-
-alias(
-    name = "training_lib",
-    actual = "//tensorflow/python/training:training_lib",
-)
-
-alias(
-    name = "training_server_lib",
-    actual = "//tensorflow/python/training:server_lib",
-)
-
-alias(
-    name = "training_util",
-    actual = "//tensorflow/python/training:training_util",
-)
-
-alias(
-    name = "loss_scale",
-    actual = "//tensorflow/python/training/experimental:loss_scale",
-)
-
-alias(
-    name = "loss_scale_optimizer",
-    actual = "//tensorflow/python/training/experimental:loss_scale_optimizer",
-)
-
-alias(
-    name = "mixed_precision",
-    actual = "//tensorflow/python/training/experimental:mixed_precision",
-)
-
-alias(
-    name = "mixed_precision_global_state",
-    actual = "//tensorflow/python/training/experimental:mixed_precision_global_state",
-)
-
-alias(
-    name = "tf_optimizer",
-    actual = "//tensorflow/python/grappler:tf_optimizer",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "ops",
-    actual = "//tensorflow/python/user_ops:ops",
-)
-
-alias(
-    name = "layers_base",
-    actual = "//tensorflow/python/layers:layers_base",
-)
-
-alias(
-    name = "layers_util",
-    actual = "//tensorflow/python/layers:layers_util",
-)
-
-alias(
-    name = "layers",
-    actual = "//tensorflow/python/layers:layers",
 )
 
 py_strict_library(
