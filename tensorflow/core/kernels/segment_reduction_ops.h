@@ -154,6 +154,17 @@ struct SparseSegmentGradFunctor {
                   typename TTypes<T>::Matrix output_flat);
 };
 
+template <class Device, typename T, typename Index, typename SegmentId>
+struct SparseSegmentGradV2Functor {
+  void operator()(OpKernelContext* context,
+                  SparseSegmentReductionOperation operation,
+                  typename TTypes<T>::ConstMatrix input_flat,
+                  typename TTypes<Index>::ConstVec indices_vec,
+                  typename TTypes<SegmentId>::ConstVec segment_vec,
+                  const TensorShape& dense_output_shape,
+                  typename AsyncOpKernel::DoneCallback done);
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 
