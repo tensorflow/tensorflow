@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/permutation_util.h"
+#include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/float_normalization.h"
@@ -66,7 +67,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/service/hlo_runner.h"
+#include "tensorflow/compiler/xla/service/hlo_module_util.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -212,6 +213,89 @@ static StatusOr<se::DeviceMemoryBase> CreateBuffer(
     InitializeBuffer(allocator.stream(), element_type, &rng_state, buffer);
   }
   return buffer;
+}
+
+// This is like HloRunner, but allows using a custom stream and allocator for
+// all operations.
+class CustomHloRunner {
+ public:
+  // Create a CustomHloRunner.
+  static StatusOr<std::unique_ptr<CustomHloRunner>> Create(
+      se::Stream& stream, se::DeviceMemoryAllocator& allocator);
+
+  // Compile the module, running the HLO passes as well.
+  StatusOr<std::unique_ptr<Executable>> CompileRunningHloPasses(
+      std::unique_ptr<HloModule> module);
+
+  // Execute the executable using the arguments.
+  StatusOr<ExecutionOutput> Execute(Executable& executable,
+                                    std::vector<ExecutionInput> arguments);
+
+ private:
+  CustomHloRunner(std::unique_ptr<Backend> backend,
+                  se::StreamExecutor& stream_executor, se::Stream& stream,
+                  se::DeviceMemoryAllocator& allocator);
+
+  std::unique_ptr<Backend> backend_;
+  se::StreamExecutor& stream_executor_;
+  se::Stream& stream_;
+  se::DeviceMemoryAllocator& allocator_;
+};
+
+CustomHloRunner::CustomHloRunner(std::unique_ptr<Backend> backend,
+                                 se::StreamExecutor& stream_executor,
+                                 se::Stream& stream,
+                                 se::DeviceMemoryAllocator& allocator)
+    : backend_(std::move(backend)),
+      stream_executor_(stream_executor),
+      stream_(stream),
+      allocator_(allocator) {}
+
+StatusOr<std::unique_ptr<CustomHloRunner>> CustomHloRunner::Create(
+    se::Stream& stream, se::DeviceMemoryAllocator& allocator) {
+  se::StreamExecutor& stream_executor = *stream.parent();
+
+  TF_ASSIGN_OR_RETURN(
+      se::Platform * platform,
+      PlatformUtil::GetPlatform(stream_executor.platform()->Name()));
+
+  BackendOptions backend_options;
+  backend_options.set_platform(platform);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
+                      Backend::CreateBackend(backend_options));
+
+  return absl::WrapUnique(new CustomHloRunner(
+      std::move(backend), stream_executor, stream, allocator));
+}
+
+StatusOr<std::unique_ptr<Executable>> CustomHloRunner::CompileRunningHloPasses(
+    std::unique_ptr<HloModule> module) {
+  auto module_group = std::make_unique<HloModuleGroup>(std::move(module));
+  TF_ASSIGN_OR_RETURN(
+      auto executables,
+      backend_->compiler()->Compile(std::move(module_group),
+                                    {{&stream_executor_}}, &allocator_));
+  return std::move(executables[0]);
+}
+
+StatusOr<ExecutionOutput> CustomHloRunner::Execute(
+    Executable& executable, std::vector<ExecutionInput> arguments) {
+  ExecutableRunOptions run_options;
+  run_options.set_device_ordinal(stream_executor_.device_ordinal());
+  run_options.set_stream(&stream_);
+  run_options.set_allocator(&allocator_);
+  run_options.set_intra_op_thread_pool(
+      backend_->eigen_intra_op_thread_pool_device());
+  run_options.set_run_id(RunId());
+
+  ServiceExecutableRunOptions service_run_options(
+      run_options, backend_->StreamBorrowerWithPriority());
+
+  TF_ASSIGN_OR_RETURN(ExecutionOutput output,
+                      executable.ExecuteOnStreamWrapper(&service_run_options,
+                                                        std::move(arguments)));
+
+  return std::move(output);
 }
 
 class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
@@ -369,7 +453,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                      root->shape().element_type(), autotune_cfg, rng_state));
 
     if (autotune_cfg.should_check_correctness()) {
-      TF_RETURN_IF_ERROR(RunMatmulWithCublas(fusion, stream, inputs,
+      TF_RETURN_IF_ERROR(RunMatmulWithCublas(fusion, stream, allocator, inputs,
                                              reference_buffer, cache_key));
     }
 
@@ -505,7 +589,8 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   }
 
   StatusOr<std::unique_ptr<Executable>> CompileMatmulWithCublas(
-      const HloComputation& original_computation, HloRunner& hlo_runner) {
+      const HloComputation& original_computation,
+      CustomHloRunner& custom_hlo_runner) {
     // Create an unoptimized HLO module which does the same as
     // `original_computation`, but with CuBLAS.
     std::unique_ptr<HloModule> module =
@@ -526,9 +611,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     options.set_xla_gpu_force_compilation_parallelism(1);
     module->config().set_debug_options(options);
 
-    // Compile.
-    return hlo_runner.CreateExecutable(std::move(module),
-                                       /*run_hlo_passes=*/true);
+    return custom_hlo_runner.CompileRunningHloPasses(std::move(module));
   }
 
   // Runs a matmul fusion without Triton - with cuBLAS, to generate a reference
@@ -538,14 +621,11 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
   // device type. Passing it to avoid recalculating it everywhere it's needed.
   Status RunMatmulWithCublas(
       const HloComputation& original_computation, se::Stream* stream,
+      se::DeviceMemoryAllocator* allocator,
       absl::Span<se::DeviceMemoryBase const> input_buffers,
       se::DeviceMemoryBase output_buffer, const AutotuneCacheKey& cache_key) {
-    se::StreamExecutor* stream_exec = stream->parent();
-    // Create HLO runner.
-    TF_ASSIGN_OR_RETURN(
-        se::Platform * platform,
-        PlatformUtil::GetPlatform(stream_exec->platform()->Name()));
-    auto hlo_runner = std::make_unique<HloRunner>(platform);
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<CustomHloRunner> custom_hlo_runner,
+                        CustomHloRunner::Create(*stream, *allocator));
 
     Executable* executable = nullptr;
     {
@@ -560,7 +640,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     if (executable == nullptr) {
       TF_ASSIGN_OR_RETURN(
           std::unique_ptr<Executable> new_executable,
-          CompileMatmulWithCublas(original_computation, *hlo_runner));
+          CompileMatmulWithCublas(original_computation, *custom_hlo_runner));
 
       absl::MutexLock lock(&non_triton_executable_cache_mutex);
       auto [it, inserted] = non_triton_executable_cache.emplace(
@@ -568,6 +648,7 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       executable = it->second.get();
     }
     TF_RET_CHECK(executable != nullptr);
+
     // Construct the parameters from the existing input buffers.
     std::vector<ExecutionInput> execution_inputs;
     const HloInstruction::InstructionVector& params =
@@ -575,25 +656,19 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     TF_RET_CHECK(input_buffers.size() == params.size());
     execution_inputs.reserve(params.size());
     for (int i = 0; i < params.size(); ++i) {
-      const Shape& param_host_shape = params.at(i)->shape();
-      // This is probably the same as param_host_shape on GPU.
-      Shape param_device_shape =
-          hlo_runner->device_shape_representation_fn()(param_host_shape);
-
-      execution_inputs.emplace_back(param_device_shape);
+      execution_inputs.emplace_back(params.at(i)->shape());
       // Our executable doesn't have input-output aliasing, so we can pass
       // unowned input buffers.
       execution_inputs.back().SetUnownedBuffer(
           /*index=*/{},
           MaybeOwningDeviceMemory(/*unowned=*/input_buffers.at(i)));
     }
-    // Execute.
+
     // Not locking a GPU mutex here, because
     // `GpuExecutable::ExecuteAsyncOnStreamImpl` will do that.
-    TF_ASSIGN_OR_RETURN(ExecutionOutput execution_output,
-                        hlo_runner->ExecuteWithExecutionInputs(
-                            executable, std::move(execution_inputs),
-                            /*profile=*/nullptr, stream));
+    TF_ASSIGN_OR_RETURN(
+        ExecutionOutput execution_output,
+        custom_hlo_runner->Execute(*executable, std::move(execution_inputs)));
     ScopedShapedBuffer result = execution_output.ConsumeResult();
     // Copy back the output.
     TF_RET_CHECK(output_buffer.size() == result.root_buffer().size());
