@@ -81,33 +81,29 @@ class BatchMatMulMkl : public OpKernel {
     if (!v2_bcast) {
       // Using V1, so check to make sure lhs and rhs dimensions are correct and
       // no broadcasting is needed.
-      OP_REQUIRES(ctx, lhs.dims() == rhs.dims(),
-                  Status(absl::StatusCode::kInvalidArgument,
-                         absl::StrCat("In[0] and In[1] has different ndims: ",
-                                      lhs.shape().DebugString(), " vs. ",
-                                      rhs.shape().DebugString())));
-      const int ndims = lhs.dims();
       OP_REQUIRES(
-          ctx, ndims >= 2,
-          Status(absl::StatusCode::kInvalidArgument,
-                 absl::StrCat("In[0] and In[1] ndims must be >= 2: ", ndims)));
+          ctx, lhs.dims() == rhs.dims(),
+          absl::InvalidArgumentError(absl::StrCat(
+              "In[0] and In[1] has different ndims: ",
+              lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString())));
+      const int ndims = lhs.dims();
+      OP_REQUIRES(ctx, ndims >= 2,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "In[0] and In[1] ndims must be >= 2: ", ndims)));
       for (int i = 0; i < ndims - 2; ++i) {
-        OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
-                    Status(absl::StatusCode::kInvalidArgument,
-                           absl::StrCat("In[0].dim(", i, ") and In[1].dim(", i,
-                                        ") must be the same: ",
-                                        lhs.shape().DebugString(), " vs ",
-                                        rhs.shape().DebugString())));
+        OP_REQUIRES(
+            ctx, lhs.dim_size(i) == rhs.dim_size(i),
+            absl::InvalidArgumentError(absl::StrCat(
+                "In[0].dim(", i, ") and In[1].dim(", i, ") must be the same: ",
+                lhs.shape().DebugString(), " vs ", rhs.shape().DebugString())));
       }
     } else {
-      OP_REQUIRES(
-          ctx, lhs.dims() >= 2,
-          Status(absl::StatusCode::kInvalidArgument,
-                 absl::StrCat("In[0] ndims must be >= 2: ", lhs.dims())));
-      OP_REQUIRES(
-          ctx, rhs.dims() >= 2,
-          Status(absl::StatusCode::kInvalidArgument,
-                 absl::StrCat("In[1] ndims must be >= 2: ", rhs.dims())));
+      OP_REQUIRES(ctx, lhs.dims() >= 2,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("In[0] ndims must be >= 2: ", lhs.dims())));
+      OP_REQUIRES(ctx, rhs.dims() >= 2,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("In[1] ndims must be >= 2: ", rhs.dims())));
     }
 
     // lhs and rhs can have different dimensions
@@ -118,11 +114,9 @@ class BatchMatMulMkl : public OpKernel {
     MatMulBCast bcast(lhs.shape().dim_sizes(), rhs.shape().dim_sizes());
     OP_REQUIRES(
         ctx, bcast.IsValid(),
-        Status(absl::StatusCode::kInvalidArgument,
-               absl::StrCat(
-                   "In[0] and In[1] must have compatible batch dimensions: ",
-                   lhs.shape().DebugString(), " vs. ",
-                   rhs.shape().DebugString())));
+        absl::InvalidArgumentError(absl::StrCat(
+            "In[0] and In[1] must have compatible batch dimensions: ",
+            lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString())));
 
     TensorShape out_shape = bcast.output_batch_shape();
 
@@ -133,23 +127,20 @@ class BatchMatMulMkl : public OpKernel {
 
     if (adj_x_) std::swap(lhs_rows, lhs_cols);
     if (adj_y_) std::swap(rhs_rows, rhs_cols);
-    OP_REQUIRES(ctx, lhs_cols == rhs_rows,
-                Status(absl::StatusCode::kInvalidArgument,
-                       absl::StrCat("Matrix size-incompatible: In[0]: ",
-                                    lhs.shape().DebugString(), ", In[1]: ",
-                                    rhs.shape().DebugString(), " ", adj_x_, " ",
-                                    adj_y_)));
+    OP_REQUIRES(
+        ctx, lhs_cols == rhs_rows,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Matrix size-incompatible: In[0]: ", lhs.shape().DebugString(),
+            ", In[1]: ", rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_)));
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
     // The maximum number of DNNL tensor dimensions is DNNL_MAX_NDIMS = 12.
     OP_REQUIRES(
         ctx, out_shape.dims() <= DNNL_MAX_NDIMS,
-        Status(absl::StatusCode::kInvalidArgument,
-               absl::StrCat(
-                   "Rank of output tensor must be <= 12, but is ",
-                   out_shape.dims(),
-                   ". Current implementation supports upto rank 12 tensors.")));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Rank of output tensor must be <= 12, but is ", out_shape.dims(),
+            ". Current implementation supports upto rank 12 tensors.")));
 
     Tensor* out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
@@ -267,25 +258,23 @@ class FusedBatchMatMulMkl
       : BatchMatMulMkl<Device, Tlhs, Trhs, Toutput, v2_bcast>(context) {
     OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &this->fused_ops_));
     OP_REQUIRES(context, !this->fused_ops_.empty(),
-                Status(absl::StatusCode::kInvalidArgument,
-                       "Fused BatchMatMul must have at least one fused op."));
+                absl::InvalidArgumentError(
+                    "Fused BatchMatMul must have at least one fused op."));
 
     int num_args;
     OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
 
     if (this->fused_ops_ == std::vector<string>{"Mul"} ||
         this->fused_ops_ == std::vector<string>{"Mul", "Add"}) {
-      OP_REQUIRES(
-          context, num_args == this->fused_ops_.size(),
-          Status(absl::StatusCode::kInvalidArgument,
-                 "Fused BatchMatmul should have same number of additional "
-                 "inputs as the number of fusions"));
+      OP_REQUIRES(context, num_args == this->fused_ops_.size(),
+                  absl::InvalidArgumentError(
+                      "Fused BatchMatmul should have same number of additional "
+                      "inputs as the number of fusions"));
     } else {
-      OP_REQUIRES(
-          context, false,
-          Status(absl::StatusCode::kUnimplemented,
-                 absl::StrCat("Fusion is not implemented: [",
-                              absl::StrJoin(this->fused_ops_, ","), "]")));
+      OP_REQUIRES(context, false,
+                  absl::UnimplementedError(
+                      absl::StrCat("Fusion is not implemented: [",
+                                   absl::StrJoin(this->fused_ops_, ","), "]")));
     }
   }
 
@@ -297,8 +286,7 @@ class FusedBatchMatMulMkl
     if (this->fused_ops_.size() > 0) {
       const Tensor& scale_tensor = ctx->input(2);
       OP_REQUIRES(ctx, scale_tensor.NumElements() == 1,
-                  Status(absl::StatusCode::kInvalidArgument,
-                         "Scale tensor must be a scalar"));
+                  absl::InvalidArgumentError("Scale tensor must be a scalar"));
 
       memory::data_type data_type = MklDnnType<Toutput>();
       memory::format_tag format_tag;
@@ -310,20 +298,17 @@ class FusedBatchMatMulMkl
           format_tag = memory::format_tag::abcd;
           break;
         default:
-          OP_REQUIRES(ctx, false, Status(absl::StatusCode::kUnimplemented,
-                                         "Unimplemented"));
+          OP_REQUIRES(ctx, false, absl::UnimplementedError("Unimplemented"));
       }
       if (this->fused_ops_.at(0) == "Mul") {
         memory::dims mul_dims(params.c_dims.size(), 1);
         params.post_op_params.push_back(
             {"mul", {}, mul_dims, data_type, format_tag});
       } else {
-        OP_REQUIRES(
-            ctx, false,
-            Status(
-                absl::StatusCode::kInvalidArgument,
-                absl::StrCat("Currently first fusion is supported only for Mul",
-                             ", but it is ", this->fused_ops_.at(0), " op.")));
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Currently first fusion is supported only for Mul",
+                        ", but it is ", this->fused_ops_.at(0), " op.")));
       }
       if (this->fused_ops_.size() > 1 && this->fused_ops_.at(1) == "Add") {
         auto add_shape = ctx->input(3).shape();
@@ -332,12 +317,10 @@ class FusedBatchMatMulMkl
         params.post_op_params.push_back(
             {"add", {}, add_dims, data_type, format_tag});
       } else {
-        OP_REQUIRES(
-            ctx, false,
-            Status(absl::StatusCode::kInvalidArgument,
-                   absl::StrCat(
-                       "Currently second fusion is supported only for Add",
-                       ", but it is ", this->fused_ops_.at(1), " op.")));
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Currently second fusion is supported only for Add",
+                        ", but it is ", this->fused_ops_.at(1), " op.")));
       }
     }
   }

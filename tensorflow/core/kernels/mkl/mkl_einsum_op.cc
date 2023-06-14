@@ -61,22 +61,20 @@ struct MklEinsumHelper {
         ctx->allocate_temp(DataTypeToEnum<T>::value, output_shape, output));
 
     if (!(lhs.dims() >= 2))
-      return Status(absl::StatusCode::kInvalidArgument,
-                    absl::StrCat("In[0] ndims must be >= 2: ", lhs.dims()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("In[0] ndims must be >= 2: ", lhs.dims()));
 
     if (!(rhs.dims() >= 2))
-      return Status(absl::StatusCode::kInvalidArgument,
-                    absl::StrCat("In[1] ndims must be >= 2: ", rhs.dims()));
+      return absl::InvalidArgumentError(
+          absl::StrCat("In[1] ndims must be >= 2: ", rhs.dims()));
 
     const auto ndims_lhs = lhs.dims();
     const auto ndims_rhs = rhs.dims();
     // In[0] and In[1] must have compatible batch dimensions
     if (!(bcast.IsValid()))
-      return Status(
-          absl::StatusCode::kInvalidArgument,
-          absl::StrCat(
-              "In[0] and In[1] must have compatible batch dimensions: ",
-              lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString()));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "In[0] and In[1] must have compatible batch dimensions: ",
+          lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString()));
 
     TensorShape out_shape = bcast.output_batch_shape();
     auto lhs_rows = lhs.dim_size(ndims_lhs - 2);
@@ -88,8 +86,7 @@ struct MklEinsumHelper {
     if (trans_y) std::swap(rhs_rows, rhs_cols);
     // lhs mismatch rhs shape: lhs_cols, " vs. ", rhs_rows
     if (lhs_cols != rhs_rows)
-      return Status(
-          absl::StatusCode::kInvalidArgument,
+      return absl::InvalidArgumentError(
           absl::StrCat("lhs mismatch rhs shape: ", lhs_cols, " vs. ", rhs_rows,
                        ": ", lhs.shape().DebugString(), " ",
                        rhs.shape().DebugString(), " ", trans_x, " ", trans_y));
@@ -99,11 +96,9 @@ struct MklEinsumHelper {
     // The maximum number of dimensions for a tensor in DNNL is
     // DNNL_MAX_NDIMS = 12.
     if (!(out_shape.dims() <= DNNL_MAX_NDIMS))
-      return Status(absl::StatusCode::kInvalidArgument,
-                    absl::StrCat("Rank of output tensor must be <= 12, ",
-                                 "but is ", out_shape.dims(),
-                                 ". Current implementation supports upto ",
-                                 "rank 12 tensors."));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Rank of output tensor must be <= 12, ", "but is ", out_shape.dims(),
+          ". Current implementation supports upto ", "rank 12 tensors."));
 
     if (lhs.NumElements() == 0 || rhs.NumElements() == 0) {
       functor::SetZeroFunctor<Device, T> f;

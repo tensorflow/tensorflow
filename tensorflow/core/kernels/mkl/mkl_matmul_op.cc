@@ -50,23 +50,20 @@ class MklMatMulOp : public OpKernel {
     const Tensor& b = ctx->input(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(a.shape()),
-        Status(absl::StatusCode::kInvalidArgument, "In[0] ndims must be >= 2"));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(b.shape()),
-        Status(absl::StatusCode::kInvalidArgument, "In[1] ndims must be >= 2"));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
+                absl::InvalidArgumentError("In[0] ndims must be >= 2"));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
+                absl::InvalidArgumentError("In[1] ndims must be >= 2"));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
     int d1 = a.dim_size(dim_pair[0].first);
     int d2 = b.dim_size(dim_pair[0].second);
-    OP_REQUIRES(ctx, d1 == d2,
-                Status(absl::StatusCode::kInvalidArgument,
-                       absl::StrCat("Matrix size-incompatible: In[0]: ",
-                                    a.shape().DebugString(), ", In[1]: ",
-                                    b.shape().DebugString())));
+    OP_REQUIRES(ctx, d1 == d2, absl::InvalidArgumentError(absl::StrCat(
+                                   "Matrix size-incompatible: In[0]: ",
+                                   a.shape().DebugString(), ", In[1]: ",
+                                   b.shape().DebugString())));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(
