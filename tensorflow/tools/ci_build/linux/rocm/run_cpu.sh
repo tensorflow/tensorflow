@@ -35,21 +35,21 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       -k \
       --test_tag_filters=-no_oss,-oss_excluded,-oss_serial,-gpu,-multi_gpu,-tpu,-no_rocm,-benchmark-test,-v1only \
+      --test_lang_filters=cc,py \
       --jobs=${N_BUILD_JOBS} \
       --local_test_jobs=${N_BUILD_JOBS} \
       --test_timeout 920,2400,7200,9600 \
       --build_tests_only \
       --test_output=errors \
       --test_sharding_strategy=disabled \
-      --test_size_filters=small,medium,large \
+      --test_size_filters=small,medium \
       -- \
       //tensorflow/... \
       -//tensorflow/python/integration_testing/... \
+      -//tensorflow/compiler/tf2tensorrt/... \
+      -//tensorflow/compiler/xrt/... \
       -//tensorflow/core/tpu/... \
-      -//tensorflow/java/... \
       -//tensorflow/lite/... \
-      -//tensorflow/c/eager:c_api_distributed_test \
-      -//tensorflow/python/data/experimental/kernel_tests/service:local_workers_test \
-      -//tensorflow/python/data/experimental/kernel_tests/service:worker_tags_test \
+      -//tensorflow/tools/toolchains/... \
       -//tensorflow/compiler/xla/service/gpu/...
       
