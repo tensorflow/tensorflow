@@ -38,7 +38,6 @@ cc_library(
 xla_cc_test(
     name = "graphcycles_test",
     srcs = ["graphcycles_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":graphcycles",
         "//tensorflow/tsl/platform:logging",
@@ -52,7 +51,6 @@ xla_cc_test(
 xla_cc_test(
     name = "ordered_set_test",
     srcs = ["ordered_set_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ordered_set",
         "//tensorflow/tsl/platform:logging",

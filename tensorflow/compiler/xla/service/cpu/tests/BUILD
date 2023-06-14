@@ -40,7 +40,6 @@ cc_library(
 xla_cc_test(
     name = "cpu_dyn_shape_test",
     srcs = ["cpu_dyn_shape_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -55,7 +54,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_fusion_test",
     srcs = ["cpu_fusion_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -75,7 +73,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_bytesizeof_test",
     srcs = ["cpu_bytesizeof_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
@@ -87,7 +84,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_external_constants_test",
     srcs = ["cpu_external_constants_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_util",
@@ -101,7 +97,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_noalias_test",
     srcs = ["cpu_noalias_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -123,7 +118,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -141,10 +135,7 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_eigen_dot_operation_test",
     srcs = ["cpu_eigen_dot_operation_test.cc"],
-    tags = [
-        "no_mac_arm64",
-        "nomsan",
-    ],
+    tags = ["no_mac_arm64"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -161,7 +152,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_profiling_test",
     srcs = ["cpu_profiling_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -179,7 +169,6 @@ xla_cc_test(
 xla_cc_test(
     name = "tree_reduction_rewriter_test",
     srcs = ["tree_reduction_rewriter_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla:statusor",
@@ -206,7 +195,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -231,7 +219,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_literal_caching_test",
     srcs = ["cpu_literal_caching_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
@@ -247,7 +234,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_outfeed_test",
     srcs = ["cpu_outfeed_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -262,7 +248,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_key_value_sort_test",
     srcs = ["cpu_key_value_sort_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
@@ -277,7 +262,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_spmd_compile_test",
     srcs = ["cpu_spmd_compile_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/utils:hlo_query",
@@ -295,7 +279,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_topk_test",
     srcs = ["cpu_topk_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -312,7 +295,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_vectorization_test",
     srcs = ["cpu_vectorization_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -330,7 +312,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_while_test",
     srcs = ["cpu_while_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_codegen_test",
         "//tensorflow/compiler/xla/hlo/ir:hlo",

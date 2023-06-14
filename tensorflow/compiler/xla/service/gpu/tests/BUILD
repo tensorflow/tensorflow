@@ -168,7 +168,6 @@ xla_cc_test(
 xla_cc_test(
     name = "gpu_reduce_scatter_creator_test",
     srcs = ["gpu_reduce_scatter_creator_test.cc"],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -268,7 +267,6 @@ xla_cc_test(
     srcs = [
         "reduction_degenerate_dim_remover_test.cc",
     ],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -317,7 +315,6 @@ xla_cc_test(
     srcs = [
         "tree_reduction_rewriter_test.cc",
     ],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
@@ -396,7 +393,6 @@ xla_cc_test(
     srcs = [
         "reduction_dimension_grouper_test.cc",
     ],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",

@@ -84,7 +84,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_evaluator_test",
     srcs = ["hlo_evaluator_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_evaluator",
         "//tensorflow/compiler/xla:literal",

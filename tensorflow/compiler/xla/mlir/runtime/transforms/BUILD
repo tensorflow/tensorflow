@@ -79,7 +79,6 @@ xla_cc_test(
     name = "calling_convention_test",
     srcs = ["calling_convention_test.cc"],
     compatible_with = get_compatible_with_cloud(),
-    tags = ["nomsan"],
     deps = [
         ":calling_convention",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
@@ -308,7 +307,6 @@ xla_cc_test(
     name = "type_converter_test",
     srcs = ["type_converter_test.cc"],
     compatible_with = get_compatible_with_cloud(),
-    tags = ["nomsan"],
     deps = [
         ":type_converter",
         "//tensorflow/compiler/xla/runtime:types",

@@ -100,7 +100,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_utils_test",
     srcs = ["hlo_utils_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_utils",
         "//tensorflow/compiler/xla:shape_util",

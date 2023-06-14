@@ -60,7 +60,6 @@ cc_library(
 xla_cc_test(
     name = "padding_test",
     srcs = ["padding_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":padding",
         "//tensorflow/tsl/platform:test",
@@ -281,7 +280,6 @@ cc_library(
 xla_cc_test(
     name = "xla_builder_test",
     srcs = ["xla_builder_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":sharding_builder",
         ":value_inference",

@@ -830,7 +830,6 @@ xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
@@ -843,7 +842,6 @@ xla_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":dnn",
         "//tensorflow/tsl/platform:test",

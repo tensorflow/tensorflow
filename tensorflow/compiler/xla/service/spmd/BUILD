@@ -79,7 +79,6 @@ cc_library(
 xla_cc_test(
     name = "spmd_partitioner_test",
     srcs = ["spmd_partitioner_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":spmd_partitioner",
         "//tensorflow/compiler/xla:util",
@@ -102,7 +101,6 @@ xla_cc_test(
 xla_cc_test(
     name = "canonicalize_all_gather_for_cse_test",
     srcs = ["canonicalize_all_gather_for_cse_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":canonicalize_all_gather_for_cse",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -133,7 +131,6 @@ cc_library(
 xla_cc_test(
     name = "schedule_aware_collective_ops_cse_test",
     srcs = ["schedule_aware_collective_ops_cse_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":schedule_aware_collective_ops_cse",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -176,7 +173,6 @@ cc_library(
 xla_cc_test(
     name = "stateful_rng_spmd_partitioner_test",
     srcs = ["stateful_rng_spmd_partitioner_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla:util",
@@ -214,7 +210,6 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_motion_test",
     srcs = ["collective_permute_motion_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":collective_permute_motion",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -241,7 +236,6 @@ cc_library(
 xla_cc_test(
     name = "partition_assignment_test",
     srcs = ["partition_assignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":partition_assignment",
         "//tensorflow/compiler/xla:xla_proto_cc",
