@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -222,7 +223,7 @@ StatusOr<TPUDevicesAndHosts> GetFullMeshTPUExecutionDeviceAssignment(
 // Helper struct for keeping track of task and device for an associated TPU
 // device coordinate.
 struct TaskAndDevice {
-  TaskAndDevice() {}
+  TaskAndDevice() = default;
   TaskAndDevice(int task, int device) : task(task), device(device) {}
 
   int task = -1;
@@ -426,29 +427,6 @@ GetGeneralTPUExecutionDeviceAssignment(
 
   return std::pair<TPUDevicesAndHosts, xla::DeviceAssignmentProto>(
       std::move(devices_and_hosts), std::move(device_assignment_proto));
-}
-
-mlir::LogicalResult GetHostDeviceOCInGenericPipeline(
-    mlir::TF::RuntimeDevices devices, std::string* host_device) {
-  for (const auto& device : devices.device_names()) {
-    if (device.has_type && device.type == "CPU" && device.id == 0) {
-      if (!host_device->empty()) {
-        // TODO(hanxiongwang): Remove this warning when TF API to bridge
-        // interface is understood.
-        LOG(WARNING) << "Found multiple CPU:0 host devices";
-        if (device.job == "chief")
-          *host_device =
-              tensorflow::DeviceNameUtils::ParsedNameToString(device);
-        continue;
-      }
-      *host_device = tensorflow::DeviceNameUtils::ParsedNameToString(device);
-    }
-  }
-  if (host_device->empty()) {
-    LOG(ERROR) << "Did not find any CPU:0 host devices";
-    return mlir::failure();
-  }
-  return mlir::success();
 }
 
 mlir::LogicalResult GetTopology(mlir::tf_device::ClusterOp cluster,
@@ -674,6 +652,29 @@ bool HasTPUDevice(const mlir::TF::RuntimeDevices& devices) {
   return false;
 }
 
+mlir::LogicalResult GetHostDeviceOutsideCompilationInGenericPipeline(
+    mlir::TF::RuntimeDevices devices, std::string* host_device) {
+  for (const auto& device : devices.device_names()) {
+    if (device.has_type && device.type == "CPU" && device.id == 0) {
+      if (!host_device->empty()) {
+        // TODO(hanxiongwang): Remove this warning when TF API to bridge
+        // interface is understood.
+        LOG(WARNING) << "Found multiple CPU:0 host devices";
+        if (device.job == "chief")
+          *host_device =
+              tensorflow::DeviceNameUtils::ParsedNameToString(device);
+        continue;
+      }
+      *host_device = tensorflow::DeviceNameUtils::ParsedNameToString(device);
+    }
+  }
+  if (host_device->empty()) {
+    LOG(ERROR) << "Did not find any CPU:0 host devices";
+    return mlir::failure();
+  }
+  return mlir::success();
+}
+
 mlir::LogicalResult GetHostDeviceOutsideComputation(
     mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
     std::string* host_device) {
@@ -681,7 +682,8 @@ mlir::LogicalResult GetHostDeviceOutsideComputation(
       cluster->getParentOfType<mlir::tf_device::ReplicateOp>()) {
     return GetHostDeviceOCInTPUPipeline(devices, cluster, *host_device);
   } else {
-    return GetHostDeviceOCInGenericPipeline(devices, host_device);
+    return GetHostDeviceOutsideCompilationInGenericPipeline(devices,
+                                                            host_device);
   }
 }
 
@@ -722,8 +724,8 @@ mlir::LogicalResult GetDeviceToHostMap(
   }
 
   std::string host_device;
-  if (failed(tensorflow::GetHostDeviceOCInGenericPipeline(devices,
-                                                          &host_device))) {
+  if (failed(tensorflow::GetHostDeviceOutsideCompilationInGenericPipeline(
+          devices, &host_device))) {
     return mlir::failure();
   } else {
     core_to_host.push_back(host_device);

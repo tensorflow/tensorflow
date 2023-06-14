@@ -388,7 +388,7 @@ def make_call_op_in_graph(atomic, tensor_inputs, context_call_attrs):
       atomic._call_options.collective_manager_ids_used,  # pylint: disable=protected-access
   )
 
-  return op.outputs if op.outputs else op
+  return op.outputs
 
 
 def from_func_graph(name, graph, inputs, outputs, attrs, overwrite=False):

@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
@@ -128,3 +129,24 @@ tf_proto_library(
 exports_files([
     "run_lit.sh",
 ])
+
+tf_cc_binary(
+    name = "stablehlo-quant-opt",
+    srcs = ["tools/stablehlo_quant_opt.cc"],
+    visibility = [":internal_visibility_allowlist_package"],
+    deps = [
+        ":passes",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)

@@ -1435,7 +1435,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           1.0,  # epsilon,
           [1.0, 1.0, 1.0],  # grad
           False)  # use_locking
-      return None
+      return 1
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,

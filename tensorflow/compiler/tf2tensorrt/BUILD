@@ -443,9 +443,9 @@ tf_custom_op_py_library(
     deps = [
         ":_pywrap_py_utils",
         ":trt_ops",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:resources",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:resources",
     ],
 )
 
@@ -1030,6 +1030,7 @@ pybind_extension(
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
         "@local_execution_config_platform//:__subpackages__",
+        "@ml_dtypes//:__subpackages__",
         "@nsync//:__subpackages__",
         "@platforms//:__subpackages__",
         "@pybind11//:__subpackages__",

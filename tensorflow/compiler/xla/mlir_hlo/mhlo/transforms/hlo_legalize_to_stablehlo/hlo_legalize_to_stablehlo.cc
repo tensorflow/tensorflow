@@ -23,16 +23,19 @@ limitations under the License.
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/DebugStringHelper.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 
 namespace mlir {
@@ -89,6 +92,11 @@ bool hasPackedNibble(std::optional<ArrayAttr> precisionConfigAttr) {
 // for StableHLO, and they are usually accompanied by a StableHLO GitHub ticket.
 template <typename HloOpTy>
 bool hasExperimentalFeaturesNotInStablehlo(HloOpTy hloOp) {
+  if constexpr (std::is_same<HloOpTy, mhlo::AllReduceOp>::value) {
+    // StableHLO AllReduce doesn't support the tuple form yet.
+    // Proposal: https://github.com/openxla/stablehlo/issues/1370.
+    if (hloOp.getNumOperands() != 1) return true;
+  }
   if constexpr (std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
     // StableHLO AllToAll doesn't support the tuple form yet.
     // Proposal: https://github.com/openxla/stablehlo/issues/574.
@@ -258,6 +266,59 @@ Attribute encodePrecisionConfig(Attribute hloAttrs) {
   return ArrayAttr::get(hloAttrs.getContext(), stablehloAttrs);
 }
 
+// Converts region to function.
+// Returns failure if region has more than one block.
+// Example:
+//  %0:2 = "mhlo.all_reduce"(%arg0, %arg1) ({
+//  ^bb0(%arg2: tensor<f32>, %arg3: tensor<f32>):
+//    %2 = mhlo.add %arg2, %arg3 : tensor<f32>
+//    mhlo.return %2 : tensor<f32>
+//  }) {...} : (tensor<8xf32>, tensor<f32>) -> (tensor<8xf32>, tensor<f32>)
+// ==>
+//  func.func @all_reduce0(%arg0: tensor<f32>, %arg1: tensor<f32>)
+//       -> tensor<f32> {
+//    %0 = mhlo.add %arg0, %arg1 : tensor<f32>
+//    mhlo.return %0 : tensor<f32>
+//  }
+FailureOr<func::FuncOp> rewriteMhloRegionAsFunc(
+    Operation* op, ConversionPatternRewriter& rewriter,
+    TypeConverter* typeConverter) {
+  auto& region = op->getRegion(0);
+  if (!region.hasOneBlock()) return failure();
+
+  // Must be isolated from above
+  SetVector<Value> values;
+  getUsedValuesDefinedAbove(region, values);
+  if (!values.empty())
+    return op->emitError(
+        "MHLO feature serialization in StableHLO only supports regions that "
+        "do not capture SSA values from above");
+
+  // Insert into the parent module
+  OpBuilder::InsertionGuard g(rewriter);
+  auto module = op->getParentOfType<ModuleOp>();
+  SymbolTable symTable(module);
+
+  // Convert so that function signature is correct
+  if (failed(rewriter.convertRegionTypes(&region, *typeConverter,
+                                         /*entryConversion=*/nullptr)))
+    return failure();
+
+  // Create function with args that match block inputs / return types
+  rewriter.setInsertionPointToEnd(&module.getBodyRegion().front());
+  auto& block = region.getBlocks().front();
+  auto type = rewriter.getFunctionType(
+      block.getArgumentTypes(), block.getTerminator()->getOperandTypes());
+  auto funcOp = rewriter.create<func::FuncOp>(
+      region.getLoc(), op->getName().stripDialect(), type);
+  symTable.insert(funcOp);
+
+  // Move region into new function
+  rewriter.inlineRegionBefore(region, funcOp.getFunctionBody(), funcOp.end());
+
+  return funcOp;
+}
+
 // Experimental and public ops in MHLO that do not exist yet in StableHLO can be
 // encoded as a StableHLO CustomCallOp to allow round-tripping between dialects.
 //
@@ -272,11 +333,12 @@ LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
                                         ConversionPatternRewriter& rewriter,
                                         TypeConverter* typeConverter,
                                         ValueRange stablehloOperands) {
-  if (hloOp->getNumRegions() != 0) {
-    // Extensibility protocol for regions hasn't been implemented yet.
+  if (hloOp->getNumRegions() > 1) {
+    // Extensibility protocol for regions is only supported for single-region
+    // ops. Support for multiple regions is not yet implemented.
     // In principle, it should be straightforward to implement by
     // converting regions into functions and calling them out in
-    // "called_computations".
+    // "called_computations" in the order the regions appear in the op.
     // https://github.com/openxla/stablehlo/issues/593.
     return failure();
   }
@@ -303,12 +365,25 @@ LogicalResult rewriteMhloOpAsCustomCall(HloOpTy hloOp,
     stablehloConvertedAttrs.push_back({hloAttr.getName(), stablehloAttr});
   }
 
+  // Create functions from regions
+  std::optional<func::FuncOp> stablehloConvertedRegion;
+  if (hloOp->getNumRegions() == 1) {
+    auto funcOp = rewriteMhloRegionAsFunc(hloOp, rewriter, typeConverter);
+    if (failed(funcOp)) return failure();
+    stablehloConvertedRegion = funcOp.value();
+  }
+
   auto stablehloCallTargetName = hloOp->getName().getStringRef();
   SmallVector<NamedAttribute> stablehloAttrs;
   stablehloAttrs.push_back(rewriter.getNamedAttr(
       "call_target_name", rewriter.getStringAttr(stablehloCallTargetName)));
   stablehloAttrs.push_back(rewriter.getNamedAttr(
       "mhlo.attributes", rewriter.getDictionaryAttr(stablehloConvertedAttrs)));
+  if (stablehloConvertedRegion)
+    stablehloAttrs.push_back(rewriter.getNamedAttr(
+        "called_computations",
+        rewriter.getArrayAttr(FlatSymbolRefAttr::get(
+            rewriter.getContext(), stablehloConvertedRegion->getSymName()))));
   if (auto featureVersion = getPublicFeaturesNotInStablehlo(hloOp))
     stablehloAttrs.push_back(rewriter.getNamedAttr(
         "mhlo.version", rewriter.getI64IntegerAttr(featureVersion.value())));

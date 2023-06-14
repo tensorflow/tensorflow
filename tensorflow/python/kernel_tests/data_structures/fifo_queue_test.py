@@ -150,6 +150,7 @@ class FIFOQueueTest(test.TestCase):
         self.q2.enqueue(x)
         self.q2.enqueue(x + 3)
         self.q1.enqueue(self.q2.dequeue())
+        return 1
 
     m = _M()
     self.evaluate(m.uses_queues(constant_op.constant(2)))

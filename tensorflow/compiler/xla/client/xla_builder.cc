@@ -4979,6 +4979,18 @@ XlaOp AllReduce(const XlaOp operand, const XlaComputation& computation,
                                       use_global_device_ids);
 }
 
+XlaOp AllReduceTuple(const absl::Span<const XlaOp> operands,
+                     const XlaComputation& computation,
+                     absl::Span<const ReplicaGroup> replica_groups,
+                     const std::optional<ChannelHandle>& channel_id,
+                     const std::optional<Shape>& shape_with_layout,
+                     const std::optional<bool> use_global_device_ids) {
+  CHECK(!operands.empty());
+  return operands[0].builder()->AllReduce(
+      operands[0].builder()->Tuple(operands), computation, replica_groups,
+      channel_id, shape_with_layout, use_global_device_ids);
+}
+
 XlaOp ReduceScatter(const XlaOp operand, const XlaComputation& computation,
                     int64_t scatter_dimension, int64_t shard_count,
                     absl::Span<const ReplicaGroup> replica_groups,

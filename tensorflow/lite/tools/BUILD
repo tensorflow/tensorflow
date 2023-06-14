@@ -49,8 +49,8 @@ py_test(
     deps = [
         ":test_utils",
         ":visualize",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -60,11 +60,11 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:image_ops",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:session",
+        "//tensorflow/python/client:session",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:io_ops",
         "@absl_py//absl:app",
         "@absl_py//absl/flags",
     ],
@@ -78,9 +78,9 @@ py_test(
     srcs_version = "PY3",
     deps = [
         ":convert_image_to_csv",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
         "//third_party/py/numpy",
     ],
@@ -142,8 +142,8 @@ py_test(
     deps = [
         ":flatbuffer_utils",
         ":test_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

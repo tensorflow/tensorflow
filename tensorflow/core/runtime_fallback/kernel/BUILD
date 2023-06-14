@@ -449,6 +449,7 @@ cc_library(
         "//learning/brain/experimental/tfrt/native_lowering/kernels:__subpackages__",
         "//tensorflow/core/tfrt/graph_executor:__subpackages__",
         "//tensorflow/core/tfrt/saved_model:__subpackages__",
+        "//tensorflow/core/tfrt/mlrt/kernel:__subpackages__",
     ],
     deps = [
         "//tensorflow/core/tfrt/fallback:cost_recorder",

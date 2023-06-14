@@ -14,9 +14,9 @@ pytype_strict_library(
     srcs = ["tpu_ops.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:tpu_ops_gen",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:tpu_ops_gen",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu:tpu_function",
         "//tensorflow/python/util:tf_export",

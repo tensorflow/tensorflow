@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -86,6 +87,11 @@ BufferUse GetBufferUse(Value operand, bool read_only = false) {
 
     // Get len.
     auto memref_type = cast<MemRefType>(view_op.getType());
+    // TODO(b/274157088): Handle the case where elements are complex numbers.
+    if (!memref_type.getElementType().isIntOrFloat()) {
+      return buffer_use;
+    }
+
     size_t len =
         (memref_type.getNumElements() * memref_type.getElementTypeBitWidth() +
          7) /
@@ -180,9 +186,15 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
     // TODO(anlunx): Support other ops.
     llvm::SmallVector<BufferUse> operand_buffer_uses;
     if (auto launch_func = dyn_cast<LaunchFuncOp>(operation)) {
+      auto kernel_func =
+          SymbolTable::lookupNearestSymbolFrom<mlir::gpu::GPUFuncOp>(
+              &operation, launch_func.getKernel());
       auto kernel_operands = launch_func.getKernelOperands();
-      for (auto kernel_operand : kernel_operands) {
-        BufferUse buffer_use = GetBufferUse(kernel_operand);
+      for (auto it : llvm::enumerate(kernel_operands)) {
+        BufferUse buffer_use =
+            GetBufferUse(it.value(),
+                         /*read_only=*/!kernel_func.getArgAttrOfType<UnitAttr>(
+                             it.index(), "lmhlo.written"));
         operand_buffer_uses.push_back(buffer_use);
       }
     } else if (auto gemm = dyn_cast<lmhlo_gpu::GEMMOp>(operation)) {

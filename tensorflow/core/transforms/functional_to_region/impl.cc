@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <tuple>
+#include <utility>
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
@@ -148,7 +148,12 @@ void CreateTPUBridgePipelineImpl(
   pm.addNestedPass<func::FuncOp>(
       CreateTPUReorderReplicateAndPartitionedInputsPass());
   pm.addNestedPass<func::FuncOp>(TF::CreateDecomposeReduceDatasetPass());
-  pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
+  if (tensorflow::GetBuildXlaOpsPassFlags()
+          ->tf_xla_disable_full_embedding_pipelining) {
+    pm.addPass(TFDevice::CreateEmbeddingSequencingPass());
+  } else {
+    pm.addPass(TFDevice::CreateEmbeddingPipeliningPass());
+  }
   pm.addPass(CreateTPUClusterFormationPass());
   // CreateEmbeddingPipeliningPass may have created more functions, but
   // TPUClusterCleanup and OutsideCompiledToHostLaunch need every function to be
@@ -409,6 +414,8 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   VLOG(2) << "Create TF XLA Bridge pipeline";
   pm.addNestedPass<func::FuncOp>(
       TF::CreateCanonicalizeCompileAndReplicateAttributesPass());
+  // This pass expectes unified compilation markers.
+  pm.addPass(TFDevice::CreateXlaValidateInputsPass());
   const llvm::SmallVector<std::string, 4> ops_to_preserve = {};
   pm.addNestedPass<func::FuncOp>(
       tf_executor::CreateTFExecutorGraphPruningPass(ops_to_preserve));

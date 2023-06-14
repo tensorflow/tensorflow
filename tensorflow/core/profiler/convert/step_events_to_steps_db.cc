@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/step_events_to_steps_db.h"
 
+#include <ostream>
 #include <sstream>
 #include <utility>
 #include <vector>

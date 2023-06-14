@@ -21205,7 +21205,8 @@ platform argument (see `platforms`) nor the dimension arguments (see
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$dim_args_spec,
     DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$platforms,
     DefaultValuedOptionalAttr<TF_SymbolRefArrayAttr, "{}">:$function_list,
-    DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output
+    DefaultValuedOptionalAttr<BoolAttr, "false">:$has_token_input_output,
+    DefaultValuedOptionalAttr<StrArrayAttr, "{}">:$disabled_checks
   );
 
   let results = (outs
@@ -22667,6 +22668,39 @@ expected to create these operators.
   }];
 }
 
+def TF__XlaCompileOp : TF_Op<"_XlaCompile", [AttrSizedOperandSegments]> {
+  let summary = "XLA Compile Op. For use by the XLA JIT only.";
+
+  let description = [{
+Compiles a TensorFlow function into an XLA LocalExecutable and returns a key
+that _XlaRun can use to look up the LocalExecutable and execute it.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$constants,
+    Variadic<TF_Tensor>:$args,
+    Variadic<TF_ResourceTensor>:$resources,
+
+    BoolAttr:$must_compile,
+    SymbolRefAttr:$function
+  );
+
+  let results = (outs
+    Res<TF_StrTensor, [{A key that can be used to look up the local executable compiled by the
+node and associated metadata.}]>:$key,
+    Res<TF_BoolTensor, [{If the `must_compile` attr is false the _XlaCompile op
+can decide not to compile the clusters based on some profitability
+heuristics.  In that case `compilation_successful` is false if _XlaCompile
+chose not to compile the cluster.  If the `must_compile` attr is true then
+_XlaCompile always attempts to compile the cluster and
+`compilation_successful` is always true.}]>:$compilation_successful
+  );
+
+  TF_DerivedOperandSizeAttr Nresources = TF_DerivedOperandSizeAttr<2>;
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedOperandTypeListAttr Tconstants = TF_DerivedOperandTypeListAttr<0>;
+}
+
 def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", [TF_RecvSideEffect, TF_SendSideEffect, TF_XlaHostComputeSideEffect]> {
   let summary = [{
 A pseudo-op to represent host-side computation in an XLA program.
@@ -22735,6 +22769,27 @@ execution the transfer corresponds to.}]>:$dynamic_key,
   );
 
   TF_DerivedResultTypeListAttr Toutputs = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF__XlaRunOp : TF_Op<"_XlaRun", []> {
+  let summary = "XLA Run Op. For use by the XLA JIT only.";
+
+  let description = [{
+Executes a TensorFlow function previously compiled into a LocalExecutable by an
+_XlaCompile op.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    TF_StrTensor:$key
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF__XlaSendFromHostOp : TF_Op<"_XlaSendFromHost", [DeclareOpInterfaceMethods<TF_GetResourceInstanceInterface>, TF_SendSideEffect]> {

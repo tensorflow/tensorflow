@@ -49,6 +49,7 @@ cc_library(
 xla_cc_test(
     name = "alias_analysis_test",
     srcs = ["alias_analysis_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":alias_analysis",
         "//tensorflow/compiler/xla/service:custom_call_status_public_headers",
@@ -297,6 +298,7 @@ cc_library(
 xla_cc_test(
     name = "ir_array_test",
     srcs = ["ir_array_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ir_array",
         "//tensorflow/compiler/xla:test",

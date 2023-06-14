@@ -6,6 +6,7 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -51,7 +52,9 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_compiler",
         "//tensorflow/compiler/xla/pjrt:pjrt_stream_executor_client",
         "//tensorflow/compiler/xla/pjrt:tracked_device_buffer",
+        "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
+        "//tensorflow/compiler/xla/pjrt/distributed:topology_util",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/compiler/xla/stream_executor:device_mem_allocator",
@@ -62,12 +65,16 @@ cc_library(
         "//tensorflow/tsl/framework:device_id_impl",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/profiler/lib:connected_traceme",
         "//tensorflow/tsl/util:env_var",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "@tf_runtime//:hostcontext",
     ] + if_cuda([
         ":nccl_id_store_cuda",
         "@local_config_cuda//cuda:cuda_headers",
@@ -83,17 +90,25 @@ xla_cc_test(
     name = "se_gpu_pjrt_client_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_client_test.cc"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = ["requires-gpu-nvidia"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":se_gpu_pjrt_client",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/pjrt:utils",
+        "//tensorflow/compiler/xla/pjrt/distributed:topology_util",
         "//tensorflow/compiler/xla/service:gpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/tsl/lib/core:status_test_util",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
+        "@tf_runtime//:hostcontext",
     ],
 )
 
@@ -109,6 +124,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
@@ -126,6 +142,7 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
         "//tensorflow/compiler/xla/pjrt/distributed:client",
         "//tensorflow/compiler/xla/service:global_device_id",
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
@@ -184,9 +201,7 @@ cc_library(
 xla_cc_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
-    tags = [
-        "requires-gpu-nvidia",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",

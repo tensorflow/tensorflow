@@ -56,7 +56,6 @@ py_strict_test(
     deps = [
         ":export_output",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:metrics",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
@@ -64,6 +63,7 @@ py_strict_test(
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
+        "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:signature_constants",

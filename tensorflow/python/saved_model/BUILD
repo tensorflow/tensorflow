@@ -576,7 +576,6 @@ cuda_py_strict_test(
         ":save_options",
         ":tag_constants",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/checkpoint",
         "//tensorflow/python/checkpoint:saveable_compat",
         "//tensorflow/python/client:session",
@@ -603,6 +602,7 @@ cuda_py_strict_test(
         "//tensorflow/python/module",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond_v2",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:lookup_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
@@ -726,7 +726,6 @@ py_strict_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:gradients",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager/polymorphic_function:function_type_utils",
@@ -737,6 +736,7 @@ py_strict_library(
         "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/framework:type_spec",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:custom_gradient",
         "//tensorflow/python/ops:default_gradient",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/util:compat",
@@ -857,7 +857,9 @@ tf_pybind_cc_library_wrapper(
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/cc/saved_model:fingerprinting",
         "//tensorflow/cc/saved_model:metrics",
-    ],
+    ] + if_google([
+        "//tensorflow/tools/proto_splitter:merge",
+    ]),
 )
 
 tf_python_pybind_extension(
@@ -867,12 +869,16 @@ tf_python_pybind_extension(
         "pywrap_saved_model_constants.cc",
         "pywrap_saved_model_fingerprinting.cc",
         "pywrap_saved_model_metrics.cc",
-    ],
+    ] + if_google([
+        "pywrap_saved_model_merger.cc",
+    ]),
     hdrs = [
         "pywrap_saved_model_constants.h",
         "pywrap_saved_model_fingerprinting.h",
         "pywrap_saved_model_metrics.h",
-    ],
+    ] + if_google([
+        "pywrap_saved_model_merger.h",
+    ]),
     # This fails Windows builds. Please check b/266870200 for details.
     #    dynamic_deps = ["//tensorflow/python:_pywrap_tensorflow_internal.so"] + select({
     #        "//tensorflow:macos": ["//tensorflow:libtensorflow_framework.%s.dylib" % VERSION],
@@ -889,8 +895,12 @@ tf_python_pybind_extension(
     deps = [
         ":pywrap_saved_model_headers",
         "//tensorflow/cc/experimental/libexport:save",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/python/lib/core:pybind11_status",
         "@pybind11",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
+        "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
     ],
 )
 
@@ -903,6 +913,26 @@ tf_py_strict_test(
         "//tensorflow/python/eager:test",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# tf_py_strict_test(
+#     name = "pywrap_saved_model_merger_test",
+#     srcs = ["pywrap_saved_model_merger_test.py"],
+#     data = [
+#         "//tensorflow/tools/proto_splitter/testdata:split-standard.cpb",
+#         "//tensorflow/tools/proto_splitter/testdata:split-standard.pbtxt",
+#     ],
+#     deps = [
+#         ":pywrap_saved_model",
+#         "//tensorflow/core:protos_all_py",
+#         "//tensorflow/python/eager:test",
+#         "//tensorflow/python/lib/io:lib",
+#         "//tensorflow/python/platform:client_testlib",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 tf_py_strict_test(
     name = "keras_injection_test",

@@ -8919,7 +8919,7 @@ TEST_F(AlgebraicSimplifierTest, DynamicSliceShapeLayout) {
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).value());
   const Shape& slice_shape =
-      m.get()->entry_computation()->root_instruction()->operand(0)->shape();
+      m->entry_computation()->root_instruction()->operand(0)->shape();
   EXPECT_TRUE(slice_shape.has_layout());
   EXPECT_EQ(slice_shape.layout().tiles_size(), 1);
 }

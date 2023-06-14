@@ -246,10 +246,13 @@ class ShardedVariableSpec(type_spec.TypeSpec):
     return self._variable_specs
 
   def _to_components(self, value):
-    return value.variables
+    return tuple(value.variables)
 
   def _from_components(self, variables):
     return ShardedVariable(variables)
+
+  def _cast(self, value, _):
+    return value
 
 
 class ShardedVariableMixin(trackable.Trackable):

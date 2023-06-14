@@ -23,7 +23,7 @@ namespace {
 const bool kUnused = (RegisterTestClientFactory([]() {
                         return GetStreamExecutorGpuClient(
                             /*asynchronous=*/true, GpuAllocatorConfig{},
-                            /*distributed_client=*/nullptr, /*node_id=*/0);
+                            /*node_id=*/0);
                       }),
                       true);
 

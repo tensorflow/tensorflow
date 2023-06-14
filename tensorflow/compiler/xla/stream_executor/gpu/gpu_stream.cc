@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
 
+#include <variant>
+
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/tsl/platform/status.h"
@@ -23,8 +25,15 @@ namespace stream_executor {
 namespace gpu {
 
 bool GpuStream::Init() {
+  int priority = [&]() {
+    if (std::holds_alternative<int>(stream_priority_)) {
+      return std::get<int>(stream_priority_);
+    }
+    return GpuDriver::GetGpuStreamPriority(
+        parent_->gpu_context(), std::get<StreamPriority>(stream_priority_));
+  }();
   if (!GpuDriver::CreateStream(parent_->gpu_context(), &gpu_stream_,
-                               priority_)) {
+                               priority)) {
     return false;
   }
   return GpuDriver::InitEvent(parent_->gpu_context(), &completed_event_,

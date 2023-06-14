@@ -108,6 +108,12 @@ bool CreatesHeavyComputation(const HloInstruction& producer,
 const HloInstruction* GetRealHeroForMultiOutputFusion(
     const HloInstruction& instr);
 
+// Whether 'hero1' and 'hero2' are compatible if the two fusions containing
+// 'hero1' and 'hero2' are merged together. For example merging two fusions with
+// a reduction hero and a transpose here, respectively, does not work.
+FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
+                                         const HloInstruction* hero2);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output

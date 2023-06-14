@@ -1200,14 +1200,24 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
       for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
         dim_args_spec.push_back(attr.getValue().str());
       }
-
+      std::vector<std::string> disabled_checks;
+      for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+        disabled_checks.push_back(attr.getValue().str());
+      }
+      std::vector<std::string> platforms;
+      for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+        platforms.push_back(attr.getValue().str());
+      }
       // Always use the first platform. The assumption is that shape inference
       // results should be the same regardless of which platform is chosen.
-      int platform_index = op.getPlatforms().size() > 1 ? 0 : -1;
+      // Very old versions of the op have an empty platforms attribute.
+      std::string loading_platform =
+          (platforms.empty() ? "CPU" : platforms.front());
 
       auto l = tensorflow::XlaCallModuleLoader::Create(
           &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-          std::move(dim_args_spec), platform_index);
+          std::move(dim_args_spec), std::move(disabled_checks),
+          std::move(platforms), std::move(loading_platform));
       if (!l.ok()) {
         LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
                                 << l.status().ToString() << "\n");

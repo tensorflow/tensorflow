@@ -2582,15 +2582,23 @@ def count_nonzero_v2(
     keepdims = False
   with ops.name_scope(name, "count_nonzero", [input]):
     input = ops.convert_to_tensor(input, name="input")
-    # A scalar of 'zero' is enough as `not_equal` will broadcast.
-    zero = array_ops.zeros([], dtype=input.dtype)
+    # if the input is already of type bool, then there is no need
+    # to compare to zero.
+    if input.dtype == dtypes.bool:
+      predicate = input
+    else:
+      # A scalar of 'zero' is enough as `not_equal` will broadcast.
+      zero = array_ops.zeros([], dtype=input.dtype)
+      predicate = gen_math_ops.not_equal(input, zero)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            cast(gen_math_ops.not_equal(input, zero), dtypes.int64),
+            cast(predicate, dtypes.int64),
             axis=axis,
-            keepdims=keepdims),
-        dtype=dtype)
+            keepdims=keepdims,
+        ),
+        dtype=dtype,
+    )
 
 
 @tf_export(v1=["math.reduce_mean", "reduce_mean"])

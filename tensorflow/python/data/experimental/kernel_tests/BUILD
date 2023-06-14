@@ -587,7 +587,6 @@ tf_py_strict_test(
     srcs = ["rebatch_dataset_test.py"],
     shard_count = 4,
     deps = [
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/data/experimental/ops:distribute",
         "//tensorflow/python/data/kernel_tests:checkpoint_test_base",
         "//tensorflow/python/data/kernel_tests:test_base",
@@ -598,6 +597,7 @@ tf_py_strict_test(
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
         "//tensorflow/python/framework:tensor_util",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",

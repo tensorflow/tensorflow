@@ -46,7 +46,7 @@ namespace m = ::xla::match;
 
 using HloExtractionTest = HloTestBase;
 
-TEST_F(HloExtractionTest, ExtractionIsCorrect) {
+TEST_F(HloExtractionTest, InstructionExtractionIsCorrect) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 HloModule module
 
@@ -78,6 +78,46 @@ ENTRY entry {
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 3);
+  TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
+                               /*layout_sensitive=*/true,
+                               /*allow_mixed_precision=*/false));
+}
+
+TEST_F(HloExtractionTest, ComputationExtractionIsCorrect) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+triton_gemm_dot {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  c0 = f32[10,10] convert(p0)
+  ROOT dot.0 = f32[10,10] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  s = f32[10,10] sqrt(p1)
+  d = f32[10,10] fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot
+  ROOT r = f32[10,10] add(d, s)
+})")
+                                                  .value();
+
+  std::unique_ptr<HloModule> extracted_module =
+      ExtractComputationIntoNewModule(*module->entry_computation()
+                                           ->root_instruction()
+                                           ->operand(0)
+                                           ->fused_instructions_computation());
+
+  // Destroy the original module to be sure that the extracted one has no
+  // dependency on it.
+  module.release();
+
+  EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Convert(m::Parameter()), m::Parameter())));
+  EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 4);
   TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
                                /*layout_sensitive=*/true,
                                /*allow_mixed_precision=*/false));
@@ -175,7 +215,7 @@ ENTRY e {
 // CHECK:   %triton_gemm_out_computation (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 // CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: \"block_m\":\"
+// CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
@@ -199,7 +239,7 @@ ENTRY e {
 // CHECK:   %triton_gemm_out_computation (
 // CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 // CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: \"block_m\":\"
+// CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -244,8 +284,8 @@ class TritonAutotunerLevelTest : public HloTestBase,
   }
 };
 
-TEST_P(TritonAutotunerLevelTest, PredF32) {
-  const std::string hlo_text = R"(
+TEST_P(TritonAutotunerLevelTest, AllAutotuningLevelsWorkCorrectly) {
+  const std::string kHloText = R"(
 HloModule m
 
 ENTRY e {
@@ -258,12 +298,19 @@ ENTRY e {
 
   TritonAutotuner::ClearAutotuneResults();
 
-  MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p0, %p1), kind=kCustom
-; CHECK-SAME: \"block_m\":\"
-)");
+  if (GetDebugOptionsForTest().xla_gpu_autotune_level() == 0) {
+    MatchOptimizedHlo(kHloText, R"(
+; CHECK: kind=kCustom
+; CHECK-NOT: block_m
+      )");
+  } else {
+    MatchOptimizedHlo(kHloText, R"(
+; CHECK: kind=kCustom
+; CHECK-SAME: block_m
+      )");
+  }
 
-  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+  EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,

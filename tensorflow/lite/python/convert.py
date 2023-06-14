@@ -579,6 +579,7 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
+    enable_hlo_to_tf_conversion=False,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -676,6 +677,9 @@ def build_conversion_flags(
       a custom method, and allows finer, modular control. This option will
       override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
+    enable_hlo_to_tf_conversion: Enable HLO to TF conversion in the Converter.
+      Set this to False by default as this may increase the conversion time if
+      set otherwise.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -758,6 +762,8 @@ def build_conversion_flags(
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
   if quantization_options:
     conversion_flags.quantization_options.CopyFrom(quantization_options)
+
+  conversion_flags.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion
   return conversion_flags
 
 

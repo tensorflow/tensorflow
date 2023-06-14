@@ -405,7 +405,8 @@ class PartitionedHlo {
   // only modify the reshard cache.
   std::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
       const Window& window, const HloSharding& target,
-      HloInstruction* pad_value, bool mask_invalid_region = true);
+      HloInstruction* pad_value, bool mask_invalid_region = true,
+      bool force_mask_in_compact = false);
 
   const PartitioningState& state() const { return state_; }
 

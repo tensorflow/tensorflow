@@ -54,6 +54,10 @@ class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() == " # n>>;
 
+class FloatValueEquals<string val> : Constraint<CPred<
+  "FloatValueEquals($0, " # val # ")">>;
+
+
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
 
@@ -333,6 +337,23 @@ def MatchHardSwishQuantized : Pat<
     (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
   (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern5 : Pat<
+  (TFL_MulOp
+     $arg,
+     (TFL_DivOp
+      (TFL_AddOp
+        $arg,
+        (Arith_ConstantOp F32ElementsAttr:$cst_3),
+        TFL_AF_Relu6),
+      (Arith_ConstantOp F32ElementsAttr:$cst_6),
+      TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $arg),
+  [
+    (FloatValueEquals<"3"> $cst_3),
+    (FloatValueEquals<"6"> $cst_6),
+  ]>;
 
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
@@ -734,9 +755,6 @@ def ConvertExpandDimsToReshape : Pat<
   (TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
   (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $expand_dims_op))),
   [(AnyStaticShapeTensor $expand_dims_op)]>;
-
-class FloatValueEquals<string val> : Constraint<CPred<
-  "FloatValueEquals($0, " # val # ")">>;
 
 // Here, the element type can be any integer or float type.
 class IsConstantValueOf<int value> : Constraint<CPred<
@@ -1331,4 +1349,42 @@ def SimplifyDoubleSelectFCZerosRHS : Pat<
   [(IsLastDimensionEqualOne $condition),
    (AllValuesAreZero $zeros_1),
    (AllValuesAreZero $zeros_2)
+  ]>;
+
+def FuseSigmoid : Pat<
+  (TFL_DivOp
+   (Arith_ConstantOp F32ElementsAttr:$ones),
+   (TFL_AddOp:$add_out
+    (TFL_ExpOp:$exp_out
+     (TFL_NegOp:$neg_out $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
+  (TFL_LogisticOp $arg),
+  [(FloatValueEquals<"1"> $ones_1),
+   (FloatValueEquals<"1"> $ones),
+   (HasOneUse $neg_out),
+   (HasOneUse $add_out),
+   (HasOneUse $exp_out),
+  ]>;
+
+def FuseEluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero)),
+   $arg,
+   (TFL_SubOp:$sub_out
+    (TFL_ExpOp:$exp_out
+     (TFL_SelectOp:$select_out
+      (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero_1)),
+      (Arith_ConstantOp F32ElementsAttr:$zero_2),
+      $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$one),
+    TFL_AF_None)),
+  (TFL_EluOp $arg),
+  [
+    (FloatValueEquals<"0"> $zero_2),
+    (FloatValueEquals<"0"> $zero_1),
+    (FloatValueEquals<"0"> $zero),
+    (FloatValueEquals<"1"> $one),
+    (HasOneUse $select_out),
+    (HasOneUse $exp_out),
+    (HasOneUse $sub_out),
   ]>;

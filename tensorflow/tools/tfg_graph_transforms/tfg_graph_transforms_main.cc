@@ -258,8 +258,7 @@ int main(int argc, char** argv) {
       ImportModel(data_format, input_file, experimental_image_format, &context);
 
   if (!module_ref_status.ok()) {
-    LOG(QFATAL) << "Model import failed: "
-                << module_ref_status.status().ToString();
+    LOG(QFATAL) << "Model import failed: " << module_ref_status.status();
   }
   auto module_ref = std::move(module_ref_status.value());
 
@@ -268,7 +267,7 @@ int main(int argc, char** argv) {
   tensorflow::Status pass_pipeline_status =
       RunOptimizationPasses(pass_pipeline, *module_ref, &context);
   if (!pass_pipeline_status.ok()) {
-    LOG(QFATAL) << pass_pipeline_status.ToString() << "\n";
+    LOG(QFATAL) << pass_pipeline_status << "\n";
   }
 
   // Export MLIR TFG module to the resulting model proto.
@@ -277,8 +276,7 @@ int main(int argc, char** argv) {
       experimental_image_format, experimental_image_format_max_proto_size);
 
   if (!export_status.ok()) {
-    LOG(QFATAL) << "Export of TFG module failed: " << export_status.ToString()
-                << "\n";
+    LOG(QFATAL) << "Export of TFG module failed: " << export_status << "\n";
   }
 
   return EXIT_SUCCESS;

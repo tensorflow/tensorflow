@@ -294,8 +294,7 @@ StatusOr<std::vector<int64_t>> GetTensorShapeAsVector(
   if (status.ok()) {
     const int dims = shape.dims();
     if (dims < 0) {
-      return absl::InvalidArgumentError(
-          absl::StrCat("Unavailable tensor shape!"));
+      return absl::InvalidArgumentError("Unavailable tensor shape!");
     }
     std::vector<int64_t> result;
     result.reserve(dims);
@@ -563,8 +562,8 @@ tsl::Status ResourceHandleWithLayout::UpdateLayout(const Layout& new_layout) {
 tsl::Status ResourceHandleWithLayout::UpdateAttrs(
     const EmbeddingResourceAttrs& attrs) {
   if (attrs_.has_value()) {
-    return absl::InvalidArgumentError(absl::StrCat(
-        "Attempted to overwrite an existing embedding resource attribute."));
+    return absl::InvalidArgumentError(
+        "Attempted to overwrite an existing embedding resource attribute.");
   }
   attrs_.emplace(attrs);
   return tsl::OkStatus();
@@ -1157,9 +1156,9 @@ Status InsertFunctionForTPUEmbeddingCheckpoint(
     const std::string& checkpoint_fn_name) {
   if (checkpoint_fn_name != kLoadEmbeddingFn &&
       checkpoint_fn_name != kRetrieveEmbeddingFn) {
-    return absl::InvalidArgumentError(absl::StrCat(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Found wrong function name: ", checkpoint_fn_name,
-        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn)));
+        " \n expects : ", kLoadEmbeddingFn, " or ", kRetrieveEmbeddingFn));
   }
 
   StatusOr<std::map<int64_t, std::vector<Node*>>> table_id_node_map =

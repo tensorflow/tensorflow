@@ -177,7 +177,7 @@ class DTensorDevice {
   // placed there), but DTensor is doing type-based dispatch and so handles
   // these cases identically at the moment.
   void Execute(const TFE_Op* original_op, int* num_outputs,
-               TFE_TensorHandle** outputs, TF_Status* status);
+               std::vector<TensorHandlePtr>& outputs, TF_Status* status);
 
   // Sets the output layout for the current device.
   // This API only supports setting the layout of the first output.
@@ -478,7 +478,7 @@ class DTensorDevice {
       TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
       const std::string& operation_name, const std::string& device_name,
       const TFE_OpAttrs* attributes, int* num_outputs,
-      TFE_TensorHandle** outputs, TF_Status* status);
+      std::vector<TensorHandlePtr>& outputs, TF_Status* status);
 
   // Wraps a TensorWithLayout into a TFE_TensorHandle.
   TFE_TensorHandle* MakeLayoutTensorHandle(TFE_Context* context,
@@ -1812,8 +1812,8 @@ void DTensorDevice::ParallelExecuteRegularOperation(
 void DTensorDevice::ExecuteSingleDeviceOperation(
     TFE_Context* context, const std::vector<TFE_TensorHandle*>& inputs,
     const std::string& operation_name, const std::string& device_name,
-    const TFE_OpAttrs* attributes, int* num_outputs, TFE_TensorHandle** outputs,
-    TF_Status* status) {
+    const TFE_OpAttrs* attributes, int* num_outputs,
+    std::vector<TensorHandlePtr>& outputs, TF_Status* status) {
   std::unique_ptr<tensorflow::EagerOperation> new_op(
       reinterpret_cast<EagerOperation*>(
           tensorflow::unwrap(context)->CreateOperation()));
@@ -1860,9 +1860,9 @@ void DTensorDevice::ExecuteSingleDeviceOperation(
 
   if (TF_GetCode(status) != TF_OK) return;
   for (int output_index = 0; output_index < *num_outputs; ++output_index) {
-    outputs[output_index] =
-        tensorflow::wrap(reinterpret_cast<ImmediateExecutionTensorHandle*>(
-            output_raw_handles[output_index]));
+    auto* output_raw_handle = reinterpret_cast<ImmediateExecutionTensorHandle*>(
+        output_raw_handles[output_index]);
+    outputs[output_index].reset(tensorflow::wrap(output_raw_handle));
   }
 }
 
@@ -2146,16 +2146,16 @@ void DTensorDevice::ExecuteRegularOperation(
       }
       int num_outputs = function.output_index_map.size();
 
-      std::vector<TFE_TensorHandle*> single_device_outputs;
-      single_device_outputs.resize(num_outputs);
+      std::vector<TensorHandlePtr> single_device_outputs(num_outputs);
 
       if (TF_GetCode(status) == TF_OK) {
         ExecuteSingleDeviceOperation(context, single_device_inputs,
                                      function.translated_function_name,
                                      device_name, attributes, &num_outputs,
-                                     single_device_outputs.data(), status);
-        for (auto output : single_device_outputs) {
-          auto output_tensor = Broadcast(context, output, mesh, status);
+                                     single_device_outputs, status);
+        for (const TensorHandlePtr& output : single_device_outputs) {
+          std::unique_ptr<TensorWithLayout> output_tensor =
+              Broadcast(context, output.get(), mesh, status);
           if (TF_GetCode(status) != TF_OK) {
             break;
           }
@@ -2286,7 +2286,8 @@ void DTensorDevice::ExecuteRegularOperation(
 }
 
 void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
-                            TFE_TensorHandle** outputs, TF_Status* status) {
+                            std::vector<TensorHandlePtr>& outputs,
+                            TF_Status* status) {
   TFE_Context* context = TFE_OpGetContext(original_op, status);
   if (TF_GetCode(status) != TF_OK) return;
   const char* operation_name = TFE_OpGetName(original_op, status);
@@ -2470,15 +2471,27 @@ void DTensorDevice::Execute(const TFE_Op* original_op, int* num_outputs,
     broadcast_results_keep_alive.emplace_back(std::move(tensor_with_layout));
   }
 
+  std::vector<TFE_TensorHandle*> raw_outputs(*num_outputs);
   ExecuteRegularOperation(context, typed_inputs, dtensor_operation, attributes,
-                          num_outputs, outputs, status);
+                          num_outputs, raw_outputs.data(), status);
+  if (TF_GetCode(status) == TF_OK) {
+    for (int i = 0; i < *num_outputs; ++i) {
+      outputs[i].reset(raw_outputs[i]);
+    }
+  }
 }
 
 void ExecuteOnDTensorDevice(const TFE_Op* original_op, int* num_outputs,
                             TFE_TensorHandle** outputs, TF_Status* status,
                             void* device_info) {
+  std::vector<TensorHandlePtr> output_ptrs(*num_outputs);
   DTensorDevice* dev = reinterpret_cast<DTensorDevice*>(device_info);
-  dev->Execute(original_op, num_outputs, outputs, status);
+  dev->Execute(original_op, num_outputs, output_ptrs, status);
+  if (TF_GetCode(status) == TF_OK) {
+    for (int i = 0; i < *num_outputs; ++i) {
+      outputs[i] = output_ptrs[i].release();
+    }
+  }
 }
 
 void DeleteDTensorDevice(void* device_info) {

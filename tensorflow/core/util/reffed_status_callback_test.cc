@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/reffed_status_callback.h"
 
 #include <atomic>
+#include <utility>
 
 #include "absl/status/status.h"
 #include "absl/strings/match.h"

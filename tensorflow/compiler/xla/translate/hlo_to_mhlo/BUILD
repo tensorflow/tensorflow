@@ -100,6 +100,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_utils_test",
     srcs = ["hlo_utils_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_utils",
         "//tensorflow/compiler/xla:shape_util",
@@ -116,7 +117,9 @@ cc_library(
     srcs = ["mlir_hlo_builder.cc"],
     hdrs = ["mlir_hlo_builder.h"],
     # This is going to be deleted, so prevent new usage.
-    visibility = ["//tensorflow/compiler/mlir/tf2xla/transforms:__pkg__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/tf2xla/transforms:__pkg__",
+    ],
     deps = [
         ":attribute_importer",
         ":hlo_module_importer",
@@ -153,6 +156,7 @@ cc_library(
 xla_cc_test(
     name = "mlir_hlo_builder_test",
     srcs = ["mlir_hlo_builder_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_importer",
         ":mlir_hlo_builder",

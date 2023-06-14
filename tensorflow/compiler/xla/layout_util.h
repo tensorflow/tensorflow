@@ -160,6 +160,10 @@ class LayoutUtil {
   // Returns whether all Shapes within the given ProgramShape have layouts.
   static bool HasLayout(const ProgramShape& program_shape);
 
+  // Returns whether any subshapes of the shape have custom (!= 0)
+  // element_size_in_bits.
+  static bool HasCustomElementSizeInBits(const Shape& shape);
+
   // Returns whether lhs and rhs are identical.
   static bool Equal(const Layout& lhs, const Layout& rhs);
 

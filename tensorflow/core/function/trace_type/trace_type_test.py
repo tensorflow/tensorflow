@@ -264,7 +264,7 @@ class CastDefaultTypesTest(test.TestCase, parameterized.TestCase):
     ctx = trace_type.InternalCastContext()
     value = trace_float._cast(1.5, ctx)
     self.assertEqual(value, 1.5)
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(ValueError):
       _ = trace_float._cast(1, ctx)
 
   @parameterized.parameters(list, tuple)

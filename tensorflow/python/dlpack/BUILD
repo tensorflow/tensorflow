@@ -25,12 +25,12 @@ cuda_py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":dlpack",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],

@@ -34,7 +34,10 @@ limitations under the License.
 // Note that, for GIF inputs, to reuse existing code, only single-frame ones
 // are supported.
 
+#include <algorithm>
 #include <fstream>
+#include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 

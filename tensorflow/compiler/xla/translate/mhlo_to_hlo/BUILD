@@ -185,6 +185,7 @@ cc_library(
 xla_cc_test(
     name = "type_to_shape_test",
     srcs = ["type_to_shape_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":type_to_shape",
         "//tensorflow/compiler/xla:shape_util",

@@ -79,6 +79,7 @@ xla_cc_test(
     name = "calling_convention_test",
     srcs = ["calling_convention_test.cc"],
     compatible_with = get_compatible_with_cloud(),
+    tags = ["nomsan"],
     deps = [
         ":calling_convention",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
@@ -103,7 +104,6 @@ cc_library(
         ":custom_call_encoding",
         ":passes",
         "//tensorflow/compiler/xla/mlir/backends/cpu/transforms:passes",
-        "//tensorflow/compiler/xla/mlir/framework/transforms:passes",
         "//tensorflow/compiler/xla/mlir/math/transforms:passes",
         "//tensorflow/compiler/xla/mlir/memref/transforms:passes",
         "//tensorflow/compiler/xla/mlir_hlo:transforms_passes",
@@ -308,6 +308,7 @@ xla_cc_test(
     name = "type_converter_test",
     srcs = ["type_converter_test.cc"],
     compatible_with = get_compatible_with_cloud(),
+    tags = ["nomsan"],
     deps = [
         ":type_converter",
         "//tensorflow/compiler/xla/runtime:types",

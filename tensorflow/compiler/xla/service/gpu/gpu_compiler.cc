@@ -74,6 +74,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/convolution_pred_expander.h"
 #include "tensorflow/compiler/xla/service/copy_insertion.h"
+#include "tensorflow/compiler/xla/service/data_parallel_collective_optimizer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dot_dimension_merger.h"
 #include "tensorflow/compiler/xla/service/dot_merger.h"
@@ -90,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
+#include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/dot_dimension_sorter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -599,10 +601,21 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     collectives_pipeline.AddPass<AllReduceReassociate>(
         debug_options.xla_gpu_enable_reassociation_for_converted_ar());
     collectives_pipeline.AddPass<ReduceScatterReassociate>();
+    const DebugOptions& debug_options = hlo_module->config().debug_options();
     collectives_pipeline.AddPass<WhileLoopAllReduceCodeMotion>(
-        /*enable_reduce_scatter=*/hlo_module->config()
-            .debug_options()
+        /*enable_reduce_scatter=*/debug_options
             .xla_gpu_enable_while_loop_reduce_scatter_code_motion());
+    if (debug_options.xla_gpu_enable_data_parallel_collective_optimizer()) {
+      DataParallelCollectiveOptimizer::DataParallelCollectiveConfig config{
+          /*level_to_operate_on=*/0,
+          /*max_pipelining_per_loop=*/INT64_MAX,
+          /*last_run=*/true,
+          /*process_different_sized_ops=*/true,
+          /*pipelining_direction=*/
+          DataParallelCollectiveOptimizer::PipeliningDirection::kForward,
+          /*should_process=*/HloPredicateIsOp<HloOpcode::kAllReduce>};
+      collectives_pipeline.AddPass<DataParallelCollectiveOptimizer>(config);
+    }
 
     // Run algebraic simplifier to reshape(broadcast) into a broadcast when
     // the reshape is just adding a unit dimension. This will help with the
@@ -679,6 +692,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
                                          gpu_device_info);
     fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
+    // Running CSE affects how many users an op has. This plays a role in what
+    // we detect as a tiled transpose fusion.
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
     fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
                                          ShapeSizeBytesFunction());
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
@@ -727,7 +744,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     {
       // Convert all collectives to their async form, and then annotate the ones
-      // that actually need to run asynchronously with an GPU specific backend
+      // that actually need to run asynchronously with a GPU specific backend
       // config.
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
       config.convert_all_reduce = HloPredicateTrue;
@@ -815,6 +832,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   auto& sub_pipeline =
       pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
+  sub_pipeline.AddPass<CopyFusion>();
   sub_pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
   sub_pipeline.AddPass<HloDCE>();
   pipeline.AddPass<GpuSanitizeConstantNames>();
@@ -1167,6 +1185,14 @@ GpuCompiler::CompileToTargetBinary(const HloModuleConfig& module_config,
 
     return result;
   };
+
+  // Disable multi-threading during deviceless AOT compilation.
+  // TODO(anlunx): Enable multi-threading once deviceless AOT compilation is
+  // enabled.
+  if (!stream_exec) {
+    return compile_single_module(llvm_module.get(), /*relocatable=*/false,
+                                 /*shard_number=*/std::nullopt);
+  }
 
   tsl::thread::ThreadPool* thread_pool;
   std::optional<tsl::thread::ThreadPool> overriding_thread_pool;

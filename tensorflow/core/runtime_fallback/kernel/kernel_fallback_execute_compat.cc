@@ -102,12 +102,11 @@ void KernelFallbackEmitError(
 }  // namespace
 
 static llvm::Expected<gtl::InlinedVector<tensorflow::Tensor, 4>>
-ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments,
-                    const tfrt::ExecutionContext& exec_ctx) {
+ConvertInputTensors(llvm::ArrayRef<tfrt::Tensor*> arguments) {
   gtl::InlinedVector<tensorflow::Tensor, 4> input_tf_tensors;
   input_tf_tensors.reserve(arguments.size());
   for (tfrt::Tensor* argument : arguments) {
-    auto expected_tf_tensor = TFRTTensorToTFTensor(*argument, exec_ctx.host());
+    auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(*argument);
     if (!expected_tf_tensor) {
       return tfrt::MakeStringError(
           tfrt::StrCat(expected_tf_tensor.takeError()));
@@ -264,7 +263,7 @@ tfrt::AsyncValueRef<tfrt::Chain> KernelFallbackExecuteCompatCoreRuntimeDispatch(
   auto op_chain = tfrt::GetReadyChain();
   tensorflow::Status status;
 
-  auto expected_input_tf_tensors = ConvertInputTensors(arguments, exec_ctx);
+  auto expected_input_tf_tensors = ConvertInputTensors(arguments);
   if (!expected_input_tf_tensors) {
     status = tensorflow::errors::Internal(
         tfrt::StrCat(expected_input_tf_tensors.takeError()));

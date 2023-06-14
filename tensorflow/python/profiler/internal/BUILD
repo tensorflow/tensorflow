@@ -13,8 +13,8 @@ py_strict_library(
     srcs = ["flops_registry.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:graph_util",
+        "//tensorflow/python/framework:graph_util",
+        "//tensorflow/python/framework:ops",
         "//third_party/py/numpy",
     ],
 )
@@ -26,12 +26,12 @@ py_strict_test(
     srcs_version = "PY3",
     deps = [
         ":flops_registry",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -41,18 +41,18 @@ py_strict_library(
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_grad",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:rnn",
-        "//tensorflow/python:rnn_cell",
-        "//tensorflow/python:tensor_array_grad",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:init_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn_grad",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:rnn",
+        "//tensorflow/python/ops:rnn_cell",
+        "//tensorflow/python/ops:tensor_array_grad",
+        "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/profiler:model_analyzer",
+        "//tensorflow/python/training",
         "//tensorflow/python/util:_pywrap_tfprof",
         "//tensorflow/python/util:compat",
     ],
@@ -64,12 +64,12 @@ py_strict_test(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:init_ops",
+        "//tensorflow/python/ops:nn_ops",
+        "//tensorflow/python/ops:variable_scope",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -85,13 +85,13 @@ cuda_py_strict_test(
     deps = [
         ":model_analyzer_testlib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:random_ops",
-        "//tensorflow/python:variables",
         "//tensorflow/python/client:session",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/profiler:model_analyzer",
         "//tensorflow/python/profiler:option_builder",
     ],
@@ -127,7 +127,7 @@ tf_python_pybind_extension(
         "//tensorflow/core/profiler/convert:tool_options",
         "//tensorflow/core/profiler/convert:xplane_to_tools_data",
         "//tensorflow/core/profiler/rpc:profiler_server_for_pybind",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/types:variant",
         "@pybind11",
     ],
@@ -139,7 +139,9 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     copts = tf_profiler_copts() + ["-fexceptions"],
     features = ["-use_header_modules"],  # Incompatible with -fexceptions.
-    visibility = ["//tensorflow/core/profiler:__subpackages__"],
+    visibility = [
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
+    ],
     deps = [
         "//tensorflow/compiler/xla/python/profiler/internal:python_hooks",
         "//tensorflow/core:lib",
@@ -156,9 +158,7 @@ cc_library(
     srcs = ["profiler_pywrap_impl.cc"],
     hdrs = ["profiler_pywrap_impl.h"],
     visibility = [
-        # Do not change this visibility field.
-        # This library is referred in OSS world by github.com/pytorch/xla
-        "//tensorflow/compiler/xla:__subpackages__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/core:lib",

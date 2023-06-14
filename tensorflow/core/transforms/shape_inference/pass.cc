@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/transforms/shape_inference/pass.h"
 
+#include <memory>
+#include <vector>
+
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"

@@ -131,6 +131,9 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorMergeClustersPass();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateDTensorDecomposeControlflowPass();
+
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 CreateDTensorLowerSendRecv();
 
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

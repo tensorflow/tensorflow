@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 
 #include <functional>
+#include <ostream>
 #include <string>
 
 #include "absl/strings/string_view.h"

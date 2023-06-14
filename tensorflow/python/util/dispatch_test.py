@@ -67,6 +67,14 @@ def test_op_with_optional(x, y, z, optional=None):
   return x + (2 * y) + (3 * z)
 
 
+@tf_export("test_op_with_kwonly")
+@dispatch.add_dispatch_support
+def test_op_with_kwonly(*, x, y, z, optional=None):
+  """A fake op for testing dispatch of Python ops."""
+  del optional
+  return x + (2 * y) + (3 * z)
+
+
 class TensorTracer(object):
   """An object used to trace TensorFlow graphs.
 
@@ -284,6 +292,20 @@ class DispatchTest(test_util.TensorFlowTestCase):
     ):
 
       @dispatch.dispatch_for_types(test_op, CustomTensor)
+      def override_for_test_op(x, z, y):  # pylint: disable=unused-variable
+        return CustomTensor(
+            test_op(x.tensor, y.tensor, z.tensor),
+            (x.score + y.score + z.score) / 3.0,
+        )
+
+  def testDispatchForTypes_MissingKwOnly(self):
+    with self.assertRaisesRegex(
+        AssertionError,
+        "The decorated function's non-default arguments must be identical to"
+        " that of the overridden op.",
+    ):
+
+      @dispatch.dispatch_for_types(test_op_with_kwonly, CustomTensor)
       def override_for_test_op(x, z, y):  # pylint: disable=unused-variable
         return CustomTensor(
             test_op(x.tensor, y.tensor, z.tensor),

@@ -1396,6 +1396,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kAllReduce: {
       auto all_reduce = Cast<HloAllReduceInstruction>(instruction);
+      auto result_tuple_ty = result_type.dyn_cast<mlir::TupleType>();
+
+      llvm::SmallVector<Type> result_types = {result_type};
+      if (result_tuple_ty) {
+        result_types = llvm::to_vector(result_tuple_ty.getTypes());
+      }
+
       attributes.push_back(
           ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
       if (all_reduce->channel_id().has_value())
@@ -1404,10 +1411,16 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       if (all_reduce->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
       auto all_reduce_op = func_builder->create<mlir::mhlo::AllReduceOp>(
-          loc, result_type, operands, attributes);
+          loc, result_types, operands, attributes);
       TF_RETURN_IF_ERROR(ImportAsRegion(*all_reduce->to_apply(),
                                         &all_reduce_op.getComputation(),
                                         /*flatten_region_arg_tuple=*/true));
+      if (result_tuple_ty) {
+        return func_builder
+            ->create<mlir::mhlo::TupleOp>(loc, result_type,
+                                          all_reduce_op.getResults())
+            .getOperation();
+      }
       return all_reduce_op.getOperation();
     }
     case HloOpcode::kAllReduceStart: {
@@ -1419,6 +1432,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
             ConvertChannelHandle(all_reduce_start->channel_id().value()));
       if (all_reduce_start->use_global_device_ids())
         attributes.push_back(ConvertUseGlobalDeviceIds());
+      if (all_reduce_start->operands().size() > 1)
+        return InvalidArgument(
+            "Async tuple all-reduce is not supported in MHLO");
 
       return ImportOldStyleAsyncStart<mlir::mhlo::AllReduceOp>(
           attributes, operands, loc, result_type, func_builder, "all_reduce_",
