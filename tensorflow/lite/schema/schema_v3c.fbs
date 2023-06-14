@@ -1260,8 +1260,7 @@ table Operator {
 
   // When an op is using custom_options in a model that is larger than 2GB, then
   // we instead use the following attributes to find the buffer location which
-  // is stored outside of flatbuffers, the offset is calculated relative to the
-  // beginning of the file and is only valid if > 1
+  // is stored outside of flatbuffers.
   custom_options_offset: ulong;
   custom_options_size: ulong;
 }
