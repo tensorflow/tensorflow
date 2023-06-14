@@ -182,6 +182,9 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           batch_timeout_micros_, max_enqueued_batches_, allowed_batch_sizes_,
           batch_function_, disable_padding_, &new_resource);
       if (!status.ok()) return status;
+      if (c->session_metadata() != nullptr) {
+        new_resource->set_session_metadata(*c->session_metadata());
+      }
       return tensorflow::core::RefCountPtr<BatchResourceType>(
           new_resource.release());
     };
@@ -194,6 +197,9 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           max_enqueued_batches_, allowed_batch_sizes_, batch_function_,
           enable_large_batch_splitting_, disable_padding_, &new_resource);
       if (!status.ok()) return status;
+      if (c->session_metadata() != nullptr) {
+        new_resource->set_session_metadata(*c->session_metadata());
+      }
       return tensorflow::core::RefCountPtr<BatchResourceType>(
           new_resource.release());
     };
