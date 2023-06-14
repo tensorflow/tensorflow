@@ -343,7 +343,6 @@ cuda_py_strict_test(
     srcs = ["gather_op_test.py"],
     shard_count = 3,
     deps = [
-        "//tensorflow/python:gradients",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:constant_op",
