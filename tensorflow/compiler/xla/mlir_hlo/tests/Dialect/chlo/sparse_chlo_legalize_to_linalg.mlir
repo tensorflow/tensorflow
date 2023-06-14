@@ -1,7 +1,7 @@
 // RUN: mlir-hlo-opt --sparse-chlo-legalize-to-linalg %s | FileCheck %s
 
 #CSR = #sparse_tensor.encoding<{
-  dimLevelType = ["dense", "compressed"]
+  lvlTypes = ["dense", "compressed"]
 }>
 
 // CHECK-LABEL: @asinh_scalar(
@@ -20,7 +20,7 @@ func.func @asinh_scalar(%arg : tensor<f32>) -> tensor<f32> {
 // CHECK-SAME:      tensor<10x20xf32, #{{.*}}>
 // CHECK:         %[[VAL:.*]] = linalg.generic
 // CHECK-SAME:        ins(%[[ARG]] : tensor<10x20xf32,
-// CHECK-SAME:        #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>
+// CHECK-SAME:        #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>
 // CHECK-SAME:        outs(%[[OUT]]
 // CHECK:           sparse_tensor.unary %{{.*}} : f32 to f32
 // CHECK:           present = {

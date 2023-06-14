@@ -36,8 +36,11 @@ namespace tfrt_stub {
 // unique within a model.
 class CostRecorder {
  public:
+  explicit CostRecorder(uint64_t normalize_ratio = 1)
+      : normalize_ratio_(normalize_ratio) {}
+
   // Records an execution duration for the op keyed by `op_key`.
-  void RecordCostNanosecond(int64_t op_key, uint64_t execution_time_ns);
+  void RecordCost(int64_t op_key, uint64_t execution_time);
 
   // Returns the normalized average execution duration of the op keyed by
   // `op_key`. If there is no record for `op_key`, returns the uint32_t::max to
@@ -58,6 +61,9 @@ class CostRecorder {
   }
 
  private:
+  // Normalize the cost values by dividing by this.
+  uint64_t normalize_ratio_;
+
   mutable tensorflow::mutex op_cost_map_mutex_;
   // Map op key to {sum of op execution duration in nanoseconds, #occurences of
   // the op}.

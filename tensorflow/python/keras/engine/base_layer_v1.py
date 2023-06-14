@@ -25,7 +25,7 @@ import numpy as np
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1183,8 +1183,8 @@ class Layer(base_layer.Layer):
           'to pass a value to `inputs` as it is being automatically inferred.')
     call_context = base_layer_utils.call_context()
 
-    if (ds_context.has_strategy() and
-        ds_context.in_cross_replica_context() and
+    if (distribute_lib.has_strategy() and
+        distribute_lib.in_cross_replica_context() and
         # When saving the model, the distribution strategy context should be
         # ignored, following the default path for adding updates.
         not call_context.saving):
@@ -1769,7 +1769,7 @@ class Layer(base_layer.Layer):
       # confusion, we disallow the 'mixed_float16' policy with unsupported
       # strategies. This is because 'mixed_float16' requires loss scaling for
       # numeric stability.
-      strategy = ds_context.get_strategy()
+      strategy = distribute_lib.get_strategy()
       raise ValueError('Mixed precision is not supported with the '
                        'tf.distribute.Strategy: %s. Either stop using mixed '
                        'precision by removing the use of the "%s" policy or '

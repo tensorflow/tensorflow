@@ -13,10 +13,17 @@
 // limitations under the License.
 // ==============================================================================
 
+#include <atomic>
 #include <complex>
 #include <cstddef>
+#include <deque>
 #include <functional>
+#include <limits>
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/strings/strip.h"
@@ -537,9 +544,8 @@ void GrpcTpuStream::UpdateEventStatus(EventId id, Status status) {
 
   // This is the first time this event finishes. Remember the results and call
   // the callbacks.
-  VLOG(1) << "Response received for GrpcEvent " << id << ". "
-          << status.ToString() << ". Firing " << it->second.callbacks.size()
-          << " callbacks.";
+  VLOG(1) << "Response received for GrpcEvent " << id << ". " << status
+          << ". Firing " << it->second.callbacks.size() << " callbacks.";
   it->second.done = true;
   it->second.status = status;
   for (const auto& callback : it->second.callbacks) {

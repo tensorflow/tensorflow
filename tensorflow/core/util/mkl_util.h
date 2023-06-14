@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/mkl_threadpool.h"
+#include "tensorflow/core/util/onednn_env_vars.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #ifdef DNNL_AARCH64_USE_ACL
@@ -128,6 +129,26 @@ enum class MklQuantization {
 };
 
 static const int kSmallBatchSize = 32;
+
+enum class OneDNNMathModeSetting {
+  kNone = 0,
+  kBF16,
+};
+
+inline OneDNNMathModeSetting SetFPMathMode() {
+  static OneDNNMathModeSetting math_mode = [] {
+    OneDNNMathModeSetting mode = OneDNNMathModeSetting::kNone;
+    if (FPMathModeSetting() == "BF16") {
+      if (dnnl::set_default_fpmath_mode(dnnl::fpmath_mode::bf16) ==
+          dnnl::status::success) {
+        mode = OneDNNMathModeSetting::kBF16;
+      }
+    }
+    return mode;
+  }();
+
+  return math_mode;
+}
 
 inline void execute_primitives(
     std::vector<dnnl::primitive>& primitives, std::shared_ptr<stream> stream,

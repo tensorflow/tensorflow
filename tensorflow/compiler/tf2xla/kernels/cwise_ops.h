@@ -18,6 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_CWISE_OPS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_CWISE_OPS_H_
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -41,7 +44,7 @@ class XlaBinaryOp : public XlaOpKernel {
     OP_REQUIRES(ctx, lhs == rhs,
                 errors::InvalidArgument("Input types of binary op must match"));
   }
-  ~XlaBinaryOp() override {}
+  ~XlaBinaryOp() override = default;
 
   // Implement the (tensor,tensor)->tensor lambda that should be
   // applied to the inputs. The desired computation should be added to

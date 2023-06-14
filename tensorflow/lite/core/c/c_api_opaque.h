@@ -353,12 +353,28 @@ TfLiteStatus TfLiteOpaqueContextResizeTensor(TfLiteOpaqueContext* context,
                                              TfLiteOpaqueTensor* tensor,
                                              TfLiteIntArray* new_size);
 
-// Entry point for C API GetSubgraphContext.
+// Entry point for C API AcquireSubgraphContext.
 //
 // Retrieves the corresponding TfLiteOpaqueContext of a subgraph given a
-// subgraph index. If an invalid subgraph index is given, then returns nullptr.
+// subgraph index and switches to the delegate context for this subgraph. If an
+// invalid subgraph index is given, then returns kTfLiteError.
+// NOTE: This function is expected to be paired with
+// TfLiteOpaqueContextReleaseSubgraphContext() once the delegate preparation is
+// done and/or the delegate context functions are no longer needed.
 TFL_CAPI_EXPORT
-TfLiteOpaqueContext* TfLiteOpaqueContextGetSubgraphContext(
+TfLiteStatus TfLiteOpaqueContextAcquireSubgraphContext(
+    struct TfLiteOpaqueContext* opaque_context, int subgraph_index,
+    TfLiteOpaqueContext** acquired_opaque_context);
+
+// Entry point for C API ReleaseSubgraphContext.
+//
+// Releases the corresponding TfLiteOpaqueContext by switching back to the
+// TFLite kernel context for this specified subgraph.
+// NOTE: This function is expected to be used after
+// TfLiteOpaqueContextAcquireSubgraphContext() once the delegate preparation is
+// done and/or the delegate context functions are no longer needed.
+TFL_CAPI_EXPORT
+TfLiteStatus TfLiteOpaqueContextReleaseSubgraphContext(
     struct TfLiteOpaqueContext* opaque_context, int subgraph_index);
 
 // Entry point for C API MarkSubgraphAsDelegationSkippable
@@ -505,38 +521,39 @@ void TfLiteOpaqueContextReportErrorVa(
 // extremely expensive computations should be done.
 // NOTE: Use TF_LITE_ENSURE_TYPES_EQ if comparing TfLiteTypes.
 #if !defined(TF_LITE_OPAQUE_ENSURE_EQ)
-#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                         \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%d != %d)", \
-                                __FILE__, __LINE__, #a, #b, (a), (b));         \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_OPAQUE_ENSURE_EQ(opaque_context, a, b)                  \
+  do {                                                                  \
+    if ((a) != (b)) {                                                   \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context),                       \
+                                "%s:%d: %s != %s (%d != %d)", __FILE__, \
+                                __LINE__, #a, #b, (a), (b));            \
+      return kTfLiteError;                                              \
+    }                                                                   \
   } while (0)
 #endif
 
 #if !defined(TF_LITE_OPAQUE_ENSURE_TYPES_EQ)
-#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                   \
-  do {                                                                         \
-    if ((a) != (b)) {                                                          \
-      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context), "%s:%d %s != %s (%s != %s)", \
-                                __FILE__, __LINE__, #a, #b,                    \
-                                TfLiteTypeGetName(a), TfLiteTypeGetName(b));   \
-      return kTfLiteError;                                                     \
-    }                                                                          \
+#define TF_LITE_OPAQUE_ENSURE_TYPES_EQ(opaque_context, a, b)                  \
+  do {                                                                        \
+    if ((a) != (b)) {                                                         \
+      TF_LITE_OPAQUE_KERNEL_LOG(                                              \
+          (opaque_context), "%s:%d: %s != %s (%s != %s)", __FILE__, __LINE__, \
+          #a, #b, TfLiteTypeGetName(a), TfLiteTypeGetName(b));                \
+      return kTfLiteError;                                                    \
+    }                                                                         \
   } while (0)
 #endif
 
 #if !defined(TF_LITE_OPAQUE_ENSURE_NEAR)
-#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)            \
-  do {                                                                       \
-    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
-    if (delta > epsilon) {                                                   \
-      TF_LITE_OPAQUE_KERNEL_LOG(                                             \
-          (opaque_context), "%s:%d %s not near %s (%f != %f)", __FILE__,     \
-          __LINE__, #a, #b, static_cast<double>(a), static_cast<double>(b)); \
-      return kTfLiteError;                                                   \
-    }                                                                        \
+#define TF_LITE_OPAQUE_ENSURE_NEAR(opaque_context, a, b, epsilon)             \
+  do {                                                                        \
+    double delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                   \
+    if (delta > epsilon) {                                                    \
+      TF_LITE_OPAQUE_KERNEL_LOG((opaque_context),                             \
+                                "%s:%d: %s not near %s (%f != %f)", __FILE__, \
+                                __LINE__, #a, #b, (double)(a), (double)(b));  \
+      return kTfLiteError;                                                    \
+    }                                                                         \
   } while (0)
 #endif
 

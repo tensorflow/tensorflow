@@ -17,21 +17,6 @@ tf_gen_op_wrapper_py(
     deps = ["//tensorflow/core:sparse_csr_matrix_ops_op_lib"],
 )
 
-py_library(
-    name = "sparse",
-    deprecation = "This target has been split. Depend on the sub-targets instead.",
-    srcs_version = "PY3",
-    deps = [
-        ":__init__",
-        ":conjugate_gradient",
-        ":sparse_csr_matrix_grad",
-        ":sparse_csr_matrix_ops",
-        ":sparse_py",
-        "//tensorflow/python/framework:composite_tensor",
-        "//third_party/py/numpy",
-    ],
-)
-
 py_strict_library(
     name = "sparse_py",
     srcs = ["sparse.py"],
@@ -47,12 +32,12 @@ py_strict_library(
     srcs = ["sparse_csr_matrix_grad.py"],
     deps = [
         ":sparse_csr_matrix_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:array_ops_stack",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:sparse_ops",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:sparse_ops",
     ],
 )
 
@@ -65,12 +50,12 @@ py_strict_library(
     name = "conjugate_gradient",
     srcs = ["conjugate_gradient.py"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:while_loop",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:while_loop",
         "//tensorflow/python/ops/linalg:linalg_impl",
         "//tensorflow/python/util:dispatch",
         "//tensorflow/python/util:tf_export",
@@ -82,14 +67,14 @@ py_strict_library(
     srcs = ["sparse_csr_matrix_ops.py"],
     deps = [
         ":gen_sparse_csr_matrix_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:cpp_shape_inference_proto_py",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:sparse_tensor",
         "//tensorflow/python/framework:tensor_shape",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:resource_variable_ops",
     ],
 )

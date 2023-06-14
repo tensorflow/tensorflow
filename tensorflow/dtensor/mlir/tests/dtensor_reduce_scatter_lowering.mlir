@@ -134,7 +134,7 @@ func.func @lower_reduce_sum_boolean_tpu() -> (tensor<2048x8192xi1>) {
   %0 = "tf.Const"() {value = dense<1> : tensor<4096x8192xi1>, _layout = ["sharding_specs:unsharded,unsharded, mesh:tpu_mesh|x=2,y=4|*TPU"]} : () -> tensor<4096x8192xi1>
   %1 = "tf.Const"() {value = dense<[[0, 1], [2, 3], [4, 5], [6, 7]]> : tensor<4x2xi32>} : () -> tensor<4x2xi32>
   %2 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
-  // expected-error @+1 {{reduce for boolean only supports 'All' or 'Any' reduction}}
+  // expected-error @+1 {{reduce for boolean only supports 'All'/'Min' or 'Any'/'Max' reduction}}
   %3 = "tf.DTensorReduceScatter"(%0, %1, %2) {_layout = ["sharding_specs:x,unsharded, mesh:tpu_mesh|x=2,y=4|*TPU"], device_type = "/job:localhost/replica:0/task:0/device:TPU", reduce_op = "Add"} : (tensor<4096x8192xi1>, tensor<4x2xi32>, tensor<i32>) -> tensor<2048x8192xi1>
   func.return %3: tensor<2048x8192xi1>
 }

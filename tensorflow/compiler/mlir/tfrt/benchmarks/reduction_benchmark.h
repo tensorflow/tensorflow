@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark_mlir_function.h"

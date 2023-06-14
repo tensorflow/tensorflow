@@ -231,6 +231,51 @@ TEST(HloShardingUtilTest, ReshapeToTileDimension2D_Dim2_Batch1) {
             Array3D<int64_t>({{{0, 2, 1, 3}}, {{4, 6, 5, 7}}}));
 }
 
+TEST(HloShardingUtilTest, PropagateReshapeShardingTiledSplitPartialMatch) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {14, 16});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 7, 4, 4});
+  Array2D<int64_t> tile(4, 8);
+  tile.FillIota(0);
+  HloSharding input_sharding = HloSharding::Tile(tile);
+  tile.TransposeDimensions({1, 0});
+  tile.Reshape({1, 1, 4, 2, 4});
+  HloSharding output_sharding = HloSharding::PartialTile(tile);
+  HloSharding result = PropagateShardingThroughReshape(
+      input_shape, output_shape, input_sharding);
+  EXPECT_EQ(result, output_sharding);
+}
+
+TEST(HloShardingUtilTest, PropagateReshapeShardingTiledMergeSplitPartialMatch) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {2, 2, 14, 16});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {4, 2, 7, 4, 4});
+  Array4D<int64_t> tile(2, 2, 4, 8);
+  tile.FillIota(0);
+  HloSharding input_sharding = HloSharding::Tile(tile);
+  tile.TransposeDimensions({0, 1, 3, 2});
+  tile.Reshape({4, 1, 1, 4, 2, 4});
+  HloSharding output_sharding = HloSharding::PartialTile(tile);
+  HloSharding result = PropagateShardingThroughReshape(
+      input_shape, output_shape, input_sharding);
+  EXPECT_EQ(result, output_sharding);
+}
+
+TEST(HloShardingUtilTest,
+     PropagateReshapeShardingTiledSplitPartialMatchManual) {
+  Shape input_shape = ShapeUtil::MakeShape(F32, {14, 16});
+  Shape output_shape = ShapeUtil::MakeShape(F32, {2, 7, 4, 4});
+  Array3D<int64_t> tile(4, 8, 2);
+  tile.FillIota(0);
+  HloSharding input_sharding =
+      HloSharding::Subgroup(tile, {OpSharding::MANUAL});
+  tile.TransposeDimensions({1, 0, 2});
+  tile.Reshape({1, 1, 4, 2, 4, 2});
+  HloSharding output_sharding =
+      HloSharding::Subgroup(tile, {OpSharding::REPLICATED, OpSharding::MANUAL});
+  HloSharding result = PropagateShardingThroughReshape(
+      input_shape, output_shape, input_sharding);
+  EXPECT_EQ(result, output_sharding);
+}
+
 TEST(HloShardingUtilTest, GetManualSubgroupSharding_ManualOnly) {
   Array<int64_t> tile_assignment({1, 2, 2});
   tile_assignment.FillIota(0);

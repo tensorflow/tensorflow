@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/fft.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_pimpl.h"
 #include "tensorflow/compiler/xla/stream_executor/temporary_memory_manager.h"
@@ -609,6 +610,23 @@ class Stream {
   }
 
   template <typename ElementType>
+  tsl::Status ThenPoolForward(const dnn::PoolingDescriptor &pooling_dimensions,
+                              const NumericOptions &numeric_options,
+                              const dnn::BatchDescriptor &input_dimensions,
+                              const DeviceMemory<ElementType> &input_data,
+                              const dnn::BatchDescriptor &output_dimensions,
+                              DeviceMemory<ElementType> *output_data,
+                              ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolForward(dnn::ToDataType<ElementType>::value, this,
+                                pooling_dimensions, numeric_options,
+                                input_dimensions, input_data, output_dimensions,
+                                *output_data, workspace_allocator);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  template <typename ElementType>
   tsl::Status ThenPoolBackward(
       const dnn::PoolingDescriptor &pooling_dimensions,
       const dnn::BatchDescriptor &input_dimensions,
@@ -623,6 +641,26 @@ class Stream {
           dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
           input_dimensions, input_data, output_dimensions, output_data,
           input_diff_data, *output_diff_data, workspace_allocator);
+    }
+    return tsl::errors::Unimplemented("DNN library is not found.");
+  }
+
+  template <typename ElementType>
+  tsl::Status ThenPoolBackward(
+      const dnn::PoolingDescriptor &pooling_dimensions,
+      const NumericOptions &numeric_options,
+      const dnn::BatchDescriptor &input_dimensions,
+      const DeviceMemory<ElementType> &input_data,
+      const dnn::BatchDescriptor &output_dimensions,
+      const DeviceMemory<ElementType> &output_data,
+      const DeviceMemory<ElementType> &input_diff_data,
+      DeviceMemory<ElementType> *output_diff_data,
+      ScratchAllocator *workspace_allocator = nullptr) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      return dnn->DoPoolBackward(
+          dnn::ToDataType<ElementType>::value, this, pooling_dimensions,
+          numeric_options, input_dimensions, input_data, output_dimensions,
+          output_data, input_diff_data, *output_diff_data, workspace_allocator);
     }
     return tsl::errors::Unimplemented("DNN library is not found.");
   }
@@ -839,31 +877,6 @@ class Stream {
                        std::complex<double> beta,
                        DeviceMemory<std::complex<double>> *y, int incy);
 
-  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64_t m, uint64 n,
-                                    float alpha, const DeviceMemory<float> &a,
-                                    int lda, const DeviceMemory<float> &x,
-                                    int incx, float beta,
-                                    DeviceMemory<float> *y, int incy,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(blas::Transpose trans, uint64_t m, uint64 n,
-                                    double alpha, const DeviceMemory<double> &a,
-                                    int lda, const DeviceMemory<double> &x,
-                                    int incx, double beta,
-                                    DeviceMemory<double> *y, int incy,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(
-      blas::Transpose trans, uint64_t m, uint64 n, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &x, int incx,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *y, int incy,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemvWithProfiling(
-      blas::Transpose trans, uint64_t m, uint64 n, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &x, int incx,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *y,
-      int incy, blas::ProfileResult *output_profile_result);
-
   // See BlasSupport::DoBlasSbmv.
   Stream &ThenBlasSbmv(blas::UpperLower uplo, uint64_t n, uint64 k, float alpha,
                        const DeviceMemory<float> &a, int lda,
@@ -874,12 +887,12 @@ class Stream {
                        const DeviceMemory<double> &x, int incx, double beta,
                        DeviceMemory<double> *y, int incy);
 
-  template <typename InputType>
+  template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           DeviceMemory<InputType> *c, int ldc,
+                           DeviceMemory<OutputType> *c, int ldc,
                            blas::ComputePrecision precision) {
     InputType alpha{1.0};
     InputType beta{0.0};
@@ -888,35 +901,38 @@ class Stream {
   }
 
   // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
-  template <typename InputType>
+  template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           DeviceMemory<InputType> *c, int ldc) {
+                           DeviceMemory<OutputType> *c, int ldc) {
     return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
                         blas::kDefaultComputePrecision);
   }
 
-  template <typename InputType, typename ConstantType>
+  template <typename InputType, typename OutputType, typename ConstantType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           ConstantType beta, DeviceMemory<InputType> *c,
+                           ConstantType beta, DeviceMemory<OutputType> *c,
                            int ldc, blas::ComputePrecision precision) {
     static_assert(
-        detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16, float,
-                          double, std::complex<float>, std::complex<double>>(),
-        "Input can be half, bf16, float, double, std::complex<float> or "
+        detail::is_any_of<InputType, int8_t, Eigen::half, Eigen::bfloat16,
+                          float, double, std::complex<float>,
+                          std::complex<double>>(),
+        "Input can be int8_t, half, bf16, float, double, std::complex<float> "
+        "or "
         "std::complex<double>");
     static_assert(!std::is_same_v<InputType, Eigen::half> ||
                       detail::is_any_of<ConstantType, float, Eigen::half>(),
                   "If input is Eigen::half, constant has to be either "
                   "Eigen::half or float");
-    static_assert(
-        detail::is_any_of<InputType, Eigen::half, ConstantType>(),
-        "If input is not Eigen::half, constant and input types have to match");
+    static_assert(detail::is_any_of<InputType, int8_t, Eigen::half,
+                                    Eigen::bfloat16, ConstantType>(),
+                  "If input is not int8_t, Eigen::half, constant and input "
+                  "types have to match");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return tsl::errors::Internal(
@@ -936,54 +952,16 @@ class Stream {
   }
 
   // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
-  template <typename InputType, typename ConstantType>
+  template <typename InputType, typename OutputType, typename ConstantType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           ConstantType beta, DeviceMemory<InputType> *c,
+                           ConstantType beta, DeviceMemory<OutputType> *c,
                            int ldc) {
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
                         ldc, blas::kDefaultComputePrecision);
   }
-
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<Eigen::half> &a, int lda,
-                                    const DeviceMemory<Eigen::half> &b, int ldb,
-                                    float beta, DeviceMemory<Eigen::half> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, float alpha,
-                                    const DeviceMemory<float> &a, int lda,
-                                    const DeviceMemory<float> &b, int ldb,
-                                    float beta, DeviceMemory<float> *c, int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(blas::Transpose transa,
-                                    blas::Transpose transb, uint64_t m,
-                                    uint64 n, uint64_t k, double alpha,
-                                    const DeviceMemory<double> &a, int lda,
-                                    const DeviceMemory<double> &b, int ldb,
-                                    double beta, DeviceMemory<double> *c,
-                                    int ldc,
-                                    blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<float> alpha,
-      const DeviceMemory<std::complex<float>> &a, int lda,
-      const DeviceMemory<std::complex<float>> &b, int ldb,
-      std::complex<float> beta, DeviceMemory<std::complex<float>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
-  Stream &ThenBlasGemmWithProfiling(
-      blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
-      uint64_t k, std::complex<double> alpha,
-      const DeviceMemory<std::complex<double>> &a, int lda,
-      const DeviceMemory<std::complex<double>> &b, int ldb,
-      std::complex<double> beta, DeviceMemory<std::complex<double>> *c, int ldc,
-      blas::ProfileResult *output_profile_result);
 
   template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemmWithAlgorithm(
@@ -1157,22 +1135,23 @@ class Stream {
       std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator);
 
-  template <typename InputType, typename ConstantType>
+  template <typename InputType, typename OutputType, typename ConstantType>
   tsl::Status ThenBlasGemmStridedBatched(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
+      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
       int64_t stride_c, int batch_count, blas::ComputePrecision precision) {
     static_assert(
-        detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
-                          double, std::complex<float>, std::complex<double>>(),
+        detail::is_any_of<InputType, int8_t, float, Eigen::half,
+                          Eigen::bfloat16, double, std::complex<float>,
+                          std::complex<double>>(),
         "Unsupported input type");
-    static_assert(
-        std::is_same_v<ConstantType, InputType> ||
-            (detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16>() &&
-             std::is_same_v<ConstantType, float>),
-        "Mismatched input and alpha/beta types");
+    static_assert(std::is_same_v<ConstantType, InputType> ||
+                      (detail::is_any_of<InputType, int8_t, Eigen::half,
+                                         Eigen::bfloat16>() &&
+                       std::is_same_v<ConstantType, float>),
+                  "Mismatched input and alpha/beta types");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return tsl::errors::Internal(
@@ -1497,6 +1476,7 @@ class Stream {
                       absl::Span<const int> labels_data,
                       absl::Span<const int> labels_lengths_data,
                       absl::Span<const int> input_lengths_data,
+                      const NumericOptions &numeric_options,
                       DeviceMemory<float> *costs_data,
                       const dnn::RnnStateTensorDescriptor &grads_desc,
                       DeviceMemory<float> *grads_data,
@@ -1623,11 +1603,6 @@ class Stream {
                           int8_t, std::complex<float>, std::complex<double>>(),
         "The only buffer types supported are: Eigen::half, float, "
         "double, int8, std::complex<float> and std::complex<double>");
-    static_assert(
-        std::is_same_v<ABType, CType> ||
-            (std::is_same_v<ABType, int8_t> && std::is_same_v<CType, int32_t>),
-        "Input and output buffer types should be the same unless input is "
-        "int8 and output is int32");
     static_assert(
         std::is_same_v<ScaleType, CType> ||
             (std::is_same_v<ScaleType, float> &&

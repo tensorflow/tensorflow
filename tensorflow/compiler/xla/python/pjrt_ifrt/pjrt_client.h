@@ -58,6 +58,7 @@ class PjRtCompatibleClient
 class PjRtClient final
     : public llvm::RTTIExtends<PjRtClient, PjRtCompatibleClient> {
  public:
+  // Creates a `Client` with a `PjRtClient`.
   static std::unique_ptr<PjRtClient> Create(
       std::shared_ptr<xla::PjRtClient> pjrt_client);
 
@@ -135,15 +136,6 @@ class PjRtClient final
   StatusOr<Device*> LookupDevice(int device_id) const override {
     DCHECK(this);
     return pjrt_client_->LookupDevice(device_id);
-  }
-
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() override {
-    DCHECK(this);
-    return pjrt_client_->CreateDeviceToHostChannelHandle();
-  }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() override {
-    DCHECK(this);
-    return pjrt_client_->CreateHostToDeviceChannelHandle();
   }
 
   Compiler* GetDefaultCompiler() override {

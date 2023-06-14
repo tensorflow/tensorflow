@@ -100,7 +100,7 @@ TEST_F(TestDelegate, DelegateNodePrepareFailure) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -212,10 +212,10 @@ TEST_F(TestDelegate, SetBufferHandleToOutput) {
 }
 
 TEST_F(TestDelegate, SetInvalidHandleToTensor) {
-  interpreter_->Invoke();
   delegate_ = std::unique_ptr<SimpleDelegate>(new SimpleDelegate({0, 1, 2}));
   TfLiteDelegate* delegate = delegate_->get_tf_lite_delegate();
   interpreter_->ModifyGraphWithDelegate(delegate);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
 
   SimpleDelegate another_simple_delegate({0, 1, 2});
 
@@ -264,7 +264,7 @@ TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -278,7 +278,7 @@ TEST_F(TestDelegate, TestResizeInputWithNonDynamicDelegate) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -307,7 +307,7 @@ TEST_F(TestDelegate, TestRequirePropagatedShapes_NonDynamicDelegate) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -337,7 +337,7 @@ TEST_F(TestDelegate, TestRequirePropagatedShapes_DynamicDelegateWithFlag) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -381,7 +381,7 @@ TEST_F(TestDelegate, TestCopyFromBufferInvoke) {
   ASSERT_EQ(tensor->buffer_handle, kTfLiteNullBufferHandle);
 
   // Called Invoke without setting the buffer will not call the CopyFromBuffer
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   std::vector<float> res = {2.0f, 4.0f, 6.0f};
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
     ASSERT_EQ(tensor->data.f[i], res[i]);
@@ -410,8 +410,8 @@ TEST_F(TestDelegate, TestCopyFromBuffer) {
   TfLiteBufferHandle handle = AllocateBufferHandle();
   TfLiteStatus status =
       interpreter_->SetBufferHandle(kOutputTensorIndex, handle, delegate);
-  interpreter_->Invoke();
   ASSERT_EQ(status, kTfLiteOk);
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   EXPECT_EQ(tensor->delegate, delegate);
   EXPECT_EQ(tensor->buffer_handle, handle);
   for (int i = 0; i < tensor->dims->data[0]; ++i) {
@@ -752,7 +752,7 @@ TEST_P(TestTwoDelegates, SecondDelegationPrepareFailure) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -872,7 +872,7 @@ TEST_P(TestTwoDelegates, TestResizeInputTensors) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -943,7 +943,7 @@ TEST_P(TestTwoDelegates, TestRequirePropagatedShapes) {
 
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 4 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 4 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }
@@ -981,7 +981,7 @@ TEST_P(TestTwoDelegates, ReleaseNonPersistentMemoryWithDelegates) {
   // Verify Invoke() behavior.
   memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
   memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
-  interpreter_->Invoke();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   for (int i = 0; i < 3; ++i) {
     EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
   }

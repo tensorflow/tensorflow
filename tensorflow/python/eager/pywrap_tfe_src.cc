@@ -909,8 +909,9 @@ void TFE_Py_ExecuteCancelable(TFE_Context* ctx, const char* device_name,
   auto cleaner = tensorflow::gtl::MakeCleanup([ctx, op] { ReturnOp(ctx, op); });
   if (!out_status->status.ok()) return;
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(
+      tensorflow::ManagedStackTrace(tensorflow::GetStackTrace(
+          tensorflow::StackTrace::kStackTraceInitialSize)));
 
   for (int i = 0; i < inputs->size() && out_status->status.ok(); ++i) {
     TFE_OpAddInput(op, inputs->at(i), out_status);
@@ -1032,7 +1033,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   std::vector<tensorflow::StackFrame> stack_trace =
       tensorflow::errors::GetStackTrace(status);
 
-  if (stack_trace.empty()) return status.error_message();
+  if (stack_trace.empty()) return std::string(status.message());
 
   PyObject* linecache = PyImport_ImportModule("linecache");
   PyObject* getline =
@@ -1059,7 +1060,7 @@ std::string FormatErrorStatusStackTrace(const tensorflow::Status& status) {
   Py_DecRef(getline);
   Py_DecRef(linecache);
 
-  result << '\n' << status.error_message();
+  result << '\n' << status.message();
   return result.str();
 }
 
@@ -3739,8 +3740,9 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  tensorflow::unwrap(op)->SetStackTrace(tensorflow::GetStackTrace(
-      tensorflow::StackTrace::kStackTraceInitialSize));
+  tensorflow::unwrap(op)->SetStackTrace(
+      tensorflow::ManagedStackTrace(tensorflow::GetStackTrace(
+          tensorflow::StackTrace::kStackTraceInitialSize)));
 
   const tensorflow::OpDef* op_def = tensorflow::unwrap(op)->OpDef();
   if (op_def == nullptr) return nullptr;

@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -148,6 +149,11 @@ opt<bool> freeze_tf_graph(
     llvm::cl::desc("Freeze TF graph to remove tf.ResourceVariable, etc."),
     llvm::cl::Optional, llvm::cl::init(false));
 
+// NOLINTNEXTLINE
+opt<std::string> exported_model_signatures(
+    "exported_model_signatures", llvm::cl::desc("model signature names"),
+    llvm::cl::Optional, llvm::cl::init("serving_default"));
+
 namespace mlir {
 namespace odml {
 
@@ -170,7 +176,8 @@ tensorflow::StatusOr<OwningOpRef<mlir::ModuleOp>> ImportSavedModelOrMLIR(
 
   // TODO(pulkitb): Remove hard-coded tag.
   std::unordered_set<std::string> tags({"serve"});
-  auto exported_names_in_vector = std::vector<std::string>({});
+  std::vector<std::string> exported_names_in_vector =
+      absl::StrSplit(exported_model_signatures, ',');
   absl::Span<std::string> exported_names(exported_names_in_vector);
   std::vector<std::string> custom_opdefs;
 

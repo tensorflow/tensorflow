@@ -14,29 +14,31 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
-#include <string>
 #include <utility>
 #include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
-#include "llvm/Support/CommandLine.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
-#include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Rewrite/FrozenRewritePatternSet.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Support/TypeID.h"  // from @llvm-project
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"  // from @llvm-project
 #include "stablehlo/dialect/StablehloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h"
 #include "tensorflow/compiler/mlir/quantization/stablehlo/quantization_options.pb.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/utils/fill_quantization_options.h"
 
 // NOLINTNEXTLINE
 //===----------------------------------------------------------------------===//
@@ -50,6 +52,7 @@ namespace {
 #include "tensorflow/compiler/mlir/quantization/stablehlo/passes/passes.h.inc"
 
 using QuantizationUnits = llvm::SetVector<std::pair<Operation*, int>>;
+using ::stablehlo::quantization::QuantizationComponentSpec;
 
 // Min/Max values used for creating ConstantOp.
 constexpr float kMaxFloat16Value = 65504.f;
@@ -61,7 +64,8 @@ class QuantizeWeightPass
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(QuantizeWeightPass)
 
   explicit QuantizeWeightPass(
-      ::stablehlo::quantization::QuantizationOptions quantization_options) {}
+      QuantizationComponentSpec quantization_component_spec)
+      : quantization_component_spec_(quantization_component_spec) {}
 
   StringRef getArgument() const final {
     // This is the argument used to refer to the pass in
@@ -75,13 +79,17 @@ class QuantizeWeightPass
 
  private:
   void runOnOperation() override;
+  QuantizationComponentSpec quantization_component_spec_;
 };
 
 // Collects quantizable target ops, then insert Q-DQ quantization patterns.
 class QuantizeWeight : public OpRewritePattern<ConstantOp> {
  public:
-  explicit QuantizeWeight(MLIRContext* context)
-      : OpRewritePattern<ConstantOp>(context) {}
+  explicit QuantizeWeight(
+      MLIRContext* context,
+      const QuantizationComponentSpec& quantization_component_spec)
+      : OpRewritePattern<ConstantOp>(context),
+        quantization_component_spec_(quantization_component_spec) {}
 
   LogicalResult matchAndRewrite(ConstantOp op,
                                 PatternRewriter& rewriter) const override {
@@ -104,6 +112,7 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
   }
 
  private:
+  const QuantizationComponentSpec quantization_component_spec_;
   // Marks users that are applicable for quantization where the criteria for
   // determining quantizable ops differs by the inference type.
   QuantizationUnits GetQuantizableOps(ConstantOp op) const {
@@ -125,7 +134,6 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
   // Returns whether quantization is applied to filtered users.
   bool QuantizeOps(PatternRewriter& rewriter, ConstantOp op,
                    const QuantizationUnits& quantizable_ops) const {
-    // TODO(b/212514817): refactor mode checking to improve code quality.
     for (const std::pair<Operation*, int>& quant_op : quantizable_ops) {
       // For f16 quantization, quantize all constant ops as float16.
       QuantizeOpAsFloat16(rewriter, op, quant_op);
@@ -222,9 +230,9 @@ class QuantizeWeight : public OpRewritePattern<ConstantOp> {
 void QuantizeWeightPass::runOnOperation() {
   func::FuncOp func = getOperation();
   MLIRContext* ctx = func.getContext();
-
   RewritePatternSet patterns(ctx);
-  patterns.add<QuantizeWeight>(ctx);
+
+  patterns.add<QuantizeWeight>(ctx, quantization_component_spec_);
 
   FrozenRewritePatternSet frozen_patterns(std::move(patterns));
 
@@ -237,8 +245,8 @@ void QuantizeWeightPass::runOnOperation() {
 
 // Creates an instance of the StableHLO dialect Quantize Weight pass.
 std::unique_ptr<OperationPass<func::FuncOp>> CreateQuantizeWeightPass(
-    ::stablehlo::quantization::QuantizationOptions quantization_options) {
-  return std::make_unique<QuantizeWeightPass>(quantization_options);
+    QuantizationComponentSpec quantization_component_spec) {
+  return std::make_unique<QuantizeWeightPass>(quantization_component_spec);
 }
 }  // namespace stablehlo
 }  // namespace mlir

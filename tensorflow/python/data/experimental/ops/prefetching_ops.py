@@ -18,7 +18,6 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.data.ops import structured_function
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import function
 from tensorflow.python.framework import device as framework_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -154,9 +153,9 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
     next_func_concrete = _next_func.get_concrete_function()  # pylint: disable=protected-access
 
-    @function.defun_with_attributes(
+    @def_function.function(
         input_signature=[tensor_spec.TensorSpec([], dtypes.string)],
-        attributes={"experimental_ints_on_device": True})
+        experimental_attributes={"experimental_ints_on_device": True})
     def _remote_next_func(string_handle):
       return functional_ops.remote_call(
           target=self._source_device,

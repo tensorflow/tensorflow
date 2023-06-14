@@ -59,6 +59,8 @@ def xla_cc_binary(deps = None, copts = tsl_copts(), **kwargs):
         "//tensorflow/tsl/protobuf:autotuning_proto_cc_impl",
         "//tensorflow/tsl/protobuf:protos_all_cc_impl",
         "//tensorflow/tsl/protobuf:dnn_proto_cc_impl",
+        "//tensorflow/tsl/framework:allocator",
+        "//tensorflow/tsl/framework:allocator_registry_impl",
         "//tensorflow/tsl/util:determinism",
     ]
     native.cc_binary(deps = deps, copts = copts, **kwargs)

@@ -15,7 +15,7 @@
 # pylint: disable=protected-access
 """Utilities related to loss functions."""
 
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.keras import backend
@@ -340,7 +340,7 @@ def compute_weighted_loss(losses,
 def scale_loss_for_distribution(loss_value):
   """Scales and returns the given loss value by the number of replicas."""
   num_replicas = (
-      distribution_strategy_context.get_strategy().num_replicas_in_sync)
+      distribute_lib.get_strategy().num_replicas_in_sync)
   if num_replicas > 1:
     loss_value *= (1. / num_replicas)
   return loss_value

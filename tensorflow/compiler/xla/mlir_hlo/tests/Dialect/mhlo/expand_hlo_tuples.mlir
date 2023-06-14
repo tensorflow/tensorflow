@@ -50,3 +50,21 @@ func.func @main() -> tuple<tensor<1xf32>, tensor<1xi32>> {
 //       CHECK: %[[T0:.*]] = mhlo.get_tuple_element %[[TUPLE]][0]
 //       CHECK: %[[T1:.*]] = mhlo.get_tuple_element %[[TUPLE]][1]
 //       CHECK: return %[[T0]], %[[T1]]
+
+
+// -----
+
+func.func @main(%arg0: tuple<tuple<tensor<1xi8>>>) -> tuple<tuple<tensor<1xf32>>, tensor<1xi32>> {
+  %0 = "test.dummy"(%arg0) : (tuple<tuple<tensor<1xi8>>>) -> tuple<tuple<tensor<1xf32>>, tensor<1xi32>>
+  func.return %0 : tuple<tuple<tensor<1xf32>>, tensor<1xi32>>
+}
+
+// CHECK-LABEL: func @main
+//  CHECK-SAME: %[[ARG:.+]]: tensor<1xi8>
+//       CHECK: %[[T0:.*]] = mhlo.tuple %[[ARG]] : tuple<tensor<1xi8>>
+//       CHECK: %[[T1:.*]] = mhlo.tuple %[[T0]] : tuple<tuple<tensor<1xi8>>>
+//       CHECK: %[[T:.*]] = "test.dummy"(%[[T1]]) : (tuple<tuple<tensor<1xi8>>>) -> tuple<tuple<tensor<1xf32>>, tensor<1xi32>>
+//       CHECK: %[[GTE0:.*]] = mhlo.get_tuple_element %[[T]][0] : (tuple<tuple<tensor<1xf32>>, tensor<1xi32>>) -> tuple<tensor<1xf32>>
+//       CHECK: %[[GTE1:.*]] = mhlo.get_tuple_element %[[T]][1] : (tuple<tuple<tensor<1xf32>>, tensor<1xi32>>) -> tensor<1xi32>
+//       CHECK: %[[GTE2:.*]] = mhlo.get_tuple_element %[[GTE0]][0] : (tuple<tensor<1xf32>>) -> tensor<1xf32>
+//       CHECK: return %[[GTE2]], %[[GTE1]] : tensor<1xf32>, tensor<1xi32>

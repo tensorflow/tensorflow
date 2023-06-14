@@ -714,8 +714,14 @@ def create_tpu_mesh(
   ]
   global_device_ids, local_device_ids, local_device_list = _create_device_array(
       mesh_shape, _TPU_DEVICE_TYPE, None, local_device_ids=indexes)
-  return layout_lib.Mesh(mesh_dim_names, global_device_ids, local_device_ids,
-                         local_device_list, mesh_name, use_xla_spmd)
+  return layout_lib.Mesh(
+      mesh_dim_names,
+      global_device_ids,
+      local_device_ids,
+      local_device_list,
+      mesh_name,
+      use_xla_spmd=use_xla_spmd,
+  )
 
 
 def get_device_ids(mesh: layout_lib.Mesh,

@@ -207,13 +207,6 @@ class DistributedRuntimeService {
   std::unique_ptr<::grpc::Server> server_;
 };
 
-// Everything below this point is exposed only for tests.
-
-// Given a LocalTopologyProto object from each node, builds a
-// GlobalTopologyProto that describes all nodes.
-void BuildGlobalTopology(absl::Span<LocalTopologyProto> local_topologies,
-                         GlobalTopologyProto* global_topology);
-
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_DISTRIBUTED_SERVICE_H_

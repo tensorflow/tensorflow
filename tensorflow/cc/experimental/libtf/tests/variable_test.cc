@@ -114,7 +114,7 @@ TEST_P(VariableTest, CreateAssignReadDestroy) {
 INSTANTIATE_TEST_SUITE_P(TF2CAPI, VariableTest,
                          ::testing::Combine(::testing::Values("graphdef",
                                                               "mlir"),
-                                            ::testing::Values(false, true)));
+                                            ::testing::Values(false)));
 
 }  // namespace libtf
 }  // namespace tf

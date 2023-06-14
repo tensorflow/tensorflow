@@ -488,8 +488,11 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // management rules, their memory is owned by the module (Note that IrFunction
   // creates the encapsulated llvm::Function s.t. it is added to the llvm
   // module's function list).
-  std::unique_ptr<IrFunction> compute_function_;
+  // N.B. `b_` must be ordered before `compute_function_` as
+  // `IrFunction::~IrFunction` references `b_`. This will ensure that the
+  // destructor for `compute_function_` will run before the destructor for `b_`.
   llvm::IRBuilder<> b_;
+  std::unique_ptr<IrFunction> compute_function_;
   mlir::MLIRContext* mlir_context_;
   bool allow_reassociation_;
 

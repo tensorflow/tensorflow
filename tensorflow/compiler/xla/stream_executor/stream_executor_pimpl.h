@@ -367,12 +367,6 @@ class StreamExecutor {
   // platform that underlies this interface.
   bool SupportsDnn() const;
 
-  // Returns the list of supported algorithms for the specified convolution
-  // operation.
-  bool GetConvolveAlgorithms(dnn::ConvolutionKind kind,
-                             dnn::DataType input_type,
-                             std::vector<dnn::AlgorithmDesc>* out_algorithms);
-
   // Returns the supported algorithms / execution plans for a convolution.
   tsl::Status GetConvolveRunners(
       bool use_cudnn_frontend, dnn::ConvolutionKind kind,
@@ -384,6 +378,7 @@ class StreamExecutor {
       DeviceMemoryBase output_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, ScratchAllocator* scratch_allocator,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_exec_plans);
 
   tsl::Status GetFusedConvolveRunners(
@@ -397,6 +392,7 @@ class StreamExecutor {
       const dnn::BatchDescriptor& output_descriptor,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       bool use_fallback, dnn::ActivationMode activation_mode,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedConvRunner>>* out_exec_plans);
 
   tsl::Status GetFusedMatmulRunners(
@@ -405,6 +401,7 @@ class StreamExecutor {
       bool trans_a, bool trans_b, uint64_t m, uint64_t n, uint64_t k,
       int64_t lda, int64_t ldb, int64_t ldc,
       dnn::ActivationMode activation_mode, bool use_fallback,
+      const NumericOptions& numeric_options,
       std::vector<std::unique_ptr<const dnn::FusedMatmulRunner>>*
           out_exec_plans);
 

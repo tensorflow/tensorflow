@@ -114,7 +114,6 @@ class ConvertUniformQuantizeOp
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                           element_type.getStorageTypeMax())));
 
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
     auto res_float_tensor_type_or =
         GetSameShapeTensorType(op, op.getOperand().getType().cast<TensorType>(),
                                rewriter.getF32Type(), rewriter);
@@ -123,10 +122,9 @@ class ConvertUniformQuantizeOp
     }
     Value res_float = rewriter.create<chlo::BroadcastDivOp>(
         op->getLoc(), *res_float_tensor_type_or, adaptor.getOperand(), scale,
-        scalar_broadcast_dims);
+        nullptr);
     res_float = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), *res_float_tensor_type_or, res_float, half,
-        scalar_broadcast_dims);
+        op->getLoc(), *res_float_tensor_type_or, res_float, half, nullptr);
     res_float = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float);
     auto res_int32_tensor_type_or =
         GetSameShapeTensorType(op, res_float.getType().cast<TensorType>(),
@@ -138,13 +136,13 @@ class ConvertUniformQuantizeOp
         op->getLoc(), *res_int32_tensor_type_or, res_float);
     res_int32 = rewriter.create<chlo::BroadcastAddOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, zero_point,
-        scalar_broadcast_dims);
+        nullptr);
     res_int32 = rewriter.create<chlo::BroadcastMaxOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, quantization_min,
-        scalar_broadcast_dims);
+        nullptr);
     res_int32 = rewriter.create<chlo::BroadcastMinOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, quantization_max,
-        scalar_broadcast_dims);
+        nullptr);
     auto res_final_tensor_type_or =
         GetSameShapeTensorType(op, res_int32.getType().cast<TensorType>(),
                                rewriter.getI8Type(), rewriter);
@@ -177,7 +175,6 @@ class ConvertUniformDequantizeOp
                           static_cast<int32_t>(element_type.getZeroPoint())));
 
     Value input = adaptor.getOperand();
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
     auto res_int32_tensor_type_or =
         GetSameShapeTensorType(op, input.getType().cast<TensorType>(),
                                rewriter.getI32Type(), rewriter);
@@ -188,7 +185,7 @@ class ConvertUniformDequantizeOp
         op->getLoc(), *res_int32_tensor_type_or, input);
     res_int32 = rewriter.create<chlo::BroadcastSubOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, zero_point,
-        scalar_broadcast_dims);
+        nullptr);
     auto res_float_tensor_type_or =
         GetSameShapeTensorType(op, res_int32.getType().cast<TensorType>(),
                                rewriter.getF32Type(), rewriter);
@@ -198,7 +195,7 @@ class ConvertUniformDequantizeOp
     Value res_float = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), *res_float_tensor_type_or, res_int32);
     res_float = rewriter.replaceOpWithNewOp<chlo::BroadcastMulOp>(
-        op, *res_float_tensor_type_or, res_float, scale, scalar_broadcast_dims);
+        op, *res_float_tensor_type_or, res_float, scale, nullptr);
     return success();
   }
 };
@@ -213,6 +210,8 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp>(context);
 
   ConversionTarget target(*op->getContext());
+  // An addDynamicallyLegalDialect callback that declares a given operation as
+  // legal only if its all operands and results are non-quantized types.
   auto is_legal = [](Operation *op) {
     auto is_not_quant = [](Type type) {
       return !getElementTypeOrSelf(type).isa<quant::UniformQuantizedType>();

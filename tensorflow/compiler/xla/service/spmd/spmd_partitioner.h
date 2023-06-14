@@ -77,6 +77,10 @@ struct SpmdPartitionerOptions {
   // Whether doing bidirectional communication when decomposing independent
   // all-gathers.
   bool bidirectional_decomposed_all_gather = false;
+
+  // Whether to skip checking the numbers and shardings of windowed einsum's
+  // users.
+  bool skip_checking_windowed_einsum_users = false;
 };
 
 // Class to wrap the computation builder to capture information during SPMD
@@ -401,7 +405,8 @@ class PartitionedHlo {
   // only modify the reshard cache.
   std::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
       const Window& window, const HloSharding& target,
-      HloInstruction* pad_value, bool mask_invalid_region = true);
+      HloInstruction* pad_value, bool mask_invalid_region = true,
+      bool force_mask_in_compact = false);
 
   const PartitioningState& state() const { return state_; }
 

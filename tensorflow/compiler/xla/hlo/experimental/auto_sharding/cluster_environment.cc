@@ -165,22 +165,43 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
           src_spec.tile_assignment().dimensions()) == 1 &&
       VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
     // src spec is 1D and device_mesh is 2D or 3D
-    src_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_1d_);
+
+    auto src_tensor_dim_to_mesh_dim_or =
+        GetTensorDimToMeshDimNoCrash(src_rank, src_spec, device_mesh_1d_);
+    if (!src_tensor_dim_to_mesh_dim_or.ok()) {
+      return kInfinityCost;
+    }
+    src_tensor_dim_to_mesh_dim = src_tensor_dim_to_mesh_dim_or.value();
   } else {
-    src_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(src_rank, src_spec, device_mesh_);
+    auto src_tensor_dim_to_mesh_dim_or =
+        GetTensorDimToMeshDimNoCrash(src_rank, src_spec, device_mesh_);
+    if (!src_tensor_dim_to_mesh_dim_or.ok()) {
+      return kInfinityCost;
+    }
+    src_tensor_dim_to_mesh_dim = src_tensor_dim_to_mesh_dim_or.value();
   }
   std::vector<int64_t> dst_tensor_dim_to_mesh_dim;
+
+  // TODO(pratikf) Currently, we return kInfinityCost when the input mesh shape
+  // and mesh shape in the sharding do not match. This can possibly be better
+  // handled.
   if (VectorGreaterThanOneElementCount(
           dst_spec.tile_assignment().dimensions()) == 1 &&
       VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
     // src spec is 1D and device_mesh is 2D or 3D
-    dst_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_1d_);
+    auto dst_tensor_dim_to_mesh_dim_or =
+        GetTensorDimToMeshDimNoCrash(dst_rank, dst_spec, device_mesh_1d_);
+    if (!dst_tensor_dim_to_mesh_dim_or.ok()) {
+      return kInfinityCost;
+    }
+    dst_tensor_dim_to_mesh_dim = dst_tensor_dim_to_mesh_dim_or.value();
   } else {
-    dst_tensor_dim_to_mesh_dim =
-        GetTensorDimToMeshDim(dst_rank, dst_spec, device_mesh_);
+    auto dst_tensor_dim_to_mesh_dim_or =
+        GetTensorDimToMeshDimNoCrash(dst_rank, dst_spec, device_mesh_);
+    if (!dst_tensor_dim_to_mesh_dim_or.ok()) {
+      return kInfinityCost;
+    }
+    dst_tensor_dim_to_mesh_dim = dst_tensor_dim_to_mesh_dim_or.value();
   }
   if (src_n_dim != dst_n_dim && src_n_dim != -1 && dst_n_dim != -1) {
     return ReshardingCostMixedMeshShape(

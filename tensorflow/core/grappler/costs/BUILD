@@ -353,7 +353,10 @@ cc_library(
 tf_cc_test(
     name = "op_level_cost_estimator_test",
     srcs = ["op_level_cost_estimator_test.cc"],
-    tags = ["no_oss"],  # b/163222310
+    tags = [
+        "no_oss",
+        "not_run:arm",
+    ],  # b/163222310
     deps = [
         ":op_level_cost_estimator",
         "//tensorflow/core:framework",

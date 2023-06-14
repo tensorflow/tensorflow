@@ -1255,15 +1255,15 @@ class VariableScopeTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testGetTrainableVariablesWithVariable(self):
     with self.cached_session():
-      _ = variable_scope.variable(1.0, name="testGetTrainableVariables_a")
+      _ = variable_v1.VariableV1(1.0, name="testGetTrainableVariables_a")
       with variable_scope.variable_scope(
           "testGetTrainableVariables_foo") as scope:
-        _ = variable_scope.variable(1.0, name="testGetTrainableVariables_b")
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(1.0, name="testGetTrainableVariables_b")
+        _ = variable_v1.VariableV1(
             1.0, name="testGetTrainableVariables_c", trainable=False)
 
         # sync `ON_READ` sets trainable=False
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_d",
             synchronization=variable_scope.VariableSynchronization.ON_READ)
@@ -1271,7 +1271,7 @@ class VariableScopeTest(test.TestCase):
             [v.name for v in scope.trainable_variables()],
             ["testGetTrainableVariables_foo/testGetTrainableVariables_b:0"])
 
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_e",
             synchronization=variable_scope.VariableSynchronization.ON_READ,
@@ -1282,7 +1282,7 @@ class VariableScopeTest(test.TestCase):
         ])
 
         # All other sync values sets trainable=True
-        _ = variable_scope.variable(
+        _ = variable_v1.VariableV1(
             1.0,
             name="testGetTrainableVariables_f",
             synchronization=variable_scope.VariableSynchronization.ON_WRITE)
@@ -1684,7 +1684,7 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
 
     with variable_scope.variable_creator_scope(creator_a):
       with variable_scope.variable_creator_scope(creator_b):
-        variable_scope.variable(1.0, name="one_name")
+        variable_v1.VariableV1(1.0, name="one_name")
 
     self.assertEqual(variable_names[0], "forced_name")
 

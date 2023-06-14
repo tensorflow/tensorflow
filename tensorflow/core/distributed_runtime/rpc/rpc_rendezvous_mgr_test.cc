@@ -169,11 +169,9 @@ TEST_F(RpcRendezvousMgrTest, LocalAbort) {
   {  // Explicit Abort().
     const int64_t step_id = 123;
     tsl::core::RefCountPtr<RemoteRendezvous> rendez = rmgr_.Find(step_id);
-    rendez->Ref();
-    SchedClosure([this, rendez = rendez.get()]() {
+    SchedClosure([this, rendez = rendez.GetNewRef()]() {
       env.env->SleepForMicroseconds(100 * 1000);
       rendez->StartAbort(errors::Aborted(""));
-      rendez->Unref();
     });
     Tensor val(DT_STRING);
     bool val_dead = false;

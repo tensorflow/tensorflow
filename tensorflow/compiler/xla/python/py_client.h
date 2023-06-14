@@ -175,14 +175,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::vector<ClientAndPtr<PjRtDevice>>> GetDefaultDeviceAssignment1D(
       int num_replicas);
 
-  StatusOr<ChannelHandle> CreateChannelHandle() { return ChannelHandle(); }
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-    return ifrt_client_->CreateDeviceToHostChannelHandle();
-  }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-    return ifrt_client_->CreateHostToDeviceChannelHandle();
-  }
-
   StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device);
@@ -198,16 +190,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<pybind11::bytes> SerializeExecutable(
       const PyLoadedExecutable& executable) const;
   StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, CompileOptions options,
+      const std::string& serialized, std::optional<CompileOptions> options,
       std::vector<pybind11::capsule> host_callbacks);
-
-  // TODO(skyewm): remove when jax stop providing hlo_module
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
-      CompileOptions options, std::vector<pybind11::capsule> host_callbacks) {
-    return DeserializeExecutable(serialized, options,
-                                 std::move(host_callbacks));
-  }
 
   StatusOr<pybind11::bytes> HeapProfile();
 
@@ -215,16 +199,14 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // takes in arguments of shapes `operand_shapes` and returns values of shapes
   // `result_shapes`. It returns a pair of a `uint64_t` descriptor and a Python
   // object whose reference will keep the Python callback alive. The descriptor
-  // should be passed into a 'xla_cpu_python_callback' CustomCall as its first
-  // argument. Typically the callback may be kept alive by attaching the
-  // keep-alive object to the executable built from this computation.
+  // should be passed into a 'xla_python_cpu_callback' or
+  // 'xla_python_gpu_callback' CustomCall as its first argument. Typically the
+  // callback may be kept alive by attaching the keep-alive object to the
+  // executable built from this computation.
   //
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
   // either arrays or None values.
-  //
-  // This is a method of PyClient since different platforms may implement this
-  // functionality in different ways.
   StatusOr<std::pair<uint64_t, pybind11::object>>
   GetEmitPythonCallbackDescriptor(pybind11::function callable,
                                   absl::Span<Shape const> operand_shapes,
@@ -247,14 +229,21 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // program through `send_channel_ids` and the results correspond to Recv ops
   // through `recv_channel_ids`. It returns the host callback as an opaque
   // object whose reference will keep the Python callback alive. The host
-  // callback can be passed to PyLoadedExecutable::Execute() so that the
-  // corresponding Send/Recv ops can trigger the execution of this host
-  // callback.
+  // callback can be passed to `PyClient::Compile` or
+  // `PyClient::DeserializeExecutable`. The corresponding Send/Recv ops in the
+  // XLA computation can trigger the execution of this host callback.
+  // `serializer` is a function that takes `callable` as an argument and returns
+  // a serialized callable as a string.
+  //
+  // The callable receives as arguments NumPy arrays for arguments with array
+  // types, and None for Token argument. The callable must return a tuple of
+  // either arrays or None values.
   StatusOr<pybind11::object> MakePythonCallbackUsingHostSendAndRecv(
       pybind11::function callable, absl::Span<Shape const> operand_shapes,
       absl::Span<Shape const> result_shapes,
       absl::Span<uint16_t const> send_channel_ids,
-      absl::Span<uint16_t const> recv_channel_ids);
+      absl::Span<uint16_t const> recv_channel_ids,
+      pybind11::function serializer);
 
   std::vector<pybind11::object> LiveArrays();
 

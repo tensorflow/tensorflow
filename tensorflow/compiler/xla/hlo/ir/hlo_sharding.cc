@@ -43,7 +43,6 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
-using absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64_t device_id,
                                       absl::Span<const OpMetadata> metadata) {
@@ -59,28 +58,6 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
   std::iota(assignment.begin(), assignment.end(), 0);
   return HloSharding(assignment, /*replicate_on_last_tile_dim=*/false,
                      metadata);
-}
-
-HloSharding HloSharding::PartialTile(
-    const Array<int64_t>& group_tile_assignment,
-    absl::Span<const absl::Span<const int64_t>> replication_groups,
-    absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(group_tile_assignment.num_elements(), replication_groups.size());
-  if (replication_groups.size() == 1) {
-    return Replicate(metadata);
-  }
-  std::vector<int64_t> new_tile_dims(group_tile_assignment.dimensions().begin(),
-                                     group_tile_assignment.dimensions().end());
-  new_tile_dims.push_back(replication_groups[0].size());
-  auto new_tile_assignment = Array<int64_t>(new_tile_dims);
-  new_tile_assignment.Each(
-      [&](absl::Span<const int64_t> indices, int64_t* device) {
-        std::vector<int64_t> group_index(indices.begin(), indices.end());
-        group_index.pop_back();
-        int64_t group = group_tile_assignment(group_index);
-        *device = replication_groups[group][indices.back()];
-      });
-  return PartialTile(new_tile_assignment, metadata);
 }
 
 HloSharding HloSharding::PartialTile(

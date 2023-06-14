@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"

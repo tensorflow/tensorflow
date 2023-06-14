@@ -50,7 +50,7 @@ int64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
 // inter-operation dependencies.
 class Event {
  public:
-  virtual ~Event() {}
+  virtual ~Event() = default;
 
   // Blocks until the event completes and returns the result status.
   virtual xla::Status Await() = 0;
@@ -65,7 +65,7 @@ class Event {
 // Represents a device memory allocation.
 class BufferHandle {
  public:
-  virtual ~BufferHandle() {}
+  virtual ~BufferHandle() = default;
 
   // This event completes after the device memory is actually allocated.
   //
@@ -80,7 +80,7 @@ class BufferHandle {
 // Represents a compiled program on the host.
 class CompiledProgramHandle {
  public:
-  virtual ~CompiledProgramHandle() {}
+  virtual ~CompiledProgramHandle() = default;
 
   // This Event completes after the program is actually compiled on the host.
   //
@@ -100,7 +100,7 @@ class CompiledProgramHandle {
 // Represents a program loaded on the device.
 class LoadedProgramHandle {
  public:
-  virtual ~LoadedProgramHandle() {}
+  virtual ~LoadedProgramHandle() = default;
 
   // This Event completes after the program is actually loaded on the device.
   //
@@ -118,7 +118,7 @@ class LoadedProgramHandle {
 // in the TPU driver. This interface is not yet implemented.
 class TpuLinearizer {
  public:
-  virtual ~TpuLinearizer() {}
+  virtual ~TpuLinearizer() = default;
 
   int64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {
     return ::tpu_driver::ComputeBytesFromShape(shape);
@@ -150,7 +150,7 @@ class TpuLinearizer {
 // regardless of whether the scheduled device operations have started execution.
 class TpuDriver {
  public:
-  virtual ~TpuDriver() {}
+  virtual ~TpuDriver() = default;
 
   virtual void QuerySystemInfo(SystemInfo* system_info) = 0;
   // Synchronous. Reset the state of the TPU driver. After Reset(), this TPU

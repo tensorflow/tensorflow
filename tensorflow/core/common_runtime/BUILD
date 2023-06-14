@@ -622,6 +622,7 @@ cc_library(
         "//tensorflow/core/framework:device_attributes_proto_cc",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -797,6 +798,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:state",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -810,6 +812,7 @@ cc_library(
         ":device_factory",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -2614,6 +2617,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/common_runtime/eager:rendezvous_cache",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
@@ -2911,6 +2915,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:shape_ops",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -3308,6 +3313,7 @@ tf_cc_test(
         ":device_factory",
         ":device_set",
         ":optimize_function_graph_utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -3355,11 +3361,7 @@ tf_cc_fuzz_test(
     tags = ["no_oss"],
     deps = [
         ":core",
-        ":core_cpu",
-        ":graph_constructor",
         ":session",
-        ":session_options",
-        "//tensorflow/cc:scope",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/ops",

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
+#include "tensorflow/compiler/xla/pjrt/distributed/topology_util.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -116,36 +117,6 @@ DistributedRuntimeServiceImpl::~DistributedRuntimeServiceImpl() {
     service_status_ = tsl::errors::FailedPrecondition("Service shutting down.");
     if (!stop_heartbeat_thread_.HasBeenNotified()) {
       stop_heartbeat_thread_.Notify();
-    }
-  }
-}
-
-// Steals the contents of `local_topologies`.
-void BuildGlobalTopology(absl::Span<LocalTopologyProto> local_topologies,
-                         GlobalTopologyProto* global_topology) {
-  int next_global_device_id = 0;
-  // Assign local devices of the same host to the same slice_index.
-  int next_slice_index = 0;
-  absl::flat_hash_map<std::string, int> boot_id_to_slice_index;
-  for (LocalTopologyProto& local : local_topologies) {
-    // Every new boot_id seen is treated as a new host/slice.
-    absl::string_view boot_id = local.boot_id();
-    auto [it, inserted] =
-        boot_id_to_slice_index.try_emplace(boot_id, next_slice_index);
-    if (inserted) {
-      ++next_slice_index;
-    }
-    for (DeviceProto& device : *local.mutable_devices()) {
-      device.set_global_device_id(next_global_device_id++);
-      device.set_slice_index(it->second);
-    }
-    global_topology->add_nodes()->Swap(&local);
-  }
-  if (VLOG_IS_ON(10)) {
-    for (auto it = boot_id_to_slice_index.begin();
-         it != boot_id_to_slice_index.end(); ++it) {
-      LOG(INFO) << "BuildGlobalTopology boot_id_to_slice_index " << it->first
-                << "->" << it->second;
     }
   }
 }
@@ -332,9 +303,8 @@ xla::Status DistributedRuntimeServiceImpl::ValidateSessionId(
   }
 
   if (node_id == 0) {
-    topology_.emplace();
-    BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies_),
-                        &*topology_);
+    topology_ =
+        BuildGlobalTopology(absl::Span<LocalTopologyProto>(local_topologies_));
     local_topologies_.clear();
   } else {
     auto topology_ready = [&]() -> bool {

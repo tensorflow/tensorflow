@@ -19,9 +19,12 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/tsl/framework/device_id.h"
 #include "tensorflow/tsl/framework/device_type.h"
 #include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/util/device_name_utils.h"
 
 namespace tsl {
 
@@ -37,6 +40,27 @@ void CheckValidTfDeviceId(const DeviceType& type, int visible_device_count,
 Status ParseVisibleDeviceList(
     const std::string& visible_device_list, int visible_device_count,
     std::vector<PlatformDeviceId>* visible_device_order);
+
+// Returns how many TF devices should be created, and generates the mapping
+// between TfDeviceId and PlatformDeviceId. The number of TF devices is the
+// minimum among the device count in `session_option_device_counts`,
+// `visible_device_count` and the number of visible devices in
+// `visible_device_list`. If `visible_device_list` is empty, the mapping
+// between TfDeviceId and PlatformDeviceId is an identity mapping.
+// Please refer to tensorflow/tsl/framework/device_id.h and
+// tensorflow/core/protobuf/config.proto about the relationship between
+// TfDeviceId and PlatformDeviceId, and how `visible_device_list` is used.
+StatusOr<size_t> GetNumberTfDevicesAndConfigurePlatformDeviceId(
+    const absl::flat_hash_map<std::string, int64_t>&
+        session_option_device_counts,
+    absl::string_view device_type, absl::string_view visible_device_list,
+    int visible_device_count);
+
+// Returns the corresponding PlatformDeviceId if it is found. Otherwise returns
+// the id in device_name.
+StatusOr<int> GetDeviceIdFromDeviceParsedName(
+    const DeviceNameUtils::ParsedName& device_name,
+    const DeviceType& device_type);
 
 }  // namespace tsl
 

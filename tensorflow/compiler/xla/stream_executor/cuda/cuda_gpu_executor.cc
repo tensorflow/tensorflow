@@ -280,7 +280,7 @@ tsl::Status GpuExecutor::GetKernel(const MultiKernelLoaderSpec& spec,
   VLOG(2) << "getting function " << *kernelname << " from module " << module;
   if (!GpuDriver::GetModuleFunction(context_, module, kernelname->c_str(),
                                     cuda_kernel->gpu_function_ptr())) {
-    return tsl::errors::Internal("Could not find the corresponding function");
+    return tsl::errors::Internal("Could not find function ", *kernelname);
   }
 
   // We have to trust the kernel loader spec arity because there doesn't appear
@@ -1128,6 +1128,8 @@ GpuExecutor::CreateDeviceDescription(int device_ordinal) {
       GpuDriver::GetMaxSharedMemoryPerCore(device).value());
   builder.set_shared_memory_per_block(
       GpuDriver::GetMaxSharedMemoryPerBlock(device).value());
+  builder.set_shared_memory_per_block_optin(
+      GpuDriver::GetMaxSharedMemoryPerBlockOptin(device).value());
   int core_count = GpuDriver::GetMultiprocessorCount(device).value();
   builder.set_core_count(core_count);
   builder.set_fpus_per_core(fpus_per_core(cc_major, cc_minor));

@@ -76,9 +76,9 @@ xla_cc_test(
     data = [
         "tests_data/saxpy.ll",
     ],
+    tags = ["nomsan"],
     deps = [
         ":llvm_gpu_backend",
-        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:path",

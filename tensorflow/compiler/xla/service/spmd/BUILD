@@ -35,6 +35,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -46,6 +47,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/ir:hlo_reachability",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
@@ -56,7 +58,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:sharding_propagation",
@@ -78,6 +79,7 @@ cc_library(
 xla_cc_test(
     name = "spmd_partitioner_test",
     srcs = ["spmd_partitioner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":spmd_partitioner",
         "//tensorflow/compiler/xla:util",
@@ -100,6 +102,7 @@ xla_cc_test(
 xla_cc_test(
     name = "canonicalize_all_gather_for_cse_test",
     srcs = ["canonicalize_all_gather_for_cse_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":canonicalize_all_gather_for_cse",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -121,8 +124,8 @@ cc_library(
     hdrs = ["canonicalize_all_gather_for_cse.h"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -130,6 +133,7 @@ cc_library(
 xla_cc_test(
     name = "schedule_aware_collective_ops_cse_test",
     srcs = ["schedule_aware_collective_ops_cse_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":schedule_aware_collective_ops_cse",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -172,6 +176,7 @@ cc_library(
 xla_cc_test(
     name = "stateful_rng_spmd_partitioner_test",
     srcs = ["stateful_rng_spmd_partitioner_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":stateful_rng_spmd_partitioner",
         "//tensorflow/compiler/xla:util",
@@ -209,6 +214,7 @@ cc_library(
 xla_cc_test(
     name = "collective_permute_motion_test",
     srcs = ["collective_permute_motion_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":collective_permute_motion",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -235,6 +241,7 @@ cc_library(
 xla_cc_test(
     name = "partition_assignment_test",
     srcs = ["partition_assignment_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":partition_assignment",
         "//tensorflow/compiler/xla:xla_proto_cc",

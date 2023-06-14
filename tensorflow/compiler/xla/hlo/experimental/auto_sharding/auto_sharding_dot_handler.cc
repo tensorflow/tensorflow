@@ -970,7 +970,7 @@ class ConvHandler {
 
   Status RegisterStrategies() {
     if (device_mesh_.num_dimensions() > 2) {
-      return tsl::errors::Internal(
+      return absl::InternalError(
           "This function does not support 3D mesh shape with convolution ops "
           "yet.");
     }

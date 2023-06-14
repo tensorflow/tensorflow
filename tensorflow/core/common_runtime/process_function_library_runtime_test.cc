@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/composite_device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/eager/rendezvous_cache.h"
 #include "tensorflow/core/common_runtime/function_testlib.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/full_type.pb.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/optimized_function_graph.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/type_index.h"
@@ -101,7 +103,8 @@ SessionMetadata GenerateSessionMetadata() {
 // device is set up.
 class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
  public:
-  ProcessFunctionLibraryRuntimeTest() {
+  ProcessFunctionLibraryRuntimeTest()
+      : rendezvous_cache_(new RendezvousCache<IntraProcessRendezvous>()) {
     SessionOptions options;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", 3});
@@ -133,34 +136,30 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   void Init(const std::vector<FunctionDef>& flib,
-            const SessionMetadata* session_metadata = nullptr) {
+            const SessionMetadata* session_metadata = nullptr,
+            const std::vector<OptimizedFunctionGraph>&
+                optimized_function_graphs = {}) {
     FunctionDefLibrary proto;
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+    for (const auto& fg : optimized_function_graphs) {
+      lib_def_->AddOptimizedFunctionGraph(fg.name(), fg);
+    }
     OptimizerOptions opts;
     cluster_flr_.reset(new TestClusterFLR(device_mgr_.get()));
     proc_flr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
         /*thread_pool=*/nullptr, cluster_flr_.get(), session_metadata,
-        Rendezvous::Factory{
-            [this](const int64_t step_id, const DeviceMgr* device_mgr,
-                   Rendezvous** r) {
-              *r = new IntraProcessRendezvous(device_mgr);
-              if (rendezvous_ref_counts_.find(step_id) !=
-                  rendezvous_ref_counts_.end()) {
-                rendezvous_ref_counts_[step_id]++;
-              } else {
-                rendezvous_ref_counts_[step_id] = 1;
-              }
-              return OkStatus();
-            },
-            [this](const int64_t step_id) {
-              CHECK(rendezvous_ref_counts_.find(step_id) !=
-                    rendezvous_ref_counts_.end());
-              rendezvous_ref_counts_[step_id]--;
-              return OkStatus();
-            }}));
+        Rendezvous::Factory{[this](const int64_t step_id,
+                                   const DeviceMgr* device_mgr,
+                                   tsl::core::RefCountPtr<Rendezvous>* r) {
+          *r = this->rendezvous_cache_->FindOrCreate(step_id, [device_mgr]() {
+            return tsl::core::RefCountPtr<IntraProcessRendezvous>(
+                new IntraProcessRendezvous(device_mgr));
+          });
+          return OkStatus();
+        }}));
   }
 
   void AddCompositeDevice(CompositeDevice* d) {
@@ -323,7 +322,8 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
 
   // To ensure that we are cleaning up the rendezvous properly.
-  std::unordered_map<int64_t, int> rendezvous_ref_counts_;
+  tsl::core::RefCountPtr<RendezvousCache<IntraProcessRendezvous>>
+      rendezvous_cache_;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
@@ -426,9 +426,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   test::ExpectTensorEqual<tstring>(
       y, test::AsTensor<tstring>({"/job:a/replica:0/task:0/device:CPU:0"},
                                  TensorShape({})));
-  EXPECT_EQ(1, rendezvous_ref_counts_.size());
-  EXPECT_EQ(opts.step_id, rendezvous_ref_counts_.begin()->first);
-  EXPECT_EQ(0, rendezvous_ref_counts_.begin()->second);
+  EXPECT_EQ(0, rendezvous_cache_->Size());
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
@@ -1387,6 +1385,28 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, PartitionedGraphRequiresAsync) {
   TestTwoDeviceMult(this, opts);
   EXPECT_GT(async_send_only.Get(), 0);
   EXPECT_GT(async_recv_only.Get(), 0);
+}
+
+TEST_F(ProcessFunctionLibraryRuntimeTest, RecordAotSavingTimeAndHitCount) {
+  FunctionLibraryRuntime::InstantiateOptions opts =
+      MakeOptions("CPU:0", {}, {});
+  opts.allow_small_function_optimizations = true;
+  FunctionLibraryRuntime::Handle h;
+
+  OptimizedFunctionGraph optimized_graph_proto;
+  optimized_graph_proto.set_name("FindDevice");
+  optimized_graph_proto.set_optimization_time_usecs(10);
+  Init({test::function::FindDevice()}, /*session_metadata=*/nullptr,
+       {optimized_graph_proto});
+  Instantiate("FindDevice",
+              {{"_target", "/job:b/replica:0/task:0/device:CPU:0"}}, opts, &h)
+      .IgnoreError();
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationSavingTimeUsecs(
+                metrics::GraphOptimizationSource::kAot),
+            10);
+  EXPECT_EQ(metrics::GetFunctionGraphOptimizationCacheHitCount(
+                metrics::GraphOptimizationSource::kAot),
+            1);
 }
 
 }  // anonymous namespace

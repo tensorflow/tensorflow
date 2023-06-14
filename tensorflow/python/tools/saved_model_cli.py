@@ -516,7 +516,7 @@ def _show_all(saved_model_dir):
   saved_model = saved_model_utils.read_saved_model(saved_model_dir)
   for meta_graph_def in sorted(
       saved_model.meta_graphs,
-      key=lambda meta_graph_def: meta_graph_def.meta_info_def.tags,
+      key=lambda meta_graph_def: list(meta_graph_def.meta_info_def.tags),
   ):
     tag_set = meta_graph_def.meta_info_def.tags
     print("\nMetaGraphDef with tag-set: '%s' "

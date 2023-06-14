@@ -17,8 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PYTHON_JAX_JIT_H_
 
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"

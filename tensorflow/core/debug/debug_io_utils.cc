@@ -17,7 +17,9 @@ limitations under the License.
 
 #include <stddef.h>
 #include <string.h>
+
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
@@ -31,6 +33,8 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_replace.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/debug/debug_callback_registry.h"
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -43,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/event.pb.h"
 
 #define GRPC_OSS_WINDOWS_UNIMPLEMENTED_ERROR \
@@ -52,6 +57,8 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+
+constexpr absl::string_view kDumpSubDirName = "node-io-dump";
 
 // Creates an Event proto representing a chunk of a Tensor. This method only
 // populates the field of the Event proto that represent the envelope
@@ -415,7 +422,8 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string> debug_urls,
-                                   const bool gated_grpc) {
+                                   const bool gated_grpc,
+                                   const int64_t step_id) {
   int32_t num_failed_urls = 0;
   std::vector<Status> fail_statuses;
   for (const string& url : debug_urls) {
@@ -435,8 +443,13 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
             "variable TFDBG_DISK_BYTES_LIMIT to set a higher limit.");
       }
 
-      Status s = DebugFileIO::DumpTensorToDir(
-          debug_node_key, tensor, wall_time_us, dump_root_dir, nullptr);
+      Status s = debug_node_key.io_of_node.empty()
+                     ? DebugFileIO::DumpTensorToDir(debug_node_key, tensor,
+                                                    wall_time_us, dump_root_dir,
+                                                    nullptr)
+                     : DebugFileIO::DumpTensorToDirForNodeDumping(
+                           debug_node_key, tensor, wall_time_us, dump_root_dir,
+                           nullptr, step_id);
       if (!s.ok()) {
         num_failed_urls++;
         fail_statuses.push_back(s);
@@ -606,6 +619,19 @@ Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
   return DumpTensorToEventFile(debug_node_key, tensor, wall_time_us, file_path);
 }
 
+Status DebugFileIO::DumpTensorToDirForNodeDumping(
+    const DebugNodeKey& debug_node_key, const Tensor& tensor,
+    const uint64 wall_time_us, const string& dump_root_dir,
+    string* dump_file_path, const int64_t step_id) {
+  const string file_path = GetDumpFilePathForNodeDumping(
+      dump_root_dir, debug_node_key, wall_time_us, step_id);
+  if (dump_file_path != nullptr) {
+    *dump_file_path = file_path;
+  }
+
+  return DumpTensorToEventFile(debug_node_key, tensor, wall_time_us, file_path);
+}
+
 string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
                                     const DebugNodeKey& debug_node_key,
                                     const uint64 wall_time_us) {
@@ -614,6 +640,19 @@ string DebugFileIO::GetDumpFilePath(const string& dump_root_dir,
                    strings::StrCat(debug_node_key.node_name, "_",
                                    debug_node_key.output_slot, "_",
                                    debug_node_key.debug_op)),
+      wall_time_us);
+}
+
+string DebugFileIO::GetDumpFilePathForNodeDumping(
+    const string& dump_root_dir, const DebugNodeKey& debug_node_key,
+    const uint64 wall_time_us, const int64_t step_id) {
+  return AppendTimestampToFilePath(
+      io::JoinPath(
+          dump_root_dir, kDumpSubDirName, strings::StrCat("step-", step_id),
+          strings::StrCat(
+              absl::StrReplaceAll(debug_node_key.io_of_node, {{"/", "-"}}), ":",
+              debug_node_key.is_input ? "in" : "out", ":",
+              debug_node_key.io_index)),
       wall_time_us);
 }
 

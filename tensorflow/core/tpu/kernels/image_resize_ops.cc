@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <vector>
+
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -39,7 +41,7 @@ class TpuCustomResizeOp : public XlaOpKernel {
   xla::Shape GetOutputShape(XlaOpKernelContext* ctx) const {
     std::vector<int64_t> out_size;
     auto status = ctx->ConstantInputAsIntVector(1, &out_size);
-    CHECK_EQ(out_size.size(), 2) << status.ToString();
+    CHECK_EQ(out_size.size(), 2) << status;
     xla::Shape output_shape =
         TensorShapeToXLAShape(ctx->output_xla_type(0), ctx->InputShape(0));
     output_shape.mutable_dimensions()[1] = out_size[0];

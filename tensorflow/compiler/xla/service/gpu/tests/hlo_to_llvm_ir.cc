@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_device_info_for_tests.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -45,18 +45,8 @@ xla::Status CompileAndPrintLlvmIr(const std::string& hlo_text,
       std::unique_ptr<xla::HloModule> hlo_module,
       xla::LoadModuleFromData(/*data=*/hlo_text, /*format=*/"hlo"));
   llvm::LLVMContext llvm_context;
-  // For now we pretend we're compiling for V100.  This can be generalized
-  // later.
-
-  xla::gpu::GpuDeviceInfo gpu_device_info{};
-  gpu_device_info.threads_per_block_limit = 1024;
-  gpu_device_info.threads_per_warp = 32;
-  gpu_device_info.shared_memory_per_block = 49152;
-  gpu_device_info.core_count = 80;
-  gpu_device_info.threads_per_core_limit = 2048;
-  gpu_device_info.block_dim_limit_x = 2147483647;
-  gpu_device_info.block_dim_limit_y = 65535;
-  gpu_device_info.block_dim_limit_z = 65535;
+  xla::gpu::GpuDeviceInfo gpu_device_info =
+      xla::gpu::TestGpuDeviceInfo::RTXA6000DeviceInfo();
 
   tensorflow::se::CudaComputeCapability cuda_compute_capability;
   cuda_compute_capability.major = sm / 10;

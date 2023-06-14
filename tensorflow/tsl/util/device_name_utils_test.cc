@@ -628,6 +628,66 @@ TEST(DeviceNameUtilsTest, CanonicalizeDeviceName) {
   }
 }
 
+TEST(DeviceNameUtilsTest, CompareFullNames) {
+  // False cases for complete names.
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/cpu:0", "/job:foo/replica:0/task:0/cpu:0"));
+
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:1",
+      "/job:foo/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:1/device:CPU:0",
+      "/job:foo/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:1/task:0/device:CPU:0",
+      "/job:foo/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:goo/replica:0/task:0/device:CPU:0",
+      "/job:foo/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:GPU:0",
+      "/job:foo/replica:0/task:0/device:CPU:0"));
+
+  // True cases for complete names.
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:0",
+      "/job:foo/replica:0/task:0/device:CPU:1"));
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:0",
+      "/job:foo/replica:0/task:1/device:CPU:0"));
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:0",
+      "/job:foo/replica:1/task:0/device:CPU:0"));
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:0",
+      "/job:goo/replica:0/task:0/device:CPU:0"));
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:0",
+      "/job:foo/replica:0/task:0/device:GPU:0"));
+
+  // Unparsable names.
+  EXPECT_FALSE(
+      DeviceNameUtils::CompareFullNames("/device:CPU:1", "unparseablename"));
+  EXPECT_TRUE(
+      DeviceNameUtils::CompareFullNames("unparseablename", "/device:CPU:1"));
+
+  // Test partial names are put before complete names.
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/replica:0/task:0/device:CPU:1",
+      "/job:foo/replica:0/task:0/device:CPU:0"));
+  EXPECT_FALSE(DeviceNameUtils::CompareFullNames(
+      "/job:foo/replica:0/task:0/device:CPU:0",
+      "/replica:0/task:0/device:CPU:0"));
+
+  // Test compare partial names.
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames(
+      "/replica:0/task:0/device:CPU:0", "/replica:0/task:0/device:CPU:1"));
+  EXPECT_TRUE(DeviceNameUtils::CompareFullNames("/task:0/device:CPU:0",
+                                                "/task:0/device:CPU:1"));
+  EXPECT_TRUE(
+      DeviceNameUtils::CompareFullNames("/device:CPU:0", "/device:CPU:1"));
+}
 static void BM_ParseFullName(::testing::benchmark::State& state) {
   DeviceNameUtils::ParsedName p;
   for (auto s : state) {

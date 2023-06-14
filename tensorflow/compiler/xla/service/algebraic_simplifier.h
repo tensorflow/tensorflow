@@ -549,6 +549,17 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // the types of inner and outer bitcast-convert cancel out.
   StatusOr<bool> TrySimplifyTautologicalBitcastConvert(HloInstruction* bitcast);
 
+  // Tries to remove surrounding converts around a binary op where the op has a
+  // more precise type than its inputs and output.
+  //
+  // convert<TS>(bin_op<TL>(convert<TL>(data1<TS>),
+  //                        convert<TL>(data2<TS>)))
+  //  where TS is a smaller point type than TL (ex, TS=fp16, TL=fp32)
+  // ->
+  // bin_op<TS>(data1<TS>, data2<TS>)
+  Status TryRemoveUpcastAndDowncastSurroundingBinaryOp(
+      HloInstruction* convert_instruction);
+
   // Useful when we want to use the same visitor over multiple computations.
   void ResetState(HloComputation* computation);
 

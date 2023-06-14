@@ -102,7 +102,13 @@ class InFlightDiagnostic {
   //     ...
   //   }
   //
-  operator LogicalResult() const { return failure(); }  // NOLINT
+  operator LogicalResult() const {  // NOLINT
+    return failure();
+  }
+  template <typename T>
+  operator FailureOr<T>() const {  // NOLINT
+    return failure();
+  }
 
  private:
   friend class DiagnosticEngine;

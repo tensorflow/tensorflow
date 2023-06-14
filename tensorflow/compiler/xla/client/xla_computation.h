@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_CLIENT_XLA_COMPUTATION_H_
 #define TENSORFLOW_COMPILER_XLA_CLIENT_XLA_COMPUTATION_H_
 
+#include <memory>
+#include <string>
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -32,7 +34,7 @@ class XlaComputation {
   XlaComputation(HloModuleProto proto)
       : unique_id_(proto.id()), proto_(std::move(proto)) {}
 
-  ~XlaComputation() {}
+  ~XlaComputation() = default;
 
   XlaComputation(const XlaComputation&) = delete;
   XlaComputation& operator=(const XlaComputation&) = delete;

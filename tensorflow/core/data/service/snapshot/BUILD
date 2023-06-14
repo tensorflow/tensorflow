@@ -19,7 +19,6 @@ tf_cc_test(
     # copybara:uncomment extra_copts = ["-Wthread-safety-analysis"],
     deps = [
         ":path_utils",
-        ":snapshot_reader",
         ":test_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -37,6 +36,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:tstring",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ] + tf_grpc_cc_dependencies() + tf_protos_profiler_service(),
@@ -48,13 +48,16 @@ cc_library(
     hdrs = ["file_utils.h"],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        ":path_utils",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:protobuf",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/platform:status_to_from_proto",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/strings",
     ],
@@ -77,6 +80,7 @@ tf_cc_test(
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
+        "//tensorflow/tsl/platform:status_to_from_proto",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
     ],
@@ -181,6 +185,9 @@ cc_library(
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/protobuf:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
 )
@@ -209,27 +216,20 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "snapshot_reader",
-    srcs = ["snapshot_reader.cc"],
-    hdrs = ["snapshot_reader.h"],
+    name = "snapshot_chunk_dataset_op",
+    srcs = ["snapshot_chunk_dataset_op.cc"],
     compatible_with = get_compatible_with_portable(),
     deps = [
-        ":file_utils",
-        ":path_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/data:captured_function",
         "//tensorflow/core/data:name_utils",
         "//tensorflow/core/data:snapshot_utils",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
-        "//tensorflow/tsl/platform:path",
-        "//tensorflow/tsl/platform:refcount",
         "//tensorflow/tsl/platform:status",
-        "//tensorflow/tsl/platform:statusor",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/tsl/platform:tstring",
     ],
 )
 
@@ -245,6 +245,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/data:snapshot_utils",
+        "//tensorflow/core/data/service:common",
         "//tensorflow/core/data/service:common_proto_cc",
         "//tensorflow/core/data/service:task_runner",
         "//tensorflow/core/data/service:worker_proto_cc",
@@ -256,7 +257,9 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "//tensorflow/tsl/platform:thread_annotations",
+        "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -266,7 +269,6 @@ tf_cc_test(
     srcs = ["snapshot_stream_writer_checkpoint_test.cc"],
     deps = [
         ":path_utils",
-        ":snapshot_reader",
         ":snapshot_stream_writer",
         ":test_utils",
         "//tensorflow/core:lib",
@@ -277,9 +279,11 @@ tf_cc_test(
         "//tensorflow/core/data/service:test_util",
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:status_matchers",
         "//tensorflow/tsl/platform:statusor",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -332,6 +336,7 @@ cc_library(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -22,7 +22,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.eager import context
@@ -144,9 +144,9 @@ class Model(training_lib.Model):
     self._distribution_strategy = None
     self._compile_time_distribution_strategy = None
     if (ops.executing_eagerly_outside_functions() and
-        distribution_strategy_context.has_strategy()):
+        distribute_lib.has_strategy()):
       self._set_strategy(
-          distribution_strategy_context.get_strategy())
+          distribute_lib.get_strategy())
 
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
@@ -348,14 +348,14 @@ class Model(training_lib.Model):
       self._distribution_strategy = distribute
       self._compile_distribution = True
     else:
-      if distribution_strategy_context.has_strategy():
+      if distribute_lib.has_strategy():
         # When the user builds the model in the DS scope and cross replica
         # context we want distribution strategy to be set but when building the
         # replica copies of the models internally we should not be compiling
         # with distribution strategy and use the default compilation path.
-        if distribution_strategy_context.in_cross_replica_context():
+        if distribute_lib.in_cross_replica_context():
           self._distribution_strategy = (
-              distribution_strategy_context.get_strategy())
+              distribute_lib.get_strategy())
 
     if isinstance(self._distribution_strategy,
                   parameter_server_strategy.ParameterServerStrategyV1):
@@ -1057,7 +1057,7 @@ class Model(training_lib.Model):
     # the Eager code path.  The expected way to get here is to call `fit` that
     # calls `train_on_batch` on each replica.
     if (self._distribution_strategy and
-        distribution_strategy_context.in_cross_replica_context()):
+        distribute_lib.in_cross_replica_context()):
       raise NotImplementedError('`train_on_batch` is not supported for models '
                                 'distributed with tf.distribute.Strategy.')
     # Validate and standardize user data.
@@ -1139,7 +1139,7 @@ class Model(training_lib.Model):
     self._check_call_args('test_on_batch')
 
     if (self._distribution_strategy and
-        distribution_strategy_context.in_cross_replica_context()):
+        distribute_lib.in_cross_replica_context()):
       raise NotImplementedError('`test_on_batch` is not supported for models '
                                 'distributed with tf.distribute.Strategy.')
     # Validate and standardize user data.
@@ -1194,7 +1194,7 @@ class Model(training_lib.Model):
     self._check_call_args('predict_on_batch')
 
     if (self._distribution_strategy and
-        distribution_strategy_context.in_cross_replica_context()):
+        distribute_lib.in_cross_replica_context()):
       raise NotImplementedError(
           '`predict_on_batch` is not supported for models distributed with'
           ' tf.distribute.Strategy.')
@@ -2817,8 +2817,8 @@ class Model(training_lib.Model):
     strategy = self._distribution_strategy
 
     # Otherwise, use the strategy whose scope this is in.
-    if not strategy and distribution_strategy_context.has_strategy():
-      strategy = distribution_strategy_context.get_strategy()
+    if not strategy and distribute_lib.has_strategy():
+      strategy = distribute_lib.get_strategy()
     return strategy and strategy.extended._in_multi_worker_mode()  # pylint: disable=protected-access
 
   @property

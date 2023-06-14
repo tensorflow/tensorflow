@@ -41,8 +41,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
                                             grpc::EagerService::AsyncService,
                                             RequestMessage, ResponseMessage>;
 
-  GrpcEagerServiceImpl(const WorkerEnv* env,
-                       ::grpc::ServerBuilder* server_builder);
+  GrpcEagerServiceImpl(WorkerEnv* env, ::grpc::ServerBuilder* server_builder);
   virtual ~GrpcEagerServiceImpl() {}
 
   // Create a master context in eager service.
@@ -151,7 +150,7 @@ class GrpcEagerServiceImpl : public tsl::AsyncServiceInterface {
     });
   }
 
-  const WorkerEnv* const env_;  // Not owned.
+  WorkerEnv* const env_;  // Not owned.
   EagerServiceImpl local_impl_;
 
   // A single-threaded thread pool to handle streaming enqueue rpc request.

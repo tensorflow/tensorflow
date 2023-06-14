@@ -220,13 +220,13 @@ tensorflow::Status DelegateData::Prepare(
   auto device_mgr =
       std::make_unique<tensorflow::StaticDeviceMgr>(std::move(devices));
   // Note that Rendezvous is ref-counted so it will be automatically deleted.
-  tensorflow::Rendezvous* rendezvous =
-      new tensorflow::IntraProcessRendezvous(device_mgr.get());
+  auto rendezvous = tsl::core::RefCountPtr<tensorflow::IntraProcessRendezvous>(
+      new tensorflow::IntraProcessRendezvous(device_mgr.get()));
   eager_context_ = new tensorflow::EagerContext(
       session_options,
       tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
       /*async=*/false, device_mgr.release(), /*device_mgr_owned*/ true,
-      rendezvous, nullptr);
+      std::move(rendezvous), nullptr);
 
   if (main_subgraph) {
     TF_RETURN_IF_ERROR(RegisterFunctionDefForSubgraphs(

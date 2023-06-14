@@ -530,7 +530,7 @@ struct ValuePortHasher {
 };
 
 using ValuePortResultMap =
-    std::unordered_map<ValuePort, Attribute, ValuePortHasher>;
+    absl::flat_hash_map<ValuePort, Attribute, ValuePortHasher>;
 using ComputedQueryFn = function_ref<bool(ValuePort)>;
 using ValueQueryFn = function_ref<Attribute(const ValuePort&)>;
 using ValuePortInputs = SmallVectorImpl<ValuePort>;
@@ -1200,14 +1200,24 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
       for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
         dim_args_spec.push_back(attr.getValue().str());
       }
-
+      std::vector<std::string> disabled_checks;
+      for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+        disabled_checks.push_back(attr.getValue().str());
+      }
+      std::vector<std::string> platforms;
+      for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+        platforms.push_back(attr.getValue().str());
+      }
       // Always use the first platform. The assumption is that shape inference
       // results should be the same regardless of which platform is chosen.
-      int platform_index = op.getPlatforms().size() > 1 ? 0 : -1;
+      // Very old versions of the op have an empty platforms attribute.
+      std::string loading_platform =
+          (platforms.empty() ? "CPU" : platforms.front());
 
       auto l = tensorflow::XlaCallModuleLoader::Create(
           &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-          std::move(dim_args_spec), platform_index);
+          std::move(dim_args_spec), std::move(disabled_checks),
+          std::move(platforms), std::move(loading_platform));
       if (!l.ok()) {
         LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
                                 << l.status().ToString() << "\n");
@@ -1856,14 +1866,14 @@ bool ShapeInference::InferShapeForXlaGatherOp(XlaGatherOp op) {
   auto output_shape = xla::ShapeInference::InferGatherShape(
       input_shape, start_indices_shape, gather_dim_numbers, slice_sizes);
   if (!output_shape.ok()) {
-    op->emitError(output_shape.status().message());
+    op->emitError() << output_shape.status().message();
     return false;
   }
 
   auto refined_type = xla::ConvertShapeToType<RankedTensorType>(
       *output_shape, mlir::Builder(op));
   if (!refined_type.ok()) {
-    op->emitError(refined_type.status().message());
+    op->emitError() << refined_type.status().message();
     return false;
   }
 
@@ -2145,7 +2155,8 @@ bool ShapeInference::RefineWithInferTypeOpInterface(
   SmallVector<Type, 4> inferred;
   LogicalResult res = infer_ti.inferReturnTypes(
       op->getContext(), op->getLoc(), op->getOperands(),
-      op->getAttrDictionary(), op->getRegions(), inferred);
+      op->getAttrDictionary(), op->getPropertiesStorage(), op->getRegions(),
+      inferred);
   if (failed(res)) {
     op->emitOpError("failed to refine type as inference failed");
     return false;

@@ -852,7 +852,7 @@ void populateTfJitRtConstraintsPolicies(ClusteringPolicySet& policies,
 
 mlir::LogicalResult IsCompilableConstant(mlir::ElementsAttr value) {
   return success(value.getNumElements() <= 16 &&
-                 value.getType().getElementType().isIntOrIndexOrFloat());
+                 value.getShapedType().getElementType().isIntOrIndexOrFloat());
 }
 
 static bool IsI1Integer(Type type) {

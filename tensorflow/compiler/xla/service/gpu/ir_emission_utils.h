@@ -31,11 +31,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// If the most minor dimension in the transpose operand is smaller than this,
-// untiled transposition may be more efficient.
+// If a dimensions is smaller than this, untiled transposition may be more
+// efficient.
 inline constexpr int64_t kMinDimensionToTransposeTiled = 16;
-// But if the product of the dimensions to be swapped is larger than this, tiled
-// transposition may be more efficient.
+// But if both swap dimensions are larger than 'kMinDimensionToTransposeTiled2',
+// and the product of the dimensions to be swapped is larger than
+// 'kMinTotalDimensionsToTransposeTiled', tiled transposition may be more
+// efficient.
+inline constexpr int64_t kMinDimensionToTransposeTiled2 = 8;
 inline constexpr int64_t kMinTotalDimensionsToTransposeTiled = 64 * 128;
 
 // Matrix multiplication before the rewrite.
@@ -53,9 +56,8 @@ inline constexpr int64_t MinThreadsXRowReduction() { return 1024; }
 // When doing batched row reduction, how big the batch dimension could be.
 inline constexpr int64_t BatchedReductionRaceFreeBound() { return 8; }
 
-// GemmRewriterTriton sets backend_config of Triton GEMM custom fusions to
-// this string. TritonAutotuner replaces it with TritonGemmKey proto.
-inline constexpr absl::string_view kTritonGemmBackendConfig = "__triton_gemm";
+// Fusions that use Triton have FusionBackendConfig.kind equal to this string.
+inline constexpr absl::string_view kTritonGemmFusionKind = "__triton_gemm";
 
 // Returns true if `hlo` will be implemented as a call to a cuSolver routine.
 //
@@ -145,6 +147,22 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations);
 
+// Returns the dynamic-update-slice instructions defining the results of a
+// fusion node. A dynamic slice update is said to be "defining" of a result if
+// that result is the output of a dynamic slice update, or if that result is the
+// output of a bitcast of a dynamic slice update---since such bitcast may be
+// handled as a no-op.
+std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+    const HloComputation* fusion);
+
+// Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
+// A dynamic slice update is said to be "defining" of a result if that result is
+// the output of a dynamic slice update, or if that result is the output of a
+// bitcast of a dynamic slice update---since such bitcast may be handled as a
+// no-op.
+std::vector<mlir::mhlo::DynamicUpdateSliceOp>
+GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
+
 Shape GetShape(mlir::Value value);
 
 // Returns whether the given reduction can be safely generated without atomics:
@@ -207,13 +225,34 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr);
 // Whether there is a fusion root triggering transposition emitter.
 bool HasAnyTiledTransposeRoot(HloComputation* computation);
 
-std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
-                                          Vector3& permutation);
+struct TransposeDescription {
+  Vector3 dimensions;
+  Vector3 permutation;
 
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
-                                                 Vector3& permutation);
+  TransposeDescription(Vector3 dimensions, Vector3 permutation)
+      : dimensions(dimensions), permutation(permutation) {}
 
-std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+  std::string ToString() const {
+    return absl::StrCat("dimensions=", VectorString(dimensions),
+                        ", permutation=", VectorString(permutation));
+  }
+
+  bool operator==(const TransposeDescription& other) const {
+    return dimensions == other.dimensions && permutation == other.permutation;
+  }
+
+  bool operator!=(const TransposeDescription& other) const {
+    return !(*this == other);
+  }
+};
+
+std::optional<TransposeDescription> FindTiledTranspose(
+    const HloInstruction& instr);
+
+std::optional<TransposeDescription> FindTiledLogicalTranspose(
+    const HloInstruction& instr);
+
+std::optional<TransposeDescription> FindAnyTiledTranspose(
     const HloInstruction& instr);
 
 // Log and verify an LLVM module.

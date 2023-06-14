@@ -152,6 +152,22 @@ def LiftMatmulWithBias : Pat<
       (NamedAttr<"transpose_b"> $transpose_b))),
   [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
 
+// TODO(b/278493977): Create generic implementation of lifting any fused op
+// with any reshaping op
+def LiftMatmulWithReshapeAndBias : Pat<
+  (TF_BiasAddOp:$res
+    (TF_ReshapeOp:$out
+      (TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
+    $shape),
+    $bias, IsDataFormatNHWC:$bias_data_format),
+  (LiftAsFunctionCall<"composite_matmul_with_reshape_and_bias_fn">
+    (ArgumentList $a, $b, $bias, $shape),
+    (ResultList $res),
+    (NamedAttributeList
+      (NamedAttr<"transpose_a"> $transpose_a),
+      (NamedAttr<"transpose_b"> $transpose_b))),
+  [(IsNotInLiftedFunc $res)], (addBenefit 5)>;
+
 def LiftConv3dWithBias : Pat<
   (TF_BiasAddOp:$res
     (TF_Conv3DOp $input, $filter, $strides, $padding,

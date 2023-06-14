@@ -1,5 +1,4 @@
-// RUN: mlir-hlo-opt %s \
-// RUN:   --gml-st-cpu-tiling-pipeline="enable-fusion-clusters=true" \
+// RUN: mlir-hlo-opt %s --gml-st-cpu-tiling-pipeline \
 // RUN: | FileCheck %s
 
 func.func @map_bcast_map(%arg0: tensor<?xf32>, %arg1: tensor<?x?x?xf32>,

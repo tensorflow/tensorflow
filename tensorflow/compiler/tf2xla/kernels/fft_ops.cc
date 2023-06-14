@@ -15,6 +15,9 @@ limitations under the License.
 
 // XLA-specific Ops for FFT.
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"

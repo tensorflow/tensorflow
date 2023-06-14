@@ -28,7 +28,7 @@ cc_library(
     name = "mla_utils",
     hdrs = ["mla_utils.h"],
     visibility = [
-        "//tensorflow/core/tfrt/saved_model:__pkg__",
+        "//visibility:private",  # Only private by automation, not intent. Owner may accept CLs adding visibility. See go/scheuklappen#explicit-private.
     ],
     deps = [
         "//tensorflow/core/platform:errors",

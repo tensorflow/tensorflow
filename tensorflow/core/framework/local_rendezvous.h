@@ -45,7 +45,6 @@ class LocalRendezvous {
   // Pass in nullptr if the wrapping class is not refcounted.
   explicit LocalRendezvous(Rendezvous* owner, int num_shards)
       : num_buckets_(num_shards > 0 ? num_shards : 1),
-        has_rc_owner_(owner != nullptr),
         rc_owner_(owner),
         table_buckets_(std::make_unique<TableBucket[]>(num_buckets_)) {}
   ~LocalRendezvous();
@@ -59,10 +58,16 @@ class LocalRendezvous {
   void StartAbort(const Status& status);
   Status status();
 
- private:
-  using OptionalOwnerPtr = std::optional<tsl::core::RefCountPtr<Rendezvous>>;
+  // Releases all the references to the aborted rendezvous. Used in unit tests.
+  static void ReleaseAbortedRendezvous() {
+    mutex_lock l(aborted_rendezs_mu_);
+    aborted_rendezs_.clear();
+  }
 
-  OptionalOwnerPtr GetOwnerRefCountPtr();
+ private:
+  void DoAbort(const Status& status);
+
+  tsl::core::RefCountPtr<Rendezvous> GetOwnerRefCountPtr();
 
   struct Item;
 
@@ -80,10 +85,9 @@ class LocalRendezvous {
   typedef gtl::FlatMap<uint64, ItemQueue> Table;
 
   const int num_buckets_;
-  const bool has_rc_owner_;
   // Pointer to the owner class of this LocalRendezvous if it is refcounted,
   // nullptr otherwise.
-  tsl::core::WeakPtr<Rendezvous> rc_owner_;
+  Rendezvous* rc_owner_;
 
   struct TableBucket {
     mutex mu;
@@ -98,6 +102,15 @@ class LocalRendezvous {
   const std::unique_ptr<TableBucket[]> table_buckets_;
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
+
+  // We deliberately leak one reference of the aborted rendezvous here, so that
+  // they won't be destructed, and lose the status_.
+  // This is necessary because subsequent calls to RendezvousMgr::Find() will
+  // return the aborted rendezvous, and proper errors will be propagated.
+  // TODO(hhb): find a better way to manage rendezvous lifespan.
+  static mutex& aborted_rendezs_mu_;
+  static std::vector<tsl::core::RefCountPtr<Rendezvous> >& aborted_rendezs_
+      TF_GUARDED_BY(aborted_rendezs_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
 };

@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_CLIENT_H_
 
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/types/span.h"

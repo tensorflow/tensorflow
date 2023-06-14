@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <optional>
 #include <utility>
+#include <vector>
 
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
