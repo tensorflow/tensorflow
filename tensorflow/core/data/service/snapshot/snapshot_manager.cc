@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -32,9 +31,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/snapshot/file_utils.h"
 #include "tensorflow/core/data/service/snapshot/path_utils.h"
-#include "tensorflow/core/data/service/snapshot/utils.h"
 #include "tensorflow/core/data/service/split_provider.h"
-#include "tensorflow/core/data/snapshot_utils.h"
 #include "tensorflow/tsl/lib/io/compression.h"
 #include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/errors.h"
