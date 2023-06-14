@@ -27,11 +27,6 @@ def MathOptimizationPass
     ops from the Math dialect.
   }];
 
-  let dependentDialects = [
-    "mlir::vector::VectorDialect",
-    "mlir::x86vector::X86VectorDialect"
-  ];
-
   let constructor = "::xla::CreateMathOptimizationPass()";
 
   let options = [
