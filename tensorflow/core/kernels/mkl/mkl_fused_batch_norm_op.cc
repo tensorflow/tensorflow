@@ -835,7 +835,7 @@ class MklFusedBatchNormOp : public OpKernel {
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
     depth_ = 0;
     mean_values_ = nullptr;
@@ -849,12 +849,12 @@ class MklFusedBatchNormOp : public OpKernel {
                      context->GetAttr("num_side_inputs", &num_side_inputs));
       // Currently _MKLFusedBatchNormEx do not support "SideInput"
       OP_REQUIRES(context, num_side_inputs == 0,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "_MKLFusedBatchNorm do not support side input now."));
 
       OP_REQUIRES_OK(context, ParseActivationMode(context, &activation_mode_));
       OP_REQUIRES(context, activation_mode_ == FusedBNActivationMode::kRelu,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "_MKLFusedBatchNorm only support Relu activation"));
     }
   }
@@ -880,28 +880,32 @@ class MklFusedBatchNormOp : public OpKernel {
       if (dnn_shape_src.IsMklTensor()) {
         tf_shape_src = dnn_shape_src.GetTfShape();
         OP_REQUIRES(context, dnn_shape_src.GetDimension() == 4,
-                    errors::InvalidArgument("input must be 4-dimensional",
-                                            src_tensor.shape().DebugString()));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                     src_tensor.shape().DebugString())));
       } else {
         tf_shape_src = src_tensor.shape();
         OP_REQUIRES(context, src_tensor.dims() == 4,
-                    errors::InvalidArgument("input must be 4-dimensional",
-                                            src_tensor.shape().DebugString()));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                     src_tensor.shape().DebugString())));
       }
       OP_REQUIRES(context, scale_tensor.dims() == 1,
-                  errors::InvalidArgument("scale must be 1-dimensional",
-                                          scale_tensor.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("scale must be 1-dimensional",
+                                   scale_tensor.shape().DebugString())));
       OP_REQUIRES(context, shift_tensor.dims() == 1,
-                  errors::InvalidArgument("offset must be 1-dimensional",
-                                          shift_tensor.shape().DebugString()));
-      OP_REQUIRES(
-          context, est_mean_tensor.dims() == 1,
-          errors::InvalidArgument("estimated_mean must be 1-dimensional",
-                                  est_mean_tensor.shape().DebugString()));
-      OP_REQUIRES(
-          context, est_variance_tensor.dims() == 1,
-          errors::InvalidArgument("estimated_variance must be 1-dimensional",
-                                  est_variance_tensor.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("offset must be 1-dimensional",
+                                   shift_tensor.shape().DebugString())));
+      OP_REQUIRES(context, est_mean_tensor.dims() == 1,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("estimated_mean must be 1-dimensional",
+                                   est_mean_tensor.shape().DebugString())));
+      OP_REQUIRES(context, est_variance_tensor.dims() == 1,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("estimated_variance must be 1-dimensional",
+                                   est_variance_tensor.shape().DebugString())));
 
       int num_channels;
       if (dnn_shape_src.IsMklTensor()) {
@@ -911,33 +915,33 @@ class MklFusedBatchNormOp : public OpKernel {
       }
 
       OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "scale must have the same number of elements "
                       "as the channels of x, got ",
-                      scale_tensor.NumElements(), " and ", num_channels));
+                      scale_tensor.NumElements(), " and ", num_channels)));
 
       OP_REQUIRES(context, shift_tensor.NumElements() == num_channels,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "offset must have the same number of elements "
                       "as the channels of x, got ",
-                      shift_tensor.NumElements(), " and ", num_channels));
+                      shift_tensor.NumElements(), " and ", num_channels)));
       if (!is_training_ || exponential_avg_factor_ != 1.) {
         std::string prefix_msg = is_training_
                                      ? "When exponential_avg_factor != 1"
                                      : "When is_training=false";
         OP_REQUIRES(context, est_mean_tensor.NumElements() == num_channels,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         prefix_msg,
                         ", mean must have the same number "
                         "of elements as the channels of x, got ",
-                        est_mean_tensor.NumElements(), " and ", num_channels));
+                        est_mean_tensor.NumElements(), " and ", num_channels)));
         OP_REQUIRES(
             context, est_variance_tensor.NumElements() == num_channels,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 prefix_msg,
                 ", variance must have the same "
                 "number of elements as the channels of x, got ",
-                est_variance_tensor.NumElements(), " and ", num_channels));
+                est_variance_tensor.NumElements(), " and ", num_channels)));
       }
 
       // Handle the special case: input with 0 element and 0 batch size.
@@ -1169,9 +1173,9 @@ class MklFusedBatchNormOp : public OpKernel {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 
@@ -1314,7 +1318,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
     depth_ = 0;
   }
@@ -1345,48 +1349,52 @@ class MklFusedBatchNormGradOp : public OpKernel {
       TensorShape tf_shape_src, tf_shape_diff_dst;
       if (dnn_shape_diff_dst.IsMklTensor()) {
         tf_shape_diff_dst = dnn_shape_diff_dst.GetTfShape();
-        OP_REQUIRES(
-            context, dnn_shape_diff_dst.GetDimension() == 4,
-            errors::InvalidArgument("input must be 4-dimensional",
-                                    diff_dst_tensor.shape().DebugString()));
+        OP_REQUIRES(context, dnn_shape_diff_dst.GetDimension() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                     diff_dst_tensor.shape().DebugString())));
       } else {
         tf_shape_diff_dst = diff_dst_tensor.shape();
-        OP_REQUIRES(
-            context, diff_dst_tensor.dims() == 4,
-            errors::InvalidArgument("input must be 4-dimensional",
-                                    diff_dst_tensor.shape().DebugString()));
+        OP_REQUIRES(context, diff_dst_tensor.dims() == 4,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                     diff_dst_tensor.shape().DebugString())));
       }
 
       if (dnn_shape_src.IsMklTensor()) {
         tf_shape_src = dnn_shape_src.GetTfShape();
         OP_REQUIRES(context, dnn_shape_src.GetDimension() == 4,
-                    errors::InvalidArgument("input must be 4-dimensional",
-                                            src_tensor.shape().DebugString()));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                     src_tensor.shape().DebugString())));
       } else {
         tf_shape_src = src_tensor.shape();
         OP_REQUIRES(context, src_tensor.dims() == 4,
-                    errors::InvalidArgument("input must be 4-dimensional",
-                                            src_tensor.shape().DebugString()));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("input must be 4-dimensional",
+                                     src_tensor.shape().DebugString())));
       }
 
       OP_REQUIRES(context, scale_tensor.dims() == 1,
-                  errors::InvalidArgument("scale must be 1-dimensional",
-                                          scale_tensor.shape().DebugString()));
-      OP_REQUIRES(
-          context, saved_mean_tensor.dims() == 1,
-          errors::InvalidArgument("saved mean must be 1-dimensional",
-                                  saved_mean_tensor.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("scale must be 1-dimensional",
+                                   scale_tensor.shape().DebugString())));
+      OP_REQUIRES(context, saved_mean_tensor.dims() == 1,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("saved mean must be 1-dimensional",
+                                   saved_mean_tensor.shape().DebugString())));
+
+      OP_REQUIRES(context, saved_variance_tensor.dims() == 1,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "saved variance must be 1-dimensional",
+                      saved_variance_tensor.shape().DebugString())));
 
       OP_REQUIRES(
-          context, saved_variance_tensor.dims() == 1,
-          errors::InvalidArgument("saved variance must be 1-dimensional",
-                                  saved_variance_tensor.shape().DebugString()));
-
-      OP_REQUIRES(context, tf_shape_src == tf_shape_diff_dst,
-                  errors::InvalidArgument(
-                      "x and y_backprop must have same shape, but x has shape ",
-                      src_tensor.shape(), " and y_backprop has shape ",
-                      diff_dst_tensor.shape()));
+          context, tf_shape_src == tf_shape_diff_dst,
+          absl::InvalidArgumentError(absl::StrCat(
+              "x and y_backprop must have same shape, but x has shape ",
+              src_tensor.shape().DebugString(), " and y_backprop has shape ",
+              diff_dst_tensor.shape().DebugString())));
 
       int num_channels;
       if (dnn_shape_src.IsMklTensor()) {
@@ -1395,21 +1403,21 @@ class MklFusedBatchNormGradOp : public OpKernel {
         num_channels = GetTensorDim(src_tensor, tensor_format_, 'C');
       }
       OP_REQUIRES(context, scale_tensor.NumElements() == num_channels,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "scale must have the same number of elements "
                       "as the channels of x, got ",
-                      scale_tensor.NumElements(), " and ", num_channels));
+                      scale_tensor.NumElements(), " and ", num_channels)));
       OP_REQUIRES(context, saved_mean_tensor.NumElements() == num_channels,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "reserve_space_1 must have the same number of "
                       "elements as the channels of x, got ",
-                      saved_mean_tensor.NumElements(), " and ", num_channels));
+                      saved_mean_tensor.NumElements(), " and ", num_channels)));
       OP_REQUIRES(
           context, saved_variance_tensor.NumElements() == num_channels,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "reserve_space_2 must have the same number of "
               "elements as the channels of x, got ",
-              saved_variance_tensor.NumElements(), " and ", num_channels));
+              saved_variance_tensor.NumElements(), " and ", num_channels)));
 
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* diff_src_tensor = nullptr;
@@ -1621,9 +1629,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 
