@@ -150,8 +150,11 @@ def tflite_linkopts_no_undefined():
     """
     return if_oss(
         select({
+            # macOS/iOS linker uses "--undefined error" instead of "--no-undefined".
             "//tensorflow:ios": [
-                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
+            "//tensorflow:macos": [
                 "-Wl,-undefined,error",
             ],
             "//conditions:default": ["-Wl,--no-undefined"],
@@ -165,7 +168,9 @@ def tflite_linkopts_no_undefined():
             "//tools/cpp:msan_build": [],
             "//tools/cpp:tsan_build": [],
             "//tensorflow:ios": [
-                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
+            "//tensorflow:macos": [
                 "-Wl,-undefined,error",
             ],
             "//conditions:default": ["-Wl,--no-undefined"],
