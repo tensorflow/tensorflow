@@ -1302,20 +1302,32 @@ class DataHandler(object):
                     "callbacks to save checkpoints or log training progress, "
                     "etc")
 
+  def _log_data_exhausted_warning(self):
+    logging.warning("Your input ran out of data; hence clipping steps_per_epoch "
+                    "to maximum possible value (in this case {} steps). Note that "
+                    " this means the entire dataset will be re-used for this"
+                    "operation for every epoch.".format(len(self._dataset)))
+
   def _infer_steps(self, steps, dataset):
     """Infers steps_per_epoch needed to loop through a dataset."""
     if steps == -1:
       self._log_indefinite_training_warning()
       return None
 
+    size = cardinality.cardinality(dataset)
+    is_infinite = size == cardinality.INFINITE
+
     if steps is not None:
-      return steps
+      if is_infinite:
+        return steps
+      else:
+        self._log_data_exhausted_warning()
+        return min(steps, len(dataset))
 
     adapter_steps = self._adapter.get_size()
     if adapter_steps is not None:
       return adapter_steps
 
-    size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
       raise ValueError(
           "When passing an infinitely repeating dataset, please specify a "
