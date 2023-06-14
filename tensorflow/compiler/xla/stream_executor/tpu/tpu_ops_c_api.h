@@ -270,6 +270,13 @@ typedef struct TpuExecute_RuntimeInputToPaddedData_Params {
 TFTPU_CAPI_EXPORT void TpuExecute_RuntimeInputToPaddedData(
     TpuExecute_RuntimeInputToPaddedData_Params* params);
 
+TFTPU_CAPI_EXPORT void TpuExecute_GetTpuEmbeddingMemoryAllocations(
+    int device_ordinal, SE_DeviceMemoryBase** addrs, size_t* addrs_count,
+    TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuExecute_FreeTpuEmbeddingMemoryAllocations(
+    int device_ordinal, SE_DeviceMemoryBase* addrs);
+
 typedef struct ConfigureDistributedTpuOp_DoWork_Params {
   int32_t struct_size;
   void* priv;
@@ -757,6 +764,9 @@ struct TfTpu_OpsApiFn {
   TFTPU_ADD_FN_IN_STRUCT(HardwareLayout_ShapeSizeCompactRaw);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecute_RuntimeInputToPaddedData);
+
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecute_GetTpuEmbeddingMemoryAllocations);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecute_FreeTpuEmbeddingMemoryAllocations);
 
   TFTPU_ADD_FN_IN_STRUCT(ConfigureDistributedTpuOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(WaitForDistributedTpuOp_DoWork);
