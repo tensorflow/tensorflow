@@ -1316,6 +1316,7 @@ py_strict_library(
     deps = [
         ":auto_control_deps",
         ":composite_tensor",
+        ":constant_op",
         ":dtypes",
         ":errors",
         ":indexed_slices",
@@ -1327,7 +1328,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
-        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:tensor_array_ops",
@@ -1809,6 +1809,19 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "flexible_dtypes",
+    srcs = ["flexible_dtypes.py"],
+    deps = [
+        ":constant_op",
+        ":dtypes",
+        ":ops",
+        ":weak_tensor",
+        "//tensorflow/python/util:nest",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_strict_library(
     name = "stack",
     srcs = ["stack.py"],
@@ -1827,6 +1840,8 @@ py_strict_library(
         ":dtypes",
         ":errors",
         ":op_callbacks",
+        ":stack",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
         ":type_spec",
@@ -1837,8 +1852,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:record",
-        "//tensorflow/python/framework:stack",
-        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/ops:handle_data_util",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:nested_structure_coder",
@@ -3065,6 +3078,26 @@ py_strict_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/platform:_pywrap_tf2",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "flexible_dtypes_test",
+    srcs = ["flexible_dtypes_test.py"],
+    tags = [
+        "no_pip",
+        "no_windows",  # TODO(b/286939592): Enable this test on Windows.
+    ],
+    deps = [
+        ":constant_op",
+        ":dtypes",
+        ":flexible_dtypes",
+        ":ops",
+        ":weak_tensor",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )
