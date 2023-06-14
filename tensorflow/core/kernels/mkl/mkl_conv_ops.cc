@@ -425,8 +425,8 @@ class MklConvFwdPrimitive : public MklPrimitive {
               post_ops.append_sum(op_scale, /*zero_point=*/0,
                                   MklDnnType<float>());
             } else {
-              TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
-                                 "Summand data type is expected to be float"));
+              TF_CHECK_OK(absl::FailedPreconditionError(
+                  "Summand data type is expected to be float"));
             }
           } else {
             post_ops.append_sum(op_scale);
@@ -2168,8 +2168,8 @@ class MklQuantizedConvOp
     } else {
 #ifdef ENABLE_ONEDNN_V3
       if (!std::is_same<Toutput, qint32>::value)
-        TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
-                           "Output datatype is expected to be qint32."));
+        TF_CHECK_OK(absl::FailedPreconditionError(
+            "Output datatype is expected to be qint32."));
       float min_min_filter = min_filter[0];
       float max_max_filter = max_filter[0];
       for (size_t i = 0; i < depth; ++i) {
@@ -2343,8 +2343,8 @@ class MklQuantizedConvOp
                                                         output_tensor);
       const Tensor& summand = context->input(this->get_input_add_idx());
       if (summand.dtype() != DT_FLOAT)
-        TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
-                           "Current fusion requires summand to be float"));
+        TF_CHECK_OK(absl::FailedPreconditionError(
+            "Current fusion requires summand to be float"));
       // We need to compute scale for the summand
       const float min_input =
           context->input(min_input_idx_).template scalar<float>()();
@@ -2399,8 +2399,8 @@ class MklQuantizedConvOp
       int summand_idx = this->get_input_add_idx();
       DataType summand_dt = this->input_type(summand_idx);
       if (summand_dt != DT_FLOAT)
-        TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
-                           "Summand datatype is expected to be float."));
+        TF_CHECK_OK(absl::FailedPreconditionError(
+            "Summand datatype is expected to be float."));
       Tensor& summand_float = const_cast<Tensor&>(context->input(summand_idx));
       OP_REQUIRES_OK(context,
                      summand_float.BitcastFrom(summand_float, DT_QINT32,
@@ -2522,9 +2522,9 @@ class MklQuantizedConvOp
     if ((min_filter_vector.NumElements() == 0) ||
         (max_filter_vector.NumElements() == 0) ||
         (min_filter_vector.shape() != max_filter_vector.shape())) {
-      TF_CHECK_OK(Status(absl::StatusCode::kFailedPrecondition,
-                         "`min_filter and max_filter` must have same"
-                         "shape and contain at least one element."));
+      TF_CHECK_OK(absl::FailedPreconditionError(
+          "`min_filter and max_filter` must have same"
+          "shape and contain at least one element."));
     }
     const float* min_filter = min_filter_vector.flat<float>().data();
     const float* max_filter = max_filter_vector.flat<float>().data();
