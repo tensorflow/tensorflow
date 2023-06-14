@@ -727,6 +727,9 @@ tsl_gpu_library(
         "nccl_all_to_all_thunk.cc",
         "nccl_collective_permute_thunk.cc",
         "nccl_collective_thunk.cc",
+        "nccl_p2p_thunk_common.cc",
+        "nccl_recv_thunk.cc",
+        "nccl_send_thunk.cc",
     ],
     hdrs = [
         "nccl_all_gather_thunk.h",
@@ -734,6 +737,9 @@ tsl_gpu_library(
         "nccl_all_to_all_thunk.h",
         "nccl_collective_permute_thunk.h",
         "nccl_collective_thunk.h",
+        "nccl_p2p_thunk_common.h",
+        "nccl_recv_thunk.h",
+        "nccl_send_thunk.h",
     ],
     # Override tsl_gpu_library()'s internal default value of ["//buildenv/target:gce"].
     compatible_with = [],
@@ -751,6 +757,7 @@ tsl_gpu_library(
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:collective_ops_utils",
         "//tensorflow/compiler/xla/service:global_device_id",
+        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_activation_header",
