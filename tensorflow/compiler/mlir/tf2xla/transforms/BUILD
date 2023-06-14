@@ -440,7 +440,6 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/mlir_hlo",
-        "//tensorflow/compiler/xla/translate/hlo_to_mhlo:mlir_hlo_builder",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
