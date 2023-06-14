@@ -820,8 +820,14 @@ def real(input, name=None):
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
-    else:
+    elif input.dtype.is_numeric:
       return input
+    else:
+      raise TypeError(
+          "input must be a numeric tensor, but got tensor with dtype {}".format(
+              input.dtype
+          )
+      )
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
@@ -1048,7 +1054,10 @@ def saturate_cast(value, dtype, name=None):
         # Clamp real and imag components separately, if required.
         real_in_dtype = in_dtype.real_dtype
         real_out_dtype = dtype.real_dtype
-        if real_in_dtype.min < real_out_dtype.min or real_in_dtype.max > real_out_dtype.max:
+        if (
+            real_in_dtype.min < real_out_dtype.min
+            or real_in_dtype.max > real_out_dtype.max
+        ):
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
