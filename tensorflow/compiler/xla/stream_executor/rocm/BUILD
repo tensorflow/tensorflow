@@ -44,6 +44,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor:device_options",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/compiler/xla/stream_executor/platform",
@@ -85,6 +86,7 @@ cc_library(
 cc_library(
     name = "rocm_gpu_executor",
     srcs = if_rocm_is_configured(["rocm_gpu_executor.cc"]),
+    hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
         ":rocm_driver",
@@ -108,6 +110,18 @@ cc_library(
         "//tensorflow/tsl/platform:env",
     ]),
     alwayslink = True,
+)
+
+cc_library(
+    name = "rocm_gpu_executor_header",
+    textual_hdrs = if_rocm_is_configured(["rocm_gpu_executor.h"]),
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        ":rocm_kernel",
+        "//tensorflow/compiler/xla/stream_executor:event",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_executor_header",
+        "//tensorflow/compiler/xla/stream_executor/platform",
+    ]),
 )
 
 cc_library(

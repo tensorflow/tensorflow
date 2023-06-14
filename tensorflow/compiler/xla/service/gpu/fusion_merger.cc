@@ -212,11 +212,18 @@ FusionDecision FusionInstructionMerger::ShouldFuse(HloInstruction* producer) {
     return "not a loop fusion";
   }
 
+  auto producer_hero = GetRealHeroForMultiOutputFusion(*producer);
+
   bool has_reduction_user = false;
   for (const HloInstruction* user : producer->users()) {
     if (user->opcode() == HloOpcode::kBitcast) {
       ++num_fail_merge_all_users_;
       return "not fusing bitcast ops";
+    }
+    auto consumer_hero = GetRealHeroForMultiOutputFusion(*user);
+    if (NoFusionPossible compatible =
+            !FusionHeroesAreCompatible(producer_hero, consumer_hero)) {
+      return !compatible;
     }
     FusionDecision fusible = IsProducerConsumerFusible(*producer, *user);
     if (!fusible) {

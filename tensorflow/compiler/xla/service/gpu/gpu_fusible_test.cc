@@ -600,6 +600,9 @@ TEST_F(
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
       module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_FALSE(
+      FusionHeroesAreCompatible(fusion_1->fused_expression_root()->operand(0),
+                                fusion_2->fused_expression_root()->operand(0)));
   EXPECT_FALSE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
 }
 

@@ -39,6 +39,6 @@ tf_py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/compiler/mlir/tfr:test_utils",
-        "//tensorflow/python:test_ops",
+        "//tensorflow/python/framework:test_ops",
     ],
 )

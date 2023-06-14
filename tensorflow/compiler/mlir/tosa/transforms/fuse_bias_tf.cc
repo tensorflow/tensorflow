@@ -19,8 +19,10 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
 #include <optional>
+#include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,7 +46,7 @@ namespace {
 
 class FuseBiasTF : public impl::TosaFusebiasTFPassBase<FuseBiasTF> {
  public:
-  explicit FuseBiasTF() {}
+  explicit FuseBiasTF() = default;
   void runOnOperation() override;
 };
 

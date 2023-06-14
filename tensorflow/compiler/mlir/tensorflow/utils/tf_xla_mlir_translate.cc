@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "absl/strings/str_join.h"
@@ -89,7 +91,7 @@ mlir::LogicalResult PrintHloModuleText(
       compilation_result.computation->proto(), module_config);
   if (!status_or_hlo_module.ok()) {
     LOG(ERROR) << "Conversion to HLO module failed: "
-               << status_or_hlo_module.status().ToString();
+               << status_or_hlo_module.status();
     return mlir::failure();
   }
 
@@ -315,7 +317,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
   auto args_status =
       ParseArgumentShapes(mlir::StringRefToView(input_shapes), arg_shapes);
   if (!args_status.ok()) {
-    LOG(ERROR) << args_status.ToString();
+    LOG(ERROR) << args_status;
     return mlir::failure();
   }
 
@@ -334,8 +336,7 @@ static mlir::LogicalResult MlirTfToHloTextTranslateFunctionImpl(
                         /*shape_determination_fns=*/{}, &compilation_result,
                         custom_legalization_passes);
   if (!compilation_status.ok()) {
-    LOG(ERROR) << "TF/XLA compilation failed: "
-               << compilation_status.ToString();
+    LOG(ERROR) << "TF/XLA compilation failed: " << compilation_status;
     return mlir::failure();
   }
 
@@ -351,7 +352,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
       mlir::StringRefToView(input_shapes), mlir::StringRefToView(input_dtypes),
       mlir::StringRefToView(input_types), xla_arguments);
   if (!args_status.ok()) {
-    LOG(ERROR) << args_status.ToString();
+    LOG(ERROR) << args_status;
     return mlir::failure();
   }
 
@@ -363,8 +364,7 @@ static mlir::LogicalResult MlirTfGraphToHloTextTranslateFunction(
                            /*shape_determination_fns=*/{}, &compilation_result,
                            /*custom_legalization_passes=*/{});
   if (!compilation_status.ok()) {
-    LOG(ERROR) << "TF/XLA compilation failed: "
-               << compilation_status.ToString();
+    LOG(ERROR) << "TF/XLA compilation failed: " << compilation_status;
     return mlir::failure();
   }
 
@@ -403,7 +403,7 @@ SerializedMlirStringAttrToMlirModuleTranslate(llvm::StringRef input,
   auto status =
       DeserializeMlirModule(str_attr.getValue().str(), context, &module_ref);
   if (!status.ok()) {
-    LOG(ERROR) << status.ToString();
+    LOG(ERROR) << status;
     return nullptr;
   }
 

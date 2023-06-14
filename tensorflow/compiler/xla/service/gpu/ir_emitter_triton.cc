@@ -36,7 +36,6 @@ limitations under the License.
 #include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
@@ -61,7 +60,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
-#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -71,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/path.h"
+#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "triton/Conversion/TritonGPUToLLVM/TritonGPUToLLVMPass.h"
 #include "triton/Conversion/TritonToTritonGPU/TritonToTritonGPUPass.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
@@ -505,9 +504,6 @@ StatusOr<LaunchDimensions> MatMulImpl(
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
 
-  const LaunchDimensions launch_dimensions{
-      {grid_m * grid_n, config.split_k(), batch_size},
-      {config.num_warps() * WarpSize(), 1, 1}};
   Type root_ty = TritonType(b, dot_instr->shape().element_type());
   // Data type to which dot() inputs are converted.
   Type dot_ty = b.getF32Type();
@@ -535,11 +531,27 @@ StatusOr<LaunchDimensions> MatMulImpl(
   Value rhs = fn.getArgument(hlo_rhs_param->parameter_number());
   Value out = fn.getArguments().back();
 
-  auto pid0 = b.create<mt::GetProgramIdOp>(0);
-  auto pid1 = b.create<mt::GetProgramIdOp>(1);
-  auto pid2 = b.create<mt::GetProgramIdOp>(2);
+  // X block size is 32-bit, Y and Z are 16-bit. Use X for large dimensions.
+  constexpr int64_t kBlockCountYZLimit = 65536;
+  const bool large_batch = batch_size >= kBlockCountYZLimit;
+  auto pid_batch = b.create<mt::GetProgramIdOp>(
+      large_batch ? mt::ProgramIDDim::X : mt::ProgramIDDim::Y);
+  auto pid_nc = b.create<mt::GetProgramIdOp>(large_batch ? mt::ProgramIDDim::Y
+                                                         : mt::ProgramIDDim::X);
+  auto pid_k = b.create<mt::GetProgramIdOp>(mt::ProgramIDDim::Z);
 
-  auto group_id = b.create<ma::DivSIOp>(pid0, CreateConst(b, i32_ty, width));
+  // In the imaginary situation where both batch size and grid_m * grid_n
+  // are over 65535 we have to give up. Given the minimal m, n block sizes of 16
+  // this requires at least 256 GB of output.
+  CHECK_LT(batch_size * grid_m * grid_n,
+           kBlockCountYZLimit * kBlockCountYZLimit);
+
+  const LaunchDimensions launch_dimensions{
+      {large_batch ? batch_size : grid_m * grid_n,
+       large_batch ? grid_m * grid_n : batch_size, config.split_k()},
+      {config.num_warps() * WarpSize(), 1, 1}};
+
+  auto group_id = b.create<ma::DivSIOp>(pid_nc, CreateConst(b, i32_ty, width));
   ma::ConstantOp group_m_op = CreateConst(b, i32_ty, group_m);
   auto first_pid_m = b.create<ma::MulIOp>(group_id, group_m_op);
   auto sub0 = b.create<ma::SubIOp>(CreateConst(b, i32_ty, grid_m), first_pid_m);
@@ -588,7 +600,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   };
 
   auto pid_m = b.create<ma::AddIOp>(first_pid_m,
-                                    b.create<ma::RemSIOp>(pid0, group_size));
+                                    b.create<ma::RemSIOp>(pid_nc, group_size));
   auto pid_m_stride =
       b.create<ma::MulIOp>(pid_m, CreateConst(b, i32_ty, block_m));
   // TODO(b/270351731): Consider regenerating range_m to reduce register
@@ -597,14 +609,14 @@ StatusOr<LaunchDimensions> MatMulImpl(
                                       build_range(block_m));
 
   auto pid_n = b.create<ma::DivSIOp>(
-      b.create<ma::RemSIOp>(pid0, CreateConst(b, i32_ty, width)), group_size);
+      b.create<ma::RemSIOp>(pid_nc, CreateConst(b, i32_ty, width)), group_size);
   auto pid_n_stride =
       b.create<ma::MulIOp>(pid_n, CreateConst(b, i32_ty, block_n));
   auto range_n = b.create<ma::AddIOp>(build_splat(pid_n_stride, block_n),
                                       build_range(block_n));
 
   auto range_k = b.create<ma::AddIOp>(
-      build_splat(b.create<ma::MulIOp>(pid1, CreateConst(b, i32_ty, block_k)),
+      build_splat(b.create<ma::MulIOp>(pid_k, CreateConst(b, i32_ty, block_k)),
                   block_k),
       build_range(block_k));
 
@@ -625,7 +637,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
       build_bcast(lhs_offset_k.getResult().template cast<TensorValue>(),
                   shape_m_k));
   auto lhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid2), CreateConst(b, int_ty, stride_batch_lhs));
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_batch_lhs));
   mt::AddPtrOp lhs_ptrs_base = build_addptr(
       build_splat(build_addptr(lhs, lhs_offset_batch), shape_m_k), lhs_offset);
 
@@ -646,7 +658,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
       build_bcast(rhs_offset_n.getResult().template cast<TensorValue>(),
                   shape_k_n));
   auto rhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid2), CreateConst(b, int_ty, stride_batch_rhs));
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_batch_rhs));
   mt::AddPtrOp rhs_ptrs_base = build_addptr(
       build_splat(build_addptr(rhs, rhs_offset_batch), shape_k_n), rhs_offset);
   SmallVector<int64_t, 2> shape_m_n{block_m, block_n};
@@ -694,8 +706,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
     Value casted_lhs_tile = Cast(b, loc, lhs_tile, dot_ty);
     Value casted_rhs_tile = Cast(b, loc, rhs_tile, dot_ty);
 
-    auto acc_next = b.create<mt::DotOp>(casted_lhs_tile, casted_rhs_tile, acc,
-                                        /*allowTF32=*/true);
+    auto acc_next =
+        b.create<mt::DotOp>(casted_lhs_tile, casted_rhs_tile, acc,
+                            tsl::tensor_float_32_execution_enabled());
 
     mt::AddPtrOp lhs_ptrs_inc = build_addptr(
         lhs_ptrs,
@@ -723,9 +736,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   // Output tile offsets.
   auto out_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid2), CreateConst(b, int_ty, stride_out_batch));
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_out_batch));
   auto out_offset_split_k = b.create<ma::MulIOp>(
-      convert_scalar(pid1), CreateConst(b, int_ty, stride_out_split_k));
+      convert_scalar(pid_k), CreateConst(b, int_ty, stride_out_split_k));
   auto out_offset_m = b.create<ma::MulIOp>(
       b.create<mt::ExpandDimsOp>(convert_range(range_m), 1),
       CreateConst(b, int_ty, stride_out_m, shape_m_1));

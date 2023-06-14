@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/python/mlir.h"
 
+#include <memory>
 #include <string>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
@@ -388,6 +391,8 @@ void ExperimentalWriteBytecode(const std::string& filename,
   }
   mlir::FallbackAsmResourceMap fallback_resource_map;
   mlir::BytecodeWriterConfig writer_config(fallback_resource_map);
+  // TODO(jpienaar): Make this an option to the call.
+  writer_config.setDesiredBytecodeVersion(1);
   std::string error;
   std::unique_ptr<llvm::ToolOutputFile> outputFile =
       mlir::openOutputFile(filename, &error);
@@ -446,6 +451,8 @@ void ExperimentalTFLiteToTosaBytecode(
   }
   mlir::FallbackAsmResourceMap fallback_resource_map;
   mlir::BytecodeWriterConfig writer_config(fallback_resource_map);
+  // TODO(jpienaar): Make this an option to the call.
+  writer_config.setDesiredBytecodeVersion(1);
   std::string error;
   std::unique_ptr<llvm::ToolOutputFile> outputFile =
       mlir::openOutputFile(tosa_bytecode_file, &error);

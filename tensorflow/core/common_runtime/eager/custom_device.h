@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CUSTOM_DEVICE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_CUSTOM_DEVICE_H_
 
+#include <optional>
 #include <string>
+#include <variant>
 
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
@@ -34,7 +36,7 @@ class CustomDeviceTensorHandle;
 // typically implemented with one or more of the custom device's own executions.
 class CustomDevice {
  public:
-  virtual ~CustomDevice() {}
+  virtual ~CustomDevice() = default;
   virtual const string& name() = 0;
   virtual Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* tensor,
@@ -62,7 +64,7 @@ class CustomDevice {
 // Custom devices do many of the same things as physical Devices, but have a
 // much more restricted interface. We pass around ambiguous pointers since
 // operations may be placed either on custom or physical devices.
-using VariantDevice = absl::variant<Device*, CustomDevice*>;
+using VariantDevice = std::variant<Device*, CustomDevice*>;
 
 // Indicates either HostCPU or an unset physical device. We never set a null
 // CustomDevice*.
@@ -124,7 +126,7 @@ class CustomDeviceTensorHandle : public ImmediateExecutionTensorHandle {
   const tensorflow::DataType dtype_;
   tensorflow::FullTypeDef full_type_;
 
-  mutable absl::optional<DeviceNameUtils::ParsedName> parsed_name_;
+  mutable std::optional<DeviceNameUtils::ParsedName> parsed_name_;
 };
 
 }  // namespace tensorflow

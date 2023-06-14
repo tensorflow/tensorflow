@@ -73,7 +73,7 @@ ENTRY e {
   MatchOptimizedHlo(hlo_string, R"(
 ; CHECK: fusion(%p0, %p1)
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: backend_config="{\"block_m\":\"
+; CHECK-SAME: "block_m":
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{params.aabs, params.arel}));
@@ -101,6 +101,7 @@ INSTANTIATE_TEST_SUITE_P(RewriteTestSuite, ParametrizedRewriteTest,
                              GemmTestParams{S8, F32, 101, 2555, 303, 0.5, 0.1},
                              // Is supported but overflows.
                              //  GemmTestParams{S32, F16},
+                             GemmTestParams{S16, F16, 30, 19, 12},
                              GemmTestParams{S32, F32, 4, 4, 4, 1, 1e-2},
                              GemmTestParams{F16, BF16, 16, 32, 8},
                              GemmTestParams{F16, F32, 16, 32, 8, 1e-3, 1e-6},

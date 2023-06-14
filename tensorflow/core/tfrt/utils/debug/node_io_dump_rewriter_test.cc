@@ -63,7 +63,7 @@ const Node* FindNode(const Graph* graph, absl::string_view node_name) {
 
 const Node* GetInputNode(const Node* node, size_t index) {
   const Node* input_node;
-  CHECK(node->input_node(index, &input_node).ok());
+  CHECK_OK(node->input_node(index, &input_node));
   return input_node;
 }
 

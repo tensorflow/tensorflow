@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_HLO_IR_HLO_MODULE_GROUP_H_
 
 #include <iosfwd>
+#include <memory>
 #include <string>
 #include <vector>
 

@@ -2237,7 +2237,7 @@ class Subgraph {
     // (subgraph is non-null), logging context is the same as context, and error
     // messages are passed to TFLite. When we detect supported operations
     // (subgraph is null), logging context is null, and error messages are
-    // supressed.
+    // suppressed.
 #ifdef XNNPACK_DELEGATE_ENABLE_LOGGING
     TfLiteContext* logging_context = context;
 #else
@@ -5459,11 +5459,15 @@ class Subgraph {
                                  begins[i], input_shape->data[i], node_index);
       }
 
+      int actual_end_data = end_data[i];
+      if (params->offset) {
+        actual_end_data += begin_data[i];
+      }
       // If end is negative, we count from the back, -1 is the last element.
-      if (end_data[i] < 0) {
-        ends[i] = end_data[i] + input_shape->data[i];
+      if (actual_end_data < 0) {
+        ends[i] = actual_end_data + input_shape->data[i];
       } else {
-        ends[i] = end_data[i];
+        ends[i] = actual_end_data;
       }
 
       if ((params->end_mask & (1 << i)) != 0) {
@@ -5788,7 +5792,7 @@ class Subgraph {
   // Mapping from TFLite Tensor IDs (same as XNNPACK Value IDs) for
   // input/output tensors in the delegated subgraph to their data locations.
   std::unordered_map<int, void*> externals_;
-  // Memory location to use for 0-size extenal tensors, as TFLite init their
+  // Memory location to use for 0-size external tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
   // Persistent tensors need to be set up in all cases (even without external

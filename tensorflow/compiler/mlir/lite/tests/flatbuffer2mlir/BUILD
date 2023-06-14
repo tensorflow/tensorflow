@@ -7,6 +7,7 @@ load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 licenses(["notice"])
 
 glob_lit_tests(
+    name = "all_tests",
     data = [
         ":extra_files",
         ":test_utilities",

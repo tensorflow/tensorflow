@@ -287,7 +287,7 @@ class GrpcServer(Server):
     """Method for registering functions."""
 
     if isinstance(func, def_function.Function):
-      if func._function_spec.arg_names:  # pylint: disable=protected-access
+      if func.function_spec.arg_names:
         if func.input_signature is None:
           raise ValueError("Input signature not specified for the function.")
       concrete_fn = func.get_concrete_function()

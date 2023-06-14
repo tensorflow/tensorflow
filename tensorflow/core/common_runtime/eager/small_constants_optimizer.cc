@@ -171,17 +171,17 @@ std::vector<FunctionDef> FoldBoolInputTensor(
 
         // Promote the true branch when input_value is `true`.
         if (attr_key == "then_branch") {
-          if (input_value) node_def.mutable_attr()->emplace("f", attr_value);
+          if (input_value) node_def.mutable_attr()->insert({"f", attr_value});
           continue;
         }
         // Promote the false branch when input_value is `false`.
         if (attr_key == "else_branch") {
-          if (!input_value) node_def.mutable_attr()->emplace("f", attr_value);
+          if (!input_value) node_def.mutable_attr()->insert({"f", attr_value});
           continue;
         }
 
         // All other attributes should be copied over.
-        node_def.mutable_attr()->emplace(attr_key, attr_value);
+        node_def.mutable_attr()->insert({attr_key, attr_value});
       }
     }
 
@@ -213,15 +213,15 @@ std::vector<FunctionDef> FoldBoolInputTensor(
   const_tensor->set_op("Const");
   AttrValue dtype_value;
   dtype_value.set_type(DT_BOOL);
-  const_tensor->mutable_attr()->emplace("dtype", dtype_value);
+  const_tensor->mutable_attr()->insert({"dtype", dtype_value});
   AttrValue tensor_value;
   auto* tensor = tensor_value.mutable_tensor();
   tensor->set_dtype(DT_BOOL);
   tensor->mutable_tensor_shape();
   tensor->add_bool_val(true);
-  const_tensor->mutable_attr()->emplace("value", tensor_value);
+  const_tensor->mutable_attr()->insert({"value", tensor_value});
 
-  // Mark the currend `FunctionDef` as folded and return the results.
+  // Mark the current `FunctionDef` as folded and return the results.
   results.push_back(std::move(result));
   folded_functions.insert(folded_function_name);
   return results;

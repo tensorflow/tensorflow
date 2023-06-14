@@ -390,3 +390,12 @@ def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::ModuleOp"> {
   let constructor = "TFDevice::CreateXlaRewritePass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }
+
+def XlaValidateInputsPass : Pass<"tf-xla-validate-inputs", "ModuleOp"> {
+  let summary = "Validtes inputs to the TF CPU/GPU bridge";
+  let description = [{
+    This pass checks that the IR has valid input to CPU/GPU TF/XLA bridge.
+  }];
+  let constructor = "TFDevice::CreateXlaValidateInputsPass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}

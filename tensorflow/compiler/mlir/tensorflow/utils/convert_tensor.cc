@@ -18,6 +18,8 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -266,6 +270,15 @@ mlir::TF::ShapeAttr ConvertTypeToTensorShapeAttr(const mlir::Type& type) {
   // If type is not a RankedTensor or UnrankedTensor, it must be a scalar.
   // Empty TensorShape indicates a scalar.
   return mlir::TF::ShapeAttr::get(type.getContext(), ArrayRef<int64_t>());
+}
+
+StatusOr<TensorSpecProto> ConvertTypeToTensorSpecProto(const mlir::Type& type) {
+  DataType dtype;
+  TF_RETURN_IF_ERROR(ConvertToDataType(type, &dtype));
+  TensorSpecProto tensor_spec;
+  tensor_spec.set_dtype(dtype);
+  *tensor_spec.mutable_shape() = ConvertTypeToTensorShape(type).AsProto();
+  return tensor_spec;
 }
 
 // Converts the tensor shape proto into an MLIR shape attribute.

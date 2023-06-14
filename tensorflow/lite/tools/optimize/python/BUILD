@@ -41,8 +41,8 @@ py_test(
     deps = [
         ":modify_model_interface_lib",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],
 )
@@ -51,7 +51,7 @@ py_library(
     name = "modify_model_interface_constants",
     srcs = ["modify_model_interface_constants.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:dtypes"],
+    deps = ["//tensorflow/python/framework:dtypes"],
 )
 
 pybind_extension(

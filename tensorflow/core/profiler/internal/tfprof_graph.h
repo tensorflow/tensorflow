@@ -42,7 +42,7 @@ class TFGraph : public TFShow {
  public:
   explicit TFGraph(checkpoint::CheckpointReader* ckpt_reader)
       : TFShow(ckpt_reader), root_(nullptr) {}
-  ~TFGraph() override {}
+  ~TFGraph() override = default;
 
   void AddNode(TFGraphNode* node) override;
 
@@ -63,7 +63,7 @@ class TFGraph : public TFShow {
                                      const std::vector<string>& regexes,
                                      std::set<string>* visited);
 
-  std::vector<GraphNode*> PrintGraph(const std::vector<GraphNode*> roots,
+  std::vector<GraphNode*> PrintGraph(std::vector<GraphNode*> roots,
                                      const Options& opts, int depth,
                                      int last_ident, std::set<string>* visits);
 
@@ -71,7 +71,7 @@ class TFGraph : public TFShow {
                                   const Options& opts,
                                   std::set<string>* visits);
 
-  void Format(const std::vector<GraphNode*> roots, string* display_str,
+  void Format(std::vector<GraphNode*> roots, string* display_str,
               GraphNodeProto* proto);
 
   MemoryTracker memory_tracker_;

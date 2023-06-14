@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "mhlo/IR/hlo_ops_common.h"
 
+#include <array>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSet.h"

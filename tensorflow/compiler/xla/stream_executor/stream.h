@@ -887,12 +887,12 @@ class Stream {
                        const DeviceMemory<double> &x, int incx, double beta,
                        DeviceMemory<double> *y, int incy);
 
-  template <typename InputType>
+  template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           DeviceMemory<InputType> *c, int ldc,
+                           DeviceMemory<OutputType> *c, int ldc,
                            blas::ComputePrecision precision) {
     InputType alpha{1.0};
     InputType beta{0.0};
@@ -901,35 +901,38 @@ class Stream {
   }
 
   // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
-  template <typename InputType>
+  template <typename InputType, typename OutputType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           DeviceMemory<InputType> *c, int ldc) {
+                           DeviceMemory<OutputType> *c, int ldc) {
     return ThenBlasGemm(transa, transb, m, n, k, a, lda, b, ldb, c, ldc,
                         blas::kDefaultComputePrecision);
   }
 
-  template <typename InputType, typename ConstantType>
+  template <typename InputType, typename OutputType, typename ConstantType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           ConstantType beta, DeviceMemory<InputType> *c,
+                           ConstantType beta, DeviceMemory<OutputType> *c,
                            int ldc, blas::ComputePrecision precision) {
     static_assert(
-        detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16, float,
-                          double, std::complex<float>, std::complex<double>>(),
-        "Input can be half, bf16, float, double, std::complex<float> or "
+        detail::is_any_of<InputType, int8_t, Eigen::half, Eigen::bfloat16,
+                          float, double, std::complex<float>,
+                          std::complex<double>>(),
+        "Input can be int8_t, half, bf16, float, double, std::complex<float> "
+        "or "
         "std::complex<double>");
     static_assert(!std::is_same_v<InputType, Eigen::half> ||
                       detail::is_any_of<ConstantType, float, Eigen::half>(),
                   "If input is Eigen::half, constant has to be either "
                   "Eigen::half or float");
-    static_assert(
-        detail::is_any_of<InputType, Eigen::half, ConstantType>(),
-        "If input is not Eigen::half, constant and input types have to match");
+    static_assert(detail::is_any_of<InputType, int8_t, Eigen::half,
+                                    Eigen::bfloat16, ConstantType>(),
+                  "If input is not int8_t, Eigen::half, constant and input "
+                  "types have to match");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return tsl::errors::Internal(
@@ -949,12 +952,12 @@ class Stream {
   }
 
   // TODO(parkers): Update all callers to pass kDefaultComputePrecision.
-  template <typename InputType, typename ConstantType>
+  template <typename InputType, typename OutputType, typename ConstantType>
   tsl::Status ThenBlasGemm(blas::Transpose transa, blas::Transpose transb,
                            uint64_t m, uint64 n, uint64 k, ConstantType alpha,
                            const DeviceMemory<InputType> &a, int lda,
                            const DeviceMemory<InputType> &b, int ldb,
-                           ConstantType beta, DeviceMemory<InputType> *c,
+                           ConstantType beta, DeviceMemory<OutputType> *c,
                            int ldc) {
     return ThenBlasGemm(transa, transb, m, n, k, alpha, a, lda, b, ldb, beta, c,
                         ldc, blas::kDefaultComputePrecision);
@@ -1132,22 +1135,23 @@ class Stream {
       std::complex<double> beta, DeviceMemorySlice<std::complex<double>> c,
       int ldc, int batch_count, ScratchAllocator *scratch_allocator);
 
-  template <typename InputType, typename ConstantType>
+  template <typename InputType, typename OutputType, typename ConstantType>
   tsl::Status ThenBlasGemmStridedBatched(
       blas::Transpose transa, blas::Transpose transb, uint64_t m, uint64 n,
       uint64_t k, ConstantType alpha, const DeviceMemory<InputType> &a, int lda,
       int64_t stride_a, const DeviceMemory<InputType> &b, int ldb,
-      int64_t stride_b, ConstantType beta, DeviceMemory<InputType> *c, int ldc,
+      int64_t stride_b, ConstantType beta, DeviceMemory<OutputType> *c, int ldc,
       int64_t stride_c, int batch_count, blas::ComputePrecision precision) {
     static_assert(
-        detail::is_any_of<InputType, float, Eigen::half, Eigen::bfloat16,
-                          double, std::complex<float>, std::complex<double>>(),
+        detail::is_any_of<InputType, int8_t, float, Eigen::half,
+                          Eigen::bfloat16, double, std::complex<float>,
+                          std::complex<double>>(),
         "Unsupported input type");
-    static_assert(
-        std::is_same_v<ConstantType, InputType> ||
-            (detail::is_any_of<InputType, Eigen::half, Eigen::bfloat16>() &&
-             std::is_same_v<ConstantType, float>),
-        "Mismatched input and alpha/beta types");
+    static_assert(std::is_same_v<ConstantType, InputType> ||
+                      (detail::is_any_of<InputType, int8_t, Eigen::half,
+                                         Eigen::bfloat16>() &&
+                       std::is_same_v<ConstantType, float>),
+                  "Mismatched input and alpha/beta types");
     blas::BlasSupport *blas = parent()->AsBlas();
     if (!blas) {
       return tsl::errors::Internal(
@@ -1599,11 +1603,6 @@ class Stream {
                           int8_t, std::complex<float>, std::complex<double>>(),
         "The only buffer types supported are: Eigen::half, float, "
         "double, int8, std::complex<float> and std::complex<double>");
-    static_assert(
-        std::is_same_v<ABType, CType> ||
-            (std::is_same_v<ABType, int8_t> && std::is_same_v<CType, int32_t>),
-        "Input and output buffer types should be the same unless input is "
-        "int8 and output is int32");
     static_assert(
         std::is_same_v<ScaleType, CType> ||
             (std::is_same_v<ScaleType, float> &&

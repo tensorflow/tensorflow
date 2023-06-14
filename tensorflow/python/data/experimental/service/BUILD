@@ -13,8 +13,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/data/service:server_lib_headers_lib",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -42,7 +42,7 @@ tf_py_strict_test(
     srcs = ["server_lib_test.py"],
     deps = [
         ":server_lib",
-        "//tensorflow/python:errors",
+        "//tensorflow/python/framework:errors",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/profiler:profiler_client",
     ],
@@ -53,7 +53,18 @@ tf_python_pybind_extension(
     srcs = ["utils_wrapper.cc"],
     deps = [
         "//tensorflow/core/data/service:py_utils",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_snapshot_utils",
+    srcs = ["snapshot_utils_wrapper.cc"],
+    deps = [
+        "//tensorflow/core/data/service/snapshot:path_utils",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

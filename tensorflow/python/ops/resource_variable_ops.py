@@ -2636,7 +2636,15 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   @property
   def _component_specs(self):
-    return [tensor_spec.TensorSpec([], dtypes.resource)]
+    return [
+        tensor_spec.TensorSpec(
+            [],
+            dtypes.DType(
+                dtypes.resource._type_enum,  # pylint: disable=protected-access
+                dtypes.HandleData(alias_id=self.alias_id),
+            ),
+        )
+    ]
 
   def _serialize(self):
     return self.shape, self.dtype, self.trainable, self.alias_id
@@ -2708,7 +2716,12 @@ class VariableSpec(tensor_spec.DenseSpec):
 
   def _to_tensors(self, value):
     assert isinstance(value, BaseResourceVariable)
+    variable_accessed(value)
     return [value.handle]
+
+  def _cast(self, value, _):
+    assert isinstance(value, BaseResourceVariable)
+    return value
 
   def _get_structure(self):
     # shape, dtype, trainable, and alias_id are all leaves.

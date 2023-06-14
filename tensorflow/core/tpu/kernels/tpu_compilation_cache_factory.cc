@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_factory.h"
 
+#include <functional>
+
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_external.h"

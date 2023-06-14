@@ -44,10 +44,10 @@ profiler = _xla.profiler
 
 # Just an internal arbitrary increasing number to help with backward-compatible
 # changes.
-_version = 150
+_version = 162
 
 # Version number for MLIR:Python components.
-mlir_api_version = 47
+mlir_api_version = 50
 
 xla_platform_names = {
     'cpu': 'Host',
@@ -68,8 +68,8 @@ def make_cpu_client(*, use_tfrt: bool = True) -> ...:
   return _xla.get_tfrt_cpu_client(asynchronous=True)
 
 
-def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
-                    allowed_devices=None):
+def make_gpu_client(distributed_client=None, node_id=0, num_nodes=1,
+                    platform_name=None, allowed_devices=None):
   """Returns a GPU client. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -96,6 +96,7 @@ def make_gpu_client(distributed_client=None, node_id=0, platform_name=None,
       allocator_config=config,
       distributed_client=distributed_client,
       node_id=node_id,
+      num_nodes=num_nodes,
       platform_name=platform_name,
       allowed_devices=allowed_devices)
 
@@ -109,8 +110,26 @@ def make_tfrt_tpu_c_api_client(options: Optional[_NameValueMapping] = None):
 DeviceTopology = _xla.DeviceTopology
 
 
-def make_tfrt_tpu_c_api_device_topology() -> DeviceTopology:
+def make_tfrt_tpu_c_api_device_topology(
+    topology_name: Optional[str] = None, **kwargs
+) -> DeviceTopology:
+  """Creates a PJRT C API TopologyDescription."""
+
+  if not _use_pjrt_c_api():
+    raise NotImplementedError(
+        'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
+    )
+  if topology_name is not None or kwargs:
+    raise NotImplementedError(
+        'Unsupported arguments to'
+        ' make_tfrt_tpu_c_api_device_topology(topology_name=%s, %s)'
+        % (repr(topology_name), repr(kwargs))
+    )
   return _xla.get_default_c_api_topology('tpu')
+
+
+def pjrt_plugin_loaded(plugin_name: str) -> bool:
+  return _xla.pjrt_plugin_loaded(plugin_name)
 
 
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
@@ -204,6 +223,12 @@ PrimitiveType = _xla.PrimitiveType
 
 bfloat16 = ml_dtypes.bfloat16
 float8_e4m3fn = ml_dtypes.float8_e4m3fn
+# TODO(vanderplas): remove this conditional when min ml_dtypes >= 0.2
+float8_e4m3b11fnuz = (
+    ml_dtypes.float8_e4m3b11fnuz
+    if hasattr(ml_dtypes, 'float8_e4m3b11fnuz')
+    else ml_dtypes.float8_e4m3fn
+)
 float8_e5m2 = ml_dtypes.float8_e5m2
 
 XLA_ELEMENT_TYPE_TO_DTYPE = {
@@ -217,6 +242,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
     PrimitiveType.F8E4M3FN: np.dtype(float8_e4m3fn),
+    PrimitiveType.F8E4M3B11FNUZ: np.dtype(float8_e4m3b11fnuz),
     PrimitiveType.F8E5M2: np.dtype(float8_e5m2),
     PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),

@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for some optimizations to reduce size on export.
 
+#include <complex>
 #include <cstdint>
 #include <memory>
 

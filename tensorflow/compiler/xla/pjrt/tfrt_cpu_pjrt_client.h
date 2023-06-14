@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
@@ -90,7 +89,7 @@ class TfrtCpuDeviceDescription final : public PjRtDeviceDescription {
 
 class TfrtCpuDevice final : public PjRtDevice {
  public:
-  TfrtCpuDevice(int id, bool asynchronous);
+  explicit TfrtCpuDevice(int id, int max_inflight_computations = 32);
 
   const TfrtCpuDeviceDescription& description() const override {
     return description_;
@@ -133,8 +132,6 @@ class TfrtCpuDevice final : public PjRtDevice {
   // ahead of the device.
   Semaphore max_inflight_computations_semaphore_;
 };
-
-class TfrtCpuExecutable;
 
 class TfrtCpuClient final : public PjRtClient {
  public:
@@ -198,9 +195,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(absl::Span<const Shape> shapes,
-                                    PjRtDevice* device) override {
-    return Unimplemented("Async transfer to buffers not implemented");
-  };
+                                    PjRtDevice* device) override;
 
   StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
@@ -249,6 +244,10 @@ class TfrtCpuClient final : public PjRtClient {
     return pjrt_client_thread_pool_.get();
   }
 
+  AsyncWorkRunner* async_work_runner() const {
+    return async_work_runner_.get();
+  }
+
   Eigen::ThreadPoolDevice* eigen_intraop_device() const {
     return eigen_intraop_device_.get();
   }
@@ -278,6 +277,7 @@ class TfrtCpuClient final : public PjRtClient {
 
   // Thread pool for running PjRtClient tasks.
   std::unique_ptr<tsl::thread::ThreadPool> pjrt_client_thread_pool_;
+  std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
   // TODO(zhangqiaorjc): Use tfrt::compat::EigenHostContextThreadPool.
   std::unique_ptr<tsl::thread::ThreadPool> eigen_intraop_pool_;
@@ -318,8 +318,6 @@ class TfrtCpuBuffer final : public AbstractTfrtCpuBuffer {
 
   TfrtCpuDevice* device() const override { return device_; }
   TfrtCpuClient* client() const override { return client_; }
-
-  StatusOr<Shape> logical_on_device_shape() override;
 
   using PjRtBuffer::ToLiteralSync;
   PjRtFuture<Status> ToLiteral(MutableLiteralBase* literal) override;
@@ -492,10 +490,11 @@ class TfrtCpuExecutable final : public PjRtLoadedExecutable {
 // the XLA_FLAGS environment variable.
 StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous);
 
-// Similar to the function above, but you can set the number of devices
-// explicitly.
-StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(bool asynchronous,
-                                                       int cpu_device_count);
+// Similar to the function above, but you can set the number of devices and max
+// number of inflight computations per device explicitly.
+StatusOr<std::unique_ptr<PjRtClient>> GetTfrtCpuClient(
+    bool asynchronous, int cpu_device_count,
+    int max_inflight_computations_per_device = 32);
 
 }  // namespace xla
 

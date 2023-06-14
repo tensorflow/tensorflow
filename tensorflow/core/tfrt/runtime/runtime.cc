@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 

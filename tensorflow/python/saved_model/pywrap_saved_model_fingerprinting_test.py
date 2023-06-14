@@ -14,10 +14,7 @@
 # ==============================================================================
 """Tests for pywrap_saved_model_fingerprinting."""
 
-import os
-
 from tensorflow.core.protobuf import fingerprint_pb2
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model.pywrap_saved_model import fingerprinting as pywrap_fingerprinting
 
@@ -26,11 +23,9 @@ class FingerprintingTest(test.TestCase):
   def test_create_fingerprint_def(self):
     export_dir = test.test_src_dir_path(
         "cc/saved_model/testdata/VarsAndArithmeticObjectGraph")
-    with file_io.FileIO(os.path.join(export_dir, "saved_model.pb"), "rb") as f:
-      file_content = f.read()
 
     fingerprint = fingerprint_pb2.FingerprintDef().FromString(
-        pywrap_fingerprinting.CreateFingerprintDef(file_content, export_dir))
+        pywrap_fingerprinting.CreateFingerprintDef(export_dir))
     # We cannot check the value of the saved_model_checksum due to
     # non-determinism in serialization.
     self.assertGreater(fingerprint.saved_model_checksum, 0)

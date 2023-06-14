@@ -159,15 +159,15 @@ def validation_test(name, validation_model, tags = [], copts = [], deps = []):
             "@com_google_googletest//:gtest_main",
             "@flatbuffers",
             "//tensorflow/lite/experimental/acceleration/compatibility:android_info",
-            "//tensorflow/lite/experimental/acceleration/configuration:configuration_fbs",
-            "//tensorflow/lite/experimental/acceleration/configuration:nnapi_plugin",
+            "//tensorflow/lite/acceleration/configuration:configuration_fbs",
+            "//tensorflow/lite/acceleration/configuration:nnapi_plugin",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:big_little_affinity",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:status_codes",
             "//tensorflow/lite/experimental/acceleration/mini_benchmark:validator",
             "//tensorflow/lite/tools:model_loader",
         ] + select({
             clean_dep("//tensorflow:android"): [
-                "//tensorflow/lite/experimental/acceleration/configuration:gpu_plugin",
+                "//tensorflow/lite/acceleration/configuration:gpu_plugin",
             ],
             "//conditions:default": [],
         }),

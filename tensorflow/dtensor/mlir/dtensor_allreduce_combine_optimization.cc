@@ -16,6 +16,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -542,11 +543,49 @@ createSubgroupsByGroupAssignment(
   return all_reduce_new_groups;
 }
 
+// Experimental extended grouping logics to avoid aggressive grouping.
+// This function performs the same grouping method as tf.distribute, which group
+// all reduce ops by user defined group size (number of ops) in the input order.
+std::vector<std::vector<mlir::TF::DTensorAllReduceOp>>
+createSubgroupsByExtendedNumOps(
+    std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_groups,
+    int group_size) {
+  VLOG(4) << "max group size: " << group_size;
+  VLOG(4) << "current number of groups: " << all_reduce_groups.size();
+  // Disable extended grouping if group size is set to zero
+  if (group_size <= 0) return all_reduce_groups;
+  std::vector<std::vector<mlir::TF::DTensorAllReduceOp>> all_reduce_new_groups;
+  // Further break down the current all_reduced_groups by extended group size
+  for (const auto& all_reduce_group : all_reduce_groups) {
+    if (all_reduce_group.size() <= group_size) {
+      all_reduce_new_groups.push_back(all_reduce_group);
+      continue;
+    }
+    // Safe to "assume" num_groups would be greater or equal to two, because the
+    // above condition check guarantees case of zero or one would be skipped
+    int num_groups = (all_reduce_group.size() + group_size - 1) / group_size;
+    VLOG(4) << all_reduce_group.size() << " all_reduce ops in the current group"
+            << ", able to split into " << num_groups << " groups\n";
+    for (int i = 0; i < num_groups - 1; i++) {
+      all_reduce_new_groups.push_back(std::vector<mlir::TF::DTensorAllReduceOp>(
+          all_reduce_group.begin() + i * group_size,
+          all_reduce_group.begin() + (i + 1) * group_size));
+    }
+    // Handle the last sub-group
+    all_reduce_new_groups.push_back(std::vector<mlir::TF::DTensorAllReduceOp>(
+        all_reduce_group.begin() + (num_groups - 1) * group_size,
+        all_reduce_group.end()));
+  }
+  VLOG(4) << "new number of groups: " << all_reduce_new_groups.size();
+  return all_reduce_new_groups;
+}
+
 struct DTensorAllReduceCombineOptimization
     : public impl::DTensorAllReduceCombineOptimizationBase<
           DTensorAllReduceCombineOptimization> {
   void runOnOperation() override {
     mlir::func::FuncOp function = getOperation();
+    auto module = function->getParentOfType<mlir::ModuleOp>();
     function.walk([&](mlir::tf_device::ClusterOp cluster) {
       std::vector<mlir::TF::DTensorAllReduceOp> ordered_all_reduces;
       std::vector<mlir::Block*> ordered_blocks;
@@ -570,8 +609,8 @@ struct DTensorAllReduceCombineOptimization
       });
 
       if (ordered_all_reduces.size() > 1) {
-        // Create dependency graph for all all_reduce operations, so that that
-        // independent ops can be merged
+        // Create dependency graph for all eligible all_reduce operations,
+        // so that independent ops can be merged
         auto all_reduce_groups =
             createIndependentReduceOpsGroups(ordered_all_reduces);
 
@@ -582,12 +621,33 @@ struct DTensorAllReduceCombineOptimization
         all_reduce_groups = createSubgroupsByReductionAttr(all_reduce_groups);
         all_reduce_groups = createSubgroupsByGroupAssignment(all_reduce_groups);
 
+        // Experimental extended grouping
+        int group_size = 0;
+        if (module->hasAttrOfType<mlir::IntegerAttr>(kAllReduceNumOpsInGroup)) {
+          group_size =
+              module->getAttrOfType<mlir::IntegerAttr>(kAllReduceNumOpsInGroup)
+                  .getInt();
+        }
+        all_reduce_groups =
+            createSubgroupsByExtendedNumOps(all_reduce_groups, group_size);
+
+        // Maintain relative order of ALLReduces within the block.
         std::sort(all_reduce_groups.begin(), all_reduce_groups.end(),
                   [](std::vector<mlir::TF::DTensorAllReduceOp> lhs,
                      std::vector<mlir::TF::DTensorAllReduceOp> rhs) {
-                    if (lhs[0]->getBlock() == rhs[0]->getBlock())
-                      return lhs[0]->isBeforeInBlock(rhs[0]);
-                    return true;
+                    // Prefer groups that are not empty.
+                    if (lhs.empty() && !rhs.empty()) return false;
+                    if (!lhs.empty() && rhs.empty()) return true;
+
+                    // Then prefer groups that are in earlier-in-memory blocks,
+                    // this part just needs to be consistent for strict weak
+                    // ordering purposes.
+                    if (lhs[0]->getBlock() != rhs[0]->getBlock()) {
+                      return lhs[0]->getBlock() < rhs[0]->getBlock();
+                    }
+
+                    // Within the block, use the group's actual sorting.
+                    return lhs[0]->isBeforeInBlock(rhs[0]);
                   });
         for (const auto& reduce_group : all_reduce_groups) {
           if (reduce_group.size() > 1) {

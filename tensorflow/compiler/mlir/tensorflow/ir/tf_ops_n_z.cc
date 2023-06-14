@@ -17,8 +17,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <optional>
@@ -61,6 +63,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -79,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/rewrite_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -561,6 +565,31 @@ LogicalResult StatefulPartitionedCallOp::verifySymbolUses(
 LogicalResult TPUPartitionedCallOp::verifySymbolUses(
     SymbolTableCollection &symbolTable) {
   return VerifyPartitionedCall(*this, symbolTable);
+}
+
+template <typename CallOpClass>
+static void SetPartitionCalleeFromCallable(CallOpClass op,
+                                           mlir::CallInterfaceCallable callee) {
+  // Direct call.
+  if (SymbolRefAttr fAttr = op.getFAttr()) {
+    SymbolRefAttr calleeAttr = callee.get<SymbolRefAttr>();
+    return op.setFAttr(cast<FlatSymbolRefAttr>(calleeAttr));
+  }
+  // Indirect call, callee Value is the first operand.
+  return op.setOperand(0, callee.get<Value>());
+}
+
+void PartitionedCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+void StatefulPartitionedCallOp::setCalleeFromCallable(
+    CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
+}
+void TPUPartitionedCallOp::setCalleeFromCallable(
+    mlir::CallInterfaceCallable callee) {
+  return SetPartitionCalleeFromCallable(*this, callee);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1057,7 +1086,7 @@ static Type InferSelectV2OpType(Value condition, Value e, Value t) {
   if (!cond_ranked_ty || !broadcasted_ranked_ty) return unranked_ty;
 
   // Explicitly get broadcasted output type as element types of condition may
-  // not be same as the broadcated type's element type.
+  // not be same as the broadcasted type's element type.
   SmallVector<int64_t, 4> result_shape;
   if (!OpTrait::util::getBroadcastedShape(cond_ranked_ty.getShape(),
                                           broadcasted_ranked_ty.getShape(),
@@ -2673,7 +2702,7 @@ void ToBoolOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult ToBoolOp::inferReturnTypes(
     MLIRContext *context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
+    DictionaryAttr attributes, OpaqueProperties, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   inferredReturnTypes.push_back(
       tensorflow::GetTypeFromTFTensorShape({}, IntegerType::get(context, 1)));
@@ -2829,6 +2858,27 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.getX().getDefiningOp());
   if (!transpose) return {};
 
+  // If the transpose ops are on different devices, we don't fold them.
+  if (transpose->getBlock() != op->getBlock()) {
+    tensorflow::DataType dtype;
+    auto status = tensorflow::ConvertToDataType(
+        op.getX().getType().cast<TensorType>().getElementType(), &dtype);
+    if (status.ok()) {
+      // We can only leave the transpose op on host if its dtype is supported on
+      // host.
+      if (dtype == tensorflow::DT_UINT64 || dtype == tensorflow::DT_INT64 ||
+          dtype == tensorflow::DT_UINT32 || dtype == tensorflow::DT_INT32 ||
+          dtype == tensorflow::DT_UINT16 || dtype == tensorflow::DT_INT16 ||
+          dtype == tensorflow::DT_UINT8 || dtype == tensorflow::DT_INT8 ||
+          dtype == tensorflow::DT_HALF || dtype == tensorflow::DT_BFLOAT16 ||
+          dtype == tensorflow::DT_FLOAT || dtype == tensorflow::DT_DOUBLE ||
+          dtype == tensorflow::DT_COMPLEX64 ||
+          dtype == tensorflow::DT_COMPLEX128 || dtype == tensorflow::DT_BOOL) {
+        return {};
+      }
+    }
+  }
+
   // Permutations defined by constant operations.
   DenseIntElementsAttr perm0;
   DenseIntElementsAttr perm1;
@@ -2931,6 +2981,39 @@ class ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 void FusedBatchNormOp::getCanonicalizationPatterns(RewritePatternSet &results,
                                                    MLIRContext *context) {
   results.add<ConvertFusedBatchNorm>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaCallModuleOp
+//===----------------------------------------------------------------------===//
+
+void XlaCallModuleOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  if (!getFunctionList().empty()) {
+    // The StableHLO module embedded in XlaCallModule contains
+    // `stablehlo.custom_call` calling TF host callback functions.
+    // `stablehlo.custom_call` will be lowered to `stablehlo.send` and
+    // `stablehlo.recv`.
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Send::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::Recv::get());
+    effects.emplace_back(MemoryEffects::Write::get(),
+                         ResourceEffects::XlaHostCompute::get());
+  }
+}
+
+LogicalResult XlaCallModuleOp::verifySymbolUses(
+    SymbolTableCollection &symbolTable) {
+  for (auto f : getFunctionList()) {
+    auto func = symbolTable.lookupNearestSymbolFrom<func::FuncOp>(
+        getOperation(), f.cast<mlir::SymbolRefAttr>());
+    if (!func) {
+      return emitOpError() << "refers to an undefined function: " << f;
+    }
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -3482,7 +3565,8 @@ void XdivyOp::getCanonicalizationPatterns(RewritePatternSet &results,
 
 LogicalResult XlaBroadcastHelperOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaBroadcastHelperOpAdaptor op(operands.getValues(), attributes);
   Value lhs = op.getLhs();
@@ -3620,7 +3704,8 @@ LogicalResult XlaConvV2Op::verify() {
 
 LogicalResult XlaSetDynamicDimensionSizeOp::inferReturnTypeComponents(
     MLIRContext *context, std::optional<Location> location,
-    ValueShapeRange operands, DictionaryAttr attributes, RegionRange regions,
+    ValueShapeRange operands, DictionaryAttr attributes, OpaqueProperties,
+    RegionRange regions,
     SmallVectorImpl<ShapedTypeComponents> &inferredReturnShapes) {
   XlaSetDynamicDimensionSizeOpAdaptor op(operands.getValues(), attributes);
 

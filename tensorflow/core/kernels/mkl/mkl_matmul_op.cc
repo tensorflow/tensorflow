@@ -90,9 +90,9 @@ class MklMatMulOp : public OpKernel {
       (void)SetFPMathMode();
     }
 
-    const int m = a.dim_size(1 - dim_pair[0].first);
-    const int k = a.dim_size(dim_pair[0].first);
-    const int n = b.dim_size(1 - dim_pair[0].second);
+    const int64_t m = a.dim_size(1 - dim_pair[0].first);
+    const int64_t k = a.dim_size(dim_pair[0].first);
+    const int64_t n = b.dim_size(1 - dim_pair[0].second);
     bool transpose_a = dim_pair[0].first == 0;
     bool transpose_b = dim_pair[0].second == 1;
 
@@ -147,9 +147,10 @@ class MklMatMulOp : public OpKernel {
   // layout, leading dimension is the stride between consecutive rows, max(1,n)
   //
   // --------------------------------------------------------------------------
-  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
-                   const int n, const int k, const float* a, const int lda,
-                   const float* b, const int ldb, float* c, const int ldc) {
+  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb,
+                   const int64_t m, const int64_t n, const int64_t k,
+                   const float* a, const int64_t lda, const float* b,
+                   const int64_t ldb, float* c, const int64_t ldc) {
     // BLAS GEMM API defines Matrix Multiplication as c = alpha * op(a) * op(b)
     // + beta * c.
     // Since TF MatMul does not have parameters for alpha, beta, we set them to
@@ -180,10 +181,10 @@ class MklMatMulOp : public OpKernel {
 #endif  // !ENABLE_ONEDNN_OPENMP
   }
 
-  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
-                   const int n, const int k, const bfloat16* a, const int lda,
-                   const bfloat16* b, const int ldb, bfloat16* c,
-                   const int ldc) {
+  void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb,
+                   const int64_t m, const int64_t n, const int64_t k,
+                   const bfloat16* a, const int64_t lda, const bfloat16* b,
+                   const int64_t ldb, bfloat16* c, const int64_t ldc) {
     const float alpha = 1.0f;
     const float beta = 0.0f;
     const int index_transa = transa ? 1 : 0;

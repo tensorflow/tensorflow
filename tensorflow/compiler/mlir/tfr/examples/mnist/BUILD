@@ -54,7 +54,7 @@ py_library(
         ":mnist_ops",
         ":mnist_ops_py",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:framework",
+        "//tensorflow/python/framework",
         "@absl_py//absl/flags",
     ],
 )
@@ -80,12 +80,12 @@ distribute_py_test(
     xla_enable_strict_auto_jit = False,
     deps = [
         ":mnist_train",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python:extra_py_tests_deps",
-        "//tensorflow/python:is_mlir_bridge_test_true",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:test_util",
+        "//tensorflow/python/framework:is_mlir_bridge_test_true",
+        "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
     ],
 )

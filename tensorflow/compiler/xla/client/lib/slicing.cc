@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 
 #include <algorithm>
+#include <functional>
 #include <limits>
 #include <vector>
 

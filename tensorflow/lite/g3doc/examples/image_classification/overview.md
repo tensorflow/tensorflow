@@ -27,7 +27,7 @@ recommended you explore the following example applications that can help you get
 started.
 
 You can leverage the out-of-box API from
-[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/image_classifier)
+[TensorFlow Lite Task Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/task_library/image_classifier.md)
 to integrate image classification models in just a few lines of code. You can
 also build your own custom inference pipeline using the
 [TensorFlow Lite Support Library](../../inference_with_metadata/lite_support).

@@ -70,11 +70,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/transpose.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <cstring>
 #include <functional>
+#include <memory>
 #include <numeric>
 #include <stack>
 #include <string>
+#include <tuple>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_format.h"

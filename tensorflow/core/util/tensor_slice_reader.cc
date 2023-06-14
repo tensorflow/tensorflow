@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 #include <climits>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -37,7 +38,7 @@ namespace tensorflow {
 
 namespace checkpoint {
 
-TensorSliceReader::Table::~Table() {}
+TensorSliceReader::Table::~Table() = default;
 
 namespace {
 class TensorSliceReaderTable : public TensorSliceReader::Table {

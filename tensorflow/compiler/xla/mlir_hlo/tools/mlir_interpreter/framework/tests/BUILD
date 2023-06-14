@@ -1,5 +1,7 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_test(
     name = "tensor_or_memref_test",
     srcs = ["tensor_or_memref_test.cc"],

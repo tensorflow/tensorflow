@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/kernels/image_resize_ops.h"
 
+#include <algorithm>
+#include <cmath>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
@@ -213,7 +216,7 @@ xla::XlaOp MakeGeneralResizeKernelInDim(xla::XlaBuilder* builder,
 }
 
 xla::XlaOp BroadcastSpatialDimensions(xla::XlaBuilder* builder,
-                                      const xla::XlaOp& input,
+                                      const xla::XlaOp input,
                                       int32_t spatial_dimensions_offset,
                                       absl::Span<const int64_t> in_size,
                                       absl::Span<const int64_t> out_size) {
@@ -235,7 +238,7 @@ xla::XlaOp BroadcastSpatialDimensions(xla::XlaBuilder* builder,
 }
 
 xla::XlaOp ResizeUsingDilationAndConvolution(
-    xla::XlaBuilder* builder, const xla::XlaOp& input, xla::PrimitiveType type,
+    xla::XlaBuilder* builder, const xla::XlaOp input, xla::PrimitiveType type,
     const int num_spatial_dims, absl::Span<const int64_t> in_size,
     absl::Span<const int64_t> out_size, const int64_t channels,
     const bool align_corners, bool is_kernel_bilinear) {
@@ -381,7 +384,7 @@ xla::XlaOp ResizeUsingDilationAndConvolution(
 }
 
 xla::XlaOp ResizeUsingDilationAndConvolutionGradOp(
-    xla::XlaBuilder* builder, const xla::XlaOp& grad, xla::PrimitiveType type,
+    xla::XlaBuilder* builder, const xla::XlaOp grad, xla::PrimitiveType type,
     const int num_spatial_dims, absl::Span<const int64_t> in_size,
     absl::Span<const int64_t> grad_size, const int64_t channels,
     const bool align_corners, bool is_kernel_bilinear) {

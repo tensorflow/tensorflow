@@ -111,7 +111,7 @@ enum CustomCallApiVersion {
 }
 
 // Serialization of HloInstruction.
-// Next ID: 81
+// Next ID: 82
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -360,6 +360,9 @@ message HloInstructionProto {
   // Each HLO module may contain a main thread and one or more parallel threads.
   // Empty async_execution_thread is equivalent to main thread.
   string async_execution_thread = 79;
+
+  // Represents the K value for top-k.
+  int64 k = 81;
 }
 
 // Serialization of HloComputation.

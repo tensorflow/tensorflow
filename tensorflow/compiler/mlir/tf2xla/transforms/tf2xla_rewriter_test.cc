@@ -75,8 +75,10 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
 
 XlaComputation GetTestXlaComputation() {
   XlaBuilder xla_builder("test");
-  XlaOp add = xla::Add(xla::ConstantR0<float>(&xla_builder, 1.0),
-                       xla::ConstantR0<float>(&xla_builder, 2.0));
+  auto param =
+      Parameter(&xla_builder, 0, ShapeUtil::MakeScalarShape(xla::F32), "a");
+
+  XlaOp add = xla::Add(param, xla::ConstantR0<float>(&xla_builder, 2.0));
 
   std::vector<XlaOp> tuple_values;
   tuple_values.push_back(add);
@@ -291,7 +293,7 @@ TEST_F(Tf2XlaRewriterTest, InsertsConstantParameters) {
       LegalizeModule(/*use_tf2xla_hlo_importer=*/true, kModuleWithConstParam));
 }
 
-TEST_F(Tf2XlaRewriterTest, DISABLED_ImportsPrivateFunctions) {
+TEST_F(Tf2XlaRewriterTest, ErrorsWithInvalidNumberOfParametersToArgs) {
   XlaBuilder builder("test_builder");
   XlaComputation to_apply;
   {
@@ -315,9 +317,9 @@ TEST_F(Tf2XlaRewriterTest, DISABLED_ImportsPrivateFunctions) {
   EXPECT_EQ(computation.proto().computations_size(), 2);
 
   TF_ASSERT_OK(CreateMlirModule());
-  TF_ASSERT_OK_AND_ASSIGN(TupleOp root_tuple,
-                          ImportXlaComputationIntoModule(computation));
-  EXPECT_TRUE(root_tuple);
+  tsl::StatusOr<TupleOp> status_or_tuple_op =
+      ImportXlaComputationIntoModule(computation);
+  EXPECT_FALSE(status_or_tuple_op.ok());
 }
 
 }  // namespace mhlo

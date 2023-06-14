@@ -281,7 +281,7 @@ int GetOutputBufferId(int output_num, const TfCallbackData& callback_data) {
 
 int64_t BufferSize(const TfCallbackData::BufferDescription& descr) {
   TensorShape shape;
-  CHECK(TensorShape::BuildTensorShape(descr.shape(), &shape).ok());  // Crash OK
+  TF_CHECK_OK(TensorShape::BuildTensorShape(descr.shape(), &shape));  // Crash OK
   return shape.num_elements() * DataTypeSize(descr.type());
 }
 

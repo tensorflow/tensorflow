@@ -89,11 +89,27 @@ bool TfLiteAsyncSignatureRunnerReconcileRestrictions(
       io_type, name, user_provided_attributes, merged, conflict);
 }
 
+bool TfLiteAsyncSignatureRunnerReconcileRestrictionsByIndex(
+    const TfLiteAsyncSignatureRunner* async_signature_runner, int tensor_index,
+    const TfLiteAttributeMap* user_provided_attributes,
+    TfLiteAttributeMap* merged, TfLiteAttributeMap* conflict) {
+  if (!async_signature_runner) return false;
+  return async_signature_runner->impl->ReconcileRestrictions(
+      tensor_index, user_provided_attributes, merged, conflict);
+}
+
 TfLiteStatus TfLiteAsyncSignatureRunnerSetAttributes(
     TfLiteAsyncSignatureRunner* async_signature_runner, TfLiteIoType io_type,
     const char* name, const TfLiteAttributeMap* attrs) {
   if (!async_signature_runner) return kTfLiteError;
   return async_signature_runner->impl->SetAttributes(io_type, name, attrs);
+}
+
+TfLiteStatus TfLiteAsyncSignatureRunnerSetAttributesByIndex(
+    TfLiteAsyncSignatureRunner* async_signature_runner, int tensor_index,
+    const TfLiteAttributeMap* attrs) {
+  if (!async_signature_runner) return kTfLiteError;
+  return async_signature_runner->impl->SetAttributes(tensor_index, attrs);
 }
 
 TfLiteStatus TfLiteAsyncSignatureRunnerPrepareBackends(
@@ -144,7 +160,11 @@ const char* TfLiteAsyncSignatureRunnerGetInputName(
   if (input_index < 0 || input_index >= count) {
     return nullptr;
   }
-  return async_signature_runner->impl->input_names()[input_index];
+  const auto& input_names = async_signature_runner->impl->input_names();
+  if (input_index >= input_names.size()) {
+    return nullptr;
+  }
+  return input_names[input_index];
 }
 
 size_t TfLiteAsyncSignatureRunnerGetOutputCount(
@@ -160,6 +180,10 @@ const char* TfLiteAsyncSignatureRunnerGetOutputName(
   size_t count =
       TfLiteAsyncSignatureRunnerGetOutputCount(async_signature_runner);
   if (output_index < 0 || output_index >= count) {
+    return nullptr;
+  }
+  const auto& output_names = async_signature_runner->impl->output_names();
+  if (output_index >= output_names.size()) {
     return nullptr;
   }
   return async_signature_runner->impl->output_names()[output_index];
@@ -182,4 +206,22 @@ const TfLiteOpaqueTensor* TfLiteAsyncSignatureRunnerGetOutputTensor(
 void TfLiteAsyncSignatureRunnerDelete(
     TfLiteAsyncSignatureRunner* signature_runner) {
   delete signature_runner;
+}
+
+const int* TfLiteAsyncSignatureRunnerInputTensorIndices(
+    const TfLiteAsyncSignatureRunner* async_signature_runner) {
+  if (!async_signature_runner) return nullptr;
+  return async_signature_runner->impl->inputs().data();
+}
+
+const int* TfLiteAsyncSignatureRunnerOutputTensorIndices(
+    const TfLiteAsyncSignatureRunner* async_signature_runner) {
+  if (!async_signature_runner) return nullptr;
+  return async_signature_runner->impl->outputs().data();
+}
+
+const TfLiteOpaqueTensor* TfLiteAsyncSignatureRunnerGetTensor(
+    const TfLiteAsyncSignatureRunner* async_signature_runner, int index) {
+  if (!async_signature_runner) return nullptr;
+  return async_signature_runner->impl->tensor(index);
 }

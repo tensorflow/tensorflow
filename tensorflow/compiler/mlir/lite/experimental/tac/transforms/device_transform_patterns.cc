@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/transforms/device_transform_patterns.h"
 
+#include <limits>
 #include <memory>
 
 #include "llvm/ADT/ArrayRef.h"

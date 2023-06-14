@@ -151,7 +151,8 @@ class SameOperandsAndResultTypeResolveRef
 
   static LogicalResult inferReturnTypeComponentsFromOperands(
       MLIRContext*, std::optional<Location> location, ValueShapeRange operands,
-      DictionaryAttr attributes, RegionRange regions,
+      DictionaryAttr attributes, OpaqueProperties properties,
+      RegionRange regions,
       SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {
     if (operands.empty())
       return emitOptionalError(

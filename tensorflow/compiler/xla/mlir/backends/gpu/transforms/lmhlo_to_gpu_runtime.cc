@@ -501,12 +501,12 @@ using mlir::lmhlo_gpu::ReduceScatterStartOp;
 // TODO(ezhulenev): Once XLA runtime custom calls support returning values, we
 // should explicitly return event id from the `Start` custom call, and pass it
 // to the `Done` custom call. Longer term this should become an `!async.token`
-// and rely on XLA runtime asynchonous execution.
+// and rely on XLA runtime asynchronous execution.
 class CollectiveUidGenerator {
  public:
   CollectiveUidGenerator() : cnt_(0) {}
 
-  // Assings a unique event id to the pair of start and done operations.
+  // Assigns a unique event id to the pair of start and done operations.
   int32_t AssignUid(Operation* start, Operation* done) {
     int32_t id = next();
     uids_[start] = id;
@@ -586,11 +586,11 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     return success();
   }
 
-  template <typename ThunkT, typename OpT>
-  static LogicalResult TryDegenerateCollectivePermuteToMemCopy(
-      OpT op, const NcclCollectiveConfig& config, int replica_count,
-      int num_partitions, PatternRewriter& rewriter) {
-    if (!ThunkT::IsDegenerate(op, replica_count, num_partitions)) {
+  static LogicalResult TryDegenerateToMemCopy(
+      CollectivePermuteStartOp op, const NcclCollectiveConfig& config,
+      int replica_count, int num_partitions, PatternRewriter& rewriter) {
+    if (!NcclCollectivePermuteStartThunk::IsDegenerate(op, replica_count,
+                                                       num_partitions)) {
       return failure();
     }
 
@@ -599,14 +599,6 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
         ValueRange({op.getOutput(), op.getOperand()}));
 
     return success();
-  }
-
-  static LogicalResult TryDegenerateToMemCopy(
-      CollectivePermuteStartOp op, const NcclCollectiveConfig& config,
-      int replica_count, int num_partitions, PatternRewriter& rewriter) {
-    return TryDegenerateCollectivePermuteToMemCopy<
-        NcclCollectivePermuteStartThunk>(op, config, replica_count,
-                                         num_partitions, rewriter);
   }
 
   static Status CheckImplementable(AllGatherStartOp op, int64_t replica_count,
@@ -821,7 +813,7 @@ class CollectiveOpLowering : public OpRewritePattern<CollectiveOp> {
     if (!is_async) {
       erase_done_op();
     } else {
-      // For asynchonous start operation we need to produce a fake token, that
+      // For asynchronous start operation we need to produce a fake token, that
       // will be later removed, because corresponding `done` operation doesn't
       // have a token argument. We rely on the `unrealized_conversion_cast`
       // operation to create a fake token from the `i8` constant, and on the

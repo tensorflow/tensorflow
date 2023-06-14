@@ -62,14 +62,15 @@ std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeForCPUPass(
     int64_t numElementsThreshold = 1024);
 
 /// Pass to vectorize `memref.copy`.
-std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass();
+std::unique_ptr<OperationPass<func::FuncOp>> createVectorizeCopyPass(
+    int64_t numElementsThreshold = 8);
 
 /// Pass to remove redundant `memref.copy` ops.
 std::unique_ptr<OperationPass<func::FuncOp>> createNaiveCopyRemovalPass();
 
 /// Pass to gradually lower vector ops to SCF.
 std::unique_ptr<OperationPass<func::FuncOp>> createLowerVectorsPass(
-    bool enableAVX2 = true);
+    bool enableAVX2 = true, bool flatten = false);
 
 /// Pass to pack linalg.matmul as linalg.mmt4d.
 std::unique_ptr<OperationPass<func::FuncOp>> createPackMatmulPass();
@@ -152,9 +153,7 @@ struct GmlStCPUTilingOptions
     this->reduction2DReductionDimTileSize =
         opts.reduction2DReductionDimTileSize;
     this->vectorSize = opts.vectorSize;
-    this->enableFusionClusters = opts.enableFusionClusters;
     this->statsDetailLevel = opts.statsDetailLevel;
-    this->enableFusionClusterOutlining = opts.enableFusionClusterOutlining;
     this->cpuName = opts.cpuName;
     this->inlineFusionClusters = opts.inlineFusionClusters;
   }
@@ -207,17 +206,6 @@ struct GmlStCPUTilingOptions
       *this, "lower-to-mmt4d",
       llvm::cl::desc("Enable the specific code generation (packing) for matmul "
                      "operations."),
-      llvm::cl::init(false)};
-
-  Option<bool> enableFusionClusters{
-      *this, "enable-fusion-clusters",
-      llvm::cl::desc("Enable the pass to create gml_st.fusion clusters."),
-      llvm::cl::init(false)};
-
-  Option<bool> enableFusionClusterOutlining{
-      *this, "enable-fusion-cluster-outlining",
-      llvm::cl::desc(
-          "Enable passes to outline and deduplicate gml_st.fusion clusters."),
       llvm::cl::init(false)};
 
   Option<StringRef> cpuName{

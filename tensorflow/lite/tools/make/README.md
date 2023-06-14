@@ -1,6 +1,6 @@
 # Build TensorFlow Lite with Makefile
 
-**WARNING: Using Makefile to build TensorFlow Lite is deprecated at the
+**WARNING: Using Makefile to build TensorFlow Lite is deprecated since
 Aug 2021.**
 
 Please use CMake or Bazel instead. Please refer to the

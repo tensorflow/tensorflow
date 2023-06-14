@@ -1,12 +1,12 @@
-// RUN: xla-cpu-opt %s -split-input-file -xla-lmhlo-to-cpu-runtime \
+// RUN: xla-cpu-opt %s -split-input-file -xla-cpu-to-cpu-runtime \
 // RUN: | FileCheck %s
 
-func.func @cpu_onfeed(%arg0: memref<8xf32>, %arg1: memref<10xui32>) {
+func.func @cpu_outfeed(%arg0: memref<8xf32>, %arg1: memref<10xui32>) {
   "xla_cpu.outfeed"(%arg0, %arg1) {config = "abc", result_type = [f32, ui32]} : (memref<8xf32>, memref<10xui32>) -> ()
   return
 }
 
-//      CHECK: func @cpu_onfeed(
+//      CHECK: func @cpu_outfeed(
 // CHECK-SAME:   %[[ARG0:[a-z0-9]+]]: memref<8xf32>
 // CHECK-SAME:   %[[ARG1:[a-z0-9]+]]: memref<10xui32>
 // CHECK-SAME: )
@@ -17,7 +17,7 @@ func.func @cpu_onfeed(%arg0: memref<8xf32>, %arg1: memref<10xui32>) {
 
 // -----
 
-func.func @cpu_onfeed_strided(
+func.func @cpu_outfeed_strided(
   %arg0: memref<8x8xf32, strided<[?, 1], offset: ?>>,
   %arg1: memref<10xui32>) {
     "xla_cpu.outfeed"(%arg0, %arg1) {config = "abc", result_type = [f32, ui32]}
@@ -25,7 +25,7 @@ func.func @cpu_onfeed_strided(
     return
 }
 
-//      CHECK: func @cpu_onfeed_strided(
+//      CHECK: func @cpu_outfeed_strided(
 // CHECK-SAME:   %[[ARG0:[a-z0-9]+]]: memref<8x8xf32, strided<[?, 1], offset: ?>>
 // CHECK-SAME:   %[[ARG1:[a-z0-9]+]]: memref<10xui32>
 // CHECK-SAME: )

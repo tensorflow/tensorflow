@@ -39,7 +39,7 @@ from tensorflow.python.distribute import tpu_replicated_variable
 from tensorflow.python.distribute import tpu_util
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
-from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as tpu_cluster_resolver_lib
 from tensorflow.python.distribute.v1 import input_lib as input_lib_v1
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -62,7 +62,6 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_hardware_feature
-from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import deprecation
@@ -96,10 +95,12 @@ def validate_run_function(fn):
   # Otherwise we return an error, because we don't support eagerly running
   # run in TPUStrategy.
 
-  if context.executing_eagerly() \
-      and not isinstance(fn, def_function.Function) \
-      and not isinstance(fn, function.ConcreteFunction) \
-      and not (callable(fn) and isinstance(fn.__call__, def_function.Function)):
+  if (context.executing_eagerly()
+      and not isinstance(fn, def_function.Function)
+      and not isinstance(fn, function.ConcreteFunction)
+      and not (
+          callable(fn) and isinstance(fn.__call__, def_function.Function))
+      ):
     raise NotImplementedError(
         "TPUStrategy.run(fn, ...) does not support pure eager "
         "execution. please make sure the function passed into "
@@ -857,7 +858,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     super(TPUExtended, self).__init__(container_strategy)
 
     if tpu_cluster_resolver is None:
-      tpu_cluster_resolver = TPUClusterResolver("")
+      tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver("")
 
     if steps_per_run is None:
       # TODO(frankchn): Warn when we are being used by DS/Keras and this is
@@ -1237,7 +1238,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     This is a private method only to be used by Estimator. Other frameworks
     should directly be calling `tf.tpu.experimental.initialize_tpu_system`
     """
-    tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
+    tpu_cluster_resolver_lib.initialize_tpu_system(self._tpu_cluster_resolver)
 
   def _create_variable(self, next_creator, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""

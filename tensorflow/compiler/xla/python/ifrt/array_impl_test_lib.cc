@@ -345,29 +345,41 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   std::vector<tsl::RCReference<Array>> arrays({array0, array1});
   std::vector<Shape> single_device_shapes({shape, shape});
   Shape assembled_shape({4, 3});
-  auto assembled_sharding = OpaqueSharding::Create(
+  ShardingParam sharding_param(
+      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
+  auto ifrt_device_list =
       DeviceList(DeviceList::Devices({array0->sharding().devices().front(),
-                                      array1->sharding().devices().front()})),
-      OpaqueSharding::MakeDisassembleFuncFromShapes(single_device_shapes));
+                                      array1->sharding().devices().front()}));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto assembled_array,
-      client->AssembleArrayFromSingleDeviceArrays(
-          assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-          ArrayCopySemantics::kAlwaysCopy));
+      std::shared_ptr<const Sharding> sharding_param_sharding,
+      ShardingParamSharding::Create(std::move(sharding_param),
+                                    ifrt_device_list));
+  auto assembled_shardings = {
+      OpaqueSharding::Create(
+          ifrt_device_list,
+          OpaqueSharding::MakeDisassembleFuncFromShapes(single_device_shapes)),
+      sharding_param_sharding};
+  for (auto& assembled_sharding : assembled_shardings) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto assembled_array,
+        client->AssembleArrayFromSingleDeviceArrays(
+            assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+            ArrayCopySemantics::kAlwaysCopy));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
-                          assembled_array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy));
+    TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                            assembled_array->DisassembleIntoSingleDeviceArrays(
+                                ArrayCopySemantics::kAlwaysCopy));
 
-  ASSERT_THAT(single_device_arrays, SizeIs(2));
-  EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
-  EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
-  EXPECT_THAT(single_device_arrays[0]->sharding().devices().devices(),
-              ElementsAreArray(array0->sharding().devices().devices()));
-  EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
-  EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
-  EXPECT_THAT(single_device_arrays[1]->sharding().devices().devices(),
-              ElementsAreArray(array1->sharding().devices().devices()));
+    ASSERT_THAT(single_device_arrays, SizeIs(2));
+    EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
+    EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
+    EXPECT_THAT(single_device_arrays[0]->sharding().devices().devices(),
+                ElementsAreArray(array0->sharding().devices().devices()));
+    EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
+    EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
+    EXPECT_THAT(single_device_arrays[1]->sharding().devices().devices(),
+                ElementsAreArray(array1->sharding().devices().devices()));
+  }
 }
 
 TEST(ArrayImplTest, ReshardToSameSharding) {

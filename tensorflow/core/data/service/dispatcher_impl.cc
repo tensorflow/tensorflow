@@ -1043,10 +1043,9 @@ Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                            SnapshotResponse* response) {
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
-
   if (snapshots_.contains(request->path())) {
-    return errors::InvalidArgument("a snapshot at ", request->path(),
-                                   " is already started or completed");
+    return errors::AlreadyExists("tf.data snapshot at ", request->path(),
+                                 " is already started or completed");
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<SnapshotManager> snapshot_manager,

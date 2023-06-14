@@ -297,6 +297,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":macros",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",
@@ -478,8 +479,9 @@ cc_test(
     deps = [
         ":framework_stable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
-        "//tensorflow/lite/testing:util",  # build_cleaner: keep
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

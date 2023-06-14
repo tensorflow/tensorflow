@@ -18,6 +18,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "third_party/tensorflow_serving/util/any_ptr.h"
 #include "tfrt/tensor/dense_host_tensor.h"  // from @tf_runtime
 namespace tensorflow {
 namespace tfrt_stub {
@@ -38,8 +39,23 @@ class SyncResourceState {
     return resource_dht_.at(index).CopyRef();
   }
 
+  template <typename T>
+  void Set(int index, T* resource) {
+    if (resources_.size() <= index) {
+      resources_.resize(index + 1);
+    }
+
+    resources_[index] = serving::AnyPtr(resource);
+  }
+
+  template <typename T>
+  T* Get(int index) const {
+    return resources_.at(index).get<T>();
+  }
+
  private:
   std::vector<tfrt::DenseHostTensor> resource_dht_;
+  std::vector<serving::AnyPtr> resources_;
 };
 
 }  // namespace tfrt_stub

@@ -26,7 +26,7 @@ traced (a process known as retracing).
 """
 
 import abc
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Iterator
 
 from typing_extensions import Protocol
 from typing_extensions import runtime_checkable
@@ -199,7 +199,7 @@ class TraceType(metaclass=abc.ABCMeta):
     """
 
   @doc_controls.do_not_doc_inheritable
-  def _to_tensors(self, value) -> List[core.Tensor]:
+  def _to_tensors(self, value: Any) -> List[core.Tensor]:
     """Breaks down a value of this type into Tensors.
 
     Args:
@@ -210,6 +210,21 @@ class TraceType(metaclass=abc.ABCMeta):
     """
     del value
     return []
+
+  @doc_controls.do_not_doc_inheritable
+  def _from_tensors(self, tensors: Iterator[core.Tensor]) -> Any:
+    """Regenerates a value of this type from Tensors.
+
+    Must use the same fixed amount of tensors as `_to_tensors`.
+
+    Args:
+      tensors: An iterator from which the tensors can be pulled.
+
+    Returns:
+      A value of this type.
+    """
+    del tensors
+    return self.placeholder_value(PlaceholderContext())
 
   @doc_controls.do_not_doc_inheritable
   def _flatten(self) -> List["TraceType"]:

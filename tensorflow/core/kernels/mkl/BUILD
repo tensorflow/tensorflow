@@ -219,6 +219,7 @@ tf_mkl_kernel_library(
 tf_mkl_kernel_library(
     name = "mkl_conv_op",
     hdrs = [
+        "mkl_kernel_util.h",
         "mkl_quantized_conv_ops.h",
     ],
     prefix = "mkl_conv",
@@ -398,6 +399,15 @@ tf_cc_test_mkl(
         "//tensorflow/core/graph:mkl_graph_util",
         "//tensorflow/core/kernels:conv_ops_gpu_hdrs",
     ] + MKL_TEST_DEPS,
+)
+
+tf_mkl_kernel_library(
+    name = "mkl_fused_instance_norm_op",
+    srcs = ["mkl_fused_instance_norm_op.cc"],
+    deps = [
+        "//tensorflow/core:mkl_nn_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+    ] + MKL_DEPS,
 )
 
 tf_mkl_kernel_library(

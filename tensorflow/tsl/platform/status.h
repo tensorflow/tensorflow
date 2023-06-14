@@ -47,15 +47,13 @@ limitations under the License.
 
 namespace tsl {
 
-typedef SourceLocationImpl SourceLocation;
-
-// Since April 2023, tensorflow::Status is an alias to absl::Status. TF 2.13 is
-// the first release including this change.
+// Since April 2023, tensorflow::Status is an alias to absl::Status. The first
+// TF release including this change will be TF 2.14 (the latest release in
+// April 2023 is 2.13).
 // At the same time `tsl::errors::Code` aliases `absl::StatusCode`.
 //
 // Here is a set of correspondences:
 // - Use `absl::OkStatus()` instead of `tsl::OkStatus()`.
-// - Use absl::StatusCodeToString` instead of `tsl::error_name`.
 typedef absl::Status Status;
 
 namespace errors {
@@ -183,9 +181,6 @@ typedef std::function<void(const Status&)> StatusCallback;
 
 extern tsl::string* TfCheckOpHelperOutOfLine(const ::tsl::Status& v,
                                              const char* msg);
-
-// Prefer using `absl::StatusCodeToString`.
-std::string error_name(absl::StatusCode code);
 
 inline tsl::string* TfCheckOpHelper(::tsl::Status v, const char* msg) {
   if (v.ok()) return nullptr;
