@@ -262,9 +262,9 @@ void MklPoolParameters::Init(OpKernelContext* context,
                              TensorFormat data_format,
                              const TensorShape& tensor_in_shape) {
   // For max pooling, tensor_in should have 4 or 5 dimensions.
-  OP_REQUIRES(context,
-              tensor_in_shape.dims() == 4 || tensor_in_shape.dims() == 5,
-              errors::InvalidArgument("tensor_in must be 4 or 5-dimensional"));
+  OP_REQUIRES(
+      context, tensor_in_shape.dims() == 4 || tensor_in_shape.dims() == 5,
+      absl::InvalidArgumentError("tensor_in must be 4 or 5-dimensional"));
 
   depth = GetTensorDim(tensor_in_shape, data_format, 'C');
   if (tensor_in_shape.dims() == 4) {
@@ -340,7 +340,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     // pooling, not a combination.
     OP_REQUIRES(context,
                 (depth_window == 1 || (window_rows == 1 && window_cols == 1)),
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "MaxPooling supports exactly one of pooling across depth "
                     "or pooling across width/height."));
   } else {
@@ -369,7 +369,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES(context,
                 (depth_window == 1 ||
                  (window_rows == 1 && window_cols == 1 && window_planes == 1)),
-                errors::Unimplemented(
+                absl::UnimplementedError(
                     "AvgPooling3D supports exactly one of pooling across depth "
                     "or pooling across depth/width/height."));
   }
@@ -394,18 +394,18 @@ void MklPoolParameters::Init(OpKernelContext* context,
     // Fail if the depth, height or width are greater than MAX_INT.
     // We check depth only for 3D pooling case.
     if (!is_pool2d) {
-      OP_REQUIRES(context,
-                  FastBoundsCheck(out_planes, std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("output depth/planes is too large"));
+      OP_REQUIRES(
+          context, FastBoundsCheck(out_planes, std::numeric_limits<int>::max()),
+          absl::InvalidArgumentError("output depth/planes is too large"));
     }
 
     OP_REQUIRES(context,
                 FastBoundsCheck(out_height, std::numeric_limits<int>::max()),
-                errors::InvalidArgument("output height is too large"));
+                absl::InvalidArgumentError("output height is too large"));
 
     OP_REQUIRES(context,
                 FastBoundsCheck(out_width, std::numeric_limits<int>::max()),
-                errors::InvalidArgument("output width is too large"));
+                absl::InvalidArgumentError("output width is too large"));
 
     out_depth = depth;  // Output will have the same depth as the input.
   } else {              // We are pooling in the depth dimension.
@@ -413,21 +413,21 @@ void MklPoolParameters::Init(OpKernelContext* context,
     // any padding, and expects the depth_window to equal the depth
     // stride (no overlapping).
     OP_REQUIRES(context, depth % depth_window == 0,
-                errors::Unimplemented("Depthwise max pooling requires the"
-                                      " depth window to evenly divide the"
-                                      " input depth"));
+                absl::UnimplementedError("Depthwise max pooling requires the"
+                                         " depth window to evenly divide the"
+                                         " input depth"));
     OP_REQUIRES(context, depth_stride == depth_window,
-                errors::Unimplemented("Depthwise max pooling requires the"
-                                      " depth window to equal the depth"
-                                      " stride"));
+                absl::UnimplementedError("Depthwise max pooling requires the"
+                                         " depth window to equal the depth"
+                                         " stride"));
 
     // The current version of depthwise max is only implemented on CPU.
     OP_REQUIRES(context,
                 (DeviceType(static_cast<Device*>(context->device())
                                 ->attributes()
                                 .device_type()) == DeviceType(DEVICE_CPU)),
-                errors::Unimplemented("Depthwise max pooling is currently "
-                                      "only implemented for CPU devices."));
+                absl::UnimplementedError("Depthwise max pooling is currently "
+                                         "only implemented for CPU devices."));
 
     out_depth = depth / depth_window;
   }

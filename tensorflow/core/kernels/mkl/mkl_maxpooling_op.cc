@@ -169,16 +169,16 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
         // Pass min, max from input to output.
         const Tensor& min_input_t = MklGetInput(context, 1);
         const Tensor& max_input_t = MklGetInput(context, 2);
-        OP_REQUIRES(
-            context, TensorShapeUtils::IsScalar(min_input_t.shape()),
-            errors::InvalidArgument(
-                "min_input shape must be rank 0 but is rank ",
-                min_input_t.dims(), ", received shape: ", min_input_t.shape()));
-        OP_REQUIRES(
-            context, TensorShapeUtils::IsScalar(max_input_t.shape()),
-            errors::InvalidArgument(
-                "max_input shape must be rank 0 but is rank ",
-                max_input_t.dims(), ", received shape: ", max_input_t.shape()));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "min_input shape must be rank 0 but is rank ",
+                        min_input_t.dims(), ", received shape: ",
+                        min_input_t.shape().DebugString())));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "max_input shape must be rank 0 but is rank ",
+                        max_input_t.dims(), ", received shape: ",
+                        max_input_t.shape().DebugString())));
         const float min_input = min_input_t.scalar<float>()();
         const float max_input = max_input_t.scalar<float>()();
 
@@ -207,8 +207,9 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
-                                              error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Compute received an exception:", error_msg)));
     }
   }
 
@@ -381,8 +382,9 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       string error_msg = "Status:" + std::to_string(e.status) +
                          ", message: " + string(e.message) + ". in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
-                                              error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Compute received an exception:", error_msg)));
     }
   }
 

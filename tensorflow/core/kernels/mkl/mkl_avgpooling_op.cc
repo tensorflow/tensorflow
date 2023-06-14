@@ -147,16 +147,16 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         const Tensor& min_input_t = MklGetInput(context, 1);
         const Tensor& max_input_t = MklGetInput(context, 2);
 
-        OP_REQUIRES(
-            context, TensorShapeUtils::IsScalar(min_input_t.shape()),
-            errors::InvalidArgument(
-                "min_input shape must be rank 0 but is rank ",
-                min_input_t.dims(), ", received shape: ", min_input_t.shape()));
-        OP_REQUIRES(
-            context, TensorShapeUtils::IsScalar(max_input_t.shape()),
-            errors::InvalidArgument(
-                "max_input shape must be rank 0 but is rank ",
-                max_input_t.dims(), ", received shape: ", max_input_t.shape()));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "min_input shape must be rank 0 but is rank ",
+                        min_input_t.dims(), ", received shape: ",
+                        min_input_t.shape().DebugString())));
+        OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_t.shape()),
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "max_input shape must be rank 0 but is rank ",
+                        max_input_t.dims(), ", received shape: ",
+                        max_input_t.shape().DebugString())));
 
         const float min_input = min_input_t.scalar<float>()();
         const float max_input = max_input_t.scalar<float>()();
@@ -177,9 +177,9 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }  // Compute
 
@@ -254,11 +254,11 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
                     in_cols +
                 cindex + csize - 1;
             OP_REQUIRES(context, input_max < output_tensor->NumElements(),
-                        errors::InvalidArgument(
+                        absl::InvalidArgumentError(absl::StrCat(
                             "Output only has ", output_tensor->NumElements(),
                             " elements but computation requested"
                             " would use element with index=",
-                            input_max));
+                            input_max)));
           }
         }
       }
@@ -305,10 +305,10 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       OP_REQUIRES(
           context, orig_input_dims_mkl_order[0] == diff_dst_dims[0],
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Expected first dimension of orig_input and diff_dst to match, "
               "got ",
-              orig_input_dims_mkl_order[0], " and ", diff_dst_dims[0]));
+              orig_input_dims_mkl_order[0], " and ", diff_dst_dims[0])));
 
       memory::dims output_dims_mkl_order;
       this->GetOutputDims(pool_params, &output_dims_mkl_order);
@@ -373,8 +373,9 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
-                                              error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Compute received an exception:", error_msg)));
     }
   }
 
