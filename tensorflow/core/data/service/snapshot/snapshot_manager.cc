@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
