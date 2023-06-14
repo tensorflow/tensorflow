@@ -1,6 +1,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "if_google",
+    "if_linux_x86_64",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -158,6 +160,7 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_stream",
         ":gpu_virtual_mem_allocator",
     ],
+    defines = if_linux_x86_64(["TF_PLATFORM_LINUX_X86_64"]),
     visibility = [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -186,7 +189,19 @@ tf_cuda_library(
         "//tensorflow/tsl/framework:device_id_utils",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
-    ],
+    ] + if_google(
+        # TODO(b/282068262): PJRT pulls in TFRT components that are incompatible with ARM platform.
+        # Clean up so that PJRT can run on ARM.
+        if_linux_x86_64([
+            "//tensorflow/compiler/jit:flags",
+            "//tensorflow/compiler/xla/pjrt/gpu:gpu_helpers",
+            "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
+            "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
+            "//tensorflow/core/tfrt/common:pjrt_util",
+        ]) + if_cuda_or_rocm([
+            "//tensorflow/compiler/xla/service:gpu_plugin_impl",  # for registering cuda compiler.
+        ]),
+    ),
     alwayslink = 1,
 )
 
