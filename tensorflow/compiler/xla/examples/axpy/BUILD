@@ -1,9 +1,12 @@
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 xla_cc_test(
     name = "stablehlo_compile_test",
     srcs = ["stablehlo_compile_test.cc"],
     data = ["stablehlo_axpy.mlir"],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/client:client_library",

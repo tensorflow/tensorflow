@@ -84,6 +84,14 @@ class TestAttrsClass:
 
 class DefaultTypesTest(test.TestCase):
 
+  def testLiteralNan(self):
+    nan_literal = default_types.Literal(float('nan'))
+    complex_nan = default_types.Literal(complex(float('nan'), 1))
+    complex_nan_other = default_types.Literal(complex(1, float('nan')))
+    self.assertEqual(nan_literal, nan_literal)
+    self.assertEqual(nan_literal, complex_nan)
+    self.assertEqual(nan_literal, complex_nan_other)
+
   def testLiteralSupertypes(self):
     literal_a = default_types.Literal(1)
     literal_b = default_types.Literal(2)
@@ -279,6 +287,19 @@ class DefaultTypesTest(test.TestCase):
     self.assertEqual(dict_a, dict_c)
     self.assertNotEqual(dict_a, dict_b)
 
+  def testCastLazy(self):
+    list_type = default_types.List(
+        default_types.Literal('a'), default_types.Literal('b')
+    )
+    tuple_type = default_types.Tuple(default_types.Literal('c'), list_type)
+    dict_type = default_types.Dict(
+        {'key': tuple_type, 'other_key': list_type}, placeholder_type=dict
+    )
+
+    value = dict_type.placeholder_value(None)
+    casted_value = dict_type._cast(value, None)
+
+    self.assertIs(value, casted_value)
 
 if __name__ == '__main__':
   test.main()

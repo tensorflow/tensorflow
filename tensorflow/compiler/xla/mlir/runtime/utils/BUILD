@@ -16,8 +16,8 @@ cc_library(
         "//tensorflow/compiler/xla/runtime:async_runtime",
         "//tensorflow/tsl/platform:platform_port",
         "@com_google_absl//absl/base:dynamic_annotations",
+        "@com_google_absl//absl/functional:any_invocable",
         "@llvm-project//llvm:OrcJIT",
-        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:mlir_async_runtime_api",
         "@tf_runtime//:async_value",
     ],
@@ -60,5 +60,15 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "float_16bits",
+    hdrs = ["float_16bits.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        "@llvm-project//llvm:OrcJIT",
+        "@llvm-project//mlir:mlir_float16_utils",
     ],
 )

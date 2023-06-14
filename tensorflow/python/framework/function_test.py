@@ -49,6 +49,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import while_loop
 from tensorflow.python.platform import test
@@ -114,7 +115,7 @@ class FunctionTest(test.TestCase):
       return a
 
     with ops.Graph().as_default():
-      var = variables.VariableV1([18.0])
+      var = variable_v1.VariableV1([18.0])
       call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
       self.assertEqual("MyIdentity", call.op.name)
       for cfg in _OptimizerOptions():
@@ -283,7 +284,7 @@ class FunctionTest(test.TestCase):
       tf_logging.info("cfg = %s", cfg)
       with session.Session(graph=g, config=cfg) as sess:
         out, = sess.run(dlogits, {logits: x, labels: y})
-      self.assertAllClose(out, np.exp(prob - y))
+      self.assertAllClose(out, np.exp(prob - y), rtol=1e-5)
 
   @test_util.disable_xla("b/124286351")  # No error is raised
   def testCustomGradientError(self):

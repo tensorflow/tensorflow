@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/pooling.h"
 
+#include <numeric>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"

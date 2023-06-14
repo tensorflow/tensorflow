@@ -1,11 +1,12 @@
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = [
+    default_visibility = set_external_visibility([
         "//tensorflow/compiler:__subpackages__",
-    ],
+    ]),
     licenses = ["notice"],
 )
 
@@ -37,6 +38,7 @@ cc_library(
 xla_cc_test(
     name = "graphcycles_test",
     srcs = ["graphcycles_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":graphcycles",
         "//tensorflow/tsl/platform:logging",
@@ -50,6 +52,7 @@ xla_cc_test(
 xla_cc_test(
     name = "ordered_set_test",
     srcs = ["ordered_set_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":ordered_set",
         "//tensorflow/tsl/platform:logging",

@@ -527,10 +527,10 @@ static StatusOr<bool> TryVectorizeConv(
     new_operands.push_back(Parameter(&b, 2, conv->operand(2)->shape(), "bias"));
   }
   if (conv->operand_count() > 3) {
-    // Handle side input, which has same shape as the input.
+    // Handle side input, which has same shape as the output.
     new_operands.push_back(
         SplitAtDim(Parameter(&b, 3, conv->operand(3)->shape(), "side_input"),
-                   dnums->input_feature_dimension(), vect_size));
+                   dnums->output_feature_dimension(), vect_size));
   }
   if (conv->operand_count() > 4) {
     return InvalidArgument(

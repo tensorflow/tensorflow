@@ -33,6 +33,14 @@ class LazyLoader(types.ModuleType):
     self._parent_module_globals = parent_module_globals
     self._warning = warning
 
+    # These members allows doctest correctly process this module member without
+    # triggering self._load(). self._load() mutates parant_module_globals and
+    # triggers a dict mutated during iteration error from doctest.py.
+    # - for from_module()
+    self.__module__ = name.rsplit(".", 1)[0]
+    # - for is_routine()
+    self.__wrapped__ = None
+
     super(LazyLoader, self).__init__(name)
 
   def _load(self):
@@ -57,6 +65,11 @@ class LazyLoader(types.ModuleType):
   def __getattr__(self, item):
     module = self._load()
     return getattr(module, item)
+
+  def __repr__(self):
+    # Carefully to not trigger _load, since repr may be called in very
+    # sensitive places.
+    return f"<LazyLoader {self.__name__} as {self._local_name}>"
 
   def __dir__(self):
     module = self._load()

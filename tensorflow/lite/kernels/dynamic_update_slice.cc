@@ -120,8 +120,10 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
   std::vector<int> clamped_start_indices =
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
 
-  // Copies input to output first.
-  memcpy(output->data.raw, input->data.raw, input->bytes);
+  // If the operation is not done in-place, copy the input data to the output.
+  if (input->data.data != output->data.data) {
+    memcpy(output->data.data, input->data.data, input->bytes);
+  }
 
   // Update tensor has no elements. Skip.
   if (update_shape.FlatSize() == 0) {

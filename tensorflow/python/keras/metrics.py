@@ -24,7 +24,7 @@ import numpy as np
 
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.impl import api as autograph
-from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -294,8 +294,8 @@ class Metric(base_layer.Layer, metaclass=abc.ABCMeta):
       initializer=None,
       dtype=None):
     """Adds state variable. Only for use by subclasses."""
-    if distribute_ctx.has_strategy():
-      strategy = distribute_ctx.get_strategy()
+    if distribute_lib.has_strategy():
+      strategy = distribute_lib.get_strategy()
     else:
       strategy = None
 

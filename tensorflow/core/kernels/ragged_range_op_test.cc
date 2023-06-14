@@ -86,7 +86,7 @@ TEST_F(RaggedRangeOpTest, RangeSizeOverflow) {
 
   EXPECT_EQ(absl::StrCat("Requires ((limit - start) / delta) <= ",
                          std::numeric_limits<int64_t>::max()),
-            RunOpKernel().error_message());
+            RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, BroadcastDeltas) {
@@ -152,7 +152,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsStarts) {
   AddInputFromArray<int>(TensorShape({4, 1}), {0, 5, 8, 5});  // starts
   AddInputFromArray<int>(TensorShape({4}), {8, 7, 8, 1});     // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 1, -1});    // deltas
-  EXPECT_EQ("starts must be a scalar or vector", RunOpKernel().error_message());
+  EXPECT_EQ("starts must be a scalar or vector", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsLimits) {
@@ -160,7 +160,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsLimits) {
   AddInputFromArray<int>(TensorShape({4}), {0, 5, 8, 5});     // starts
   AddInputFromArray<int>(TensorShape({4, 1}), {8, 7, 8, 1});  // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 1, -1});    // deltas
-  EXPECT_EQ("limits must be a scalar or vector", RunOpKernel().error_message());
+  EXPECT_EQ("limits must be a scalar or vector", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsDeltas) {
@@ -168,7 +168,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsDeltas) {
   AddInputFromArray<int>(TensorShape({4}), {0, 5, 8, 5});      // starts
   AddInputFromArray<int>(TensorShape({4}), {8, 7, 8, 1});      // limits
   AddInputFromArray<int>(TensorShape({4, 1}), {2, 1, 1, -1});  // deltas
-  EXPECT_EQ("deltas must be a scalar or vector", RunOpKernel().error_message());
+  EXPECT_EQ("deltas must be a scalar or vector", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsShapeMismatch) {
@@ -177,7 +177,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsShapeMismatch) {
   AddInputFromArray<int>(TensorShape({3}), {7, 8, 1});      // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 1, -1});  // deltas
   EXPECT_EQ("starts, limits, and deltas must have the same shape",
-            RunOpKernel().error_message());
+            RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, InvalidArgsZeroDelta) {
@@ -185,7 +185,7 @@ TEST_F(RaggedRangeOpTest, InvalidArgsZeroDelta) {
   AddInputFromArray<int>(TensorShape({4}), {0, 5, 8, 5});   // starts
   AddInputFromArray<int>(TensorShape({4}), {7, 8, 8, 1});   // limits
   AddInputFromArray<int>(TensorShape({4}), {2, 1, 0, -1});  // deltas
-  EXPECT_EQ("Requires delta != 0", RunOpKernel().error_message());
+  EXPECT_EQ("Requires delta != 0", RunOpKernel().message());
 }
 
 TEST_F(RaggedRangeOpTest, EmptyRangePositiveDelta) {

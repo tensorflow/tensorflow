@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/experimental/tac/utils/utils.h"
 
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"

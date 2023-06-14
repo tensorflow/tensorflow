@@ -112,14 +112,12 @@ ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
 
 Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(context, ": ", prior.error_message())};
+  return Status{prior.code(), absl::StrCat(context, ": ", prior.message())};
 }
 
 Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(),
-                absl::StrCat(prior.error_message(), ": ", context)};
+  return Status{prior.code(), absl::StrCat(prior.message(), ": ", context)};
 }
 
 std::string Reindent(absl::string_view original,
@@ -163,6 +161,11 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value) {
 }
 
 std::string RoundTripFpToString(tsl::float8_e4m3fn value) {
+  std::string result = GenericRoundTripFpToString(value);
+  return result;
+}
+
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value) {
   std::string result = GenericRoundTripFpToString(value);
   return result;
 }
@@ -429,6 +432,11 @@ std::string SanitizeFileName(std::string file_name) {
     }
   }
   return file_name;
+}
+
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t> seq) {
+  return *absl::c_max_element(seq) - *absl::c_min_element(seq) ==
+         seq.size() - 1;
 }
 
 // Utility function to split a double-precision float (F64) into a pair of F32s.

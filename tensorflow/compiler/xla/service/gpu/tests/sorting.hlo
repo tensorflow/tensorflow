@@ -16,258 +16,257 @@ compare {
 // CHECK:         %[[VAL_3:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_4:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_5:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_6:.*]] = getelementptr inbounds i8, ptr %[[VAL_7:.*]], i64 0
-// CHECK:         %[[VAL_8:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_6:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_7:.*]] = zext i32 %[[VAL_6]] to i64
+// CHECK:         %[[VAL_8:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
 // CHECK:         %[[VAL_9:.*]] = zext i32 %[[VAL_8]] to i64
-// CHECK:         %[[VAL_10:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
-// CHECK:         %[[VAL_11:.*]] = zext i32 %[[VAL_10]] to i64
-// CHECK:         %[[VAL_12:.*]] = mul nuw nsw i64 %[[VAL_9]], 2
-// CHECK:         %[[VAL_13:.*]] = add nuw nsw i64 %[[VAL_12]], %[[VAL_11]]
-// CHECK:         %[[VAL_14:.*]] = icmp ult i64 %[[VAL_13]], 4
-// CHECK:         call void @llvm.assume(i1 %[[VAL_14]])
-// CHECK:         %[[VAL_15:.*]] = udiv i64 %[[VAL_13]], 1
-// CHECK:         %[[VAL_16:.*]] = urem i64 %[[VAL_15]], 2
-// CHECK:         %[[VAL_17:.*]] = udiv i64 %[[VAL_13]], 2
-// CHECK:         %[[VAL_18:.*]] = icmp ult i64 %[[VAL_13]], 4
-// CHECK:         br i1 %[[VAL_18]], label %[[VAL_19:.*]], label %[[VAL_20:.*]]
-// CHECK:       sort.in_bounds-after:                             ; preds = %[[VAL_21:.*]], %[[VAL_22:.*]]
+// CHECK:         %[[VAL_10:.*]] = mul nuw nsw i64 %[[VAL_7]], 2
+// CHECK:         %[[VAL_11:.*]] = add nuw nsw i64 %[[VAL_10]], %[[VAL_9]]
+// CHECK:         %[[VAL_12:.*]] = icmp ult i64 %[[VAL_11]], 4
+// CHECK:         call void @llvm.assume(i1 %[[VAL_12]])
+// CHECK:         %[[VAL_13:.*]] = udiv i64 %[[VAL_11]], 1
+// CHECK:         %[[VAL_14:.*]] = urem i64 %[[VAL_13]], 2
+// CHECK:         %[[VAL_15:.*]] = udiv i64 %[[VAL_11]], 2
+// CHECK:         %[[VAL_16:.*]] = icmp ult i64 %[[VAL_11]], 4
+// CHECK:         br i1 %[[VAL_16]], label %[[VAL_17:.*]], label %[[VAL_18:.*]]
+// CHECK:       sort.in_bounds-after:                             ; preds = %[[VAL_19:.*]], %[[VAL_20:.*]]
 // CHECK:         ret void
-// CHECK:       sort.in_bounds-true:                              ; preds = %[[VAL_22]]
-// CHECK:         %[[VAL_23:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
-// CHECK:         %[[VAL_24:.*]] = sext i32 %[[VAL_23]] to i64
-// CHECK:         %[[VAL_25:.*]] = shl i64 %[[VAL_16]], 1
-// CHECK:         %[[VAL_26:.*]] = icmp slt i64 %[[VAL_25]], 3
-// CHECK:         br i1 %[[VAL_26]], label %[[VAL_27:.*]], label %[[VAL_28:.*]]
-// CHECK:       smaller_keys_index-after:                         ; preds = %[[VAL_29:.*]], %[[VAL_19]]
+// CHECK:       sort.in_bounds-true:                              ; preds = %[[VAL_20]]
+// CHECK:         %[[VAL_21:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
+// CHECK:         %[[VAL_22:.*]] = sext i32 %[[VAL_21]] to i64
+// CHECK:         %[[VAL_23:.*]] = shl i64 %[[VAL_14]], 1
+// CHECK:         %[[VAL_24:.*]] = icmp slt i64 %[[VAL_23]], 3
+// CHECK:         br i1 %[[VAL_24]], label %[[VAL_25:.*]], label %[[VAL_26:.*]]
+// CHECK:       smaller_keys_index-after:                         ; preds = %[[VAL_27:.*]], %[[VAL_17]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_30:.*]] = mul i64 %[[VAL_16]], 2
-// CHECK:         %[[VAL_31:.*]] = icmp uge i64 %[[VAL_30]], 0
-// CHECK:         br i1 %[[VAL_31]], label %[[VAL_32:.*]], label %[[VAL_33:.*]]
-// CHECK:       is_last_tile-after:                               ; preds = %[[VAL_34:.*]], %[[VAL_35:.*]]
+// CHECK:         %[[VAL_28:.*]] = mul i64 %[[VAL_14]], 2
+// CHECK:         %[[VAL_29:.*]] = icmp uge i64 %[[VAL_28]], 0
+// CHECK:         br i1 %[[VAL_29]], label %[[VAL_30:.*]], label %[[VAL_31:.*]]
+// CHECK:       is_last_tile-after:                               ; preds = %[[VAL_32:.*]], %[[VAL_33:.*]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_36:.*]] = mul i64 %[[VAL_16]], 2
-// CHECK:         %[[VAL_37:.*]] = icmp uge i64 %[[VAL_36]], 0
-// CHECK:         br i1 %[[VAL_37]], label %[[VAL_38:.*]], label %[[VAL_39:.*]]
-// CHECK:       is_last_tile-after9:                              ; preds = %[[VAL_40:.*]], %[[VAL_41:.*]]
+// CHECK:         %[[VAL_34:.*]] = mul i64 %[[VAL_14]], 2
+// CHECK:         %[[VAL_35:.*]] = icmp uge i64 %[[VAL_34]], 0
+// CHECK:         br i1 %[[VAL_35]], label %[[VAL_36:.*]], label %[[VAL_37:.*]]
+// CHECK:       is_last_tile-after9:                              ; preds = %[[VAL_38:.*]], %[[VAL_39:.*]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_42:.*]] = mul i64 %[[VAL_16]], 2
-// CHECK:         %[[VAL_43:.*]] = icmp uge i64 %[[VAL_42]], 0
-// CHECK:         br i1 %[[VAL_43]], label %[[VAL_44:.*]], label %[[VAL_45:.*]]
-// CHECK:       is_last_tile-after24:                             ; preds = %[[VAL_46:.*]], %[[VAL_47:.*]]
+// CHECK:         %[[VAL_40:.*]] = mul i64 %[[VAL_14]], 2
+// CHECK:         %[[VAL_41:.*]] = icmp uge i64 %[[VAL_40]], 0
+// CHECK:         br i1 %[[VAL_41]], label %[[VAL_42:.*]], label %[[VAL_43:.*]]
+// CHECK:       is_last_tile-after24:                             ; preds = %[[VAL_44:.*]], %[[VAL_45:.*]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_48:.*]] = shl i64 %[[VAL_16]], 1
-// CHECK:         %[[VAL_49:.*]] = icmp slt i64 %[[VAL_48]], 3
-// CHECK:         br i1 %[[VAL_49]], label %[[VAL_50:.*]], label %[[VAL_21]]
-// CHECK:       smaller_keys_index-after38:                       ; preds = %[[VAL_51:.*]], %[[VAL_52:.*]]
-// CHECK:         br label %[[VAL_20]]
-// CHECK:       smaller_keys_index-true:                          ; preds = %[[VAL_19]]
-// CHECK:         %[[VAL_53:.*]] = shl i64 %[[VAL_24]], 1
-// CHECK:         %[[VAL_54:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_17]], i64 %[[VAL_25]]
-// CHECK:         %[[VAL_55:.*]] = load float, ptr %[[VAL_54]], align 4
-// CHECK:         %[[VAL_56:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_53]]
-// CHECK:         store float %[[VAL_55]], ptr addrspace(3) %[[VAL_56]], align 4
-// CHECK:         %[[VAL_57:.*]] = add i64 %[[VAL_25]], 1
-// CHECK:         %[[VAL_58:.*]] = icmp slt i64 %[[VAL_57]], 3
-// CHECK:         br i1 %[[VAL_58]], label %[[VAL_59:.*]], label %[[VAL_29]]
-// CHECK:       inner_smaller_keys_index-after:                   ; preds = %[[VAL_59]], %[[VAL_27]]
-// CHECK:         br label %[[VAL_28]]
-// CHECK:       inner_smaller_keys_index-true:                    ; preds = %[[VAL_27]]
-// CHECK:         %[[VAL_60:.*]] = add i64 %[[VAL_53]], 1
-// CHECK:         %[[VAL_61:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_17]], i64 %[[VAL_57]]
-// CHECK:         %[[VAL_62:.*]] = load float, ptr %[[VAL_61]], align 4
-// CHECK:         %[[VAL_63:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_60]]
-// CHECK:         store float %[[VAL_62]], ptr addrspace(3) %[[VAL_63]], align 4
-// CHECK:         br label %[[VAL_29]]
-// CHECK:       is_last_tile-true:                                ; preds = %[[VAL_28]]
-// CHECK:         %[[VAL_64:.*]] = mul i64 %[[VAL_24]], 2
-// CHECK:         %[[VAL_65:.*]] = xor i64 %[[VAL_64]], 1
-// CHECK:         %[[VAL_66:.*]] = icmp slt i64 %[[VAL_64]], %[[VAL_65]]
-// CHECK:         %[[VAL_67:.*]] = icmp slt i64 %[[VAL_65]], 3
-// CHECK:         %[[VAL_68:.*]] = and i1 %[[VAL_66]], %[[VAL_67]]
-// CHECK:         br i1 %[[VAL_68]], label %[[VAL_69:.*]], label %[[VAL_35]]
-// CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_70:.*]], %[[VAL_32]]
-// CHECK:         br label %[[VAL_71:.*]]
-// CHECK:       is_last_tile-false:                               ; preds = %[[VAL_28]]
-// CHECK:         %[[VAL_72:.*]] = mul i64 %[[VAL_24]], 2
-// CHECK:         %[[VAL_73:.*]] = xor i64 %[[VAL_72]], 1
-// CHECK:         %[[VAL_74:.*]] = icmp slt i64 %[[VAL_72]], %[[VAL_73]]
-// CHECK:         %[[VAL_75:.*]] = icmp slt i64 %[[VAL_73]], 4
-// CHECK:         br i1 true, label %[[VAL_76:.*]], label %[[VAL_34]]
-// CHECK:       smaller_comparison_index-after2:                  ; preds = %[[VAL_77:.*]], %[[VAL_33]]
-// CHECK:         br label %[[VAL_71]]
-// CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_32]]
-// CHECK:         %[[VAL_78:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_65]]
-// CHECK:         %[[VAL_79:.*]] = addrspacecast ptr addrspace(3) %[[VAL_78]] to ptr
-// CHECK:         %[[VAL_80:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_64]]
-// CHECK:         %[[VAL_81:.*]] = addrspacecast ptr addrspace(3) %[[VAL_80]] to ptr
-// CHECK:         call void @region_0_4(ptr %[[VAL_79]], ptr %[[VAL_81]], ptr %[[VAL_5]])
-// CHECK:         %[[VAL_82:.*]] = load i8, ptr %[[VAL_5]], align 1
-// CHECK:         %[[VAL_83:.*]] = icmp ne i8 %[[VAL_82]], 0
-// CHECK:         br i1 %[[VAL_83]], label %[[VAL_84:.*]], label %[[VAL_70]]
-// CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_84]], %[[VAL_69]]
-// CHECK:         br label %[[VAL_35]]
-// CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_69]]
-// CHECK:         %[[VAL_85:.*]] = load float, ptr %[[VAL_79]], align 4
-// CHECK:         %[[VAL_86:.*]] = load float, ptr %[[VAL_81]], align 4
+// CHECK:         %[[VAL_46:.*]] = shl i64 %[[VAL_14]], 1
+// CHECK:         %[[VAL_47:.*]] = icmp slt i64 %[[VAL_46]], 3
+// CHECK:         br i1 %[[VAL_47]], label %[[VAL_48:.*]], label %[[VAL_19]]
+// CHECK:       smaller_keys_index-after38:                       ; preds = %[[VAL_49:.*]], %[[VAL_50:.*]]
+// CHECK:         br label %[[VAL_18]]
+// CHECK:       smaller_keys_index-true:                          ; preds = %[[VAL_17]]
+// CHECK:         %[[VAL_51:.*]] = shl i64 %[[VAL_22]], 1
+// CHECK:         %[[VAL_52:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_53:.*]], i64 0, i64 %[[VAL_15]], i64 %[[VAL_23]]
+// CHECK:         %[[VAL_54:.*]] = load float, ptr %[[VAL_52]], align 4
+// CHECK:         %[[VAL_55:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_51]]
+// CHECK:         store float %[[VAL_54]], ptr addrspace(3) %[[VAL_55]], align 4
+// CHECK:         %[[VAL_56:.*]] = add i64 %[[VAL_23]], 1
+// CHECK:         %[[VAL_57:.*]] = icmp slt i64 %[[VAL_56]], 3
+// CHECK:         br i1 %[[VAL_57]], label %[[VAL_58:.*]], label %[[VAL_27]]
+// CHECK:       inner_smaller_keys_index-after:                   ; preds = %[[VAL_58]], %[[VAL_25]]
+// CHECK:         br label %[[VAL_26]]
+// CHECK:       inner_smaller_keys_index-true:                    ; preds = %[[VAL_25]]
+// CHECK:         %[[VAL_59:.*]] = add i64 %[[VAL_51]], 1
+// CHECK:         %[[VAL_60:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_53]], i64 0, i64 %[[VAL_15]], i64 %[[VAL_56]]
+// CHECK:         %[[VAL_61:.*]] = load float, ptr %[[VAL_60]], align 4
+// CHECK:         %[[VAL_62:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_59]]
+// CHECK:         store float %[[VAL_61]], ptr addrspace(3) %[[VAL_62]], align 4
+// CHECK:         br label %[[VAL_27]]
+// CHECK:       is_last_tile-true:                                ; preds = %[[VAL_26]]
+// CHECK:         %[[VAL_63:.*]] = mul i64 %[[VAL_22]], 2
+// CHECK:         %[[VAL_64:.*]] = xor i64 %[[VAL_63]], 1
+// CHECK:         %[[VAL_65:.*]] = icmp slt i64 %[[VAL_63]], %[[VAL_64]]
+// CHECK:         %[[VAL_66:.*]] = icmp slt i64 %[[VAL_64]], 3
+// CHECK:         %[[VAL_67:.*]] = and i1 %[[VAL_65]], %[[VAL_66]]
+// CHECK:         br i1 %[[VAL_67]], label %[[VAL_68:.*]], label %[[VAL_33]]
+// CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_69:.*]], %[[VAL_30]]
+// CHECK:         br label %[[VAL_70:.*]]
+// CHECK:       is_last_tile-false:                               ; preds = %[[VAL_26]]
+// CHECK:         %[[VAL_71:.*]] = mul i64 %[[VAL_22]], 2
+// CHECK:         %[[VAL_72:.*]] = xor i64 %[[VAL_71]], 1
+// CHECK:         %[[VAL_73:.*]] = icmp slt i64 %[[VAL_71]], %[[VAL_72]]
+// CHECK:         %[[VAL_74:.*]] = icmp slt i64 %[[VAL_72]], 4
+// CHECK:         br i1 true, label %[[VAL_75:.*]], label %[[VAL_32]]
+// CHECK:       smaller_comparison_index-after2:                  ; preds = %[[VAL_76:.*]], %[[VAL_31]]
+// CHECK:         br label %[[VAL_70]]
+// CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_30]]
+// CHECK:         %[[VAL_77:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_64]]
+// CHECK:         %[[VAL_78:.*]] = addrspacecast ptr addrspace(3) %[[VAL_77]] to ptr
+// CHECK:         %[[VAL_79:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_63]]
+// CHECK:         %[[VAL_80:.*]] = addrspacecast ptr addrspace(3) %[[VAL_79]] to ptr
+// CHECK:         call void @region_0_4(ptr %[[VAL_78]], ptr %[[VAL_80]], ptr %[[VAL_5]])
+// CHECK:         %[[VAL_81:.*]] = load i8, ptr %[[VAL_5]], align 1
+// CHECK:         %[[VAL_82:.*]] = icmp ne i8 %[[VAL_81]], 0
+// CHECK:         br i1 %[[VAL_82]], label %[[VAL_83:.*]], label %[[VAL_69]]
+// CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_83]], %[[VAL_68]]
+// CHECK:         br label %[[VAL_33]]
+// CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_68]]
+// CHECK:         %[[VAL_84:.*]] = load float, ptr %[[VAL_78]], align 4
+// CHECK:         %[[VAL_85:.*]] = load float, ptr %[[VAL_80]], align 4
+// CHECK:         %[[VAL_86:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_63]]
+// CHECK:         store float %[[VAL_84]], ptr addrspace(3) %[[VAL_86]], align 4
 // CHECK:         %[[VAL_87:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_64]]
 // CHECK:         store float %[[VAL_85]], ptr addrspace(3) %[[VAL_87]], align 4
-// CHECK:         %[[VAL_88:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_65]]
-// CHECK:         store float %[[VAL_86]], ptr addrspace(3) %[[VAL_88]], align 4
-// CHECK:         br label %[[VAL_70]]
-// CHECK:       smaller_comparison_index-true1:                   ; preds = %[[VAL_33]]
-// CHECK:         %[[VAL_89:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_73]]
-// CHECK:         %[[VAL_90:.*]] = addrspacecast ptr addrspace(3) %[[VAL_89]] to ptr
-// CHECK:         %[[VAL_91:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_72]]
-// CHECK:         %[[VAL_92:.*]] = addrspacecast ptr addrspace(3) %[[VAL_91]] to ptr
-// CHECK:         call void @region_0_4(ptr %[[VAL_90]], ptr %[[VAL_92]], ptr %[[VAL_4]])
-// CHECK:         %[[VAL_93:.*]] = load i8, ptr %[[VAL_4]], align 1
-// CHECK:         %[[VAL_94:.*]] = icmp ne i8 %[[VAL_93]], 0
-// CHECK:         br i1 %[[VAL_94]], label %[[VAL_95:.*]], label %[[VAL_77]]
-// CHECK:       is_smaller_than-after6:                           ; preds = %[[VAL_95]], %[[VAL_76]]
-// CHECK:         br label %[[VAL_34]]
-// CHECK:       is_smaller_than-true5:                            ; preds = %[[VAL_76]]
-// CHECK:         %[[VAL_96:.*]] = load float, ptr %[[VAL_90]], align 4
-// CHECK:         %[[VAL_97:.*]] = load float, ptr %[[VAL_92]], align 4
+// CHECK:         br label %[[VAL_69]]
+// CHECK:       smaller_comparison_index-true1:                   ; preds = %[[VAL_31]]
+// CHECK:         %[[VAL_88:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_72]]
+// CHECK:         %[[VAL_89:.*]] = addrspacecast ptr addrspace(3) %[[VAL_88]] to ptr
+// CHECK:         %[[VAL_90:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_71]]
+// CHECK:         %[[VAL_91:.*]] = addrspacecast ptr addrspace(3) %[[VAL_90]] to ptr
+// CHECK:         call void @region_0_4(ptr %[[VAL_89]], ptr %[[VAL_91]], ptr %[[VAL_4]])
+// CHECK:         %[[VAL_92:.*]] = load i8, ptr %[[VAL_4]], align 1
+// CHECK:         %[[VAL_93:.*]] = icmp ne i8 %[[VAL_92]], 0
+// CHECK:         br i1 %[[VAL_93]], label %[[VAL_94:.*]], label %[[VAL_76]]
+// CHECK:       is_smaller_than-after6:                           ; preds = %[[VAL_94]], %[[VAL_75]]
+// CHECK:         br label %[[VAL_32]]
+// CHECK:       is_smaller_than-true5:                            ; preds = %[[VAL_75]]
+// CHECK:         %[[VAL_95:.*]] = load float, ptr %[[VAL_89]], align 4
+// CHECK:         %[[VAL_96:.*]] = load float, ptr %[[VAL_91]], align 4
+// CHECK:         %[[VAL_97:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_71]]
+// CHECK:         store float %[[VAL_95]], ptr addrspace(3) %[[VAL_97]], align 4
 // CHECK:         %[[VAL_98:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_72]]
 // CHECK:         store float %[[VAL_96]], ptr addrspace(3) %[[VAL_98]], align 4
-// CHECK:         %[[VAL_99:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_73]]
-// CHECK:         store float %[[VAL_97]], ptr addrspace(3) %[[VAL_99]], align 4
-// CHECK:         br label %[[VAL_77]]
-// CHECK:       is_last_tile-true7:                               ; preds = %[[VAL_71]]
-// CHECK:         %[[VAL_100:.*]] = xor i64 %[[VAL_24]], 3
-// CHECK:         %[[VAL_101:.*]] = icmp slt i64 %[[VAL_24]], %[[VAL_100]]
-// CHECK:         %[[VAL_102:.*]] = icmp slt i64 %[[VAL_100]], 3
-// CHECK:         %[[VAL_103:.*]] = and i1 %[[VAL_101]], %[[VAL_102]]
-// CHECK:         br i1 %[[VAL_103]], label %[[VAL_104:.*]], label %[[VAL_41]]
-// CHECK:       smaller_comparison_index-after11:                 ; preds = %[[VAL_105:.*]], %[[VAL_38]]
-// CHECK:         br label %[[VAL_106:.*]]
-// CHECK:       is_last_tile-false8:                              ; preds = %[[VAL_71]]
-// CHECK:         %[[VAL_107:.*]] = xor i64 %[[VAL_24]], 3
-// CHECK:         %[[VAL_108:.*]] = icmp slt i64 %[[VAL_24]], %[[VAL_107]]
-// CHECK:         %[[VAL_109:.*]] = icmp slt i64 %[[VAL_107]], 4
-// CHECK:         br i1 true, label %[[VAL_110:.*]], label %[[VAL_40]]
-// CHECK:       smaller_comparison_index-after17:                 ; preds = %[[VAL_111:.*]], %[[VAL_39]]
-// CHECK:         br label %[[VAL_106]]
-// CHECK:       smaller_comparison_index-true10:                  ; preds = %[[VAL_38]]
-// CHECK:         %[[VAL_112:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_100]]
-// CHECK:         %[[VAL_113:.*]] = addrspacecast ptr addrspace(3) %[[VAL_112]] to ptr
-// CHECK:         %[[VAL_114:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_24]]
-// CHECK:         %[[VAL_115:.*]] = addrspacecast ptr addrspace(3) %[[VAL_114]] to ptr
-// CHECK:         call void @region_0_4(ptr %[[VAL_113]], ptr %[[VAL_115]], ptr %[[VAL_3]])
-// CHECK:         %[[VAL_116:.*]] = load i8, ptr %[[VAL_3]], align 1
-// CHECK:         %[[VAL_117:.*]] = icmp ne i8 %[[VAL_116]], 0
-// CHECK:         br i1 %[[VAL_117]], label %[[VAL_118:.*]], label %[[VAL_105]]
-// CHECK:       is_smaller_than-after15:                          ; preds = %[[VAL_118]], %[[VAL_104]]
-// CHECK:         br label %[[VAL_41]]
-// CHECK:       is_smaller_than-true14:                           ; preds = %[[VAL_104]]
-// CHECK:         %[[VAL_119:.*]] = load float, ptr %[[VAL_113]], align 4
-// CHECK:         %[[VAL_120:.*]] = load float, ptr %[[VAL_115]], align 4
-// CHECK:         %[[VAL_121:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_24]]
-// CHECK:         store float %[[VAL_119]], ptr addrspace(3) %[[VAL_121]], align 4
-// CHECK:         %[[VAL_122:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_100]]
-// CHECK:         store float %[[VAL_120]], ptr addrspace(3) %[[VAL_122]], align 4
+// CHECK:         br label %[[VAL_76]]
+// CHECK:       is_last_tile-true7:                               ; preds = %[[VAL_70]]
+// CHECK:         %[[VAL_99:.*]] = xor i64 %[[VAL_22]], 3
+// CHECK:         %[[VAL_100:.*]] = icmp slt i64 %[[VAL_22]], %[[VAL_99]]
+// CHECK:         %[[VAL_101:.*]] = icmp slt i64 %[[VAL_99]], 3
+// CHECK:         %[[VAL_102:.*]] = and i1 %[[VAL_100]], %[[VAL_101]]
+// CHECK:         br i1 %[[VAL_102]], label %[[VAL_103:.*]], label %[[VAL_39]]
+// CHECK:       smaller_comparison_index-after11:                 ; preds = %[[VAL_104:.*]], %[[VAL_36]]
+// CHECK:         br label %[[VAL_105:.*]]
+// CHECK:       is_last_tile-false8:                              ; preds = %[[VAL_70]]
+// CHECK:         %[[VAL_106:.*]] = xor i64 %[[VAL_22]], 3
+// CHECK:         %[[VAL_107:.*]] = icmp slt i64 %[[VAL_22]], %[[VAL_106]]
+// CHECK:         %[[VAL_108:.*]] = icmp slt i64 %[[VAL_106]], 4
+// CHECK:         br i1 true, label %[[VAL_109:.*]], label %[[VAL_38]]
+// CHECK:       smaller_comparison_index-after17:                 ; preds = %[[VAL_110:.*]], %[[VAL_37]]
 // CHECK:         br label %[[VAL_105]]
-// CHECK:       smaller_comparison_index-true16:                  ; preds = %[[VAL_39]]
-// CHECK:         %[[VAL_123:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_107]]
-// CHECK:         %[[VAL_124:.*]] = addrspacecast ptr addrspace(3) %[[VAL_123]] to ptr
-// CHECK:         %[[VAL_125:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_24]]
-// CHECK:         %[[VAL_126:.*]] = addrspacecast ptr addrspace(3) %[[VAL_125]] to ptr
-// CHECK:         call void @region_0_4(ptr %[[VAL_124]], ptr %[[VAL_126]], ptr %[[VAL_2]])
-// CHECK:         %[[VAL_127:.*]] = load i8, ptr %[[VAL_2]], align 1
-// CHECK:         %[[VAL_128:.*]] = icmp ne i8 %[[VAL_127]], 0
-// CHECK:         br i1 %[[VAL_128]], label %[[VAL_129:.*]], label %[[VAL_111]]
-// CHECK:       is_smaller_than-after21:                          ; preds = %[[VAL_129]], %[[VAL_110]]
-// CHECK:         br label %[[VAL_40]]
-// CHECK:       is_smaller_than-true20:                           ; preds = %[[VAL_110]]
-// CHECK:         %[[VAL_130:.*]] = load float, ptr %[[VAL_124]], align 4
-// CHECK:         %[[VAL_131:.*]] = load float, ptr %[[VAL_126]], align 4
-// CHECK:         %[[VAL_132:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_24]]
+// CHECK:       smaller_comparison_index-true10:                  ; preds = %[[VAL_36]]
+// CHECK:         %[[VAL_111:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_99]]
+// CHECK:         %[[VAL_112:.*]] = addrspacecast ptr addrspace(3) %[[VAL_111]] to ptr
+// CHECK:         %[[VAL_113:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_22]]
+// CHECK:         %[[VAL_114:.*]] = addrspacecast ptr addrspace(3) %[[VAL_113]] to ptr
+// CHECK:         call void @region_0_4(ptr %[[VAL_112]], ptr %[[VAL_114]], ptr %[[VAL_3]])
+// CHECK:         %[[VAL_115:.*]] = load i8, ptr %[[VAL_3]], align 1
+// CHECK:         %[[VAL_116:.*]] = icmp ne i8 %[[VAL_115]], 0
+// CHECK:         br i1 %[[VAL_116]], label %[[VAL_117:.*]], label %[[VAL_104]]
+// CHECK:       is_smaller_than-after15:                          ; preds = %[[VAL_117]], %[[VAL_103]]
+// CHECK:         br label %[[VAL_39]]
+// CHECK:       is_smaller_than-true14:                           ; preds = %[[VAL_103]]
+// CHECK:         %[[VAL_118:.*]] = load float, ptr %[[VAL_112]], align 4
+// CHECK:         %[[VAL_119:.*]] = load float, ptr %[[VAL_114]], align 4
+// CHECK:         %[[VAL_120:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_22]]
+// CHECK:         store float %[[VAL_118]], ptr addrspace(3) %[[VAL_120]], align 4
+// CHECK:         %[[VAL_121:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_99]]
+// CHECK:         store float %[[VAL_119]], ptr addrspace(3) %[[VAL_121]], align 4
+// CHECK:         br label %[[VAL_104]]
+// CHECK:       smaller_comparison_index-true16:                  ; preds = %[[VAL_37]]
+// CHECK:         %[[VAL_122:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_106]]
+// CHECK:         %[[VAL_123:.*]] = addrspacecast ptr addrspace(3) %[[VAL_122]] to ptr
+// CHECK:         %[[VAL_124:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_22]]
+// CHECK:         %[[VAL_125:.*]] = addrspacecast ptr addrspace(3) %[[VAL_124]] to ptr
+// CHECK:         call void @region_0_4(ptr %[[VAL_123]], ptr %[[VAL_125]], ptr %[[VAL_2]])
+// CHECK:         %[[VAL_126:.*]] = load i8, ptr %[[VAL_2]], align 1
+// CHECK:         %[[VAL_127:.*]] = icmp ne i8 %[[VAL_126]], 0
+// CHECK:         br i1 %[[VAL_127]], label %[[VAL_128:.*]], label %[[VAL_110]]
+// CHECK:       is_smaller_than-after21:                          ; preds = %[[VAL_128]], %[[VAL_109]]
+// CHECK:         br label %[[VAL_38]]
+// CHECK:       is_smaller_than-true20:                           ; preds = %[[VAL_109]]
+// CHECK:         %[[VAL_129:.*]] = load float, ptr %[[VAL_123]], align 4
+// CHECK:         %[[VAL_130:.*]] = load float, ptr %[[VAL_125]], align 4
+// CHECK:         %[[VAL_131:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_22]]
+// CHECK:         store float %[[VAL_129]], ptr addrspace(3) %[[VAL_131]], align 4
+// CHECK:         %[[VAL_132:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_106]]
 // CHECK:         store float %[[VAL_130]], ptr addrspace(3) %[[VAL_132]], align 4
-// CHECK:         %[[VAL_133:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_107]]
-// CHECK:         store float %[[VAL_131]], ptr addrspace(3) %[[VAL_133]], align 4
-// CHECK:         br label %[[VAL_111]]
-// CHECK:       is_last_tile-true22:                              ; preds = %[[VAL_106]]
-// CHECK:         %[[VAL_134:.*]] = mul i64 %[[VAL_24]], 2
-// CHECK:         %[[VAL_135:.*]] = xor i64 %[[VAL_134]], 1
-// CHECK:         %[[VAL_136:.*]] = icmp slt i64 %[[VAL_134]], %[[VAL_135]]
-// CHECK:         %[[VAL_137:.*]] = icmp slt i64 %[[VAL_135]], 3
-// CHECK:         %[[VAL_138:.*]] = and i1 %[[VAL_136]], %[[VAL_137]]
-// CHECK:         br i1 %[[VAL_138]], label %[[VAL_139:.*]], label %[[VAL_47]]
-// CHECK:       smaller_comparison_index-after26:                 ; preds = %[[VAL_140:.*]], %[[VAL_44]]
-// CHECK:         br label %[[VAL_52]]
-// CHECK:       is_last_tile-false23:                             ; preds = %[[VAL_106]]
-// CHECK:         %[[VAL_141:.*]] = mul i64 %[[VAL_24]], 2
-// CHECK:         %[[VAL_142:.*]] = xor i64 %[[VAL_141]], 1
-// CHECK:         %[[VAL_143:.*]] = icmp slt i64 %[[VAL_141]], %[[VAL_142]]
-// CHECK:         %[[VAL_144:.*]] = icmp slt i64 %[[VAL_142]], 4
-// CHECK:         br i1 true, label %[[VAL_145:.*]], label %[[VAL_46]]
-// CHECK:       smaller_comparison_index-after32:                 ; preds = %[[VAL_146:.*]], %[[VAL_45]]
-// CHECK:         br label %[[VAL_52]]
-// CHECK:       smaller_comparison_index-true25:                  ; preds = %[[VAL_44]]
-// CHECK:         %[[VAL_147:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_135]]
-// CHECK:         %[[VAL_148:.*]] = addrspacecast ptr addrspace(3) %[[VAL_147]] to ptr
-// CHECK:         %[[VAL_149:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_134]]
-// CHECK:         %[[VAL_150:.*]] = addrspacecast ptr addrspace(3) %[[VAL_149]] to ptr
-// CHECK:         call void @region_0_4(ptr %[[VAL_148]], ptr %[[VAL_150]], ptr %[[VAL_1]])
-// CHECK:         %[[VAL_151:.*]] = load i8, ptr %[[VAL_1]], align 1
-// CHECK:         %[[VAL_152:.*]] = icmp ne i8 %[[VAL_151]], 0
-// CHECK:         br i1 %[[VAL_152]], label %[[VAL_153:.*]], label %[[VAL_140]]
-// CHECK:       is_smaller_than-after30:                          ; preds = %[[VAL_153]], %[[VAL_139]]
-// CHECK:         br label %[[VAL_47]]
-// CHECK:       is_smaller_than-true29:                           ; preds = %[[VAL_139]]
-// CHECK:         %[[VAL_154:.*]] = load float, ptr %[[VAL_148]], align 4
-// CHECK:         %[[VAL_155:.*]] = load float, ptr %[[VAL_150]], align 4
+// CHECK:         br label %[[VAL_110]]
+// CHECK:       is_last_tile-true22:                              ; preds = %[[VAL_105]]
+// CHECK:         %[[VAL_133:.*]] = mul i64 %[[VAL_22]], 2
+// CHECK:         %[[VAL_134:.*]] = xor i64 %[[VAL_133]], 1
+// CHECK:         %[[VAL_135:.*]] = icmp slt i64 %[[VAL_133]], %[[VAL_134]]
+// CHECK:         %[[VAL_136:.*]] = icmp slt i64 %[[VAL_134]], 3
+// CHECK:         %[[VAL_137:.*]] = and i1 %[[VAL_135]], %[[VAL_136]]
+// CHECK:         br i1 %[[VAL_137]], label %[[VAL_138:.*]], label %[[VAL_45]]
+// CHECK:       smaller_comparison_index-after26:                 ; preds = %[[VAL_139:.*]], %[[VAL_42]]
+// CHECK:         br label %[[VAL_50]]
+// CHECK:       is_last_tile-false23:                             ; preds = %[[VAL_105]]
+// CHECK:         %[[VAL_140:.*]] = mul i64 %[[VAL_22]], 2
+// CHECK:         %[[VAL_141:.*]] = xor i64 %[[VAL_140]], 1
+// CHECK:         %[[VAL_142:.*]] = icmp slt i64 %[[VAL_140]], %[[VAL_141]]
+// CHECK:         %[[VAL_143:.*]] = icmp slt i64 %[[VAL_141]], 4
+// CHECK:         br i1 true, label %[[VAL_144:.*]], label %[[VAL_44]]
+// CHECK:       smaller_comparison_index-after32:                 ; preds = %[[VAL_145:.*]], %[[VAL_43]]
+// CHECK:         br label %[[VAL_50]]
+// CHECK:       smaller_comparison_index-true25:                  ; preds = %[[VAL_42]]
+// CHECK:         %[[VAL_146:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_134]]
+// CHECK:         %[[VAL_147:.*]] = addrspacecast ptr addrspace(3) %[[VAL_146]] to ptr
+// CHECK:         %[[VAL_148:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_133]]
+// CHECK:         %[[VAL_149:.*]] = addrspacecast ptr addrspace(3) %[[VAL_148]] to ptr
+// CHECK:         call void @region_0_4(ptr %[[VAL_147]], ptr %[[VAL_149]], ptr %[[VAL_1]])
+// CHECK:         %[[VAL_150:.*]] = load i8, ptr %[[VAL_1]], align 1
+// CHECK:         %[[VAL_151:.*]] = icmp ne i8 %[[VAL_150]], 0
+// CHECK:         br i1 %[[VAL_151]], label %[[VAL_152:.*]], label %[[VAL_139]]
+// CHECK:       is_smaller_than-after30:                          ; preds = %[[VAL_152]], %[[VAL_138]]
+// CHECK:         br label %[[VAL_45]]
+// CHECK:       is_smaller_than-true29:                           ; preds = %[[VAL_138]]
+// CHECK:         %[[VAL_153:.*]] = load float, ptr %[[VAL_147]], align 4
+// CHECK:         %[[VAL_154:.*]] = load float, ptr %[[VAL_149]], align 4
+// CHECK:         %[[VAL_155:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_133]]
+// CHECK:         store float %[[VAL_153]], ptr addrspace(3) %[[VAL_155]], align 4
 // CHECK:         %[[VAL_156:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_134]]
 // CHECK:         store float %[[VAL_154]], ptr addrspace(3) %[[VAL_156]], align 4
-// CHECK:         %[[VAL_157:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_135]]
-// CHECK:         store float %[[VAL_155]], ptr addrspace(3) %[[VAL_157]], align 4
-// CHECK:         br label %[[VAL_140]]
-// CHECK:       smaller_comparison_index-true31:                  ; preds = %[[VAL_45]]
-// CHECK:         %[[VAL_158:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_142]]
-// CHECK:         %[[VAL_159:.*]] = addrspacecast ptr addrspace(3) %[[VAL_158]] to ptr
-// CHECK:         %[[VAL_160:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_141]]
-// CHECK:         %[[VAL_161:.*]] = addrspacecast ptr addrspace(3) %[[VAL_160]] to ptr
-// CHECK:         call void @region_0_4(ptr %[[VAL_159]], ptr %[[VAL_161]], ptr %[[VAL_0]])
-// CHECK:         %[[VAL_162:.*]] = load i8, ptr %[[VAL_0]], align 1
-// CHECK:         %[[VAL_163:.*]] = icmp ne i8 %[[VAL_162]], 0
-// CHECK:         br i1 %[[VAL_163]], label %[[VAL_164:.*]], label %[[VAL_146]]
-// CHECK:       is_smaller_than-after36:                          ; preds = %[[VAL_164]], %[[VAL_145]]
-// CHECK:         br label %[[VAL_46]]
-// CHECK:       is_smaller_than-true35:                           ; preds = %[[VAL_145]]
-// CHECK:         %[[VAL_165:.*]] = load float, ptr %[[VAL_159]], align 4
-// CHECK:         %[[VAL_166:.*]] = load float, ptr %[[VAL_161]], align 4
+// CHECK:         br label %[[VAL_139]]
+// CHECK:       smaller_comparison_index-true31:                  ; preds = %[[VAL_43]]
+// CHECK:         %[[VAL_157:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_141]]
+// CHECK:         %[[VAL_158:.*]] = addrspacecast ptr addrspace(3) %[[VAL_157]] to ptr
+// CHECK:         %[[VAL_159:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_140]]
+// CHECK:         %[[VAL_160:.*]] = addrspacecast ptr addrspace(3) %[[VAL_159]] to ptr
+// CHECK:         call void @region_0_4(ptr %[[VAL_158]], ptr %[[VAL_160]], ptr %[[VAL_0]])
+// CHECK:         %[[VAL_161:.*]] = load i8, ptr %[[VAL_0]], align 1
+// CHECK:         %[[VAL_162:.*]] = icmp ne i8 %[[VAL_161]], 0
+// CHECK:         br i1 %[[VAL_162]], label %[[VAL_163:.*]], label %[[VAL_145]]
+// CHECK:       is_smaller_than-after36:                          ; preds = %[[VAL_163]], %[[VAL_144]]
+// CHECK:         br label %[[VAL_44]]
+// CHECK:       is_smaller_than-true35:                           ; preds = %[[VAL_144]]
+// CHECK:         %[[VAL_164:.*]] = load float, ptr %[[VAL_158]], align 4
+// CHECK:         %[[VAL_165:.*]] = load float, ptr %[[VAL_160]], align 4
+// CHECK:         %[[VAL_166:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_140]]
+// CHECK:         store float %[[VAL_164]], ptr addrspace(3) %[[VAL_166]], align 4
 // CHECK:         %[[VAL_167:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_141]]
 // CHECK:         store float %[[VAL_165]], ptr addrspace(3) %[[VAL_167]], align 4
-// CHECK:         %[[VAL_168:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_142]]
-// CHECK:         store float %[[VAL_166]], ptr addrspace(3) %[[VAL_168]], align 4
-// CHECK:         br label %[[VAL_146]]
-// CHECK:       smaller_keys_index-true37:                        ; preds = %[[VAL_52]]
-// CHECK:         %[[VAL_169:.*]] = shl i64 %[[VAL_24]], 1
-// CHECK:         %[[VAL_170:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_169]]
-// CHECK:         %[[VAL_171:.*]] = load float, ptr addrspace(3) %[[VAL_170]], align 4
-// CHECK:         %[[VAL_172:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_17]], i64 %[[VAL_48]]
-// CHECK:         store float %[[VAL_171]], ptr %[[VAL_172]], align 4
-// CHECK:         %[[VAL_173:.*]] = add i64 %[[VAL_48]], 1
-// CHECK:         %[[VAL_174:.*]] = icmp slt i64 %[[VAL_173]], 3
-// CHECK:         br i1 %[[VAL_174]], label %[[VAL_175:.*]], label %[[VAL_51]]
-// CHECK:       inner_smaller_keys_index-after40:                 ; preds = %[[VAL_175]], %[[VAL_50]]
-// CHECK:         br label %[[VAL_21]]
-// CHECK:       inner_smaller_keys_index-true39:                  ; preds = %[[VAL_50]]
-// CHECK:         %[[VAL_176:.*]] = add i64 %[[VAL_169]], 1
-// CHECK:         %[[VAL_177:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_176]]
-// CHECK:         %[[VAL_178:.*]] = load float, ptr addrspace(3) %[[VAL_177]], align 4
-// CHECK:         %[[VAL_179:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_6]], i64 0, i64 %[[VAL_17]], i64 %[[VAL_173]]
-// CHECK:         store float %[[VAL_178]], ptr %[[VAL_179]], align 4
-// CHECK:         br label %[[VAL_51]]
+// CHECK:         br label %[[VAL_145]]
+// CHECK:       smaller_keys_index-true37:                        ; preds = %[[VAL_50]]
+// CHECK:         %[[VAL_168:.*]] = shl i64 %[[VAL_22]], 1
+// CHECK:         %[[VAL_169:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_168]]
+// CHECK:         %[[VAL_170:.*]] = load float, ptr addrspace(3) %[[VAL_169]], align 4
+// CHECK:         %[[VAL_171:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_53]], i64 0, i64 %[[VAL_15]], i64 %[[VAL_46]]
+// CHECK:         store float %[[VAL_170]], ptr %[[VAL_171]], align 4
+// CHECK:         %[[VAL_172:.*]] = add i64 %[[VAL_46]], 1
+// CHECK:         %[[VAL_173:.*]] = icmp slt i64 %[[VAL_172]], 3
+// CHECK:         br i1 %[[VAL_173]], label %[[VAL_174:.*]], label %[[VAL_49]]
+// CHECK:       inner_smaller_keys_index-after40:                 ; preds = %[[VAL_174]], %[[VAL_48]]
+// CHECK:         br label %[[VAL_19]]
+// CHECK:       inner_smaller_keys_index-true39:                  ; preds = %[[VAL_48]]
+// CHECK:         %[[VAL_175:.*]] = add i64 %[[VAL_168]], 1
+// CHECK:         %[[VAL_176:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_175]]
+// CHECK:         %[[VAL_177:.*]] = load float, ptr addrspace(3) %[[VAL_176]], align 4
+// CHECK:         %[[VAL_178:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_53]], i64 0, i64 %[[VAL_15]], i64 %[[VAL_172]]
+// CHECK:         store float %[[VAL_177]], ptr %[[VAL_178]], align 4
+// CHECK:         br label %[[VAL_49]]
 // CHECK:       entry:
-// CHECK:         %[[VAL_180:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_181:.*]] = load float, ptr %[[VAL_182:.*]], align 4
-// CHECK:         %[[VAL_183:.*]] = load float, ptr %[[VAL_184:.*]], align 4
-// CHECK:         %[[VAL_185:.*]] = fcmp olt float %[[VAL_181]], %[[VAL_183]]
-// CHECK:         %[[VAL_186:.*]] = zext i1 %[[VAL_185]] to i8
-// CHECK:         store i8 %[[VAL_186]], ptr %[[VAL_180]], align 1
-// CHECK:         %[[VAL_187:.*]] = load i8, ptr %[[VAL_180]], align 1
-// CHECK:         store i8 %[[VAL_187]], ptr %[[VAL_188:.*]], align 1
+// CHECK:         %[[VAL_179:.*]] = alloca i8, align 1
+// CHECK:         %[[VAL_180:.*]] = load float, ptr %[[VAL_181:.*]], align 4
+// CHECK:         %[[VAL_182:.*]] = load float, ptr %[[VAL_183:.*]], align 4
+// CHECK:         %[[VAL_184:.*]] = fcmp olt float %[[VAL_180]], %[[VAL_182]]
+// CHECK:         %[[VAL_185:.*]] = zext i1 %[[VAL_184]] to i8
+// CHECK:         store i8 %[[VAL_185]], ptr %[[VAL_179]], align 1
+// CHECK:         %[[VAL_186:.*]] = load i8, ptr %[[VAL_179]], align 1
+// CHECK:         store i8 %[[VAL_186]], ptr %[[VAL_187:.*]], align 1
 // CHECK:         ret void
 
 ENTRY main {
@@ -288,369 +287,367 @@ compare {
 }
 
 // CHECK:       entry:
+// CHECK:         %[[VAL_188:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_189:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_190:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_191:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_192:.*]] = alloca i8, align 1
 // CHECK:         %[[VAL_193:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_194:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_195:.*]] = getelementptr inbounds i8, ptr %[[VAL_196:.*]], i64 0
-// CHECK:         %[[VAL_197:.*]] = getelementptr inbounds i8, ptr %[[VAL_198:.*]], i64 0
-// CHECK:         %[[VAL_199:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
-// CHECK:         %[[VAL_200:.*]] = zext i32 %[[VAL_199]] to i64
-// CHECK:         %[[VAL_201:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
-// CHECK:         %[[VAL_202:.*]] = zext i32 %[[VAL_201]] to i64
-// CHECK:         %[[VAL_203:.*]] = mul nuw nsw i64 %[[VAL_200]], 2
-// CHECK:         %[[VAL_204:.*]] = add nuw nsw i64 %[[VAL_203]], %[[VAL_202]]
-// CHECK:         %[[VAL_205:.*]] = icmp ult i64 %[[VAL_204]], 4
-// CHECK:         call void @llvm.assume(i1 %[[VAL_205]])
-// CHECK:         %[[VAL_206:.*]] = udiv i64 %[[VAL_204]], 1
-// CHECK:         %[[VAL_207:.*]] = urem i64 %[[VAL_206]], 2
-// CHECK:         %[[VAL_208:.*]] = udiv i64 %[[VAL_204]], 2
-// CHECK:         %[[VAL_209:.*]] = icmp ult i64 %[[VAL_204]], 4
-// CHECK:         br i1 %[[VAL_209]], label %[[VAL_210:.*]], label %[[VAL_211:.*]]
-// CHECK:       sort.in_bounds-after:                             ; preds = %[[VAL_212:.*]], %[[VAL_213:.*]]
+// CHECK:         %[[VAL_194:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.ctaid.x(), !range !2
+// CHECK:         %[[VAL_195:.*]] = zext i32 %[[VAL_194]] to i64
+// CHECK:         %[[VAL_196:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
+// CHECK:         %[[VAL_197:.*]] = zext i32 %[[VAL_196]] to i64
+// CHECK:         %[[VAL_198:.*]] = mul nuw nsw i64 %[[VAL_195]], 2
+// CHECK:         %[[VAL_199:.*]] = add nuw nsw i64 %[[VAL_198]], %[[VAL_197]]
+// CHECK:         %[[VAL_200:.*]] = icmp ult i64 %[[VAL_199]], 4
+// CHECK:         call void @llvm.assume(i1 %[[VAL_200]])
+// CHECK:         %[[VAL_201:.*]] = udiv i64 %[[VAL_199]], 1
+// CHECK:         %[[VAL_202:.*]] = urem i64 %[[VAL_201]], 2
+// CHECK:         %[[VAL_203:.*]] = udiv i64 %[[VAL_199]], 2
+// CHECK:         %[[VAL_204:.*]] = icmp ult i64 %[[VAL_199]], 4
+// CHECK:         br i1 %[[VAL_204]], label %[[VAL_205:.*]], label %[[VAL_206:.*]]
+// CHECK:       sort.in_bounds-after:                             ; preds = %[[VAL_207:.*]], %[[VAL_208:.*]]
 // CHECK:         ret void
-// CHECK:       sort.in_bounds-true:                              ; preds = %[[VAL_213]]
-// CHECK:         %[[VAL_214:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
-// CHECK:         %[[VAL_215:.*]] = sext i32 %[[VAL_214]] to i64
-// CHECK:         %[[VAL_216:.*]] = shl i64 %[[VAL_207]], 1
+// CHECK:       sort.in_bounds-true:                              ; preds = %[[VAL_208]]
+// CHECK:         %[[VAL_209:.*]] = call i32 @llvm.nvvm.read.ptx.sreg.tid.x(), !range !2
+// CHECK:         %[[VAL_210:.*]] = sext i32 %[[VAL_209]] to i64
+// CHECK:         %[[VAL_211:.*]] = shl i64 %[[VAL_202]], 1
+// CHECK:         %[[VAL_212:.*]] = icmp slt i64 %[[VAL_211]], 3
+// CHECK:         br i1 %[[VAL_212]], label %[[VAL_213:.*]], label %[[VAL_214:.*]]
+// CHECK:       smaller_keys_index-after:                         ; preds = %[[VAL_215:.*]], %[[VAL_205]]
+// CHECK:         %[[VAL_216:.*]] = shl i64 %[[VAL_202]], 1
 // CHECK:         %[[VAL_217:.*]] = icmp slt i64 %[[VAL_216]], 3
 // CHECK:         br i1 %[[VAL_217]], label %[[VAL_218:.*]], label %[[VAL_219:.*]]
-// CHECK:       smaller_keys_index-after:                         ; preds = %[[VAL_220:.*]], %[[VAL_210]]
-// CHECK:         %[[VAL_221:.*]] = shl i64 %[[VAL_207]], 1
-// CHECK:         %[[VAL_222:.*]] = icmp slt i64 %[[VAL_221]], 3
+// CHECK:       smaller_keys_index-after2:                        ; preds = %[[VAL_220:.*]], %[[VAL_214]]
+// CHECK:         call void @llvm.nvvm.barrier0()
+// CHECK:         %[[VAL_221:.*]] = mul i64 %[[VAL_202]], 2
+// CHECK:         %[[VAL_222:.*]] = icmp uge i64 %[[VAL_221]], 0
 // CHECK:         br i1 %[[VAL_222]], label %[[VAL_223:.*]], label %[[VAL_224:.*]]
-// CHECK:       smaller_keys_index-after2:                        ; preds = %[[VAL_225:.*]], %[[VAL_219]]
+// CHECK:       is_last_tile-after:                               ; preds = %[[VAL_225:.*]], %[[VAL_226:.*]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_226:.*]] = mul i64 %[[VAL_207]], 2
-// CHECK:         %[[VAL_227:.*]] = icmp uge i64 %[[VAL_226]], 0
-// CHECK:         br i1 %[[VAL_227]], label %[[VAL_228:.*]], label %[[VAL_229:.*]]
-// CHECK:       is_last_tile-after:                               ; preds = %[[VAL_230:.*]], %[[VAL_231:.*]]
+// CHECK:         %[[VAL_227:.*]] = mul i64 %[[VAL_202]], 2
+// CHECK:         %[[VAL_228:.*]] = icmp uge i64 %[[VAL_227]], 0
+// CHECK:         br i1 %[[VAL_228]], label %[[VAL_229:.*]], label %[[VAL_230:.*]]
+// CHECK:       is_last_tile-after13:                             ; preds = %[[VAL_231:.*]], %[[VAL_232:.*]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_232:.*]] = mul i64 %[[VAL_207]], 2
-// CHECK:         %[[VAL_233:.*]] = icmp uge i64 %[[VAL_232]], 0
-// CHECK:         br i1 %[[VAL_233]], label %[[VAL_234:.*]], label %[[VAL_235:.*]]
-// CHECK:       is_last_tile-after13:                             ; preds = %[[VAL_236:.*]], %[[VAL_237:.*]]
+// CHECK:         %[[VAL_233:.*]] = mul i64 %[[VAL_202]], 2
+// CHECK:         %[[VAL_234:.*]] = icmp uge i64 %[[VAL_233]], 0
+// CHECK:         br i1 %[[VAL_234]], label %[[VAL_235:.*]], label %[[VAL_236:.*]]
+// CHECK:       is_last_tile-after28:                             ; preds = %[[VAL_237:.*]], %[[VAL_238:.*]]
 // CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_238:.*]] = mul i64 %[[VAL_207]], 2
-// CHECK:         %[[VAL_239:.*]] = icmp uge i64 %[[VAL_238]], 0
-// CHECK:         br i1 %[[VAL_239]], label %[[VAL_240:.*]], label %[[VAL_241:.*]]
-// CHECK:       is_last_tile-after28:                             ; preds = %[[VAL_242:.*]], %[[VAL_243:.*]]
-// CHECK:         call void @llvm.nvvm.barrier0()
-// CHECK:         %[[VAL_244:.*]] = shl i64 %[[VAL_207]], 1
-// CHECK:         %[[VAL_245:.*]] = icmp slt i64 %[[VAL_244]], 3
-// CHECK:         br i1 %[[VAL_245]], label %[[VAL_246:.*]], label %[[VAL_247:.*]]
-// CHECK:       smaller_keys_index-after42:                       ; preds = %[[VAL_248:.*]], %[[VAL_249:.*]]
-// CHECK:         %[[VAL_250:.*]] = shl i64 %[[VAL_207]], 1
-// CHECK:         %[[VAL_251:.*]] = icmp slt i64 %[[VAL_250]], 3
-// CHECK:         br i1 %[[VAL_251]], label %[[VAL_252:.*]], label %[[VAL_212]]
-// CHECK:       smaller_keys_index-after46:                       ; preds = %[[VAL_253:.*]], %[[VAL_247]]
-// CHECK:         br label %[[VAL_211]]
-// CHECK:       smaller_keys_index-true:                          ; preds = %[[VAL_210]]
-// CHECK:         %[[VAL_254:.*]] = shl i64 %[[VAL_215]], 1
-// CHECK:         %[[VAL_255:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_195]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_216]]
-// CHECK:         %[[VAL_256:.*]] = load i32, ptr %[[VAL_255]], align 4
-// CHECK:         %[[VAL_257:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_254]]
-// CHECK:         store i32 %[[VAL_256]], ptr addrspace(3) %[[VAL_257]], align 4
-// CHECK:         %[[VAL_258:.*]] = add i64 %[[VAL_216]], 1
-// CHECK:         %[[VAL_259:.*]] = icmp slt i64 %[[VAL_258]], 3
-// CHECK:         br i1 %[[VAL_259]], label %[[VAL_260:.*]], label %[[VAL_220]]
-// CHECK:       inner_smaller_keys_index-after:                   ; preds = %[[VAL_260]], %[[VAL_218]]
+// CHECK:         %[[VAL_239:.*]] = shl i64 %[[VAL_202]], 1
+// CHECK:         %[[VAL_240:.*]] = icmp slt i64 %[[VAL_239]], 3
+// CHECK:         br i1 %[[VAL_240]], label %[[VAL_241:.*]], label %[[VAL_242:.*]]
+// CHECK:       smaller_keys_index-after42:                       ; preds = %[[VAL_243:.*]], %[[VAL_244:.*]]
+// CHECK:         %[[VAL_245:.*]] = shl i64 %[[VAL_202]], 1
+// CHECK:         %[[VAL_246:.*]] = icmp slt i64 %[[VAL_245]], 3
+// CHECK:         br i1 %[[VAL_246]], label %[[VAL_247:.*]], label %[[VAL_207]]
+// CHECK:       smaller_keys_index-after46:                       ; preds = %[[VAL_248:.*]], %[[VAL_242]]
+// CHECK:         br label %[[VAL_206]]
+// CHECK:       smaller_keys_index-true:                          ; preds = %[[VAL_205]]
+// CHECK:         %[[VAL_249:.*]] = shl i64 %[[VAL_210]], 1
+// CHECK:         %[[VAL_250:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_251:.*]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_211]]
+// CHECK:         %[[VAL_252:.*]] = load i32, ptr %[[VAL_250]], align 4
+// CHECK:         %[[VAL_253:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_249]]
+// CHECK:         store i32 %[[VAL_252]], ptr addrspace(3) %[[VAL_253]], align 4
+// CHECK:         %[[VAL_254:.*]] = add i64 %[[VAL_211]], 1
+// CHECK:         %[[VAL_255:.*]] = icmp slt i64 %[[VAL_254]], 3
+// CHECK:         br i1 %[[VAL_255]], label %[[VAL_256:.*]], label %[[VAL_215]]
+// CHECK:       inner_smaller_keys_index-after:                   ; preds = %[[VAL_256]], %[[VAL_213]]
+// CHECK:         br label %[[VAL_214]]
+// CHECK:       inner_smaller_keys_index-true:                    ; preds = %[[VAL_213]]
+// CHECK:         %[[VAL_257:.*]] = add i64 %[[VAL_249]], 1
+// CHECK:         %[[VAL_258:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_251]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_254]]
+// CHECK:         %[[VAL_259:.*]] = load i32, ptr %[[VAL_258]], align 4
+// CHECK:         %[[VAL_260:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_257]]
+// CHECK:         store i32 %[[VAL_259]], ptr addrspace(3) %[[VAL_260]], align 4
+// CHECK:         br label %[[VAL_215]]
+// CHECK:       smaller_keys_index-true1:                         ; preds = %[[VAL_214]]
+// CHECK:         %[[VAL_261:.*]] = shl i64 %[[VAL_210]], 1
+// CHECK:         %[[VAL_262:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_263:.*]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_216]]
+// CHECK:         %[[VAL_264:.*]] = load float, ptr %[[VAL_262]], align 4
+// CHECK:         %[[VAL_265:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_261]]
+// CHECK:         store float %[[VAL_264]], ptr addrspace(3) %[[VAL_265]], align 4
+// CHECK:         %[[VAL_266:.*]] = add i64 %[[VAL_216]], 1
+// CHECK:         %[[VAL_267:.*]] = icmp slt i64 %[[VAL_266]], 3
+// CHECK:         br i1 %[[VAL_267]], label %[[VAL_268:.*]], label %[[VAL_220]]
+// CHECK:       inner_smaller_keys_index-after4:                  ; preds = %[[VAL_268]], %[[VAL_218]]
 // CHECK:         br label %[[VAL_219]]
-// CHECK:       inner_smaller_keys_index-true:                    ; preds = %[[VAL_218]]
-// CHECK:         %[[VAL_261:.*]] = add i64 %[[VAL_254]], 1
-// CHECK:         %[[VAL_262:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_195]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_258]]
-// CHECK:         %[[VAL_263:.*]] = load i32, ptr %[[VAL_262]], align 4
-// CHECK:         %[[VAL_264:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_261]]
-// CHECK:         store i32 %[[VAL_263]], ptr addrspace(3) %[[VAL_264]], align 4
+// CHECK:       inner_smaller_keys_index-true3:                   ; preds = %[[VAL_218]]
+// CHECK:         %[[VAL_269:.*]] = add i64 %[[VAL_261]], 1
+// CHECK:         %[[VAL_270:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_263]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_266]]
+// CHECK:         %[[VAL_271:.*]] = load float, ptr %[[VAL_270]], align 4
+// CHECK:         %[[VAL_272:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_269]]
+// CHECK:         store float %[[VAL_271]], ptr addrspace(3) %[[VAL_272]], align 4
 // CHECK:         br label %[[VAL_220]]
-// CHECK:       smaller_keys_index-true1:                         ; preds = %[[VAL_219]]
-// CHECK:         %[[VAL_265:.*]] = shl i64 %[[VAL_215]], 1
-// CHECK:         %[[VAL_266:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_197]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_221]]
-// CHECK:         %[[VAL_267:.*]] = load float, ptr %[[VAL_266]], align 4
-// CHECK:         %[[VAL_268:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_265]]
-// CHECK:         store float %[[VAL_267]], ptr addrspace(3) %[[VAL_268]], align 4
-// CHECK:         %[[VAL_269:.*]] = add i64 %[[VAL_221]], 1
-// CHECK:         %[[VAL_270:.*]] = icmp slt i64 %[[VAL_269]], 3
-// CHECK:         br i1 %[[VAL_270]], label %[[VAL_271:.*]], label %[[VAL_225]]
-// CHECK:       inner_smaller_keys_index-after4:                  ; preds = %[[VAL_271]], %[[VAL_223]]
-// CHECK:         br label %[[VAL_224]]
-// CHECK:       inner_smaller_keys_index-true3:                   ; preds = %[[VAL_223]]
-// CHECK:         %[[VAL_272:.*]] = add i64 %[[VAL_265]], 1
-// CHECK:         %[[VAL_273:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_197]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_269]]
-// CHECK:         %[[VAL_274:.*]] = load float, ptr %[[VAL_273]], align 4
-// CHECK:         %[[VAL_275:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_272]]
-// CHECK:         store float %[[VAL_274]], ptr addrspace(3) %[[VAL_275]], align 4
+// CHECK:       is_last_tile-true:                                ; preds = %[[VAL_219]]
+// CHECK:         %[[VAL_273:.*]] = mul i64 %[[VAL_210]], 2
+// CHECK:         %[[VAL_274:.*]] = xor i64 %[[VAL_273]], 1
+// CHECK:         %[[VAL_275:.*]] = icmp slt i64 %[[VAL_273]], %[[VAL_274]]
+// CHECK:         %[[VAL_276:.*]] = icmp slt i64 %[[VAL_274]], 3
+// CHECK:         %[[VAL_277:.*]] = and i1 %[[VAL_275]], %[[VAL_276]]
+// CHECK:         br i1 %[[VAL_277]], label %[[VAL_278:.*]], label %[[VAL_226]]
+// CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_279:.*]], %[[VAL_223]]
+// CHECK:         br label %[[VAL_280:.*]]
+// CHECK:       is_last_tile-false:                               ; preds = %[[VAL_219]]
+// CHECK:         %[[VAL_281:.*]] = mul i64 %[[VAL_210]], 2
+// CHECK:         %[[VAL_282:.*]] = xor i64 %[[VAL_281]], 1
+// CHECK:         %[[VAL_283:.*]] = icmp slt i64 %[[VAL_281]], %[[VAL_282]]
+// CHECK:         %[[VAL_284:.*]] = icmp slt i64 %[[VAL_282]], 4
+// CHECK:         br i1 true, label %[[VAL_285:.*]], label %[[VAL_225]]
+// CHECK:       smaller_comparison_index-after6:                  ; preds = %[[VAL_286:.*]], %[[VAL_224]]
+// CHECK:         br label %[[VAL_280]]
+// CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_223]]
+// CHECK:         %[[VAL_287:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_274]]
+// CHECK:         %[[VAL_288:.*]] = addrspacecast ptr addrspace(3) %[[VAL_287]] to ptr
+// CHECK:         %[[VAL_289:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_273]]
+// CHECK:         %[[VAL_290:.*]] = addrspacecast ptr addrspace(3) %[[VAL_289]] to ptr
+// CHECK:         %[[VAL_291:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_274]]
+// CHECK:         %[[VAL_292:.*]] = addrspacecast ptr addrspace(3) %[[VAL_291]] to ptr
+// CHECK:         %[[VAL_293:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_273]]
+// CHECK:         %[[VAL_294:.*]] = addrspacecast ptr addrspace(3) %[[VAL_293]] to ptr
+// CHECK:         call void @region_0_6(ptr %[[VAL_288]], ptr %[[VAL_290]], ptr %[[VAL_292]], ptr %[[VAL_294]], ptr %[[VAL_193]])
+// CHECK:         %[[VAL_295:.*]] = load i8, ptr %[[VAL_193]], align 1
+// CHECK:         %[[VAL_296:.*]] = icmp ne i8 %[[VAL_295]], 0
+// CHECK:         br i1 %[[VAL_296]], label %[[VAL_297:.*]], label %[[VAL_279]]
+// CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_297]], %[[VAL_278]]
+// CHECK:         br label %[[VAL_226]]
+// CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_278]]
+// CHECK:         %[[VAL_298:.*]] = load i32, ptr %[[VAL_288]], align 4
+// CHECK:         %[[VAL_299:.*]] = load i32, ptr %[[VAL_290]], align 4
+// CHECK:         %[[VAL_300:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_273]]
+// CHECK:         store i32 %[[VAL_298]], ptr addrspace(3) %[[VAL_300]], align 4
+// CHECK:         %[[VAL_301:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_274]]
+// CHECK:         store i32 %[[VAL_299]], ptr addrspace(3) %[[VAL_301]], align 4
+// CHECK:         %[[VAL_302:.*]] = load float, ptr %[[VAL_292]], align 4
+// CHECK:         %[[VAL_303:.*]] = load float, ptr %[[VAL_294]], align 4
+// CHECK:         %[[VAL_304:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_273]]
+// CHECK:         store float %[[VAL_302]], ptr addrspace(3) %[[VAL_304]], align 4
+// CHECK:         %[[VAL_305:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_274]]
+// CHECK:         store float %[[VAL_303]], ptr addrspace(3) %[[VAL_305]], align 4
+// CHECK:         br label %[[VAL_279]]
+// CHECK:       smaller_comparison_index-true5:                   ; preds = %[[VAL_224]]
+// CHECK:         %[[VAL_306:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_282]]
+// CHECK:         %[[VAL_307:.*]] = addrspacecast ptr addrspace(3) %[[VAL_306]] to ptr
+// CHECK:         %[[VAL_308:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_281]]
+// CHECK:         %[[VAL_309:.*]] = addrspacecast ptr addrspace(3) %[[VAL_308]] to ptr
+// CHECK:         %[[VAL_310:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_282]]
+// CHECK:         %[[VAL_311:.*]] = addrspacecast ptr addrspace(3) %[[VAL_310]] to ptr
+// CHECK:         %[[VAL_312:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_281]]
+// CHECK:         %[[VAL_313:.*]] = addrspacecast ptr addrspace(3) %[[VAL_312]] to ptr
+// CHECK:         call void @region_0_6(ptr %[[VAL_307]], ptr %[[VAL_309]], ptr %[[VAL_311]], ptr %[[VAL_313]], ptr %[[VAL_192]])
+// CHECK:         %[[VAL_314:.*]] = load i8, ptr %[[VAL_192]], align 1
+// CHECK:         %[[VAL_315:.*]] = icmp ne i8 %[[VAL_314]], 0
+// CHECK:         br i1 %[[VAL_315]], label %[[VAL_316:.*]], label %[[VAL_286]]
+// CHECK:       is_smaller_than-after10:                          ; preds = %[[VAL_316]], %[[VAL_285]]
 // CHECK:         br label %[[VAL_225]]
-// CHECK:       is_last_tile-true:                                ; preds = %[[VAL_224]]
-// CHECK:         %[[VAL_276:.*]] = mul i64 %[[VAL_215]], 2
-// CHECK:         %[[VAL_277:.*]] = xor i64 %[[VAL_276]], 1
-// CHECK:         %[[VAL_278:.*]] = icmp slt i64 %[[VAL_276]], %[[VAL_277]]
-// CHECK:         %[[VAL_279:.*]] = icmp slt i64 %[[VAL_277]], 3
-// CHECK:         %[[VAL_280:.*]] = and i1 %[[VAL_278]], %[[VAL_279]]
-// CHECK:         br i1 %[[VAL_280]], label %[[VAL_281:.*]], label %[[VAL_231]]
-// CHECK:       smaller_comparison_index-after:                   ; preds = %[[VAL_282:.*]], %[[VAL_228]]
-// CHECK:         br label %[[VAL_283:.*]]
-// CHECK:       is_last_tile-false:                               ; preds = %[[VAL_224]]
-// CHECK:         %[[VAL_284:.*]] = mul i64 %[[VAL_215]], 2
-// CHECK:         %[[VAL_285:.*]] = xor i64 %[[VAL_284]], 1
-// CHECK:         %[[VAL_286:.*]] = icmp slt i64 %[[VAL_284]], %[[VAL_285]]
-// CHECK:         %[[VAL_287:.*]] = icmp slt i64 %[[VAL_285]], 4
-// CHECK:         br i1 true, label %[[VAL_288:.*]], label %[[VAL_230]]
-// CHECK:       smaller_comparison_index-after6:                  ; preds = %[[VAL_289:.*]], %[[VAL_229]]
-// CHECK:         br label %[[VAL_283]]
-// CHECK:       smaller_comparison_index-true:                    ; preds = %[[VAL_228]]
-// CHECK:         %[[VAL_290:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_277]]
-// CHECK:         %[[VAL_291:.*]] = addrspacecast ptr addrspace(3) %[[VAL_290]] to ptr
-// CHECK:         %[[VAL_292:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_276]]
-// CHECK:         %[[VAL_293:.*]] = addrspacecast ptr addrspace(3) %[[VAL_292]] to ptr
-// CHECK:         %[[VAL_294:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_277]]
-// CHECK:         %[[VAL_295:.*]] = addrspacecast ptr addrspace(3) %[[VAL_294]] to ptr
-// CHECK:         %[[VAL_296:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_276]]
-// CHECK:         %[[VAL_297:.*]] = addrspacecast ptr addrspace(3) %[[VAL_296]] to ptr
-// CHECK:         call void @region_0_6(ptr %[[VAL_291]], ptr %[[VAL_293]], ptr %[[VAL_295]], ptr %[[VAL_297]], ptr %[[VAL_194]])
-// CHECK:         %[[VAL_298:.*]] = load i8, ptr %[[VAL_194]], align 1
-// CHECK:         %[[VAL_299:.*]] = icmp ne i8 %[[VAL_298]], 0
-// CHECK:         br i1 %[[VAL_299]], label %[[VAL_300:.*]], label %[[VAL_282]]
-// CHECK:       is_smaller_than-after:                            ; preds = %[[VAL_300]], %[[VAL_281]]
+// CHECK:       is_smaller_than-true9:                            ; preds = %[[VAL_285]]
+// CHECK:         %[[VAL_317:.*]] = load i32, ptr %[[VAL_307]], align 4
+// CHECK:         %[[VAL_318:.*]] = load i32, ptr %[[VAL_309]], align 4
+// CHECK:         %[[VAL_319:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_281]]
+// CHECK:         store i32 %[[VAL_317]], ptr addrspace(3) %[[VAL_319]], align 4
+// CHECK:         %[[VAL_320:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_282]]
+// CHECK:         store i32 %[[VAL_318]], ptr addrspace(3) %[[VAL_320]], align 4
+// CHECK:         %[[VAL_321:.*]] = load float, ptr %[[VAL_311]], align 4
+// CHECK:         %[[VAL_322:.*]] = load float, ptr %[[VAL_313]], align 4
+// CHECK:         %[[VAL_323:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_281]]
+// CHECK:         store float %[[VAL_321]], ptr addrspace(3) %[[VAL_323]], align 4
+// CHECK:         %[[VAL_324:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_282]]
+// CHECK:         store float %[[VAL_322]], ptr addrspace(3) %[[VAL_324]], align 4
+// CHECK:         br label %[[VAL_286]]
+// CHECK:       is_last_tile-true11:                              ; preds = %[[VAL_280]]
+// CHECK:         %[[VAL_325:.*]] = xor i64 %[[VAL_210]], 3
+// CHECK:         %[[VAL_326:.*]] = icmp slt i64 %[[VAL_210]], %[[VAL_325]]
+// CHECK:         %[[VAL_327:.*]] = icmp slt i64 %[[VAL_325]], 3
+// CHECK:         %[[VAL_328:.*]] = and i1 %[[VAL_326]], %[[VAL_327]]
+// CHECK:         br i1 %[[VAL_328]], label %[[VAL_329:.*]], label %[[VAL_232]]
+// CHECK:       smaller_comparison_index-after15:                 ; preds = %[[VAL_330:.*]], %[[VAL_229]]
+// CHECK:         br label %[[VAL_331:.*]]
+// CHECK:       is_last_tile-false12:                             ; preds = %[[VAL_280]]
+// CHECK:         %[[VAL_332:.*]] = xor i64 %[[VAL_210]], 3
+// CHECK:         %[[VAL_333:.*]] = icmp slt i64 %[[VAL_210]], %[[VAL_332]]
+// CHECK:         %[[VAL_334:.*]] = icmp slt i64 %[[VAL_332]], 4
+// CHECK:         br i1 true, label %[[VAL_335:.*]], label %[[VAL_231]]
+// CHECK:       smaller_comparison_index-after21:                 ; preds = %[[VAL_336:.*]], %[[VAL_230]]
+// CHECK:         br label %[[VAL_331]]
+// CHECK:       smaller_comparison_index-true14:                  ; preds = %[[VAL_229]]
+// CHECK:         %[[VAL_337:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_325]]
+// CHECK:         %[[VAL_338:.*]] = addrspacecast ptr addrspace(3) %[[VAL_337]] to ptr
+// CHECK:         %[[VAL_339:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_210]]
+// CHECK:         %[[VAL_340:.*]] = addrspacecast ptr addrspace(3) %[[VAL_339]] to ptr
+// CHECK:         %[[VAL_341:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_325]]
+// CHECK:         %[[VAL_342:.*]] = addrspacecast ptr addrspace(3) %[[VAL_341]] to ptr
+// CHECK:         %[[VAL_343:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_210]]
+// CHECK:         %[[VAL_344:.*]] = addrspacecast ptr addrspace(3) %[[VAL_343]] to ptr
+// CHECK:         call void @region_0_6(ptr %[[VAL_338]], ptr %[[VAL_340]], ptr %[[VAL_342]], ptr %[[VAL_344]], ptr %[[VAL_191]])
+// CHECK:         %[[VAL_345:.*]] = load i8, ptr %[[VAL_191]], align 1
+// CHECK:         %[[VAL_346:.*]] = icmp ne i8 %[[VAL_345]], 0
+// CHECK:         br i1 %[[VAL_346]], label %[[VAL_347:.*]], label %[[VAL_330]]
+// CHECK:       is_smaller_than-after19:                          ; preds = %[[VAL_347]], %[[VAL_329]]
+// CHECK:         br label %[[VAL_232]]
+// CHECK:       is_smaller_than-true18:                           ; preds = %[[VAL_329]]
+// CHECK:         %[[VAL_348:.*]] = load i32, ptr %[[VAL_338]], align 4
+// CHECK:         %[[VAL_349:.*]] = load i32, ptr %[[VAL_340]], align 4
+// CHECK:         %[[VAL_350:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_210]]
+// CHECK:         store i32 %[[VAL_348]], ptr addrspace(3) %[[VAL_350]], align 4
+// CHECK:         %[[VAL_351:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_325]]
+// CHECK:         store i32 %[[VAL_349]], ptr addrspace(3) %[[VAL_351]], align 4
+// CHECK:         %[[VAL_352:.*]] = load float, ptr %[[VAL_342]], align 4
+// CHECK:         %[[VAL_353:.*]] = load float, ptr %[[VAL_344]], align 4
+// CHECK:         %[[VAL_354:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_210]]
+// CHECK:         store float %[[VAL_352]], ptr addrspace(3) %[[VAL_354]], align 4
+// CHECK:         %[[VAL_355:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_325]]
+// CHECK:         store float %[[VAL_353]], ptr addrspace(3) %[[VAL_355]], align 4
+// CHECK:         br label %[[VAL_330]]
+// CHECK:       smaller_comparison_index-true20:                  ; preds = %[[VAL_230]]
+// CHECK:         %[[VAL_356:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_332]]
+// CHECK:         %[[VAL_357:.*]] = addrspacecast ptr addrspace(3) %[[VAL_356]] to ptr
+// CHECK:         %[[VAL_358:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_210]]
+// CHECK:         %[[VAL_359:.*]] = addrspacecast ptr addrspace(3) %[[VAL_358]] to ptr
+// CHECK:         %[[VAL_360:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_332]]
+// CHECK:         %[[VAL_361:.*]] = addrspacecast ptr addrspace(3) %[[VAL_360]] to ptr
+// CHECK:         %[[VAL_362:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_210]]
+// CHECK:         %[[VAL_363:.*]] = addrspacecast ptr addrspace(3) %[[VAL_362]] to ptr
+// CHECK:         call void @region_0_6(ptr %[[VAL_357]], ptr %[[VAL_359]], ptr %[[VAL_361]], ptr %[[VAL_363]], ptr %[[VAL_190]])
+// CHECK:         %[[VAL_364:.*]] = load i8, ptr %[[VAL_190]], align 1
+// CHECK:         %[[VAL_365:.*]] = icmp ne i8 %[[VAL_364]], 0
+// CHECK:         br i1 %[[VAL_365]], label %[[VAL_366:.*]], label %[[VAL_336]]
+// CHECK:       is_smaller_than-after25:                          ; preds = %[[VAL_366]], %[[VAL_335]]
 // CHECK:         br label %[[VAL_231]]
-// CHECK:       is_smaller_than-true:                             ; preds = %[[VAL_281]]
-// CHECK:         %[[VAL_301:.*]] = load i32, ptr %[[VAL_291]], align 4
-// CHECK:         %[[VAL_302:.*]] = load i32, ptr %[[VAL_293]], align 4
-// CHECK:         %[[VAL_303:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_276]]
-// CHECK:         store i32 %[[VAL_301]], ptr addrspace(3) %[[VAL_303]], align 4
-// CHECK:         %[[VAL_304:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_277]]
-// CHECK:         store i32 %[[VAL_302]], ptr addrspace(3) %[[VAL_304]], align 4
-// CHECK:         %[[VAL_305:.*]] = load float, ptr %[[VAL_295]], align 4
-// CHECK:         %[[VAL_306:.*]] = load float, ptr %[[VAL_297]], align 4
-// CHECK:         %[[VAL_307:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_276]]
-// CHECK:         store float %[[VAL_305]], ptr addrspace(3) %[[VAL_307]], align 4
-// CHECK:         %[[VAL_308:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_277]]
-// CHECK:         store float %[[VAL_306]], ptr addrspace(3) %[[VAL_308]], align 4
-// CHECK:         br label %[[VAL_282]]
-// CHECK:       smaller_comparison_index-true5:                   ; preds = %[[VAL_229]]
-// CHECK:         %[[VAL_309:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_285]]
-// CHECK:         %[[VAL_310:.*]] = addrspacecast ptr addrspace(3) %[[VAL_309]] to ptr
-// CHECK:         %[[VAL_311:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_284]]
-// CHECK:         %[[VAL_312:.*]] = addrspacecast ptr addrspace(3) %[[VAL_311]] to ptr
-// CHECK:         %[[VAL_313:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_285]]
-// CHECK:         %[[VAL_314:.*]] = addrspacecast ptr addrspace(3) %[[VAL_313]] to ptr
-// CHECK:         %[[VAL_315:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_284]]
-// CHECK:         %[[VAL_316:.*]] = addrspacecast ptr addrspace(3) %[[VAL_315]] to ptr
-// CHECK:         call void @region_0_6(ptr %[[VAL_310]], ptr %[[VAL_312]], ptr %[[VAL_314]], ptr %[[VAL_316]], ptr %[[VAL_193]])
-// CHECK:         %[[VAL_317:.*]] = load i8, ptr %[[VAL_193]], align 1
-// CHECK:         %[[VAL_318:.*]] = icmp ne i8 %[[VAL_317]], 0
-// CHECK:         br i1 %[[VAL_318]], label %[[VAL_319:.*]], label %[[VAL_289]]
-// CHECK:       is_smaller_than-after10:                          ; preds = %[[VAL_319]], %[[VAL_288]]
-// CHECK:         br label %[[VAL_230]]
-// CHECK:       is_smaller_than-true9:                            ; preds = %[[VAL_288]]
-// CHECK:         %[[VAL_320:.*]] = load i32, ptr %[[VAL_310]], align 4
-// CHECK:         %[[VAL_321:.*]] = load i32, ptr %[[VAL_312]], align 4
-// CHECK:         %[[VAL_322:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_284]]
-// CHECK:         store i32 %[[VAL_320]], ptr addrspace(3) %[[VAL_322]], align 4
-// CHECK:         %[[VAL_323:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_285]]
-// CHECK:         store i32 %[[VAL_321]], ptr addrspace(3) %[[VAL_323]], align 4
-// CHECK:         %[[VAL_324:.*]] = load float, ptr %[[VAL_314]], align 4
-// CHECK:         %[[VAL_325:.*]] = load float, ptr %[[VAL_316]], align 4
-// CHECK:         %[[VAL_326:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_284]]
-// CHECK:         store float %[[VAL_324]], ptr addrspace(3) %[[VAL_326]], align 4
-// CHECK:         %[[VAL_327:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_285]]
-// CHECK:         store float %[[VAL_325]], ptr addrspace(3) %[[VAL_327]], align 4
-// CHECK:         br label %[[VAL_289]]
-// CHECK:       is_last_tile-true11:                              ; preds = %[[VAL_283]]
-// CHECK:         %[[VAL_328:.*]] = xor i64 %[[VAL_215]], 3
-// CHECK:         %[[VAL_329:.*]] = icmp slt i64 %[[VAL_215]], %[[VAL_328]]
-// CHECK:         %[[VAL_330:.*]] = icmp slt i64 %[[VAL_328]], 3
-// CHECK:         %[[VAL_331:.*]] = and i1 %[[VAL_329]], %[[VAL_330]]
-// CHECK:         br i1 %[[VAL_331]], label %[[VAL_332:.*]], label %[[VAL_237]]
-// CHECK:       smaller_comparison_index-after15:                 ; preds = %[[VAL_333:.*]], %[[VAL_234]]
-// CHECK:         br label %[[VAL_334:.*]]
-// CHECK:       is_last_tile-false12:                             ; preds = %[[VAL_283]]
-// CHECK:         %[[VAL_335:.*]] = xor i64 %[[VAL_215]], 3
-// CHECK:         %[[VAL_336:.*]] = icmp slt i64 %[[VAL_215]], %[[VAL_335]]
-// CHECK:         %[[VAL_337:.*]] = icmp slt i64 %[[VAL_335]], 4
-// CHECK:         br i1 true, label %[[VAL_338:.*]], label %[[VAL_236]]
-// CHECK:       smaller_comparison_index-after21:                 ; preds = %[[VAL_339:.*]], %[[VAL_235]]
-// CHECK:         br label %[[VAL_334]]
-// CHECK:       smaller_comparison_index-true14:                  ; preds = %[[VAL_234]]
-// CHECK:         %[[VAL_340:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_328]]
-// CHECK:         %[[VAL_341:.*]] = addrspacecast ptr addrspace(3) %[[VAL_340]] to ptr
-// CHECK:         %[[VAL_342:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_215]]
-// CHECK:         %[[VAL_343:.*]] = addrspacecast ptr addrspace(3) %[[VAL_342]] to ptr
-// CHECK:         %[[VAL_344:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_328]]
-// CHECK:         %[[VAL_345:.*]] = addrspacecast ptr addrspace(3) %[[VAL_344]] to ptr
-// CHECK:         %[[VAL_346:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_215]]
-// CHECK:         %[[VAL_347:.*]] = addrspacecast ptr addrspace(3) %[[VAL_346]] to ptr
-// CHECK:         call void @region_0_6(ptr %[[VAL_341]], ptr %[[VAL_343]], ptr %[[VAL_345]], ptr %[[VAL_347]], ptr %[[VAL_192]])
-// CHECK:         %[[VAL_348:.*]] = load i8, ptr %[[VAL_192]], align 1
-// CHECK:         %[[VAL_349:.*]] = icmp ne i8 %[[VAL_348]], 0
-// CHECK:         br i1 %[[VAL_349]], label %[[VAL_350:.*]], label %[[VAL_333]]
-// CHECK:       is_smaller_than-after19:                          ; preds = %[[VAL_350]], %[[VAL_332]]
+// CHECK:       is_smaller_than-true24:                           ; preds = %[[VAL_335]]
+// CHECK:         %[[VAL_367:.*]] = load i32, ptr %[[VAL_357]], align 4
+// CHECK:         %[[VAL_368:.*]] = load i32, ptr %[[VAL_359]], align 4
+// CHECK:         %[[VAL_369:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_210]]
+// CHECK:         store i32 %[[VAL_367]], ptr addrspace(3) %[[VAL_369]], align 4
+// CHECK:         %[[VAL_370:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_332]]
+// CHECK:         store i32 %[[VAL_368]], ptr addrspace(3) %[[VAL_370]], align 4
+// CHECK:         %[[VAL_371:.*]] = load float, ptr %[[VAL_361]], align 4
+// CHECK:         %[[VAL_372:.*]] = load float, ptr %[[VAL_363]], align 4
+// CHECK:         %[[VAL_373:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_210]]
+// CHECK:         store float %[[VAL_371]], ptr addrspace(3) %[[VAL_373]], align 4
+// CHECK:         %[[VAL_374:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_332]]
+// CHECK:         store float %[[VAL_372]], ptr addrspace(3) %[[VAL_374]], align 4
+// CHECK:         br label %[[VAL_336]]
+// CHECK:       is_last_tile-true26:                              ; preds = %[[VAL_331]]
+// CHECK:         %[[VAL_375:.*]] = mul i64 %[[VAL_210]], 2
+// CHECK:         %[[VAL_376:.*]] = xor i64 %[[VAL_375]], 1
+// CHECK:         %[[VAL_377:.*]] = icmp slt i64 %[[VAL_375]], %[[VAL_376]]
+// CHECK:         %[[VAL_378:.*]] = icmp slt i64 %[[VAL_376]], 3
+// CHECK:         %[[VAL_379:.*]] = and i1 %[[VAL_377]], %[[VAL_378]]
+// CHECK:         br i1 %[[VAL_379]], label %[[VAL_380:.*]], label %[[VAL_238]]
+// CHECK:       smaller_comparison_index-after30:                 ; preds = %[[VAL_381:.*]], %[[VAL_235]]
+// CHECK:         br label %[[VAL_244]]
+// CHECK:       is_last_tile-false27:                             ; preds = %[[VAL_331]]
+// CHECK:         %[[VAL_382:.*]] = mul i64 %[[VAL_210]], 2
+// CHECK:         %[[VAL_383:.*]] = xor i64 %[[VAL_382]], 1
+// CHECK:         %[[VAL_384:.*]] = icmp slt i64 %[[VAL_382]], %[[VAL_383]]
+// CHECK:         %[[VAL_385:.*]] = icmp slt i64 %[[VAL_383]], 4
+// CHECK:         br i1 true, label %[[VAL_386:.*]], label %[[VAL_237]]
+// CHECK:       smaller_comparison_index-after36:                 ; preds = %[[VAL_387:.*]], %[[VAL_236]]
+// CHECK:         br label %[[VAL_244]]
+// CHECK:       smaller_comparison_index-true29:                  ; preds = %[[VAL_235]]
+// CHECK:         %[[VAL_388:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_376]]
+// CHECK:         %[[VAL_389:.*]] = addrspacecast ptr addrspace(3) %[[VAL_388]] to ptr
+// CHECK:         %[[VAL_390:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_375]]
+// CHECK:         %[[VAL_391:.*]] = addrspacecast ptr addrspace(3) %[[VAL_390]] to ptr
+// CHECK:         %[[VAL_392:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_376]]
+// CHECK:         %[[VAL_393:.*]] = addrspacecast ptr addrspace(3) %[[VAL_392]] to ptr
+// CHECK:         %[[VAL_394:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_375]]
+// CHECK:         %[[VAL_395:.*]] = addrspacecast ptr addrspace(3) %[[VAL_394]] to ptr
+// CHECK:         call void @region_0_6(ptr %[[VAL_389]], ptr %[[VAL_391]], ptr %[[VAL_393]], ptr %[[VAL_395]], ptr %[[VAL_189]])
+// CHECK:         %[[VAL_396:.*]] = load i8, ptr %[[VAL_189]], align 1
+// CHECK:         %[[VAL_397:.*]] = icmp ne i8 %[[VAL_396]], 0
+// CHECK:         br i1 %[[VAL_397]], label %[[VAL_398:.*]], label %[[VAL_381]]
+// CHECK:       is_smaller_than-after34:                          ; preds = %[[VAL_398]], %[[VAL_380]]
+// CHECK:         br label %[[VAL_238]]
+// CHECK:       is_smaller_than-true33:                           ; preds = %[[VAL_380]]
+// CHECK:         %[[VAL_399:.*]] = load i32, ptr %[[VAL_389]], align 4
+// CHECK:         %[[VAL_400:.*]] = load i32, ptr %[[VAL_391]], align 4
+// CHECK:         %[[VAL_401:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_375]]
+// CHECK:         store i32 %[[VAL_399]], ptr addrspace(3) %[[VAL_401]], align 4
+// CHECK:         %[[VAL_402:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_376]]
+// CHECK:         store i32 %[[VAL_400]], ptr addrspace(3) %[[VAL_402]], align 4
+// CHECK:         %[[VAL_403:.*]] = load float, ptr %[[VAL_393]], align 4
+// CHECK:         %[[VAL_404:.*]] = load float, ptr %[[VAL_395]], align 4
+// CHECK:         %[[VAL_405:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_375]]
+// CHECK:         store float %[[VAL_403]], ptr addrspace(3) %[[VAL_405]], align 4
+// CHECK:         %[[VAL_406:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_376]]
+// CHECK:         store float %[[VAL_404]], ptr addrspace(3) %[[VAL_406]], align 4
+// CHECK:         br label %[[VAL_381]]
+// CHECK:       smaller_comparison_index-true35:                  ; preds = %[[VAL_236]]
+// CHECK:         %[[VAL_407:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_383]]
+// CHECK:         %[[VAL_408:.*]] = addrspacecast ptr addrspace(3) %[[VAL_407]] to ptr
+// CHECK:         %[[VAL_409:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_382]]
+// CHECK:         %[[VAL_410:.*]] = addrspacecast ptr addrspace(3) %[[VAL_409]] to ptr
+// CHECK:         %[[VAL_411:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_383]]
+// CHECK:         %[[VAL_412:.*]] = addrspacecast ptr addrspace(3) %[[VAL_411]] to ptr
+// CHECK:         %[[VAL_413:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_382]]
+// CHECK:         %[[VAL_414:.*]] = addrspacecast ptr addrspace(3) %[[VAL_413]] to ptr
+// CHECK:         call void @region_0_6(ptr %[[VAL_408]], ptr %[[VAL_410]], ptr %[[VAL_412]], ptr %[[VAL_414]], ptr %[[VAL_188]])
+// CHECK:         %[[VAL_415:.*]] = load i8, ptr %[[VAL_188]], align 1
+// CHECK:         %[[VAL_416:.*]] = icmp ne i8 %[[VAL_415]], 0
+// CHECK:         br i1 %[[VAL_416]], label %[[VAL_417:.*]], label %[[VAL_387]]
+// CHECK:       is_smaller_than-after40:                          ; preds = %[[VAL_417]], %[[VAL_386]]
 // CHECK:         br label %[[VAL_237]]
-// CHECK:       is_smaller_than-true18:                           ; preds = %[[VAL_332]]
-// CHECK:         %[[VAL_351:.*]] = load i32, ptr %[[VAL_341]], align 4
-// CHECK:         %[[VAL_352:.*]] = load i32, ptr %[[VAL_343]], align 4
-// CHECK:         %[[VAL_353:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_215]]
-// CHECK:         store i32 %[[VAL_351]], ptr addrspace(3) %[[VAL_353]], align 4
-// CHECK:         %[[VAL_354:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_328]]
-// CHECK:         store i32 %[[VAL_352]], ptr addrspace(3) %[[VAL_354]], align 4
-// CHECK:         %[[VAL_355:.*]] = load float, ptr %[[VAL_345]], align 4
-// CHECK:         %[[VAL_356:.*]] = load float, ptr %[[VAL_347]], align 4
-// CHECK:         %[[VAL_357:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_215]]
-// CHECK:         store float %[[VAL_355]], ptr addrspace(3) %[[VAL_357]], align 4
-// CHECK:         %[[VAL_358:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_328]]
-// CHECK:         store float %[[VAL_356]], ptr addrspace(3) %[[VAL_358]], align 4
-// CHECK:         br label %[[VAL_333]]
-// CHECK:       smaller_comparison_index-true20:                  ; preds = %[[VAL_235]]
-// CHECK:         %[[VAL_359:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_335]]
-// CHECK:         %[[VAL_360:.*]] = addrspacecast ptr addrspace(3) %[[VAL_359]] to ptr
-// CHECK:         %[[VAL_361:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_215]]
-// CHECK:         %[[VAL_362:.*]] = addrspacecast ptr addrspace(3) %[[VAL_361]] to ptr
-// CHECK:         %[[VAL_363:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_335]]
-// CHECK:         %[[VAL_364:.*]] = addrspacecast ptr addrspace(3) %[[VAL_363]] to ptr
-// CHECK:         %[[VAL_365:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_215]]
-// CHECK:         %[[VAL_366:.*]] = addrspacecast ptr addrspace(3) %[[VAL_365]] to ptr
-// CHECK:         call void @region_0_6(ptr %[[VAL_360]], ptr %[[VAL_362]], ptr %[[VAL_364]], ptr %[[VAL_366]], ptr %[[VAL_191]])
-// CHECK:         %[[VAL_367:.*]] = load i8, ptr %[[VAL_191]], align 1
-// CHECK:         %[[VAL_368:.*]] = icmp ne i8 %[[VAL_367]], 0
-// CHECK:         br i1 %[[VAL_368]], label %[[VAL_369:.*]], label %[[VAL_339]]
-// CHECK:       is_smaller_than-after25:                          ; preds = %[[VAL_369]], %[[VAL_338]]
-// CHECK:         br label %[[VAL_236]]
-// CHECK:       is_smaller_than-true24:                           ; preds = %[[VAL_338]]
-// CHECK:         %[[VAL_370:.*]] = load i32, ptr %[[VAL_360]], align 4
-// CHECK:         %[[VAL_371:.*]] = load i32, ptr %[[VAL_362]], align 4
-// CHECK:         %[[VAL_372:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_215]]
-// CHECK:         store i32 %[[VAL_370]], ptr addrspace(3) %[[VAL_372]], align 4
-// CHECK:         %[[VAL_373:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_335]]
-// CHECK:         store i32 %[[VAL_371]], ptr addrspace(3) %[[VAL_373]], align 4
-// CHECK:         %[[VAL_374:.*]] = load float, ptr %[[VAL_364]], align 4
-// CHECK:         %[[VAL_375:.*]] = load float, ptr %[[VAL_366]], align 4
-// CHECK:         %[[VAL_376:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_215]]
-// CHECK:         store float %[[VAL_374]], ptr addrspace(3) %[[VAL_376]], align 4
-// CHECK:         %[[VAL_377:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_335]]
-// CHECK:         store float %[[VAL_375]], ptr addrspace(3) %[[VAL_377]], align 4
-// CHECK:         br label %[[VAL_339]]
-// CHECK:       is_last_tile-true26:                              ; preds = %[[VAL_334]]
-// CHECK:         %[[VAL_378:.*]] = mul i64 %[[VAL_215]], 2
-// CHECK:         %[[VAL_379:.*]] = xor i64 %[[VAL_378]], 1
-// CHECK:         %[[VAL_380:.*]] = icmp slt i64 %[[VAL_378]], %[[VAL_379]]
-// CHECK:         %[[VAL_381:.*]] = icmp slt i64 %[[VAL_379]], 3
-// CHECK:         %[[VAL_382:.*]] = and i1 %[[VAL_380]], %[[VAL_381]]
-// CHECK:         br i1 %[[VAL_382]], label %[[VAL_383:.*]], label %[[VAL_243]]
-// CHECK:       smaller_comparison_index-after30:                 ; preds = %[[VAL_384:.*]], %[[VAL_240]]
-// CHECK:         br label %[[VAL_249]]
-// CHECK:       is_last_tile-false27:                             ; preds = %[[VAL_334]]
-// CHECK:         %[[VAL_385:.*]] = mul i64 %[[VAL_215]], 2
-// CHECK:         %[[VAL_386:.*]] = xor i64 %[[VAL_385]], 1
-// CHECK:         %[[VAL_387:.*]] = icmp slt i64 %[[VAL_385]], %[[VAL_386]]
-// CHECK:         %[[VAL_388:.*]] = icmp slt i64 %[[VAL_386]], 4
-// CHECK:         br i1 true, label %[[VAL_389:.*]], label %[[VAL_242]]
-// CHECK:       smaller_comparison_index-after36:                 ; preds = %[[VAL_390:.*]], %[[VAL_241]]
-// CHECK:         br label %[[VAL_249]]
-// CHECK:       smaller_comparison_index-true29:                  ; preds = %[[VAL_240]]
-// CHECK:         %[[VAL_391:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_379]]
-// CHECK:         %[[VAL_392:.*]] = addrspacecast ptr addrspace(3) %[[VAL_391]] to ptr
-// CHECK:         %[[VAL_393:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_378]]
-// CHECK:         %[[VAL_394:.*]] = addrspacecast ptr addrspace(3) %[[VAL_393]] to ptr
-// CHECK:         %[[VAL_395:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_379]]
-// CHECK:         %[[VAL_396:.*]] = addrspacecast ptr addrspace(3) %[[VAL_395]] to ptr
-// CHECK:         %[[VAL_397:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_378]]
-// CHECK:         %[[VAL_398:.*]] = addrspacecast ptr addrspace(3) %[[VAL_397]] to ptr
-// CHECK:         call void @region_0_6(ptr %[[VAL_392]], ptr %[[VAL_394]], ptr %[[VAL_396]], ptr %[[VAL_398]], ptr %[[VAL_190]])
-// CHECK:         %[[VAL_399:.*]] = load i8, ptr %[[VAL_190]], align 1
-// CHECK:         %[[VAL_400:.*]] = icmp ne i8 %[[VAL_399]], 0
-// CHECK:         br i1 %[[VAL_400]], label %[[VAL_401:.*]], label %[[VAL_384]]
-// CHECK:       is_smaller_than-after34:                          ; preds = %[[VAL_401]], %[[VAL_383]]
-// CHECK:         br label %[[VAL_243]]
-// CHECK:       is_smaller_than-true33:                           ; preds = %[[VAL_383]]
-// CHECK:         %[[VAL_402:.*]] = load i32, ptr %[[VAL_392]], align 4
-// CHECK:         %[[VAL_403:.*]] = load i32, ptr %[[VAL_394]], align 4
-// CHECK:         %[[VAL_404:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_378]]
-// CHECK:         store i32 %[[VAL_402]], ptr addrspace(3) %[[VAL_404]], align 4
-// CHECK:         %[[VAL_405:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_379]]
-// CHECK:         store i32 %[[VAL_403]], ptr addrspace(3) %[[VAL_405]], align 4
-// CHECK:         %[[VAL_406:.*]] = load float, ptr %[[VAL_396]], align 4
-// CHECK:         %[[VAL_407:.*]] = load float, ptr %[[VAL_398]], align 4
-// CHECK:         %[[VAL_408:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_378]]
-// CHECK:         store float %[[VAL_406]], ptr addrspace(3) %[[VAL_408]], align 4
-// CHECK:         %[[VAL_409:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_379]]
-// CHECK:         store float %[[VAL_407]], ptr addrspace(3) %[[VAL_409]], align 4
-// CHECK:         br label %[[VAL_384]]
-// CHECK:       smaller_comparison_index-true35:                  ; preds = %[[VAL_241]]
-// CHECK:         %[[VAL_410:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_386]]
-// CHECK:         %[[VAL_411:.*]] = addrspacecast ptr addrspace(3) %[[VAL_410]] to ptr
-// CHECK:         %[[VAL_412:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_385]]
-// CHECK:         %[[VAL_413:.*]] = addrspacecast ptr addrspace(3) %[[VAL_412]] to ptr
-// CHECK:         %[[VAL_414:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_386]]
-// CHECK:         %[[VAL_415:.*]] = addrspacecast ptr addrspace(3) %[[VAL_414]] to ptr
-// CHECK:         %[[VAL_416:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_385]]
-// CHECK:         %[[VAL_417:.*]] = addrspacecast ptr addrspace(3) %[[VAL_416]] to ptr
-// CHECK:         call void @region_0_6(ptr %[[VAL_411]], ptr %[[VAL_413]], ptr %[[VAL_415]], ptr %[[VAL_417]], ptr %[[VAL_189]])
-// CHECK:         %[[VAL_418:.*]] = load i8, ptr %[[VAL_189]], align 1
-// CHECK:         %[[VAL_419:.*]] = icmp ne i8 %[[VAL_418]], 0
-// CHECK:         br i1 %[[VAL_419]], label %[[VAL_420:.*]], label %[[VAL_390]]
-// CHECK:       is_smaller_than-after40:                          ; preds = %[[VAL_420]], %[[VAL_389]]
+// CHECK:       is_smaller_than-true39:                           ; preds = %[[VAL_386]]
+// CHECK:         %[[VAL_418:.*]] = load i32, ptr %[[VAL_408]], align 4
+// CHECK:         %[[VAL_419:.*]] = load i32, ptr %[[VAL_410]], align 4
+// CHECK:         %[[VAL_420:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_382]]
+// CHECK:         store i32 %[[VAL_418]], ptr addrspace(3) %[[VAL_420]], align 4
+// CHECK:         %[[VAL_421:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_383]]
+// CHECK:         store i32 %[[VAL_419]], ptr addrspace(3) %[[VAL_421]], align 4
+// CHECK:         %[[VAL_422:.*]] = load float, ptr %[[VAL_412]], align 4
+// CHECK:         %[[VAL_423:.*]] = load float, ptr %[[VAL_414]], align 4
+// CHECK:         %[[VAL_424:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_382]]
+// CHECK:         store float %[[VAL_422]], ptr addrspace(3) %[[VAL_424]], align 4
+// CHECK:         %[[VAL_425:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_383]]
+// CHECK:         store float %[[VAL_423]], ptr addrspace(3) %[[VAL_425]], align 4
+// CHECK:         br label %[[VAL_387]]
+// CHECK:       smaller_keys_index-true41:                        ; preds = %[[VAL_244]]
+// CHECK:         %[[VAL_426:.*]] = shl i64 %[[VAL_210]], 1
+// CHECK:         %[[VAL_427:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_426]]
+// CHECK:         %[[VAL_428:.*]] = load i32, ptr addrspace(3) %[[VAL_427]], align 4
+// CHECK:         %[[VAL_429:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_251]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_239]]
+// CHECK:         store i32 %[[VAL_428]], ptr %[[VAL_429]], align 4
+// CHECK:         %[[VAL_430:.*]] = add i64 %[[VAL_239]], 1
+// CHECK:         %[[VAL_431:.*]] = icmp slt i64 %[[VAL_430]], 3
+// CHECK:         br i1 %[[VAL_431]], label %[[VAL_432:.*]], label %[[VAL_243]]
+// CHECK:       inner_smaller_keys_index-after44:                 ; preds = %[[VAL_432]], %[[VAL_241]]
 // CHECK:         br label %[[VAL_242]]
-// CHECK:       is_smaller_than-true39:                           ; preds = %[[VAL_389]]
-// CHECK:         %[[VAL_421:.*]] = load i32, ptr %[[VAL_411]], align 4
-// CHECK:         %[[VAL_422:.*]] = load i32, ptr %[[VAL_413]], align 4
-// CHECK:         %[[VAL_423:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_385]]
-// CHECK:         store i32 %[[VAL_421]], ptr addrspace(3) %[[VAL_423]], align 4
-// CHECK:         %[[VAL_424:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_386]]
-// CHECK:         store i32 %[[VAL_422]], ptr addrspace(3) %[[VAL_424]], align 4
-// CHECK:         %[[VAL_425:.*]] = load float, ptr %[[VAL_415]], align 4
-// CHECK:         %[[VAL_426:.*]] = load float, ptr %[[VAL_417]], align 4
-// CHECK:         %[[VAL_427:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_385]]
-// CHECK:         store float %[[VAL_425]], ptr addrspace(3) %[[VAL_427]], align 4
-// CHECK:         %[[VAL_428:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_386]]
-// CHECK:         store float %[[VAL_426]], ptr addrspace(3) %[[VAL_428]], align 4
-// CHECK:         br label %[[VAL_390]]
-// CHECK:       smaller_keys_index-true41:                        ; preds = %[[VAL_249]]
-// CHECK:         %[[VAL_429:.*]] = shl i64 %[[VAL_215]], 1
-// CHECK:         %[[VAL_430:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_429]]
-// CHECK:         %[[VAL_431:.*]] = load i32, ptr addrspace(3) %[[VAL_430]], align 4
-// CHECK:         %[[VAL_432:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_195]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_244]]
-// CHECK:         store i32 %[[VAL_431]], ptr %[[VAL_432]], align 4
-// CHECK:         %[[VAL_433:.*]] = add i64 %[[VAL_244]], 1
-// CHECK:         %[[VAL_434:.*]] = icmp slt i64 %[[VAL_433]], 3
-// CHECK:         br i1 %[[VAL_434]], label %[[VAL_435:.*]], label %[[VAL_248]]
-// CHECK:       inner_smaller_keys_index-after44:                 ; preds = %[[VAL_435]], %[[VAL_246]]
-// CHECK:         br label %[[VAL_247]]
-// CHECK:       inner_smaller_keys_index-true43:                  ; preds = %[[VAL_246]]
-// CHECK:         %[[VAL_436:.*]] = add i64 %[[VAL_429]], 1
-// CHECK:         %[[VAL_437:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_436]]
-// CHECK:         %[[VAL_438:.*]] = load i32, ptr addrspace(3) %[[VAL_437]], align 4
-// CHECK:         %[[VAL_439:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_195]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_433]]
-// CHECK:         store i32 %[[VAL_438]], ptr %[[VAL_439]], align 4
+// CHECK:       inner_smaller_keys_index-true43:                  ; preds = %[[VAL_241]]
+// CHECK:         %[[VAL_433:.*]] = add i64 %[[VAL_426]], 1
+// CHECK:         %[[VAL_434:.*]] = getelementptr [64 x i32], ptr addrspace(3) @sort_tile_param_0, i64 0, i64 %[[VAL_433]]
+// CHECK:         %[[VAL_435:.*]] = load i32, ptr addrspace(3) %[[VAL_434]], align 4
+// CHECK:         %[[VAL_436:.*]] = getelementptr inbounds [2 x [3 x i32]], ptr %[[VAL_251]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_430]]
+// CHECK:         store i32 %[[VAL_435]], ptr %[[VAL_436]], align 4
+// CHECK:         br label %[[VAL_243]]
+// CHECK:       smaller_keys_index-true45:                        ; preds = %[[VAL_242]]
+// CHECK:         %[[VAL_437:.*]] = shl i64 %[[VAL_210]], 1
+// CHECK:         %[[VAL_438:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_437]]
+// CHECK:         %[[VAL_439:.*]] = load float, ptr addrspace(3) %[[VAL_438]], align 4
+// CHECK:         %[[VAL_440:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_263]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_245]]
+// CHECK:         store float %[[VAL_439]], ptr %[[VAL_440]], align 4
+// CHECK:         %[[VAL_441:.*]] = add i64 %[[VAL_245]], 1
+// CHECK:         %[[VAL_442:.*]] = icmp slt i64 %[[VAL_441]], 3
+// CHECK:         br i1 %[[VAL_442]], label %[[VAL_443:.*]], label %[[VAL_248]]
+// CHECK:       inner_smaller_keys_index-after48:                 ; preds = %[[VAL_443]], %[[VAL_247]]
+// CHECK:         br label %[[VAL_207]]
+// CHECK:       inner_smaller_keys_index-true47:                  ; preds = %[[VAL_247]]
+// CHECK:         %[[VAL_444:.*]] = add i64 %[[VAL_437]], 1
+// CHECK:         %[[VAL_445:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_444]]
+// CHECK:         %[[VAL_446:.*]] = load float, ptr addrspace(3) %[[VAL_445]], align 4
+// CHECK:         %[[VAL_447:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_263]], i64 0, i64 %[[VAL_203]], i64 %[[VAL_441]]
+// CHECK:         store float %[[VAL_446]], ptr %[[VAL_447]], align 4
 // CHECK:         br label %[[VAL_248]]
-// CHECK:       smaller_keys_index-true45:                        ; preds = %[[VAL_247]]
-// CHECK:         %[[VAL_440:.*]] = shl i64 %[[VAL_215]], 1
-// CHECK:         %[[VAL_441:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_440]]
-// CHECK:         %[[VAL_442:.*]] = load float, ptr addrspace(3) %[[VAL_441]], align 4
-// CHECK:         %[[VAL_443:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_197]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_250]]
-// CHECK:         store float %[[VAL_442]], ptr %[[VAL_443]], align 4
-// CHECK:         %[[VAL_444:.*]] = add i64 %[[VAL_250]], 1
-// CHECK:         %[[VAL_445:.*]] = icmp slt i64 %[[VAL_444]], 3
-// CHECK:         br i1 %[[VAL_445]], label %[[VAL_446:.*]], label %[[VAL_253]]
-// CHECK:       inner_smaller_keys_index-after48:                 ; preds = %[[VAL_446]], %[[VAL_252]]
-// CHECK:         br label %[[VAL_212]]
-// CHECK:       inner_smaller_keys_index-true47:                  ; preds = %[[VAL_252]]
-// CHECK:         %[[VAL_447:.*]] = add i64 %[[VAL_440]], 1
-// CHECK:         %[[VAL_448:.*]] = getelementptr [64 x float], ptr addrspace(3) @sort_tile_param_1, i64 0, i64 %[[VAL_447]]
-// CHECK:         %[[VAL_449:.*]] = load float, ptr addrspace(3) %[[VAL_448]], align 4
-// CHECK:         %[[VAL_450:.*]] = getelementptr inbounds [2 x [3 x float]], ptr %[[VAL_197]], i64 0, i64 %[[VAL_208]], i64 %[[VAL_444]]
-// CHECK:         store float %[[VAL_449]], ptr %[[VAL_450]], align 4
-// CHECK:         br label %[[VAL_253]]
 // CHECK:       entry:
-// CHECK:         %[[VAL_451:.*]] = alloca i8, align 1
-// CHECK:         %[[VAL_452:.*]] = load float, ptr %[[VAL_453:.*]], align 4
-// CHECK:         %[[VAL_454:.*]] = load float, ptr %[[VAL_455:.*]], align 4
-// CHECK:         %[[VAL_456:.*]] = fcmp olt float %[[VAL_452]], %[[VAL_454]]
-// CHECK:         %[[VAL_457:.*]] = zext i1 %[[VAL_456]] to i8
-// CHECK:         store i8 %[[VAL_457]], ptr %[[VAL_451]], align 1
-// CHECK:         %[[VAL_458:.*]] = load i8, ptr %[[VAL_451]], align 1
-// CHECK:         store i8 %[[VAL_458]], ptr %[[VAL_459:.*]], align 1
+// CHECK:         %[[VAL_448:.*]] = alloca i8, align 1
+// CHECK:         %[[VAL_449:.*]] = load float, ptr %[[VAL_450:.*]], align 4
+// CHECK:         %[[VAL_451:.*]] = load float, ptr %[[VAL_452:.*]], align 4
+// CHECK:         %[[VAL_453:.*]] = fcmp olt float %[[VAL_449]], %[[VAL_451]]
+// CHECK:         %[[VAL_454:.*]] = zext i1 %[[VAL_453]] to i8
+// CHECK:         store i8 %[[VAL_454]], ptr %[[VAL_448]], align 1
+// CHECK:         %[[VAL_455:.*]] = load i8, ptr %[[VAL_448]], align 1
+// CHECK:         store i8 %[[VAL_455]], ptr %[[VAL_456:.*]], align 1
 // CHECK:         ret void
 
 ENTRY main {

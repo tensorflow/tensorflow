@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -80,6 +81,7 @@ namespace xla {
 //     - WithOneUser: Instruction is used by exactly one other instruction, but
 //       is possibly used more than once as an operand (e.g. multiply(x,x)).
 //     - WithComparisonDirection: instr has the given direction
+//     - WithConvDnums(string or proto): checks convolution_dimension_numbers().
 //     - WithPredicate: Instruction matches an arbitrary function you pass.
 //       Function must have signature `bool(const HloInstruction*)`.
 //
@@ -1622,7 +1624,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
     for (int i = 0; !wrote_explanation && i < 2; ++i) {
       if (!matches[i][0] && !matches[i][1]) {
         EXPLAIN << "HloInstruction's operands (ignoring order) did not match "
-                << (i == 0 ? "first" : "second") << " matcher.  Specifically,";
+                << (i == 0 ? "first" : "second") << " matcher. Specifically,";
         describe_matcher(i);
         wrote_explanation = true;
       }
@@ -1636,7 +1638,7 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
         CHECK(!matches[1][(i + 1) % 2]);
         CHECK(!wrote_explanation);
         EXPLAIN << "HloInstruction's " << (i == 1 ? "LHS" : "RHS")
-                << " operand did not match either of the two matchers.  "
+                << " operand did not match either of the two matchers. "
                    "Specifically,";
         describe_matcher(0);
         EXPLAIN << "\nand";
@@ -1850,6 +1852,54 @@ class HloInstructionPatternComparisonDirectionImpl {
   }
 
   ComparisonDirection direction_;
+};
+
+class HloInstructionPatternConvDnumsImpl {
+ public:
+  explicit HloInstructionPatternConvDnumsImpl(absl::string_view dnums)
+      : HloInstructionPatternConvDnumsImpl(
+            ParseConvolutionDimensionNumbers(dnums).value()) {}
+
+  explicit HloInstructionPatternConvDnumsImpl(ConvolutionDimensionNumbers dnums)
+      : dnums_(std::move(dnums)) {}
+
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
+    return MatchImpl(inst, option);
+  }
+
+  void DescribeTo(std::ostream* os, int64_t indent = 0) const {
+    *os << "which has convolution dimension numbers "
+        << ConvolutionDimensionNumbersToString(dnums_);
+  }
+
+ private:
+  template <typename HloInstructionType>
+  bool MatchImpl(HloInstructionType* inst, MatchOption option) const {
+    if (inst->opcode() != HloOpcode::kConvolution &&
+        inst->opcode() != HloOpcode::kCustomCall) {
+      EXPLAIN << "HloInstruction is not convolution or custom-call and so "
+                 "can't have convolution_dimension_numbers";
+      return false;
+    }
+
+    const ConvolutionDimensionNumbers& actual_dnums =
+        inst->convolution_dimension_numbers();
+    if (!tsl::protobuf::util::MessageDifferencer::Equals(dnums_,
+                                                         actual_dnums)) {
+      EXPLAIN << "convolution_dimension_numbers "
+              << ConvolutionDimensionNumbersToString(actual_dnums)
+              << " don't match expected "
+              << ConvolutionDimensionNumbersToString(dnums_);
+      return false;
+    }
+    return true;
+  }
+
+  ConvolutionDimensionNumbers dnums_;
 };
 
 class HloInstructionPredicateImpl {
@@ -2153,6 +2203,13 @@ class HloInstructionPattern {
     return AppendImpl(HloInstructionPatternComparisonDirectionImpl(direction));
   }
 
+  auto WithConvDnums(absl::string_view dnums) const {
+    return AppendImpl(HloInstructionPatternConvDnumsImpl(dnums));
+  }
+  auto WithConvDnums(ConvolutionDimensionNumbers dnums) const {
+    return AppendImpl(HloInstructionPatternConvDnumsImpl(dnums));
+  }
+
   auto WithPredicate(HloPredicate fn) const {
     return AppendImpl(HloInstructionPredicateImpl(std::move(fn)));
   }
@@ -2343,6 +2400,7 @@ XLA_COMMUTATIVE_BINOP_PATTERN(Or)
 XLA_BINOP_PATTERN(ShiftLeft)
 XLA_BINOP_PATTERN(ShiftRightArithmetic)
 XLA_BINOP_PATTERN(ShiftRightLogical)
+XLA_COMMUTATIVE_BINOP_PATTERN(Xor)
 #undef XLA_COMMUTATIVE_BINOP_PATTERN
 #undef XLA_BINOP_PATTERN
 

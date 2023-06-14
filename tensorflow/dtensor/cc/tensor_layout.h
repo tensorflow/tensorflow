@@ -160,6 +160,8 @@ class Mesh {
     return local_device_ids_.empty() && !global_device_ids_.empty();
   }
 
+  StatusOr<Mesh> host_mesh() const { return ToDeviceType("CPU"); }
+
   // Device information methods.
   std::string device_type() const;
   // Takes an index in the flattened list of devices and returns a location
@@ -217,6 +219,7 @@ class Mesh {
   int64 size() const;
   bool use_xla_spmd() const { return use_xla_spmd_; }
   const std::string& name() const { return name_; }
+  absl::string_view single_device() const { return single_device_; }
 
   // Global unique fingerprint. Same on different workers.
   uint64 GlobalFingerprint() const;
@@ -287,6 +290,9 @@ class Layout {
   // the layout for the given dimension.
   static constexpr const char* kMatch = "match";
 
+  Layout() = default;
+  Layout(const Layout& other) = default;
+
   inline bool IsSingleDevice() const { return mesh_.IsSingleDevice(); }
 
   // Returns empty layout.
@@ -316,7 +322,6 @@ class Layout {
   static Layout BatchShardedLike(const Layout& layout, const string& mesh_dim,
                                  int axis = 0);
   static Layout AnyOnMesh(const Mesh& mesh, int rank);
-  static StatusOr<Layout> SingleDeviceOnMesh(const Mesh& mesh);
   // Creates a mesh of unique shards.
   Mesh ReducedMesh() const;
   void set_mesh(Mesh mesh) { mesh_ = mesh; }
@@ -352,10 +357,14 @@ class Layout {
   // Truncates a layout at the front or back, depending on the value of end.
   // end = false returns the layout up to the split point,
   // end = true returns the layout from the split point.
-  StatusOr<Layout> Truncate(int64 split_point, bool end = false) const;
+  Layout Truncate(int64 split_point, bool end = false) const;
 
   // Left or right pad the layout to a max rank.
   Layout LeftPad(int64 rank) const;
+
+  // Minimally pads replicated axes on the left, or removes axes on the right,
+  // such that the result layout has the provided rank.
+  StatusOr<Layout> EnsureRank(int64_t rank) const;
 
   bool IsFullyReplicated() const;
   bool IsLastDimReplicated() const;
@@ -419,6 +428,9 @@ class Layout {
 // dimension returns an error rather than a layout.
 StatusOr<Layout> ConcatenateLayouts(const Layout& layout_a,
                                     const Layout& layout_b);
+
+StatusOr<Layout> GetMostShardedLayout(const std::vector<Layout>& layouts);
+StatusOr<Layout> GetLeastShardedLayout(const std::vector<Layout>& layouts);
 
 }  // namespace dtensor
 }  // namespace tensorflow

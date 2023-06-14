@@ -59,7 +59,6 @@ class Thunk {
     kGemm,
     kInfeed,
     kKernel,
-    kReusableKernel,
     kMemset32BitValue,
     kMemzero,
     kNcclAllGather,
@@ -83,6 +82,7 @@ class Thunk {
     kSequential,
     kTriangularSolve,
     kWhile,
+    kFusedMHA
   };
 
   struct ThunkInfo {

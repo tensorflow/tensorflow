@@ -102,7 +102,9 @@ class TfLiteSubgraphExecute : public OpKernel {
       OP_REQUIRES(ctx, subgraph_selected.AllocateTensors() == kTfLiteOk,
                   errors::Internal("Failed to call allocate tensors"));
       tfl_tensors_need_allocation_ = false;
-      output_tensors_can_be_shared_ = !subgraph_selected.HasDynamicTensors();
+      // TODO(b/274934361): re-enable once allocation issue is solved.
+      // output_tensors_can_be_shared_ =!subgraph_selected.HasDynamicTensors();
+      output_tensors_can_be_shared_ = false;
     }
 
     if (output_tensors_can_be_shared_) {

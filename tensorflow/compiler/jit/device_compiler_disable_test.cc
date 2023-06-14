@@ -68,24 +68,21 @@ TEST(DeviceCompilerTest, TestDisabledXlaCompilation) {
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kStrict, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "XLA compilation disabled"));
 
   // Check that async compilation is disallowed.
   status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kAsync, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "XLA compilation disabled"));
 
   // Check that lazy compilation is disallowed.
   status = xla_device_compiler->CompileIfNeeded(
       XlaCompiler::Options{}, fn, args, XlaCompiler::CompileOptions{},
       DeviceCompileMode::kLazy, profiler, &compilation_result, &executable);
   EXPECT_FALSE(status.ok());
-  EXPECT_TRUE(
-      absl::StrContains(status.error_message(), "XLA compilation disabled"));
+  EXPECT_TRUE(absl::StrContains(status.message(), "XLA compilation disabled"));
 }
 
 }  // namespace

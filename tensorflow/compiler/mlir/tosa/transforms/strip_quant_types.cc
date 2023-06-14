@@ -27,7 +27,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <memory>
 #include <numeric>
+#include <utility>
 
 #include "mlir/Dialect/Tosa/IR/TosaOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tosa/Utils/QuantUtils.h"  // from @llvm-project
@@ -56,7 +58,7 @@ namespace {
 class StripQuantTypes
     : public impl::TosaStripQuantTypesPassBase<StripQuantTypes> {
  public:
-  explicit StripQuantTypes() {}
+  explicit StripQuantTypes() = default;
   void runOnOperation() override;
 };
 

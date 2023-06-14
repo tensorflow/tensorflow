@@ -95,7 +95,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
           .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Entry parameter 1 is or contains a token shape"));
 }
 
@@ -115,7 +115,7 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
           .status();
   ASSERT_IS_NOT_OK(status);
   EXPECT_THAT(
-      status.error_message(),
+      status.message(),
       ::testing::HasSubstr("Entry parameter 0 is or contains a token shape"));
 }
 

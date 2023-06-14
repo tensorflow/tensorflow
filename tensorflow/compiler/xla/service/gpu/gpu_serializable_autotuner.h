@@ -48,7 +48,13 @@ struct DevicelessConfig {
   se::CudaComputeCapability cuda_compute_capability{0, 0};
 };
 
-using AutotuningConfig = std::variant<DeviceConfig, DevicelessConfig>;
+struct AutotuningConfig : public std::variant<DeviceConfig, DevicelessConfig> {
+  using std::variant<DeviceConfig, DevicelessConfig>::variant;
+  bool is_offline() const {
+    return std::holds_alternative<DevicelessConfig>(*this);
+  }
+  bool is_online() const { return std::holds_alternative<DeviceConfig>(*this); }
+};
 
 using AutotuneCacheKey =
     std::tuple<std::string /* stream_exec->GetDeviceDescription().model_str()*/,

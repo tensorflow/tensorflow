@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/tests/testlib.h"
@@ -47,6 +48,7 @@ void RegisterDefaultXlaGpuRuntimeDialects(DialectRegistry& dialects) {
                    mlir::async::AsyncDialect, RuntimeDialect>();
 
   // Register MLIR dialects that can be translated to LLVM IR.
+  mlir::registerBuiltinDialectTranslation(*dialects);
   mlir::registerLLVMDialectTranslation(*dialects);
 }
 
@@ -82,21 +84,11 @@ static void CreateDefaultXlaGpuRuntimeCompilationPipeline(
   pm.addPass(CreateConvertRuntimeToLLVMPass(std::move(rt_to_llvm_opts)));
 
   // Convert async dialect to LLVM once everything else is in the LLVM dialect.
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertAsyncToLLVMPassOptions async_to_llvm_opts;
-  async_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertAsyncToLLVMPass(async_to_llvm_opts));
+  pm.addPass(mlir::createConvertAsyncToLLVMPass());
 
   // Convert everything else to LLVM dialect.
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::FinalizeMemRefToLLVMConversionPassOptions memref_to_llvm_opts;
-  memref_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(
-      mlir::createFinalizeMemRefToLLVMConversionPass(memref_to_llvm_opts));
-  // TODO(b/267828330): Migrate to opaque pointers.
-  mlir::ConvertFuncToLLVMPassOptions func_to_llvm_opts;
-  func_to_llvm_opts.useOpaquePointers = false;
-  pm.addPass(mlir::createConvertFuncToLLVMPass(func_to_llvm_opts));
+  pm.addPass(mlir::createFinalizeMemRefToLLVMConversionPass());
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
 
   // Clean up IR before passing it to LLVM.

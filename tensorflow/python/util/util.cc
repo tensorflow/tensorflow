@@ -143,6 +143,7 @@ string PyObjectToString(PyObject* o) {
   }
 }
 
+// FIXME(b/280464631): Consider remove this class.
 class CachedTypeCheck {
  public:
   explicit CachedTypeCheck(std::function<int(PyObject*)> ternary_predicate)

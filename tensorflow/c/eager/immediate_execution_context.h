@@ -134,6 +134,10 @@ class ImmediateExecutionContext : public AbstractContext {
   // Find and return a added function by its name.
   virtual const FunctionDef* FindFunctionDef(const string& name) const = 0;
 
+  // Find and return a function record added by its name.
+  virtual core::RefCountPtr<FunctionRecord> FindRecord(
+      const string& name) const = 0;
+
   // Return the ParsedName of Host CPU device.
   virtual const DeviceNameUtils::ParsedName& HostCPUParsedName() const = 0;
   virtual const string& HostCPUName() const = 0;
@@ -249,6 +253,7 @@ class ImmediateExecutionContext : public AbstractContext {
     int64_t kernel_cache_size;
     int64_t device_cache_size;
     std::map<std::string, int64_t> func_kernel_cache_entries;
+    int64_t local_rendezvous_cache_active_size;
   };
   virtual CacheStats GetCacheStats() = 0;
 

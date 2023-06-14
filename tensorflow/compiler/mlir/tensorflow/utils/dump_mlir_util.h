@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_
 
+#include <memory>
 #include <string>
 
 #include "absl/strings/string_view.h"
@@ -96,6 +97,9 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path = "");
 void applyTensorflowAndCLOptions(mlir::PassManager& pm,
                                  llvm::StringRef dir_path = "");
 
+// Prints the pass pipeline of `pass_manager` to `os`.
+void PrintPassPipeline(const mlir::PassManager& pass_manager,
+                       mlir::Operation* op, llvm::raw_ostream& os);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_

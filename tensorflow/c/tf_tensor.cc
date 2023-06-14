@@ -183,7 +183,7 @@ void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
               *tensorflow::down_cast<const tensorflow::TensorInterface*>(
                   from->tensor),
               static_cast<tensorflow::DataType>(type), new_dims, num_new_dims));
-  Set_TF_Status_from_Status(status, cc_status);
+  tsl::Set_TF_Status_from_Status(status, cc_status);
 }
 
 namespace tensorflow {

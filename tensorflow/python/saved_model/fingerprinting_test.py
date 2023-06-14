@@ -72,6 +72,12 @@ class FingerprintingTest(test.TestCase):
       fingerprint_def.ParseFromString(f.read())
     return fingerprint_def
 
+  def _read_saved_model(self, filename):
+    saved_model_def = saved_model_pb2.SavedModel()
+    with file_io.FileIO(filename, "rb") as f:
+      saved_model_def.ParseFromString(f.read())
+    return saved_model_def
+
   def setUp(self):
     super().setUp()
     flags.config().saved_model_fingerprinting.reset(True)
@@ -134,31 +140,11 @@ class FingerprintingTest(test.TestCase):
     fingerprint = fingerprinting.read_fingerprint(save_dir)
 
     fingerprint_def = self._read_fingerprint(
-        file_io.join(save_dir, constants.FINGERPRINT_FILENAME)
-    )
+        file_io.join(save_dir, constants.FINGERPRINT_FILENAME))
 
-    self.assertEqual(
-        fingerprint.saved_model_checksum, fingerprint_def.saved_model_checksum
-    )
-    self.assertEqual(
-        fingerprint.graph_def_program_hash,
-        fingerprint_def.graph_def_program_hash,
-    )
-    self.assertEqual(
-        fingerprint.signature_def_hash, fingerprint_def.signature_def_hash
-    )
-    self.assertEqual(
-        fingerprint.saved_object_graph_hash,
-        fingerprint_def.saved_object_graph_hash,
-    )
-    self.assertEqual(
-        fingerprint.checkpoint_hash, fingerprint_def.checkpoint_hash
-    )
-    self.assertEqual(
-        fingerprint.version.producer, fingerprint_def.version.producer
-    )
+    self.assertEqual(fingerprint, fingerprint_def)
 
-  def test_read_fingerprint_api_invalid(self):
+  def test_read_fingerprint_file_not_found(self):
     with self.assertRaisesRegex(FileNotFoundError,
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")

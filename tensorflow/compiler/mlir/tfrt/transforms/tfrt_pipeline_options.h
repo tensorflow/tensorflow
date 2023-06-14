@@ -24,6 +24,8 @@ namespace tensorflow {
 
 struct TfrtPipelineOptions
     : public mlir::PassPipelineOptions<TfrtPipelineOptions> {
+  Option<std::string> saved_model_dir{*this, "saved-model-dir",
+                                      llvm::cl::desc(""), llvm::cl::init("")};
   Option<std::string> default_device{
       *this, "default-device", llvm::cl::desc("default device assignment"),
       llvm::cl::init("/job:localhost/replica:0/task:0/device:CPU:0")};
@@ -121,6 +123,11 @@ struct TfrtPipelineOptions
       llvm::cl::desc("If true, invariant ops in savedmodels will be hoisted "
                      "out to run during loading."),
       llvm::cl::init(false)};
+
+  Option<bool> fuse_get_resource_ops_in_hoisting{
+      *this, "fuse-get-resource-ops-in-hoisting",
+      llvm::cl::desc("If true, get_resource_op will be fused during hoisting"),
+      llvm::cl::init(true)};
 
   Option<bool> sink_in_invariant_ops{
       *this, "sink-in-invariant-ops",

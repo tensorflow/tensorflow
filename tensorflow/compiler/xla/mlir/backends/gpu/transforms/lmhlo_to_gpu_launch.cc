@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
-#include "tensorflow/compiler/xla/service/gpu/reusable_kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/while_thunk.h"
 
@@ -204,9 +203,9 @@ static absl::StatusOr<std::unique_ptr<ThunkSequence>> Match(
 
   // Check if we know how to lower a Thunk to Gpu operation(s).
   auto is_supported = [](const std::unique_ptr<Thunk>& thunk) -> bool {
-    Thunk::Kind kinds[] = {Thunk::kKernel,  Thunk::kReusableKernel,
-                           Thunk::kCopy,    Thunk::kMemset32BitValue,
-                           Thunk::kMemzero, Thunk::kSequential};
+    Thunk::Kind kinds[] = {Thunk::kKernel, Thunk::kCopy,
+                           Thunk::kMemset32BitValue, Thunk::kMemzero,
+                           Thunk::kSequential};
     return llvm::any_of(
         kinds, [&](Thunk::Kind kind) { return thunk->kind() == kind; });
   };
@@ -238,11 +237,11 @@ static void Rewrite(Operation* op, OpBuilder& b, SymbolTable& symbol_table,
   op->erase();
 }
 
-static void LowerKernelThunkToGpuOp(Operation* op, OpBuilder& b,
-                                    GPUModuleOp gpu_module,
-                                    const std::string& kernel_name,
-                                    const SmallVector<Value>& kernel_args,
-                                    const LaunchDimensions& launch_dims) {
+static void LowerKernelThunkToGpuOp(
+    Operation* op, OpBuilder& b, GPUModuleOp gpu_module,
+    const std::string& kernel_name, const SmallVector<Value>& kernel_args,
+    const SmallVector<bool>& kernel_args_written,
+    const LaunchDimensions& launch_dims) {
   mlir::Location loc = op->getLoc();
   b.setInsertionPointToStart(gpu_module.getBody());
 
@@ -252,6 +251,13 @@ static void LowerKernelThunkToGpuOp(Operation* op, OpBuilder& b,
   gpu::GPUFuncOp kernel_func =
       b.create<gpu::GPUFuncOp>(loc, kernel_name, func_type);
   kernel_func->setAttr(GPUDialect::getKernelFuncAttrName(), b.getUnitAttr());
+
+  for (int i = 0; i < kernel_args.size(); ++i) {
+    if (kernel_args_written[i]) {
+      kernel_func.setArgAttr(i, "lmhlo.written", b.getUnitAttr());
+    }
+  }
+
   b.setInsertionPointToEnd(&kernel_func.getBody().back());
   b.create<ReturnOp>(loc);
 
@@ -320,24 +326,19 @@ static void LowerThunkToGpuOp(Operation* op, OpBuilder& b,
 
   if (thunk->kind() == Thunk::kKernel) {
     const auto* kernel_thunk = static_cast<const KernelThunk*>(thunk);
-    SmallVector<Value> kernel_args;
-    for (auto kernel_arg : kernel_thunk->values())
-      kernel_args.push_back(kernel_arg);
-
-    LowerKernelThunkToGpuOp(op, b, gpu_module, kernel_thunk->kernel_name(),
-                            kernel_args, kernel_thunk->launch_dimensions());
-    return;
-  }
-
-  if (thunk->kind() == Thunk::kReusableKernel) {
-    const auto* kernel_thunk = static_cast<const ReusableKernelThunk*>(thunk);
 
     SmallVector<Value> kernel_args;
     for (auto kernel_arg : kernel_thunk->values())
       kernel_args.push_back(kernel_arg);
 
+    SmallVector<bool> kernel_args_written;
+    for (auto written : kernel_thunk->written()) {
+      kernel_args_written.push_back(written);
+    }
+
     LowerKernelThunkToGpuOp(op, b, gpu_module, kernel_thunk->kernel_name(),
-                            kernel_args, kernel_thunk->launch_dimensions());
+                            kernel_args, kernel_args_written,
+                            kernel_thunk->launch_dimensions());
     return;
   }
 

@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/debug/debug.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/metrics/error_collector_inst.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
@@ -45,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/stablehlo/transforms/transforms.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/quantization/stablehlo/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantization_options.pb.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_passes.h"
 #include "tensorflow/compiler/mlir/quantization/tensorflow/quantize_preprocess.h"
@@ -164,24 +166,27 @@ StatusOr<OwningOpRef<ModuleOp>> LoadFromGraphdefOrMlirSource(
   auto extra_opdefs_status = RegisterExtraTfOpDefs(extra_tf_opdefs);
   if (!extra_opdefs_status.ok()) return extra_opdefs_status;
 
+  ::tensorflow::GraphdefToMlirOptions graphdef_conversion_options{
+      std::string(debug_info_file),
+      /*xla_compile_device_type=*/"",
+      /*prune_unused_nodes=*/specs.prune_unused_nodes,
+      /*convert_legacy_fed_inputs=*/true,
+      /*graph_as_function=*/false,
+      specs.upgrade_legacy,
+      /*enable_shape_inference=*/false,
+      /*unconditionally_use_set_output_shapes=*/true,
+      /*enable_soft_placement=*/false};
+
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
-        input_arrays, input_dtypes, input_shapes, output_arrays,
-        control_output_arrays, specs.prune_unused_nodes,
-        /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, specs.upgrade_legacy,
-        /*enable_shape_inference=*/false,
-        /*unconditionally_use_set_output_shapes=*/true, context);
+        file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+        output_arrays, control_output_arrays, graphdef_conversion_options,
+        context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      file->getBuffer(), debug_info_file, /*xla_compile_device_type=*/"",
-      input_arrays, input_dtypes, input_shapes, output_arrays,
-      control_output_arrays, specs.prune_unused_nodes,
-      /*convert_legacy_fed_inputs=*/true,
-      /*graph_as_function=*/false, specs.upgrade_legacy,
-      /*enable_shape_inference=*/false,
-      /*unconditionally_use_set_output_shapes=*/true, context);
+      file->getBuffer(), input_arrays, input_dtypes, input_shapes,
+      output_arrays, control_output_arrays, graphdef_conversion_options,
+      context);
 }
 
 // Applying post-training dynamic range quantization from the old TOCO quantizer
@@ -237,20 +242,25 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
       return errors::Aborted("Failed to preprocess & freeze TF graph");
     }
 
-    // The default minimum number of elements a weights array must have to be
-    // quantized by this transformation.
-    const int kWeightsMinNumElementsDefault = 1024;
+    // TODO(b/264218457): Refactor the component below once StableHLO Quantizer
+    // can run DRQ. Temporarily using TF Quantization for StableHLO DRQ.
+    if (!toco_flags.has_quantization_options()) {
+      // The default minimum number of elements a weights array must have to be
+      // quantized by this transformation.
+      const int kWeightsMinNumElementsDefault = 1024;
 
-    tensorflow::quantization::QuantizationOptions quantization_options;
+      tensorflow::quantization::QuantizationOptions quantization_options;
 
-    quantization_options.mutable_quantization_method()->set_experimental_method(
-        tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
-    quantization_options.set_op_set(
-        tensorflow::quantization::UNIFORM_QUANTIZED);
-    quantization_options.set_min_num_elements_for_weights(
-        kWeightsMinNumElementsDefault);
-    tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
-        pass_manager, quantization_options);
+      quantization_options.mutable_quantization_method()
+          ->set_experimental_method(
+              tensorflow::quantization::QuantizationMethod::DYNAMIC_RANGE);
+      quantization_options.set_op_set(
+          tensorflow::quantization::UNIFORM_QUANTIZED);
+      quantization_options.set_min_num_elements_for_weights(
+          kWeightsMinNumElementsDefault);
+      tensorflow::quantization::AddQuantizePtqDynamicRangePasses(
+          pass_manager, quantization_options);
+    }
     if (failed(pass_manager.run(module))) {
       return statusHandler.ConsumeStatus();
     }
@@ -262,6 +272,10 @@ Status ConvertTFExecutorToStablehloFlatbuffer(
   // Print out a detailed report of non-converted stats.
   pass_manager.addPass(mlir::odml::createPrintOpStatsPass());
   mlir::odml::AddStablehloOptimizationPasses(pass_manager);
+  if (toco_flags.has_quantization_options()) {
+    stablehlo::quantization::AddQuantizationPasses(
+        pass_manager, toco_flags.quantization_options());
+  }
   if (failed(pass_manager.run(module))) {
     return statusHandler.ConsumeStatus();
   }
@@ -310,10 +324,13 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
 
   mlir::PassManager pass_manager(module.getContext());
   mlir::registerPassManagerCLOptions();
-  mlir::applyPassManagerCLOptions(pass_manager);
+  if (mlir::failed(mlir::applyPassManagerCLOptions(pass_manager))) {
+    return absl::UnknownError("failed to apply MLIR pass manager CL options");
+  }
   pass_manager.addInstrumentation(
       std::make_unique<mlir::TFL::ErrorCollectorInstrumentation>(
           pass_manager.getContext()));
+  InitPassManager(pass_manager, toco_flags.debug_options());
 
   if (pass_config.enable_stablehlo_conversion) {
     // return to avoid adding TFL converter path

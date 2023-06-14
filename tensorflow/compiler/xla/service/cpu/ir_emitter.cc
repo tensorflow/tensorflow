@@ -162,7 +162,7 @@ void IrEmitter::EmitThreadLocalFunctionEpilogue(HloComputation* computation) {
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
-    HloComputation* computation, const std::string& function_name_prefix,
+    HloComputation* computation, absl::string_view function_name_prefix,
     bool is_top_level_computation,
     absl::Span<HloInstruction* const> instruction_order,
     bool allow_reassociation) {
@@ -2669,7 +2669,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   int64_t byte_offset_into_target_region = 0;
 
   int64_t inner_dims_product =
-      std::accumulate(inner_dims.begin(), inner_dims.end(), 1l,
+      std::accumulate(inner_dims.begin(), inner_dims.end(), int64_t{1},
                       [&](int64_t product, int64_t inner_dim) {
                         return product * output_shape.dimensions(inner_dim);
                       });

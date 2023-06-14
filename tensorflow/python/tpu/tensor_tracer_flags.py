@@ -370,6 +370,7 @@ class TTParameters(object):
     found, flag_value = self.get_flag_value(wanted_flag_name)
 
     if found:
+      assert flag_value is not None
       string_value_list = flag_value.split(',')
     return string_value_list
 

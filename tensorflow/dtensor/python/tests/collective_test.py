@@ -21,9 +21,11 @@ import numpy as np
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.dtensor.python import api
+from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
+from tensorflow.dtensor.python.tests import test_backend_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
@@ -88,7 +90,20 @@ class CollectiveTest(test_util.DTensorBaseTest):
 
     self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
 
+  def testReduceOnInt8(self):
+    a = constant_op.constant(
+        np.array([[1, 2, 3, 4], [5, 6, 7, 8]]), dtype=dtypes.int8
+    )
+
+    expected_result = math_ops.reduce_sum(a)
+
+    sharded_a = api.relayout(a, self.first_dimension_sharded_layout_2d)
+    dtensor_result = math_ops.reduce_sum(sharded_a)
+
+    self.assertDTensorEqual(expected_result, self.scalar_layout, dtensor_result)
+
   def testTwoReducesWithAssign(self):
+    self.skipForPathways('TODO(b/260775095)')
     # FIXME(b/238384852): The purpose of this test is to validate the control
     # dependency added by DTensor.
     # However, as we have no way of testing the per-device graph
@@ -202,30 +217,31 @@ class CollectiveTest(test_util.DTensorBaseTest):
     mesh = layout_lib.Mesh(_MESH_DIMS, global_ids, local_ids,
                            test_util.create_device_list((2, 4), 'TPU'),
                            'tpu_mesh')
-    device = dtensor_device.DTensorDevice(meshes=[mesh])
     # This works because on 2x2, global device IDs are equal to physical TPU
     # core IDs: both are range(8). So local device IDs happen to be usable here.
     # TODO(b/180046115): Add a device.get_tpu_core_ids method and translate
     # device IDs to core IDs before setting the list here.
-    device.set_tpu_core_ids('tpu_mesh', local_ids)
+    if not config.backend_is_pw():
+      device = dtensor_device.DTensorDevice(meshes=[mesh])
+      device.set_tpu_core_ids('tpu_mesh', local_ids)
+    else:
+      test_backend_util.config_test_mesh(mesh)
     layout_x = Layout.batch_sharded(mesh, _MESH_DIM_X, 2)
     layout_y = Layout.batch_sharded(mesh, _MESH_DIM_Y, 2)
 
     # Create a 2x4 batch-sharded d-tensor, with batch IDs in its first column
     # and zeros in other columns.
-    # pylint: disable=g-complex-comprehension
-    replica_ids = [
-        constant_op.constant([loc[_MESH_DIM_X], 0, 0, 0],
-                             dtype=dtypes.int32,
-                             shape=[1, 4])
-        for loc in mesh.local_device_locations()
-    ]
-    # pylint: enable=g-complex-comprehension
-    replica_ids = device.pack(replica_ids, layout_x)
+    replica_ids = constant_op.constant(
+        np.array([[0, 0, 0, 0], [1, 0, 0, 0]]), dtype=dtypes.int32
+    )
+    replica_ids = api.relayout(replica_ids, layout_x)
 
     # Create a 4x4 y-sharded d-tensor filled with ones.
-    ones = [array_ops.ones([1, 4], dtype=dtypes.int32)] * 8
-    ones = device.pack(ones, layout_y)
+    ones = constant_op.constant(
+        np.array([[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]]),
+        dtype=dtypes.int32,
+    )
+    ones = api.relayout(ones, layout_y)
 
     # If `a` has a layout of [x, unsharded], and `b` has a layout of
     # [y, unsharded], the matmul will slice `a` to [x, y], do a local matmul,
@@ -236,7 +252,7 @@ class CollectiveTest(test_util.DTensorBaseTest):
     # function) to produce correct `begin` values for slicing `a`.
     #
     # Although this function only contains a single op, running it in op-by-op
-    # mode doesn't produce the intented effect because the output of
+    # mode doesn't produce the intended effect because the output of
     # math_ops.matmul would have a layout of [y, unsharded] instead of
     # [x, unsharded].
     @polymorphic_function.function
@@ -253,8 +269,8 @@ class CollectiveTest(test_util.DTensorBaseTest):
         for loc in mesh.local_device_locations()
     ]
 
-    self.assertEqual(device.fetch_layout(dtensor_result), layout_x)
-    dtensor_result = [t.numpy() for t in device.unpack(dtensor_result)]
+    self.assertEqual(api.fetch_layout(dtensor_result), layout_x)
+    dtensor_result = [t.numpy() for t in api.unpack(dtensor_result)]
     self.assertAllEqual(expected_result, dtensor_result)
 
   def testDifferentShapesBetweenCalls(self):

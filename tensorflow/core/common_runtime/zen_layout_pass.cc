@@ -1068,7 +1068,7 @@ Status ZenLayoutRewritePass::AreAllInferenceOps(std::unique_ptr<Graph> *g) {
     for (auto op = tf_training_ops_.cbegin(); op != tf_training_ops_.cend();
          ++op) {
       if (n->type_string().find(*op) != string::npos) {
-        return Status(error::Code::UNIMPLEMENTED,
+        return Status(absl::StatusCode::kUnimplemented,
                       "Training operation found! Currently TF-ZenDNN "
                       "does not support training. Set environment "
                       "variable TF_ENABLE_ZENDNN_OPTS to '0' for training.");

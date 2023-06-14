@@ -40,6 +40,18 @@ limitations under the License.
 #include "tensorflow/tsl/platform/logging.h"
 
 namespace xla {
+
+#if defined(PLATFORM_GOOGLE)
+FusionDecision::FusionDecision(bool decision,
+                               absl::SourceLocation source_location) {
+  if (!decision) {
+    explanation_ =
+        absl::StrCat("Not fusing: due to ", source_location.file_name(), ":",
+                     source_location.line());
+  }
+}
+#endif  // PLATFORM_GOOGLE
+
 namespace {
 
 // These nodes can always be duplicated into consumers, even if
@@ -194,6 +206,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kSqrt:
     case HloOpcode::kCbrt:
     case HloOpcode::kTanh:
@@ -646,7 +659,7 @@ StatusOr<bool> InstructionFusion::Run(
         }
 
         // Saving name to use after the instruction is removed.
-        std::string producer_name = operand->name();
+        std::string producer_name(operand->name());
         fusion_queue->OnFusingInstruction(fusion_instruction, operand,
                                           instruction);
         changed = true;

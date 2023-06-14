@@ -427,7 +427,7 @@ Scope Scope::WithOpNameImpl(const string& op_name) const {
 }
 
 Scope Scope::WithControlDependencies(
-    const gtl::ArraySlice<Operation>& control_deps) const {
+    const gtl::ArraySlice<Operation> control_deps) const {
   return Scope(
       new Impl(*this, Impl::Tags::ControlDeps(),
                std::vector<Operation>(control_deps.begin(), control_deps.end()),

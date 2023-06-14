@@ -16,6 +16,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 
 #include <atomic>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "llvm/ADT/StringRef.h"

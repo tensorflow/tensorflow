@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/tsl/util/command_line_flags.h"
 
 using std::string;
-using tsl::Env;
 
 namespace xla {
 namespace tools {

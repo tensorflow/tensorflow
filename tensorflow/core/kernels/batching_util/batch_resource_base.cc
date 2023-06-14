@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/batch_resource_base.h"
 
 #include <sstream>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -60,14 +62,28 @@ void RecordPaddingSize(int32_t padding_size, const string& model_name,
 
 void RecordPaddingSizeV2(int32_t padding_size, const string& model_name,
                          int32_t execution_batch_size, const string& op_name) {
+  // Bucket containing 0 has bounds [-2/3, 2/3).
+  // Remaining buckets are centered at powers of 2 and have bounds:
+  // [(2/3) * 2^i, (4/3) * 2^i) for i = 1, ..., 13.
+  // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
+
+  std::vector<double> bucket_limits;
+  // populate bound for zero bucket
+  bucket_limits.push_back(-2.0 / 3.0);
+  // populate rest of bounds
+  double bound = 2.0 / 3.0;
+  double growth_factor = 2;
+  for (int i = 0; i < 16; i++) {
+    bucket_limits.push_back(bound);
+    bound *= growth_factor;
+  }
+
   static auto* cell = tensorflow::monitoring::Sampler<3>::New(
       {"/tensorflow/serving/batching/padding_size_v2",
        "Tracks the padding size distribution on batches by model_name (if "
        "available).",
        "model_name", "execution_batch_size", "op_name"},
-      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
-      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
-      monitoring::Buckets::Exponential(1, 2, 14));
+      monitoring::Buckets::Explicit(bucket_limits));
   cell->GetCell(model_name, absl::StrCat(execution_batch_size), op_name)
       ->Add(static_cast<double>(padding_size));
 }
@@ -92,9 +108,10 @@ void RecordInputBatchSizeV2(int32_t batch_size, const string& model_name,
        "Tracks the batch size distribution on the inputs by model_name (if "
        "available).",
        "model_name", "op_name"},
-      // It's 14 buckets with the last bucket being 2^13 to DBL_MAX;
-      // so the limits are [1, 2, 4, 8, ..., 8 * 1024, DBL_MAX].
-      monitoring::Buckets::Exponential(1, 2, 14));
+      // Buckets centered at powers of 2, and have bounds:
+      // [(2/3) * 2^i, (4/3) * 2^i] for i = 0, ..., 13.
+      // Largest bucket has range: [(2/3) *  2^14, DBL_MAX]
+      monitoring::Buckets::Exponential(2.0 / 3.0, 2, 15));
   cell->GetCell(model_name, op_name)->Add(static_cast<double>(batch_size));
 }
 
@@ -341,6 +358,20 @@ Status BatchResourceBase::RegisterInput(
   BatcherQueueT* batcher_queue;
   TF_RETURN_IF_ERROR(
       LookupOrCreateBatcherQueue(batcher_queue_name, &batcher_queue));
+
+  if (!session_metadata().name().empty()) {
+    absl::MutexLock lock(&outstanding_batch_mu_);
+    WarmupStateRegistry::Key key(session_metadata().name(),
+                                 session_metadata().version());
+    if (GetGlobalWarmupStateRegistry().Lookup(key)) {
+      outstanding_batch_mu_.Await({+[](int* num_outstanding_batches) {
+                                     return *num_outstanding_batches == 0;
+                                   },
+                                   &num_outstanding_batches_});
+    }
+    ++num_outstanding_batches_;
+  }
+
   return batcher_queue->Schedule(&batch_components);
 }
 
@@ -585,7 +616,7 @@ Status BatchResourceBase::ConcatInputTensors(
     if (!split_status.ok()) {
       return errors::Internal(
           "When splitting input, Tensor split operation failed: ",
-          split_status.error_message());
+          split_status.message());
     }
     if (split_tensors.size() != output_task_sizes.size()) {
       return errors::Internal(
@@ -653,7 +684,7 @@ Status BatchResourceBase::SplitOutputTensors(
     DCHECK(split_status.ok()) << split_status.ToString();
     if (!split_status.ok()) {
       return errors::Internal("Tensor split operation failed: ",
-                              split_status.error_message());
+                              split_status.message());
     }
     DCHECK_EQ(split_tensor.size(), task_sizes_plus_optional_padding.size());
     if (split_tensor.size() != task_sizes_plus_optional_padding.size()) {
@@ -897,6 +928,10 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 
   std::unique_ptr<BatcherQueueT> new_queue;
   auto process_batch_callback = [this](std::unique_ptr<BatchT> batch) {
+    if (!session_metadata().name().empty()) {
+      absl::MutexLock lock(&outstanding_batch_mu_);
+      --num_outstanding_batches_;
+    }
     if (!has_process_batch_function_) {
       ProcessBatch(std::move(batch));
     } else {

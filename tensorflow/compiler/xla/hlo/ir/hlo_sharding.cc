@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <map>
 #include <numeric>
@@ -42,7 +43,6 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
-using absl::StrJoin;
 
 HloSharding HloSharding::AssignDevice(int64_t device_id,
                                       absl::Span<const OpMetadata> metadata) {
@@ -61,27 +61,6 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
 }
 
 HloSharding HloSharding::PartialTile(
-    const Array<int64_t>& group_tile_assignment,
-    absl::Span<const absl::Span<const int64_t>> replication_groups,
-    absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(group_tile_assignment.num_elements(), replication_groups.size());
-  if (replication_groups.size() == 1) {
-    return Replicate(metadata);
-  }
-  auto new_tile_dims = group_tile_assignment.dimensions();
-  new_tile_dims.push_back(replication_groups[0].size());
-  auto new_tile_assignment = Array<int64_t>(new_tile_dims);
-  new_tile_assignment.Each(
-      [&](absl::Span<const int64_t> indices, int64_t* device) {
-        std::vector<int64_t> group_index(indices.begin(), indices.end());
-        group_index.pop_back();
-        int64_t group = group_tile_assignment(group_index);
-        *device = replication_groups[group][indices.back()];
-      });
-  return PartialTile(new_tile_assignment, metadata);
-}
-
-HloSharding HloSharding::PartialTile(
     const Array<int64_t>& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
   if (tile_assignment_last_dim_replicate.num_dimensions() == 1 ||
@@ -90,7 +69,9 @@ HloSharding HloSharding::PartialTile(
     return Replicate(metadata);
   }
   if (tile_assignment_last_dim_replicate.dimensions().back() == 1) {
-    auto new_tile_dims = tile_assignment_last_dim_replicate.dimensions();
+    std::vector<int64_t> new_tile_dims(
+        tile_assignment_last_dim_replicate.dimensions().begin(),
+        tile_assignment_last_dim_replicate.dimensions().end());
     new_tile_dims.pop_back();
     auto fully_tiled = tile_assignment_last_dim_replicate;
     fully_tiled.Reshape(new_tile_dims);

@@ -166,6 +166,32 @@ static bool IsFusedReductionOutputConsistent(
                            inst->shape().layout());
 }
 
+FusionDecision FusionHeroesAreCompatible(const HloInstruction* hero1,
+                                         const HloInstruction* hero2) {
+  auto hero1_is_unnested_reduce =
+      IsReductionFromOrToContiguousDimensions(*hero1);
+  auto tiled_transpose_hero1 = FindAnyTiledTranspose(*hero1);
+  bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
+  bool hero2_is_unnested_reduce =
+      IsReductionFromOrToContiguousDimensions(*hero2);
+  auto tiled_transpose_hero2 = FindAnyTiledTranspose(*hero2);
+  bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
+
+  if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
+      !IsFusedReductionOutputConsistent(hero2, hero1)) {
+    return "tiled reductions with different shapes";
+  } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
+             // After normalization to rank 3, the transposes should have the
+             // same shape and permute the same dimensions.
+             *tiled_transpose_hero1 != *tiled_transpose_hero2) {
+    return "tiled transposes with different shapes";
+  } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
+             (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
+    return "MOF-fusion of a transpose and a reduction";
+  }
+  return {};
+}
+
 FusionDecision ShapesCompatibleForMultiOutputFusion(
     const HloInstruction& instr1, const HloInstruction& instr2) {
   // Multi-output fusion kernels share a common parallel loop. The loop
@@ -196,17 +222,9 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   auto tiled_transpose_hero2 = FindAnyTiledTranspose(*hero2);
   bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
 
-  if (hero1_is_unnested_reduce && hero2_is_unnested_reduce &&
-      !IsFusedReductionOutputConsistent(hero2, hero1)) {
-    return "tiled reductions with different shapes";
-  } else if (hero1_is_unnested_transpose && hero2_is_unnested_transpose &&
-             // After normalization to rank 3, the transposes should have the
-             // same shape and permute the same dimensions.
-             *tiled_transpose_hero1 != *tiled_transpose_hero2) {
-    return "tiled transposes with different shapes";
-  } else if ((hero1_is_unnested_transpose && hero2_is_unnested_reduce) ||
-             (hero1_is_unnested_reduce && hero2_is_unnested_transpose)) {
-    return "MOF-fusion of a transpose and a reduction";
+  if (NoFusionPossible heroes_are_compatible =
+          !FusionHeroesAreCompatible(hero1, hero2)) {
+    return !heroes_are_compatible;
   }
 
   const Shape& l1 = get_loop_shape(hero1);

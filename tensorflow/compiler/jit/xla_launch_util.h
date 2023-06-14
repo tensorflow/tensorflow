@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 
 #include <map>
+#include <memory>
 #include <set>
 #include <vector>
 
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory_allocator.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
@@ -50,6 +52,53 @@ StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
 Status SetOutputForConstant(
     OpKernelContext* ctx, bool requires_copy_to_device,
     const XlaCompiler::CompilationResult* compilation_result, int output_num);
+
+// Converts input tensors and variables which are parameters of the
+// XlaComputation into PjRtBuffers to be fed as input to the
+// PjRtLoadedExecutable. `input_mapping` is a vector that maps from the
+// parameters of the XlaComputation to their original argument positions. This
+// can be sourced from `XlaCompiler::CompilationResult::input_mapping`.
+//
+// The obtained PjRtBuffers are populated to `args` vector.
+// `non_donatable_input_indices` will also be set, which contains the indices of
+// the input that should not be donated to output.
+void PreparePjRtExecutableArguments(
+    const std::vector<int>& input_mapping,
+    const std::vector<const Tensor*>& inputs,
+    const std::vector<VariableInfo>& variables,
+    std::vector<xla::PjRtBuffer*>* args,
+    absl::flat_hash_set<int>* non_donatable_input_indices);
+
+// Populates the OpKernelContext outputs with the outputs of the
+// PjRtLoadedExecutable. Requires the `compilation_result` used to build the
+// PjRtLoadedExecutable.
+Status PopulateCtxOutputsFromPjRtExecutableOutputs(
+    const std::vector<const Tensor*>& inputs,
+    const std::vector<VariableInfo>& variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    std::vector<std::unique_ptr<xla::PjRtBuffer>>& executable_outputs,
+    OpKernelContext* ctx);
+
+// Returns the options used for executing a PjRtLoadedExecutable.
+xla::ExecuteOptions GetPjRtExecuteOptions(
+    absl::flat_hash_set<int> non_donatable_input_indices);
+
+// Returns the device ordinal from the parsed name of the device.
+int GetDeviceOrdinal(const DeviceBase* device);
+
+// Returns the device type from the OpKernelContext.
+DeviceType GetDeviceType(OpKernelContext* ctx);
+
+// Runs `executable` and populates the outputs in `ctx`. `inputs` and
+// `variables` are the input arguments to the computation, usually read from the
+// OpKernelContext, `ctx`. Requires the device-appropriate `pjrt_client` and the
+// `compilation_result` used to build the `executable`.
+Status RunPjRtExecutable(
+    const xla::PjRtClient& pjrt_client,
+    const std::vector<const Tensor*>& inputs,
+    const std::vector<VariableInfo>& variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx);
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.

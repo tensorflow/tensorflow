@@ -64,13 +64,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/version.h"
 
-// "tensorflow/core/platform/platform.h" must be included first before using
-// PLATFORM_GOOGLE, IS_MOBILE_PLATFORM, etc.
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
-    !defined(PLATFORM_FUCHSIA)
-#include "tensorflow/core/tfrt/eager/c_api_tfrt.h"
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
-
 #if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 #endif  // !IS_MOBILE_PLATFORM
@@ -117,18 +110,8 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-#if defined(PLATFORM_GOOGLE) && !defined(LIBTPU_ON_GCE) && \
-    !defined(PLATFORM_FUCHSIA)
-    tfrt::tf::ContextInterface* tfrt_context = new tfrt::tf::ContextInterface(
-        opts->session_options.options,
-        static_cast<tensorflow::ContextDevicePlacementPolicy>(
-            opts->device_placement_policy),
-        opts->async);
-    return tensorflow::wrap(tfrt_context);
-#else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
-#endif  // PLATFORM_GOOGLE && !LIBTPU_ON_GCE && !PLATFORM_FUCHSIA
   }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   status->status = tensorflow::DeviceFactory::AddDevices(
@@ -138,14 +121,14 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
       new tensorflow::DynamicDeviceMgr(std::move(devices)));
 
-  tensorflow::Rendezvous* r =
-      new tensorflow::IntraProcessRendezvous(device_mgr.get());
+  auto r = tsl::core::RefCountPtr<tensorflow::IntraProcessRendezvous>(
+      new tensorflow::IntraProcessRendezvous(device_mgr.get()));
   tensorflow::EagerContext* eager_context = new tensorflow::EagerContext(
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
       opts->async, device_mgr.release(),
-      /*device_mgr_owned*/ true, r,
+      /*device_mgr_owned*/ true, std::move(r),
       /*cluster_flr=*/nullptr,
       /*collective_executor_mgr=*/nullptr,
       /*run_eager_op_as_function=*/opts->run_eager_op_as_function,
@@ -932,9 +915,32 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
 
 void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
                             TF_Status* status) {
-  AnnotateEagerRuntimeConstructionContext(function->fdef);
+  auto fdef_or = function->record->mutable_fdef();
+  if (!fdef_or.ok()) {
+    status->status = fdef_or.status();
+    return;
+  }
+
+  AnnotateEagerRuntimeConstructionContext(*fdef_or.value());
   status->status = tensorflow::unwrap(ctx)->AddFunctionDefWithStackTraces(
-      function->fdef, function->stack_traces);
+      *fdef_or.value(), function->record->stack_traces());
+}
+
+TF_Function* TFE_ContextGetFunction(TFE_Context* ctx, const char* name,
+                                    TF_Status* status) {
+  tensorflow::core::RefCountPtr<tensorflow::FunctionRecord> record =
+      tensorflow::unwrap(ctx)->FindRecord(name);
+
+  if (record == nullptr) {
+    status->status = tensorflow::errors::NotFound(
+        "Unable to find Function with name: ", name);
+    return nullptr;
+  }
+
+  TF_Function* result = new TF_Function();
+  record->Ref();
+  result->record = record.get();
+  return result;
 }
 
 void TFE_ContextRemoveFunction(TFE_Context* ctx, const char* name,

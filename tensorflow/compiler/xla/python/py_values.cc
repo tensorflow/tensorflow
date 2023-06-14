@@ -98,8 +98,7 @@ StatusOr<DevicePutResult> HandlePythonScalar(py::handle obj,
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/true);
 }
 
-StatusOr<DevicePutResult> HandlePythonInt(py::handle obj,
-                                          ifrt::Client* client,
+StatusOr<DevicePutResult> HandlePythonInt(py::handle obj, ifrt::Client* client,
                                           ifrt::Device* to_device,
                                           const DevicePutOptions& options) {
   void* ptr;
@@ -147,24 +146,30 @@ StatusOr<DevicePutResult> HandlePythonInt(py::handle obj,
 }
 
 template <typename T, typename SquashedT = T>
-StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h,
-                                            ifrt::Client* client,
+StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h, ifrt::Client* client,
                                             ifrt::Device* to_device,
                                             const DevicePutOptions& options) {
   T data;
   SquashedT data_squashed;
   void* ptr;
   PrimitiveType type;
-  if (std::is_same<T, bfloat16>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
+  // For extension types, ScalarAsCtype returns a pointer to the data.
+  if (std::is_same<T, xla::s4>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = S4;
+  } else if (std::is_same<T, xla::u4>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = U4;
+  } else if (std::is_same<T, bfloat16>()) {
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = BF16;
   } else if (std::is_same<T, tsl::float8_e4m3fn>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = F8E4M3FN;
+  } else if (std::is_same<T, tsl::float8_e4m3b11>()) {
+    PyArray_ScalarAsCtype(h.ptr(), &ptr);
+    type = F8E4M3B11FNUZ;
   } else if (std::is_same<T, tsl::float8_e5m2>()) {
-    // For extension types, ScalarAsCtype returns a pointer to the data.
     PyArray_ScalarAsCtype(h.ptr(), &ptr);
     type = F8E5M2;
   } else if (std::is_same<T, SquashedT>() || !options.squash_64bit_types) {
@@ -191,8 +196,7 @@ StatusOr<DevicePutResult> HandleNumpyScalar(py::handle h,
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
 
-StatusOr<DevicePutResult> HandleNumpyArray(py::handle h,
-                                           ifrt::Client* client,
+StatusOr<DevicePutResult> HandleNumpyArray(py::handle h, ifrt::Client* client,
                                            ifrt::Device* to_device,
                                            const DevicePutOptions& options) {
   py::array array = py::cast<py::array>(h);
@@ -244,35 +248,7 @@ StatusOr<DevicePutResult> HandleNumpyArray(py::handle h,
   return DevicePutResult(std::move(ifrt_array), /*weak_type=*/false);
 }
 
-StatusOr<DevicePutResult> PyBufferHelper(py::handle obj, py::handle py_buffer,
-                                         PyBuffer* buffer,
-                                         PjRtDevice* to_device) {
-  bool weak_type = buffer->weak_type()
-                       ? *buffer->weak_type()
-                       : py::cast<bool>(obj.attr("aval").attr("weak_type"));
-  if (buffer->ifrt_array()->sharding().devices().front() == to_device) {
-    return DevicePutResult(
-        tsl::FormRef(buffer->ifrt_array()), weak_type,
-        /*owning_pybuffer=*/py::reinterpret_borrow<py::object>(py_buffer));
-  } else {
-    TF_ASSIGN_OR_RETURN(tsl::RCReference<ifrt::Array> copied_ifrt_array,
-                        buffer->ifrt_array()->Reshard(
-                            ifrt::SingleDeviceSharding::Create(to_device),
-                            ifrt::ArrayCopySemantics::kReuseInput));
-    return DevicePutResult(std::move(copied_ifrt_array), weak_type);
-  }
-}
-
-StatusOr<DevicePutResult> HandlePyBuffer(py::handle obj,
-                                         ifrt::Client* client,
-                                         ifrt::Device* to_device,
-                                         const DevicePutOptions& options) {
-  return PyBufferHelper(obj, obj, PyBuffer::AsPyBufferUnchecked(obj),
-                        to_device);
-}
-
-StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
-                                        ifrt::Client* client,
+StatusOr<DevicePutResult> HandlePyArray(py::handle obj, ifrt::Client* client,
                                         ifrt::Device* to_device,
                                         const DevicePutOptions& options) {
   auto py_array = py::reinterpret_borrow<PyArray>(obj);
@@ -308,26 +284,9 @@ StatusOr<DevicePutResult> HandlePyArray(py::handle obj,
   }
 }
 
-StatusOr<DevicePutResult> HandleDeviceArray(py::handle obj,
-                                            ifrt::Client* client,
-                                            ifrt::Device* to_device,
-                                            const DevicePutOptions& options) {
-  // Handle Python DeviceArray objects provided they have a .device_buffer field
-  // Otherwise, fallback to handling as a NumPy array, since we do not
-  // understand how to get a buffer object out. For example, ShardedDeviceArray
-  // in JAX is handled by this path.
-  py::object buffer = py::getattr(obj, "device_buffer", py::none());
-  if (buffer.is_none()) {
-    return HandleNumpyArray(obj, client, to_device, options);
-  }
-
-  return PyBufferHelper(obj, buffer, py::cast<PyBuffer*>(buffer), to_device);
-}
-
 }  // namespace
 
-StatusOr<DevicePutResult> DevicePut(py::handle arg,
-                                    ifrt::Client* client,
+StatusOr<DevicePutResult> DevicePut(py::handle arg, ifrt::Client* client,
                                     ifrt::Device* to_device,
                                     const DevicePutOptions& options) {
   tsl::profiler::TraceMe traceme("DevicePut");
@@ -346,36 +305,32 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg,
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] =
             HandlePythonScalar<complex128, complex64>;
 
-        // Generic subclasses of DeviceArray
-        (*p)[PyBuffer::base_type()] = HandleDeviceArray;
-
-        try {
-          py::object xla_module = py::module::import("jax.interpreters.xla");
-          py::object device_array =
-              py::getattr(xla_module, "_DeviceArray", py::none());
-          if (!device_array.is_none()) {
-            (*p)[device_array.ptr()] = HandleDeviceArray;
-          }
-        } catch (const py::error_already_set& e) {
-          // Ignore; jax may not be present.
-        }
-
         const auto numpy = py::module::import("numpy");
         (*p)[numpy.attr("ndarray").ptr()] = HandleNumpyArray;
 
         // Numpy scalar types. For some of them, we share the handler with
         // Python types (np_int64, np_float64, np_complex128).
         (*p)[dtypes.np_bool.ptr()] = HandleNumpyScalar<bool>;
+        if (dtypes.np_int4) {
+          (*p)[dtypes.np_int4->ptr()] = HandleNumpyScalar<xla::s4>;
+        }
         (*p)[dtypes.np_int8.ptr()] = HandleNumpyScalar<int8_t>;
         (*p)[dtypes.np_int16.ptr()] = HandleNumpyScalar<int16_t>;
         (*p)[dtypes.np_int32.ptr()] = HandleNumpyScalar<int32_t>;
         (*p)[dtypes.np_int64.ptr()] = HandleNumpyScalar<int64_t, int32_t>;
+        if (dtypes.np_uint4) {
+          (*p)[dtypes.np_uint4->ptr()] = HandleNumpyScalar<xla::u4>;
+        }
         (*p)[dtypes.np_uint8.ptr()] = HandleNumpyScalar<uint8_t>;
         (*p)[dtypes.np_uint16.ptr()] = HandleNumpyScalar<uint16_t>;
         (*p)[dtypes.np_uint32.ptr()] = HandleNumpyScalar<uint32_t>;
         (*p)[dtypes.np_uint64.ptr()] = HandleNumpyScalar<uint64_t, uint32_t>;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] =
             HandleNumpyScalar<tsl::float8_e4m3fn>;
+        if (dtypes.np_float8_e4m3b11fnuz) {
+          (*p)[dtypes.np_float8_e4m3b11fnuz->ptr()] =
+              HandleNumpyScalar<tsl::float8_e4m3b11>;
+        }
         (*p)[dtypes.np_float8_e5m2.ptr()] = HandleNumpyScalar<tsl::float8_e5m2>;
         (*p)[dtypes.np_bfloat16.ptr()] = HandleNumpyScalar<bfloat16>;
         (*p)[dtypes.np_float16.ptr()] = HandleNumpyScalar<half>;
@@ -399,11 +354,6 @@ StatusOr<DevicePutResult> DevicePut(py::handle arg,
     if (array.fastpath_enabled()) {
       return HandlePyArray(arg, client, to_device, options);
     }
-  }
-
-  // Fast-path for the most common case of PyBuffer.
-  if (arg.get_type().ptr() == PyBuffer::type()) {
-    return HandlePyBuffer(arg, client, to_device, options);
   }
 
   auto res = handlers->find(arg.get_type().ptr());
@@ -497,29 +447,6 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         (*p)[reinterpret_cast<PyObject*>(&PyFloat_Type)] = float_handler;
         (*p)[reinterpret_cast<PyObject*>(&PyComplex_Type)] = complex_handler;
 
-        // The Buffer types except for fast-path PyBuffer.
-        ToPyArgSignatureHandler device_array_handler =
-            [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
-          py::handle aval = h.attr("aval");
-          TF_ASSIGN_OR_RETURN(auto dtype,
-                              DtypeToPrimitiveType(aval.attr("dtype")));
-          return PyArgSignature(
-              dtype, py::cast<std::vector<int64_t>>(aval.attr("shape")),
-              py::cast<py::bool_>(aval.attr("weak_type")));
-        };
-        (*p)[PyBuffer::base_type()] = device_array_handler;
-
-        try {
-          py::object xla_module = py::module::import("jax.interpreters.xla");
-          py::object device_array =
-              py::getattr(xla_module, "_DeviceArray", py::none());
-          if (!device_array.is_none()) {
-            (*p)[device_array.ptr()] = device_array_handler;
-          }
-        } catch (const py::error_already_set& e) {
-          // Ignore; jax may not be present.
-        }
-
         ToPyArgSignatureHandler numpy_handler =
             [](py::handle h, bool jax_enable_x64) -> StatusOr<PyArgSignature> {
           py::array numpy_array = py::cast<py::array>(h);
@@ -582,6 +509,7 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
         (*p)[dtypes.np_uint32.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_uint64.ptr()] = np_uint64_handler;
         (*p)[dtypes.np_float8_e4m3fn.ptr()] = numpy_array_handler;
+        (*p)[dtypes.np_float8_e4m3b11fnuz->ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float8_e5m2.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_float16.ptr()] = numpy_array_handler;
         (*p)[dtypes.np_bfloat16.ptr()] = numpy_array_handler;
@@ -606,18 +534,6 @@ StatusOr<PyArgSignature> PyArgSignatureOfValue(py::handle arg,
                           ifrt::ToPrimitiveType(ifrt_array->dtype()));
       return PyArgSignature(primitive_type, array.shape(), array.weak_type());
     }
-  }
-
-  // Fast-path for the most common case of PyBuffer.
-  if (arg.get_type().ptr() == PyBuffer::type()) {
-    TF_ASSIGN_OR_RETURN(PyBuffer * buffer, PyBuffer::AsPyBuffer(arg));
-    bool weak_type = buffer->weak_type().has_value()
-                         ? *buffer->weak_type()
-                         : py::cast<bool>(arg.attr("aval").attr("weak_type"));
-    TF_ASSIGN_OR_RETURN(auto primitive_type,
-                        ifrt::ToPrimitiveType(buffer->ifrt_array()->dtype()));
-    return PyArgSignature(primitive_type, buffer->ifrt_array()->shape().dims(),
-                          weak_type);
   }
 
   auto res = handlers->find(arg.get_type().ptr());

@@ -1670,8 +1670,7 @@ bool ConvolutionVisitor::SupportedOpForPropagation(HloInstruction* consumer,
     const int64_t batch_dim = result[DimMapper(SpaceToBatchDimMap::kBatch)];
     const int64_t space_dim = result[DimMapper(SpaceToBatchDimMap::kSpace0)];
     VLOG(1) << "Checking if reduce is supported batch_dim " << batch_dim
-            << "  space_dim " << space_dim << " reduce "
-            << consumer->ToString();
+            << " space_dim " << space_dim << " reduce " << consumer->ToString();
     return absl::c_linear_search(reduce_dims, batch_dim) &&
            absl::c_linear_search(reduce_dims, space_dim);
   }

@@ -30,12 +30,12 @@ cc_library(
         "pngwutil.c",
     ] + select({
         ":windows": [
-            "intel/intel_init.c",
             "intel/filter_sse2_intrinsics.c",
+            "intel/intel_init.c",
         ],
         "@org_tensorflow//tensorflow/tsl:linux_ppc64le": [
-            "powerpc/powerpc_init.c",
             "powerpc/filter_vsx_intrinsics.c",
+            "powerpc/powerpc_init.c",
         ],
         "//conditions:default": [
         ],

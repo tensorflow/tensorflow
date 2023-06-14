@@ -301,7 +301,7 @@ class XlaCompiler {
   Status GetHostComputeControlDependency(const string& host_compute_name,
                                          xla::XlaOp* handle);
   Status SetHostComputeControlDependency(const string& host_compute_name,
-                                         const xla::XlaOp& handle);
+                                         xla::XlaOp handle);
 
   const Options& options() const { return options_; }
   xla::Client* client() const { return options_.client; }
@@ -309,7 +309,7 @@ class XlaCompiler {
 
   void PushNodeTokenMapping();
   Status PopNodeTokenMapping();
-  Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
+  Status SetNodeToken(const string& node_name, xla::XlaOp op);
   StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
   // Sets the function body `fbody` to the one registered as `function`.

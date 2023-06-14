@@ -119,6 +119,8 @@ std::string ToString(enum OperationType op) {
       return "fully_connected_int8";
     case OperationType::GATHER:
       return "gather";
+    case OperationType::GELU:
+      return "gelu";
     case OperationType::GREATER:
       return "greater";
     case OperationType::GREATER_EQUAL:
@@ -250,6 +252,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"fully_connected_int8", OperationType::FULLY_CONNECTED_INT8},
           {"gather", OperationType::GATHER},
+          {"gelu", OperationType::GELU},
           {"greater", OperationType::GREATER},
           {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},

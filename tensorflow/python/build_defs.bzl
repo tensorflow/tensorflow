@@ -18,8 +18,11 @@ def tf_gen_op_wrapper_private_py(
         visibility = []):
     if not name.endswith("_gen"):
         fail("name must end in _gen")
+    new_name = name[:-4]
+    if not out:
+        out = "gen_" + new_name + ".py"
     tf_gen_op_wrapper_py(
-        name = name[:-4],  # Strip off _gen
+        name = new_name,  # Strip off _gen
         out = out,
         visibility = visibility or ["//visibility:private"],
         deps = deps,

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -26,6 +27,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -40,6 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/permutation_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -48,6 +51,8 @@ limitations under the License.
 #include "tensorflow/tsl/platform/errors.h"
 
 namespace xla {
+
+namespace m = match;
 
 namespace {
 
@@ -68,6 +73,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
     case HloOpcode::kFusion:
     case HloOpcode::kCustomCall:
       return true;
@@ -99,11 +105,6 @@ Status CheckParameterCount(const HloInstruction* calling_instruction,
 int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
                         CollectiveOpGroupMode group_mode) {
   const HloModuleConfig& config = hlo->GetModule()->config();
-  // empty replica groups imply all replicas form a single group.
-  int64_t replica_subgroup_size =
-      hlo->replica_groups().empty()
-          ? 0
-          : hlo->replica_groups()[0].replica_ids_size();
   switch (group_mode) {
     case CollectiveOpGroupMode::kCrossReplica:
     case CollectiveOpGroupMode::kCrossReplicaAndPartition: {
@@ -118,7 +119,8 @@ int64_t GetSubgroupSize(HloCollectiveInstruction* hlo,
       return replica_subgroup_size;
     }
     case CollectiveOpGroupMode::kFlattenedID:
-      return replica_subgroup_size;
+      // Empty replica groups not allowed in this mode.
+      return hlo->replica_groups()[0].replica_ids_size();
     case CollectiveOpGroupMode::kCrossPartition:
       return hlo->replica_groups().empty()
                  ? config.num_partitions()
@@ -150,7 +152,7 @@ Status CheckNestedComputationThreadNameEqual(const HloComputation* comp,
 Status ShapeVerifier::Preprocess(HloInstruction* hlo) {
   if (!hlo->called_computations().empty() && !IsCallerInstruction(hlo)) {
     return InternalError(
-        "Called computations specified for non-caller instruction  %s",
+        "Called computations specified for non-caller instruction %s",
         hlo->ToString());
   }
   std::optional<int> arity = HloOpcodeArity(hlo->opcode());
@@ -561,15 +563,15 @@ Status ShapeVerifier::HandleAllToAll(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(CheckReplicaGroups(hlo, group_mode));
 
   TF_RET_CHECK(all_to_all != nullptr);
-
+  const int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
   if (all_to_all->split_dimension()) {
-    int64_t split_count = GetSubgroupSize(all_to_all, group_mode);
     TF_RET_CHECK(hlo->operand_count() == 1);
     return CheckShape(
         hlo, ShapeInference::InferAllToAllShape(
                  hlo->operand(0)->shape(), *all_to_all->split_dimension(),
                  *all_to_all->split_dimension(), split_count));
   } else {
+    TF_RET_CHECK(hlo->operand_count() == split_count);
     std::vector<const Shape*> operand_shapes;
     for (const HloInstruction* operand : hlo->operands()) {
       operand_shapes.push_back(&operand->shape());
@@ -795,8 +797,13 @@ Status ShapeVerifier::HandleCollectivePermuteStart(HloInstruction* hlo) {
   absl::c_transform(
       hlo->operands(), std::back_inserter(operand_shapes),
       [](const HloInstruction* operand) { return &(operand->shape()); });
-  return CheckShape(
-      hlo, ShapeInference::InferCollectivePermuteStartShape(operand_shapes));
+  std::vector<Shape> context_shapes;
+  if (hlo->shape().tuple_shapes_size() > 2) {
+    context_shapes = std::vector<Shape>(hlo->shape().tuple_shapes().begin() + 2,
+                                        hlo->shape().tuple_shapes().end());
+  }
+  return CheckShape(hlo, ShapeInference::InferCollectivePermuteStartShape(
+                             operand_shapes, context_shapes));
 }
 
 Status ShapeVerifier::HandleCollectivePermuteDone(HloInstruction* hlo) {
@@ -959,6 +966,40 @@ Status ShapeVerifier::HandleReverse(HloInstruction* reverse) {
   return CheckShape(
       reverse, ShapeInference::InferReverseShape(reverse->operand(0)->shape(),
                                                  reverse->dimensions()));
+}
+
+static bool IsStrictComparison(const HloComputation* cmp) {
+  const HloInstruction* root = cmp->root_instruction();
+  return Match(root, m::Compare(m::Parameter(0), m::Parameter(1))
+                         .WithComparisonDirection(ComparisonDirection::kGt)) ||
+         Match(root, m::Compare(m::Parameter(1), m::Parameter(0))
+                         .WithComparisonDirection(ComparisonDirection::kGt)) ||
+         Match(root, m::Compare(m::Parameter(0), m::Parameter(1))
+                         .WithComparisonDirection(ComparisonDirection::kLt)) ||
+         Match(root, m::Compare(m::Parameter(1), m::Parameter(0))
+                         .WithComparisonDirection(ComparisonDirection::kLt));
+}
+
+Status ShapeVerifier::HandleTopK(HloInstruction* hlo) {
+  HloComputation* compare = hlo->to_apply();
+  Shape compare_shape = compare->root_instruction()->shape();
+  if (!ShapeUtil::Compatible(compare_shape, ShapeUtil::MakeShape(PRED, {}))) {
+    return InternalError(
+        "The TopK compare computation shape does not lead to a scalar "
+        "predicate shape: %s",
+        StringifyShape(compare_shape));
+  }
+
+  TF_RETURN_IF_ERROR(CheckParameterCount(hlo, compare, 2));
+  if (!IsStrictComparison(compare)) {
+    // TODO(cheshire): Less strict restriction.
+    return InternalError(
+        "TopK HLO expects a strict comparison of the operands");
+  }
+
+  return CheckShape(
+      hlo, ShapeInference::InferTopKShape(hlo->operand(0)->shape(),
+                                          Cast<HloTopKInstruction>(hlo)->k()));
 }
 
 Status ShapeVerifier::HandleSort(HloInstruction* hlo) {
@@ -1353,12 +1394,9 @@ Status ShapeVerifier::HandleMap(HloInstruction* map) {
 }
 
 Status ShapeVerifier::HandleReduceWindow(HloInstruction* reduce_window) {
-  VLOG(2) << "Verify reduce window:" << reduce_window->ToString() << "\n";
   auto reduce_window_instr = Cast<HloReduceWindowInstruction>(reduce_window);
   auto input_shapes = reduce_window_instr->input_shapes();
-  VLOG(2) << "reduce window input shape count: " << input_shapes.size() << "\n";
   auto init_shapes = reduce_window_instr->init_value_shapes();
-  VLOG(2) << "reduce instruction is :" << reduce_window->ToString() << "\n";
   TF_RETURN_IF_ERROR(CheckShape(
       reduce_window, ShapeInference::InferReduceWindowShape(
                          input_shapes, init_shapes, reduce_window->window(),
@@ -1418,8 +1456,7 @@ Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
     if (operand0_type != S32) {
       return InvalidArgument(
           "The first operand of indexed conditional must be a scalar of S32. "
-          "Got"
-          " type %s.",
+          "Got type %s.",
           PrimitiveType_Name(operand0_type));
     }
     TF_RET_CHECK(num_branches >= 1);
@@ -1907,13 +1944,17 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
   TF_RETURN_IF_ERROR(
       ShapeUtil::ValidateShapeWithOptionalLayout(result_layout.shape()));
 
-  if (!ShapeUtil::Compatible(computation->root_instruction()->shape(),
-                             result_layout.shape())) {
+  // TPU layout assignment doesn't set the tiles on entry_computation_layout, so
+  // let's not check that.
+  if (!ShapesSame(computation->root_instruction()->shape(),
+                  result_layout.shape(),
+                  /*minor_to_major_only=*/false, /*ignore_memory_space=*/false,
+                  /*ignore_tiles=*/true)) {
     return InternalError(
         "Shape of the root instruction of entry computation (%s) should be "
         "compatible to one specified in module's entry computation layout (%s)",
-        ShapeUtil::HumanString(computation->root_instruction()->shape()),
-        ShapeUtil::HumanString(result_layout.shape()));
+        StringifyShape(computation->root_instruction()->shape()),
+        StringifyShape(result_layout.shape()));
   }
 
   if (computation->num_parameters() != layout.parameter_count()) {
@@ -1927,13 +1968,18 @@ Status ShapeVerifier::VerifyEntryComputationLayout(const HloModule& module) {
     const HloInstruction* parameter = computation->parameter_instruction(i);
     TF_RETURN_IF_ERROR(
         ShapeUtil::ValidateShapeWithOptionalLayout(layout.parameter_shape(i)));
-    if (!ShapeUtil::Compatible(parameter->shape(), layout.parameter_shape(i))) {
+    // TPU layout assignment doesn't set the tiles on entry_computation_layout,
+    // so let's not check that.
+    if (!ShapesSame(parameter->shape(), layout.parameter_shape(i),
+                    /*minor_to_major_only=*/false,
+                    /*ignore_memory_space=*/false,
+                    /*ignore_tiles=*/true)) {
       return InternalError(
           "Shape of the entry computation parameter %d is %s should be "
           "compatible to the one specified in module's entry computation "
           "layout %s",
-          i, ShapeUtil::HumanString(parameter->shape()),
-          ShapeUtil::HumanString(layout.parameter_shape(i)));
+          i, StringifyShape(parameter->shape()),
+          StringifyShape(layout.parameter_shape(i)));
     }
   }
 
@@ -1944,7 +1990,7 @@ std::string ComputationsToString(
     absl::Span<HloComputation* const> computations) {
   return absl::StrJoin(computations, ",",
                        [](std::string* s, const HloComputation* computation) {
-                         s->append(computation->name());
+                         absl::StrAppend(s, computation->name());
                        });
 }
 
@@ -2292,8 +2338,7 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
   // Fused root instruction and fused parameters must all be owned by the
   // fusion computation.
   bool root_owned = false;
-  const std::vector<HloInstruction*>& fused_parameters =
-      fusion->fused_parameters();
+  const auto& fused_parameters = fusion->fused_parameters();
   const HloInstruction* fused_root = fusion->fused_expression_root();
   std::vector<bool> parameter_owned(fused_parameters.size(), false);
   for (auto* instruction : fused_computation->instructions()) {
@@ -2620,7 +2665,7 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
 
   Status Preprocess(HloInstruction* instruction) override {
     auto [it, inserted] =
-        instructions_by_name_.insert({instruction->name(), instruction});
+        instructions_by_name_.emplace(instruction->name(), instruction);
     TF_RET_CHECK(inserted) << "HLO has name that is not unique within module:\n"
                            << instruction->ToString() << " in computation: "
                            << instruction->parent()->name()
@@ -2632,10 +2677,10 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
       Status status =
           instruction->sharding().Validate(instruction->shape(), num_devices_);
       if (!status.ok()) {
-        return Status(status.code(),
-                      absl::StrCat("Invalid sharding for instruction: ",
-                                   instruction->ToString(), ": ",
-                                   status.error_message()));
+        return Status(
+            status.code(),
+            absl::StrCat("Invalid sharding for instruction: ",
+                         instruction->ToString(), ": ", status.message()));
       }
     }
 
@@ -2689,19 +2734,23 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   static Status VerifyS4U4Usage(HloInstruction* instruction) {
-    bool has_s4u4_operand =
-        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
-          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
-                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
-        });
     // TODO(b/259306620): Support S4/U4 operands in all instructions that
     // support inputs of other integer dtypes. Currently only aim to use it in
     // matmul and convolution op.
-    if (has_s4u4_operand && instruction->opcode() != HloOpcode::kDot &&
+    if (instruction->opcode() != HloOpcode::kDot &&
         instruction->opcode() != HloOpcode::kConvolution &&
         instruction->opcode() != HloOpcode::kConvert &&
         instruction->opcode() != HloOpcode::kFusion &&
-        instruction->opcode() != HloOpcode::kBitcast) {
+        instruction->opcode() != HloOpcode::kBitcast &&
+        instruction->opcode() != HloOpcode::kCopy &&
+        instruction->opcode() != HloOpcode::kCopyStart &&
+        instruction->opcode() != HloOpcode::kCopyDone &&
+        instruction->opcode() != HloOpcode::kGetTupleElement &&
+        instruction->opcode() != HloOpcode::kTuple &&
+        absl::c_any_of(instruction->operands(), [](HloInstruction* operand) {
+          return ShapeUtil::HasPrimitiveType(operand->shape(), S4) ||
+                 ShapeUtil::HasPrimitiveType(operand->shape(), U4);
+        })) {
       return InvalidArgument(
           "S4/U4 is currently only supported in matmul and convolution, but "
           "got instruction with S4/U4 input: %s",
@@ -2770,8 +2819,78 @@ StatusOr<bool> HloVerifier::Run(
     return status_or_changed.value();
   }
   return Status(status_or_changed.status().code(),
-                absl::StrCat("during context [", context_, "]: ",
-                             status_or_changed.status().error_message()));
+                absl::StrCat("during context [", context_,
+                             "]: ", status_or_changed.status().message()));
+}
+
+MetadataTracker::MetadataTracker(absl::string_view prefix) : prefix_(prefix) {}
+
+MetadataTracker::~MetadataTracker() {
+  if (instruction_count_ == 0) {
+    return;
+  }
+  const std::map<std::string, double> values = {
+      {"instruction_count", 1.0 * instruction_count_},
+      {"op_type_coverage", 1.0 * has_op_type_count_ / instruction_count_},
+      {"op_name_coverage", 1.0 * has_op_name_count_ / instruction_count_},
+      {"source_file_coverage",
+       1.0 * has_source_file_count_ / instruction_count_},
+      {"dummy_source_file_coverage",
+       1.0 * has_dummy_source_file_count_ / instruction_count_},
+      {"source_line_coverage",
+       1.0 * has_source_line_count_ / instruction_count_},
+      {"creation_pass_coverage",
+       1.0 * has_creation_pass_id_count_ / instruction_count_},
+      {"logical_creation_pass_coverage",
+       1.0 * has_logical_creation_pass_id_count_ / instruction_count_},
+      {"size_of_generated_code_in_bytes_coverage",
+       1.0 * has_size_of_generated_code_in_bytes_count_ / instruction_count_},
+      {"size_of_memory_working_set_in_bytes_coverage",
+       1.0 * has_size_of_memory_working_set_in_bytes_count_ /
+           instruction_count_},
+      {"profile_info_coverage",
+       1.0 * has_profile_info_count_ / instruction_count_}};
+  LOG(INFO) << prefix_ << " "
+            << absl::StrJoin(values, ",", absl::PairFormatter("="));
+}
+
+void MetadataTracker::HandleMetadata(const OpMetadata& metadata) {
+  ++instruction_count_;
+  if (!metadata.op_type().empty()) {
+    ++has_op_type_count_;
+  }
+  if (!metadata.op_name().empty()) {
+    ++has_op_name_count_;
+  }
+  if (!metadata.source_file().empty()) {
+    ++has_source_file_count_;
+    if (absl::StrContains(metadata.source_file(), "dummy")) {
+      ++has_dummy_source_file_count_;
+    }
+  }
+  if (metadata.source_line() != 0) {
+    ++has_source_line_count_;
+  }
+  if (metadata.creation_pass_id() != 0) {
+    ++has_creation_pass_id_count_;
+  }
+  if (metadata.logical_creation_pass_id() != 0) {
+    ++has_logical_creation_pass_id_count_;
+  }
+  if (metadata.size_of_generated_code_in_bytes() != 0) {
+    ++has_size_of_generated_code_in_bytes_count_;
+  }
+  if (metadata.size_of_memory_working_set_in_bytes() != 0) {
+    ++has_size_of_memory_working_set_in_bytes_count_;
+  }
+  if (metadata.has_profile_info()) {
+    ++has_profile_info_count_;
+  }
+}
+
+Status MetadataTracker::DefaultAction(HloInstruction* instruction) {
+  HandleMetadata(instruction->metadata());
+  return OkStatus();
 }
 
 }  // namespace xla

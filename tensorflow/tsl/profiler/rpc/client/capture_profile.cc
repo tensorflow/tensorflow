@@ -17,8 +17,10 @@ limitations under the License.
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/tsl/profiler/rpc/client/profiler_client.h"
 #include "tensorflow/tsl/profiler/rpc/client/remote_profiler_session_manager.h"
 #include "tensorflow/tsl/profiler/rpc/client/save_profile.h"
+#include "tensorflow/tsl/profiler/utils/session_manager.h"
 
 namespace tsl {
 namespace profiler {
@@ -119,7 +122,7 @@ inline bool ShouldRetryTracing(Status status) {
          // removed" error message. This should not be treated as an
          // unrecoverable error.
          (status.code() == error::Code::UNKNOWN &&
-          status.error_message() == "Stream removed");
+          status.message() == "Stream removed");
 }
 
 Status Profile(const std::string& repository_root,
@@ -254,11 +257,31 @@ Status ExportToTensorBoard(const XSpace& xspace, const std::string& logdir,
   TF_RETURN_IF_ERROR(
       tsl::profiler::SaveXSpace(repository_root, run, host, xspace));
   if (also_export_trace_json) {
-    tensorflow::profiler::Trace trace;
-    tsl::profiler::ConvertXSpaceToTraceEvents(xspace, &trace);
+    tsl::profiler::TraceContainer container =
+        tsl::profiler::ConvertXSpaceToTraceContainer(xspace);
     return tsl::profiler::SaveGzippedToolData(
         repository_root, run, host, "trace.json.gz",
-        tsl::profiler::TraceEventsToJson(trace));
+        tsl::profiler::TraceContainerToJson(container));
+  }
+  return OkStatus();
+}
+
+Status CaptureRemoteTrace(
+    const char* service_addr, const char* logdir, const char* worker_list,
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+    const absl::flat_hash_map<std::string, std::variant<int, std::string>>&
+        options) {
+  // TPU capture is true if the user sets worker_list.
+  bool is_cloud_tpu_session = false;
+  RemoteProfilerSessionManagerOptions opts =
+      GetRemoteSessionManagerOptionsLocked(service_addr, logdir, worker_list,
+                                           include_dataset_ops, duration_ms,
+                                           options, &is_cloud_tpu_session);
+  TF_RETURN_IF_ERROR(ValidateRemoteProfilerSessionManagerOptions(opts));
+
+  {
+    TF_RETURN_IF_ERROR(CaptureRemoteTrace(logdir, num_tracing_attempts, opts,
+                                          is_cloud_tpu_session));
   }
   return OkStatus();
 }

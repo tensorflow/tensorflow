@@ -241,7 +241,7 @@ void BaseCollectiveExecutor::StartAbort(const Status& s) {
     status_ = StatusGroup::MakeDerived(Status(
         s.code(),
         absl::StrCat(
-            "Collective ops is aborted by: ", s.error_message(),
+            "Collective ops is aborted by: ", s.message(),
             "\nThe error could be from a previous operation. Restart your "
             "program to reset.")));
     status = status_;

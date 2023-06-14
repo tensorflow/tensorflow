@@ -970,7 +970,8 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
       self.assertEqual(len(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)),
                        2)
       with self.assertRaisesRegex(
-          AttributeError, "'Tensor' object has no attribute 'initializer'"):
+          AttributeError, "has no attribute 'initializer'"
+      ):
         initializer = variables.local_variables_initializer()
 
 

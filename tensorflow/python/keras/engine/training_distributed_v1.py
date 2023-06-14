@@ -16,7 +16,7 @@
 # pylint: disable=protected-access
 
 import numpy as np
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import context
@@ -324,7 +324,7 @@ def experimental_tpu_test_loop(model,
     else:
       targets = None
 
-    (distribution_strategy_context.get_replica_context().merge_call(
+    (distribute_lib.get_replica_context().merge_call(
         _build_model, args=(model, mode, inputs, targets)))
 
     (_, outputs, updates, _) = _per_replica_execution_function(
@@ -471,7 +471,7 @@ def experimental_tpu_predict_loop(model,
   def _predict_step_fn(inputs):
     """A fn that returns output of single prediction step."""
 
-    (distribution_strategy_context.get_replica_context().merge_call(
+    (distribute_lib.get_replica_context().merge_call(
         _build_model, args=(model, mode, inputs)))
 
     (_, outputs, updates, _) = _per_replica_execution_function(

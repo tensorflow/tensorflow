@@ -21,21 +21,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/tpu/libtftpu.h"
 
+#ifdef __cplusplus
 extern "C" {
+#endif
 
-struct TSL_Status;
-typedef TSL_Status TF_Status;
+typedef struct TSL_Status TF_Status;
 
 // Maximum number of array elements to inline into structs for performance.
 #define TPU_C_API_MAX_INLINED 6
 
-enum TpuCoreTypeEnum {
+typedef enum TpuCoreTypeEnum {
   kTensorCore,
   kEmbeddingV1,
   kEmbeddingV2,
-};
+} TpuCoreTypeEnum;
 
-enum TpuVersionEnum {
+typedef enum TpuVersionEnum {
   kUnknownTpuVersion,
   kTpuV2,
   kTpuV3,
@@ -43,7 +44,7 @@ enum TpuVersionEnum {
   // BEGIN-INTERNAL
   // reserved for internal use
   // END-INTERNAL
-};
+} TpuVersionEnum;
 
 typedef struct TpuRuntimeVersion {
   // The three version numbers are: major, minor, patch
@@ -181,42 +182,42 @@ typedef struct SE_MaybeOwningDeviceMemory {
   SE_DeviceMemoryAllocator allocator;
 } SE_MaybeOwningDeviceMemory;
 
-struct IntList {
+typedef struct IntList {
   union {
     int* heap;  // owned
     int inlined[TPU_C_API_MAX_INLINED];
   };
   int64_t size;
-};
+} IntList;
 
-struct Int64List {
+typedef struct Int64List {
   union {
     int64_t* heap;  // owned
     int64_t inlined[TPU_C_API_MAX_INLINED];
   };
   int64_t size;
-};
+} Int64List;
 
-struct FloatList {
+typedef struct FloatList {
   union {
     float* heap;  // owned
     float inlined[TPU_C_API_MAX_INLINED];
   };
   int64_t size;
-};
+} FloatList;
 
-struct BoolList {
+typedef struct BoolList {
   union {
     bool* heap;  // owned
     bool inlined[TPU_C_API_MAX_INLINED];
   };
   int64_t size;
-};
+} BoolList;
 
-struct FloatListRef {
+typedef struct FloatListRef {
   float* ptr;  // not owned
   int64_t size;
-};
+} FloatListRef;
 
 typedef struct TpuEmbeddingEngineParameters {
   FloatListRef** parameters[8];
@@ -227,13 +228,13 @@ typedef struct XLA_Tile {
   Int64List dimensions;
 } XLA_Tile;
 
-struct TileList {
+typedef struct TileList {
   union {
     XLA_Tile* heap;  // owned
     XLA_Tile inlined[TPU_C_API_MAX_INLINED];
   };
   int64_t size;
-};
+} TileList;
 
 typedef struct XLA_Layout {
   Int64List minor_to_major;
@@ -243,6 +244,7 @@ typedef struct XLA_Layout {
   TileList tiles;
   int index_primitive_type;
   int pointer_primitive_type;
+  int64_t element_size_in_bits;
   int64_t memory_space;
   int64_t dynamic_shape_metadata_prefix_bytes;
 } XLA_Layout;
@@ -252,7 +254,7 @@ typedef struct XLA_Shape {
   int element_type;
   Int64List dimensions;
   BoolList dynamic_dimensions;
-  XLA_Shape* tuple_shapes;  // owned
+  struct XLA_Shape* tuple_shapes;  // owned
   int ntuple_shapes;
   bool has_layout;
   XLA_Layout layout;
@@ -325,10 +327,10 @@ typedef struct XLA_HloModuleConfig {
 
 typedef struct SE_HloExecutionProfile SE_HloExecutionProfile;
 
-struct SE_StreamExecutorList {
+typedef struct SE_StreamExecutorList {
   SE_StreamExecutor** exec;
   int count;
-};
+} SE_StreamExecutorList;
 
 typedef struct XLA_HloModuleGroup {
   TpuSerializedProto proto;
@@ -350,6 +352,9 @@ typedef void (*XLA_StatusCallbackFn)(void*, TF_Status*);
 typedef struct SE_TpuTopology SE_TpuTopology;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
 typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
+
+#ifdef __cplusplus
 }
+#endif
 
 #endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_C_API_DECL_H_

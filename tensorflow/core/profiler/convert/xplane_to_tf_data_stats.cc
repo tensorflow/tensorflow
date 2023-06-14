@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_tf_data_stats.h"
 
+#include <algorithm>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"

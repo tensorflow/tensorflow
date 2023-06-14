@@ -68,7 +68,7 @@ TEST(PjRtCApiHelperTest, InvalidOptionName) {
   auto status = ValidateCreateOptions(invalid_map, expected);
 
   EXPECT_NE(status, tsl::OkStatus());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Unexpected option name passed to PJRT_Client_Create"));
 }
 
@@ -83,7 +83,7 @@ TEST(PjRtCApiHelperTest, InvalidOptionTypeIndex) {
   auto status = ValidateCreateOptions(invalid_map, expected);
 
   EXPECT_NE(status, tsl::OkStatus());
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               HasSubstr("Option passed to PJRT_Client_Create with name string "
                         "has type index 1 but expected type index is 0"));
 }

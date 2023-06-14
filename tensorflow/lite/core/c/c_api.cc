@@ -271,72 +271,24 @@ TfLiteStatus TfLiteTensorCopyToBuffer(const TfLiteTensor* tensor,
   return kTfLiteOk;
 }
 
-TfLiteRegistrationExternal* TfLiteRegistrationExternalCreate(
-    TfLiteBuiltinOperator builtin_code, const char* custom_name, int version) {
-  return new TfLiteRegistrationExternal{/*.custom_name =*/custom_name,
-                                        /*.version =*/version,
-                                        /*.init =*/nullptr,
-                                        /*.free =*/nullptr,
-                                        /*.prepare =*/nullptr,
-                                        /*.invoke =*/nullptr,
-                                        /*.builtin_code =*/builtin_code,
-                                        /*.node_index =*/-1};
-}
-
-void TfLiteRegistrationExternalDelete(TfLiteRegistrationExternal* reg) {
-  delete reg;
-}
-
-void TfLiteRegistrationExternalSetInit(
-    TfLiteRegistrationExternal* registration,
-    void* (*init)(TfLiteOpaqueContext* context, const char* buffer,
-                  size_t length)) {
-  registration->init = init;
-}
-
-void TfLiteRegistrationExternalSetFree(
-    TfLiteRegistrationExternal* registration,
-    void (*free)(TfLiteOpaqueContext* context, void* data)) {
-  registration->free = free;
-}
-
-void TfLiteRegistrationExternalSetPrepare(
-    TfLiteRegistrationExternal* registration,
-    TfLiteStatus (*prepare)(TfLiteOpaqueContext* context,
-                            TfLiteOpaqueNode* node)) {
-  registration->prepare = prepare;
-}
-
-void TfLiteRegistrationExternalSetInvoke(
-    TfLiteRegistrationExternal* registration,
-    TfLiteStatus (*invoke)(TfLiteOpaqueContext* context,
-                           TfLiteOpaqueNode* node)) {
-  registration->invoke = invoke;
-}
-
-TfLiteBuiltinOperator TfLiteRegistrationExternalGetBuiltInCode(
-    const TfLiteRegistrationExternal* registration) {
-  return static_cast<TfLiteBuiltinOperator>(registration->builtin_code);
-}
-
-int TfLiteRegistrationExternalGetVersion(
-    const TfLiteRegistrationExternal* registration) {
-  if (!registration) {
-    return -1;
-  }
-  return registration->version;
-}
-
-const char* TfLiteRegistrationExternalGetCustomName(
-    const TfLiteRegistrationExternal* registration) {
-  return registration->custom_name;
-}
 // LINT.ThenChange(//tensorflow/lite/experimental/examples/unity/TensorFlowLitePlugin/Assets/TensorFlowLite/SDK/Scripts/Interpreter.cs)
 
 }  // extern "C"
 
 namespace tflite {
 namespace internal {
+
+static TfLiteRegistration* RegistrationExternalToRegistration(
+    const TfLiteRegistrationExternal* registration_external) {
+  // All TfLiteRegistrationExternal objects are dynamically allocated via
+  // TfLiteRegistrationExternalCreate(), so they are guaranteed
+  // to be mutable, hence the const_cast below should be safe.
+  auto registration_external_non_const =
+      const_cast<TfLiteRegistrationExternal*>(registration_external);
+  TfLiteRegistration* new_registration = new TfLiteRegistration{};
+  InitTfLiteRegistration(new_registration, registration_external_non_const);
+  return new_registration;
+}
 
 // Implementation of CallbackOpResolver class which is defined in
 // c_api_internal.h. CallbackOpResolver is a (C++) `tflite::OpResolver` that
@@ -352,6 +304,7 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
         op_resolver_callbacks_.user_data,
         static_cast<TfLiteBuiltinOperator>(op), version);
   }
+
   // Check if cached Registration is available.
   std::lock_guard<std::mutex> lock(mutex_);
   for (const auto& created_registration : temporary_builtin_registrations_) {
@@ -360,14 +313,35 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(tflite::BuiltinOperator op,
       return created_registration.get();
     }
   }
+
   if (auto* registration =
           BuildBuiltinOpFromLegacyRegistration<TfLiteRegistration_V2>(
               op, version, op_resolver_callbacks_.find_builtin_op_v2);
       registration) {
     return registration;
   }
-  return BuildBuiltinOpFromLegacyRegistration<TfLiteRegistration_V1>(
-      op, version, op_resolver_callbacks_.find_builtin_op_v1);
+  if (auto* registration =
+          BuildBuiltinOpFromLegacyRegistration<TfLiteRegistration_V1>(
+              op, version, op_resolver_callbacks_.find_builtin_op_v1);
+      registration) {
+    return registration;
+  }
+  // Try using newer RegistrationExternal API.
+  if (op_resolver_callbacks_.find_builtin_op_external) {
+    // Get a RegistrationExternal object and create a Registration (V3) object.
+    const TfLiteRegistrationExternal* registration_external =
+        op_resolver_callbacks_.find_builtin_op_external(
+            op_resolver_callbacks_.user_data,
+            static_cast<TfLiteBuiltinOperator>(op), version);
+    if (registration_external) {
+      TfLiteRegistration* new_registration =
+          RegistrationExternalToRegistration(registration_external);
+      temporary_builtin_registrations_.push_back(
+          std::unique_ptr<TfLiteRegistration>(new_registration));
+      return new_registration;
+    }
+  }
+  return nullptr;
 }
 
 // FindOp for custom op query.
@@ -386,14 +360,33 @@ const TfLiteRegistration* CallbackOpResolver::FindOp(const char* op,
       return created_registration.get();
     }
   }
+
   if (auto* registration =
           BuildCustomOpFromLegacyRegistration<TfLiteRegistration_V2>(
               op, version, op_resolver_callbacks_.find_custom_op_v2);
       registration) {
     return registration;
   }
-  return BuildCustomOpFromLegacyRegistration<TfLiteRegistration_V1>(
-      op, version, op_resolver_callbacks_.find_custom_op_v1);
+  if (auto* registration =
+          BuildCustomOpFromLegacyRegistration<TfLiteRegistration_V1>(
+              op, version, op_resolver_callbacks_.find_custom_op_v1);
+      registration) {
+    return registration;
+  }
+  if (op_resolver_callbacks_.find_custom_op_external) {
+    // Get a RegistrationExternal object and create a Registration (V2) object.
+    const TfLiteRegistrationExternal* registration_external =
+        op_resolver_callbacks_.find_custom_op_external(
+            op_resolver_callbacks_.user_data, op, version);
+    if (registration_external) {
+      TfLiteRegistration* new_registration =
+          RegistrationExternalToRegistration(registration_external);
+      temporary_builtin_registrations_.push_back(
+          std::unique_ptr<TfLiteRegistration>(new_registration));
+      return new_registration;
+    }
+  }
+  return nullptr;
 }
 
 TfLiteInterpreter* InterpreterCreateWithOpResolver(
@@ -435,7 +428,11 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
        optional_options->op_resolver_callbacks.find_builtin_op_v1 != nullptr ||
        optional_options->op_resolver_callbacks.find_custom_op_v1 != nullptr ||
        optional_options->op_resolver_callbacks.find_builtin_op_v2 != nullptr ||
-       optional_options->op_resolver_callbacks.find_custom_op_v2 != nullptr)) {
+       optional_options->op_resolver_callbacks.find_custom_op_v2 != nullptr ||
+       optional_options->op_resolver_callbacks.find_builtin_op_external !=
+           nullptr ||
+       optional_options->op_resolver_callbacks.find_custom_op_external !=
+           nullptr)) {
     callback_op_resolver.SetCallbacks(optional_options->op_resolver_callbacks);
     op_resolver = &callback_op_resolver;
   }

@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
 #include <optional>
 
 #include "llvm/ADT/SmallVector.h"
@@ -285,6 +288,13 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
   for (int32_t i = -128; i < 128; i++) {
     double dequantized = input_scale * (i - input_zp);
     double transformed = func(dequantized);
+
+    double max = (output_scale > 1.0) ? DBL_MAX : (DBL_MAX * output_scale);
+    if (transformed >= max) {
+      table.push_back(INT8_MAX);
+      continue;
+    }
+
     int32_t rescaled = std::llround(transformed / output_scale);
     int32_t quantized = static_cast<int32_t>(rescaled + output_zp);
     table.push_back(
@@ -710,7 +720,10 @@ LogicalResult ApplyPatternsWithShapeResolution(
   // This should be investigate for whether it is still necessary due to quant
   // type stripping changing.
   func.walk([&](tosa::ConstOp op) {
-    auto ety = op.getValue().getType().getElementType();
+    if (op.getType().getElementType().isa<QuantizedType>()) {
+      return;
+    }
+    auto ety = op.getValue().getShapedType().getElementType();
     auto new_ty = op.getType().cast<TensorType>().clone(ety);
     op.getResult().setType(new_ty);
   });

@@ -136,33 +136,29 @@ struct StrategyVector {
 
   std::string ToString(size_t indention = 0) const {
     std::string str;
-    absl::StrAppend(&str, std::string(indention, ' '), "id: ", id, "\n");
-    absl::StrAppend(&str, std::string(indention, ' '),
-                    "instruction id: ", instruction_id, "\n");
-    absl::StrAppend(&str, std::string(indention, ' '), "is_tuple: ", is_tuple,
-                    "\n");
+    const std::string indent(indention, ' ');
+    absl::StrAppend(&str, indent, "id: ", id, "\n");
+    absl::StrAppend(&str, indent, "instruction id: ", instruction_id, "\n");
+    absl::StrAppend(&str, indent, "is_tuple: ", is_tuple, "\n");
     if (following != nullptr) {
-      absl::StrAppend(&str, std::string(indention, ' '),
+      absl::StrAppend(&str, indent,
                       "following instruction: ", following->instruction_id,
                       "\n");
     } else {
-      absl::StrAppend(&str, std::string(indention, ' '),
-                      "source instruction\n");
+      absl::StrAppend(&str, indent, "source instruction\n");
     }
     for (auto i : in_nodes) {
-      absl::StrAppend(&str, std::string(indention, ' '), "in nodes: id=", i->id,
+      absl::StrAppend(&str, indent, "in nodes: id=", i->id,
                       " instruction_id=", i->instruction_id, "\n");
     }
     if (is_tuple) {
       for (size_t i = 0; i < childs.size(); ++i) {
-        absl::StrAppend(&str, std::string(indention, ' '), "Tuple element #", i,
-                        ":\n");
+        absl::StrAppend(&str, indent, "Tuple element #", i, ":\n");
         absl::StrAppend(&str, childs[i]->ToString(indention + 2));
       }
     } else {
       for (const auto& strategy : leaf_vector) {
-        absl::StrAppend(&str, std::string(indention, ' '), "Strategy ",
-                        strategy.ToStringLong());
+        absl::StrAppend(&str, indent, "Strategy ", strategy.ToStringLong());
       }
     }
     return str;

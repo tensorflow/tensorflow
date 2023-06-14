@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tensorflow/utils/session_utils.h"
 
+#include <string>
+#include <vector>
+
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
@@ -71,7 +74,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> GetResourcesFromSession(
 
   auto status = session->Run({}, variable_names, {}, &resource_tensors);
   if (!status.ok())
-    return absl::Status(absl::StatusCode::kInternal, status.error_message());
+    return absl::Status(absl::StatusCode::kInternal, status.message());
   return resource_tensors;
 }
 }  // namespace tf_saved_model

@@ -171,13 +171,14 @@ Status DataServiceDispatcherClient::Snapshot(
 
 Status DataServiceDispatcherClient::GetSnapshotSplit(
     const std::string& worker_address, const std::string& base_path,
-    int64_t stream_index, int64_t source_index, Tensor& split,
-    int64_t& local_split_index, bool& end_of_splits) {
+    int64_t stream_index, int64_t source_index, int64_t repetition_index,
+    Tensor& split, int64_t& local_split_index, bool& end_of_splits) {
   GetSnapshotSplitRequest req;
   req.set_worker_address(worker_address);
   req.set_base_path(base_path);
   req.set_stream_index(stream_index);
   req.set_source_index(source_index);
+  req.set_repetition_index(repetition_index);
 
   GetSnapshotSplitResponse resp;
   grpc::ClientContext client_ctx;

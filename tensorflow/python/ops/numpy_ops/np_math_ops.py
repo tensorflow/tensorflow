@@ -1150,7 +1150,7 @@ def concatenate(arys, axis=0):
 @np_utils.np_doc_only('tile')
 def tile(a, reps):  # pylint: disable=missing-function-docstring
   a = np_array_ops.array(a)
-  reps = np_array_ops.array(reps, dtype=dtypes.int32).reshape([-1])
+  reps = array_ops.reshape(np_array_ops.array(reps, dtype=dtypes.int32), [-1])
 
   a_rank = array_ops.rank(a)
   reps_size = array_ops.size(reps)
@@ -1428,6 +1428,7 @@ def enable_numpy_methods_on_tensor():
   # TODO(b/178540516): Make a custom `setattr` that changes the method's
   #   docstring to the TF one.
   setattr(ops.Tensor, 'transpose', np_array_ops.transpose)
+  setattr(ops.Tensor, 'flatten', np_array_ops.flatten)
   setattr(ops.Tensor, 'reshape', np_array_ops._reshape_method_wrapper)  # pylint: disable=protected-access
   setattr(ops.Tensor, 'ravel', np_array_ops.ravel)
   setattr(ops.Tensor, 'clip', clip)

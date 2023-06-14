@@ -189,9 +189,9 @@ TEST_F(LoaderTest, NoTagMatch) {
                              {"missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(
-      st.error_message(),
+      st.message(),
       "Could not find meta graph def matching supplied tags: { missing-tag }"))
-      << st.error_message();
+      << st.message();
 }
 
 TEST_F(LoaderTest, NoTagMatchMultiple) {
@@ -205,9 +205,8 @@ TEST_F(LoaderTest, NoTagMatchMultiple) {
                              {kSavedModelTagServe, "missing-tag"}, &bundle);
   EXPECT_FALSE(st.ok());
   EXPECT_TRUE(absl::StrContains(
-      st.error_message(),
-      "Could not find meta graph def matching supplied tags: "))
-      << st.error_message();
+      st.message(), "Could not find meta graph def matching supplied tags: "))
+      << st.message();
 }
 
 TEST_F(LoaderTest, SessionCreationFailure) {
@@ -224,8 +223,7 @@ TEST_F(LoaderTest, SessionCreationFailure) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_TRUE(absl::StrContains(st.error_message(), kInvalidTarget))
-      << st.error_message();
+  EXPECT_TRUE(absl::StrContains(st.message(), kInvalidTarget)) << st.message();
 }
 
 TEST_F(LoaderTest, PbtxtFormat) {
@@ -317,9 +315,8 @@ TEST_F(LoaderTest, NegativeShapeDimension) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_NE(
-      st.error_message().find("initializes from a tensor with -1 elements"),
-      std::string::npos);
+  EXPECT_NE(st.message().find("initializes from a tensor with -1 elements"),
+            std::string::npos);
 }
 
 TEST_F(LoaderTest, ConstNoValue) {
@@ -332,9 +329,8 @@ TEST_F(LoaderTest, ConstNoValue) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_NE(
-      st.error_message().find("constant tensor but no value has been provided"),
-      std::string::npos);
+  EXPECT_NE(st.message().find("constant tensor but no value has been provided"),
+            std::string::npos);
 }
 
 TEST_F(LoaderTest, BadNodeAttr) {
@@ -347,9 +343,8 @@ TEST_F(LoaderTest, BadNodeAttr) {
   Status st = LoadSavedModel(session_options, run_options, export_dir,
                              {kSavedModelTagServe}, &bundle);
   EXPECT_FALSE(st.ok());
-  EXPECT_NE(
-      st.error_message().find("constant tensor but no value has been provided"),
-      std::string::npos);
+  EXPECT_NE(st.message().find("constant tensor but no value has been provided"),
+            std::string::npos);
 }
 
 TEST_F(LoaderTest, UpdateMetricsV2) {

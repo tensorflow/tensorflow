@@ -503,10 +503,9 @@ func.func @custom_call_unit_attr(%ctx: !rt.execution_context) {
 
 // CHECK: call @f32_reduce
 
-// CHECK: %[[DESC:.*]] = llvm.mlir.undef : !llvm.struct<(ptr<f32>, ptr<f32>, i64, array<2 x i64>, array<2 x i64>)>
+// CHECK: %[[DESC:.*]] = llvm.mlir.undef : !llvm.struct<(ptr, ptr, i64, array<2 x i64>, array<2 x i64>)>
 // CHECK: %[[DATA_GEP:.*]] = llvm.getelementptr %[[MEMREF_ALLOCA]]
-// CHECK: %[[DATA_PTR:.*]] = llvm.load %[[DATA_GEP]]
-// CHECK: %[[DATA:.*]] = llvm.bitcast %[[DATA_PTR]] : !llvm.ptr to !llvm.ptr<f32>
+// CHECK: %[[DATA:.*]] = llvm.load %[[DATA_GEP]]
 
 // CHECK: llvm.insertvalue %[[DATA]], {{.*}}[0]
 // CHECK: llvm.insertvalue %[[DATA]], {{.*}}[1]

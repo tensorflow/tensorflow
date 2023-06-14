@@ -104,8 +104,7 @@ class PyExecuteResults {
   PyShardedToken token_;
 };
 
-using ExecuteShardedArg =
-    std::variant<PyArray, std::vector<std::variant<PyBuffer::object, PyArray>>>;
+using ExecuteShardedArg = std::variant<PyArray, std::vector<PyArray>>;
 
 // Python wrapper around PjRtExecutable. We use a wrapper class:
 // a) to keep the PyClient alive via a std::shared_ptr<>
@@ -117,8 +116,7 @@ class PyLoadedExecutable
       std::shared_ptr<PyClient> client,
       std::unique_ptr<ifrt::LoadedExecutable> ifrt_loaded_executable,
       std::shared_ptr<Traceback> traceback,
-      std::optional<std::string> fingerprint,
-      std::vector<pybind11::capsule> host_callbacks);
+      std::optional<std::string> fingerprint);
   ~PyLoadedExecutable();
 
   std::shared_ptr<PyClient> client() const { return client_; }
@@ -147,12 +145,6 @@ class PyLoadedExecutable
   }
 
   bool is_deleted() { return ifrt_loaded_executable_->IsDeleted(); }
-
-  StatusOr<std::vector<PyBuffer::object>> Execute(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
-  StatusOr<std::pair<std::vector<PyBuffer::object>, PyToken>> ExecuteWithToken(
-      absl::Span<PyBuffer::object const> args, PjRtDevice* device);
 
   // Takes args indexed by argid then deviceid, transposes them, and passes to
   // PjRtExecutable::Execute. The result is similarly transposed back into the
@@ -208,9 +200,6 @@ class PyLoadedExecutable
   void KeepAlive(pybind11::object obj);
 
  private:
-  StatusOr<std::pair<std::vector<PyBuffer::object>, ifrt::Future<Status>>>
-  ExecuteInternal(absl::Span<PyBuffer::object const> args, PjRtDevice* device);
-
   friend class PyClient;
 
   std::shared_ptr<PyClient> client_;
@@ -221,9 +210,6 @@ class PyLoadedExecutable
   // same fingerprint. nullopt on platforms or executables where fingerprints
   // aren't implemented.
   std::optional<std::string> fingerprint_;
-
-  // The python callbacks implemented using send/recv support.
-  std::vector<pybind11::capsule> host_callbacks_;
 
   // The options to pass to `executable_.Execute`.
   ExecuteOptions options_;

@@ -29,19 +29,22 @@ include "gml_st/IR/gml_st_ops_base.td"
 ///////////////////////////////////////////////////////////////////////////////
 
 def GMLST_FusionOp : GMLST_Op<"fusion", [
+      AttrSizedOperandSegments,
       DestinationStyleOpInterface,
+      IsolatedFromAbove,
       SingleBlockImplicitTerminator<"gml_st::YieldOp">
     ]> {
   let summary = "A cluster of operations to be tiled and fused.";
 
   let arguments = (ins Variadic<AnyType>:$inputs,
+                       Variadic<AnyType>:$inits,
                        OptionalAttr<DenseI64ArrayAttr>:$parallel_tile_sizes,
                        OptionalAttr<DenseI64ArrayAttr>:$reduction_tile_sizes);
   let results = (outs Variadic<AnyRankedTensor>:$results);
   let regions = (region SizedRegion<1>:$region);
 
   let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+  let hasVerifier = 0;
 
   code extraClassDeclaration = [{
     /// Return terminator of the region body.
@@ -50,8 +53,8 @@ def GMLST_FusionOp : GMLST_Op<"fusion", [
     // Implement method necessary for DestinationStyleOpInterface.
     std::pair<int64_t, int64_t> getDpsInitsPositionRange() {
       int64_t numOperands = this->getNumOperands();
-      int64_t numResults = this->getNumResults();
-      return {numOperands - numResults, numOperands};
+      int64_t numInits = this->getInits().size();
+      return {numOperands - numInits, numOperands};
     }
   }];
 }

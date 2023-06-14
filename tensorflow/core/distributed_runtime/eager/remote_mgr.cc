@@ -238,7 +238,7 @@ void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
   }
   Status s = it->second.ShutDown();
   if (!s.ok()) {
-    LOG(ERROR) << "EagerExecutor shutdown with error " << s.error_message();
+    LOG(ERROR) << "EagerExecutor shutdown with error " << s.message();
   }
   executor_map_.erase(it);
 }

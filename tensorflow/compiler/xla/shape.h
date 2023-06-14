@@ -107,7 +107,7 @@ class Shape {
 
   // Add dimension_upper_bound().
 
-  // Removes the given dimension form the shape. Layout, if it exists, is
+  // Removes the given dimension from the shape. Layout, if it exists, is
   // adjusted to match the modified shape.
   void DeleteDimension(int64_t dim_to_delete);
 

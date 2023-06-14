@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_op_metadata.h"
 
+#include <string>
 #include <vector>
 
 #include "absl/strings/escaping.h"
@@ -45,8 +46,9 @@ std::string OpMetadataToString(const OpMetadata& metadata) {
         "profile_type={", absl::StrJoin(metadata.profile_type(), ","), "}"));
   }
   if (!metadata.deduplicated_name().empty()) {
-    result.push_back(
-        absl::StrCat("deduplicated_name=", metadata.deduplicated_name()));
+    result.push_back(absl::StrCat("deduplicated_name=\"",
+                                  absl::CEscape(metadata.deduplicated_name()),
+                                  "\""));
   }
   return absl::StrJoin(result, " ");
 }

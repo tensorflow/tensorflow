@@ -239,7 +239,7 @@ Service::ResolveAndValidateArguments(
     if (!buffer_status.ok()) {
       return tsl::errors::CreateWithUpdatedMessage(
           buffer_status.status(),
-          StrCat(buffer_status.status().error_message(), ", ",
+          StrCat(buffer_status.status().message(), ", ",
                  "failed to resolve allocation for parameter ", i));
     }
     auto replicated_buffers = buffer_status.value();
@@ -440,8 +440,8 @@ Service::ExecuteParallelAndRegisterResult(
       if (i == 0) {
         options.set_execution_profile(profile);
       }
-      ServiceExecutableRunOptions run_options(options,
-                                              backend->StreamBorrower());
+      ServiceExecutableRunOptions run_options(
+          options, backend->StreamBorrowerWithPriority());
 
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
@@ -466,7 +466,7 @@ Service::ExecuteParallelAndRegisterResult(
     Status block_status = streams[i]->BlockHostUntilDone();
     if (!block_status.ok()) {
       return InternalError("failed to complete execution for stream %d: %s", i,
-                           block_status.error_message());
+                           block_status.message());
     }
   }
 
@@ -534,7 +534,7 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
     options.set_execution_profile(profile);
-    run_options.emplace_back(options, backend->StreamBorrower());
+    run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
 
   if (options_.number_of_replicas() == 1) {

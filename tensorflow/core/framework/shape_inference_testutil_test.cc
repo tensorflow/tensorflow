@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
+#include <string>
+
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -60,8 +62,8 @@ string RunInferShapes(const string& op_name, const string& ins,
                   .Attr("N", num_inputs)
                   .Finalize(&op.node_def));
   global_fn_ptr = &fn;
-  return ShapeInferenceTestutil::InferShapes(op, ins, expected_outs)
-      .error_message();
+  return std::string(
+      ShapeInferenceTestutil::InferShapes(op, ins, expected_outs).message());
 }
 
 }  // namespace
@@ -95,11 +97,10 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, "[1];[2];[1]", "e", fn_copy_input_0));
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0),
                   "wrong number of outputs");
-  auto error_message = ShapeInferenceTestutil::InferShapes(
-                           ShapeInferenceTestOp("NoSuchOp"), "", "")
-                           .error_message();
+  auto s = ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp("NoSuchOp"),
+                                               "", "");
   EXPECT_TRUE(
-      absl::StartsWith(error_message, "Op type not registered 'NoSuchOp'"));
+      absl::StartsWith(s.message(), "Op type not registered 'NoSuchOp'"));
 
   // Wrong shape error messages.
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "?", fn_copy_input_0),

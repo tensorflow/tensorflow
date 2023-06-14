@@ -17,23 +17,18 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <iterator>
 #include <memory>
-#include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/async_collective_creator.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/tsl/lib/core/status_test_util.h"
 
 namespace xla {
 
@@ -134,10 +129,9 @@ StatusOr<bool> RunScheduler(
     std::unique_ptr<LatencyEstimator> latency_estimator =
         std::make_unique<ApproximateLatencyEstimator>()) {
   AsyncCollectiveCreator::CollectiveCreatorConfig config{
-      /*convert_all_reduce=*/[](const HloInstruction*) { return true; },
-      /*convert_all_gather=*/[](const HloInstruction*) { return true; },
-      /*convert_collective_permute=*/
-      [](const HloInstruction*) { return true; }};
+      /*convert_all_reduce=*/HloPredicateTrue,
+      /*convert_all_gather=*/HloPredicateTrue,
+      /*convert_collective_permute=*/HloPredicateTrue};
   TF_ASSIGN_OR_RETURN(bool value,
                       AsyncCollectiveCreator(std::move(config)).Run(module));
   HloCostAnalysis::ShapeSizeFunction shape_size_bytes =
@@ -2614,6 +2608,22 @@ TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
       }
     }
 
+    ResourceHazardType GetResourceHazardType(
+        int64_t resource_type) const override {
+      const int64_t first_target_resource = GetFirstTargetDefinedResource();
+      if (resource_type < first_target_resource) {
+        return AsyncTracker::GetResourceHazardType(resource_type);
+      }
+      CHECK_LE(resource_type,
+               first_target_resource + GetNumTargetDefinedResources());
+      switch (resource_type - first_target_resource) {
+        case static_cast<int64_t>(MyTargetResourceType::kTargetResource0):
+          return ResourceHazardType::kShareable;
+        default:
+          return ResourceHazardType::kUnshareable;
+      }
+    }
+
     int64_t GetNumTargetDefinedResources() const override {
       return static_cast<int64_t>(MyTargetResourceType::kNumTargetResources);
     }
@@ -2642,11 +2652,17 @@ TEST_F(LatencyHidingSchedulerTest, AsyncTrackerTestForTargetDefinedResources) {
       SchedulerConfig(), target_resource0_overlap_limit);
   // Check the number of target-defined resources
   CHECK_EQ(async_tracker_for_my_target.GetNumTargetDefinedResources(), 1);
-  // Check the name of the target-defined resource
+  // Get the index of the target-defined resource
   const int64_t target_resource0_index =
       static_cast<int64_t>(ResourceType::kTargetDefinedResourcesBound) + 1;
+  // Check the name of the target-defined resource
   CHECK_EQ(async_tracker_for_my_target.GetResourceName(target_resource0_index),
            "kTargetResource0");
+  // Check the hazard type of the target-defined resource
+  CHECK_EQ(
+      static_cast<int64_t>(async_tracker_for_my_target.GetResourceHazardType(
+          target_resource0_index)),
+      static_cast<int64_t>(ResourceHazardType::kShareable));
   // Check the number of available resources (overlap limit) for the
   // target-defined resource
   CHECK_EQ(async_tracker_for_my_target.GetNumAvailableResources(

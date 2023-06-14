@@ -5809,7 +5809,7 @@ def _dropout(x, rate, noise_shape, uniform_sampler, dummy_rng_step, name,
 
 @tf_export("math.top_k", "nn.top_k")
 @dispatch.add_dispatch_support
-def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-builtin
+def top_k(input, k=1, sorted=True, index_type=dtypes.int32, name=None):  # pylint: disable=redefined-builtin
   """Finds values and indices of the `k` largest entries for the last dimension.
 
   If the input is a vector (rank=1), finds the `k` largest entries in the vector
@@ -5846,13 +5846,22 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
   ...                        k=3)
   >>> result.indices.numpy()
   array([0, 1, 3], dtype=int32)
+  
+  By default, indices are returned as type `int32`, however, this can be changed
+  by specifying the `index_type`.
+  
+  >>> result = tf.math.top_k([1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0],
+  ...                        k=3, index_type=tf.int16)
+  >>> result.indices.numpy()
+  array([0, 1, 3], dtype=int16)
 
   Args:
     input: 1-D or higher `Tensor` with last dimension at least `k`.
-    k: 0-D `int32` `Tensor`.  Number of top elements to look for along the last
-      dimension (along each row for matrices).
+    k: 0-D `Tensor` of type `int16`, `int32` or `int64`.  Number of top element
+      to look for along the last dimension (along each row for matrices).
     sorted: If true the resulting `k` elements will be sorted by the values in
       descending order.
+    index_type: Optional dtype for output indices.
     name: Optional name for the operation.
 
   Returns:
@@ -5860,7 +5869,9 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
     values: The `k` largest elements along each last dimensional slice.
     indices: The indices of `values` within the last dimension of `input`.
   """
-  return gen_nn_ops.top_kv2(input, k=k, sorted=sorted, name=name)
+  return gen_nn_ops.top_kv2(
+      input, k=k, sorted=sorted, index_type=index_type, name=name
+  )
 
 
 @tf_export("math.approx_max_k", "nn.approx_max_k")

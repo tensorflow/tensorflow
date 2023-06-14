@@ -27,6 +27,7 @@ from tensorflow.python.framework import tensor_util
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
+from tensorflow.python.ops import ref_variable
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -271,7 +272,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   for var in op_list:
     resource_or_ref_variable = (
         isinstance(var, resource_variable_ops.BaseResourceVariable) or
-        isinstance(var, variables.RefVariable))
+        isinstance(var, ref_variable.RefVariable))
 
     if isinstance(var, saveable_object.SaveableObject):
       names_to_saveables[var.name] = var
@@ -657,7 +658,8 @@ def trackable_has_serialize_to_tensor(obj):
       # In some cases (e.g. restored objects), the object may have
       # `_serialize_to_tensors` even if the class does not.
       return True
-  except AttributeError:  # Data structure proxy wrappers don't have __dict__.
+  except (AttributeError, TypeError):
+    # Data structure proxy wrappers don't have __dict__.
     pass
 
   # Use MRO so that if a parent class has `_serialize_to_tensors`, but the

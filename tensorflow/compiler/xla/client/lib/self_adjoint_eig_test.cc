@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
 
+#include <algorithm>
+#include <numeric>
+#include <vector>
+
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"

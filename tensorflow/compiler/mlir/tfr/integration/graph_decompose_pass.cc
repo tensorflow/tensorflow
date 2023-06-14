@@ -40,7 +40,8 @@ MlirOptimizationPassState GraphDecomposePass::GetPassState(
 }
 
 Status GraphDecomposePass::Run(
-    const ConfigProto& config_proto, mlir::ModuleOp module, const Graph& graph,
+    const std::string& function_name, const ConfigProto& config_proto,
+    mlir::ModuleOp module, const Graph& graph,
     const FunctionLibraryDefinition& function_library) {
   if (GetPassState(/*device_set=*/nullptr, config_proto, graph,
                    function_library) == MlirOptimizationPassState::Disabled) {

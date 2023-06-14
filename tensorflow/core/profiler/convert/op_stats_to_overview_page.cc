@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include "absl/strings/str_cat.h"

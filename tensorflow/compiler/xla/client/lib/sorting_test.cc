@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
 
+#include <algorithm>
+#include <functional>
 #include <limits>
+#include <random>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -42,6 +46,14 @@ XLA_TEST_F(SortingTest, TopK3From8Indices) {
       ConstantR1<float>(&builder, {7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0});
   xla::GetTupleElement(xla::TopK(x_rev, 3), 1);
   ComputeAndCompareR1<int>(&builder, {0, 1, 2}, {});
+}
+
+XLA_TEST_F(SortingTest, TopK3From8Int16Indices) {
+  XlaBuilder builder(TestName());
+  auto x =
+      ConstantR1<float>(&builder, {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0});
+  xla::GetTupleElement(xla::TopK(x, 3, PrimitiveType::S16), 1);
+  ComputeAndCompareR1<int16_t>(&builder, {7, 6, 5}, {});
 }
 
 XLA_TEST_F(SortingTest, TopKFullSortMinInt) {
@@ -138,6 +150,16 @@ XLA_TEST_F(SortingTest, TopK3From8Indices5Partitions) {
   xla::GetTupleElement(xla::TopKWithPartitions(x_rev, 3, /*num_partitions=*/5),
                        1);
   ComputeAndCompareR1<int>(&builder, {0, 1, 2}, {});
+}
+
+XLA_TEST_F(SortingTest, TopK3From8Int16Indices5Partitions) {
+  XlaBuilder builder(TestName());
+  auto x_rev =
+      ConstantR1<float>(&builder, {7.0, 6.0, 5.0, 4.0, 3.0, 2.0, 1.0, 0.0});
+  xla::GetTupleElement(xla::TopKWithPartitions(x_rev, 3, /*num_partitions=*/5,
+                                               PrimitiveType::S16),
+                       1);
+  ComputeAndCompareR1<int16_t>(&builder, {0, 1, 2}, {});
 }
 
 XLA_TEST_F(SortingTest, TopKFullSortWithDuplicates2Partitions) {

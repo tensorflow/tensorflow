@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "tensorflow/compiler/xla/python/ifrt/device.h"
 #include "tensorflow/compiler/xla/python/ifrt/index_domain.h"
+#include "tensorflow/compiler/xla/python/ifrt/ir/sharding_param.h"
 #include "tensorflow/compiler/xla/python/ifrt/shape.h"
 #include "tensorflow/compiler/xla/statusor.h"
 
@@ -150,6 +151,31 @@ class OpaqueSharding : public llvm::RTTIExtends<OpaqueSharding, Sharding> {
   explicit OpaqueSharding(DeviceList devices, DisassembleFunc disassemble_func);
 
   DisassembleFunc disassemble_func_;
+};
+
+// Sharding derived from an IR ShardingParam.
+class ShardingParamSharding
+    : public llvm::RTTIExtends<ShardingParamSharding, Sharding> {
+ public:
+  static StatusOr<std::shared_ptr<const Sharding>> Create(
+      ShardingParam sharding_param, DeviceList devices);
+
+  StatusOr<std::vector<std::pair<Shape, std::shared_ptr<const Sharding>>>>
+  Disassemble(const Shape& shape) const override;
+
+  StatusOr<std::vector<IndexDomain>> IndexDomains(
+      const Shape& shape) const override;
+
+  std::string DebugString() const override;
+
+  static char ID;  // NOLINT
+
+ private:
+  ShardingParamSharding(ShardingParam sharding_param, DeviceList devices)
+      : llvm::RTTIExtends<ShardingParamSharding, Sharding>(devices),
+        sharding_param_(sharding_param) {}
+
+  ShardingParam sharding_param_;
 };
 
 }  // namespace ifrt

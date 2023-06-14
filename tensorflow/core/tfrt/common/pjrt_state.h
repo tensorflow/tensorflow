@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
@@ -37,7 +36,9 @@ class PjRtState : public ResourceBase {
   StatusOr<xla::PjRtClient*> GetPjRtClient(const DeviceType& device_type);
   Status SetPjRtClient(const DeviceType& device_type,
                        std::unique_ptr<xla::PjRtClient> client);
-  Status DeletePjRtClientIfExists(const DeviceType& device_type);
+  // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not
+  // be returned by `GetPjRtClient`.
+  Status MovePjRtClientToUnused(const DeviceType& device_type);
   string DebugString() const override;
 
  private:

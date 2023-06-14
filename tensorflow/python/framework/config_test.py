@@ -877,16 +877,21 @@ class TensorFloat32Test(test.TestCase):
       self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
                     'capability of at least 8.0')
 
+  # Size of each dimension of matrices to test. cuBLAS does not use TF32 for
+  # small matrices, so we must choose a large enough size to cause TF32 to be
+  # used.
+  DIM = 2 ** 10
+
   def test_tensor_float_32_enabled(self):
     self._skip_if_tensor_float_32_unsupported()
     self.assertTrue(config.tensor_float_32_execution_enabled())
 
-    x = array_ops.fill((8, 8), 1 + 2**-20)
-    y = array_ops.ones((8, 8))
+    x = array_ops.fill((self.DIM, self.DIM), 1 + 2**-12)
+    y = array_ops.ones((self.DIM, self.DIM))
     out = math_ops.matmul(x, y)
-    # In TensorFloat-32, each element of x is rounded to 1, so the output will
-    # be 8s.
-    expected = array_ops.fill((8, 8), 8)
+    # In TensorFloat-32, each element of x is rounded to 1, so each output
+    # element should be self.DIM.
+    expected = array_ops.fill((self.DIM, self.DIM), float(self.DIM))
     self.assertAllEqual(out, expected)
 
   def test_tensor_float_32_disabled(self):
@@ -895,11 +900,11 @@ class TensorFloat32Test(test.TestCase):
     config.enable_tensor_float_32_execution(False)
     self.assertFalse(config.tensor_float_32_execution_enabled())
 
-    x = array_ops.fill((8, 8), 1 + 2**-20)
-    y = array_ops.ones((8, 8))
+    x = array_ops.fill((self.DIM, self.DIM), 1 + 2**-12)
+    y = array_ops.ones((self.DIM, self.DIM))
     out = math_ops.matmul(x, y)
-    expected = array_ops.fill((8, 8), 8 * (1 + 2**-20))
-    self.assertAllEqual(out, expected)
+    expected = array_ops.fill((self.DIM, self.DIM), self.DIM * (1 + 2**-12))
+    self.assertAllClose(out, expected, rtol=2**-13, atol=0)
 
 
 if __name__ == '__main__':

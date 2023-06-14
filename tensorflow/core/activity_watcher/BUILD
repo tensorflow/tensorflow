@@ -21,9 +21,9 @@ cc_library(
     hdrs = ["activity.h"],
     defines = if_not_mobile(["TF_ENABLE_ACTIVITY_WATCHER"]),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/core:lib",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_not_mobile([
         ":activity_watcher_impl",
     ]),

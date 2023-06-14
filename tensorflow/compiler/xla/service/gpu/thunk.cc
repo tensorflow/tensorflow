@@ -64,7 +64,6 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kGemm);
     CASE(kInfeed);
     CASE(kKernel);
-    CASE(kReusableKernel);
     CASE(kMemset32BitValue);
     CASE(kMemzero);
     CASE(kOutfeed);
@@ -73,6 +72,7 @@ Thunk::ExecuteParams::ExecuteParams(
     CASE(kSequential);
     CASE(kTriangularSolve);
     CASE(kWhile);
+    CASE(kFusedMHA);
   }
 }
 

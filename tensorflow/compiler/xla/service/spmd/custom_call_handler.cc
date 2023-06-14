@@ -109,7 +109,9 @@ Status SpmdPartitioningVisitor::HandleCustomCallTopK(HloInstruction* hlo) {
         partitioned_input.state(), sharding_grouped.device_groups,
         partitioned_input.state().b);
     auto reshape_tile_assignment = sharding.tile_assignment();
-    auto reshape_dimensions = reshape_tile_assignment.dimensions();
+    std::vector<int64_t> reshape_dimensions(
+        reshape_tile_assignment.dimensions().begin(),
+        reshape_tile_assignment.dimensions().end());
     reshape_dimensions.push_back(reshape_dimensions.back());
     reshape_dimensions[sort_dim] = 1;
     reshape_tile_assignment.Reshape(reshape_dimensions);

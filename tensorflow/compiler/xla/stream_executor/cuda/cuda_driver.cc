@@ -33,7 +33,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/driver_types.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/port.h"
@@ -469,13 +471,18 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
           << " bdx: " << block_dim_x << " bdy: " << block_dim_y
           << " bdz: " << block_dim_z;
   RETURN_IF_CUDA_RES_ERROR(
+      cuFuncSetAttribute(function,
+                         CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                         shared_mem_bytes),
+      "Failed to set shared memory size");
+  RETURN_IF_CUDA_RES_ERROR(
       cuLaunchKernel(function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x,
                      block_dim_y, block_dim_z, shared_mem_bytes, stream,
                      kernel_params, extra),
       "Failed to launch CUDA kernel: ", kernel_name,
       " with block dimensions: ", block_dim_x, "x", block_dim_y, "x",
       block_dim_z, " and grid dimensions: ", grid_dim_x, "x", grid_dim_y, "x",
-      grid_dim_z);
+      grid_dim_z, " and shared memory size: ", shared_mem_bytes);
   return ::tsl::OkStatus();
 }
 
@@ -483,8 +490,9 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                               const char* cubin_bytes,
                                               CUmodule* module) {
   ScopedActivateContext activation(context);
-  RETURN_IF_CUDA_RES_ERROR(cuModuleLoadFatBinary(module, cubin_bytes),
-                           "Failed to load in-memory CUBIN");
+  RETURN_IF_CUDA_RES_ERROR(
+      cuModuleLoadFatBinary(module, cubin_bytes),
+      "Failed to load in-memory CUBIN (compiled for a different GPU?).");
   return ::tsl::OkStatus();
 }
 
@@ -610,7 +618,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                                StreamCallback callback,
                                                void* data) {
   // Note: flags param is required to be zero according to CUDA 6.0.
-  CUresult res = cuStreamAddCallback(stream, callback, data, 0 /* = flags */);
+  CUresult res = cuLaunchHostFunc(stream, callback, data);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "unable to add host callback: " << ToString(res);
     return false;
@@ -624,6 +632,18 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
                                                CUfunction* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
+  cudaError_t cuda_error = cudaPeekAtLastError();
+  if (cuda_error != cudaSuccess) {
+    // Printing the cuda_error value is useful when cudaGetErrorName doesn't
+    // work.
+    const std::string error =
+        absl::StrCat("There was an error before calling cuModuleGetFunction (",
+                     cuda_error, "): ", cudaGetErrorName(cuda_error), " : ",
+                     cudaGetErrorString(cuda_error));
+    LOG(ERROR) << error;
+    return false;
+  }
+
   CUresult res = cuModuleGetFunction(function, module, kernel_name);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "failed to get PTX kernel \"" << kernel_name
@@ -679,18 +699,15 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
 /* static */ bool GpuDriver::CreateStream(GpuContext* context, CUstream* stream,
                                           int priority) {
-  // TODO(leary) can we switch this to CU_STREAM_NON_BLOCKING or will that mess
-  // up synchronization with respect to memsets and any other things that have
-  // to occur on the default stream?
   ScopedActivateContext activated{context};
   CUresult res;
   // If the priority is 0, then use the previous api to create the stream with
   // the default priority for backward compatibility. Probably there is no
   // difference in using the new api call but leaving it as is for now.
   if (priority == 0) {
-    res = cuStreamCreate(stream, 0);
+    res = cuStreamCreate(stream, CU_STREAM_NON_BLOCKING);
   } else {
-    res = cuStreamCreateWithPriority(stream, 0, priority);
+    res = cuStreamCreateWithPriority(stream, CU_STREAM_NON_BLOCKING, priority);
   }
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not allocate CUDA stream for context "
@@ -836,6 +853,23 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return false;
   }
   return true;
+}
+
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  ScopedActivateContext activation(context);
+  if (stream_priority == stream_executor::StreamPriority::Default) {
+    return 0;
+  }
+  int lowest, highest;
+  CUresult res = cuCtxGetStreamPriorityRange(&lowest, &highest);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR)
+        << "Could not query stream priority range. Returning default priority.";
+    return 0;
+  }
+  return stream_priority == stream_executor::StreamPriority::Highest ? highest
+                                                                     : lowest;
 }
 
 #if CUDA_VERSION >= 10020
@@ -1196,9 +1230,40 @@ GpuDriver::CreateMemoryHandle(GpuContext* context, uint64_t bytes) {
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
   CUresult result;
-  // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
-  // This happens when the size is 0.
+
+  // Check if the stream is doing graph capture.
+  cudaStreamCaptureStatus stream_capture_status;
+  cudaError_t err =
+      cudaStreamGetCaptureInfo(stream, &stream_capture_status, /*pId=*/nullptr);
+  if (err != cudaSuccess) {
+    LOG(ERROR) << "Failed to get stream capture info: "
+               << cudaGetErrorString(err);
+    return false;
+  }
+
   if (gpu_dst == 0 || gpu_src == 0) {
+    // CreatedContexts::GetAnyContext() doesn't works when ptr == 0.
+    // This happens when the size is 0.
+    result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  } else if (stream_capture_status == cudaStreamCaptureStatusActive) {
+    // cuMemcpyPeerAsync is not supported during graph capture, so we use
+    // cuMemcpyDtoDAsync instead. This is only valid if UVA is supported.
+
+    // Check if UVA is enabled.
+    for (int i = 0; i < GetDeviceCount(); ++i) {
+      GpuDeviceAttribute attribute = CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING;
+      auto result = GetDeviceAttribute(attribute, i);
+      if (!result.ok()) {
+        LOG(ERROR) << "Failed to get device attribute";
+        return false;
+      }
+
+      if (result.value() == 0) {
+        LOG(ERROR) << "Unified addressing is not enabled";
+        return false;
+      }
+    }
+
     result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   } else {
     // Any context work here.
@@ -1441,6 +1506,12 @@ static tsl::StatusOr<T> GetSimpleAttribute(CUdevice device,
     CUdevice device) {
   return GetSimpleAttribute<int64_t>(
       device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK);
+}
+
+tsl::StatusOr<int64_t> GpuDriver::GetMaxSharedMemoryPerBlockOptin(
+    CUdevice device) {
+  return GetSimpleAttribute<int64_t>(
+      device, CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN);
 }
 
 /* static */ tsl::StatusOr<int64_t> GpuDriver::GetMaxThreadsPerMultiprocessor(

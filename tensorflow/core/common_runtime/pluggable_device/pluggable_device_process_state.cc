@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_process_state.h"
 
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
 
 namespace tensorflow {
 
@@ -82,8 +84,8 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceAllocator(
   const string& allocator_type = options.allocator_type();
   se::Platform* platform = PluggableDeviceMachineManager(platform_name_);
   mutex_lock lock(mu_);
-  se::DeviceIdUtil::CheckValidTfDeviceId(DeviceType(device_type_), platform,
-                                         tf_device_id);
+  tsl::CheckValidTfDeviceId(DeviceType(device_type_),
+                            platform->VisibleDeviceCount(), tf_device_id);
 
   if (tf_device_id.value() >=
       static_cast<int64_t>(pluggable_device_allocators_.size())) {
@@ -192,8 +194,7 @@ Allocator* PluggableDeviceProcessState::GetPluggableDeviceHostAllocator(
                                         1LL << 17 /*128GB max by default*/,
                                         &pluggable_device_host_mem_limit_in_mb);
     if (!status.ok()) {
-      LOG(ERROR) << "GetPluggableDeviceHostAllocator: "
-                 << status.error_message();
+      LOG(ERROR) << "GetPluggableDeviceHostAllocator: " << status.message();
     }
     int64_t pluggable_device_host_mem_limit =
         pluggable_device_host_mem_limit_in_mb << 20;

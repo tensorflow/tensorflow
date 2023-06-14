@@ -79,32 +79,12 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4) {
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 20, 30, 10, 4}),
                                        m::Reshape(m::Parameter(1))
-                                           .WithShape(S8, {2, 2, 10, 4, 44})))
+                                           .WithShape(S8, {2, 2, 10, 4, 44}))
+                             .WithConvDnums("b01f?_01i?o->b01f?"))
                          .WithShape(S8, {10, 20, 30, 11, 4})),
           m::Op())));
 
   EXPECT_EQ(conv->raw_backend_config_string(), "{bar: 0}");
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.input_feature_dimension(), 3);
-
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 0);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 1);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 2);
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 4);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.output_feature_dimension(), 3);
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4UnsupportedFilterType) {
@@ -154,30 +134,10 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeTo4NCHW) {
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {10, 12, 4, 20, 30}),
                                        m::Reshape(m::Parameter(1))
-                                           .WithShape(S8, {12, 4, 44, 2, 2})))
+                                           .WithShape(S8, {12, 4, 44, 2, 2}))
+                             .WithConvDnums("bf?01_i?o01->bf?01"))
                          .WithShape(S8, {10, 11, 4, 20, 30})),
           m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 4);
-
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 4);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_feature_dimension(), 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 4);
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, IncrementAllDnums) {
@@ -207,30 +167,10 @@ TEST_F(CudnnVectorizeConvolutionsTest, IncrementAllDnums) {
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {4, 4, 16, 16, 16}),
                                        m::Reshape(m::Parameter(1))
-                                           .WithShape(S8, {4, 4, 16, 3, 3})))
+                                           .WithShape(S8, {4, 4, 16, 3, 3}))
+                             .WithConvDnums("f?b01_i?01o->f?b01"))
                          .WithShape(S8, {4, 4, 16, 16, 16})),
           m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_feature_dimension(), 0);
-  EXPECT_EQ(dnums.input_batch_dimension(), 2);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 4);
-
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 3);
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 4);
-
-  EXPECT_EQ(dnums.output_feature_dimension(), 0);
-  EXPECT_EQ(dnums.output_batch_dimension(), 2);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 4);
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, FilterDnums) {
@@ -260,30 +200,10 @@ TEST_F(CudnnVectorizeConvolutionsTest, FilterDnums) {
                                        m::Reshape(m::Parameter(0))
                                            .WithShape(S8, {1, 5, 4, 9, 9}),
                                        m::Reshape(m::Parameter(1))
-                                           .WithShape(S8, {3, 3, 5, 4, 32})))
+                                           .WithShape(S8, {3, 3, 5, 4, 32}))
+                             .WithConvDnums("bf?01_01i?o->bf?01"))
                          .WithShape(S8, {1, 8, 4, 9, 9})),
           m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 4);
-
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 0);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 1);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 2);
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 4);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_feature_dimension(), 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 3);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 4);
 }
 
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo4) {
@@ -444,6 +364,58 @@ TEST_F(CudnnVectorizeConvolutionsTest, BiasAndSideInput) {
                   ->reordered_int8_nchw_vect());
 }
 
+TEST_F(CudnnVectorizeConvolutionsTest, InputNHWC_OutputNCHW) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+  HloModule TestModule
+
+  ENTRY TestComputation {
+    input = s8[10,20,30,64] parameter(0)
+    filter = s8[2,2,64,128] parameter(1)
+    bias = f32[128] parameter(2)
+    side_input = s8[10,128,20,30] parameter(3)
+
+    ROOT result = (s8[10,128,20,30], u8[0]) custom-call(input, filter, bias, side_input),
+                  window={size=2x2}, dim_labels=b01f_01io->bf01,
+                  custom_call_target="__cudnn$convForward"
+  })")
+                    .value();
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, Run({7, 5}, module.get()));
+  EXPECT_TRUE(changed);
+
+  SCOPED_TRACE(module->ToString());
+  auto* root = module->entry_computation()->root_instruction();
+
+  const HloInstruction* conv = nullptr;
+  ASSERT_THAT(
+      root,
+      GmockMatch(m::Tuple(
+          m::Reshape(
+              m::GetTupleElement(
+                  m::CustomCall(
+                      &conv, {kCudnnConvForwardCallTarget},
+                      m::Reshape(m::Parameter(0))
+                          .WithShape(S8, {10, 20, 30, 2, 32}),
+                      m::Reshape(m::Transpose(m::Reshape(m::Parameter(1))))
+                          .WithShape(S8, {128, 2, 2, 2, 32}),
+                      m::Reshape(
+                          m::Transpose(m::Reshape(m::Parameter(2))
+                                           .WithShape(F32, {4, 4, 2, 4}))
+                              .WithShape(F32, {4, 2, 4, 4})
+                              .WithPredicate([](const HloInstruction* instr) {
+                                return absl::c_equal(
+                                    instr->dimensions(),
+                                    std::vector<int64_t>{0, 2, 1, 3});
+                              }))
+                          .WithShape(F32, {128}),
+                      m::Reshape(m::Parameter(3))
+                          .WithShape(S8, {10, 4, 32, 20, 30})))
+                  .WithShape(S8, {10, 4, 32, 20, 30})),
+          m::Op())));
+
+  EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
+                  ->reordered_int8_nchw_vect());
+}
+
 TEST_F(CudnnVectorizeConvolutionsTest, NoVectorizeTo32) {
   auto module = ParseAndReturnVerifiedModule(R"(
   HloModule TestModule
@@ -522,7 +494,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
               m::Reshape(m::Transpose(m::Reshape(m::Parameter(3))
                                           .WithShape(S8, {10, 20, 30, 2, 8, 4}))
                              .WithShape(S8, {10, 20, 30, 2, 8, 4}))
-                  .WithShape(S8, {10, 20, 30, 2, 32})))
+                  .WithShape(S8, {10, 20, 30, 2, 32}))
+              .WithConvDnums("b01f?_oi01?->b01f?"))
           .WithShape(S8, {10, 20, 30, 6, 32});
   ASSERT_THAT(root, GmockMatch(m::Tuple(
                         m::Reshape(m::Transpose(m::Reshape(conv_pat).WithShape(
@@ -530,27 +503,6 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32) {
                                        .WithShape(S8, {10, 20, 30, 6, 8, 4}))
                             .WithShape(S8, {10, 20, 30, 48, 4}),
                         m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.input_feature_dimension(), 3);
-
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 3);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.output_feature_dimension(), 3);
 
   EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
                   ->reordered_int8_nchw_vect());
@@ -599,7 +551,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
               m::Reshape(m::Transpose(m::Reshape(m::Parameter(3))
                                           .WithShape(S8, {10, 2, 8, 20, 30, 4}))
                              .WithShape(S8, {10, 2, 20, 30, 8, 4}))
-                  .WithShape(S8, {10, 2, 20, 30, 32})))
+                  .WithShape(S8, {10, 2, 20, 30, 32}))
+              .WithConvDnums("bf01_oi01->bf01"))
           .WithShape(S8, {10, 4, 20, 30, 32});
   ASSERT_THAT(root, GmockMatch(m::Tuple(
                         m::Reshape(m::Transpose(m::Reshape(conv_pat).WithShape(
@@ -607,27 +560,6 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32NCHW) {
                                        .WithShape(S8, {10, 4, 8, 20, 30, 4}))
                             .WithShape(S8, {10, 32, 20, 30, 4}),
                         m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 3);
-
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 3);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_feature_dimension(), 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 3);
 
   EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
                   ->reordered_int8_nchw_vect());
@@ -676,7 +608,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
               m::Reshape(m::Transpose(m::Reshape(m::Parameter(3))
                                           .WithShape(S8, {4, 10, 20, 30, 2, 8}))
                              .WithShape(S8, {8, 4, 10, 20, 30, 2}))
-                  .WithShape(S8, {32, 10, 20, 30, 2})))
+                  .WithShape(S8, {32, 10, 20, 30, 2}))
+              .WithConvDnums("?b01f_oi01->?b01f"))
           .WithShape(S8, {32, 10, 20, 30, 6});
   ASSERT_THAT(root, GmockMatch(m::Tuple(
                         m::Reshape(m::Transpose(m::Reshape(conv_pat).WithShape(
@@ -684,27 +617,6 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize4To32VectorDimFirst) {
                                        .WithShape(S8, {4, 10, 20, 30, 6, 8}))
                             .WithShape(S8, {4, 10, 20, 30, 48}),
                         m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-  ASSERT_EQ(dnums.input_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.kernel_spatial_dimensions().size(), 2);
-  ASSERT_EQ(dnums.output_spatial_dimensions().size(), 2);
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 3);
-  EXPECT_EQ(dnums.input_feature_dimension(), 4);
-
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 3);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 3);
-  EXPECT_EQ(dnums.output_feature_dimension(), 4);
 
   EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
                   ->reordered_int8_nchw_vect());
@@ -766,7 +678,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize16To32) {
                   m::Transpose(m::Reshape(filter_pat)
                                    .WithShape(S8, {3, 5, 2, 24, 4, 2, 8, 4}))
                       .WithShape(S8, {2, 3, 5, 24, 2, 8, 4, 4}))
-                  .WithShape(S8, {192, 2, 3, 5, 32})))
+                  .WithShape(S8, {192, 2, 3, 5, 32}))
+              .WithConvDnums("b01f_oi01->b01f"))
           .WithShape(S8, {10, 20, 30, 6, 32});
   ASSERT_THAT(root, GmockMatch(m::Tuple(
                         m::Reshape(m::Transpose(m::Reshape(conv_pat).WithShape(
@@ -774,25 +687,6 @@ TEST_F(CudnnVectorizeConvolutionsTest, Vectorize16To32) {
                                        .WithShape(S8, {10, 20, 30, 6, 2, 16}))
                             .WithShape(S8, {10, 20, 30, 12, 16}),
                         m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.input_feature_dimension(), 3);
-
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 3);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.output_feature_dimension(), 3);
-
   EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
                   ->reordered_int8_nchw_vect());
 }
@@ -828,7 +722,8 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeMixedTo32) {
                   m::Transpose(m::Reshape(m::Parameter(1))
                                    .WithShape(S8, {3, 5, 2, 24, 4, 2, 8, 4}))
                       .WithShape(S8, {2, 3, 5, 24, 2, 8, 4, 4}))
-                  .WithShape(S8, {192, 2, 3, 5, 32})))
+                  .WithShape(S8, {192, 2, 3, 5, 32}))
+              .WithConvDnums("b01f_oi01->b01f"))
           .WithShape(S8, {10, 20, 30, 6, 32});
   ASSERT_THAT(root, GmockMatch(m::Tuple(
                         m::Reshape(m::Transpose(m::Reshape(conv_pat).WithShape(
@@ -836,25 +731,6 @@ TEST_F(CudnnVectorizeConvolutionsTest, VectorizeMixedTo32) {
                                        .WithShape(S8, {10, 20, 30, 6, 16, 2}))
                             .WithShape(S8, {10, 20, 30, 96, 2}),
                         m::Op())));
-
-  const ConvolutionDimensionNumbers& dnums =
-      conv->convolution_dimension_numbers();
-
-  EXPECT_EQ(dnums.input_batch_dimension(), 0);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.input_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.input_feature_dimension(), 3);
-
-  EXPECT_EQ(dnums.kernel_output_feature_dimension(), 0);
-  EXPECT_EQ(dnums.kernel_input_feature_dimension(), 1);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[0], 2);
-  EXPECT_EQ(dnums.kernel_spatial_dimensions()[1], 3);
-
-  EXPECT_EQ(dnums.output_batch_dimension(), 0);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[0], 1);
-  EXPECT_EQ(dnums.output_spatial_dimensions()[1], 2);
-  EXPECT_EQ(dnums.output_feature_dimension(), 3);
-
   EXPECT_TRUE(conv->backend_config<CudnnConvBackendConfig>()
                   ->reordered_int8_nchw_vect());
 }

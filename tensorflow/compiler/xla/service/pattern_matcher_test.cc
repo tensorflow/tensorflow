@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/tsl/platform/test.h"
@@ -893,8 +894,7 @@ TEST_F(PatternMatcherTest, HloInstructionDescribeToAndExplain) {
       "in a = s32[] add(s32[] c, s32[] c)");
 
   EXPECT_DESC_AND_EXPLANATION(
-      constant,
-      m::Op().WithPredicate([](const HloInstruction*) { return false; }),
+      constant, m::Op().WithPredicate(HloPredicateFalse),
       "an HloInstruction which matches a user-specified predicate",
       "HloInstruction does not match user-specified predicate\n"
       "in c = s32[] constant(0)");
@@ -918,7 +918,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
       "    - an HloInstruction named \"b\"\n"
       "    - an HloInstruction named \"bar\"",
       "HloInstruction's operands (ignoring order) did not match second "
-      "matcher.  Specifically,\n"
+      "matcher. Specifically,\n"
       " - an HloInstruction named \"bar\"\n"
       "does not match LHS:\n"
       " - HloInstruction not named \"bar\"\n"
@@ -942,7 +942,7 @@ TEST_F(PatternMatcherTest, HloInstructionMatcherAnyOrderDescribeTo) {
       " * with two operands in either order:\n"
       "    - an HloInstruction which is a constant scalar\n"
       "    - an HloInstruction with opcode constant",
-      "HloInstruction's LHS operand did not match either of the two matchers.  "
+      "HloInstruction's LHS operand did not match either of the two matchers. "
       "Specifically,\n"
       " - an HloInstruction which is a constant scalar\n"
       "does not match LHS:\n"
@@ -1210,6 +1210,38 @@ TEST_F(PatternMatcherTest, Comparison) {
       "HloInstruction is not comparison NE\n"
       "in compare = f32[1]{0} compare(f32[1]{0} param.0, f32[1]{0} param.1), "
       "direction=EQ");
+}
+
+TEST_F(PatternMatcherTest, ConvDnums) {
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers dnums,
+                          ParseConvolutionDimensionNumbers("bf01_oi01->bf01"));
+  auto param =
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0");
+  auto op = HloInstruction::CreateCustomCall(ShapeUtil::MakeShape(F32, {}),
+                                             /*operands=*/{},
+                                             /*custom_call_target=*/"foo");
+  op->set_convolution_dimension_numbers(dnums);
+
+  EXPECT_TRUE(Match(op.get(), m::CustomCall().WithConvDnums(dnums)));
+  EXPECT_TRUE(
+      Match(op.get(), m::CustomCall().WithConvDnums("bf01_oi01->bf01")));
+  TF_ASSERT_OK_AND_ASSIGN(ConvolutionDimensionNumbers different_dnums,
+                          ParseConvolutionDimensionNumbers("b01f_oi01->bf01"));
+  EXPECT_FALSE(Match(op.get(), m::CustomCall().WithConvDnums(different_dnums)));
+  EXPECT_FALSE(
+      Match(op.get(), m::CustomCall().WithConvDnums("b01f_oi01->bf01")));
+  EXPECT_FALSE(
+      Match(param.get(), m::CustomCall().WithConvDnums("b01f_oi01->bf01")));
+
+  EXPECT_DESC_AND_EXPLANATION(
+      op.get(), m::CustomCall().WithConvDnums("b01f_oi01->bf01"),
+      "an HloInstruction:\n"
+      " * with opcode custom-call AND\n"
+      " * which has convolution dimension numbers b01f_oi01->bf01",
+      "convolution_dimension_numbers bf01_oi01->bf01 don't match expected "
+      "b01f_oi01->bf01\n"
+      "in custom-call = f32[] custom-call(), dim_labels=bf01_oi01->bf01, "
+      "custom_call_target=\"foo\"");
 }
 
 TEST_F(PatternMatcherTest, CustomCallMatchers) {

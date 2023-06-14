@@ -208,7 +208,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
 
 std::string HloModuleGroupUtil::CycleToString(
     HloInstruction* init_instruction) {
-  std::vector<std::string> names;
+  std::vector<absl::string_view> names;
   absl::flat_hash_set<HloInstruction*> seen;
 
   std::function<bool(HloInstruction*)> helper =

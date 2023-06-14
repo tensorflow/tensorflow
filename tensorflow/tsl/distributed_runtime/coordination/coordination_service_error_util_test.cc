@@ -31,7 +31,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithEmptyPayload) {
   Status coordination_error = MakeCoordinationError(error);
 
   EXPECT_EQ(coordination_error.code(), error.code());
-  EXPECT_EQ(coordination_error.error_message(), error.error_message());
+  EXPECT_EQ(coordination_error.message(), error.message());
   // Payload exists but has no value.
   EXPECT_EQ(
       coordination_error.GetPayload(CoordinationErrorPayloadKey()).value(), "");
@@ -46,7 +46,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithErrorOrigin) {
   Status coordination_error = MakeCoordinationError(error, source_task);
 
   EXPECT_EQ(coordination_error.code(), error.code());
-  EXPECT_EQ(coordination_error.error_message(), error.error_message());
+  EXPECT_EQ(coordination_error.message(), error.message());
   CoordinationServiceError payload;
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
@@ -66,7 +66,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithUserReportedError) {
                                                     /*is_reported_error=*/true);
 
   EXPECT_EQ(coordination_error.code(), error.code());
-  EXPECT_EQ(coordination_error.error_message(), error.error_message());
+  EXPECT_EQ(coordination_error.message(), error.message());
   CoordinationServiceError payload;
   // Explicit string conversion for open source builds.
   payload.ParseFromString(std::string(
@@ -87,7 +87,7 @@ TEST(CoordinationServiceErrorUtil, MakeCoordinationErrorWithPayload) {
   Status coordination_error = MakeCoordinationError(error, payload);
 
   EXPECT_EQ(coordination_error.code(), error.code());
-  EXPECT_EQ(coordination_error.error_message(), error.error_message());
+  EXPECT_EQ(coordination_error.message(), error.message());
   CoordinationServiceError actual_payload;
   // Explicit string conversion for open source builds.
   actual_payload.ParseFromString(std::string(

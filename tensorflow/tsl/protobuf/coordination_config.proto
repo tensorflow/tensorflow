@@ -56,4 +56,9 @@ message CoordinationServiceConfig {
   // If empty, no jobs will be recoverable and every task failure will cause
   // error propagation to other tasks.
   repeated string recoverable_jobs = 9;
+
+  // If a task restarts with a new incarnation, we may allow it to reconnect
+  // silently. This is useful when we know that a task can immediately resume
+  // work upon re-connecting to the service.
+  bool allow_new_incarnation_to_reconnect = 11;
 }

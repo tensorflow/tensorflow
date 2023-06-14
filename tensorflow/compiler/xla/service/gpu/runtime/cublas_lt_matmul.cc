@@ -15,7 +15,6 @@ limitations under the License.1
 
 #include "tensorflow/compiler/xla/service/gpu/runtime/cublas_lt_matmul.h"
 
-#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -95,22 +94,21 @@ static absl::Status CublasLtMatmulImpl(
   se::Stream* stream = run_options->stream();
 
   // Find the gemm config for this instance of matmul.
-  absl::StatusOr<GemmConfig*> config = gemm_config.GetOrCreate([&] {
+  TF_ASSIGN_OR_RETURN(GemmConfig * config, gemm_config.GetOrCreate([&] {
     return ToAbsl(GetGemmConfig(
         a, b, c, algorithm, alpha_real, alpha_imag, beta, dot_dims.lhs_batch,
         dot_dims.lhs_contract, dot_dims.rhs_batch, dot_dims.rhs_contract,
         precision.empty() ? se::blas::kDefaultComputePrecision
                           : *absl::c_max_element(precision)));
-  });
-  if (!config.ok()) return config.status();
+  }));
 
   // Get the matmul plan for this instance of matmul.
-  absl::StatusOr<cublas_lt::MatmulPlan*> plan = matmul_plan.GetOrCreate(
-      [&] { return ToAbsl(cublas_lt::MatmulPlan::From(**config, epilogue)); });
-  if (!plan.ok()) return plan.status();
+  TF_ASSIGN_OR_RETURN(
+      cublas_lt::MatmulPlan * plan, matmul_plan.GetOrCreate([&] {
+        return ToAbsl(cublas_lt::MatmulPlan::From(*config, epilogue));
+      }));
 
-  auto algos = (*plan)->GetAlgorithms(stream);
-  if (!algos.ok()) return ToAbslStatus(algos.status());
+  TF_ASSIGN_OR_RETURN(auto algos, plan->GetAlgorithms(stream));
 
   se::DeviceMemoryBase a_data = GetDeviceAddress(a);
   se::DeviceMemoryBase b_data = GetDeviceAddress(b);
@@ -135,13 +133,10 @@ static absl::Status CublasLtMatmulImpl(
   se::OwningScratchAllocator<> scratch_allocator(
       stream->parent()->device_ordinal(), stream->parent()->GetAllocator());
 
-  auto st = (*plan)->ExecuteOnStream(
-      stream, a_data, b_data, c_data, d_data, bias_data, aux_data, a_scale_data,
-      b_scale_data, c_scale_data, d_scale_data, d_amax_data,
-      (*algos)[algorithm], scratch_allocator);
-  if (!st.ok()) return ToAbslStatus(st);
-
-  return absl::OkStatus();
+  return plan->ExecuteOnStream(stream, a_data, b_data, c_data, d_data,
+                               bias_data, aux_data, a_scale_data, b_scale_data,
+                               c_scale_data, d_scale_data, d_amax_data,
+                               algos[algorithm], scratch_allocator);
 }
 
 //===----------------------------------------------------------------------===//

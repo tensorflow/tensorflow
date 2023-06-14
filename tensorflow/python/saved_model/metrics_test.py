@@ -20,6 +20,8 @@ API calls.
 
 import os
 
+from google.protobuf import json_format
+
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -73,22 +75,21 @@ class MetricsTests(test.TestCase):
     self.assertEqual(metrics.GetWrite(write_version="1"), write_count + 1)
 
   def test_load_v2(self):
+    save_dir = self._create_save_v2_model()
+
     read_count = metrics.GetRead(write_version="2")
     load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
-
-    save_dir = self._create_save_v2_model()
     load.load(save_dir)
 
     self.assertEqual(metrics.GetReadApi(load._LOAD_V2_LABEL), load_v2_count + 1)
     self.assertEqual(metrics.GetRead(write_version="2"), read_count + 1)
 
   def test_load_v1_in_v2(self):
+    save_dir = self._create_save_v1_model()
     read_v1_count = metrics.GetRead(write_version="1")
     read_v2_count = metrics.GetRead(write_version="2")
     load_v2_count = metrics.GetReadApi(load._LOAD_V2_LABEL)
     load_v1_v2_count = metrics.GetReadApi(load_v1_in_v2._LOAD_V1_V2_LABEL)
-
-    save_dir = self._create_save_v1_model()
     load.load(save_dir)
 
     # Check that `load_v2` was *not* incremented.
@@ -101,9 +102,10 @@ class MetricsTests(test.TestCase):
     self.assertEqual(metrics.GetRead(write_version="1"), read_v1_count + 1)
 
   def test_loader_v1(self):
-    read_count = metrics.GetRead(write_version="1")
     ops.disable_eager_execution()
     save_dir = self._create_save_v1_model()
+
+    read_count = metrics.GetRead(write_version="1")
     loader = loader_impl.SavedModelLoader(save_dir)
     with self.session(graph=ops.Graph()) as sess:
       loader.load(sess, ["foo"])
@@ -115,19 +117,19 @@ class MetricsTests(test.TestCase):
   def test_save_sets_write_fingerprint_metric(self):
     exported_dir = self._create_save_v2_model()
     fingerprint = fingerprinting.read_fingerprint(exported_dir)
-
-    self.assertEqual(
-        metrics.GetWriteFingerprint(),
-        str(fingerprint.saved_model_checksum))
+    fingerprint_metric = fingerprinting.Fingerprint.from_proto(
+        json_format.Parse(metrics.GetWriteFingerprint(),
+                          fingerprinting.fingerprint_pb2.FingerprintDef()))
+    self.assertEqual(fingerprint, fingerprint_metric)
 
   def test_load_sets_read_fingerprint_metric(self):
     exported_dir = self._create_save_v2_model()
     load.load(exported_dir)
     fingerprint = fingerprinting.read_fingerprint(exported_dir)
-
-    self.assertEqual(
-        metrics.GetWriteFingerprint(),
-        str(fingerprint.saved_model_checksum))
+    fingerprint_metric = fingerprinting.Fingerprint.from_proto(
+        json_format.Parse(metrics.GetReadFingerprint(),
+                          fingerprinting.fingerprint_pb2.FingerprintDef()))
+    self.assertEqual(fingerprint, fingerprint_metric)
 
   def test_save_sets_write_path_metric(self):
     exported_dir = self._create_save_v2_model()
@@ -139,6 +141,21 @@ class MetricsTests(test.TestCase):
     load.load(exported_dir)
 
     self.assertEqual(metrics.GetReadPath(), exported_dir)
+
+  def test_save_sets_write_path_and_singleprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    singleprint = fingerprint.singleprint()
+    path_and_singleprint_metric = metrics.GetWritePathAndSingleprint()
+    self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
+
+  def test_save_sets_read_path_and_singleprint_metric(self):
+    exported_dir = self._create_save_v2_model()
+    load.load(exported_dir)
+    fingerprint = fingerprinting.read_fingerprint(exported_dir)
+    singleprint = fingerprint.singleprint()
+    path_and_singleprint_metric = metrics.GetReadPathAndSingleprint()
+    self.assertEqual(path_and_singleprint_metric, (exported_dir, singleprint))
 
 
 if __name__ == "__main__":

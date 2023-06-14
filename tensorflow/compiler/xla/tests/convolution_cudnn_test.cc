@@ -42,6 +42,16 @@ ENTRY TestComputation {
 }
 
 XLA_TEST_F(ConvolutionHloTest, TestCudnnConvInt8x32Bias) {
+  // cudnnConvolutionBiasActivationForward() for int8 is only supported on GPUs
+  // with compute capability 6.1 or later.
+  if (!backend()
+           .default_stream_executor()
+           ->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeast(6, 1)) {
+    return;
+  }
+
   // This convolution with the following add/relu ops should be transformed to
   // "cudnn-conv-bias-activation" and vectorized as INT8x32_CONFIG on GPUs.
   // In order to verify this with non-zero bias and without adding test-specific

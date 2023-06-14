@@ -21,6 +21,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>
 #include <vector>
 
@@ -261,11 +262,14 @@ template <typename FTy>
 Value materializePolynomialApproximation(ConversionPatternRewriter &rewriter,
                                          Location loc, Value x,
                                          ArrayRef<FTy> coefficients) {
-  Value poly = chlo::getConstantLike(rewriter, loc, 0.0, x);
-  for (FTy c : coefficients) {
+  if (coefficients.empty()) return chlo::getConstantLike(rewriter, loc, 0.0, x);
+
+  Value poly = chlo::getConstantLike(rewriter, loc, coefficients[0], x);
+  for (size_t i = 1; i < coefficients.size(); ++i) {
     poly = rewriter.create<mhlo::MulOp>(loc, x.getType(), poly, x);
     poly = rewriter.create<mhlo::AddOp>(
-        loc, x.getType(), poly, chlo::getConstantLike(rewriter, loc, c, x));
+        loc, x.getType(), poly,
+        chlo::getConstantLike(rewriter, loc, coefficients[i], x));
   }
   return poly;
 }
@@ -553,7 +557,10 @@ Value materializeErfApproximationF32(ConversionPatternRewriter &rewriter,
   Value betaPoly = materializePolynomialApproximation(rewriter, loc, xSq,
                                                       llvm::ArrayRef(kBeta));
   Value xMulAlphaPoly = rewriter.create<mhlo::MulOp>(loc, x, alphaPoly);
-  return rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value erf = rewriter.create<mhlo::DivOp>(loc, xMulAlphaPoly, betaPoly);
+  Value lbErf = chlo::getConstantLike(rewriter, loc, -1.0, x);
+  Value ubErf = chlo::getConstantLike(rewriter, loc, 1.0, x);
+  return rewriter.create<mhlo::ClampOp>(loc, erf.getType(), lbErf, erf, ubErf);
 }
 
 Value materializeErfcApproximationF32(ConversionPatternRewriter &rewriter,
@@ -1545,24 +1552,61 @@ struct ConvertSinhOp : public OpConversionPattern<SinhOp> {
 //                           strides = dense<1> : tensor<2xi64>} :
 //                              (tensor<16x16xf32>) -> tensor<16x8xf32>
 // %6 = "mhlo.slice"(%4) ...
+//
+// TODO(b/284078162): Decide what to do with this pattern given that we now
+// have mhlo::TopKOp. No action needed for now given that mhlo::TopKOp is
+// currently categorized as `hasPrivateFeaturesNotInStablehlo`.
 struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
   using OpConversionPattern<TopKOp>::OpConversionPattern;
   LogicalResult matchAndRewrite(
       TopKOp op, OpAdaptor /*adaptor*/,
       ConversionPatternRewriter &rewriter) const override {
-    // The last dimension of the operand's shape should be known so we can have
-    // clamped end_indices for slices. This is verified by the op.
-    auto operandType = op.getOperand().getType().cast<RankedTensorType>();
+    auto operandType = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    if (!operandType) return failure();
     int64_t operandRank = operandType.getRank();
     int64_t lastDimIndex = operandRank - 1;
     int64_t lastDimSize = operandType.getDimSize(lastDimIndex);
-    assert(lastDimSize != ShapedType::kDynamic);
+    int64_t lastDimResultSize =
+        hlo::isDynamicDimSize(lastDimSize)
+            ? static_cast<int64_t>(op.getK())
+            : std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+    int64_t isDynamic = !operandType.hasStaticShape();
+    auto i32Type = rewriter.getIntegerType(32);
+    Value opShapeValue, resultShapeValue;
+    if (isDynamic) {
+      SmallVector<Value> sizesI32x1;
+      for (auto i = 0; i < operandType.getRank(); ++i) {
+        auto sizeI32 = rewriter.create<mhlo::GetDimensionSizeOp>(
+            op.getLoc(), op.getOperand(), i);
+        auto sizeI32x1 = rewriter.create<mhlo::ReshapeOp>(
+            op.getLoc(), RankedTensorType::get({1}, i32Type), sizeI32);
+        sizesI32x1.push_back(sizeI32x1);
+      }
+      opShapeValue =
+          rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
+                                               /*dimension=*/0);
+      auto lastDimI32 = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(),
+          rewriter.getI32IntegerAttr(static_cast<int32_t>(lastDimResultSize)));
+      auto lastDimI32x1 = rewriter.create<mhlo::ReshapeOp>(
+          op.getLoc(), RankedTensorType::get({1}, i32Type), lastDimI32);
+      sizesI32x1.back() = lastDimI32x1;
+      resultShapeValue =
+          rewriter.create<mhlo::ConcatenateOp>(op.getLoc(), sizesI32x1,
+                                               /*dimension=*/0);
+    }
 
     // Create an Iota op for indices.
-    auto i32Type = rewriter.getIntegerType(32);
     Type iotaType = RankedTensorType::get(operandType.getShape(), i32Type);
-    Value iotaOp = rewriter.create<mhlo::IotaOp>(
-        op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+    Value iotaOp;
+    if (isDynamic) {
+      iotaOp = rewriter.create<mhlo::DynamicIotaOp>(
+          op.getLoc(), iotaType, opShapeValue,
+          rewriter.getI64IntegerAttr(lastDimIndex));
+    } else {
+      iotaOp = rewriter.create<mhlo::IotaOp>(
+          op.getLoc(), iotaType, rewriter.getI64IntegerAttr(lastDimIndex));
+    }
 
     // Create the sort op. It takes two inputs, one for the original input, the
     // other for the indices. Use TOTALORDER comparison type instead of the
@@ -1580,21 +1624,46 @@ struct ConvertTopKOp : public OpConversionPattern<TopKOp> {
 
     SmallVector<int64_t, 4> beginIndices(operandRank, 0);
     auto endIndices = llvm::to_vector<4>(operandType.getShape());
-    endIndices.back() = std::min(static_cast<int64_t>(op.getK()), lastDimSize);
+    endIndices.back() = lastDimResultSize;
     SmallVector<int64_t, 4> strides(operandRank, 1);
 
     // Get the slice for the top K elements.
     auto indicesTy = RankedTensorType::get(operandRank, rewriter.getI64Type());
-    Value values = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tupleFirstElement,
-        DenseIntElementsAttr::get(indicesTy, beginIndices),
-        DenseIntElementsAttr::get(indicesTy, endIndices),
-        DenseIntElementsAttr::get(indicesTy, strides));
-    Value indices = rewriter.create<mhlo::SliceOp>(
-        op.getLoc(), tupleSecondElement,
-        DenseIntElementsAttr::get(indicesTy, beginIndices),
-        DenseIntElementsAttr::get(indicesTy, endIndices),
-        DenseIntElementsAttr::get(indicesTy, strides));
+    Value values, indices;
+    if (isDynamic) {
+      Value startIndices = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get(indicesTy, beginIndices));
+      Value lastIndices = rewriter.create<mhlo::ConvertOp>(
+          op.getLoc(), resultShapeValue, rewriter.getI64Type());
+      Value stridesOp = rewriter.create<mhlo::ConstantOp>(
+          op.getLoc(), DenseIntElementsAttr::get(indicesTy, strides));
+
+      SmallVector<int64_t, 4> resultShape =
+          llvm::to_vector<4>(operandType.getShape());
+      resultShape.back() = lastDimResultSize;
+      RankedTensorType resultType = RankedTensorType::get(
+          resultShape, elementType, operandType.getEncoding());
+      RankedTensorType indexResultType =
+          RankedTensorType::get(resultShape, i32Type);
+
+      values = rewriter.create<mhlo::RealDynamicSliceOp>(
+          op.getLoc(), resultType, tupleFirstElement, startIndices, lastIndices,
+          stridesOp);
+      indices = rewriter.create<mhlo::RealDynamicSliceOp>(
+          op.getLoc(), indexResultType, tupleSecondElement, startIndices,
+          lastIndices, stridesOp);
+    } else {
+      values = rewriter.create<mhlo::SliceOp>(
+          op.getLoc(), tupleFirstElement,
+          DenseIntElementsAttr::get(indicesTy, beginIndices),
+          DenseIntElementsAttr::get(indicesTy, endIndices),
+          DenseIntElementsAttr::get(indicesTy, strides));
+      indices = rewriter.create<mhlo::SliceOp>(
+          op.getLoc(), tupleSecondElement,
+          DenseIntElementsAttr::get(indicesTy, beginIndices),
+          DenseIntElementsAttr::get(indicesTy, endIndices),
+          DenseIntElementsAttr::get(indicesTy, strides));
+    }
 
     rewriter.replaceOp(op, {values, indices});
     return success();

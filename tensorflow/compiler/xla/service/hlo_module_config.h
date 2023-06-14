@@ -185,8 +185,7 @@ class HloModuleConfig {
       // TODO(yuemmawang) Remove this warning once auto sharding is thoroughly
       // tested with fleetwide models.
       LOG(WARNING) << "Warning: Using auto_spmd_partitioning. It is "
-                      "experimental and may "
-                      "contain bugs!";
+                      "experimental and may contain bugs!";
       LOG(INFO) << "Overwriting use_spmd_partitioning to true, because "
                    "use_auto_spmd_partitioning is true.";
       set_use_spmd_partitioning(true);

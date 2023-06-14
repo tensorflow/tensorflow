@@ -19,7 +19,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util
@@ -273,7 +273,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         lambda _: array_ops.identity(value_on_replica))
 
     def replica_fn(per_replica_value):
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       local_value = array_ops.identity(per_replica_value)
       return ctx.all_gather(local_value, axis=axis)
 
@@ -345,7 +345,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def replica_fn(per_replica_value):
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(array_ops.identity(per_replica_value), axis=axis)
 
     result = strategy.experimental_local_results(
@@ -372,7 +372,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def run(value):
       value_identity = array_ops.identity(value)
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(value_identity, axis=0)
 
     if not pure_eager:
@@ -400,7 +400,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def run(value):
       value_identity = array_ops.identity(value)
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(value_identity, axis=1)
 
     if not pure_eager:
@@ -439,7 +439,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     def run(value):
       value_1 = array_ops.identity(value)
       value_3 = array_ops.identity(value_2)
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather([value_1, value_3], axis=axis)
 
     if not pure_eager:
@@ -458,7 +458,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def run():
       value_identity = array_ops.identity(single_value)
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather([value_identity, value_identity], axis=axis)
 
     if not pure_eager:
@@ -494,7 +494,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def run(value):
       value_identity = array_ops.identity(value)
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(value_identity, axis=0)
 
     if not pure_eager:
@@ -517,7 +517,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
         values=[[1., 2.]], indices=[2], dense_shape=dense_shape)
 
     def replica_fn(value):
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(value, axis=0)
 
     with self.assertRaisesRegex(
@@ -546,7 +546,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def run(value):
       value_identity = array_ops.identity(value)
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(value_identity, axis=0)
 
     if not pure_eager:
@@ -584,7 +584,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def all_gather_fn(value):
       axis = 1
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(array_ops.identity(value), axis)
 
     gradient_comp = sum(range(1, strategy.num_replicas_in_sync + 1))
@@ -616,7 +616,7 @@ class GatherTest(test.TestCase, parameterized.TestCase):
 
     def all_gather_fn(value):
       axis = 1
-      ctx = ds_context.get_replica_context()
+      ctx = distribute_lib.get_replica_context()
       return ctx.all_gather(array_ops.identity(value), axis)
 
     gradient_comp = sum(range(1, strategy.num_replicas_in_sync + 1))

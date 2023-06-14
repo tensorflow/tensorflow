@@ -233,12 +233,14 @@ xla_cc_binary(
 xla_cc_test(
     name = "hlo_extractor_test",
     srcs = ["hlo_extractor_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_extractor",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/tsl/platform:test",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -256,19 +258,43 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "hlo_slicer_test",
+    srcs = ["hlo_slicer_test.cc"],
+    tags = ["nomsan"],
+    deps = [
+        ":hlo_slicer",
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "hlo_slicer",
+    srcs = ["hlo_slicer.cc"],
+    hdrs = ["hlo_slicer.h"],
+    deps = [
+        "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/service:call_graph",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log:check",
+    ],
+)
+
 xla_cc_binary(
     name = "interactive_graphviz",
     srcs = ["interactive_graphviz.cc"],
     deps = [
         ":hlo_extractor",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:cpu_plugin",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_runner",
         "//tensorflow/compiler/xla/service:local_service",
@@ -279,6 +305,9 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:subprocess",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([
@@ -293,6 +322,7 @@ xla_cc_test(
         "data/add.hlo",
         ":interactive_graphviz",
     ],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:subprocess",
@@ -325,6 +355,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_module_loader_test",
     srcs = ["hlo_module_loader_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_module_loader",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -405,7 +436,6 @@ xla_cc_binary(
     ],
     deps = [
         ":run_hlo_module_lib",
-        "@com_google_absl//absl/strings",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_runner",
@@ -417,6 +447,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/util:command_line_flags",
+        "@com_google_absl//absl/strings",
     ] + if_cuda_or_rocm([
         "//tensorflow/compiler/xla/service:gpu_plugin",
     ]) + if_cuda([
@@ -433,6 +464,7 @@ xla_cc_test(
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
     ],
+    tags = ["nomsan"],
     deps = [
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:subprocess",
@@ -461,6 +493,7 @@ cc_library(
 xla_cc_test(
     name = "hlo_control_flow_flattening_test",
     srcs = ["hlo_control_flow_flattening_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":hlo_control_flow_flattening",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",

@@ -62,6 +62,7 @@ constexpr int kDefaultHeartbeatTimeoutMs = 10 * 1000;  // 10 seconds
 constexpr int kServiceToClientTimeoutMs = 10 * 1000;   // 10 seconds
 constexpr size_t kOngoingBarriersSoftLimit = 20;
 constexpr char kHealthCheckThread[] = "CoordinationServiceHealthCheck";
+constexpr int kPendingTaskLogLimit = 20;
 
 std::string GetTaskName(absl::string_view job_name, int task_id) {
   return strings::StrCat("/job:", job_name, "/replica:", 0, "/task:", task_id);
@@ -232,6 +233,10 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
   const uint64_t service_incarnation_ = random::New64();
   const uint64_t heartbeat_timeout_ms_;
   const absl::Duration shutdown_barrier_timeout_;
+  // If a task restarts with a new incarnation, we may allow it to reconnect
+  // silently if configured. This is useful when we know that a task can
+  // immediately resume work upon re-connecting to the service.
+  bool allow_new_incarnation_to_reconnect_ = false;
   std::function<DeviceInfo(const DeviceInfo& devices)>
       post_aggregate_device_fn_;
 
@@ -348,7 +353,9 @@ CoordinationServiceStandaloneImpl::CoordinationServiceStandaloneImpl(
                    : kDefaultHeartbeatTimeoutMs;
       }()),
       shutdown_barrier_timeout_(
-          absl::Milliseconds(config.shutdown_barrier_timeout_in_ms())) {
+          absl::Milliseconds(config.shutdown_barrier_timeout_in_ms())),
+      allow_new_incarnation_to_reconnect_(
+          config.allow_new_incarnation_to_reconnect()) {
   recoverable_jobs_ = absl::flat_hash_set<std::string>(
       config.recoverable_jobs().cbegin(), config.recoverable_jobs().cend());
   for (const auto& job : config.coordinated_job_list()) {
@@ -434,9 +441,22 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             }
             // Pass these barriers with the time out error.
             for (const auto& [barrier_id, barrier] : expired_barriers) {
+              std::string pending_tasks;
+              int pending_task_count = 0;
+              for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
+                if (!at_barrier) {
+                  ++pending_task_count;
+                  if (pending_task_count <= kPendingTaskLogLimit) {
+                    absl::StrAppend(&pending_tasks, GetTaskName(task), "\n");
+                  } else {
+                    break;
+                  }
+                }
+              }
               const Status error =
                   MakeCoordinationError(errors::DeadlineExceeded(absl::StrCat(
-                      "Barrier timed out. Barrier_id: ", barrier_id)));
+                      "Barrier timed out. Barrier_id: ", barrier_id,
+                      ". Timed out task names:\n", pending_tasks)));
               PassBarrier(barrier_id, error, barrier);
             }
           }
@@ -515,12 +535,16 @@ Status CoordinationServiceStandaloneImpl::RegisterTask(
     const auto task_status = task_cluster_state->GetStatus();
 
     if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
-        (errors::IsUnavailable(task_status) &&
-         task_status.GetPayload(CoordinationErrorPayloadKey()))) {
-      // This task is currently disconnected (registering for the first time or
-      // has called ResetTask() previously), or being unavailable, e.g. due
-      // to preemption, but does not have chance to be reset. We should allow
-      // the connection.
+        (allow_new_incarnation_to_reconnect_ &&
+         (errors::IsUnavailable(task_status) &&
+          task_status.GetPayload(CoordinationErrorPayloadKey())))) {
+      // The task is allowed to register itself if:
+      // - this task is currently disconnected (registering for the first time
+      //   or has called ResetTask() previously).
+      // - this task has lost connection previously which caused it to have
+      //   an unavailable error state, but has now restarted (possibly with
+      //   a new incarnation). This is only allowed if configured with
+      //   `allow_new_incarnation_to_reconnect`.
       task_cluster_state->SetConnected(incarnation);
       LOG(INFO) << task_name
                 << " has connected to coordination service. Incarnation: "
@@ -674,7 +698,7 @@ CoordinationServiceStandaloneImpl::GetTaskState(
     }
     *state_info.mutable_task() = task;
     state_info.set_error_code(error.raw_code());
-    state_info.set_error_message(error.error_message());
+    state_info.set_error_message(std::string(error.message()));
     if (!error.ok()) {
       *state_info.mutable_error_payload()->mutable_source_task() = task;
       state_info.mutable_error_payload()->set_is_reported_error(false);
@@ -735,7 +759,7 @@ void CoordinationServiceStandaloneImpl::ReportServiceErrorToTaskAsync(
   auto request = std::make_shared<ReportErrorToTaskRequest>();
   auto response = std::make_shared<ReportErrorToTaskResponse>();
   request->set_error_code(error.raw_code());
-  request->set_error_message(error.error_message());
+  request->set_error_message(std::string(error.message()));
   CoordinatedTask* error_source =
       request->mutable_error_payload()->mutable_source_task();
   error_source->set_job_name("coordination_service");
@@ -767,7 +791,7 @@ void CoordinationServiceStandaloneImpl::PropagateError(
   assert(!error.ok());
   ReportErrorToTaskRequest request;
   request.set_error_code(error.raw_code());
-  request.set_error_message(error.error_message());
+  request.set_error_message(std::string(error.message()));
   CoordinationServiceError* payload = request.mutable_error_payload();
   *payload->mutable_source_task() = source_task;
   payload->set_is_reported_error(is_reported_by_task);

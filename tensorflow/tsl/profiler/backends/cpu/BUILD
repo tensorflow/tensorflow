@@ -1,3 +1,4 @@
+load("//tensorflow/tsl:tsl.bzl", "set_external_visibility")
 load("//tensorflow/tsl/platform:build_config_root.bzl", "if_static")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
@@ -9,16 +10,16 @@ cc_library(
     name = "traceme_recorder",
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/tsl/profiler:internal",
         "//tensorflow/tsl/profiler:xla_profiler_backends",
-    ],
+    ]),
     deps = [
-        "@com_google_absl//absl/container:flat_hash_map",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:mutex",
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ] + if_static([
         ":traceme_recorder_impl",
     ]),
@@ -31,13 +32,13 @@ cc_library(
     ],
     hdrs = ["traceme_recorder.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/python:__pkg__",
         "//tensorflow/tsl/platform/cloud:__pkg__",
         "//tensorflow/tsl/profiler:__pkg__",
         "//tensorflow/tsl/profiler:internal",
         "//tensorflow/tsl/profiler:xla_internal",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:logging",
@@ -75,13 +76,13 @@ cc_library(
     name = "annotation_stack",
     hdrs = ["annotation_stack.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     deps = [
-        "@com_google_absl//absl/strings",
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:types",
+        "@com_google_absl//absl/strings",
     ] + if_static([
         ":annotation_stack_impl",
     ]),
@@ -94,10 +95,10 @@ cc_library(
         "annotation_stack.h",
     ],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/compiler/xla:__subpackages__",
         "//tensorflow/tsl/profiler:internal",
-    ],
+    ]),
     deps = [
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:types",
@@ -111,10 +112,10 @@ cc_library(
     srcs = ["host_tracer_utils.cc"],
     hdrs = ["host_tracer_utils.h"],
     copts = tf_profiler_copts(),
-    visibility = [
+    visibility = set_external_visibility([
         "//tensorflow/tsl/profiler:internal",
         "//tensorflow/tsl/profiler:xla_internal",
-    ],
+    ]),
     deps = [
         ":traceme_recorder",
         "//tensorflow/tsl/platform:types",

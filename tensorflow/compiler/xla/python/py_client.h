@@ -33,7 +33,6 @@ limitations under the License.
 
 namespace xla {
 
-class PyBuffer;
 class PyClient;
 class PyLoadedExecutable;
 class PyArray;
@@ -60,7 +59,8 @@ struct PyArray_Storage;
 
 // A pair of a PyClient reference and an unowned pointer to T.
 template <typename T>
-struct ClientAndPtr {
+class ClientAndPtr {
+ public:
   ClientAndPtr() = default;
   // pybind11 requires that we define a constructor that takes a raw pointer,
   // but it should be unreachable.
@@ -73,12 +73,22 @@ struct ClientAndPtr {
   ClientAndPtr& operator=(const ClientAndPtr&) = default;
   ClientAndPtr& operator=(ClientAndPtr&&) = default;
 
-  std::shared_ptr<PyClient> client;
-  T* contents;
+  PyClient* get_client() const { return client_; }
 
-  T* get() const { return contents; }
-  T* operator->() const { return contents; }
-  T& operator*() const { return *contents; }
+  std::shared_ptr<PyClient> client() const {
+    return std::shared_ptr<PyClient>(contents_, client_);
+  }
+
+  T* get() const { return contents_.get(); }
+  T* operator->() const { return contents_.get(); }
+  T& operator*() const { return *contents_; }
+
+ private:
+  template <typename U>
+  friend ClientAndPtr<U> WrapWithClient(std::shared_ptr<PyClient> client,
+                                        U* contents);
+  std::shared_ptr<T> contents_;
+  PyClient* client_;
 };
 
 // By defining a templated helper function, we can use return type deduction
@@ -86,8 +96,8 @@ struct ClientAndPtr {
 template <typename T>
 ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyClient> client, T* contents) {
   ClientAndPtr<T> result;
-  result.client = std::move(client);
-  result.contents = contents;
+  result.client_ = client.get();
+  result.contents_ = std::shared_ptr<T>(std::move(client), contents);
   return result;
 }
 
@@ -144,7 +154,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   std::vector<ClientAndPtr<PjRtDevice>> Devices();
   std::vector<ClientAndPtr<PjRtDevice>> LocalDevices();
 
-  // Returns a vector of live PyBuffer objects. PyBuffer objects may share
+  // Returns a vector of live PyArray objects. PyArray objects may share
   // PjRtBuffers, so there may be duplicates of the same underlying device
   // buffer.
   std::vector<pybind11::object> LiveBuffers();
@@ -165,14 +175,6 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<std::vector<ClientAndPtr<PjRtDevice>>> GetDefaultDeviceAssignment1D(
       int num_replicas);
 
-  StatusOr<ChannelHandle> CreateChannelHandle() { return ChannelHandle(); }
-  StatusOr<ChannelHandle> CreateDeviceToHostChannelHandle() {
-    return ifrt_client_->CreateDeviceToHostChannelHandle();
-  }
-  StatusOr<ChannelHandle> CreateHostToDeviceChannelHandle() {
-    return ifrt_client_->CreateHostToDeviceChannelHandle();
-  }
-
   StatusOr<std::vector<std::pair<pybind11::bytes, pybind11::object>>>
   MakeCrossHostReceiveBuffers(absl::Span<const Shape> shapes,
                               PjRtDevice* device);
@@ -188,16 +190,8 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   StatusOr<pybind11::bytes> SerializeExecutable(
       const PyLoadedExecutable& executable) const;
   StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, CompileOptions options,
+      const std::string& serialized, std::optional<CompileOptions> options,
       std::vector<pybind11::capsule> host_callbacks);
-
-  // TODO(skyewm): remove when jax stop providing hlo_module
-  StatusOr<std::shared_ptr<PyLoadedExecutable>> DeserializeExecutable(
-      const std::string& serialized, std::shared_ptr<HloModule> hlo_module,
-      CompileOptions options, std::vector<pybind11::capsule> host_callbacks) {
-    return DeserializeExecutable(serialized, options,
-                                 std::move(host_callbacks));
-  }
 
   StatusOr<pybind11::bytes> HeapProfile();
 
@@ -205,16 +199,14 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // takes in arguments of shapes `operand_shapes` and returns values of shapes
   // `result_shapes`. It returns a pair of a `uint64_t` descriptor and a Python
   // object whose reference will keep the Python callback alive. The descriptor
-  // should be passed into a 'xla_cpu_python_callback' CustomCall as its first
-  // argument. Typically the callback may be kept alive by attaching the
-  // keep-alive object to the executable built from this computation.
+  // should be passed into a 'xla_python_cpu_callback' or
+  // 'xla_python_gpu_callback' CustomCall as its first argument. Typically the
+  // callback may be kept alive by attaching the keep-alive object to the
+  // executable built from this computation.
   //
   // The callable receives as arguments NumPy arrays for arguments with array
   // types, and None for Token argument. The callable must return a tuple of
   // either arrays or None values.
-  //
-  // This is a method of PyClient since different platforms may implement this
-  // functionality in different ways.
   StatusOr<std::pair<uint64_t, pybind11::object>>
   GetEmitPythonCallbackDescriptor(pybind11::function callable,
                                   absl::Span<Shape const> operand_shapes,
@@ -237,31 +229,35 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
   // program through `send_channel_ids` and the results correspond to Recv ops
   // through `recv_channel_ids`. It returns the host callback as an opaque
   // object whose reference will keep the Python callback alive. The host
-  // callback can be passed to PyLoadedExecutable::Execute() so that the
-  // corresponding Send/Recv ops can trigger the execution of this host
-  // callback.
+  // callback can be passed to `PyClient::Compile` or
+  // `PyClient::DeserializeExecutable`. The corresponding Send/Recv ops in the
+  // XLA computation can trigger the execution of this host callback.
+  // `serializer` is a function that takes `callable` as an argument and returns
+  // a serialized callable as a string.
+  //
+  // The callable receives as arguments NumPy arrays for arguments with array
+  // types, and None for Token argument. The callable must return a tuple of
+  // either arrays or None values.
   StatusOr<pybind11::object> MakePythonCallbackUsingHostSendAndRecv(
       pybind11::function callable, absl::Span<Shape const> operand_shapes,
       absl::Span<Shape const> result_shapes,
       absl::Span<uint16_t const> send_channel_ids,
-      absl::Span<uint16_t const> recv_channel_ids);
+      absl::Span<uint16_t const> recv_channel_ids,
+      pybind11::function serializer);
 
   std::vector<pybind11::object> LiveArrays();
 
  private:
-  friend class PyBuffer;
   friend class PyLoadedExecutable;
   friend class PyArray;
   friend struct PyArray_Storage;
 
   std::shared_ptr<ifrt::Client> ifrt_client_;
 
-  // Pointers to intrusive doubly-linked lists of buffers and executables, used
+  // Pointers to intrusive doubly-linked lists of arrays and executables, used
   // to iterate over all known objects when heap profiling. The list structure
   // is protected by the GIL.
 
-  // buffers_ is a per-device list, indexed by device->id().
-  std::vector<PyBuffer*> buffers_;
   PyLoadedExecutable* executables_ = nullptr;
   PyArray_Storage* arrays_ = nullptr;
 };

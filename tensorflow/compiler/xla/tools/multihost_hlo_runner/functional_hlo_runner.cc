@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_executable.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
@@ -72,79 +74,21 @@ StatusOr<Literal> MakeFakeLiteralWithSameValue(const Shape& shape, int value) {
   }
   Shape new_shape = shape;
   new_shape.mutable_layout()->clear_tiles();
-  Literal literal(new_shape);
-  switch (new_shape.element_type()) {
-    case BF16:
-      PopulateWithSameValue(&literal, bfloat16(static_cast<float>(value)));
-      break;
-    case F16:
-      PopulateWithSameValue(&literal, static_cast<half>(value));
-      break;
-    case F32:
-      PopulateWithSameValue(&literal, static_cast<float>(value));
-      break;
-    case F64:
-      PopulateWithSameValue(&literal, static_cast<double>(value));
-      break;
-    case S8:
-      PopulateWithSameValue(&literal, static_cast<int8_t>(value));
-      break;
-    case U8:
-      PopulateWithSameValue(&literal, static_cast<uint8_t>(value));
-      break;
-    case S16:
-      PopulateWithSameValue(&literal, static_cast<int16_t>(value));
-      break;
-    case U16:
-      PopulateWithSameValue(&literal, static_cast<uint16_t>(value));
-      break;
-    case S32:
-      PopulateWithSameValue(&literal, static_cast<int32_t>(value));
-      break;
-    case U32:
-      PopulateWithSameValue(&literal, static_cast<uint32_t>(value));
-      break;
-    case S64:
-      PopulateWithSameValue(&literal, static_cast<int64_t>(value));
-      break;
-    case U64:
-      PopulateWithSameValue(&literal, static_cast<uint64_t>(value));
-      break;
-    case C64:
-      PopulateWithSameValue(&literal,
-                            static_cast<complex64>(complex64(value, 0.0)));
-      break;
-    case C128:
-      PopulateWithSameValue(&literal,
-                            static_cast<complex128>(complex128(value, 0.0)));
-      break;
-    case PRED:
-      PopulateWithSameValue(&literal, (value % 2) == 0);
-      break;
-    default:
-      return Unimplemented("Unsupported type for fake literal generation: %s",
-                           ShapeUtil::HumanString(shape));
-  }
-  return literal;
-}
+  return primitive_util::PrimitiveTypeSwitch<StatusOr<Literal>>(
+      [&](auto type) -> StatusOr<Literal> {
+        if constexpr (primitive_util::IsArrayType(type)) {
+          using NativeT = primitive_util::NativeTypeOf<type>;
 
-void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
-  auto set_manual_sharding = [](HloInstruction* hlo) {
-    if (!hlo->has_sharding()) {
-      hlo->set_sharding(
-          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
-    }
-  };
-  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
-       ++i) {
-    HloInstruction* param =
-        hlo_module->entry_computation()->parameter_instruction(i);
-    set_manual_sharding(param);
-  }
-
-  HloInstruction* entry_root =
-      hlo_module->entry_computation()->root_instruction();
-  set_manual_sharding(entry_root);
+          Literal literal(new_shape);
+          PopulateWithSameValue(
+              &literal,
+              static_cast<NativeT>(type == PRED ? (value % 2) == 0 : value));
+          return literal;
+        }
+        return Unimplemented("Unsupported type for fake literal generation: %s",
+                             ShapeUtil::HumanString(shape));
+      },
+      new_shape.element_type());
 }
 
 }  // namespace
@@ -237,10 +181,62 @@ std::string AbslUnparseFlag(
   }
 }
 
+bool AbslParseFlag(absl::string_view text,
+                   FunctionalHloRunner::ModuleOutputMode* output_mode,
+                   std::string* error) {
+  if (text == "return_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kReturnOutputs;
+    return true;
+  }
+  if (text == "not_return_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs;
+    return true;
+  }
+  if (text == "return_device_0_outputs") {
+    *output_mode = FunctionalHloRunner::ModuleOutputMode::kReturnDevice0Outputs;
+    return true;
+  }
+  *error =
+      "Unrecognized module output mode specified. Expect \"return_outputs\", "
+      "\"not_return_outputs\", or \"return_device_0_outputs\".";
+  return false;
+}
+
+std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode) {
+  switch (output_mode) {
+    case FunctionalHloRunner::ModuleOutputMode::kReturnOutputs:
+      return "return_outputs";
+    case FunctionalHloRunner::ModuleOutputMode::kNotReturnOutputs:
+      return "not_return_outputs";
+    case FunctionalHloRunner::ModuleOutputMode::kReturnDevice0Outputs:
+      return "return_device_0_outputs";
+    default:
+      LOG(FATAL) << "Unexpected output mode.";
+  }
+}
+
+void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module) {
+  auto set_manual_sharding = [](HloInstruction* hlo) {
+    if (!hlo->has_sharding()) {
+      hlo->set_sharding(
+          HloSharding::Manual().NormalizeTupleSharding(hlo->shape()));
+    }
+  };
+  for (int64_t i = 0; i < hlo_module->entry_computation()->num_parameters();
+       ++i) {
+    HloInstruction* param =
+        hlo_module->entry_computation()->parameter_instruction(i);
+    set_manual_sharding(param);
+  }
+
+  HloInstruction* entry_root =
+      hlo_module->entry_computation()->root_instruction();
+  set_manual_sharding(entry_root);
+}
+
 StatusOr<std::unique_ptr<PjRtClient>> FunctionalHloRunner::CreateGpuClient() {
   return GetStreamExecutorGpuClient(
-      /*asynchronous=*/true, GpuAllocatorConfig(),
-      /*distributed_client=*/nullptr, /*node_id=*/0);
+      /*asynchronous=*/true, GpuAllocatorConfig(), /*node_id=*/0);
 }
 
 StatusOr<ExecutionOptions> FunctionalHloRunner::LoadExecutionOptions(
@@ -283,7 +279,11 @@ StatusOr<CompileOptions> FunctionalHloRunner::CreateCompileOptions(
   }
   DebugOptions& debug_options = *build_options.mutable_debug_options();
   if (task_id == 0) {
-    debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    // Overwrite xla_dump_to only if it's not empty, to preserve `xla_dump_to`
+    // from parsed XLA_FLAGS env (already populated in debug_options).
+    if (!raw_options.xla_dump_to.empty()) {
+      debug_options.set_xla_dump_to(raw_options.xla_dump_to);
+    }
     debug_options.set_xla_dump_hlo_as_text(raw_options.xla_text_dump_mode ==
                                            XlaTextDumpMode::kDumpAsText);
     debug_options.set_xla_dump_hlo_as_proto(raw_options.xla_proto_dump_mode ==
@@ -511,6 +511,38 @@ FunctionalHloRunner::LoadAndRun(
                        running_options,
                        hlo_module_and_arguments.hlo_module.get(),
                        argument_literals, per_device_index_vec);
+}
+
+Status FunctionalHloRunner::LoadAndCompile(
+    PjRtClient& client, const PreprocessingOptions& preproc_options,
+    const RawCompileOptions& raw_compile_options, std::string_view hlo_file,
+    InputFormat input_format, int task_id) {
+  TF_ASSIGN_OR_RETURN(CompileOptions compile_options,
+                      FunctionalHloRunner::CreateCompileOptions(
+                          client, raw_compile_options, task_id));
+
+  int num_replicas = compile_options.executable_build_options.num_replicas();
+  int num_partitions =
+      compile_options.executable_build_options.num_partitions();
+  int needed_devices = num_replicas * num_partitions;
+  if (client.addressable_device_count() < needed_devices) {
+    LOG(INFO) << "Applying a workaround to allow compiling multi-device HLOs "
+                 "on machines with fewer devices.";
+    DeviceAssignment assignment(num_replicas, num_partitions);
+    assignment.Fill(0);
+    compile_options.executable_build_options.set_device_assignment(assignment);
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      FunctionalHloRunner::HloModuleAndArguments hlo_module_and_arguments,
+      FunctionalHloRunner::LoadHloModuleAndArguments(hlo_file, input_format));
+
+  TF_RETURN_IF_ERROR(FunctionalHloRunner::Compile(
+                         client, hlo_module_and_arguments.hlo_module.get(),
+                         preproc_options, compile_options)
+                         .status());
+
+  return OkStatus();
 }
 
 StatusOr<std::unique_ptr<HloModule>>
@@ -854,8 +886,7 @@ std::vector<std::vector<PjRtBuffer*>> CreateArgumentPointersBasedOnAliasing(
 }
 
 std::vector<Shape> GetArgumentShapes(const HloModule& module) {
-  const std::vector<HloInstruction*>& params =
-      module.entry_computation()->parameter_instructions();
+  const auto& params = module.entry_computation()->parameter_instructions();
   std::vector<Shape> argument_shapes;
   argument_shapes.reserve(params.size());
   for (int i = 0; i < static_cast<int>(params.size()); ++i) {
@@ -977,7 +1008,11 @@ FunctionalHloRunner::RunInternal(
             << repeat << ").";
     if (repeat == running_options.num_repeats - 1) {
       execute_options.untuple_result = default_untuple_result;
+      if (running_options.profiler != nullptr) {
+        running_options.profiler->CreateSession();
+      }
     }
+    execute_options.launch_id = repeat;
     TF_ASSIGN_OR_RETURN(output_buffers,
                         executable->Execute(argument_ptrs, execute_options));
     VLOG(1) << "FunctionalHloRunner: ExecuteOnDevices succeeded (repeat = "
@@ -1001,10 +1036,14 @@ FunctionalHloRunner::RunInternal(
       }
     }
   }
+
   TF_ASSIGN_OR_RETURN(PerDeviceLiteralVecType results,
                       FetchAndLogOutput(client, output_buffers,
                                         running_options.module_output_mode,
                                         running_options.log_input_output()));
+  if (running_options.profiler != nullptr) {
+    running_options.profiler->UploadSession();
+  }
   return results;
 }
 

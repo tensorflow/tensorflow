@@ -21,7 +21,7 @@ from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
-from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables as variables_lib
 
 
@@ -43,7 +43,7 @@ class AggregatingVariableTest(test.TestCase, parameterized.TestCase):
 
   def testAssignAdd(self, distribution):
     with distribution.scope():
-      v = variable_scope.variable(
+      v = variable_v1.VariableV1(
           1, aggregation=variables_lib.VariableAggregation.MEAN)
     self.evaluate(variables_lib.global_variables_initializer())
 

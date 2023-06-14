@@ -51,7 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
-#include "tensorflow/compiler/xla/protobuf_util.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -371,6 +371,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto sort_operands = all_operands();
       instruction = CreateSort(shape, proto.dimensions(0), all_operands(),
                                computations(0), proto.is_stable());
+      break;
+    }
+    case HloOpcode::kTopK: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "TopK instruction should have exactly 1 operand but has "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "TopK instruction should one called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction =
+          CreateTopK(shape, all_operands()[0], proto.k(), computations(0));
       break;
     }
     case HloOpcode::kTranspose:
@@ -1042,7 +1053,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateParameter(
-    int64_t parameter_number, const Shape& shape, const std::string& name) {
+    int64_t parameter_number, const Shape& shape, absl::string_view name) {
   return std::make_unique<HloParameterInstruction>(parameter_number, shape,
                                                    name);
 }
@@ -1055,6 +1066,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
     const Shape& shape, int64_t iota_dimension) {
   return std::make_unique<HloIotaInstruction>(shape, iota_dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
+    const Shape& shape, HloInstruction* input, int64_t k,
+    HloComputation* compare) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, compare);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1741,7 +1758,7 @@ HloInstruction::CreateBroadcastSequence(
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {});
     broadcast->set_metadata(operand->metadata());
     if (operand->has_sharding()) {
-      broadcast->set_sharding(operand->sharding());
+      broadcast->copy_sharding(operand);
     }
     broadcast->set_frontend_attributes(operand->frontend_attributes());
     return broadcast;
@@ -1767,7 +1784,7 @@ HloInstruction::CreateBroadcastSequence(
       operand));
   reshaped_operand->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
-    reshaped_operand->set_sharding(operand->sharding());
+    reshaped_operand->copy_sharding(operand);
   }
   reshaped_operand->set_frontend_attributes(operand->frontend_attributes());
   // Broadcast 'reshape' up to the larger size.
@@ -1775,7 +1792,7 @@ HloInstruction::CreateBroadcastSequence(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
   broadcast->set_metadata(operand->metadata());
   if (operand->has_sharding()) {
-    broadcast->set_sharding(operand->sharding());
+    broadcast->copy_sharding(operand);
   }
   broadcast->set_frontend_attributes(operand->frontend_attributes());
   return broadcast;
@@ -2103,6 +2120,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -2275,7 +2293,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
   std::unique_ptr<HloInstruction> clone =
       CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
-    clone->name_ = name();
+    clone->name_.assign(name().begin(), name().end());
   } else {
     // If an instruction is cloned multiple times avoid names like
     // foo.suffix.suffix.suffix. Instead of repeating the suffix add a numeric
@@ -2285,14 +2303,14 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
     size_t index = name().rfind(dot_suffix);
     if (index == std::string::npos) {
       // Existing name does not include ".suffix".
-      clone->name_ = name() + dot_suffix;
+      clone->name_ = absl::StrCat(name(), dot_suffix);
     } else {
       // Existing name includes ".suffix". Determine if substring after
       // ".suffix" is numeric and should be replaced with an incremented number.
-      std::string after_suffix = name().substr(index + dot_suffix.size());
+      auto after_suffix = name().substr(index + dot_suffix.size());
       if (after_suffix.empty()) {
         // Existing name ends in ".suffix". New name should end in ".suffix2".
-        clone->name_ = name() + "2";
+        clone->name_ = absl::StrCat(name(), "2");
       } else {
         // If names ends with .suffix[0-9]+ then replace with a suffix with the
         // numeric value incremented.
@@ -2302,7 +2320,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
               StrCat(name().substr(0, index), dot_suffix, numeric_suffix + 1);
         } else {
           // Substring after ".suffix" is non-numeric.
-          clone->name_ = name() + dot_suffix;
+          clone->name_ = absl::StrCat(name(), dot_suffix);
         }
       }
     }
@@ -2694,6 +2712,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2902,6 +2921,7 @@ bool HloInstruction::has_to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
       return true;
     case HloOpcode::kCustomCall:
       // CustomCall can have a to_apply computation, but it is not required to
@@ -3024,7 +3044,7 @@ void PrintCycle(const HloInstruction* child, DFSStack* dfs_stack) {
                   << absl::StrJoin(
                          dfs, "\n  ",
                          [](std::string* out, const HloInstruction* instr) {
-                           out->append(instr->name());
+                           absl::StrAppend(out, instr->name());
                          });
         return;
       }
@@ -3053,6 +3073,10 @@ std::string HloInstruction::ToString(const HloPrintOptions& options) const {
   StringPrinter printer;
   Print(&printer, options);
   return std::move(printer).ToString();
+}
+
+std::string HloInstruction::ToString() const {
+  return ToString(HloPrintOptions::Default());
 }
 
 bool HloInstruction::IsOpElementwise(HloOpcode opcode) {
@@ -3207,9 +3231,18 @@ void HloInstruction::PrintWithCanonicalNameMap(
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    printer->Append(", backend_config=\"");
-    printer->Append(CEscape(backend_config_.GetRawString()));
-    printer->Append("\"");
+    absl::string_view config = backend_config_.GetRawString();
+    printer->Append(", backend_config=");
+    // In the common case that the backend-config is valid-ish JSON, the parser
+    // doesn't need it delimited by quotes, so we can print it without
+    // CEsape'ing.  This is much easier to read.
+    if (LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(CEscape(config));
+      printer->Append("\"");
+    }
   }
 }
 
@@ -3339,7 +3372,7 @@ void HloInstruction::PrintExtraAttributes(
                opcode() == HloOpcode::kReduceScatter ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
-               opcode() == HloOpcode::kSort) {
+               opcode() == HloOpcode::kTopK || opcode() == HloOpcode::kSort) {
       if (!called_computations().empty()) {
         printer.Next([this, &options](Printer* printer) {
           printer->Append("to_apply=");
@@ -3432,6 +3465,7 @@ void HloInstruction::PrintExtraAttributes(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
+      case HloOpcode::kTopK:
         if (!called_computations().empty()) {
           printer.Next([this, &new_options](Printer* printer) {
             printer->Append("to_apply=\n");
@@ -3835,6 +3869,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCopyDone(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
+    case HloOpcode::kTopK:
+      return visitor->HandleTopK(this);
     case HloOpcode::kRecvDone:
       return visitor->HandleRecvDone(this);
     case HloOpcode::kSend:
@@ -4577,7 +4613,6 @@ HloModule* HloInstruction::GetModule() const {
 }
 
 void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
-  std::string parent_str = parent() == nullptr ? "noparent" : parent()->name();
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
@@ -4764,7 +4799,8 @@ HloInstruction* HloInstruction::fused_parameter(
   return Cast<HloFusionInstruction>(this)->fused_parameter(parameter_number);
 }
 
-const std::vector<HloInstruction*>& HloInstruction::fused_parameters() const {
+const HloInstruction::InstructionVector& HloInstruction::fused_parameters()
+    const {
   return Cast<HloFusionInstruction>(this)->fused_parameters();
 }
 

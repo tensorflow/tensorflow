@@ -64,6 +64,13 @@ extern const char kXlaShardingStrategyDiv[];
 // XLA frontend attribute for pad value.
 extern const char kXlaPadValueAttr[];
 
+// XLA frontend attributes for simulated quantization.
+extern const char kXlaQuantizationHighValueAttr[];
+extern const char kXlaQuantizationLowValueAttr[];
+extern const char kXlaQuantizationNumBucketsValueAttr[];
+
+// XLA frontend attribute for table id.
+extern const char kXlaTableId[];
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SIDE_EFFECT_UTIL_H_

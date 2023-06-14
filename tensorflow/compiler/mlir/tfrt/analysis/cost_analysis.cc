@@ -14,11 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/analysis/cost_analysis.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tfrt/constants.h"
 #include "tensorflow/core/tfrt/fallback/cost_recorder.h"
+#include "tfrt/compiler/opdefs/tfrt_op_interfaces.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace tfrt_compiler {
@@ -141,6 +145,7 @@ void CostAnalysis::AnalyzeArguments(mlir::func::FuncOp func_op) {
   // Use the max size among function inputs as the default size of dynamic
   // shaped tensors in the function.
   for (auto arg : func_op.getArguments()) {
+    if (!arg.getType().isa<mlir::TensorType>()) continue;
     auto type = arg.getType().cast<mlir::TensorType>();
     if (type.hasRank()) {
       max_arg_size_ = std::max(max_arg_size_, GetRankedTensorSize(type));
@@ -155,17 +160,14 @@ void CostAnalysis::AnalyzeBlock(mlir::Block* block) {
 }
 
 void CostAnalysis::EvaluateCost(mlir::Operation* op) {
-  if (!llvm::isa<mlir::TF::TensorFlowDialect>(op->getDialect())) {
-    cost_map_[op] = max_arg_size_;
+  if (auto cost_function =
+          mlir::dyn_cast<tfrt::compiler::CostFunctionInterface>(op)) {
+    cost_map_[op] = cost_function.cost();
     return;
   }
 
-  // These ops are cheap regardless of their input sizes.
-  //
-  // TODO(chky): Find a more scalable way to figure out cheap ops.
-  if (llvm::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
-                mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
-    cost_map_[op] = kDefaultCheapCost;
+  if (!llvm::isa<mlir::TF::TensorFlowDialect>(op->getDialect())) {
+    cost_map_[op] = max_arg_size_;
     return;
   }
 
@@ -177,6 +179,25 @@ void CostAnalysis::EvaluateCost(mlir::Operation* op) {
     CostContext context;
     context.default_unranked_tensor_size = max_arg_size_;
     cost_map_[op] = iter->second(context, op);
+    return;
+  }
+
+  // Try to use the recorded cost if any.
+  if (cost_recorder_ != nullptr) {
+    const auto op_key_attr =
+        op->getAttrOfType<mlir::IntegerAttr>(kOpKeyAttrName);
+    if (op_key_attr) {
+      cost_map_[op] = cost_recorder_->GetCost(op_key_attr.getInt());
+      return;
+    }
+  }
+
+  // These ops are cheap regardless of their input sizes.
+  //
+  // TODO(chky): Find a more scalable way to figure out cheap ops.
+  if (llvm::isa<mlir::TF::ShapeOp, mlir::TF::StridedSliceOp,
+                mlir::TF::ReshapeOp, mlir::TF::ExpandDimsOp>(op)) {
+    cost_map_[op] = kDefaultCheapCost;
     return;
   }
 

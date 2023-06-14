@@ -15,7 +15,7 @@ py_strict_library(
     deps = [
         ":config",
         ":converter",
-        "//tensorflow/python/autograph/impl",
+        "//tensorflow/python/autograph/impl:api",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/platform:client_testlib",
     ],
@@ -36,7 +36,7 @@ py_strict_library(
     srcs = ["unsupported_features_checker.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:errors",
         "@gast_archive//:gast",
     ],
 )
@@ -61,9 +61,9 @@ py_strict_library(
     deps = [
         ":ag_ctx",
         ":converter",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/autograph/operators",
+        "//tensorflow/python/autograph/operators:variables",
         "//tensorflow/python/framework:auto_control_deps",
+        "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_util",
         "//tensorflow/python/util:nest",
     ],
@@ -74,7 +74,11 @@ py_strict_library(
     srcs = ["converter.py"],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:ast_util",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/autograph/pyct:transformer",
         "//tensorflow/python/util:tf_export",
     ],
 )
@@ -87,8 +91,11 @@ py_strict_test(
     deps = [
         ":converter",
         ":test_lib",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
+        "//tensorflow/python/autograph/pyct:anno",
+        "//tensorflow/python/autograph/pyct:loader",
+        "//tensorflow/python/autograph/pyct:parser",
+        "//tensorflow/python/autograph/pyct:templates",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -100,9 +107,9 @@ py_strict_test(
     deps = [
         ":converter",
         ":function_wrappers",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )

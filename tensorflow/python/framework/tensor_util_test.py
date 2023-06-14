@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import shape_util
+from tensorflow.python.ops import variable_v1
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -1118,7 +1119,7 @@ class ConstantValueTest(test.TestCase):
     self.assertIsNone(tensor_util.constant_value(var))
 
   def testVariableV1(self):
-    var = variables.VariableV1(1.0, name="variable_node")
+    var = variable_v1.VariableV1(1.0, name="variable_node")
     self.assertIsNone(tensor_util.constant_value(var))
 
 

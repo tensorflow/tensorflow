@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+#include <iterator>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Target/LLVMIR/Export.h"  // from @llvm-project
@@ -70,7 +77,7 @@ class GpuKernelToBlobPass
       return;
     }
     // Forward the error by attaching the message to the gpu module.
-    gpu_module.emitError(blob_or.status().error_message());
+    gpu_module.emitError(blob_or.status().message());
     return signalPassFailure();
   }
 

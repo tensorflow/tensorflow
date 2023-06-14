@@ -336,6 +336,9 @@ std::string RoundTripFpToString(tsl::float8_e5m2 value);
 // Returns a string which can losslessly round trip to a float8 E4M3.
 std::string RoundTripFpToString(tsl::float8_e4m3fn value);
 
+// Returns a string which can losslessly round trip to a float8 E4M3B11.
+std::string RoundTripFpToString(tsl::float8_e4m3b11 value);
+
 // Returns a string which can losslessly round trip to a bfloat.
 std::string RoundTripFpToString(tsl::bfloat16 value);
 
@@ -518,21 +521,41 @@ template <size_t kBytes>
 using SignedIntegerTypeForSizeType =
     std::make_signed_t<UnsignedIntegerTypeForSizeType<kBytes>>;
 
+template <typename T>
+auto SignAndMagnitude(T x) {
+  using BitType = UnsignedIntegerTypeForSizeType<sizeof(T)>;
+  BitType x_abs_bits = Eigen::numext::bit_cast<BitType>(Eigen::numext::abs(x));
+  const BitType x_bits = Eigen::numext::bit_cast<BitType>(x);
+  const BitType x_sign = x_bits ^ x_abs_bits;
+  if constexpr (std::is_same_v<T, tsl::float8_e4m3b11>) {
+    //  f8e4m3b11 does not support -0, adjust negative numbers to fill in the
+    //  gap.
+    if (x_sign) {
+      x_abs_bits -= 1;
+    }
+  }
+  return std::make_pair(x_sign, x_abs_bits);
+}
+
+template <typename T>
+auto SignAndMagnitudeToTwosComplement(T sign, T magnitude) {
+  static_assert(!std::numeric_limits<T>::is_signed);
+  using SignedType = std::make_signed_t<T>;
+  return static_cast<SignedType>(magnitude) ^
+         (static_cast<SignedType>(sign) < 0 ? SignedType{-1} : SignedType{0});
+}
+
 // Returns the signed magnitude of T.
 template <typename T>
-SignedIntegerTypeForSizeType<sizeof(T)> ToSignMagnitude(T input) {
-  auto as_bits = absl::bit_cast<SignedIntegerTypeForSizeType<sizeof(T)>>(input);
-  auto sign_mask = absl::bit_cast<UnsignedIntegerTypeForSizeType<sizeof(T)>>(
-      tsl::MathUtil::Sign(as_bits));
-  return as_bits ^ (sign_mask >> 1);
+auto ToSignMagnitude(T input) {
+  auto [sign, magnitude] = SignAndMagnitude(input);
+  return SignAndMagnitudeToTwosComplement(sign, magnitude);
 }
 
 template <typename T>
 constexpr int NanPayloadBits() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  // Floating point types with NaNs have payloads.
-  if (!std::numeric_limits<T>::has_quiet_NaN) {
+  // Floating point types with signaling NaNs have payloads.
+  if constexpr (!std::numeric_limits<T>::has_signaling_NaN) {
     return 0;
   }
   return std::numeric_limits<T>::digits - 1;
@@ -540,19 +563,17 @@ constexpr int NanPayloadBits() {
 
 template <typename T>
 constexpr uint64_t QuietNanWithoutPayload() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  if (const int bits = NanPayloadBits<T>()) {
-    return uint64_t{1} << (bits > 0 ? (bits - 1) : 0);
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
+    return uint64_t{1} << (bits - 1);
   }
   return 0;
 }
 
 template <typename T>
 constexpr uint64_t NanPayloadBitMask() {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
-  if (const int bits = NanPayloadBits<T>()) {
+  constexpr int bits = NanPayloadBits<T>();
+  if constexpr (bits > 0) {
     return LsbMask<uint64_t>(bits);
   }
   return 0;
@@ -560,8 +581,7 @@ constexpr uint64_t NanPayloadBitMask() {
 
 template <typename T>
 T NanWithSignAndPayload(bool sign, uint64_t nan_payload) {
-  static_assert(!std::is_same<T, tsl::float8_e4m3fn>::value,
-                "E4M3FN does not have payload");
+  static_assert(NanPayloadBits<T>() > 0);
   using RepT = UnsignedIntegerTypeForSizeType<sizeof(T)>;
   const T val = std::numeric_limits<T>::quiet_NaN();
   auto rep = absl::bit_cast<RepT>(val);
@@ -618,6 +638,9 @@ ConvertedDimensionNumbers ConvertDimensionNumbers(
 
 // Removes illegal characters from filenames.
 std::string SanitizeFileName(std::string file_name);
+
+// Check that a sequence of distinct numbers can form a continuous interval.
+bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t>);
 
 template <typename C, typename Value>
 int64_t FindIndex(const C& c, Value&& value) {
@@ -681,6 +704,9 @@ class HloModule;
 // A predicate over HLO instruction.
 using HloPredicate = std::function<bool(const HloInstruction*)>;
 using HloModulePredicate = std::function<bool(const HloModule*)>;
+
+inline bool HloPredicateTrue(const HloInstruction*) { return true; }
+inline bool HloPredicateFalse(const HloInstruction*) { return false; }
 
 using Vector2 = std::array<int64_t, 2>;
 using Vector3 = std::array<int64_t, 3>;

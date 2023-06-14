@@ -14,7 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_external.h"
 
+#include <functional>
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
@@ -48,7 +51,7 @@ void PopulateEntry(const std::string& key, CompiledSubgraph* entry,
   }
 
   entry->tpu_program_group =
-      absl::make_unique<TpuProgramGroup>(std::move(tpu_program_group));
+      std::make_unique<TpuProgramGroup>(std::move(tpu_program_group));
   entry->initialized = true;
 
   if (entry->initialization_status.ok()) {
@@ -59,9 +62,9 @@ void PopulateEntry(const std::string& key, CompiledSubgraph* entry,
 
 std::unique_ptr<CompiledSubgraph> CreateAndInitializeCompiledSubgraph(
     CompiledSubgraph* main_entry) {
-  auto entry = absl::make_unique<CompiledSubgraph>();
+  auto entry = std::make_unique<CompiledSubgraph>();
   entry->main_entry = main_entry;
-  entry->tpu_program_group = absl::make_unique<TpuProgramGroup>();
+  entry->tpu_program_group = std::make_unique<TpuProgramGroup>();
   return entry;
 }
 }  // namespace
@@ -110,7 +113,7 @@ CompiledSubgraph* TpuCompilationCacheExternal::InitializeEntry(
   if (!initialization_status.ok()) {
     // Compilation failure might caused the subsequent tpu_program_group init
     // failed with assert error. Log the error here to make debugging easier.
-    LOG(ERROR) << initialization_status.error_message();
+    LOG(ERROR) << initialization_status.message();
   }
 
   // Add the entry to the uid index.

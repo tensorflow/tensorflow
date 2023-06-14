@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -44,10 +45,12 @@ class KernelThunk : public Thunk {
  public:
   // Constructs a thunk for the given kernel.
   //
-  // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(ThunkInfo thunk_info,
-              absl::Span<const BufferAllocation* const> args,
-              const std::string& kernel_name,
+  // KernelThunk takes args as BufferAllocation::Slice's. Each slice directly
+  // corresponds to an argument or output of the computation. Also, the values
+  // must correspond to each arg directly, not to their base allocation (e.g.
+  // they can be the result of an mlir::memref::ViewOp).
+  KernelThunk(ThunkInfo thunk_info, std::vector<BufferAllocation::Slice> args,
+              std::vector<bool> written, const std::string& kernel_name,
               const LaunchDimensions& launch_dimensions,
               std::vector<mlir::Value> values);
   KernelThunk(const KernelThunk&) = delete;
@@ -67,9 +70,11 @@ class KernelThunk : public Thunk {
     }
   }
 
-  const std::vector<const BufferAllocation*>& arguments() const {
+  const std::vector<BufferAllocation::Slice>& arguments() const {
     return args_;
   }
+  const std::vector<bool>& written() const { return written_; }
+
   const std::string& kernel_name() const { return kernel_name_; }
   const LaunchDimensions& launch_dimensions() const {
     return launch_dimensions_;
@@ -77,8 +82,11 @@ class KernelThunk : public Thunk {
   absl::Span<const mlir::Value> values() const { return values_; }
 
  private:
-  // Buffers passed to the kernel as arguments.
-  const std::vector<const BufferAllocation*> args_;
+  // Buffer slices passed to the kernel as arguments.
+  const std::vector<BufferAllocation::Slice> args_;
+
+  // args_[i] is written iff (written_[i] == true).
+  const std::vector<bool> written_;
 
   // Entry kernel name for the computation.
   const std::string kernel_name_;
@@ -86,7 +94,7 @@ class KernelThunk : public Thunk {
   // The thread and block dimension used to launch the kernel.
   const LaunchDimensions launch_dimensions_;
 
-  // mlir::Value(s) corresponding to the buffer allocation arguments.
+  // mlir::Value(s) corresponding to the buffer slice arguments.
   std::vector<mlir::Value> values_;
 
   mutable absl::Mutex mutex_;

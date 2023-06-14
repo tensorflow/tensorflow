@@ -25,16 +25,17 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/serialize_mlir_module_utils.h"
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tf2xla/transforms/test_utils.h"
 #include "tensorflow/core/lib/monitoring/cell_reader.h"
+#include "tensorflow/tsl/platform/statusor.h"
 
 namespace tensorflow {
 namespace {
 
-using ::llvm::StringRef;
-using ::mlir::DialectRegistry;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
+using ::mlir::mhlo::test::GetMlirModuleFromString;
 using ::tensorflow::monitoring::testing::CellReader;
 
 // Using a string constant here instead of testdata to make this compatible
@@ -49,21 +50,6 @@ static constexpr char kMlirModuleStr[] = R"(
 
 static constexpr char kFailedLegalizationStreamz[] =
     "/tensorflow/core/tf2xla/mlir_second_phase_failed_legalization_op_count";
-
-tsl::StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(
-    StringRef string, MLIRContext* context) {
-  DialectRegistry mlir_registry;
-  RegisterAllTensorFlowDialects(mlir_registry);
-  context->appendDialectRegistry(mlir_registry);
-
-  OwningOpRef<ModuleOp> mlir_module;
-  auto status =
-      tensorflow::DeserializeMlirModule(string, context, &mlir_module);
-  if (!status.ok()) {
-    return status;
-  }
-  return mlir_module;
-}
 
 TEST(VerifyTfxlaLegalizationTest, RecordsStreamzFailedVerification) {
   MLIRContext context;

@@ -85,9 +85,9 @@ cc_library(
     deps = select({
         "//tensorflow/tsl:is_cuda_enabled_and_oss": [
             ":cuda_stub",
-            "@local_config_cuda//cuda:cuda_headers",
             "//tensorflow/tsl/platform:dso_loader",
             "//tensorflow/tsl/platform:env",
+            "@local_config_cuda//cuda:cuda_headers",
         ],
         "//conditions:default": [],
     }),

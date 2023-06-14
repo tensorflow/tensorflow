@@ -30,7 +30,7 @@ TOOLCHAINS_DIR=$(realpath tensorflow/lite/tools/cmake/toolchains)
 mkdir -p ${TOOLCHAINS_DIR}
 
 case $1 in
-	armhf)
+  armhf)
     if [[ ! -d "${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf" ]]; then
       curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz >&2
       tar xvf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz -C ${TOOLCHAINS_DIR} >&2
@@ -44,8 +44,8 @@ case $1 in
       -isystem \"\${CROSSTOOL_PYTHON_INCLUDE_PATH}\" \
       -isystem /usr/include\""
     echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/arm-linux-gnueabihf-"
-		;;
-	aarch64)
+    ;;
+  aarch64)
     if [[ ! -d "${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu" ]]; then
       curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz >&2
       tar xvf gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu.tar.xz -C ${TOOLCHAINS_DIR} >&2
@@ -53,14 +53,14 @@ case $1 in
     ARMCC_ROOT=${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-aarch64-linux-gnu
     echo "ARMCC_FLAGS=\"-funsafe-math-optimizations \
       -isystem ${ARMCC_ROOT}/lib/gcc/aarch64-linux-gnu/8.3.0/include \
-      -isystem ${ARMCC_ROOT}/lib/gcc/aaarch64-linux-gnu/8.3.0/include-fixed \
+      -isystem ${ARMCC_ROOT}/lib/gcc/aarch64-linux-gnu/8.3.0/include-fixed \
       -isystem ${ARMCC_ROOT}/aarch64-linux-gnu/include/c++/8.3.0 \
       -isystem ${ARMCC_ROOT}/aarch64-linux-gnu/libc/usr/include \
       -isystem \"\${CROSSTOOL_PYTHON_INCLUDE_PATH}\" \
       -isystem /usr/include\""
     echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/aarch64-linux-gnu-"
-		;;
-	rpi0)
+    ;;
+  rpi0)
     if [[ ! -d "${TOOLCHAINS_DIR}/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf" ]]; then
       curl -LO https://storage.googleapis.com/mirror.tensorflow.org/developer.arm.com/media/Files/downloads/gnu-a/8.3-2019.03/binrel/gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz >&2
       tar xvf gcc-arm-8.3-2019.03-x86_64-arm-linux-gnueabihf.tar.xz -C ${TOOLCHAINS_DIR} >&2
@@ -75,10 +75,10 @@ case $1 in
       -isystem /usr/include\""
     echo "ARMCC_PREFIX=${ARMCC_ROOT}/bin/arm-linux-gnueabihf-"
     ;;
-	*)
-		echo "Usage: download_toolchains.sh [armhf|aarch64|rpi0]" >&2
+  *)
+    echo "Usage: download_toolchains.sh [armhf|aarch64|rpi0]" >&2
     exit
-		;;
+    ;;
   esac
 
 echo "download_toolchains.sh completed successfully." >&2

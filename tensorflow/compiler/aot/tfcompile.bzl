@@ -55,6 +55,7 @@ def _tfcompile_model_library_rule_impl(ctx):
                       "--xla_cpu_fast_math_honor_functions=false " +
                       "--xla_cpu_fast_math_honor_division=false " +
                       "--xla_cpu_enable_fast_min_max=true " +
+                      ctx.attr.xla_flags + " " +
                       "$${XLA_FLAGS:-}' "),
         "CUDA_VISIBLE_DEVICES": "",
     }
@@ -127,6 +128,7 @@ _tfcompile_model_library = rule(
         "dfsan_abilists": attr.label_list(default = [], allow_files = True),
         "is_linux": attr.bool(),
         "gen_compiler_log": attr.bool(),
+        "xla_flags": attr.string(),
     },
 )
 
@@ -151,7 +153,8 @@ def _tf_library(
         mlir_components = "None",
         deps = None,
         tags = [],
-        copts = []):
+        copts = [],
+        xla_flags = None):
     if not cpp_class:
         fail("cpp_class must be specified")
 
@@ -268,7 +271,7 @@ def _tf_library(
         tfcompile_config = config,
         entry_point = ep,
         cpp_class = cpp_class,
-        target_cpu = tfcompile_target_cpu(),
+        target_cpu = tfcompile_target_cpu(name),
         target_triple = target_llvm_triple(),
         flags = flags,
         extra_flags = debug_info_flags + profiling_flags + mlir_flags + traceme_flags,
@@ -281,6 +284,7 @@ def _tf_library(
         visibility = visibility,
         testonly = testonly,
         tags = tags,
+        xla_flags = xla_flags,
     )
 
     tfcompile_gen_object_files = tfcompile_gen + "_object_files"
@@ -315,6 +319,8 @@ def _tf_library(
         ] or []) + (include_standard_runtime_deps and [
             # TODO(cwhipkey): only depend on kernel code that the model actually
             # needed.
+            "//tensorflow/compiler/xla/service/cpu/runtime:convolution_ffi",
+            "//tensorflow/compiler/xla/service/cpu/runtime:rng_ffi",
             "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
             "//tensorflow/compiler/xla/service/cpu:runtime_custom_call_status",
             "//tensorflow/compiler/xla/service/cpu:runtime_key_value_sort",
@@ -325,7 +331,12 @@ def _tf_library(
             "//third_party/eigen3",
         ] or []) + (
             mlir_components.count("HloLowering") > 0 and [
+                "//tensorflow/compiler/xla/runtime:aot_ffi_c_symbols",
                 "//tensorflow/compiler/xla/service/cpu:runtime_mlir_utils",
+            ] or []
+        ) + (
+            include_standard_runtime_deps and mlir_components == "HloLowering" and [
+                "//tensorflow/compiler/xla/service/cpu/runtime:retain",
             ] or []
         ) + (deps or []),
         tags = tags,
@@ -391,6 +402,7 @@ def _tf_library(
             ]),
             tags = tags,
             extra_copts = copts,
+            visibility = visibility,
         )
 
     if gen_benchmark:
@@ -437,6 +449,7 @@ def _tf_library(
                 "//tensorflow/compiler/aot:benchmark_extra_android",
             ]),
             tags = tags,
+            visibility = visibility,
         )
 
 def tf_library(
@@ -460,7 +473,8 @@ def tf_library(
         mlir_components = "None",
         deps = None,
         tags = [],
-        copts = []):
+        copts = [],
+        xla_flags = None):
     """Compiles a TensorFlow graph into an executable with fast math enabled.
 
     Given an invocation of tf_library(name="foo", ...), generates the following
@@ -543,6 +557,7 @@ def tf_library(
         deps,
         tags,
         copts,
+        xla_flags,
     )
     if mlir_components == "None":
         _tf_library(
@@ -567,6 +582,7 @@ def tf_library(
             deps,
             tags + ["notap", "local", "manual"],
             copts,
+            xla_flags,
         )
 
 def target_llvm_triple():

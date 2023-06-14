@@ -154,7 +154,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
                 std::move(xspace_paths),
                 /*xspaces=*/std::nullopt);
         if (!status_or_session_snapshot.ok()) {
-          LOG(ERROR) << status_or_session_snapshot.status().error_message();
+          LOG(ERROR) << status_or_session_snapshot.status().message();
           return py::make_tuple(py::bytes(""), py::bool_(false));
         }
 
@@ -168,7 +168,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
                   status_or_session_snapshot.value(), tool_name, tool_options);
         }
         if (!status_or_tool_data.ok()) {
-          LOG(ERROR) << status_or_tool_data.status().error_message();
+          LOG(ERROR) << status_or_tool_data.status().message();
           return py::make_tuple(py::bytes(""), py::bool_(false));
         }
         return py::make_tuple(py::bytes(status_or_tool_data.value()),
@@ -210,7 +210,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
               tensorflow::profiler::SessionSnapshot::Create(
                   std::move(xspace_paths), std::move(xspaces));
           if (!status_or_session_snapshot.ok()) {
-            LOG(ERROR) << status_or_session_snapshot.status().error_message();
+            LOG(ERROR) << status_or_session_snapshot.status().message();
             return py::make_tuple(py::bytes(""), py::bool_(false));
           }
 
@@ -220,7 +220,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
                   status_or_session_snapshot.value(), tool_name,
                   /*options=*/{});
           if (!status_or_tool_data.ok()) {
-            LOG(ERROR) << status_or_tool_data.status().error_message();
+            LOG(ERROR) << status_or_tool_data.status().message();
             return py::make_tuple(py::bytes(""), py::bool_(false));
           }
           return py::make_tuple(py::bytes(status_or_tool_data.value()),

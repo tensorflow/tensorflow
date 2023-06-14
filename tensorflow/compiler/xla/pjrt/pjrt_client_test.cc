@@ -248,7 +248,7 @@ TEST_P(PjRtClientTest, ExecuteWithDonationAbort) {
 
   auto resultsor = executable->Execute({{buffer.get()}}, options);
   ASSERT_FALSE(resultsor.ok());
-  EXPECT_THAT(resultsor.status().error_message(),
+  EXPECT_THAT(resultsor.status().message(),
               ::testing::HasSubstr(
                   "Donation requested for buffer with external reference"));
 }

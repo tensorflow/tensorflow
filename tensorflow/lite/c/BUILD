@@ -5,6 +5,7 @@ load(
     "tflite_copts",
     "tflite_copts_warnings",
     "tflite_custom_c_library",
+    "tflite_linkopts_no_undefined",
     "tflite_self_contained_libs_test_suite",
 )
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
@@ -25,7 +26,7 @@ package(
 #   - Windows: `tensorflowlite_c.dll`
 tflite_cc_shared_object(
     name = "tensorflowlite_c",
-    linkopts = select({
+    linkopts = tflite_linkopts_no_undefined() + select({
         "//tensorflow:ios": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite/c:exported_symbols.lds)",
         ],
@@ -34,7 +35,6 @@ tflite_cc_shared_object(
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-z defs",
             "-Wl,--version-script,$(location //tensorflow/lite/c:version_script.lds)",
         ],
     }),
@@ -58,6 +58,7 @@ cc_library_with_tflite_with_c_headers_test(
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_without_op_resolver",
+        "//tensorflow/lite/core/async/c:types",
         "//tensorflow/lite/core/c:c_api",
     ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
@@ -117,6 +118,7 @@ cc_library_with_tflite_with_c_headers_test(
     ],
     deps = [
         ":c_api_opaque_internal",
+        ":common_internal",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api",
         "//tensorflow/lite/core/c:c_api_experimental",
@@ -134,12 +136,12 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
         ":c_api_opaque_internal",
         ":c_api_without_op_resolver",
+        ":common_internal",
         "//tensorflow/lite/core:subgraph",
         "//tensorflow/lite/core/c:c_api_experimental_without_op_resolver",
         "//tensorflow/lite/core/c:c_api_types",
@@ -157,7 +159,6 @@ cc_library_with_tflite_with_c_headers_test(
         "c_api_experimental.h",
         "c_api_opaque.h",
     ],
-    aspect_hints = ["//tools/build_defs/swift:auto_module"],
     copts = tflite_copts() + tflite_copts_warnings(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     deps = [
@@ -275,9 +276,9 @@ cc_library_with_tflite_with_c_headers_test(
         ":c_api_types",
     ],
     deps = [
-        "//tensorflow/lite/core/c:common",
         "//tensorflow/lite:tflite_kernel_use_xnnpack_optional",
         "//tensorflow/lite/core/c:c_api_types",
+        "//tensorflow/lite/core/c:common",
     ] + select({
         "//tensorflow/lite:tensorflow_profiler_config": [
             "//tensorflow/lite:macros",
@@ -306,16 +307,18 @@ cc_library(
     name = "c_api_opaque_internal",
     srcs = ["c_api_opaque_internal.cc"],
     hdrs = ["c_api_opaque_internal.h"],
+    compatible_with = get_compatible_with_portable(),
     tags = ["allow_undefined_symbols"],  # For tflite::CreateOpResolver().
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external",
     ],
 )
 
@@ -331,14 +334,16 @@ cc_library(
     ],
     deps = [
         ":c_api_types",
-        ":c_api_without_op_resolver_without_alwayslink",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/core/c:registration_external_without_alwayslink",
     ],
 )
 
 # For use with library targets that can't use relative paths.
+# LINT.IfChange(exported_headers)
 exports_files([
     "c_api.h",
     "c_api_experimental.h",
@@ -360,6 +365,7 @@ alias(
     name = "tensorflowlite_c_impl_hdrs_filegroup",
     actual = "//tensorflow/lite/core/c:headers_filegroup",
 )
+# LINT.ThenChange(../java/BUILD:TFLITE_HEADERS)
 
 # Test the C extension API code.
 test_suite(

@@ -5,9 +5,7 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE.txt"])
-
-licenses(["notice"])
+exports_files(["LICENSE"])
 
 config_setting(
     name = "platform_freebsd",
@@ -43,15 +41,18 @@ filegroup(
         "include/flatbuffers/allocator.h",
         "include/flatbuffers/array.h",
         "include/flatbuffers/base.h",
-        "include/flatbuffers/bfbs_generator.h",
         "include/flatbuffers/buffer.h",
         "include/flatbuffers/buffer_ref.h",
+        "include/flatbuffers/code_generator.h",
         "include/flatbuffers/code_generators.h",
         "include/flatbuffers/default_allocator.h",
         "include/flatbuffers/detached_buffer.h",
+        "include/flatbuffers/file_manager.h",
         "include/flatbuffers/flatbuffer_builder.h",
         "include/flatbuffers/flatbuffers.h",
+        "include/flatbuffers/flex_flat_util.h",
         "include/flatbuffers/flexbuffers.h",
+        "include/flatbuffers/grpc.h",
         "include/flatbuffers/hash.h",
         "include/flatbuffers/idl.h",
         "include/flatbuffers/minireflect.h",
@@ -176,7 +177,7 @@ py_library(
 
 filegroup(
     name = "runtime_java_srcs",
-    srcs = glob(["java/com/google/flatbuffers/**/*.java"]),
+    srcs = glob(["java/src/main/java/com/google/flatbuffers/**/*.java"]),
 )
 
 java_library(

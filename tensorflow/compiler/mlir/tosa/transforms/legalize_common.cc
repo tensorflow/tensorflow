@@ -23,12 +23,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_common.h"
 
+#include <algorithm>
 #include <climits>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <limits>
 #include <numeric>
 #include <optional>
+#include <utility>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
@@ -1397,9 +1401,11 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   // softmax = exp(logits - max(logits)) / reduce_sum(exp(logits -
   // max(logits)), -1)
   //
-  // We'll use first version for direct fp lowering, and second version for
-  // quantized lowering since second one we can restrict input to exp() be
-  // negative, and thus LUT can always be within [0.0, 1.0].
+  // Second equation is used for both quantized and fp lowering.
+  // For quantized case, we can restrict input to exp() be negative,
+  // and thus LUT can always be within [0.0, 1.0].
+  // For fp case, the normalization in the equation is required to prevent
+  // float overflow in softmax's intermediate calculations.
   RankedTensorType output_type =
       result_value.getType().dyn_cast<RankedTensorType>();
   RankedTensorType input_type =
@@ -1409,6 +1415,14 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
   if (!output_type || !input_type) {
     (void)rewriter.notifyMatchFailure(op,
                                       "input and result not ranked tensors");
+    return std::nullopt;
+  }
+
+  // beta is not exposed from the TF API, assume only beta=1.0 is supported
+  // For more details: https://github.com/tensorflow/tensorflow/issues/60435
+  if (beta != 1.0) {
+    (void)rewriter.notifyMatchFailure(
+        op, "beta values other than 1.0 are not supported");
     return std::nullopt;
   }
 
@@ -1778,28 +1792,42 @@ std::optional<Value> convertSoftmaxOp(PatternRewriter& rewriter, Operation* op,
     rsum_shape_v[input_rank - 1] = 1;
     ArrayRef<int64_t> rsum_shape(rsum_shape_v);
 
-    // Floating-point loewring is more direct:
+    // Floating-point lowering is more direct:
     //
-    // op1 = exp(logits)
-    // op2 = reduce_sum(op1, -1)
-    // op3 = reciprocal(op2)
-    // op4 = mul(op1, op3)
-    auto op1_exp_in = CreateOpAndInfer<tosa::ExpOp>(rewriter, op->getLoc(),
-                                                    output_type, logits_value);
+    // op1 = reducemax(logits)
+    // op2 = sub(logits, op1)
+    // op3 = exp(op2)
+    // op4 = reduce_sum(op3, -1)
+    // op5 = reciprocal(op4)
+    // op6 = mul(op3, op5)
     RankedTensorType rsum_type = tensorflow::GetTypeFromTFTensorShape(
         rsum_shape, output_type.getElementType());
+    RankedTensorType logits_type = tensorflow::GetTypeFromTFTensorShape(
+        logits_shape, output_type.getElementType());
 
-    // Keep dims so we don't need to reshape later
-    auto op2_reducesum_op1 = CreateOpAndInfer<tosa::ReduceSumOp>(
-        rewriter, op->getLoc(), rsum_type, op1_exp_in.getResult(),
+    // Step 1. get x - max(x)
+    auto max_logits = CreateOpAndInfer<tosa::ReduceMaxOp>(
+        rewriter, op->getLoc(), rsum_type, logits_value,
         rewriter.getI64IntegerAttr(input_rank - 1));
-    auto op3_reciprocal_op2 = CreateOpAndInfer<tosa::ReciprocalOp>(
-        rewriter, op->getLoc(), op2_reducesum_op1.getType(),
-        op2_reducesum_op1.getResult());
+    auto normalized_logits =
+        CreateOpAndInfer<tosa::SubOp>(rewriter, op->getLoc(), logits_type,
+                                      logits_value, max_logits.getResult());
+
+    // Step 2. get exp(x - max(x))
+    auto exp_norm_logits = CreateOpAndInfer<tosa::ExpOp>(
+        rewriter, op->getLoc(), output_type, normalized_logits);
+
+    // Step 3. reuse softmax numerator to obtain denominator
+    // Keep dims so we don't need to reshape later
+    auto reducesum = CreateOpAndInfer<tosa::ReduceSumOp>(
+        rewriter, op->getLoc(), rsum_type, exp_norm_logits.getResult(),
+        rewriter.getI64IntegerAttr(input_rank - 1));
+    auto denominator = CreateOpAndInfer<tosa::ReciprocalOp>(
+        rewriter, op->getLoc(), reducesum.getType(), reducesum.getResult());
 
     return CreateOpAndInfer<tosa::MulOp>(rewriter, op->getLoc(), output_type,
-                                         op1_exp_in.getResult(),
-                                         op3_reciprocal_op2.getResult(), 0)
+                                         exp_norm_logits.getResult(),
+                                         denominator.getResult(), 0)
         .getResult();
   }
 }
@@ -2255,9 +2283,7 @@ std::optional<Value> convertStridedSliceOp(
   // tensor
   //
   // 2. Reshape2: Reshape the tensor from (1) such that each dimension with
-  // stride is split into two dimensions of size_i/stride_i, stride_i. A naive
-  // implementation doubles the input tensor rank, but only dimensions being
-  // strided actually need to be doubled.
+  // abs(stride) != 1 is split into two dimensions of size_i/stride_i, stride_i.
   //
   // 3. Slice3: Slice the tensor from (2) such that we select index [0] from
   // each of the stride_i dimensions in (2)
@@ -2299,7 +2325,6 @@ std::optional<Value> convertStridedSliceOp(
   bool all_strides_one = true;
   int32_t strides_size = strides.size();
   for (auto stride : strides) all_strides_one &= abs(stride) == 1;
-
 
   // If all of the masks are set we can just bypass the entire thing.
   const int32_t all_masks_one = (1 << strides_size) - 1;
@@ -2432,10 +2457,14 @@ std::optional<Value> convertStridedSliceOp(
   }
 
   // Step 2: reshape the sliced array
-  SmallVector<int64_t> a2_shape(input_rank * 2);
+  SmallVector<int64_t> a2_shape;
   for (int i = 0; i < input_rank; ++i) {
-    a2_shape[i * 2 + 0] = a1_size[i] == -1 ? -1 : a1_size[i] / abs(strides[i]);
-    a2_shape[i * 2 + 1] = abs(strides[i]);
+    int64_t abs_stride_i = abs(strides[i]);
+    a2_shape.push_back(a1_size[i] == -1 ? -1 : a1_size[i] / abs_stride_i);
+    if (abs_stride_i != 1) {
+      // only add a stride dimension if strides[i] != 1
+      a2_shape.push_back(abs_stride_i);
+    }
   }
 
   auto a2_reshape_op = CreateOpAndInfer<tosa::ReshapeOp>(
@@ -2446,19 +2475,24 @@ std::optional<Value> convertStridedSliceOp(
           tensorflow::ConvertMlirShapeToTF(a2_shape)));
 
   // Step 3: take a slice along the strides
-  SmallVector<int64_t> a3_begin(input_rank * 2), a3_size(input_rank * 2);
+  SmallVector<int64_t> a3_begin, a3_size;
   for (int i = 0; i < input_rank; ++i) {
-    a3_begin[i * 2 + 0] = 0;
-    a3_begin[i * 2 + 1] = 0;
+    int64_t abs_stride_i = abs(strides[i]);
+    a3_begin.push_back(0);
 
     if (shrink_axis_mask & (1 << i)) {
-      a3_size[i * 2 + 0] = 1;
+      a3_size.push_back(1);
     } else {
-      a3_size[i * 2 + 0] =
-          (a1_size[i] == -1) ? -1 : (a1_size[i] / abs(strides[i]));
+      a3_size.push_back((a1_size[i] == -1) ? -1 : (a1_size[i] / abs_stride_i));
     }
-    a3_size[i * 2 + 1] = 1;
+    if (abs_stride_i != 1) {
+      // previous reshape only adds a stride dimension if strides[i] != 1
+      a3_begin.push_back(0);
+      a3_size.push_back(1);
+    }
   }
+  assert(a2_shape.size() == a3_begin.size());
+  assert(a2_shape.size() == a3_size.size());
 
   auto a3_slice_op = CreateOpAndInfer<tosa::SliceOp>(
       rewriter, op->getLoc(),
@@ -3097,8 +3131,8 @@ std::optional<Value> convertResizeOp(PatternRewriter& rewriter, Operation* op,
                        int& border) {
     // Dimension is length 1, we are just sampling from one value.
     if (input == 1) {
-      n = 1;
-      d = output;
+      n = output;
+      d = 1;
       offset = 0;
       border = output - 1;
       return;
@@ -4465,12 +4499,12 @@ std::optional<Value> convertSinOp(PatternRewriter& rewriter, Operation* op,
 }
 
 // Lowers Sign operator to a sequence of TOSA ops.
-llvm::Optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
-                                    Value input, RankedTensorType output_type) {
+std::optional<Value> convertSignOp(PatternRewriter& rewriter, Operation* op,
+                                   Value input, RankedTensorType output_type) {
   auto output_elem_type = output_type.getElementType();
   if (output_elem_type.isa<mlir::quant::QuantizedType>()) {
     (void)rewriter.notifyMatchFailure(op, "tfl quantization not yet supported");
-    return llvm::None;
+    return std::nullopt;
   }
 
   // TOSA greater and select can both broadcast, so simply create a tensor with

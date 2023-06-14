@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tfrt/benchmarks/benchmark.h"
 
+#include <memory>
 #include <string>
+#include <utility>
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"

@@ -19,8 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using ::mlir::Operation;
-
 bool IsContiguousMemref(mlir::Value value) {
   auto memref_type = value.getType().dyn_cast<mlir::MemRefType>();
   if (!memref_type) return false;

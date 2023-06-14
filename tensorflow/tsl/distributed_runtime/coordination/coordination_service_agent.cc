@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/notification.h"
@@ -288,8 +289,8 @@ Status CoordinationServiceAgentImpl::Connect() {
            // process of being enabled.
            (connect_status.GetPayload(CoordinationErrorPayloadKey()) ==
                 std::nullopt ||
-            errors::IsAborted(connect_status) ||
-            errors::IsInternal(connect_status)));
+            absl::IsAborted(connect_status) ||
+            absl::IsInternal(connect_status)));
   if (!connect_status.ok()) {
     SetError(connect_status);
     return connect_status;
@@ -433,7 +434,7 @@ Status CoordinationServiceAgentImpl::ReportError(const Status& error) {
   LOG(INFO) << "Reporting error to coordination service: " << error;
   ReportErrorToServiceRequest request;
   request.set_error_code(error.raw_code());
-  request.set_error_message(error.error_message());
+  request.set_error_message(std::string(error.message()));
   *request.mutable_error_origin() = task_;
   VLOG(5) << "ReportErrorToServiceRequest: " << request.DebugString();
   ReportErrorToServiceResponse response;

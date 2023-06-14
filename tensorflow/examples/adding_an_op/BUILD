@@ -57,9 +57,9 @@ py_library(
     srcs = ["zero_out_grad_2.py"],
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python/framework:for_generated_wrappers",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:sparse_ops",
     ],
 )
 
@@ -134,8 +134,8 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY3",
     tags = tf_cuda_tests_tags() + [
-        "notap",
         "no_pip",
+        "notap",
     ],
     deps = [
         ":cuda_op",

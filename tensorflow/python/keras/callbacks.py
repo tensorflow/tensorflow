@@ -32,7 +32,7 @@ from tensorflow.python.checkpoint import checkpoint_management
 from tensorflow.python.checkpoint import checkpoint_options as checkpoint_options_lib
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
-from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import tpu_strategy
@@ -571,7 +571,7 @@ class CallbackList:
   def _disallow_batch_hooks_in_ps_strategy(self):
     """Error out if batch-level callbacks are passed with PSStrategy."""
     # pylint: disable=protected-access
-    strategy = ds_context.get_strategy()
+    strategy = distribute_lib.get_strategy()
     if strategy._should_use_with_coordinator:
       unsupported_callbacks = []
       for cb in self.callbacks:

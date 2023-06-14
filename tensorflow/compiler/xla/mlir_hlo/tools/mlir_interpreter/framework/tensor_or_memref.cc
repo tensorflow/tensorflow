@@ -39,6 +39,7 @@ std::optional<int64_t> BufferView::getPhysicalIndex(
 }
 
 bool BufferView::inBounds(llvm::ArrayRef<int64_t> viewIndices) const {
+  if (viewIndices.size() > sizes.size()) return false;
   for (auto [index, size] : llvm::zip(viewIndices, sizes)) {
     if (index < 0 || index >= size) return false;
   }

@@ -953,6 +953,17 @@ class UnaryOpsTest(xla_test.XLATestCase):
           lambda x: array_ops.bitcast(x, dtypes.uint64),
           np.array([1, 0x100000003f800000], np.int64),
           expected=np.array([1, 0x100000003f800000], np.uint64))
+      self._assertOpOutputMatchesExpected(
+          lambda x: array_ops.bitcast(x, dtypes.float64),
+          np.array(
+              [0, 0x3FF0000000000000, 0xc3af161421c8e000, 0x4032000000000007],
+              np.uint64,
+          ),
+          expected=np.array(
+              [0, 1.0, -1.12e+18, 18.000000000000024869], np.float64
+          ),
+          atol=0
+      )
 
   def testBitcastInt8ToFloat(self):
     self._assertOpOutputMatchesExpected(

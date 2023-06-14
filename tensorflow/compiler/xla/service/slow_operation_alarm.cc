@@ -159,7 +159,7 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
       absl::Duration(absl::Minutes(2)),
       absl::StrCat(
           separator, "\n", context_msg,
-          "Very slow compile?  If you want to file a bug, run with envvar "
+          "Very slow compile? If you want to file a bug, run with envvar "
           "XLA_FLAGS=--xla_dump_to=/tmp/foo and attach the results.",
           separator),
       counter);
@@ -168,8 +168,8 @@ std::unique_ptr<SlowOperationAlarm> SlowCompilationAlarm(
       absl::Duration(absl::Seconds(10)),
       absl::StrCat(
           separator, "\n", context_msg,
-          "Slow compile?  XLA was built without compiler optimizations, "
-          "which can be slow.  Try rebuilding with -c opt.",
+          "Slow compile? XLA was built without compiler optimizations, which "
+          "can be slow. Try rebuilding with -c opt.",
           separator),
       counter);
 #endif

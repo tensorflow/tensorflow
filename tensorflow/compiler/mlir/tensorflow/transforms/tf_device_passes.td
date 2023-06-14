@@ -170,7 +170,7 @@ def HostLaunchToOutsideCompiledPass : Pass<"tf-device-host-launch-to-outside-com
         "tf_device.launch"() {
           "tf.B"()
           tf_device.return
-        } {device = "TPU_REPLICATED_HOST"} : () -> ()
+        } {device = "TPU_REPLICATED_HOST_0"} : () -> ()
         "tf.C"()
         tf_device.return
       }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
@@ -388,5 +388,14 @@ def XlaRewritePass : Pass<"tf-xla-rewrite", "mlir::ModuleOp"> {
   }];
 
   let constructor = "TFDevice::CreateXlaRewritePass()";
+  let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
+}
+
+def XlaValidateInputsPass : Pass<"tf-xla-validate-inputs", "ModuleOp"> {
+  let summary = "Validtes inputs to the TF CPU/GPU bridge";
+  let description = [{
+    This pass checks that the IR has valid input to CPU/GPU TF/XLA bridge.
+  }];
+  let constructor = "TFDevice::CreateXlaValidateInputsPass()";
   let dependentDialects = ["tf_device::TensorFlowDeviceDialect"];
 }

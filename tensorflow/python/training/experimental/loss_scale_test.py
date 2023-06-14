@@ -17,7 +17,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -35,7 +35,7 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.
-default_strategy_fn = distribution_strategy_context.get_strategy
+default_strategy_fn = distribute_lib.get_strategy
 
 
 def create_mirrored_strategy():
@@ -104,17 +104,17 @@ class DynamicLossScaleTest(test.TestCase, parameterized.TestCase):
   def _get_tensor(self, is_finite):
     tensor = cond.cond(is_finite, lambda: 1., lambda: float('NaN'))
 
-    if not distribution_strategy_context.has_strategy():
+    if not distribute_lib.has_strategy():
       return tensor
 
     def get():
       rep_id = (
-          distribution_strategy_context.get_replica_context()
+          distribute_lib.get_replica_context()
           .replica_id_in_sync_group)
       return cond.cond(
           math_ops.equal(rep_id, 0), lambda: tensor, lambda: 1.)
 
-    distribution = distribution_strategy_context.get_strategy()
+    distribution = distribute_lib.get_strategy()
     return distribution.extended.call_for_each_replica(get)
 
   def _test_helper(self,

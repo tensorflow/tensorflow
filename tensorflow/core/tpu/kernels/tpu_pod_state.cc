@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_pod_state.h"
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "absl/cleanup/cleanup.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -62,7 +67,7 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
 #endif
   TF_RETURN_IF_ERROR(server_builder.status());
 
-  auto cache_service = absl::make_unique<TpuCompilationCacheService>(
+  auto cache_service = std::make_unique<TpuCompilationCacheService>(
       server_builder.value().get(), compilation_cache);
   cache_service->SetMemoryQuota(1ul << 31);  // 2GB
   cache_service->Start();
