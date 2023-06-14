@@ -505,6 +505,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = [
+        "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
@@ -761,6 +762,7 @@ cc_library(
         ":variable_op_kernels",
         "@fft2d",
         "@ruy//ruy/profiler:instrumentation",
+        "//tensorflow/lite:array",
         "//tensorflow/tsl/lib/random:philox_random",
         "//tensorflow/tsl/lib/random:random_distributions_utils",
         "//tensorflow/lite/core/c:c_api_types",
