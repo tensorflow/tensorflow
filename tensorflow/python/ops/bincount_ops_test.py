@@ -36,18 +36,26 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }])
   def test_sparse_input_all_count(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 1000
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
     sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
                                             [num_rows, 1])
 
+    # Note that the result for a sparse tensor is the same as for the
+    # equivalent dense tenor, i.e. implicit zeros are counted.
     np_out = np.bincount(inp_vals, minlength=size)
+    implict_zeros = num_rows - n_elems
+    np_out[0] += implict_zeros
     self.assertAllEqual(
-        np_out, self.evaluate(bincount_ops.bincount(sparse_inp, axis=0)))
+        np_out,
+        self.evaluate(
+            bincount_ops.bincount(sparse_inp, axis=0, minlength=size)
+        ),
+    )
 
   @parameterized.parameters([{
       "dtype": np.int32,
@@ -56,12 +64,15 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }])
   def test_sparse_input_all_count_with_weights(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 1000
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
-    inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
+    inp_vals = np.random.randint(0, size, (n_elems-1,), dtype=dtype)
+    # Add an element with value `size-1` to input so bincount output has `size`
+    # elements.
+    inp_vals = np.concatenate([inp_vals, [size-1]], axis=0)
     sparse_inp = sparse_tensor.SparseTensor(inp_indices, inp_vals,
                                             [num_rows, 1])
     weight_vals = np.random.random((n_elems,))
@@ -81,9 +92,9 @@ class TestDenseBincount(test.TestCase, parameterized.TestCase):
   }])
   def test_sparse_input_all_binary(self, dtype):
     np.random.seed(42)
-    num_rows = 128
+    num_rows = 4096
     size = 10
-    n_elems = 4096
+    n_elems = 128
     inp_indices = np.random.randint(0, num_rows, (n_elems, 1))
     inp_indices = np.concatenate([inp_indices, np.zeros((n_elems, 1))], axis=1)
     inp_vals = np.random.randint(0, size, (n_elems,), dtype=dtype)
