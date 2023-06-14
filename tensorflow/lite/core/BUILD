@@ -1,6 +1,7 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_self_contained_libs_test_suite")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tflite_portable_test_suite")
+load("//tensorflow/lite/core:special_rules.bzl", "macros_visibility_allowlist")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
@@ -224,7 +225,7 @@ alias(
     name = "cc_api",
     actual = "cc_api_experimental",
     visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
+        "//tensorflow/lite:__subpackages__",
         "//tensorflow/lite/delegates/flex:__subpackages__",
         "//tensorflow/lite/kernels:__subpackages__",
     ],
@@ -296,6 +297,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":macros",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",
@@ -413,8 +415,8 @@ cc_library(
     hdrs = ["macros.h"],
     compatible_with = get_compatible_with_portable(),
     visibility = [
-        "//visibility:private",
-    ],
+        "//tensorflow/lite:__subpackages__",
+    ] + macros_visibility_allowlist(),
 )
 
 cc_library(
@@ -477,8 +479,9 @@ cc_test(
     deps = [
         ":framework_stable",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/kernels:builtin_ops",  # build_cleaner: keep
-        "//tensorflow/lite/testing:util",  # build_cleaner: keep
+        "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest_main",
     ],
 )

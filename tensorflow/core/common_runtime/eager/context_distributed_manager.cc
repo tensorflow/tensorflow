@@ -16,9 +16,13 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context_distributed_manager.h"
 
 #include <algorithm>
+#include <iterator>
+#include <memory>
 #include <numeric>
 #include <string>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "google/protobuf/any.pb.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
@@ -623,7 +627,7 @@ Status UpdateContextWithServerDef(EagerContext* context,
     LOG_AND_RETURN_IF_ERROR(context->InitializeRemoteMaster(
         std::move(new_server), server->worker_env(), worker_session,
         std::move(remote_eager_workers), std::move(new_remote_device_mgr),
-        remote_workers, context_id, r.release(), device_mgr, keep_alive_secs,
+        remote_workers, context_id, std::move(r), device_mgr, keep_alive_secs,
         cluster_flr, std::move(remote_mgr)));
 
     // NOTE: We start the server after all other initialization, because the

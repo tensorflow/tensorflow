@@ -546,21 +546,6 @@ cc_library_with_tflite(
     alwayslink = 1,  # TODO(b/161243354): eliminate this.
 )
 
-# The key parts of the C++ API.  This target defines the TF Lite classes for
-# loading models and interpreting them.
-# DEPRECATED: prefer to depend on :cc_api_stable or :cc_api_experimental.
-alias_with_tflite(
-    name = "cc_api",
-    actual = "cc_api_experimental",
-    compatible_with = get_compatible_with_portable(),
-    generate_opaque_delegate_target = True,
-    visibility = [
-        "//tensorflow/lite/core/shims:__subpackages__",
-        "//tensorflow/lite/delegates/flex:__subpackages__",
-        "//tensorflow/lite/kernels:__subpackages__",
-    ],
-)
-
 cc_library(
     name = "logger",
     srcs = ["logger.cc"],
@@ -1142,10 +1127,33 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts_warnings() + tflite_copts(),
     deps = [
+        ":array",
         ":kernel_api",
         ":macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+    ],
+)
+
+cc_library(
+    name = "array",
+    srcs = ["array.cc"],
+    hdrs = ["array.h"],
+    compatible_with = get_compatible_with_portable(),
+    copts = tflite_copts_warnings() + tflite_copts(),
+    deps = [
+        "//tensorflow/lite/core/c:common",
+    ],
+)
+
+cc_test(
+    name = "array_test",
+    srcs = ["array_test.cc"],
+    deps = [
+        ":array",
+        "//tensorflow/lite/core/c:common",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1197,6 +1205,7 @@ cc_test(
         ":util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],

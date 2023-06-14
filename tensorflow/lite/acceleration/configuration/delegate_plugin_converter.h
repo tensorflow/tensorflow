@@ -18,8 +18,8 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
-#include "tensorflow/lite/core/shims/c/experimental/acceleration/configuration/delegate_plugin.h"
-#include "tensorflow/lite/core/shims/cc/experimental/acceleration/configuration/delegate_registry.h"
+#include "tensorflow/lite/acceleration/configuration/c/delegate_plugin.h"
+#include "tensorflow/lite/acceleration/configuration/delegate_registry.h"
 
 namespace tflite {
 namespace delegates {
@@ -28,7 +28,7 @@ namespace delegates {
 // Given an instance of the (C) TfLiteOpaqueDelegatePlugin struct, this returns
 // a function that takes a TFLiteSettings FlatBuffer and returns a unique_ptr to
 // an instance of the (C++) DelegatePluginInterface abstract class.
-std::function<std::unique_ptr<tflite_shims::delegates::DelegatePluginInterface>(
+std::function<std::unique_ptr<tflite::delegates::DelegatePluginInterface>(
     const ::tflite::TFLiteSettings&)>
 DelegatePluginConverter(const TfLiteOpaqueDelegatePlugin& plugin_c_api);
 

@@ -20,11 +20,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/call_graph_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
-
-inline constexpr absl::string_view kEntryFunctionAttr = "tf.entry_function";
+#include "tensorflow/compiler/mlir/tensorflow/utils/call_graph_util.h"
+#include "tensorflow/core/common_runtime/inline_function_utils.h"
 
 namespace mlir {
 
@@ -63,37 +62,37 @@ void EncapsulatePartitionedCall(Operation *call_op) {
 }
 
 void XlaClusterFormationPass::runOnOperation() {
+  auto has_no_compile_device_type = [](SymbolUserOpInterface op) {
+    return !op->hasAttr(tensorflow::kCompileDeviceTypeAttr);
+  };
+
   ModuleOp module = getOperation();
   SymbolTable symtab(module);
-
-  llvm::SmallVector<func::FuncOp> entry_funcs;
-  // A model may have multiple graphs, with each graph having its own entry.
-  // When a graph is imported to MLIR, `tf.entry_function` will be added to
-  // each entry function. The one exception are initializer functions, which
-  // have `tf_saved_model.initializer_type` instead.
-  module.walk([&](func::FuncOp func) {
-    if (func->hasAttr(kEntryFunctionAttr) ||
-        func->hasAttr(tf_saved_model::kTfSavedModelInitializerTypeAttr)) {
-      entry_funcs.push_back(func);
-    }
-  });
-  if (entry_funcs.empty()) {
-    LOG(WARNING) << "no entry function is found";
-  }
-  auto predicate = [](Operation *op) {
-    if (op->hasAttr(tensorflow::kCompileDeviceTypeAttr)) return true;
-    return false;
-  };
-  for (auto &root : entry_funcs) {
-    llvm::SmallVector<Operation *> outermost_call_ops;
-    if (failed(GetOutermostOpsOfType<TF::StatefulPartitionedCallOp,
+  mlir::OpBuilder builder(module.getContext());
+  auto noinline_attr_name = absl::StrCat("tf.", tensorflow::kNoInlineAttr);
+  llvm::SmallVector<func::FuncOp> entry_funcs = GetEntryFunctions(module);
+  for (auto &entry_func : entry_funcs) {
+    llvm::SmallVector<SymbolUserOpInterface> noinline_pcall_ops,
+        outermost_pcall_ops;
+    if (failed(GetOpsOfTypeUntilMiss<TF::StatefulPartitionedCallOp,
                                      TF::PartitionedCallOp>(
-            root, symtab, outermost_call_ops, predicate)))
+            entry_func, symtab, /*predicate*/ has_no_compile_device_type,
+            /*hits*/ noinline_pcall_ops,
+            /*first_misses*/ outermost_pcall_ops))) {
       return signalPassFailure();
+    }
     // Cluster outermost partitioned calls with _xla_compile_device_type
     // attribute.
-    for (auto &call_op : outermost_call_ops) {
-      EncapsulatePartitionedCall(call_op);
+    for (auto &pcall_op : outermost_pcall_ops) {
+      EncapsulatePartitionedCall(pcall_op);
+    }
+    // Partitioned calls are executed asynchronous. The calls outside of device
+    // clusters therefore should not be inlined to perserve run-time
+    // performance.
+    for (auto &pcall_op : noinline_pcall_ops) {
+      SymbolRefAttr sym = pcall_op->getAttr("f").template cast<SymbolRefAttr>();
+      auto callee = symtab.lookup<func::FuncOp>(sym.getRootReference());
+      callee->setAttr(noinline_attr_name, builder.getBoolAttr(true));
     }
   }
 }

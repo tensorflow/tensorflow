@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/printer.h"
+#include "tensorflow/compiler/xla/service/hlo_lexer.h"
 #include "tensorflow/compiler/xla/service/mapped_ptr_container_sorter.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -370,6 +371,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       auto sort_operands = all_operands();
       instruction = CreateSort(shape, proto.dimensions(0), all_operands(),
                                computations(0), proto.is_stable());
+      break;
+    }
+    case HloOpcode::kTopK: {
+      TF_RET_CHECK(proto.operand_ids_size() == 1)
+          << "TopK instruction should have exactly 1 operand but has "
+          << proto.operand_ids_size();
+      TF_RET_CHECK(proto.called_computation_ids_size() == 1)
+          << "TopK instruction should one called computation but sees "
+          << proto.called_computation_ids_size();
+      instruction =
+          CreateTopK(shape, all_operands()[0], proto.k(), computations(0));
       break;
     }
     case HloOpcode::kTranspose:
@@ -1054,6 +1066,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateIota(
     const Shape& shape, int64_t iota_dimension) {
   return std::make_unique<HloIotaInstruction>(shape, iota_dimension);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTopK(
+    const Shape& shape, HloInstruction* input, int64_t k,
+    HloComputation* compare) {
+  return std::make_unique<HloTopKInstruction>(shape, input, k, compare);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -2102,6 +2120,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -2693,6 +2712,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kSetDimensionSize:
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kCholesky:
+    case HloOpcode::kTopK:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2901,6 +2921,7 @@ bool HloInstruction::has_to_apply() const {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kTopK:
       return true;
     case HloOpcode::kCustomCall:
       // CustomCall can have a to_apply computation, but it is not required to
@@ -3210,9 +3231,18 @@ void HloInstruction::PrintWithCanonicalNameMap(
     printer->Append("}");
   }
   if (options.print_backend_config() && !backend_config_.empty()) {
-    printer->Append(", backend_config=\"");
-    printer->Append(CEscape(backend_config_.GetRawString()));
-    printer->Append("\"");
+    absl::string_view config = backend_config_.GetRawString();
+    printer->Append(", backend_config=");
+    // In the common case that the backend-config is valid-ish JSON, the parser
+    // doesn't need it delimited by quotes, so we can print it without
+    // CEsape'ing.  This is much easier to read.
+    if (LexesAsJsonDict(config)) {
+      printer->Append(config);
+    } else {
+      printer->Append("\"");
+      printer->Append(CEscape(config));
+      printer->Append("\"");
+    }
   }
 }
 
@@ -3342,7 +3372,7 @@ void HloInstruction::PrintExtraAttributes(
                opcode() == HloOpcode::kReduceScatter ||
                opcode() == HloOpcode::kAllReduceStart ||
                opcode() == HloOpcode::kScatter ||
-               opcode() == HloOpcode::kSort) {
+               opcode() == HloOpcode::kTopK || opcode() == HloOpcode::kSort) {
       if (!called_computations().empty()) {
         printer.Next([this, &options](Printer* printer) {
           printer->Append("to_apply=");
@@ -3435,6 +3465,7 @@ void HloInstruction::PrintExtraAttributes(
       case HloOpcode::kAllReduceStart:
       case HloOpcode::kScatter:
       case HloOpcode::kSort:
+      case HloOpcode::kTopK:
         if (!called_computations().empty()) {
           printer.Next([this, &new_options](Printer* printer) {
             printer->Append("to_apply=\n");
@@ -3838,6 +3869,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCopyDone(this);
     case HloOpcode::kRecv:
       return visitor->HandleRecv(this);
+    case HloOpcode::kTopK:
+      return visitor->HandleTopK(this);
     case HloOpcode::kRecvDone:
       return visitor->HandleRecvDone(this);
     case HloOpcode::kSend:

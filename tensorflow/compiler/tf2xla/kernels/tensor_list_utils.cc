@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"

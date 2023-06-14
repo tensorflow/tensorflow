@@ -103,6 +103,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "Bucketize",
           "CTCBeamSearchDecoder",
           "CTCGreedyDecoder",
+          "Case",
           "Cast",
           "Ceil",
           "CheckNumerics",

@@ -35,6 +35,12 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if !defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS) && defined(__APPLE__) && \
+    !defined(ANDROID) && !defined(__ANDROID__) &&                       \
+    (!defined(TARGET_OS_IOS) || !TARGET_OS_IOS)
+#define PLUGGABLE_DEVICE_SUPPORTED_MACOS 1
+#endif
+
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
 class PackOp : public OpKernel {
@@ -163,4 +169,15 @@ REGISTER_KERNEL_BUILDER(Name("Pack")
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
+#if defined(PLUGGABLE_DEVICE_SUPPORTED_MACOS)
+#define REGISTER_DEFAULT_PACK(type)                       \
+  REGISTER_KERNEL_BUILDER(Name("Pack")                    \
+                              .Device(DEVICE_DEFAULT)     \
+                              .HostMemory("values")       \
+                              .HostMemory("output")       \
+                              .TypeConstraint<type>("T"), \
+                          PackOp<CPUDevice, type>);
+TF_CALL_ALL_TYPES(REGISTER_DEFAULT_PACK)
+#undef REGISTER_DEFAULT_PACK
+#endif
 }  // namespace tensorflow

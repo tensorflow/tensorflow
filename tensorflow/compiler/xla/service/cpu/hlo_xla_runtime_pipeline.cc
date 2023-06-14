@@ -20,6 +20,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Transforms/TilingInterfaceImpl.h"
 #include "mlir/Conversion/BufferizationToMemRef/BufferizationToMemRef.h"  // from @llvm-project
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/Passes.h"  // from @llvm-project
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/TensorToLinalg/TensorToLinalgPass.h"  // from @llvm-project
@@ -28,6 +29,8 @@ limitations under the License.
 #include "mlir/Dialect/Bufferization/Transforms/OneShotAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Bufferization/Transforms/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/Linalg/Transforms/BufferizableOpInterfaceImpl.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"  // from @llvm-project
@@ -41,12 +44,14 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/backends/cpu/transforms/passes.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
 #include "tensorflow/compiler/xla/mlir_hlo/deallocation/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/gml_st/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/interfaces/bufferizable_op_interface_impl.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir_hlo/thlo/interfaces/bufferizable_op_interface_impl.h"
+#include "tensorflow/compiler/xla/mlir_hlo/thlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/mlir_hlo/transforms/passes.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/tsl/platform/errors.h"
@@ -78,27 +83,45 @@ mlir::bufferization::OneShotBufferizationOptions GetBufferizationOptions(
   return options;
 }
 
-void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator) {
+void AddSparsificationPasses(mlir::OpPassManager& pm, bool new_deallocator,
+                             int32_t xla_cpu_sparse_cuda_threads) {
+  // Sparse GPU acceleration enables parallel loops.
+  const bool gpu_codegen = xla_cpu_sparse_cuda_threads > 0;
+  mlir::SparsificationOptions sparsification_options;
+  sparsification_options.enableRuntimeLibrary = false;
+  sparsification_options.enableIndexReduction = true;
+  if (gpu_codegen) {
+    sparsification_options.parallelizationStrategy =
+        mlir::SparseParallelizationStrategy::kDenseOuterLoop;
+  }
+  // Sparsification set up.
   pm.addNestedPass<FuncOp>(mlir::createLinalgGeneralizationPass());
   pm.addNestedPass<FuncOp>(mlir::gml_st::createRewriteFromElementsOpPass());
   pm.addPass(mlir::bufferization::createEmptyTensorEliminationPass());
-  pm.addNestedPass<FuncOp>(
-      mlir::bufferization::createEmptyTensorToAllocTensorPass());
-  pm.addPass(mlir::createPreSparsificationRewritePass());
   pm.addPass(mlir::createSparsificationAndBufferizationPass(
-      GetBufferizationOptions(new_deallocator), mlir::SparsificationOptions(),
-      mlir::SparseTensorConversionOptions(), /*createSparseDeallocs=*/false,
+      GetBufferizationOptions(new_deallocator), sparsification_options,
+      mlir::SparseTensorConversionOptions(),
+      /*createSparseDeallocs=*/false,
       /*enableRuntimeLibrary=*/false,
       /*enableBufferInitialization=*/false,
       /*vectorLength=*/0,
       /*enableVLAVectorization=*/false,
       /*enableSIMDIndex32*/ false));
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createCanonicalizerPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::bufferization::createFinalizingBufferizePass());
+  // Sparse GPU acceleration lowers to GPU dialect.
+  if (gpu_codegen) {
+    pm.addPass(mlir::createSparseGPUCodegenPass());
+    pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createStripDebugInfoPass());
+    pm.addNestedPass<mlir::gpu::GPUModuleOp>(mlir::createConvertSCFToCFPass());
+    pm.addNestedPass<mlir::gpu::GPUModuleOp>(
+        mlir::createLowerGpuOpsToNVVMOpsPass());
+  }
 }
 
 void AddSparsificationPassPipeline(mlir::OpPassManager& pm) {
-  AddSparsificationPasses(pm, false);
+  AddSparsificationPasses(pm, false, /*xla_cpu_sparse_cuda_threads=*/0);
 }
 
 }  // namespace
@@ -141,12 +164,11 @@ static Status CreateHloXlaPipeline(
   }
 
   // Transform HLO operations to Linalg.
-  pm.addNestedPass<mlir::func::FuncOp>(mlir::mhlo::createLegalizeSortPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createLegalizeControlFlowPass());
   pm.addPass(::mlir::mhlo::createLegalizeToArithmeticPass());
   pm.addNestedPass<mlir::func::FuncOp>(
-      xla::cpu::createLegalizeCollectiveOpsPass());
+      xla::cpu::createLegalizeLibraryOpsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::mhlo::createMhloExpandOpsSimplifierPass());
   pm.addNestedPass<mlir::func::FuncOp>(
@@ -187,12 +209,8 @@ static Status CreateHloXlaPipeline(
     mlir::gml_st::GmlStCPUTilingOptions opts =
         mlir::gml_st::getDefaultCPUPipelineOptions(options.cpu_name);
     opts.matmulTileSizes = options.matmul_tile_sizes;
-    if (options.enable_fusion_outlining) {
-      opts.enableFusionClusters = true;
-      opts.enableFusionClusterOutlining = true;
-    }
+    opts.inlineFusionClusters = false;
     mlir::gml_st::addCPUTilingPipeline(pm, opts);
-
   } else {
     pm.addNestedPass<mlir::func::FuncOp>(
         mlir::createLinalgElementwiseOpFusionPass());
@@ -228,11 +246,18 @@ static Status CreateHloXlaPipeline(
 
   if (options.sparse_bufferization) {
     // Convert Sparse tensors.
-    AddSparsificationPasses(pm, options.experimental_deallocation);
+    AddSparsificationPasses(pm, options.experimental_deallocation,
+                            options.xla_cpu_sparse_cuda_threads);
   } else {
     pm.addPass(mlir::hlo::createOneShotBufferizePass());
   }
   pm.addNestedPass<mlir::func::FuncOp>(createRewriteReallocToAllocPass());
+
+  if (options.enable_fusion_outlining) {
+    pm.addPass(mlir::gml_st::createFusionOutliningPass());
+    pm.addPass(mlir::func::createDuplicateFunctionEliminationPass());
+  }
+  pm.addNestedPass<FuncOp>(mlir::gml_st::createInlineFusionClustersPass());
 
   if (options.enable_tiling_and_fusion) {
     pm.addNestedPass<FuncOp>(mlir::gml_st::createVectorizeCopyPass());
@@ -250,9 +275,6 @@ static Status CreateHloXlaPipeline(
   };
   pm.addPass(mlir::bufferization::createBufferResultsToOutParamsPass(
       out_params_options));
-  if (options.outline_with_xla_framework) {
-    pm.addPass(mlir::xla_framework::CreateOutlineWithXLAFrameworkPass());
-  }
 
   if (options.experimental_deallocation) {
     pm.addNestedPass<FuncOp>(
@@ -275,6 +297,7 @@ static Status CreateHloXlaPipeline(
     pm.addNestedPass<mlir::func::FuncOp>(
         xla::cpu::createRemoveCopiesToOutParamsPass());
   }
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::thlo::createLegalizeSortPass());
 
   // Specialize linalg.matmul to linalg.dot, linalg.matvec or linalg.vecmat,
   // and immediately canonicalize to clean up not taken branches.
@@ -311,10 +334,12 @@ void RegisterHloXlaRuntimePipelineDialects(mlir::DialectRegistry& dialects) {
   mlir::arith::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
       dialects);
+  mlir::gml_st::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::linalg::registerTilingInterfaceExternalModels(dialects);
   mlir::mhlo::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::scf::registerBufferizableOpInterfaceExternalModels(dialects);
+  mlir::thlo::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::shape::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::sparse_tensor::registerBufferizableOpInterfaceExternalModels(dialects);
   mlir::tensor::registerBufferizableOpInterfaceExternalModels(dialects);

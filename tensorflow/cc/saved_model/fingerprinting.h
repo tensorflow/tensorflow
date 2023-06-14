@@ -31,6 +31,12 @@ namespace tensorflow::saved_model::fingerprinting {
 StatusOr<FingerprintDef> CreateFingerprintDef(const SavedModel& saved_model,
                                               absl::string_view export_dir);
 
+// Creates a FingerprintDef proto from a SavedModel and the checkpoint meta file
+// (.index) in `export_dir`. The passed in `saved_model` is mutated and should
+// not be used afterwards.
+StatusOr<FingerprintDef> CreateFingerprintDef(SavedModel* saved_model,
+                                              absl::string_view export_dir);
+
 // Loads the `fingerprint.pb` from `export_dir`, returns an error if there is
 // none.
 StatusOr<FingerprintDef> ReadSavedModelFingerprint(

@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_COMPARISON_UTIL_H_
 
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <ostream>
 #include <string>
@@ -183,7 +185,8 @@ class Comparison {
 
   // Applies the comparison from this Comparison's direction and ordering for
   // integral types.
-  template <typename T, absl::enable_if_t<std::is_integral<T>::value, int> = 0>
+  template <typename T,
+            absl::enable_if_t<std::numeric_limits<T>::is_integer, int> = 0>
   inline bool Compare(const T a, const T b) const {
     DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
     return GetComparator<T>()(a, b);
@@ -192,9 +195,7 @@ class Comparison {
   // Applies the comparison from this Comparison's direction and ordering
   // for floating point types.
   template <typename T,
-            absl::enable_if_t<std::is_floating_point<T>::value ||
-                                  std::is_same<T, xla::bfloat16>::value,
-                              int> = 0>
+            absl::enable_if_t<!std::numeric_limits<T>::is_integer, int> = 0>
   inline bool Compare(const T a, const T b) const {
     DCHECK(primitive_util::IsCanonicalRepresentation<T>(primitive_type_));
     if (IsTotalOrder()) {

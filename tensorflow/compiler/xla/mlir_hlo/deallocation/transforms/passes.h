@@ -35,6 +35,10 @@ createSplitAllocTensorsPass();
 // canonicalization.
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createDeallocatePass();
 
+// Pass to annotate ops with debug information.
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createDeallocationAnnotationPass();
+
 // Pass to annotate buffer arguments with aliasing information.
 std::unique_ptr<mlir::OperationPass<mlir::func::FuncOp>>
 createXlaBufferArgRewritePass();

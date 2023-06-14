@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <set>
+#include <vector>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"

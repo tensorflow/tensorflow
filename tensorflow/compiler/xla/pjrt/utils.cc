@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -39,33 +40,21 @@ namespace xla {
 namespace {
 StatusOr<Shape> GetShardedShape(const Shape& shape,
                                 const OpSharding& sharding) {
-  if (sharding.type() == OpSharding::TUPLE) {
-    if (!shape.IsTuple()) {
-      return InvalidArgument(
-          "Got tuple OpSharding (%s) for non-tuple shape (%s)",
-          sharding.DebugString(), shape.ToString());
-    }
-    if (sharding.tuple_shardings_size() != shape.tuple_shapes_size()) {
-      return InvalidArgument(
-          "Got mismatched OpSharding tuple size (%d) and shape tuple size (%d)."
-          " (OpSharding: %s, shape: %s)",
-          sharding.tuple_shardings_size(), shape.tuple_shapes_size(),
-          sharding.DebugString(), shape.ToString());
-    }
-    std::vector<Shape> sharded_subshapes;
-    const int tuple_shapes_size = shape.tuple_shapes_size();
-    sharded_subshapes.reserve(tuple_shapes_size);
-    for (int i = 0; i < tuple_shapes_size; ++i) {
-      TF_ASSIGN_OR_RETURN(
-          Shape sharded_subshape,
-          GetShardedShape(shape.tuple_shapes(i), sharding.tuple_shardings(i)));
-      sharded_subshapes.emplace_back(std::move(sharded_subshape));
-    }
-    return ShapeUtil::MakeTupleShape(sharded_subshapes);
-  }
   TF_ASSIGN_OR_RETURN(HloSharding hlo_sharding,
                       HloSharding::FromProto(sharding));
-  return hlo_sharding.TileShape(shape);
+  if (shape.IsTuple()) {
+    Shape sharded_shape = shape;
+    ShapeUtil::ForEachMutableSubshape(
+        &sharded_shape, [&](Shape* subshape, const ShapeIndex& index) {
+          if (!subshape->IsTuple()) {
+            HloSharding subsharding = hlo_sharding.GetSubSharding(shape, index);
+            *subshape = subsharding.TileShape(*subshape);
+          }
+        });
+    return sharded_shape;
+  } else {
+    return hlo_sharding.TileShape(shape);
+  }
 }
 
 StatusOr<Shape> GetShardedShape(const HloInstructionProto& instr) {

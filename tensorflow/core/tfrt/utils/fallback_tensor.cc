@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/dma_helper.h"
 
 namespace tensorflow {

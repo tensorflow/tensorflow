@@ -83,7 +83,9 @@ struct PassConfig {
   // Whether to run the `GuaranteeAllFuncsOneUsePass` to ensure each function
   // has a single use.
   bool guarantee_all_funcs_one_use;
-  // Whether to enable the hlo to tf conversion.
+  // Whether to enable the hlo/stablehlo to tf conversion. This also supports
+  // the case where a saved model contains both TF module and serialized
+  // StableHLO module.
   bool enable_hlo_to_tf_conversion;
   // Whether to enable to use DynamicUpdateSlice op.
   bool enable_dynamic_update_slice;

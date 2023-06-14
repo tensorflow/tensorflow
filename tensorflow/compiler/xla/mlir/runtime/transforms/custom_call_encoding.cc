@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributeInterfaces.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/runtime/tracing.h"
 #include "tensorflow/compiler/xla/runtime/type_id.h"
@@ -154,7 +156,7 @@ LLVM::GlobalOp EncodeString(Globals &g, ImplicitLocOpBuilder &b,
 mlir::LLVM::GlobalOp EncodeScalar(Globals &g, mlir::ImplicitLocOpBuilder &b,
                                   mlir::Attribute value,
                                   std::string_view symbol_base) {
-  return g.GetOrCreate(b, value, symbol_base);
+  return g.GetOrCreate(b, cast<TypedAttr>(value), symbol_base);
 }
 
 // Reshape dense elements as a one-dimensional array.
@@ -244,7 +246,7 @@ static LLVM::GlobalOp EncodeArrayAttrData(Globals &g, ImplicitLocOpBuilder &b,
   auto init = [&](ImplicitLocOpBuilder &ib, Attribute) {
     Value data = ib.create<LLVM::UndefOp>(arr_type);
     for (int i = 0; i < array.size(); i++) {
-      Value value = ib.create<ConstantOp>(array[i]);
+      Value value = ib.create<ConstantOp>(cast<TypedAttr>(array[i]));
       data = ib.create<LLVM::InsertValueOp>(data, value, i);
     }
     ib.create<LLVM::ReturnOp>(data);
@@ -615,21 +617,24 @@ static TypeID ScalarRuntimeTypeId(Type type) {
 }
 
 static PrimitiveType ScalarPrimitiveType(Type type) {
-  // Unsigned integer types.
-  if (type.isUnsignedInteger(8)) return PrimitiveType::U8;
-  if (type.isUnsignedInteger(16)) return PrimitiveType::U16;
-  if (type.isUnsignedInteger(32)) return PrimitiveType::U32;
-  if (type.isUnsignedInteger(64)) return PrimitiveType::U64;
-
-  // Signed integer types.
+  // Integer types.
   if (type.isInteger(1)) return PrimitiveType::PRED;
-  if (type.isInteger(8)) return PrimitiveType::S8;
-  if (type.isInteger(16)) return PrimitiveType::S16;
-  if (type.isInteger(32)) return PrimitiveType::S32;
-  if (type.isInteger(64)) return PrimitiveType::S64;
+  if (auto int_type = type.dyn_cast<mlir::IntegerType>()) {
+    unsigned int width = int_type.getWidth();
+    if (auto primitive_type =
+            int_type.isUnsigned()
+                // Unsigned integer types.
+                ? primitive_util::UnsignedIntegralTypeForBitWidth(width)
+                // Signed integer types.
+                : primitive_util::SignedIntegralTypeForBitWidth(width);
+        primitive_type != PRIMITIVE_TYPE_INVALID) {
+      return primitive_type;
+    }
+  }
 
   // Floating point types.
   if (type.isFloat8E4M3FN()) return PrimitiveType::F8E4M3FN;
+  if (type.isFloat8E4M3B11FNUZ()) return PrimitiveType::F8E4M3B11FNUZ;
   if (type.isFloat8E5M2()) return PrimitiveType::F8E5M2;
   if (type.isF16()) return PrimitiveType::F16;
   if (type.isF32()) return PrimitiveType::F32;
@@ -638,8 +643,8 @@ static PrimitiveType ScalarPrimitiveType(Type type) {
 
   // Complex types.
   if (auto complex = type.dyn_cast<ComplexType>()) {
-    if (complex.getElementType().isF32()) return PrimitiveType::C64;
-    if (complex.getElementType().isF64()) return PrimitiveType::C128;
+    return primitive_util::ComplexType(
+        ScalarPrimitiveType(complex.getElementType()));
   }
 
   assert(false && "unsupported type id");

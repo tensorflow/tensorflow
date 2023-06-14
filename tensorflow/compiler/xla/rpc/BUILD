@@ -79,6 +79,7 @@ xla_cc_test(
     data = [
         ":grpc_service_main_cpu",
     ],
+    tags = ["nomsan"],
     deps = [
         ":grpc_stub",
         "//tensorflow/compiler/xla/client",

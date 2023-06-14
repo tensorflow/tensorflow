@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 
+#include <optional>
+#include <ostream>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 
@@ -34,8 +40,6 @@ Status HloInputOutputAliasConfig::SetUpAlias(
       << " which is an invalid index for shape "
       << ShapeUtil::HumanString(alias_.shape());
   TF_RET_CHECK(param_number >= 0) << param_number;
-  TF_RET_CHECK(!OutputHasAlias(output_index))
-      << "Output index " << output_index << " already has an alias setup";
   // Output can't be aliased with multiple parameters.
   TF_RET_CHECK(!alias_.element(output_index)) << absl::StrFormat(
       "Trying to set up output alias for param %lld at %s but failed: output "
@@ -136,15 +140,16 @@ bool HloInputOutputAliasConfig::ParameterMustAlias(
 
 std::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(
     int64_t param_number, const ShapeIndex& param_index) const {
-  std::optional<ShapeIndex> output;
-  alias_.ForEachElement(
-      [&](const xla::ShapeIndex& output_index, std::optional<Alias> alias) {
-        if (alias && alias->parameter_number == param_number &&
-            alias->parameter_index == param_index) {
-          output = output_index;
-        }
-      });
-  return output;
+  // We use reverse iterator to preserve the semantics of
+  // alias_.ForEachElement() which was used before.
+  for (auto it = alias_.rbegin(); it != alias_.rend(); ++it) {
+    if (it->second.has_value() &&
+        it->second->parameter_number == param_number &&
+        it->second->parameter_index == param_index) {
+      return it->first;
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<HloInputOutputAliasConfig::Alias>

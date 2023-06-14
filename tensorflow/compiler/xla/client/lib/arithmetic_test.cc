@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 
+#include <functional>
 #include <initializer_list>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"

@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
@@ -15,6 +16,15 @@ package_group(
     ] + internal_visibility_allowlist(),
 )
 
+package(
+    # copybara:uncomment default_applicable_licenses = ["@stablehlo//:license"],
+    default_visibility = [
+        ":internal_visibility_allowlist_package",
+        "//tensorflow:__pkg__",
+    ],
+    licenses = ["notice"],
+)
+
 # TODO(b/264218457): Add quantize and post_quantize passes.
 cc_library(
     name = "passes",
@@ -26,19 +36,18 @@ cc_library(
     ],
     compatible_with = get_compatible_with_cloud(),
     deps = [
+        ":fill_quantization_options",
         ":quantization_options_proto_cc",
         ":stablehlo_passes_inc_gen",
-        "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
         "//tensorflow/core/platform:path",
         "//third_party/eigen3",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
@@ -59,11 +68,14 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     visibility = [":internal_visibility_allowlist_package"],
     deps = [
+        ":fill_quantization_options",
         ":passes",
         ":quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/quantization/tensorflow:quantization_options_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/core/platform:path",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:Pass",
     ],
@@ -87,6 +99,17 @@ gentbl_cc_library(
     ],
 )
 
+cc_library(
+    name = "fill_quantization_options",
+    srcs = ["utils/fill_quantization_options.cc"],
+    hdrs = ["utils/fill_quantization_options.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = [
+        ":quantization_options_proto_cc",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 tf_proto_library(
     name = "quantization_options_proto",
     srcs = ["quantization_options.proto"],
@@ -106,3 +129,24 @@ tf_proto_library(
 exports_files([
     "run_lit.sh",
 ])
+
+tf_cc_binary(
+    name = "stablehlo-quant-opt",
+    srcs = ["tools/stablehlo_quant_opt.cc"],
+    visibility = [":internal_visibility_allowlist_package"],
+    deps = [
+        ":passes",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite/quantization/ir:QuantOps",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
+        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:ShapeDialect",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)

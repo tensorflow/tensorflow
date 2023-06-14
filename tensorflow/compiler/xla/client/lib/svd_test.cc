@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/svd.h"
 
+#include <numeric>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"

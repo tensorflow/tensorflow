@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_MGR_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -121,8 +122,17 @@ class DynamicDeviceMgr : public DeviceMgr {
  private:
   mutable mutex devices_mu_;
 
-  std::vector<std::unique_ptr<Device>> dynamic_devices_
-      TF_GUARDED_BY(devices_mu_);
+  // Using an ordered map to ensure deterministic ordering of devices.
+  // Not a set, because we need to do find(Device*) and own the devices
+  // at the same time.
+  // We still have to override C++'s default pointer ordering.
+  struct DereferenceDevicePtrLess {
+    bool operator()(const Device* a, const Device* b) const {
+      return Device::LessByParsedName(*a, *b);
+    }
+  };
+  std::map<Device*, std::unique_ptr<Device>, DereferenceDevicePtrLess>
+      dynamic_devices_ TF_GUARDED_BY(devices_mu_);
 
   absl::flat_hash_set<int64_t> device_incarnation_set_
       TF_GUARDED_BY(devices_mu_);

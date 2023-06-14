@@ -470,8 +470,7 @@ StatusOr<mlir::Operation*> SoftmaxLossOpSPMDExpander::MaybeRelayoutOutputs(
     mlir::Operation* op, const mlir::Value& loss, const mlir::Value& backprop,
     const Layout& output_layout, const Layout& loss_layout,
     const Layout& backprop_layout) {
-  TF_ASSIGN_OR_RETURN(const Layout current_loss_layout,
-                      output_layout.Truncate(/*split_point=*/1));
+  const Layout current_loss_layout = output_layout.Truncate(/*split_point=*/1);
   const Layout& current_backprop_layout = output_layout;
 
   llvm::SmallPtrSet<mlir::Operation*, 4> newly_created_ops;
@@ -670,8 +669,7 @@ SoftmaxLossOpSPMDExpander::ComputeLayoutForward(
 
   TF_ASSIGN_OR_RETURN(const Layout backprop_layout,
                       Layout::GetLayout(layout_specs, mesh));
-  TF_ASSIGN_OR_RETURN(const Layout loss_layout,
-                      backprop_layout.Truncate(/*split_point=*/1));
+  const Layout loss_layout = backprop_layout.Truncate(/*split_point=*/1);
 
   return llvm::DenseMap<int, Layout>({{0, loss_layout}, {1, backprop_layout}});
 }

@@ -81,11 +81,11 @@ class ShapeInferenceTestutil {
 
 }  // namespace shape_inference
 
-#define INFER_OK(op, i, o)                                                     \
-  EXPECT_TRUE(                                                                 \
-      ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes(op,   \
-                                                                         i, o) \
-          .ok())
+#define INFER_OK(op, i, o)                                                \
+  EXPECT_EQ(                                                              \
+      ::tensorflow::shape_inference::ShapeInferenceTestutil::InferShapes( \
+          op, i, o),                                                      \
+      ::tensorflow::OkStatus())
 #define INFER_ERROR(error_substring, op, i)                                  \
   {                                                                          \
     tensorflow::Status status =                                              \
@@ -93,7 +93,7 @@ class ShapeInferenceTestutil {
             op, i, "e"));                                                    \
     std::string error_message = status.ToString();                           \
     const std::string substring = std::string(error_substring);              \
-    EXPECT_FALSE(status.ok());                                               \
+    EXPECT_NE(status, ::tensorflow::OkStatus());                             \
     EXPECT_TRUE(absl::StrContains(error_message, substring))                 \
         << "Expected to see '" << substring << "' in '" << error_message     \
         << "'";                                                              \

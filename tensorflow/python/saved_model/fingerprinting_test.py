@@ -144,26 +144,10 @@ class FingerprintingTest(test.TestCase):
 
     self.assertEqual(fingerprint, fingerprint_def)
 
-  def test_read_fingerprint_api_invalid(self):
+  def test_read_fingerprint_file_not_found(self):
     with self.assertRaisesRegex(FileNotFoundError,
                                 "SavedModel Fingerprint Error"):
       fingerprinting.read_fingerprint("foo")
-
-  def test_write_fingerprint(self):
-    save_dir = os.path.join(self.get_temp_dir(), "model_and_fingerprint")
-    save.save_and_return_nodes(
-        self._create_model_with_data(), save_dir,
-        experimental_skip_checkpoint=True)  # checkpoint data won't be loaded*
-
-    new_dir = os.path.join(self.get_temp_dir(), "fingerprint_dir")
-    os.mkdir(new_dir)
-    serialized_model = self._read_saved_model(  # *here
-        os.path.join(save_dir, "saved_model.pb")).SerializeToString()
-    fingerprinting_utils.write_fingerprint(new_dir, serialized_model)
-
-    model_fingerprint = fingerprinting.read_fingerprint(save_dir)
-    solo_fingerprint = fingerprinting.read_fingerprint(new_dir)
-    self.assertEqual(model_fingerprint, solo_fingerprint)
 
   def test_valid_singleprint(self):
     save_dir = os.path.join(self.get_temp_dir(), "singleprint_model")

@@ -27,6 +27,7 @@ from absl import logging
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
+from tensorflow.core.framework import graph_debug_info_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tfe
@@ -46,6 +47,7 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tsl.protobuf import coordination_config_pb2
+
 
 GRAPH_MODE = 0
 EAGER_MODE = 1
@@ -1390,6 +1392,26 @@ class Context:
 
     return function_def
 
+  def get_graph_debug_info(self, name):
+    """Get GraphDebugInfo associated with a function from the context.
+
+    Args:
+      name: function signature name.
+
+    Returns:
+      The requested GraphDebugInfo.
+
+    Raises:
+      tf.errors.NotFoundError: if name is not the name of a registered function.
+    """
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tfe.TFE_ContextGetGraphDebugInfo(self._handle, name, buffer_)
+      proto_data = pywrap_tf_session.TF_GetBuffer(buffer_)
+    graph_debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    graph_debug_info.ParseFromString(proto_data)
+
+    return graph_debug_info
+
   def is_custom_device(self, device_name):
     """Calls TFE_IsCustomDevice. See the non-member function."""
     self.ensure_initialized()
@@ -1452,7 +1474,8 @@ class Context:
         )
     )
 
-    if cancellation.context() is None:
+    cancellation_context = cancellation.context()
+    if cancellation_context is None:
       outputs = execute.execute(
           name.decode("utf-8"),
           num_outputs=num_outputs,
@@ -1467,7 +1490,7 @@ class Context:
           inputs=tensor_inputs,
           attrs=attrs,
           ctx=self,
-          cancellation_manager=cancellation.context(),
+          cancellation_manager=cancellation_context,
       )
     # Empty list means no function outputs so return None
     outputs = outputs or None

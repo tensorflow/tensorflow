@@ -27,6 +27,13 @@ package(
 exports_files(["blazeface_mlkit_v1.tfl"])
 
 filegroup(
+    name = "add.bin",
+    srcs = [
+        "//tensorflow/lite:testdata/add.bin",
+    ],
+)
+
+filegroup(
     name = "mobilenet_v1_1.0_224.tflite",
     srcs = [
         "@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite",

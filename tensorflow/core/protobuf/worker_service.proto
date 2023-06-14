@@ -70,6 +70,10 @@ service WorkerService {
   }
 
   // See worker.proto for details.
+  rpc MarkRecvFinished(MarkRecvFinishedRequest)
+      returns (MarkRecvFinishedResponse);
+
+  // See worker.proto for details.
   rpc Logging(LoggingRequest) returns (LoggingResponse);
 
   // See worker.proto for details.

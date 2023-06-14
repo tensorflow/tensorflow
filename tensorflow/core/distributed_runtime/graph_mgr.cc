@@ -145,11 +145,11 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
       /*session_metadata=*/nullptr,
       Rendezvous::Factory{
           [this, session](const int64_t step_id, const DeviceMgr*,
-                          Rendezvous** r) -> Status {
+                          tsl::core::RefCountPtr<Rendezvous>* r) -> Status {
             tsl::core::RefCountPtr<RemoteRendezvous> remote_r =
                 this->worker_env_->rendezvous_mgr->Find(step_id);
             TF_RETURN_IF_ERROR(remote_r->Initialize(session));
-            *r = remote_r.release();
+            *r = std::move(remote_r);
             return OkStatus();
           }}));
 

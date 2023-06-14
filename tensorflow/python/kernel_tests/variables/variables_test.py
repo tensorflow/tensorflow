@@ -30,7 +30,6 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -44,7 +43,7 @@ from tensorflow.python.util import compat
 
 
 def initialized_value(var):
-  return control_flow_ops.cond(
+  return tf_cond.cond(
       variable_v1.is_variable_initialized(var), var.read_value,
       lambda: var.initial_value)
 
@@ -128,10 +127,10 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def testIterableV1(self):
-    with self.assertRaisesRegex(TypeError, "not allowed in Graph"):
+    with self.assertRaisesRegex(TypeError, "not allowed.*Graph mode"):
       for _ in variables.Variable(0.0):
         pass
-    with self.assertRaisesRegex(TypeError, "not allowed in Graph"):
+    with self.assertRaisesRegex(TypeError, "not allowed.*Graph mode"):
       for _ in variables.Variable([0.0, 1.0]):
         pass
 

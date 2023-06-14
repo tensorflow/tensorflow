@@ -792,9 +792,11 @@ TEST(ConstUint8SumOpTest, NotKeepDims) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({-0.823529, -0.815686}, kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<uint8_t>(),
+      // 0.4 + 0.3 + 0.5 = 1.0 (clamped)
+      // 0.2 + 0.4 + 0.6 = 1.0 (clamped)
+      ElementsAreArray(ArrayFloatNear({1.0, 1.0}, kQuantizedTolerance)));
 }
 
 TEST(ConstUint8SumOpTest, NotKeepDimsRescaling) {
@@ -840,9 +842,12 @@ TEST(ConstUint8SumOpTest, KeepDims) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 1}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear({-0.407843, -0.313726, 0.0941177},
-                                              kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<uint8_t>(),
+      // 0.4 + 0.2 = 0.6
+      // 0.3 + 0.4 = 0.7
+      // 0.5 + 0.6 = 1.0 (clamped)
+      ElementsAreArray(ArrayFloatNear({0.6, 0.7, 1.0}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8SumOpTest, NotKeepDims) {
@@ -856,9 +861,11 @@ TEST(DynamicUint8SumOpTest, NotKeepDims) {
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
-  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(
-                  ArrayFloatNear({1.48235, 1.64706}, kQuantizedTolerance)));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<uint8_t>(),
+      // 1.3 + -4.8 = -3.5
+      // -3.6 + 0.24 = -3.36
+      ElementsAreArray(ArrayFloatNear({-3.5, -3.36}, kQuantizedTolerance)));
 }
 
 TEST(DynamicUint8SumOpTest, KeepDims) {
@@ -874,7 +881,9 @@ TEST(DynamicUint8SumOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
-      ElementsAreArray(ArrayFloatNear({6.47059, 10.698}, kQuantizedTolerance)));
+      // 11.14 + 7.423 = 12.0 (clamped)
+      // -0.14 + 0.879 = 0.739
+      ElementsAreArray(ArrayFloatNear({12.0, 0.739}, kQuantizedTolerance)));
 }
 
 TEST(ConstInt8SumOpTest, Rescale) {

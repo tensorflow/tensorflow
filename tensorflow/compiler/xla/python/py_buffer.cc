@@ -271,6 +271,10 @@ StatusOr<pybind11::dict> IfrtHelpers::CudaArrayInterface(
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E4M3FN buffers.");
   }
+  if (pjrt_buffer->on_device_shape().element_type() == F8E4M3B11FNUZ) {
+    return InvalidArgument(
+        "__cuda_array_interface__ is not supported for F8E4M3B11FNUZ buffers.");
+  }
   if (pjrt_buffer->on_device_shape().element_type() == F8E5M2) {
     return InvalidArgument(
         "__cuda_array_interface__ is not supported for F8E5M2 buffers.");

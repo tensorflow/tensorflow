@@ -47,7 +47,13 @@ absl::flat_hash_map<int64_t, uint64_t> GetOpCostMap(mlir::ModuleOp op) {
   return op_cost_map;
 }
 
-TEST(CostUpdateTest, Basic) {
+struct TestParams {
+  uint32_t normalize_ratio = 1;
+};
+
+class CostUpdateTest : public ::testing::TestWithParam<TestParams> {};
+
+TEST_P(CostUpdateTest, Basic) {
   std::string saved_model_mlir_path = tensorflow::GetDataDependencyFilepath(
       "tensorflow/compiler/mlir/tfrt/tests/analysis/testdata/test.mlir");
 
@@ -67,10 +73,10 @@ TEST(CostUpdateTest, Basic) {
   for (auto& [op_key, cost] : fake_recorded_op_cost_map) {
     cost = rand_r(&seed) % 1000;
   }
-  tensorflow::tfrt_stub::CostRecorder cost_recorder;
+  tensorflow::tfrt_stub::CostRecorder cost_recorder(GetParam().normalize_ratio);
   absl::flat_hash_map<int64_t, uint64_t> expected_op_cost_map;
   for (const auto& [op_key, cost] : fake_recorded_op_cost_map) {
-    cost_recorder.RecordCostNanosecond(op_key, cost);
+    cost_recorder.RecordCost(op_key, cost);
     expected_op_cost_map[op_key] = cost_recorder.GetCost(op_key);
   }
 
@@ -81,6 +87,9 @@ TEST(CostUpdateTest, Basic) {
   const auto got_op_cost_map = GetOpCostMap(module.get());
   EXPECT_THAT(got_op_cost_map, ::testing::ContainerEq(expected_op_cost_map));
 }
+
+INSTANTIATE_TEST_SUITE_P(CostUpdateTests, CostUpdateTest,
+                         ::testing::Values(TestParams{1}, TestParams{100}));
 
 }  // namespace
 }  // namespace tensorflow

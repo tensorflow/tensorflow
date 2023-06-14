@@ -240,13 +240,14 @@ class FunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
-      def fn(x, y):
+      def add_fn(x, y):
         return x + y
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      self.assertIn('polymorphic_function_xla_jit_test',
-                    fn.experimental_get_compiler_ir(inputs, inputs)())
-      self._compareTwoMethodsCompilerIROutput(fn, [inputs, inputs], {})
+      self.assertIn(
+          'add_fn', add_fn.experimental_get_compiler_ir(inputs, inputs)()
+      )
+      self._compareTwoMethodsCompilerIROutput(add_fn, [inputs, inputs], {})
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
                                  'support stack traces')
@@ -254,44 +255,43 @@ class FunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
-      def f(x, y):
+      def add_f(x, y):
         return x + y
 
       @polymorphic_function.function(jit_compile=True)
-      def g(x, y):
-        return f(x, y)
+      def add_g(x, y):
+        return add_f(x, y)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      self.assertIn('polymorphic_function_xla_jit_test',
-                    g.experimental_get_compiler_ir(inputs, inputs)())
-      self._compareTwoMethodsCompilerIROutput(g, [inputs, inputs], {})
+      self.assertIn(
+          'add_g', add_g.experimental_get_compiler_ir(inputs, inputs)()
+      )
+      self._compareTwoMethodsCompilerIROutput(add_g, [inputs, inputs], {})
 
   def testPythonStackTrace(self):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
-      def fn(x):
-        return string_ops.string_length(
-            string_ops.string_format('{}', x))  # COMMENT2
+      def failure_fn(x):
+        return string_ops.string_length(string_ops.string_format('{}', x))
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT2'):
-        fn(inputs)
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'failure_fn'):
+        failure_fn(inputs)
 
   def testPythonStackTraceUncompiledWithinCompiled(self):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function
-      def fn(x):
-        return string_ops.string_length(
-            string_ops.string_format('{}', x))  # COMMENT3
+      def failure_fn(x):
+        return string_ops.string_length(string_ops.string_format('{}', x))
 
       @polymorphic_function.function(jit_compile=True)
       def outer(x):
-        return fn(x)
+        return failure_fn(x)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT3'):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'outer'):
         outer(inputs)
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
@@ -300,16 +300,15 @@ class FunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
-      def fn(x):
-        return string_ops.string_length(
-            string_ops.string_format('{}', x))  # COMMENT1
+      def failure_fn(x):
+        return string_ops.string_length(string_ops.string_format('{}', x))
 
       @polymorphic_function.function
       def outer(x):
-        return fn(x)
+        return failure_fn(x)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT1'):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'failure_fn'):
         outer(inputs)
 
   @test_util.disable_mlir_bridge('TODO(b/155782411): MLIR bridge does not'
@@ -318,16 +317,15 @@ class FunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
-      def fn(x):
-        return string_ops.string_length(
-            string_ops.string_format('{}', x))  # COMMENT4
+      def failure_fn(x):
+        return string_ops.string_length(string_ops.string_format('{}', x))
 
       @polymorphic_function.function
       def outer(x):
-        return fn(x)
+        return failure_fn(x)
 
       inputs = constant_op.constant([1, 2, 2, 3, 3])
-      with self.assertRaisesRegex(errors.InvalidArgumentError, 'COMMENT4'):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'failure_fn'):
         outer(inputs)
 
   def testFunctionGradient(self):
@@ -1045,25 +1043,17 @@ class FunctionTest(xla_test.XLATestCase):
     with ops.device('device:{}:0'.format(self.device)):
 
       @polymorphic_function.function(jit_compile=True)
-      def f():
-        # The error message as old and new bridge differ in which op they flag.
-        # The one points to the creation of the unitialized tensor array, the
-        # other is the use of the unitialized tensor array.
-        ta = tensor_array_ops.TensorArray(  # EXPECTED_MESSAGE_NEW
+      def failure_fn():
+        ta = tensor_array_ops.TensorArray(
             dtype=dtypes.float32,
             size=2,
             dynamic_size=True,
-            element_shape=(None,))
-        return ta.concat()  # EXPECTED_MESSAGE_OLD
+            element_shape=(None,),
+        )
+        return ta.concat()
 
-      if test_util.is_mlir_bridge_enabled():
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    'EXPECTED_MESSAGE_NEW'):
-          f()
-      else:
-        with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    'EXPECTED_MESSAGE_OLD'):
-          f()
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'failure_fn'):
+        failure_fn()
 
   def testCounter(self):
     cell_nojit = polymorphic_function._tf_function_counter.get_cell('0')
@@ -1167,16 +1157,16 @@ class FunctionTest(xla_test.XLATestCase):
       v = variables.Variable([3.1, 3.2])
 
       @polymorphic_function.function(jit_compile=True)
-      def f(samples):
-        v.assign(array_ops.zeros(samples))  # assignment
+      def failure_fn(samples):
+        v.assign(array_ops.zeros(samples))
 
       with self.assertRaisesRegex(
           errors.InvalidArgumentError,
           'Shape .* cannot be changed after initialization'):
-        f(constant_op.constant(6))
+        failure_fn(constant_op.constant(6))
 
-      with self.assertRaisesRegex(errors.InvalidArgumentError, 'assignment'):
-        f(constant_op.constant(6))
+      with self.assertRaisesRegex(errors.InvalidArgumentError, 'failure_fn'):
+        failure_fn(constant_op.constant(6))
 
   def testTfSummaryErrMsg(self):
     if 'gpu' not in self.device.lower():

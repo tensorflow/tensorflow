@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
 #define TENSORFLOW_LITE_CORE_C_BUILTIN_OP_DATA_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "tensorflow/lite/core/c/common.h"
@@ -166,7 +167,7 @@ typedef struct {
   TfLiteFusedActivation activation;
   bool merge_outputs;
 
-  // Parameter for Bidirectional RNN verison 3.
+  // Parameter for Bidirectional RNN version 3.
   bool asymmetric_quantize_inputs;
 } TfLiteBidirectionalSequenceRNNParams;
 
@@ -407,6 +408,10 @@ typedef struct {
   int ellipsis_mask;
   int new_axis_mask;
   int shrink_axis_mask;
+
+  // Parameters supported by version 8:
+  // If true, then the end tensor is an offset of the begin tensor.
+  bool offset;
 } TfLiteStridedSliceParams;
 
 typedef struct {

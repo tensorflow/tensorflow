@@ -38,8 +38,6 @@ http_archive(
     urls = ["https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT)],
 )
 
-load("@llvm-raw//utils/bazel:configure.bzl", "llvm_configure", "llvm_disable_optional_support_deps")
+load("@llvm-raw//utils/bazel:configure.bzl", "llvm_configure")
 
 llvm_configure(name = "llvm-project")
-
-llvm_disable_optional_support_deps()

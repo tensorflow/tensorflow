@@ -25,6 +25,9 @@ def Ifrt_Dialect : Dialect {
   let summary = "IFRT dialect";
   let cppNamespace = "::xla::ifrt";
   let useDefaultTypePrinterParser = 1;
+  let useDefaultAttributePrinterParser = 1;
+  let hasOperationAttrVerify = 1;
+  let hasRegionArgAttrVerify = 1;
 }
 
 def Ifrt_ShardingParameter :
@@ -39,7 +42,7 @@ def Ifrt_ArrayType : TypeDef<Ifrt_Dialect, "IfrtArray"> {
   let parameters = (ins
     Builtin_RankedTensor:$shape,
     Ifrt_ShardingParameter:$sharding,
-    ArrayRefParameter<"int64_t">:$devices);
+    ArrayRefParameter<"int">:$devices);
 
   let assemblyFormat = "`<` $shape`,` $sharding`,` `[`$devices`]` `>`";
 
@@ -54,6 +57,14 @@ def Ifrt_ControlType : TypeDef<Ifrt_Dialect, "IfrtControl"> {
     When an op takes a control as argument, it will not be scheduled for
     execution before the op emitting the control has finished execution.
   }];
+}
+
+def Ifrt_ShardingAttr : AttrDef<Ifrt_Dialect, "IfrtSharding"> {
+  let mnemonic = "sharding";
+  let summary = "ShardingParam as an attribute.";
+
+  let parameters = (ins Ifrt_ShardingParameter:$sharding);
+  let assemblyFormat = "`<` $sharding `>`";
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_PYTHON_IFRT_IR_IFRT_DIALECT_TD_

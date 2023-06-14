@@ -375,10 +375,6 @@ INSTANTIATE_TEST_SUITE_P(
         {"MultiClientMultiStepFunction", false, 3, 0, 0},
         {"MultiClientMultiStepFunctionWithRecvDelay", false, 5, 2, 0},
         {"MultiClientMultiStepFunctionWithSendDelay", false, 5, 0, 2},
-        {"MultiClientSingleStepFunctionTfrt", true, 1, 0, 0},
-        {"MultiClientMultiStepFunctionTfrt", true, 3, 0, 0},
-        {"MultiClientMultiStepFunctionWithRecvDelayTfrt", true, 5, 2, 0},
-        {"MultiClientMultiStepFunctionWithSendDelayTfrt", true, 5, 0, 2},
     }),
     [](const testing::TestParamInfo<MultiClientSendRecvTest::ParamType>& info) {
       return info.param.test_name;

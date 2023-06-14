@@ -59,7 +59,7 @@ namespace {
 struct XlaCustomCall {
   absl::Status operator()(CustomCall::RemainingArgs args, int32_t num_results,
                           bool output_tuple, StringRef call_target_name,
-                          int32_t api_version) const;
+                          int32_t api_version, StringRef backend_config) const;
   static XlaCustomCall Handler() { return XlaCustomCall(); }
 };
 }  // namespace
@@ -67,7 +67,8 @@ struct XlaCustomCall {
 absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
                                        int32_t num_results, bool output_tuple,
                                        StringRef call_target_name,
-                                       int32_t api_version) const {
+                                       int32_t api_version,
+                                       StringRef backend_config) const {
   // Find the Xla custom call handler.
   void* call_target = CustomCallTargetRegistry::Global()->Lookup(
       call_target_name.str(), "Host");
@@ -127,6 +128,24 @@ absl::Status XlaCustomCall::operator()(CustomCall::RemainingArgs args,
     }
   }
 
+  if (api_version ==
+      CustomCallApiVersion::API_VERSION_STATUS_RETURNING_UNIFIED) {
+    using XlaCustomCallType =
+        void (*)(void* /*result*/, void** /*args*/, const char*, size_t,
+                 XlaCustomCallStatus* /*status*/);
+    auto xla_call_target = reinterpret_cast<XlaCustomCallType>(call_target);
+
+    XlaCustomCallStatus custom_call_status;
+    xla_call_target(result_buffer, buffers.data(), backend_config.data(),
+                    backend_config.size(), &custom_call_status);
+
+    if (auto message = CustomCallStatusGetMessage(&custom_call_status)) {
+      return absl::InternalError(message.value());
+    } else {
+      return absl::OkStatus();
+    }
+  }
+
   return absl::InvalidArgumentError("Incorrect custom call API version");
 }
 
@@ -138,6 +157,7 @@ static bool CustomCall(runtime::ExecutionContext* ctx, void** args,
                              .Attr<bool>("output_tuple")
                              .Attr<std::string_view>("call_target_name")
                              .Attr<int32_t>("api_version")
+                             .Attr<std::string_view>("backend_config")
                              .To<RuntimeChecks()>(XlaCustomCall::Handler())
                              .release();
   return succeeded(Executable::Call(ctx, *handler, args, attrs, rets));

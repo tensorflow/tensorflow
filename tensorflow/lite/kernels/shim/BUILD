@@ -1,9 +1,11 @@
 # This package is a shim layer over TF and TFLite op kernels.
 
 load("//tensorflow:tensorflow.bzl", "if_mobile", "if_not_mobile", "tf_cc_test", "tf_copts")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_compatible_with = get_compatible_with_portable(),
     # The public targets are marked public individually
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],
@@ -248,7 +250,7 @@ cc_test(
     srcs = ["test_util_test.cc"],
     deps = [
         ":test_util",
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite/core:framework_stable",
         "@com_google_googletest//:gtest_main",
     ],

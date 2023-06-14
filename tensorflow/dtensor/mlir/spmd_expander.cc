@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "absl/container/flat_hash_map.h"
@@ -51,14 +52,14 @@ SPMDExpanderRegistry* SPMDExpanderRegistry::Global() {
   return registry;
 }
 
-SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
-    mlir::Operation* op) {
-  auto key = OpName(op);
+SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForFullOpName(
+    const std::string& full_op_name) {
+  auto key = full_op_name;
   auto fn = op_to_propagate_fn_map_.find(key);
   if (fn == op_to_propagate_fn_map_.end()) {
     if (EnableReplicatedSpmdAsDefault(key)) {
       LOG(WARNING)
-          << key << " is defaulting to ReplicatedOpSPMDExpander. This "
+          << full_op_name << " is defaulting to ReplicatedOpSPMDExpander. This "
           << " has performance implications as all inputs and outputs "
           << " will be replicated if they are not already. Please file a "
           << " feature request to TF DTensor to implement an efficient "
@@ -73,6 +74,11 @@ SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
   return fn->second.get();
 }
 
+SPMDExpanderBase* SPMDExpanderRegistry::GetPropagateFnForOp(
+    mlir::Operation* op) {
+  return GetPropagateFnForFullOpName(OpName(op));
+}
+
 InitOnStartupMarker SPMDExpanderRegistry::RegisterPropagateFn(
     std::string opName, std::unique_ptr<SPMDExpanderBase> prop) {
   CHECK(op_to_propagate_fn_map_  // Crash ok
@@ -83,7 +89,7 @@ InitOnStartupMarker SPMDExpanderRegistry::RegisterPropagateFn(
 
 Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
                                               mlir::Operation** output) {
-  TF_ASSIGN_OR_RETURN(std::vector<absl::optional<Layout>> computed_layout,
+  TF_ASSIGN_OR_RETURN(std::vector<std::optional<Layout>> computed_layout,
                       ExtractLayoutFromOp(op));
 
   if (computed_layout.empty() && op->getNumResults() != 0) {
@@ -129,7 +135,7 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
   TF_ASSIGN_OR_RETURN(*output, this->ExpandOp(op));
 
   // TODO(hthu): Use ToString() instead.
-  SetLayoutOnOp(*output, absl::Span<absl::optional<Layout>>(
+  SetLayoutOnOp(*output, absl::Span<std::optional<Layout>>(
                              computed_layout.data(), computed_layout.size()));
 
   // Verify the local shape of the expanded operation matches the shape expected
@@ -163,7 +169,9 @@ Status SPMDExpanderBase::ExpandOpAndSetLayout(mlir::Operation* op,
       if (expanded_shape != expected_shape) {
         return errors::Internal(
             "SPMD expansion resulted in op output inconsistent with the "
-            "provided layout.");
+            "provided layout. Expected shape: <",
+            absl::StrJoin(expected_global_shape, ","), "> got shape: <",
+            absl::StrJoin(global_output_shapes[index], ","), ">");
       }
     }
   }

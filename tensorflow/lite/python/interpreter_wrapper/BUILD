@@ -88,7 +88,7 @@ pybind_extension(
         ":interpreter_wrapper_lib",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ] + select({

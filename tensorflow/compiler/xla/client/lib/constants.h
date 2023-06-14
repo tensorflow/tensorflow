@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/tsl/platform/float8.h"
 
 namespace xla {
 
@@ -45,42 +46,17 @@ XlaOp ConstantR0WithType(XlaBuilder* builder, PrimitiveType type, T value) {
         "Invalid cast from complex type to %s in ConstantR0WithType.",
         PrimitiveType_Name(type)));
   }
-  switch (type) {
-    case PRED:
-      return ConstantR0<bool>(builder, static_cast<bool>(value));
-    case F16:
-      return ConstantR0<half>(builder, static_cast<half>(value));
-    case BF16:
-      return ConstantR0<bfloat16>(builder, static_cast<bfloat16>(value));
-    case F32:
-      return ConstantR0<float>(builder, static_cast<float>(value));
-    case F64:
-      return ConstantR0<double>(builder, static_cast<double>(value));
-    case C64:
-      return ConstantR0<complex64>(builder, static_cast<complex64>(value));
-    case C128:
-      return ConstantR0<complex128>(builder, static_cast<complex128>(value));
-    case U8:
-      return ConstantR0<uint8_t>(builder, static_cast<uint8_t>(value));
-    case U16:
-      return ConstantR0<uint16_t>(builder, static_cast<uint16_t>(value));
-    case U32:
-      return ConstantR0<uint32_t>(builder, static_cast<uint32_t>(value));
-    case U64:
-      return ConstantR0<uint64_t>(builder, static_cast<uint64_t>(value));
-    case S8:
-      return ConstantR0<int8_t>(builder, static_cast<int8_t>(value));
-    case S16:
-      return ConstantR0<int16_t>(builder, static_cast<int16_t>(value));
-    case S32:
-      return ConstantR0<int32_t>(builder, static_cast<int32_t>(value));
-    case S64:
-      return ConstantR0<int64_t>(builder, static_cast<int64_t>(value));
-    default:
-      return builder->ReportError(
-          InvalidArgument("Invalid type for ConstantR0WithType (%s).",
-                          PrimitiveType_Name(type)));
-  }
+  return primitive_util::PrimitiveTypeSwitch<XlaOp>(
+      [&](auto primitive_type_constant) -> XlaOp {
+        if constexpr (primitive_util::IsArrayType(primitive_type_constant)) {
+          using NativeT = primitive_util::NativeTypeOf<primitive_type_constant>;
+          return ConstantR0<NativeT>(builder, static_cast<NativeT>(value));
+        }
+        return builder->ReportError(
+            InvalidArgument("Invalid type for ConstantR0WithType (%s).",
+                            PrimitiveType_Name(type)));
+      },
+      type);
 }
 
 // Returns a scalar containing 'value' cast to the same run-time type as

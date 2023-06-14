@@ -17,7 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_PJRT_HOST_CALLBACK_H_
 
 #include <atomic>
+#include <deque>
 #include <functional>
+#include <memory>
 #include <utility>
 #include <vector>
 
