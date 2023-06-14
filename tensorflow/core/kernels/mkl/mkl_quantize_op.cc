@@ -271,12 +271,12 @@ class MklQuantizeV2Op : public OpKernel {
   explicit MklQuantizeV2Op(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
-    OP_REQUIRES(ctx,
-                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
-                 mode_string == "SCALED"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
-                                        " 'MIN_FIRST', or 'SCALED', is '" +
-                                        mode_string + "'"));
+    OP_REQUIRES(ctx, (mode_string == "MIN_COMBINED" ||
+                      mode_string == "MIN_FIRST" || mode_string == "SCALED"),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Mode string must be 'MIN_COMBINED',"
+                                 " 'MIN_FIRST', or 'SCALED', is '" +
+                                 mode_string + "'")));
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
@@ -287,21 +287,22 @@ class MklQuantizeV2Op : public OpKernel {
 
     string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
-    OP_REQUIRES(ctx,
-                (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
-                 round_mode_string == "HALF_TO_EVEN"),
-                errors::InvalidArgument("Round mode string must be "
-                                        "'HALF_AWAY_FROM_ZERO' or "
-                                        "'HALF_TO_EVEN', is '" +
-                                        round_mode_string + "'"));
+    OP_REQUIRES(
+        ctx, (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
+              round_mode_string == "HALF_TO_EVEN"),
+        absl::InvalidArgumentError(absl::StrCat("Round mode string must be "
+                                                "'HALF_AWAY_FROM_ZERO' or "
+                                                "'HALF_TO_EVEN', is '" +
+                                                round_mode_string + "'")));
     if (round_mode_string == "HALF_AWAY_FROM_ZERO") {
       round_mode_ = ROUND_HALF_AWAY_FROM_ZERO;
     } else if (round_mode_string == "HALF_TO_EVEN") {
       OP_REQUIRES(ctx, mode_string == "SCALED",
-                  errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
-                                          "only supported for mode 'SCALED', "
-                                          "but mode is '" +
-                                          mode_string + "'."));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Round mode 'HALF_TO_EVEN' "
+                                   "only supported for mode 'SCALED', "
+                                   "but mode is '" +
+                                   mode_string + "'.")));
       round_mode_ = ROUND_HALF_TO_EVEN;
     }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
@@ -313,7 +314,7 @@ class MklQuantizeV2Op : public OpKernel {
   void ComputeScalar(OpKernelContext* ctx, float min_range, float max_range) {
     // TODO(intel-tf): Scalar support has to be added for SCALE mode
     OP_REQUIRES(ctx, (mode_ == QUANTIZE_MODE_MIN_FIRST),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Scalar calculation in MKL is supported only for"
                     "MIN_FIRST mode for now."));
 
@@ -322,12 +323,12 @@ class MklQuantizeV2Op : public OpKernel {
     const Tensor& max_tensor = ctx->input(2);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(min_tensor.shape()),
-        errors::InvalidArgument("`min_input` must be rank 0 but is rank ",
-                                min_tensor.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`min_input` must be rank 0 but is rank ", min_tensor.dims())));
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(max_tensor.shape()),
-        errors::InvalidArgument("`max_input` must be rank 0 but is rank ",
-                                max_tensor.dims()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`max_input` must be rank 0 but is rank ", max_tensor.dims())));
 
     auto cpu_engine = engine(engine::kind::cpu, 0);
     const unsigned int src_idx = 0;
@@ -376,7 +377,7 @@ class MklQuantizeV2Op : public OpKernel {
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
     OP_REQUIRES(ctx, (input_max_range >= input_min_range),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input_max_range must be larger than input_min_range."));
 
     // When the minimum and maximum ranges are too close together, nudge them
@@ -427,7 +428,7 @@ class MklQuantizeV2Op : public OpKernel {
         break;
       default:
         OP_REQUIRES_OK(ctx,
-                       errors::Aborted("Input dims must be <= 5 and >= 1"));
+                       absl::AbortedError("Input dims must be <= 5 and >= 1"));
         return;
     }
     // Create reorder memory for src, dst: both are defined in mkl_util.h,

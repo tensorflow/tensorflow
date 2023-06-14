@@ -249,7 +249,7 @@ class MklSoftmaxOp : public OpKernel {
           break;
         default:
           OP_REQUIRES_OK(context,
-                         errors::Aborted("Input dims must be <= 5 and >=1"));
+                         absl::AbortedError("Input dims must be <= 5 and >=1"));
           return;
       }
 
@@ -283,9 +283,9 @@ class MklSoftmaxOp : public OpKernel {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          context,
-          errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(context,
+                     absl::AbortedError(absl::StrCat(
+                         "Operation received an exception:", error_msg)));
     }
   }
 };

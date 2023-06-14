@@ -1404,9 +1404,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
 
           Tensor tensor;
           if (!tensor.FromProto(*proto)) {
-            TF_CHECK_OK(errors::InvalidArgument(
+            TF_CHECK_OK(absl::InvalidArgumentError(absl::StrCat(
                 "Could not construct Tensor from TensorProto in node: ",
-                node->name()));
+                node->name())));
             return false;
           }
           // Current fusion only supports 4D or 5D tensors according to `perm`
