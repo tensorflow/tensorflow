@@ -150,7 +150,7 @@ This short introduction uses Keras to:
   3. Train this neural network.
   4. Evaluate the accuracy of the model.
  
-This tutorial is a Google Colaboratory notebook. Python programs are run directly in the browser—a great way to learn and use TensorFlow. To follow this tutorial, run the notebook in Google Colab
+This tutorial is a Google Colaboratory notebook. Python programs are run directly in the browser—a great way to learn and use TensorFlow. To follow this tutorial, run the notebook in [Google Colab](https://colab.research.google.com/?utm_source=scs-index)
   1. In Colab, connect to a Python runtime: At the top-right of the menu bar, select CONNECT.
   2. To run all the code in the notebook, select Runtime > Run all. To run the code cells one at a time, hover over each cell and select the Run cell icon.
 
