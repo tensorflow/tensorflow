@@ -800,11 +800,21 @@ void MutableLiteralBase::PopulateInplaceInternal(
   char* const dest_base = static_cast<char*>(untyped_data());
   if (rank > 0) {
     StrideConfig stride_config(this_shape, this_shape, this_shape.dimensions());
-    int64_t minor_dimension_size =
-        ShapeUtil::GetDimension(this_shape, stride_config.minor_dimension);
-
     const int64_t primitive_size =
         ShapeUtil::ByteSizeOfPrimitiveType(shape().element_type());
+    const int64_t num_elements = ShapeUtil::ElementsIn(shape());
+    // If we are rank-1 and we are `parallel`, it is better to use a smaller
+    // `step` than what `StrideConfig` does: stick the entire dimension in the
+    // inner-most loop.
+    if (parallel && this_shape.rank() == 1) {
+      const int64_t thread_count =
+          ShapeUtil::GetForEachIndexParallelThreadCount();
+      // Let's just divide up the array into small amounts per thread.
+      stride_config.dest_stride = stride_config.minor_loop_size =
+          num_elements > 32 ? std::max<int64_t>(num_elements / thread_count, 1)
+                            : num_elements;
+      stride_config.step = {stride_config.minor_loop_size};
+    }
 
     auto init_function = [&](absl::Span<const int64_t> indexes,
                              int thread_id) -> StatusOr<bool> {
@@ -813,7 +823,12 @@ void MutableLiteralBase::PopulateInplaceInternal(
       DimensionVector minor_scan_indexes(rank, 0);
       std::copy(indexes.begin(), indexes.end(), minor_scan_indexes.begin());
       char* dest_ptr = dest_base + index * primitive_size;
-      char* const dest_end = dest_ptr + primitive_size * minor_dimension_size;
+      char* const dest_end =
+          dest_base +
+          // This handles the case where minor_loop_size does not evenly divide
+          // the most minor dimension.
+          std::min(index + stride_config.minor_loop_size, num_elements) *
+              primitive_size;
       while (dest_ptr < dest_end) {
         populator(dest_ptr, minor_scan_indexes, thread_id);
         ++minor_scan_indexes[stride_config.minor_dimension];
