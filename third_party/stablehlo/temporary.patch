@@ -1,3 +1,177 @@
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -65,6 +65,38 @@
+         isCompatible(rankedType2.getShape(), boundedAttr1));
+   }
+   return success();
++}
++
++bool isCompatibleElementTypeForHloTypeInference(Type tp1, Type tp2) {
++  // Get element type if shaped
++  tp1 = getElementTypeOrSelf(tp1);
++  tp2 = getElementTypeOrSelf(tp2);
++
++  // Quantization: In the most general case, we allow any combination of
++  // quantized/non-quantized across any combination of operands/results,
++  // and some differences in quantization parameters across operands/results.
++  // Individual ops may introduce additional constraints.
++  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
++  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
++  if (qtp1 && qtp2) {
++    if (qtp1.getStorageType() != qtp2.getStorageType() ||
++        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
++        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
++      return false;
++  }
++  auto etp1 = getExpressedTypeOrSelf(tp1);
++  auto etp2 = getExpressedTypeOrSelf(tp2);
++
++  // Sparsity: In the most general case, we allow any combination of
++  // sparsity/denseness across any combination of operands/results, as well as
++  // differences in sparsity encodings for operands and results.
++  // Individual ops may introduce additional constraints.
++  // No additional code is needed to check this because of how sparsity is
++  // currently implemented.
++
++  // Default case: Unless dynamism, quantization and/or sparsity are involved,
++  // the types are required to be exactly equal.
++  return etp1 == etp2;
+ }
+ 
+ bool isCompatibleForHloTypeInference(Type tp1, Type tp2) {
+@@ -81,34 +113,10 @@
+   auto stp2 = tp2.dyn_cast<ShapedType>();
+   if (stp1 && stp2)
+     return succeeded(verifyCompatibleShapeWithBounds(stp1, stp2)) &&
+-           isCompatibleForHloTypeInference(stp1.getElementType(),
+-                                           stp2.getElementType());
+-
+-  // Quantization: In the most general case, we allow any combination of
+-  // quantized/non-quantized across any combination of operands/results,
+-  // and some differences in quantization parameters across operands/results.
+-  // Individual ops may introduce additional constraints.
+-  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
+-  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
+-  if (qtp1 && qtp2) {
+-    if (qtp1.getStorageType() != qtp2.getStorageType() ||
+-        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
+-        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
+-      return false;
+-  }
+-  auto etp1 = getExpressedTypeOrSelf(tp1);
+-  auto etp2 = getExpressedTypeOrSelf(tp2);
+-
+-  // Sparsity: In the most general case, we allow any combination of
+-  // sparsity/denseness across any combination of operands/results, as well as
+-  // differences in sparsity encodings for operands and results.
+-  // Individual ops may introduce additional constraints.
+-  // No additional code is needed to check this because of how sparsity is
+-  // currently implemented.
+-
+-  // Default case: Unless dynamism, quantization and/or sparsity are involved,
+-  // the types are required to be exactly equal.
+-  return etp1 == etp2;
++           isCompatibleElementTypeForHloTypeInference(stp1.getElementType(),
++                                                      stp2.getElementType());
++
++  return isCompatibleElementTypeForHloTypeInference(tp1, tp2);
+ }
+ 
+ bool isCompatibleForHloTypeInference(TypeRange tp1, TypeRange tp2) {
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -60,6 +60,11 @@
+ //  different element types.
+ LogicalResult verifyCompatibleShapeWithBounds(Type type1, Type type2);
+ 
++// Returns true if the given element types are compatible for the purposes of
++// HLO type inference, accounting for special properties of quantization and
++// sparsity.
++bool isCompatibleElementTypeForHloTypeInference(Type tp1, Type tp2);
++
+ // Returns true if the given types are compatible for the purposes of HLO type
+ // inference, accounting for special properties of dynamism, quantization and
+ // sparsity.
+@@ -266,6 +271,31 @@
+       }
+     }
+     return success();
++  }
++};
++
++template <typename ConcreteType>
++class CompatibleOperandsAndResultElementType
++    : public mlir::OpTrait::TraitBase<ConcreteType,
++                                      CompatibleOperandsAndResultElementType> {
++ public:
++  static LogicalResult verifyTrait(Operation *op) {
++    Type expected;
++    if (op->getNumResults() != 0) expected = op->getResult(0).getType();
++    if (op->getNumOperands() != 0) expected = op->getOperand(0).getType();
++    if (!expected) return failure();
++
++    auto typeMatch = [&](Type actual) {
++      return isCompatibleElementTypeForHloTypeInference(actual, expected);
++    };
++    auto allMatch = llvm::all_of(op->getOperandTypes(), typeMatch) &&
++                    llvm::all_of(op->getResultTypes(), typeMatch);
++    if (!allMatch) {
++      return op->emitOpError(
++          "requires compatible element types for all operands and results");
++    }
++
++    return success(allMatch);
+   }
+ };
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -202,6 +202,9 @@
+     HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
+   ]>;
+ 
++def HLO_CompatibleOperandsAndResultElementType :
++  HLO_NativeOpTrait<"CompatibleOperandsAndResultElementType">;
++
+ def HLO_BoundedAttrInterface : AttrInterface<"BoundedAttrInterface"> {
+   let cppNamespace = "::mlir::hlo";
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -26,6 +26,7 @@
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Transforms/InliningUtils.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/BroadcastUtils.h"
+ #include "stablehlo/dialect/ChloBytecode.h"
+ #include "stablehlo/dialect/TypeInference.h"
+@@ -143,7 +144,8 @@
+   ShapedType lhsType = operands[0].getType().cast<ShapedType>();
+   ShapedType rhsType = operands[1].getType().cast<ShapedType>();
+   if (!lhsType || !rhsType ||
+-      lhsType.getElementType() != rhsType.getElementType())
++      !hlo::isCompatibleElementTypeForHloTypeInference(
++          lhsType.getElementType(), rhsType.getElementType()))
+     return emitOptionalError(location, "mismatched operand types");
+   if (!elementType) elementType = lhsType.getElementType();
+   inferredReturnShapes.push_back(
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -117,7 +117,7 @@
+ }
+ 
+ def CHLO_BroadcastAddOp : CHLO_BroadcastBinaryElementwiseOp<"broadcast_add",
+-    [Commutative, Pure, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
+   string summary = "Addition operator (with optional broadcasting)";
+ 
+   string description = [{
 diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
 --- stablehlo/stablehlo/dialect/VhloAttrs.td
 +++ stablehlo/stablehlo/dialect/VhloAttrs.td
@@ -98,4 +272,29 @@ diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dial
      }
    }];
  }
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -1,4 +1,21 @@
+ // RUN: stablehlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
++
++
++// CHECK-LABEL: func @broadcast_add_quantized
++func.func @broadcast_add_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++}
++
++// -----
++
++func.func @broadcast_add_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_add' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
++
++// -----
+ 
+ func.func @constant_like(%arg0: tensor<1x2xi64>) -> (tensor<1x2xi32>) {
+   // expected-error @+1 {{'chlo.constant_like' op value's type doesn't match element return type}}
 
