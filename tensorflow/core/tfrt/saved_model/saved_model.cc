@@ -481,7 +481,7 @@ tensorflow::Status PreprocessSignature(
 SavedModel::~SavedModel() = default;  // Out-of-line C++ key function.
 
 tfrt::HostContext* SavedModel::GetHostContext() const {
-  return runtime_->core_runtime()->GetHostContext();
+  return runtime().core_runtime()->GetHostContext();
 }
 
 namespace {
@@ -733,8 +733,7 @@ SavedModelImpl::SavedModelImpl(
     std::unique_ptr<OpKernelRunnerTable> runner_table,
     std::unique_ptr<tfd::FallbackResourceArray> resource_array,
     std::unique_ptr<GraphExecutor> graph_executor)
-    : SavedModel(options.graph_execution_options.runtime),
-      options_(std::move(options)),
+    : SavedModel(std::move(options)),
       symbol_uids_(std::move(symbol_uids)),
       meta_graph_def_(std::move(meta_graph_def)),
       bef_(std::move(bef)),
