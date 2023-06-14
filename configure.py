@@ -488,7 +488,7 @@ def set_tf_cuda_clang(environ_cp):
       environ_cp,
       'TF_CUDA_CLANG',
       None,
-      False,
+      True,
       question=question,
       yes_reply=yes_reply,
       no_reply=no_reply,
@@ -535,29 +535,6 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
   if not var:
     var = var_default
   return var
-
-
-def set_clang_cuda_compiler_path(environ_cp):
-  """Set CLANG_CUDA_COMPILER_PATH."""
-  default_clang_path = which('clang') or ''
-  ask_clang_path = ('Please specify which clang should be used as device and '
-                    'host compiler. [Default is %s]: ') % default_clang_path
-
-  while True:
-    clang_cuda_compiler_path = get_from_env_or_user_or_default(
-        environ_cp, 'CLANG_CUDA_COMPILER_PATH', ask_clang_path,
-        default_clang_path)
-    if os.path.exists(clang_cuda_compiler_path):
-      break
-
-    # Reset and retry
-    print('Invalid clang path: %s cannot be found.' % clang_cuda_compiler_path)
-    environ_cp['CLANG_CUDA_COMPILER_PATH'] = ''
-
-  # Set CLANG_CUDA_COMPILER_PATH
-  environ_cp['CLANG_CUDA_COMPILER_PATH'] = clang_cuda_compiler_path
-  write_action_env_to_bazelrc('CLANG_CUDA_COMPILER_PATH',
-                              clang_cuda_compiler_path)
 
 
 def prompt_loop_or_load_from_env(environ_cp,
@@ -624,6 +601,29 @@ def prompt_loop_or_load_from_env(environ_cp,
     val = os.path.realpath(val)
   environ_cp[var_name] = val
   return val
+
+
+def set_clang_cuda_compiler_path(environ_cp):
+  """Set CLANG_CUDA_COMPILER_PATH."""
+  default_clang_path = '/usr/lib/llvm-16/bin/clang'
+  if not os.path.exists(default_clang_path):
+    default_clang_path = which('clang') or ''
+
+  clang_cuda_compiler_path = prompt_loop_or_load_from_env(
+      environ_cp,
+      var_name='CLANG_CUDA_COMPILER_PATH',
+      var_default=default_clang_path,
+      ask_for_var='Please specify clang path that to be used as host compiler.',
+      check_success=os.path.exists,
+      resolve_symlinks=True,
+      error_msg='Invalid clang path. %s cannot be found.',
+  )
+
+  # Set CLANG_CUDA_COMPILER_PATH
+  environ_cp['CLANG_CUDA_COMPILER_PATH'] = clang_cuda_compiler_path
+  write_action_env_to_bazelrc('CLANG_CUDA_COMPILER_PATH',
+                              clang_cuda_compiler_path)
+  return clang_cuda_compiler_path
 
 
 def create_android_ndk_rule(environ_cp):
@@ -841,6 +841,8 @@ def set_clang_compiler_path(environ_cp):
   write_action_env_to_bazelrc('CLANG_COMPILER_PATH', clang_compiler_path)
   write_to_bazelrc('build --repo_env=CC=%s' % clang_compiler_path)
   write_to_bazelrc('build --repo_env=BAZEL_COMPILER=%s' % clang_compiler_path)
+  write_to_bazelrc('build --linkopt="-fuse-ld=lld"')
+  write_to_bazelrc('build --linkopt="-lm"')
 
   return clang_compiler_path
 
@@ -1388,14 +1390,10 @@ def main():
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
-      # Ask whether we should download the clang toolchain.
-      set_tf_download_clang(environ_cp)
-      if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
-        # Set up which clang we should use as the cuda / host compiler.
-        set_clang_cuda_compiler_path(environ_cp)
-      else:
-        # Use downloaded LLD for linking.
-        write_to_bazelrc('build:cuda_clang --config=download_clang_use_lld')
+      # Set up which clang we should use as the cuda / host compiler.
+      clang_cuda_compiler_path = set_clang_cuda_compiler_path(environ_cp)
+      clang_version = retrieve_clang_version(clang_cuda_compiler_path)
+      disable_clang16_offsetof_extension(clang_version)
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
