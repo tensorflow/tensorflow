@@ -159,9 +159,11 @@ class MklDnnQuantizedMatMulOp
     } else if (mode_string == "SCALED") {
       mode_ = QUANTIZE_MODE_SCALED;
     } else {
-      context->CtxFailure(errors::InvalidArgument(
-          "Quantization mode must be either MIN_FIRST or SCALED, but received ",
-          mode_string));
+      context->CtxFailure(
+          Status(absl::StatusCode::kInvalidArgument,
+                 absl::StrCat("Quantization mode must be either MIN_FIRST or "
+                              "SCALED, but received ",
+                              mode_string)));
     }
     this->is_weight_const_ = false;
     if (context->HasAttr("is_weight_const")) {
@@ -183,8 +185,8 @@ class MklDnnQuantizedMatMulOp
       GetMklShape(context, this->kInputIndexWeight, &weight_mkl_shape,
                   native_format);
       OP_REQUIRES(context, !weight_mkl_shape.IsMklTensor(),
-                  errors::InvalidArgument("Weight should not be in "
-                                          "MKL Layout"));
+                  Status(absl::StatusCode::kInvalidArgument,
+                         "Weight should not be in MKL Layout"));
 
       MklDnnData<Tinput> src(&(this->cpu_engine_));
       MklDnnData<Tweight> weight(&(this->cpu_engine_));
@@ -334,7 +336,8 @@ class MklDnnQuantizedMatMulOp
           __FILE__, ":", __LINE__);
       OP_REQUIRES_OK(
           context,
-          errors::Aborted("Operation received an exception:", error_msg));
+          Status(absl::StatusCode::kAborted,
+                 absl::StrCat("Operation received an exception:", error_msg)));
     }
     float min_output_value;
     float max_output_value;
@@ -345,16 +348,18 @@ class MklDnnQuantizedMatMulOp
       // for the output.
       const Tensor& min_freezed_tensor = context->input(7);
       const Tensor& max_freezed_tensor = context->input(8);
-      OP_REQUIRES(context,
-                  TensorShapeUtils::IsScalar(min_freezed_tensor.shape()),
-                  errors::InvalidArgument(
-                      "`min_freezed_output` must be rank 0 but is rank ",
-                      min_freezed_tensor.dims()));
-      OP_REQUIRES(context,
-                  TensorShapeUtils::IsScalar(max_freezed_tensor.shape()),
-                  errors::InvalidArgument(
-                      "`max_freezed_output` must be rank 0 but is rank ",
-                      max_freezed_tensor.dims()));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(min_freezed_tensor.shape()),
+          Status(
+              absl::StatusCode::kInvalidArgument,
+              absl::StrCat("`min_freezed_output` must be rank 0 but is rank ",
+                           min_freezed_tensor.dims())));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(max_freezed_tensor.shape()),
+          Status(
+              absl::StatusCode::kInvalidArgument,
+              absl::StrCat("`max_freezed_output` must be rank 0 but is rank ",
+                           max_freezed_tensor.dims())));
       min_output_value = min_freezed_tensor.scalar<float>()();
       max_output_value = max_freezed_tensor.scalar<float>()();
     } else {
@@ -406,17 +411,21 @@ class MklDnnQuantizedMatMulOp
     const Tensor& max_weight_tensor = context->input(6);
 
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_input_tensor.shape()),
-                errors::InvalidArgument("`min_a` must be rank 0 but is rank ",
-                                        min_input_tensor.dims()));
+                Status(absl::StatusCode::kInvalidArgument,
+                       absl::StrCat("`min_a` must be rank 0 but is rank ",
+                                    min_input_tensor.dims())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_input_tensor.shape()),
-                errors::InvalidArgument("`max_a` must be rank 0 but is rank ",
-                                        max_input_tensor.dims()));
+                Status(absl::StatusCode::kInvalidArgument,
+                       absl::StrCat("`max_a` must be rank 0 but is rank ",
+                                    max_input_tensor.dims())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(min_weight_tensor.shape()),
-                errors::InvalidArgument("`min_b` must be rank 0 but is rank ",
-                                        min_weight_tensor.dims()));
+                Status(absl::StatusCode::kInvalidArgument,
+                       absl::StrCat("`min_b` must be rank 0 but is rank ",
+                                    min_weight_tensor.dims())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_weight_tensor.shape()),
-                errors::InvalidArgument("`max_b` must be rank 0 but is rank ",
-                                        max_weight_tensor.dims()));
+                Status(absl::StatusCode::kInvalidArgument,
+                       absl::StrCat("`max_b` must be rank 0 but is rank ",
+                                    max_weight_tensor.dims())));
 
 #ifdef ENABLE_ONEDNN_V3
     const float min_input = min_input_tensor.scalar<float>()();
@@ -440,16 +449,18 @@ class MklDnnQuantizedMatMulOp
       const Tensor& min_freezed_tensor = context->input(7);
       const Tensor& max_freezed_tensor = context->input(8);
       // min-max values of freezed output range should be scalar.
-      OP_REQUIRES(context,
-                  TensorShapeUtils::IsScalar(min_freezed_tensor.shape()),
-                  errors::InvalidArgument(
-                      "`min_freezed_output` must be rank 0 but is rank ",
-                      min_freezed_tensor.dims()));
-      OP_REQUIRES(context,
-                  TensorShapeUtils::IsScalar(max_freezed_tensor.shape()),
-                  errors::InvalidArgument(
-                      "`max_freezed_output` must be rank 0 but is rank ",
-                      max_freezed_tensor.dims()));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(min_freezed_tensor.shape()),
+          Status(
+              absl::StatusCode::kInvalidArgument,
+              absl::StrCat("`min_freezed_output` must be rank 0 but is rank ",
+                           min_freezed_tensor.dims())));
+      OP_REQUIRES(
+          context, TensorShapeUtils::IsScalar(max_freezed_tensor.shape()),
+          Status(
+              absl::StatusCode::kInvalidArgument,
+              absl::StrCat("`max_freezed_output` must be rank 0 but is rank ",
+                           max_freezed_tensor.dims())));
       const float min_freezed_output = min_freezed_tensor.scalar<float>()();
       const float max_freezed_output = max_freezed_tensor.scalar<float>()();
       float scale_eightbit =
@@ -603,8 +614,8 @@ class MklDnnQuantizedMatMulOp
         return reinterpret_cast<Tbias*>(scaled_bias_->get_data_handle());
       } else {
         context->CtxFailure(
-            errors::InvalidArgument("Quantization mode must be"
-                                    "either MIN_FIRST or SCALED."));
+            Status(absl::StatusCode::kInvalidArgument,
+                   "Quantization mode must be either MIN_FIRST or SCALED."));
         return nullptr;
       }
     }
@@ -706,8 +717,8 @@ class MklDnnQuantizedMatMulOp
         ExecutePrimitive(net, &net_args, this->cpu_engine_, context);
       } else {
         context->CtxFailure(
-            errors::InvalidArgument("Quantization mode must be"
-                                    "either MIN_FIRST or SCALED."));
+            Status(absl::StatusCode::kInvalidArgument,
+                   "Quantization mode must be either MIN_FIRST or SCALED."));
       }
       *bias_data = static_cast<void*>(
           temp_scaled_bias_tensor->flat<TSCALED_BIAS>().data());
