@@ -297,6 +297,7 @@ cc_library(
     copts = tflite_copts_warnings(),
     visibility = internal_visibility_allowlist(),
     deps = [
+        ":macros",
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:mutable_op_resolver",
         "//tensorflow/lite:stderr_reporter",

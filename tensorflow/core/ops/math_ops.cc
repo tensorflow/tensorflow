@@ -1193,7 +1193,8 @@ Status SparseSegmentReductionShapeFn(InferenceContext* c) {
   return OkStatus();
 }
 
-Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+Status SparseSegmentReductionGradShapeFnImpl(InferenceContext* c,
+                                             bool outputs_unique_indices) {
   ShapeHandle data_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &data_shape));
 
@@ -1210,7 +1211,9 @@ Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
   ShapeHandle subshape;
   TF_RETURN_IF_ERROR(c->Subshape(data_shape, 1, &subshape));
 
-  const Tensor* dim0 = c->input_tensor(3);
+  // For the V2 version of the op, dim0 is the number of unique indices, which
+  // is always unknown at inference time.
+  const Tensor* dim0 = outputs_unique_indices ? nullptr : c->input_tensor(3);
   ShapeHandle dim0_shape;
   if (dim0 == nullptr) {
     // We don't have the value at inference time, so the output
@@ -1228,7 +1231,21 @@ Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
   ShapeHandle out;
   TF_RETURN_IF_ERROR(c->Concatenate(dim0_shape, subshape, &out));
   c->set_output(0, out);
+  if (outputs_unique_indices) {
+    c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+  }
   return OkStatus();
+}
+
+Status SparseSegmentReductionGradShapeFn(InferenceContext* c) {
+  return SparseSegmentReductionGradShapeFnImpl(
+      c,
+      /*outputs_unique_indices=*/false);
+}
+
+Status SparseSegmentReductionGradV2ShapeFn(InferenceContext* c) {
+  return SparseSegmentReductionGradShapeFnImpl(c,
+                                               /*outputs_unique_indices=*/true);
 }
 
 Status SparseSegmentReductionWithNumSegmentsShapeFn(InferenceContext* c) {
@@ -1425,6 +1442,20 @@ REGISTER_OP("SparseSegmentSumGrad")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
 
+// V2 returns a sparse gradient instead of dense. Its (sparse) output dim0 is
+// equal to the number of unique indices.
+REGISTER_OP("SparseSegmentSumGradV2")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("dense_output_dim0: int32")
+    .Output("output: T")
+    .Output("sorted_unique_indices: Tidx")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradV2ShapeFn);
+
 REGISTER_OP("SparseSegmentMean")
     .Input("data: T")
     .Input("indices: Tidx")
@@ -1458,6 +1489,18 @@ REGISTER_OP("SparseSegmentMeanGrad")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
 
+REGISTER_OP("SparseSegmentMeanGradV2")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("dense_output_dim0: int32")
+    .Output("output: T")
+    .Output("sorted_unique_indices: Tidx")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradV2ShapeFn);
+
 REGISTER_OP("SparseSegmentSqrtN")
     .Input("data: T")
     .Input("indices: Tidx")
@@ -1490,6 +1533,18 @@ REGISTER_OP("SparseSegmentSqrtNGrad")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("Tsegmentids: {int32, int64} = DT_INT32")
     .SetShapeFn(SparseSegmentReductionGradShapeFn);
+
+REGISTER_OP("SparseSegmentSqrtNGradV2")
+    .Input("grad: T")
+    .Input("indices: Tidx")
+    .Input("segment_ids: Tsegmentids")
+    .Input("dense_output_dim0: int32")
+    .Output("output: T")
+    .Output("sorted_unique_indices: Tidx")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .Attr("Tsegmentids: {int32, int64} = DT_INT32")
+    .SetShapeFn(SparseSegmentReductionGradV2ShapeFn);
 
 REGISTER_OP("All")
     .Input("input: bool")

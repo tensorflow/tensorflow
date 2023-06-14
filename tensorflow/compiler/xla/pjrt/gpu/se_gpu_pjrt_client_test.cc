@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
+#include <stdlib.h>
+
 #include <array>
 #include <memory>
 #include <numeric>
@@ -346,15 +348,15 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
 
-  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+  void* dst = aligned_alloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
 
   auto result =
       buffer->CopyRawToHost(dst, 0, buffer->GetOnDeviceSizeInBytes().value());
-  EXPECT_OK(result.Await());
+  TF_EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
   EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
 
-  aligned_free(dst);
+  free(dst);
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
@@ -366,13 +368,13 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
-  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+  void* dst = aligned_alloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
 
   auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
-  EXPECT_OK(result.Await());
+  TF_EXPECT_OK(result.Await());
   EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
 
-  aligned_free(dst);
+  free(dst);
 }
 
 TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
@@ -384,13 +386,13 @@ TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PjRtBuffer> buffer,
       client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
-  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+  void* dst = aligned_alloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
 
   auto result =
       buffer->CopyRawToHost(dst, 1, buffer->GetOnDeviceSizeInBytes().value());
   EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
                                        HasSubstr("invalid offset 1")));
-  aligned_free(dst);
+  free(dst);
 }
 
 TEST(GpuTopology, FromProto) {

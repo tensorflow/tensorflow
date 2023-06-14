@@ -294,7 +294,9 @@ class _DelayedRewriteGradientFunctions(object):
       output_type = forward_function.function_type.flat_outputs[i]
       handle_data = output_type.dtype._handle_data
       if handle_data:
-        handle_data_util.set_handle_data(op.outputs[i], handle_data)
+        handle_data_util.set_handle_data(
+            op.outputs[i], handle_data.shape_inference
+        )
     # pylint: enable=protected-access
 
     capture_mapping = dict(
@@ -1207,10 +1209,10 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
         except TypeError as structured_err:
           try:
             return self._call_with_flat_signature(args, kwargs)
-          except TypeError as flat_err:
+          except (TypeError, ValueError) as flat_err:
             raise TypeError(  # pylint: disable=raise-missing-from
                 str(structured_err)
-                + "\n Fallback to flat signature also failed due to: "
+                + "\nFallback to flat signature also failed due to: "
                 + str(flat_err)
             )
 
@@ -1282,23 +1284,20 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       TypeError: if `args` and `kwargs` do not match the structured signature
         of this `ConcreteFunction`.
     """
-    args, kwargs, filtered_flat_args = (
+    args, kwargs = (
         function_type_utils.canonicalize_function_inputs(
             args, kwargs, self.function_type)
     )
+    filtered_flat_args = self.function_type.unpack_inputs(args, kwargs)
     return self._call_flat(
         filtered_flat_args,
         captured_inputs=self.captured_inputs)
 
-  def _call_flat(self, args, captured_inputs):
+  def _call_flat(self, tensor_inputs, captured_inputs):
     """Executes the wrapped function.
 
     Args:
-      args: a list of Tensors or Variables. Arguments from the Python function
-        should be filtered before calling this method: objects aside from
-        Tensors, CompositeTensors, and Variables are ignored. Any
-        CompositeTensors other than ResourceVariables should be expanded before
-        calling this method.
+      tensor_inputs: a list of only Tensors generated from args, kwargs.
       captured_inputs: the captured inputs that are also part of the input args
         to the actual execution. By default, it should be self._captured_inputs.
     Returns:
@@ -1320,23 +1319,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
       for v in self._func_graph.variables:
         resource_variable_ops.variable_accessed(v)
 
-    tensor_inputs = []
-    variables_used = set([])
-    for i, arg in enumerate(args):
-      if isinstance(arg, resource_variable_ops.BaseResourceVariable):
-        # We can pass a variable more than once, and in this case we need to
-        # pass its handle only once.
-        if id(arg.handle) in variables_used:
-          continue
-        resource_variable_ops.variable_accessed(arg)
-        tensor_inputs.append(arg.handle)
-        variables_used.add(id(arg.handle))
-      elif isinstance(arg, ops.Tensor):
-        tensor_inputs.append(arg)
-      else:
-        raise ValueError(f"{i:d}-th input {arg} must be a Tensor, got "
-                         f"{type(arg)} when calling {self._func_graph.name}.")
-
+    # TODO(fmuham): check in eager mode too.
     if not executing_eagerly:
       for i, tensor_input in enumerate(tensor_inputs):
         # Can not compare shapes in these cases

@@ -18,14 +18,10 @@ import functools
 import inspect
 from typing import Any, Dict, Tuple
 
-import numpy as np
 import six
 
 from tensorflow.core.function import trace_type
 from tensorflow.core.function.polymorphism import function_type as function_type_lib
-from tensorflow.python.eager.polymorphic_function import composite_tensor_utils
-from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
@@ -422,9 +418,7 @@ def canonicalize_function_inputs(
   args, kwargs = bind_function_inputs(
       args, kwargs, function_type, default_values
   )
-  filtered_flat_args = filter_function_inputs(args, kwargs)
-
-  return args, kwargs, filtered_flat_args
+  return args, kwargs
 
 
 def bind_function_inputs(args, kwargs, function_type, default_values):
@@ -499,44 +493,6 @@ def _convert_variables_to_tensors(args, kwargs):
   args = [_to_tensor_or_tensor_spec(x) for x in args]
   kwargs = {kw: _to_tensor_or_tensor_spec(x) for kw, x in kwargs.items()}
   return tuple(args), kwargs
-
-
-# TODO(fmuham): Migrate to use TraceType/FunctionType _to_tensors.
-def filter_function_inputs(args, kwargs):
-  """Filters and flattens args and kwargs."""
-  flat_inputs = composite_tensor_utils.flatten_with_variables(
-      args
-  ) + composite_tensor_utils.flatten_with_variables(kwargs)
-
-  for index, flat_input in enumerate(flat_inputs):
-    if hasattr(flat_input, "__array__") and not (
-        hasattr(flat_input, "_should_act_as_resource_variable")
-        or isinstance(
-            flat_input,
-            (
-                ops.Tensor,
-                resource_variable_ops.BaseResourceVariable,
-                np.str_,
-                type,
-                composite_tensor.CompositeTensor,
-            ),
-        )
-    ):
-      ndarray = flat_input.__array__()
-      if not isinstance(ndarray, np.ndarray):
-        raise TypeError(
-            "The output of __array__ must be an np.ndarray, "
-            f"got {type(ndarray)} from {flat_input}."
-        )
-      flat_inputs[index] = constant_op.constant(ndarray)
-
-  filtered_flat_inputs = [
-      t
-      for t in flat_inputs
-      if isinstance(t, (ops.Tensor, resource_variable_ops.BaseResourceVariable))
-  ]
-
-  return filtered_flat_inputs
 
 
 def _get_variable_specs(args):

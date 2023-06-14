@@ -234,7 +234,9 @@ class AtomicFunction:
     for i, output_type in enumerate(self.function_type.flat_outputs):
       handle_data = output_type.dtype._handle_data
       if handle_data:
-        handle_data_util.set_handle_data(outputs[i], handle_data)
+        handle_data_util.set_handle_data(
+            outputs[i], handle_data.shape_inference
+        )
 
     # TODO(fmuham): Use FunctionType cast here for all cases.
     if not self._bound_context.executing_eagerly():
@@ -497,14 +499,18 @@ def to_func_graph(atomic):
   for i, input_type in enumerate(atomic.function_type.flat_inputs):
     handle_data = input_type.dtype._handle_data
     if handle_data:
-      handle_data_util.set_handle_data(result.inputs[i], handle_data)
+      handle_data_util.set_handle_data(
+          result.inputs[i], handle_data.shape_inference
+      )
     result.inputs[i].set_shape(input_type.shape)
 
   # Set output shapes and handle data
   for i, output_type in enumerate(atomic.function_type.flat_outputs):
     handle_data = output_type.dtype._handle_data
     if handle_data:
-      handle_data_util.set_handle_data(result.outputs[i], handle_data)
+      handle_data_util.set_handle_data(
+          result.outputs[i], handle_data.shape_inference
+      )
     result.outputs[i].set_shape(output_type.shape)
 
   result.collective_manager_ids_used = (

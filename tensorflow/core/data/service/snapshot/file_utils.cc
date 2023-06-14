@@ -107,7 +107,7 @@ tsl::Status AtomicallyWriteTFRecords(absl::string_view filename,
   };
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       AtomicallyWrite(filename, env, nonatomically_write),
-      " Requested file: ", filename);
+      " Requested to atomically write TF record file: ", filename);
   return tsl::OkStatus();
 }
 

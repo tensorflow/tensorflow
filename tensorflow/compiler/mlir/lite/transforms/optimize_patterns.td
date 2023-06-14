@@ -1388,3 +1388,23 @@ def FuseEluConst : Pat<
     (HasOneUse $exp_out),
     (HasOneUse $sub_out),
   ]>;
+
+
+def isF32Splat : Constraint<
+  CPred<"IsF32Splat($0)">>;
+
+def ExtractF32AtIndex0: NativeCodeCall<
+    "$_builder.getF32FloatAttr($_self.cast<DenseElementsAttr>().getValues<float>()[0])">;
+
+def FuseLeakyReluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterEqualOp:$geq_out $arg, (Arith_ConstantOp F32ElementsAttr:$threshold)),
+   $arg,
+   (TFL_MulOp:$mul_out $arg, (Arith_ConstantOp F32ElementsAttr:$alpha), TFL_AF_None)),
+  (TFL_LeakyReluOp $arg, ExtractF32AtIndex0:$alpha),
+  [
+    (FloatValueEquals<"0"> $threshold),
+    (isF32Splat $alpha),
+    (HasOneUse $geq_out),
+    (HasOneUse $mul_out),
+  ]>;

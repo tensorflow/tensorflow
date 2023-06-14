@@ -195,8 +195,5 @@ cc_library(
 cc_library(
     name = "export_mlir",
     hdrs = ["export_mlir.h"],
-    deps = [
-        "//tensorflow/core/platform:statusor",
-        "@llvm-project//mlir:IR",
-    ],
+    deps = ["@llvm-project//mlir:IR"],
 )

@@ -758,8 +758,8 @@ cuda_py_strict_test(
     # TODO(b/208263392): Re-enable. tf.Squeeze op after tf.Where op doesn't reshape.
     xla_enable_strict_auto_jit = False,
     deps = [
-        "//tensorflow/python:nn",
         "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/platform:client_testlib",
         "//third_party/py/numpy",
     ],

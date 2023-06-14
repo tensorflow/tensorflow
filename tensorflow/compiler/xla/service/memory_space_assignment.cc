@@ -6975,6 +6975,7 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                     << " computation: " << called_computation->name() << ": ("
                     << computation_start_time << ", " << last_use_time << ")";
             CHECK(last_use_instruction);
+            last_use_time = std::min(last_use_time, end_time);
             if (last_use_instruction->opcode() == HloOpcode::kConditional) {
               // The last use is another (nested) conditional. Call this
               // function recursively.
@@ -6982,7 +6983,6 @@ Status MemorySpaceAssignment::VerifyAndExportHeapSimulatorTrace() {
                   last_use_instruction, computation_start_time, last_use_time,
                   absl::StrCat(indent_string, "  ")));
             } else {
-              last_use_time = std::min(last_use_time, end_time);
               TF_RETURN_IF_ERROR(add_allocation_and_verify(
                   computation_start_time, last_use_time, chunk, value));
             }

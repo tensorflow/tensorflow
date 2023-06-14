@@ -147,6 +147,22 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations);
 
+// Returns the dynamic-update-slice instructions defining the results of a
+// fusion node. A dynamic slice update is said to be "defining" of a result if
+// that result is the output of a dynamic slice update, or if that result is the
+// output of a bitcast of a dynamic slice update---since such bitcast may be
+// handled as a no-op.
+std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
+    const HloComputation* fusion);
+
+// Returns the DynamicUpdateSliceOp(s) defining the results of a fusion node.
+// A dynamic slice update is said to be "defining" of a result if that result is
+// the output of a dynamic slice update, or if that result is the output of a
+// bitcast of a dynamic slice update---since such bitcast may be handled as a
+// no-op.
+std::vector<mlir::mhlo::DynamicUpdateSliceOp>
+GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion);
+
 Shape GetShape(mlir::Value value);
 
 // Returns whether the given reduction can be safely generated without atomics:

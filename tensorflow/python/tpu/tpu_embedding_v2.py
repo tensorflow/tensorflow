@@ -1254,9 +1254,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
             "the TPU for embeddings.")
     else:
       input_shapes = self._get_input_shapes(features, in_tpu_context)
-      if self._num_cores_per_replica:
-        input_shapes = [self._get_batch_dim_split_shape(
-            inp_shape) for inp_shape in input_shapes]
 
       self._maybe_build(input_shapes)
       # If is already built, we still need to check if the output shapes matches
@@ -1315,10 +1312,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
               ts,
               num_or_size_splits=self._num_cores_per_replica,
               axis=0)[idx]
-        elif isinstance(ts, sparse_tensor.Tensor):
-          return sparse_ops.split(
-              ts,
-              num_or_size_splits=self._num_cores_per_replica,
+        elif isinstance(ts, sparse_tensor.SparseTensor):
+          return sparse_ops.sparse_split_v2(
+              sp_input=ts,
+              num_split=self._num_cores_per_replica,
               axis=0)[idx]
         else:
           raise ValueError("SPMD does not support raggedTensor yet.")
@@ -1411,6 +1408,10 @@ class TPUEmbedding(autotrackable.AutoTrackable):
           "Rank 2 or above dense tensor should have last dimension as 1 "
           "as the last dimension will always be reduced. "
           "Instead got dense tensor as shape {}".format(shape))
+
+    if self._num_cores_per_replica:
+      shape[0] = shape[0] // self._num_cores_per_replica
+
     return TensorShape(shape)
 
   def _get_input_shape_for_sparse_tensor(self, tensor, feature,
@@ -1430,6 +1431,9 @@ class TPUEmbedding(autotrackable.AutoTrackable):
         # If the sparse tensor is 2D and max_sequence_length is set,
         # we need to add one dimension to the input feature.
         shape.insert(len(shape) - 1, feature.max_sequence_length)
+
+    if self._num_cores_per_replica and shape[0]:
+      shape[0] = shape[0] // self._num_cores_per_replica
 
     return TensorShape(shape)
 
@@ -1524,11 +1528,6 @@ class TPUEmbedding(autotrackable.AutoTrackable):
       else:
         output_shapes.append(TensorShape(per_replica_batch_size))
     return output_shapes
-
-  def _get_batch_dim_split_shape(self, input_shape):
-    shape_list = input_shape.as_list()
-    return TensorShape(
-        [shape_list[0] // self._num_cores_per_replica] + shape_list[1:])
 
   def _create_copy_for_async_checkpoint(
       self, feature_config, optimizer, pipeline_execution_with_tensor_core):

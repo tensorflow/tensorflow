@@ -70,7 +70,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -583,13 +582,7 @@ GraphExecutor::ImportAndCompileClientGraph(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
-
-  if (auto tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-      tf_symbol_uid.ok()) {
-    symbol_uids.tf_symbol_uid = *tf_symbol_uid;
-  } else {
-    LOG(ERROR) << tf_symbol_uid.status();
-  }
+  symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
@@ -633,13 +626,7 @@ GraphExecutor::ImportAndCompileClientGraph(
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
-
-  if (auto tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-      tfrt_symbol_uid.ok()) {
-    symbol_uids.tfrt_symbol_uid = *tfrt_symbol_uid;
-  } else {
-    LOG(ERROR) << tfrt_symbol_uid.status();
-  }
+  symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph

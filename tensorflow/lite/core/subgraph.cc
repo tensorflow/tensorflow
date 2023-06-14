@@ -665,20 +665,37 @@ TfLiteStatus Subgraph::GetModelMetadata(const struct TfLiteContext* context,
       ->GetModelMetadata(name, ptr, bytes);
 }
 
-TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) {
-  if (subgraph_index < 0 ||
-      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
-    return nullptr;
-  }
-  return subgraphs_->at(subgraph_index)->context();
+TfLiteStatus Subgraph::AcquireSubgraphContext(
+    int subgraph_index, TfLiteContext** acquired_context) {
+  TF_LITE_ENSURE(&context_, subgraph_index >= 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) < subgraphs_->size());
+  Subgraph* acquired_subgraph = subgraphs_->at(subgraph_index).get();
+  acquired_subgraph->SwitchToDelegateContext();
+  *acquired_context = acquired_subgraph->context();
+  return kTfLiteOk;
 }
 
-const TfLiteContext* Subgraph::GetSubgraphContext(int subgraph_index) const {
-  if (subgraph_index < 0 ||
-      static_cast<size_t>(subgraph_index) >= subgraphs_->size()) {
-    return nullptr;
-  }
-  return subgraphs_->at(subgraph_index)->context();
+TfLiteStatus Subgraph::AcquireSubgraphContext(
+    struct TfLiteContext* context, int subgraph_index,
+    TfLiteContext** acquired_context) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->AcquireSubgraphContext(subgraph_index, acquired_context);
+}
+
+TfLiteStatus Subgraph::ReleaseSubgraphContext(int subgraph_index) {
+  TF_LITE_ENSURE(&context_, subgraph_index >= 0);
+  TF_LITE_ENSURE(&context_,
+                 static_cast<size_t>(subgraph_index) < subgraphs_->size());
+  Subgraph* acquired_subgraph = subgraphs_->at(subgraph_index).get();
+  acquired_subgraph->SwitchToKernelContext();
+  return kTfLiteOk;
+}
+
+TfLiteStatus Subgraph::ReleaseSubgraphContext(struct TfLiteContext* context,
+                                              int subgraph_index) {
+  return static_cast<Subgraph*>(context->impl_)
+      ->ReleaseSubgraphContext(subgraph_index);
 }
 
 TfLiteStatus Subgraph::MarkSubgraphAsDelegationSkippable(int subgraph_index) {
@@ -1916,36 +1933,58 @@ void Subgraph::OptimizeMemoryForLargeTensors(
   }
 }
 
-void Subgraph::SwitchToDelegateContext() {
-  context_.GetNodeAndRegistration = GetNodeAndRegistration;
-  context_.ReplaceNodeSubsetsWithDelegateKernels =
-      ReplaceNodeSubsetsWithDelegateKernels;
-  context_.GetExecutionPlan = GetExecutionPlan;
-  context_.PreviewDelegatePartitioning = PreviewDelegatePartitioning;
+TfLiteStatus Subgraph::SwitchToDelegateContext() {
+  TF_LITE_ENSURE(&context_, delegate_context_switch_count_ >= 0);
+  if (delegate_context_switch_count_ == 0) {
+    context_.GetNodeAndRegistration = GetNodeAndRegistration;
+    context_.ReplaceNodeSubsetsWithDelegateKernels =
+        ReplaceNodeSubsetsWithDelegateKernels;
+    context_.GetExecutionPlan = GetExecutionPlan;
+    context_.PreviewDelegatePartitioning = PreviewDelegatePartitioning;
+    context_.AcquireSubgraphContext = AcquireSubgraphContext;
+    context_.ReleaseSubgraphContext = ReleaseSubgraphContext;
+  }
+  delegate_context_switch_count_++;
+  return kTfLiteOk;
 }
 
-void Subgraph::SwitchToKernelContext() {
-  context_.GetNodeAndRegistration = [](struct TfLiteContext* context,
-                                       int node_index, TfLiteNode** node,
-                                       TfLiteRegistration** registration) {
-    return ForbiddenContextFunction(context);
-  };
-  context_.ReplaceNodeSubsetsWithDelegateKernels =
-      [](TfLiteContext* context, TfLiteRegistration registration,
-         const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate) {
-        return ForbiddenContextFunction(context);
-      };
-  context_.GetExecutionPlan = [](struct TfLiteContext* context,
-                                 TfLiteIntArray**) {
-    return ForbiddenContextFunction(context);
-  };
-  context_.PreviewDelegatePartitioning =
-      [](struct TfLiteContext* context, const TfLiteIntArray* nodes_to_replace,
-         TfLiteDelegateParams** partition_params_array,
-         int* num_partitions) { return ForbiddenContextFunction(context); };
-  // Free any memory that might have been allocated by
-  // PreviewDelegatePartitioning.
-  FreeDelegatePartitioningData();
+TfLiteStatus Subgraph::SwitchToKernelContext() {
+  TF_LITE_ENSURE(&context_, delegate_context_switch_count_ >= 1);
+  if (delegate_context_switch_count_ == 1) {
+    context_.GetNodeAndRegistration = [](struct TfLiteContext* context,
+                                         int node_index, TfLiteNode** node,
+                                         TfLiteRegistration** registration) {
+      return ForbiddenContextFunction(context);
+    };
+    context_.ReplaceNodeSubsetsWithDelegateKernels =
+        [](TfLiteContext* context, TfLiteRegistration registration,
+           const TfLiteIntArray* nodes_to_replace, TfLiteDelegate* delegate) {
+          return ForbiddenContextFunction(context);
+        };
+    context_.GetExecutionPlan = [](struct TfLiteContext* context,
+                                   TfLiteIntArray**) {
+      return ForbiddenContextFunction(context);
+    };
+    context_.PreviewDelegatePartitioning =
+        [](struct TfLiteContext* context,
+           const TfLiteIntArray* nodes_to_replace,
+           TfLiteDelegateParams** partition_params_array,
+           int* num_partitions) { return ForbiddenContextFunction(context); };
+    context_.AcquireSubgraphContext = [](struct TfLiteContext* context,
+                                         int subgraph_index,
+                                         TfLiteContext** acquired_context) {
+      return ForbiddenContextFunction(context);
+    };
+    context_.ReleaseSubgraphContext = [](struct TfLiteContext* context,
+                                         int subgraph_index) {
+      return ForbiddenContextFunction(context);
+    };
+    // Free any memory that might have been allocated by
+    // PreviewDelegatePartitioning.
+    FreeDelegatePartitioningData();
+  }
+  delegate_context_switch_count_--;
+  return kTfLiteOk;
 }
 
 TfLiteStatus Subgraph::UndoAllDelegates() {

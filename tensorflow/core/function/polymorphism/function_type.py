@@ -360,6 +360,39 @@ class FunctionType(inspect.Signature):
 
     return self._cached_flat_inputs
 
+  def unpack_inputs(self, args, kwargs):
+    """Unpacks python arguments to flat tensor inputs accepted by this type."""
+    # Sort keyword-only parameters by name.
+    sorted_parameters = []
+    kwonly_parameters = []
+    for p in self.parameters.values():
+      if p.kind is Parameter.KEYWORD_ONLY:
+        kwonly_parameters.append(p)
+      else:
+        sorted_parameters.append(p)
+    sorted_parameters = sorted_parameters + sorted(
+        kwonly_parameters, key=lambda p: p.name
+    )
+
+    flat = []
+    bound_parameters = self.bind(*args, **kwargs)
+    for p in sorted_parameters:
+      flat.extend(
+          p.type_constraint._to_tensors(bound_parameters.arguments[p.name])  # pylint: disable=protected-access
+      )
+
+    dealiased_inputs = []
+    ids_used = set()
+    for tensor, input_type in zip(flat, self.flat_inputs):
+      alias_id = input_type._alias_id()  # pylint: disable=protected-access
+      if alias_id is None or alias_id not in ids_used:
+        dealiased_inputs.append(tensor)
+
+      if alias_id is not None:
+        ids_used.add(alias_id)
+
+    return dealiased_inputs
+
   @property
   def flat_outputs(self):
     """Flat tensor outputs returned by this FunctionType."""

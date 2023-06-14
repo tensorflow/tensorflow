@@ -1268,6 +1268,7 @@ cc_library(
         ":tensorflow_lite",
         ":tf_tfl_passes",
         "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/compiler/mlir/lite/debug",
         "//tensorflow/compiler/mlir/lite/metrics:error_collector_inst",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/stablehlo:op_stat_pass",

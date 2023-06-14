@@ -43,17 +43,17 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
-#include "tensorflow/tsl/platform/errors.h"
 
 namespace tensorflow {
 namespace dtensor {
@@ -901,22 +901,52 @@ Status PrepareGraphForMlir(
   return OkStatus();
 }
 
+Status SetMultiDeviceFunctionOutputs(
+    TranslatedFunction& function, Node* node,
+    const std::vector<PartialTensorShape>& global_output_shapes) {
+  const AttrValue* serialized_layouts = (node->attrs()).Find(kLayoutAttr);
+  if (serialized_layouts == nullptr) {
+    return absl::InvalidArgumentError("missing layout attribute");
+  }
+  const auto& serialized_layout_list = serialized_layouts->list();
+  for (int i = 0; i < serialized_layout_list.s_size(); i++) {
+    const auto& serialized_layout = serialized_layout_list.s(i);
+    TF_ASSIGN_OR_RETURN(const Layout layout,
+                        Layout::FromString(serialized_layout));
+    function.output_layouts.emplace_back(std::move(layout));
+  }
+  for (int i = 0; i < function.output_layouts.size(); i++) {
+    const Layout& output_layout = function.output_layouts[i];
+    PartialTensorShape local_shape =
+        output_layout.LocalShapeFromGlobalShape(global_output_shapes[i]);
+    const int num_devices = output_layout.num_devices();
+    for (int j = 0; j < num_devices; j++) {
+      function.local_output_shapes.emplace_back(local_shape);
+    }
+  }
+  return OkStatus();
+}
+
 // Returns set of functions to run to execute DTensor computation.
 StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
     const tensorflow::Graph& graph,
     const std::vector<PartialTensorShape>& global_output_shapes) {
+  bool multi_device_mode = EnableMultiDeviceMode();
   ExecutionFunctions execution_functions;
   execution_functions.function_list = std::vector<TranslatedFunction>();
   for (Node* node : graph.nodes()) {
     if (node->op_def().name() != "StatefulPartitionedCall") continue;
     // Extract mesh to execute the function.
     std::string serialized_mesh;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kMeshAttr, &serialized_mesh));
-    Mesh mesh;
-    TF_ASSIGN_OR_RETURN(mesh, Mesh::FromString(serialized_mesh));
+    std::optional<Mesh> mesh;
+    if (GetNodeAttr(node->attrs(), kMeshAttr, &serialized_mesh).ok()) {
+      TF_ASSIGN_OR_RETURN(mesh, Mesh::FromString(serialized_mesh));
+    }
 
     TranslatedFunction function;
-    function.function_mesh = std::move(mesh);
+    if (mesh.has_value()) {
+      function.function_mesh = std::move(mesh.value());
+    }
     function.node_to_execute = node;
 
     // Identify input arg information.
@@ -961,22 +991,28 @@ StatusOr<ExecutionFunctions> IdentifyAllFunctionsToExecute(
       output_edges[global_index] = out_edge;
     }
 
-    for (auto it = output_edges.begin(); it != output_edges.end(); it++) {
-      const int global_index = it->first;
-      function.output_index_map.emplace_back(global_index);
+    if (multi_device_mode) {
+      // need to update the output shapes and layouts
+      TF_RETURN_IF_ERROR(
+          SetMultiDeviceFunctionOutputs(function, node, global_output_shapes));
+    } else {
+      for (auto it = output_edges.begin(); it != output_edges.end(); it++) {
+        const int global_index = it->first;
+        function.output_index_map.emplace_back(global_index);
 
-      const Edge* retval_edge = it->second;
-      const int output_index = retval_edge->src_output();
+        const Edge* retval_edge = it->second;
+        const int output_index = retval_edge->src_output();
 
-      // Add output layout and shape information.
-      TF_ASSIGN_OR_RETURN(
-          const Layout output_layout,
-          GetLayoutThroughIdentityOps(retval_edge->src(), output_index));
+        // Add output layout and shape information.
+        TF_ASSIGN_OR_RETURN(
+            const Layout output_layout,
+            GetLayoutThroughIdentityOps(retval_edge->src(), output_index));
 
-      function.output_layouts.emplace_back(output_layout);
-      function.local_output_shapes.emplace_back(
-          output_layout.LocalShapeFromGlobalShape(
-              global_output_shapes[global_index]));
+        function.output_layouts.emplace_back(output_layout);
+        function.local_output_shapes.emplace_back(
+            output_layout.LocalShapeFromGlobalShape(
+                global_output_shapes[global_index]));
+      }
     }
 
     execution_functions.function_list.emplace_back(std::move(function));

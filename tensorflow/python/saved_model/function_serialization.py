@@ -191,7 +191,7 @@ def wrap_cached_variables(concrete_function):
   )
 
   def wrap_function(*args):
-    return inner_concrete._call_flat(args, inner_concrete.captured_inputs)  # pylint:disable=protected-access
+    return inner_concrete._call_flat(list(args), inner_concrete.captured_inputs)  # pylint:disable=protected-access
 
   args = nest.flatten(concrete_function.structured_input_signature,
                       expand_composites=True)

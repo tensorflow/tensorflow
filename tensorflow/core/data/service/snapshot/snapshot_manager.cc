@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/snapshot/snapshot_manager.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -125,12 +126,12 @@ StatusOr<std::unique_ptr<SnapshotManager>> SnapshotManager::Resume(
 
 Status SnapshotManager::Resume() {
   if (!env_->FileExists(path_).ok()) {
-    return InvalidArgument("failed to recover snapshot at ", path_,
+    return InvalidArgument("Failed to recover snapshot at ", path_,
                            ": the snapshot path doesn't exist");
   }
   if (env_->FileExists(SnapshotDoneFilePath(path_)).ok()) {
     mode_ = Mode::kDone;
-    LOG(INFO) << "attempted to recover snapshot at " << path_
+    LOG(INFO) << "Attempted to recover snapshot at " << path_
               << " but it's already done";
     return OkStatus();
   }
@@ -150,14 +151,14 @@ Status SnapshotManager::Resume() {
 
 Status SnapshotManager::ReadOnDiskMetadata() {
   if (!env_->FileExists(SnapshotMetadataFilePath(path_)).ok()) {
-    return InvalidArgument("failed to recover snapshot at ", path_,
+    return InvalidArgument("Failed to recover snapshot at ", path_,
                            ": snapshot has no snapshot.metadata");
   }
   TF_RETURN_IF_ERROR(
       ReadTextProto(env_, SnapshotMetadataFilePath(path_), &metadata_));
 
   if (!env_->FileExists(DatasetDefFilePath(path_)).ok()) {
-    return InvalidArgument("failed to recovery snapshot at ", path_,
+    return InvalidArgument("Failed to recovery snapshot at ", path_,
                            ": snapshot has no dataset_def.proto");
   }
   DatasetDef dataset_def;
@@ -185,8 +186,8 @@ Status SnapshotManager::ReadOnDiskStreams() {
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &stream_index) ||
         stream_index < 0) {
       return InvalidArgument(
-          "can't parse the name of ", stream_path,
-          ": filename must have the format stream_<stream_index>");
+          "Can't parse the name of ", stream_path,
+          ": filename must have the format stream_<stream_index>.");
     }
 
     TF_RETURN_IF_ERROR(ReadOnDiskStream(stream_index, global_split_indices));
@@ -194,7 +195,7 @@ Status SnapshotManager::ReadOnDiskStreams() {
 
   for (int64_t i = 0; i < global_split_indices.size(); ++i) {
     if (!global_split_indices.contains(i)) {
-      return InvalidArgument("found missing global split index, ", i, ", in ",
+      return InvalidArgument("Found missing global split index, ", i, ", in ",
                              path_);
     }
   }
@@ -239,11 +240,11 @@ Status SnapshotManager::ReadOnDiskStream(
     if (tokens.size() != 2 || !absl::SimpleAtoi(tokens[1], &source_index) ||
         source_index < 0) {
       return InvalidArgument(
-          "can't parse the name of ", source_path,
+          "Can't parse the name of ", source_path,
           ": filename must have the format source_<source_index>");
     }
     if (source_index >= num_sources()) {
-      return InvalidArgument("found conflict between the number of sources, ",
+      return InvalidArgument("Found conflict between the number of sources, ",
                              num_sources(), ", and the filename of ",
                              source_path);
     }
@@ -293,7 +294,7 @@ Status SnapshotManager::ReadOnDiskSplit(
   TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
   auto [local_split_index, global_split_index] = split_indices;
   if (global_split_indices.contains(global_split_index)) {
-    return InvalidArgument("found duplicate global split index in name of ",
+    return InvalidArgument("Found duplicate global split index in name of ",
                            split_file);
   }
   global_split_indices.insert(global_split_index);
