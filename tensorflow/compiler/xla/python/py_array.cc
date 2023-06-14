@@ -293,6 +293,22 @@ PyArray PyArray::MakeFromSingleDeviceArray(
                  std::move(traceback), std::move(ifrt_array), committed);
 }
 
+PyArray PyArray::MakeFromIfrtArrayAndSharding(
+    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
+    bool weak_type, bool committed) {
+  auto shape_span = ifrt_array->shape().dims();
+  ShapedArrayCacheKey key;
+  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.weak_type = weak_type;
+  auto aval = MakeShapedArrayCached(key);
+  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
+}
+
 PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
                                            bool committed, bool skip_checks)
     : aval_(std::move(aval)),
