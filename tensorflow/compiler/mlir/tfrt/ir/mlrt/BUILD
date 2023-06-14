@@ -13,6 +13,7 @@ td_library(
     ],
     includes = ["."],
     visibility = [
+        "//learning/infra/mira/distributed:__subpackages__",
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
     ],
     deps = [
@@ -49,6 +50,7 @@ cc_library(
         "mlrt_ops.h",
     ],
     visibility = [
+        "//learning/infra/mira/distributed:__subpackages__",
         "//tensorflow/compiler/mlir/tfrt:__subpackages__",
         "//tensorflow/core/tfrt/mlrt:__subpackages__",
     ],
