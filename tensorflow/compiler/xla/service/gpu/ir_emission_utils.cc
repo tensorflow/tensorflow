@@ -646,69 +646,28 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations) {
-  std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
-      GetOutputDefiningDynamicUpdateSliceOps(fusion);
-
-  // This check could probably be relaxed: if code generation is made to use a
-  // separate parallel loop for each dynamic slice update, then it shouldn't be
-  // necessary for every output to be a dynamic slice update, nor to have the
-  // same shape.
-  if (dus_ops.size() != fusion.getFusionResults().size()) {
+  auto results = fusion.getFusionResults();
+  if (results.size() != 1) {
+    return false;
+  }
+  auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
+      results[0].getDefiningOp());
+  if (!dus) {
     return false;
   }
 
   auto output_buffers = fusion.getOutputBuffers();
-  CHECK_GE(output_buffers.size(), 1);
-  CHECK_EQ(dus_ops.size(), output_buffers.size());
+  CHECK_EQ(1, output_buffers.size());
+  auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
+      dus.getOperand().getDefiningOp());
 
-  auto update_shape =
-      dus_ops[0].getUpdate().getType().cast<mlir::ShapedType>().getShape();
-
-  // We can safely assume here that the slices being updated do not overlap, as
-  // constructing a fusion with them would not be safe otherwise.
-  for (auto [dus, output_buffer] : llvm::zip(dus_ops, output_buffers)) {
-    auto operand = dus.getOperand();
-    // A bitcast separating a fusion input from a dynamic slice update can be
-    // treated as a no-op.
-    auto bitcast =
-        mlir::dyn_cast<mlir::mhlo::BitcastOp>(operand.getDefiningOp());
-    if (bitcast) {
-      operand = bitcast.getOperand();
-    }
-
-    auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-        operand.getDefiningOp());
-
-    if (!parameter) {
-      return false;
-    }
-
-    // We require that the parameter being updated is only read by the
-    // dynamic slice update, since we otherwise risk a race condition when
-    // updating the parameter inplace.
-    if (!parameter->hasOneUse()) {
-      return false;
-    }
-
-    // This check could probably be relaxed: if code generation is made to use a
-    // separate parallel loop for each dynamic slice update, then it shouldn't
-    // be necessary for the shape to be the same for all the dynamic slice
-    // updates. Note that this equality check purposefully ignores the element
-    // type.
-    if (dus.getUpdate().getType().cast<mlir::ShapedType>().getShape() !=
-        update_shape) {
-      return false;
-    }
-
-    auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
-    auto maybe_rhs = GetAllocationSlice(output_buffer, allocations);
-
-    if (!(maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs)) {
-      return false;
-    }
+  if (!parameter) {
+    return false;
   }
 
-  return true;
+  auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
+  auto maybe_rhs = GetAllocationSlice(output_buffers[0], allocations);
+  return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
 }
 
 Shape GetShape(mlir::Value value) {
