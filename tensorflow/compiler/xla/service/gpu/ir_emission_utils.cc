@@ -583,26 +583,30 @@ std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
   // computation instead of a LMHLO FusionOp.
   HloInstruction* root = fusion->root_instruction();
 
-  if (root->opcode() == HloOpcode::kDynamicUpdateSlice)
-    return std::vector<HloInstruction*>{root};
+  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return {root};
+  }
 
   if (root->opcode() == HloOpcode::kBitcast) {
     HloInstruction* current = root->mutable_operand(0);
-    while (current->opcode() == HloOpcode::kBitcast)
+    while (current->opcode() == HloOpcode::kBitcast) {
       current = current->mutable_operand(0);
+    }
 
-    if (current->opcode() == HloOpcode::kDynamicUpdateSlice)
-      return std::vector<HloInstruction*>{current};
+    if (current->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      return {current};
+    }
 
-    return std::vector<HloInstruction*>{};
+    return {};
   }
 
   std::vector<HloInstruction*> dus_ops;
 
   if (root->opcode() == HloOpcode::kTuple) {
     for (HloInstruction* operand : root->operands()) {
-      while (operand->opcode() == HloOpcode::kBitcast)
+      while (operand->opcode() == HloOpcode::kBitcast) {
         operand = operand->mutable_operand(0);
+      }
 
       if (operand->opcode() == HloOpcode::kDynamicUpdateSlice) {
         dus_ops.push_back(operand);

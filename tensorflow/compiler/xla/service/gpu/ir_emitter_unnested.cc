@@ -5759,8 +5759,7 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
   CHECK_EQ(dus_ops.size(), GetHloOutputs(fusion_op).size());
 
   // Shape of the dynamic-update-slice's "update" operand.
-  Shape update_shape =
-      fused_computation->root_instruction()->operand(1)->shape();
+  Shape update_shape = dus_ops.front()->operand(1)->shape();
 
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions launch_dimensions,
