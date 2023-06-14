@@ -45,10 +45,12 @@ class HloRematerializationTest : public RematerializationTestBase {
                                          HloModule* module,
                                          int64_t min_remat_size = 0) {
     TF_EXPECT_OK(verifier().Run(module).status());
-    HloMemoryScheduler scheduler(
-        [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
-        ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
-    TF_EXPECT_OK(scheduler.Run(module).status());
+    if (!module->has_schedule()) {
+      HloMemoryScheduler scheduler(
+          [](const BufferValue& buffer) { return ByteSizeOf(buffer.shape()); },
+          ComputationSchedulerToModuleScheduler(DefaultMemoryScheduler));
+      TF_EXPECT_OK(scheduler.Run(module).status());
+    }
     HloRematerialization remat(
         ByteSizeOf, memory_limit_bytes,
         /*sizes=*/nullptr,

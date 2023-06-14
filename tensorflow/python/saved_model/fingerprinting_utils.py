@@ -30,7 +30,7 @@ from tensorflow.python.saved_model.pywrap_saved_model import metrics
 from tensorflow.python.util import compat
 
 
-def write_fingerprint(export_dir, saved_model_serialized):
+def write_fingerprint(export_dir, serialized_model=None):
   """Write fingerprint protobuf, if requested.
 
   Writes a `tf.saved_model.experimental.Fingerprint` object to a
@@ -38,9 +38,9 @@ def write_fingerprint(export_dir, saved_model_serialized):
 
   Args:
     export_dir: The directory in which to write the fingerprint.
-    saved_model_serialized: The serialized SavedModel proto.
+    serialized_model: Deprecated. The serialized model proto string.
   """
-
+  del serialized_model
   if flags.config().saved_model_fingerprinting.value():
     fingerprint_path = file_io.join(
         compat.as_str(export_dir),
@@ -48,7 +48,7 @@ def write_fingerprint(export_dir, saved_model_serialized):
     logging.info("Writing fingerprint to %s", fingerprint_path)
     try:
       fingerprint_serialized = fingerprinting_pywrap.CreateFingerprintDef(
-          saved_model_serialized, export_dir)
+          export_dir)
     except fingerprinting_pywrap.FingerprintException as e:
       raise ValueError(e) from None
     file_io.atomic_write_string_to_file(fingerprint_path,

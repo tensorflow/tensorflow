@@ -221,8 +221,8 @@ void ReplaceWithNoOp(NodeDef* node, const GraphOptimizerContext& ctx) {
   ctx.node_map->RemoveInputs(node->name());
   ctx.graph_properties->ClearInputProperties(node->name());
   ctx.graph_properties->ClearOutputProperties(node->name());
+  ChangeToNoOp(node);
   EraseRegularNodeAttributes(node);
-  node->set_op("NoOp");
   node->clear_input();
 }
 

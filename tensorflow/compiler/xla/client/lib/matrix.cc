@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <string>

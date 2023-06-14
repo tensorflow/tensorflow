@@ -86,7 +86,7 @@ void ProcessOneTfActivity(const TfActivity& activity,
   switch (activity.activity_type) {
     case kTfOpBegin: {
       tf_op_stack->Push(tf_op_id,
-                        absl::make_unique<TfOpInfo>(activity.timestamp_ps));
+                        std::make_unique<TfOpInfo>(activity.timestamp_ps));
       break;
     }
     case kTfOpEnd: {
@@ -144,7 +144,7 @@ void CollectTfActivities(const XLineVisitor& line,
     if (tf_op != nullptr) {
       ++tf_op_id;
       bool is_eager = false;
-      if (absl::optional<XStatVisitor> stat =
+      if (std::optional<XStatVisitor> stat =
               event.GetStat(StatType::kIsEager)) {
         is_eager = stat->IntValue();
       }
@@ -204,6 +204,15 @@ void SetOpMetadataFromHloEventMetadata(
         case StatType::kBytesAccessed:
           op_metrics->set_bytes_accessed(stat.IntOrUintValue());
           break;
+        case StatType::kMemoryAccessBreakdown: {
+          tensorflow::profiler::MemoryAccessBreakdown breakdown;
+          const auto& value = stat.BytesValue();
+          if (breakdown.ParseFromArray(value.data(), value.size())) {
+            *op_metrics->mutable_memory_accessed_breakdown() =
+                breakdown.memory_accessed();
+          }
+          break;
+        }
         default:
           break;
       }
@@ -261,6 +270,10 @@ void AdjustFlopsAndBytesAccessed(OpMetrics& op_metrics) {
   op_metrics.set_flops(op_metrics.flops() * op_metrics.occurrences());
   op_metrics.set_bytes_accessed(op_metrics.bytes_accessed() *
                                 op_metrics.occurrences());
+  for (auto& memory_access : *op_metrics.mutable_memory_accessed_breakdown()) {
+    memory_access.set_bytes_accessed(memory_access.bytes_accessed() *
+                                     op_metrics.occurrences());
+  }
 }
 
 }  // namespace

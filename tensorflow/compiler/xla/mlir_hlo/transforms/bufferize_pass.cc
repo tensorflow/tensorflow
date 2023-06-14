@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "gml_st/IR/gml_st_ops.h"
+#include "gml_st/interfaces/bufferizable_op_interface_impl.h"
 #include "lhlo/IR/lhlo_ops.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
@@ -174,7 +175,7 @@ struct ComputeOpAndFuncBufferizePass
     RewritePatternSet patterns(&getContext());
     auto& context = getContext();
     ConversionTarget target(context);
-    target.addLegalDialect<AffineDialect, arith::ArithDialect,
+    target.addLegalDialect<affine::AffineDialect, arith::ArithDialect,
                            complex::ComplexDialect, func::FuncDialect,
                            lmhlo::LmhloDialect, math::MathDialect,
                            memref::MemRefDialect, tensor::TensorDialect,
@@ -226,6 +227,7 @@ struct OneShotBufferizePass
         registry);
     linalg::registerBufferizableOpInterfaceExternalModels(registry);
     mhlo::registerBufferizableOpInterfaceExternalModels(registry);
+    gml_st::registerBufferizableOpInterfaceExternalModels(registry);
     scf::registerBufferizableOpInterfaceExternalModels(registry);
     shape::registerBufferizableOpInterfaceExternalModels(registry);
     tensor::registerBufferizableOpInterfaceExternalModels(registry);
@@ -268,7 +270,7 @@ struct FinalBufferizePass
 
  public:
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<AffineDialect, bufferization::BufferizationDialect,
+    registry.insert<affine::AffineDialect, bufferization::BufferizationDialect,
                     linalg::LinalgDialect, memref::MemRefDialect,
                     scf::SCFDialect, shape::ShapeDialect, tensor::TensorDialect,
                     lmhlo::LmhloDialect, arith::ArithDialect, thlo::THLODialect,
@@ -322,7 +324,7 @@ struct FinalBufferizePass
         arith::ArithDialect, bufferization::BufferizationDialect,
         cf::ControlFlowDialect, complex::ComplexDialect, memref::MemRefDialect,
         func::FuncDialect, scf::SCFDialect, tensor::TensorDialect,
-        AffineDialect, shape::ShapeDialect, lmhlo::LmhloDialect,
+        affine::AffineDialect, shape::ShapeDialect, lmhlo::LmhloDialect,
         linalg::LinalgDialect, math::MathDialect, thlo::THLODialect,
         vector::VectorDialect>();
     target.addLegalOp<func::FuncOp, ModuleOp>();

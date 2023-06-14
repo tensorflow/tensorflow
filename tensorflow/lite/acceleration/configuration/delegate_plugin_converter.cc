@@ -18,13 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace delegates {
 
-using ::tflite_shims::delegates::DelegatePluginInterface;
-using ::tflite_shims::delegates::TfLiteOpaqueDelegatePtr;
+using ::tflite::delegates::DelegatePluginInterface;
+using ::tflite::delegates::TfLiteOpaqueDelegatePtr;
 
 // This class implements the C++ DelegatePluginInterface using
 // the equivalent C API, which is the TfLiteDelegatePlugin struct.

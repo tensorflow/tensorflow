@@ -157,6 +157,9 @@ PJRT_Chunk ConvertFromCppChunk(xla::PjRtChunk chunk);
 // should not be called).
 xla::PjRtChunk ConvertToCppChunk(const PJRT_Chunk& chunk);
 
+PJRT_DeviceDescription* GetDeviceDescription(const PJRT_Api* api,
+                                             PJRT_Device* device);
+
 }  // namespace pjrt
 
 #endif  // TENSORFLOW_COMPILER_XLA_PJRT_C_PJRT_C_API_HELPERS_H_

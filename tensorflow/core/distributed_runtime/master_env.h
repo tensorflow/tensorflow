@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/tsl/protobuf/rpc_options.pb.h"
 
 namespace tsl {
 class Env;
@@ -39,24 +40,22 @@ class OpRegistryInterface;
 
 // Options passed to the worker_cache_factory function.
 struct WorkerCacheFactoryOptions {
-  const ClusterDef* cluster_def = nullptr;
-  const string* job_name = nullptr;
+  ClusterDef cluster_def;
+  string job_name;
   int task_index;
-  const string* protocol = nullptr;
-  const RPCOptions* rpc_options = nullptr;
+  int replica_index = 0;
+  RPCOptions rpc_options;
 
-  WorkerCacheFactoryOptions() {}
+  explicit WorkerCacheFactoryOptions() = default;
 
   // Construct from a ServerDef proto.
-  //
-  // Note: server_def must outlive WorkerCacheFactoryOptions!
-  WorkerCacheFactoryOptions(const ServerDef& server_def) {
+  explicit WorkerCacheFactoryOptions(const ServerDef& server_def) {
     if (server_def.has_cluster() && !server_def.job_name().empty()) {
-      cluster_def = &server_def.cluster();
-      job_name = &server_def.job_name();
+      cluster_def = server_def.cluster();
+      job_name = server_def.job_name();
       task_index = server_def.task_index();
-      protocol = &server_def.protocol();
-      rpc_options = &server_def.default_session_config().rpc_options();
+      rpc_options = server_def.default_session_config().rpc_options();
+      replica_index = server_def.replica();
     }
   }
 };

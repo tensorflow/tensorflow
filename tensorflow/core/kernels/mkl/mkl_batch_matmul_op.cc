@@ -81,23 +81,21 @@ class BatchMatMulMkl : public OpKernel {
     if (!v2_bcast) {
       // Using V1, so check to make sure lhs and rhs dimensions are correct and
       // no broadcasting is needed.
-      OP_REQUIRES(ctx, lhs.dims() == rhs.dims(),
-                  Status(absl::StatusCode::kInvalidArgument,
-                         absl::StrCat("lhs and rhs has different ndims: ",
-                                      lhs.shape().DebugString(), " vs. ",
-                                      rhs.shape().DebugString())));
-      const int ndims = lhs.dims();
       OP_REQUIRES(
-          ctx, ndims >= 2,
-          Status(absl::StatusCode::kInvalidArgument,
-                 absl::StrCat("lhs and rhs ndims must be >= 2: ", ndims)));
+          ctx, lhs.dims() == rhs.dims(),
+          errors::InvalidArgument("In[0] and In[1] has different ndims: ",
+                                  lhs.shape().DebugString(), " vs. ",
+                                  rhs.shape().DebugString()));
+      const int ndims = lhs.dims();
+      OP_REQUIRES(ctx, ndims >= 2,
+                  errors::InvalidArgument(
+                      "In[0] and In[1] ndims must be >= 2: ", ndims));
       for (int i = 0; i < ndims - 2; ++i) {
         OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
-                    Status(absl::StatusCode::kInvalidArgument,
-                           absl::StrCat("lhs.dim(", i, ") and rhs.dim(", i,
-                                        ") must be the same: ",
-                                        lhs.shape().DebugString(), " vs ",
-                                        rhs.shape().DebugString())));
+                    errors::InvalidArgument(
+                        "In[0].dim(", i, ") and In[1].dim(", i,
+                        ") must be the same: ", lhs.shape().DebugString(),
+                        " vs ", rhs.shape().DebugString()));
       }
     } else {
       OP_REQUIRES(
@@ -135,11 +133,9 @@ class BatchMatMulMkl : public OpKernel {
     if (adj_y_) std::swap(rhs_rows, rhs_cols);
     OP_REQUIRES(
         ctx, lhs_cols == rhs_rows,
-        Status(
-            absl::StatusCode::kInvalidArgument,
-            absl::StrCat("lhs mismatch rhs shape: ", lhs_cols, " vs. ",
-                         rhs_rows, ": ", lhs.shape().DebugString(), " ",
-                         rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_)));
+        errors::InvalidArgument(
+            "Matrix size-incompatible: In[0]: ", lhs.shape().DebugString(),
+            ", In[1]: ", rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_));
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);

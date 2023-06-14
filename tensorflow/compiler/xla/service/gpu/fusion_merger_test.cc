@@ -1027,6 +1027,37 @@ TEST_F(FusionMergerTest, CommonElementwiseUsedParameter) {
   EXPECT_TRUE(fusion_merger_.Run(module.get()).value());
 }
 
+TEST_F(FusionMergerTest, IncompatibleNonTrivialHeroes) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule module
+
+    fused_computation {
+      param_0.1 = f32[18,16,32]{2,1,0} parameter(0)
+      param_1.1 = f32[32,16,18]{2,1,0} parameter(1)
+      s.1 = f32[18,16,32]{2,1,0} sqrt(param_0.1)
+      t.1 = f32[32,16,18]{2,1,0} transpose(s.1), dimensions={2,1,0}
+      sub.1 = f32[32,16,18]{2,1,0} subtract(t.1, param_1.1)
+      exp.1 = f32[32,16,18]{2,1,0} exponential(sub.1)
+      ROOT add.1 = f32[32,16,18]{2,1,0} add(exp.1, exp.1)
+    }
+
+    fused_computation.2 {
+      param_0.2 = f32[32,16,18]{2,1,0} parameter(0)
+      s.2 = f32[32,16,18]{2,1,0} sqrt(param_0.2)
+      ROOT t.2 = f32[32,18,16]{2,1,0} transpose(s.2), dimensions={0,2,1}
+    }
+
+    ENTRY main {
+      p = f32[18,16,32]{2,1,0} parameter(0)
+      p2 = f32[32,16,18]{2,1,0} parameter(1)
+      fusion = f32[32,16,18]{2,1,0} fusion(p, p2), kind=kLoop, calls=fused_computation
+      ROOT fusion2 = f32[32,18,16]{2,1,0} fusion(fusion), kind=kInput, calls=fused_computation.2
+    }
+    )")
+                    .value();
+  EXPECT_FALSE(fusion_merger_.Run(module.get()).value());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

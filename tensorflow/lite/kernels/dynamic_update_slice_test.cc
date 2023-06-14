@@ -23,12 +23,15 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/interpreter.h"
+#include "tensorflow/lite/kernels/subgraph_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
 
+using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 
 class DynamicUpdateSliceOpModel : public SingleOpModel {
@@ -196,6 +199,105 @@ TEST(DynamicUpdateSliceOpTest, UpdateShapeTooLargeTest) {
                                 {TensorType_INT32, {2}}),
       "SizeOfDimension\\(update, i\\) <= SizeOfDimension\\(operand, "
       "i\\) was not true.");
+}
+
+// Sets up an interpreter and a graph to test inplace use of input tensors for
+// the operation's output.
+class DynamicUpdateSliceGraphModel {
+ public:
+  static constexpr struct InPlaceGraph {
+  } kInPlaceGraph{};
+  static constexpr struct NotInPlaceGraph {
+  } kNotInPlaceGraph{};
+
+  DynamicUpdateSliceGraphModel(InPlaceGraph, bool multiple_consumers) {
+    builder_.BuildInplaceDynamicUpdateSliceSubgraph(
+        interpreter_.primary_subgraph(), multiple_consumers);
+    SetUpInterpreter();
+  }
+
+  explicit DynamicUpdateSliceGraphModel(NotInPlaceGraph) {
+    builder_.BuildInputDynamicUpdateSliceSubgraph(
+        interpreter_.primary_subgraph());
+    SetUpInterpreter();
+  }
+
+  void SetUpInterpreter() {
+    interpreter_.ResizeInputTensor(interpreter_.inputs()[0], {2, 3});
+    interpreter_.ResizeInputTensor(interpreter_.inputs()[1], {1, 3});
+    interpreter_.ResizeInputTensor(interpreter_.inputs()[2], {2});
+    CHECK_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+    subgraph_test_util::FillIntTensor(&GetInputTensor(0), {0, 0, 0, 0, 0, 0});
+    subgraph_test_util::FillIntTensor(&GetInputTensor(1), {3, 3, 3});
+    subgraph_test_util::FillIntTensor(&GetInputTensor(2), {1, 0});
+  }
+
+  Interpreter& GetInterpreter() { return interpreter_; }
+
+  // Get a tensor given its internal index.
+  TfLiteTensor& GetTensor(int index) { return *interpreter_.tensor(index); }
+
+  // Get an input tensor given the declaration order.
+  TfLiteTensor& GetInputTensor(int index) {
+    return GetTensor(interpreter_.inputs()[index]);
+  }
+
+  // Get an output tensor given the declaration order.
+  TfLiteTensor& GetOutputTensor(int index) {
+    return GetTensor(interpreter_.outputs()[index]);
+  }
+
+ protected:
+  Interpreter interpreter_;
+  // The builder serves as an RAII guard for some of the tensor buffers and must
+  // live until the end of the test.
+  subgraph_test_util::SubgraphBuilder builder_;
+};
+
+absl::Span<int> ShapeOf(const TfLiteTensor& tensor) {
+  if (!tensor.dims) {
+    return {};
+  }
+  return absl::Span<int>(tensor.dims->data, tensor.dims->size);
+}
+
+template <class T>
+absl::Span<int32_t> DataOf(const TfLiteTensor& tensor) {
+  return absl::Span<int>(tensor.data.i32, tensor.bytes / sizeof(T));
+}
+
+TEST(DynamicUpdateSliceOpTest, DoNotReuseGraphInputBuffer) {
+  auto model = DynamicUpdateSliceGraphModel(
+      DynamicUpdateSliceGraphModel::kNotInPlaceGraph);
+  ASSERT_EQ(model.GetInterpreter().Invoke(), kTfLiteOk);
+
+  const TfLiteTensor& output = model.GetOutputTensor(0);
+  EXPECT_THAT(ShapeOf(output), ElementsAre(2, 3));
+  EXPECT_THAT(DataOf<int32_t>(output), ElementsAre(1, 1, 1, 4, 4, 4));
+
+  const TfLiteTensor& input0 = model.GetInputTensor(0);
+  const TfLiteTensor& intermediate = model.GetTensor(5);
+  EXPECT_NE(input0.data.data, intermediate.data.data);
+}
+
+TEST(DynamicUpdateSliceOpTest, OnlyShareBufferForASingleConsumer) {
+  for (bool multiple_consumers : {true, false}) {
+    auto model = DynamicUpdateSliceGraphModel(
+        DynamicUpdateSliceGraphModel::kInPlaceGraph, multiple_consumers);
+    ASSERT_EQ(model.GetInterpreter().Invoke(), kTfLiteOk);
+
+    const TfLiteTensor& output = model.GetOutputTensor(0);
+    EXPECT_THAT(ShapeOf(output), ElementsAre(2, 3));
+    EXPECT_THAT(DataOf<int32_t>(output), ElementsAre(2, 2, 2, 4, 4, 4));
+
+    const TfLiteTensor& intermediate0 = model.GetTensor(5);
+    const TfLiteTensor& intermediate1 = model.GetTensor(6);
+    if (multiple_consumers) {
+      EXPECT_NE(intermediate0.data.data, intermediate1.data.data);
+    } else {
+      EXPECT_EQ(intermediate0.data.data, intermediate1.data.data);
+    }
+  }
 }
 
 }  // namespace

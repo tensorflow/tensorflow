@@ -40,7 +40,7 @@ add_mlir_library(LmhloPasses
   LINK_LIBS PUBLIC
   LmhloDialect
   MLIRComplexDialect
-  MLIRGPUOps
+  MLIRGPUDialect
   MLIRLinalgDialect
   MLIRLinalgTransforms
   MLIRMhloUtils

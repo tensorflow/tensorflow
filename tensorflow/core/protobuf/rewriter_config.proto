@@ -126,6 +126,8 @@ message RewriterConfig {
   Toggle auto_mixed_precision_cpu = 29;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
+  // Disable the TFG optimizer (off by default).
+  bool disable_tfg_optimizer = 32;
   // Optimizers registered by plugin (default is ON)
   Toggle use_plugin_optimizers = 28;
   // Conditional code motion (default is ON).

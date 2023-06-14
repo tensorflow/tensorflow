@@ -216,7 +216,7 @@ cc_library(
         ":buffer_map",
         ":subgraph_resource",
         ":util",
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
@@ -262,7 +262,7 @@ cc_library(
     compatible_with = get_compatible_with_cloud(),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite/core/c:common",
     ] + if_mobile([
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -410,7 +410,7 @@ cc_library(
         ":buffer_map_util",
         ":subgraph_resource",
         ":util",
-        "//tensorflow/lite:cc_api",
+        "//tensorflow/lite:cc_api_experimental",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",

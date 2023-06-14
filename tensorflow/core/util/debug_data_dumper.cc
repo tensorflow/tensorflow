@@ -15,6 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/util/debug_data_dumper.h"
 
+#include <optional>
+#include <set>
+#include <string>
+#include <vector>
+
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
@@ -30,6 +35,10 @@ DebugDataDumper* DebugDataDumper::Global() {
 DebugDataDumper::DebugDataDumper() { LoadEnvvars(); }
 
 void DebugDataDumper::LoadEnvvars() {
+  // Load TF_DUMP_GRAPH_WRAPPED.
+  const char* dump_wrapped = getenv("TF_DUMP_GRAPH_WRAPPED");
+  dump_wrapped_ = static_cast<bool>(dump_wrapped);
+
   // Load the name filter. Default value is null.
   const char* name_filter = getenv("TF_DUMP_GRAPH_NAME_FILTER");
   name_filter_ =
@@ -44,8 +53,8 @@ void DebugDataDumper::LoadEnvvars() {
 
 bool DebugDataDumper::ShouldDump(const std::string& name,
                                  const std::string& group) const {
-  // Do not dump data for the wrapped functions.
-  if (absl::StartsWith(name, "__wrapped__")) return false;
+  // Skip dumping wrapped functions if needed.
+  if (!dump_wrapped_ && absl::StartsWith(name, "__wrapped__")) return false;
 
   // Check the name filter.
   if (name_filter_ == std::nullopt) {
@@ -127,7 +136,7 @@ void DebugDataDumper::DumpGraph(const std::string& name,
                                 const std::string& tag, const Graph* graph,
                                 const FunctionLibraryDefinition* func_lib_def,
                                 bool bypass_filter) {
-  if (!ShouldDump(name, group)) return;
+  if (!ShouldDump(name, group) && !bypass_filter) return;
 
   // Construct the dump filename.
   std::string dump_filename = GetDumpFilename(name, group, tag);

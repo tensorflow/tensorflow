@@ -88,10 +88,12 @@ class PropagatorState {
     TaggedNodeReadyQueue() : front_index_(0) {}
 
     void push_back(const TaggedNode& node) { ready_.push_back(node); }
+
     TaggedNode front() const {
       DCHECK_LT(front_index_, ready_.size());
       return ready_[front_index_];
     }
+
     void pop_front() {
       DCHECK_LT(front_index_, ready_.size());
       front_index_++;

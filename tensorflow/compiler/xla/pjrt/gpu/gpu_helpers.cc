@@ -117,7 +117,7 @@ StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
 }
 
 // Returns a GPU pinned host memory allocator to use when staging host->GPU
-// transfers. We use a fixed 64MB pool of pinned memory.
+// transfers. We use a fixed 64GB pool of pinned memory.
 std::unique_ptr<tsl::BFCAllocator> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
   std::unique_ptr<tsl::SubAllocator> sub_allocator(

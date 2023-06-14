@@ -70,11 +70,19 @@ def VectorizeForCPUPass : Pass<"vectorize-for-cpu", "mlir::func::FuncOp"> {
   ];
 }
 
-def VectorizeCopyPass :
-    Pass<"vectorize-copy", "mlir::func::FuncOp"> {
+def VectorizeCopyPass : Pass<"vectorize-copy", "mlir::func::FuncOp"> {
   let summary = "Pass to vectorize `memref.copy`.";
   let constructor = "::mlir::gml_st::createVectorizeCopyPass()";
-  let dependentDialects = ["::mlir::vector::VectorDialect"];
+  let dependentDialects = [
+    "scf::SCFDialect",
+    "vector::VectorDialect",
+  ];
+  let options = [
+    Option<"numElementsThreshold", "num-elements-threshold", "int64_t",
+           /*default=*/"8",
+           "Max number of elements in src and dst memref for a copy to be "
+           "vectorized.">,
+  ];
 }
 
 def NaiveCopyRemovalPass : Pass<"naive-copy-removal", "mlir::func::FuncOp"> {
@@ -89,10 +97,13 @@ def LowerVectorsPass : Pass<"lower-vectors", "mlir::func::FuncOp"> {
   let dependentDialects = [
     "::mlir::LLVM::LLVMDialect",
     "::mlir::vector::VectorDialect",
+    "::mlir::affine::AffineDialect",
   ];
   let options = [
     Option<"enableAVX2", "enable-avx2", "bool", /*default=*/"true",
            "Enable specialized lowerings for AVX2.">,
+    Option<"flatten", "flatten", "bool", /*default=*/"false",
+           "Flatten multiple small n-D vector transfers into a large 1-D transfer.">,
   ];
 }
 
@@ -141,7 +152,7 @@ def TransformMmt4DForCpuPass :
 }
 
 def TransformElementwiseForCpuPass :
-    Pass <"xla-cpu-tranform-elementwise", "mlir::func::FuncOp"> {
+    Pass <"xla-cpu-transform-elementwise", "mlir::func::FuncOp"> {
   let summary = "Transform elementwise ops for running on CPU";
   let description = [{
     Transforms elementwise ops, i.e. map, transpose, broadcast, concat, reverse.

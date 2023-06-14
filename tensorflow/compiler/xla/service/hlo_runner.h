@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_runner_interface.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -167,11 +168,18 @@ class HloRunner : public HloRunnerInterface {
     return device_shape_representation_fn_;
   }
 
- private:
+  // A lower level interface to execute an executable.
+  //
+  // If the executable has input-output aliasing with must-alias, then the
+  // ExecutionInput parameters must be owning (donated).
+  //
+  // If a custom stream is set, it is *not* synchronized with
+  // BlockHostUntilDone.
   StatusOr<ExecutionOutput> ExecuteWithExecutionInputs(
       Executable* executable, std::vector<ExecutionInput> arguments,
-      ExecutionProfile* profile);
+      ExecutionProfile* profile = nullptr, se::Stream* stream = nullptr);
 
+ private:
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it
   // will be used to configure the replication parameters. Replicated executions

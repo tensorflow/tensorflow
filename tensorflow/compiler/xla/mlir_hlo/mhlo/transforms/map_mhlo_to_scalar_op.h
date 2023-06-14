@@ -17,6 +17,7 @@ limitations under the License.
 #define MLIR_HLO_MHLO_TRANSFORMS_MAP_MHLO_TO_SCALAR_OP_H
 
 #include <optional>
+#include <type_traits>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
@@ -315,7 +316,7 @@ inline Value getConstantOrSplat(OpBuilder* b, Location loc, Type t,
   if (VectorType vecType = t.dyn_cast<VectorType>()) {
     v = SplatElementsAttr::get(vecType, v);
   }
-  return b->create<arith::ConstantOp>(loc, t, v);
+  return b->create<arith::ConstantOp>(loc, t, cast<TypedAttr>(v));
 }
 
 template <typename PredicateType>

@@ -63,7 +63,7 @@ ENTRY %elementwise {
 TEST(MIPSolverTest, TwoVariableToyExample) {
   // SAT or SCIP
   std::unique_ptr<MPSolver> solver(
-      std::make_unique<MPSolver>("", MPSolver::GLPK_MIXED_INTEGER_PROGRAMMING));
+      MPSolver::CreateSolver("SCIP_MIXED_INTEGER_PROGRAMMING"));
   solver->MutableObjective()->SetMaximization();
   ASSERT_TRUE(solver);
   // Test with the following integer programming problem:
@@ -417,8 +417,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepAllShardings;
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      AutoSharding(option).RemoveShardingAnnotation(module.get()));
+      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
+                        module.get()));
   EXPECT_FALSE(changed);
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* ins : computation->instructions()) {
@@ -443,8 +443,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kKeepInputOutputShardings;
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      AutoSharding(option).RemoveShardingAnnotation(module.get()));
+      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
+                        module.get()));
   EXPECT_TRUE(changed);
   // Dot does not have shardings anymore.
   auto* dot = FindInstruction(module.get(), "dot");
@@ -486,8 +486,8 @@ ENTRY %entry (param0: f32[4,256,64], param1: f32[4,256,32]) -> f32[64,32] {
   option.preserve_shardings =
       AutoShardingOption::PreserveShardingsType::kRemoveAllShardings;
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed,
-      AutoSharding(option).RemoveShardingAnnotation(module.get()));
+      bool changed, AutoShardingImplementation(option).RemoveShardingAnnotation(
+                        module.get()));
   EXPECT_TRUE(changed);
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* ins : computation->instructions()) {

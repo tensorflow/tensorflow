@@ -116,6 +116,29 @@ TEST(FallbackTensorTest, FallbackTensor) {
   }
 }
 
+TEST(FallbackTensorTest, FallbackTensorCopy) {
+  int32_t scalar = 123;
+  tensorflow::Tensor tensor(scalar);
+
+  {
+    FallbackTensor fallback_tensor(tensor);
+    EXPECT_FALSE(fallback_tensor.is_immutable());
+
+    auto copy = fallback_tensor;
+    EXPECT_TRUE(copy.is_immutable());
+  }
+
+  auto immutable_tensor = ImmutableTensor::Create(tensor);
+
+  {
+    FallbackTensor fallback_tensor(&immutable_tensor);
+    EXPECT_TRUE(fallback_tensor.is_immutable());
+
+    auto copy = fallback_tensor;
+    EXPECT_TRUE(copy.is_immutable());
+  }
+}
+
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow

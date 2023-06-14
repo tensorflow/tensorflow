@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/dtensor/mlir/expansions/range_spmd_expander.h"
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/mlir/layout_parsing.h"
 #include "tensorflow/dtensor/mlir/shape_utils.h"
@@ -27,11 +29,11 @@ StatusOr<mlir::Operation*> RangeSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto layout, ExtractSingleLayoutFromOp(op));
 
   if (!layout)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "layout of RangeOp must be known before SPMD expansion.");
 
   if (!layout->IsFullyReplicated())
-    return errors::Internal("Shared RangeOp is not supported yet.");
+    return absl::InternalError("Shared RangeOp is not supported yet.");
 
   return InferSPMDExpandedLocalShape(op);
 }

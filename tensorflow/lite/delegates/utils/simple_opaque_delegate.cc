@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/core/shims/c/c_api.h"
-#include "tensorflow/lite/core/shims/c/c_api_opaque.h"
-#include "tensorflow/lite/core/shims/c/c_api_types.h"
-#include "tensorflow/lite/core/shims/c/common.h"
+#include "tensorflow/lite/c/c_api.h"
+#include "tensorflow/lite/c/c_api_opaque.h"
+#include "tensorflow/lite/c/c_api_types.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/util.h"
 
@@ -115,7 +115,7 @@ TfLiteStatus DelegatePrepare(TfLiteOpaqueContext* opaque_context,
 
   return TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
       opaque_context, delegate_kernel_registration,
-      BuildTfLiteIntArray(supported_nodes).get(), opaque_delegate);
+      BuildTfLiteArray(supported_nodes).get(), opaque_delegate);
 }
 }  // namespace
 

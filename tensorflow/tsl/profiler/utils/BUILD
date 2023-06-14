@@ -444,3 +444,16 @@ tsl_cc_test(
         "@com_google_absl//absl/hash",
     ],
 )
+
+cc_library(
+    name = "session_manager",
+    srcs = ["session_manager.cc"],
+    hdrs = ["session_manager.h"],
+    deps = [
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:status",
+        "//tensorflow/tsl/profiler/lib:profiler_session",
+        "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)

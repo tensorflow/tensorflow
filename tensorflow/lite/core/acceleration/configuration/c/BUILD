@@ -16,7 +16,7 @@
 # C API for delegate plugins.
 
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
+load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test", "tflite_copts", "tflite_copts_warnings")
 load("//tensorflow/lite/delegates/gpu:build_defs.bzl", "gpu_delegate_linkopts")
 load("//tensorflow/lite/core/c:special_rules.bzl", "experimental_acceleration_api_allowlist")
 load(
@@ -50,10 +50,21 @@ tflite_cc_library_with_c_headers_test(
     ],
 )
 
+common_copts = tflite_copts() + tflite_copts_warnings()
+
 tflite_cc_library_with_c_headers_test(
     name = "gpu_plugin",
     srcs = ["gpu_plugin.cc"],
     hdrs = ["gpu_plugin.h"],
+    copts = common_copts + select({
+        "//tensorflow:ios": [
+            "-xobjective-c++",
+        ],
+        "//tensorflow:macos_arm64": [
+            "-xobjective-c++",
+        ],
+        "//conditions:default": [],
+    }),
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ] + gpu_plugin_visibility_allowlist(),
@@ -62,8 +73,20 @@ tflite_cc_library_with_c_headers_test(
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
         "//tensorflow/lite/acceleration/configuration:gpu_plugin_impl",
         "//tensorflow/lite/core/c:common",
-        "//tensorflow/lite/delegates/gpu:delegate",
-    ],
+    ] + select({
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
+            "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:ios": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//tensorflow:macos_arm64": [
+            "//tensorflow/lite/delegates/gpu:metal_delegate",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 # For non-Android platforms, this should be built with '--copt=-DCL_DELEGATE_NO_GL'.

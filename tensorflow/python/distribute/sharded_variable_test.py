@@ -25,7 +25,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver import cluster_resolver as cluster_resolver_lib
 from tensorflow.python.distribute.test_util import get_cluster_def
 from tensorflow.python.distribute.test_util import TestClusterParams
 from tensorflow.python.eager import context
@@ -51,7 +51,7 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.trackable import autotrackable
-from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 # We create one cluster to share between tests. The cluster should be large
@@ -704,7 +704,8 @@ class ShardedVariableSaveLoadTest(test.TestCase, parameterized.TestCase):
   def setUp(self):
     super().setUp()
     cluster_def = get_cluster_def(test_cluster_params, num_workers=2, num_ps=3)
-    self.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
+    self.cluster_resolver = cluster_resolver_lib.SimpleClusterResolver(
+        server_lib.ClusterSpec(cluster_def))
 
   def tearDown(self):
     super().tearDown()

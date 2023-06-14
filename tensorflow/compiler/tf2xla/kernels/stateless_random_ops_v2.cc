@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/stateless_random_ops_v2.h"
 
 #include <cmath>
+#include <functional>
+#include <tuple>
 
 #include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/kernels/rng_converter_utils.h"

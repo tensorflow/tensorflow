@@ -880,6 +880,8 @@ table StridedSliceOptions {
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+  // If true, then the end tensor is an offset of the begin tensor.
+  offset: bool;
 }
 
 table LogSoftmaxOptions {

@@ -771,5 +771,47 @@ TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
   EXPECT_EQ(se.DebugString(), expected_proto.DebugString());
 }
 
+TEST(MaybeGetFeatureValuesTest, ReturnsNullPtr) {
+  const Example example;
+  auto tag = MaybeGetFeatureValues<protobuf_int64>("tag", example);
+  ASSERT_EQ(tag, nullptr);
+}
+
+TEST(MaybeGetFeatureValuesTest, ReadsASingleInt) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["tag"]
+      .mutable_int64_list()
+      ->add_value(42);
+
+  auto tag = MaybeGetFeatureValues<protobuf_int64>("tag", example);
+
+  ASSERT_EQ(1, tag->size());
+  EXPECT_EQ(42, tag->Get(0));
+}
+
+TEST(MaybeGetFeatureValuesTest, ReadsASingleFloat) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["tag"]
+      .mutable_float_list()
+      ->add_value(0.3);
+
+  auto tag = MaybeGetFeatureValues<float>("tag", example);
+
+  ASSERT_EQ(1, tag->size());
+  EXPECT_FLOAT_EQ(0.3, tag->Get(0));
+}
+
+TEST(MaybeGetFeatureValuesTest, ReadsASingleString) {
+  Example example;
+  (*example.mutable_features()->mutable_feature())["tag"]
+      .mutable_bytes_list()
+      ->add_value("entry");
+
+  auto tag = MaybeGetFeatureValues<std::string>("tag", example);
+
+  ASSERT_EQ(1, tag->size());
+  EXPECT_EQ("entry", tag->Get(0));
+}
+
 }  // namespace
 }  // namespace tensorflow

@@ -39,11 +39,10 @@ GmlStCPUTilingOptions getDefaultCPUPipelineOptions(StringRef cpuName,
   opts.vectorizationSizeThreshold = 0;
   opts.vectorizationTiledSizeThreshold = 1024;
   opts.lowerToMmt4d = false;
-  opts.enableFusionClusters = false;
-  opts.enableFusionClusterOutlining = false;
   opts.cpuName = cpuName;
   opts.statsDetailLevel = statsDetailLevel;
   opts.fuseDegenerateReshapes = false;
+  opts.inlineFusionClusters = true;
   return opts;
 }
 
@@ -55,17 +54,6 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createScalarizationPass(false));
   pm.addNestedPass<FuncOp>(
       createVectorizeForCPUPass(options.vectorizationSizeThreshold));
-
-  if (options.enableFusionClusters) {
-    pm.addNestedPass<FuncOp>(createFusionPlanningForCpuPass());
-  }
-
-  // Outline and deduplicate fusion clusters.
-  if (options.enableFusionClusterOutlining) {
-    pm.addPass(createFusionOutliningPass());
-    pm.addPass(func::createDuplicateFunctionEliminationPass());
-    pm.addPass(createCSEPass());
-  }
 
   if (options.lowerToMmt4d) pm.addNestedPass<FuncOp>(createPackMatmulPass());
 
@@ -93,7 +81,8 @@ void addCPUTilingPipeline(OpPassManager& pm,
   pm.addNestedPass<FuncOp>(createTransformMmt4DForCpuPass());
   pm.addNestedPass<FuncOp>(createTransformPackForCpuPass());
 
-  pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
+  if (options.inlineFusionClusters)
+    pm.addNestedPass<FuncOp>(createInlineFusionClustersPass());
 
   pm.addPass(createCSEPass());
   pm.addPass(createCanonicalizerPass());

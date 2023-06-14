@@ -7,25 +7,25 @@
 // properly dealt with while lowering mhlo ops to linalg ops.
 
 #SV = #sparse_tensor.encoding<{
-  dimLevelType = ["compressed"]
+  lvlTypes = ["compressed"]
 }>
 
 #CSR = #sparse_tensor.encoding<{
-  dimLevelType = ["dense", "compressed"]
+  lvlTypes = ["dense", "compressed"]
 }>
 
 #DCSR = #sparse_tensor.encoding<{
-  dimLevelType = ["compressed", "compressed"]
+  lvlTypes = ["compressed", "compressed"]
 }>
 
 #ST = #sparse_tensor.encoding<{
-  dimLevelType = ["compressed", "compressed", "compressed"]
+  lvlTypes = ["compressed", "compressed", "compressed"]
 }>
 
 // CHECK-LABEL: func @sparse_abs_eltwise(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20xf32, #{{.*}}>) -> tensor<10x20xf32, #{{.*}}> {
 // CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
-// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>)
+// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}} ins(%[[ARG0]] : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>)
 // CHECK:         ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32):
 // CHECK:           %[[ABS:.*]] = math.absf %[[A]] : f32
 // CHECK:           linalg.yield %[[ABS]] : f32
@@ -43,7 +43,7 @@ func.func @sparse_abs_eltwise(%arg0: tensor<10x20xf32, #CSR>)
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20xf32, #{{.*}}>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<10x20xf32, #{{.*}}>) -> tensor<10x20xf32, #{{.*}}> {
 // CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
-// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) {
+// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) {
 // CHECK:           ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32, %[[C:.*]]: f32):
 // CHECK:             %[[ADD:.*]] = arith.addf %[[A]], %[[B]] : f32
 // CHECK:             linalg.yield %[[ADD]] : f32
@@ -63,7 +63,7 @@ func.func @sparse_add_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20xf32, #{{.*}}>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<10x20xf32, #{{.*}}>) -> tensor<10x20xf32, #{{.*}}> {
 // CHECK:         %[[OUT:.*]] = bufferization.alloc_tensor() : tensor<10x20xf32, #{{.*}}>
-// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) {
+// CHECK:         %[[VAL:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>, tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) outs(%[[OUT]] : tensor<10x20xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) {
 // CHECK:           ^bb0(%[[A:.*]]: f32, %[[B:.*]]: f32, %[[C:.*]]: f32):
 // CHECK:             %[[ADD:.*]] = arith.mulf %[[A]], %[[B]] : f32
 // CHECK:             linalg.yield %[[ADD]] : f32
@@ -81,19 +81,19 @@ func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 
 // CHECK-LABEL: func @sparse_math(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x20x30xf64, #{{.*}}>) -> tensor<10x20x30xf64, #{{.*}}> {
-// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:            math.absf
 // CHECK:         }
-// CHECK:         %[[T1:.*]] = linalg.generic {{{.*}}} ins(%[[T0]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T1:.*]] = linalg.generic {{{.*}}} ins(%[[T0]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:            math.expm1
 // CHECK:         }
-// CHECK:         %[[T2:.*]] = linalg.generic {{{.*}}} ins(%[[T1]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T2:.*]] = linalg.generic {{{.*}}} ins(%[[T1]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           math.log1p
 // CHECK:         }
-// CHECK:         %[[T3:.*]] = linalg.generic {{{.*}}} ins(%[[T2]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T3:.*]] = linalg.generic {{{.*}}} ins(%[[T2]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           arith.negf
 // CHECK:         }
-// CHECK:         %[[T4:.*]] = linalg.generic {{{.*}}} ins(%[[T3]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T4:.*]] = linalg.generic {{{.*}}} ins(%[[T3]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           sparse_tensor.unary %{{.*}} : f64 to f64
 // CHECK:           present = {
 // CHECK:             math.copysign
@@ -102,19 +102,19 @@ func.func @sparse_mul_eltwise(%arg0: tensor<10x20xf32, #CSR>,
 // CHECK:           absent = {
 // CHECK:           }
 // CHECK:         }
-// CHECK:         %[[T5:.*]] = linalg.generic {{{.*}}} ins(%[[T4]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T5:.*]] = linalg.generic {{{.*}}} ins(%[[T4]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           math.sin
 // CHECK:         }
-// CHECK:         %[[T6:.*]] = linalg.generic {{{.*}}} ins(%[[T5]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T6:.*]] = linalg.generic {{{.*}}} ins(%[[T5]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           math.sqrt
 // CHECK:         }
-// CHECK:         %[[T7:.*]] = linalg.generic {{{.*}}} ins(%[[T6]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T7:.*]] = linalg.generic {{{.*}}} ins(%[[T6]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           math.tanh
 // CHECK:         }
-// CHECK:         %[[T8:.*]] = linalg.generic {{{.*}}} ins(%[[T7]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T8:.*]] = linalg.generic {{{.*}}} ins(%[[T7]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           math.ceil
 // CHECK:         }
-// CHECK:         %[[T9:.*]] = linalg.generic {{{.*}}} ins(%[[T8]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed", "compressed" ] }>>) outs
+// CHECK:         %[[T9:.*]] = linalg.generic {{{.*}}} ins(%[[T8]] : tensor<10x20x30xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed", "compressed" ] }>>) outs
 // CHECK:           math.floor
 // CHECK:         }
 // CHECK:         return %[[T9]] : tensor<10x20x30xf64, #{{.*}}>
@@ -175,7 +175,7 @@ func.func @sparse_int_abs(%arg0: tensor<100xi64, #SV>) -> tensor<100xi64> {
 
 // CHECK-LABEL: func @sparse_reduce(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10xi64, #{{.*}}>) -> tensor<i64> {
-// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10xi64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>)
+// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]] : tensor<10xi64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>)
 // CHECK:           arith.addi
 // CHECK:         }
 // CHECK:         return %[[T0]] : tensor<i64>
@@ -193,7 +193,7 @@ func.func @sparse_reduce(%arg0: tensor<10xi64, #SV>) -> tensor<i64> {
 // CHECK-LABEL: func @sparse_dot(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<?xf32, #{{.*}}>,
 // CHECK-SAME:    %[[ARG1:.*]]: tensor<?xf32, #{{.*}}>) -> tensor<f32> {
-// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<?xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>, tensor<?xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed" ] }>>)
+// CHECK:         %[[T0:.*]] = linalg.generic {{{.*}}} ins(%[[ARG0]], %[[ARG1]] : tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>, tensor<?xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed" ] }>>)
 // CHECK:           arith.mulf
 // CHECK:           arith.addf
 // CHECK:         }
@@ -212,11 +212,11 @@ func.func @sparse_dot(%arg0: tensor<?xf32, #SV>,
 
 // CHECK-LABEL: func @sparse_transpose(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<100x200xf64, #{{.*}}>) -> tensor<200x100xf64, #{{.*}}> {
-// CHECK:         %[[T0:.*]] = bufferization.alloc_tensor() : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>
-// CHECK:         %[[T1:.*]] = linalg.generic {{.*}} ins(%[[ARG0]] : tensor<100x200xf64, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ] }>>) outs(%[[T0]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>) {
+// CHECK:         %[[T0:.*]] = bufferization.alloc_tensor() : tensor<200x100xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
+// CHECK:         %[[T1:.*]] = linalg.generic {{.*}} ins(%[[ARG0]] : tensor<100x200xf64, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ] }>>) outs(%[[T0]] : tensor<200x100xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>) {
 // CHECK:           linalg.yield
 // CHECK:         }
-// CHECK:         return %[[T1]] : tensor<200x100xf64, #sparse_tensor.encoding<{ dimLevelType = [ "compressed", "compressed" ] }>>
+// CHECK:         return %[[T1]] : tensor<200x100xf64, #sparse_tensor.encoding<{ lvlTypes = [ "compressed", "compressed" ] }>>
 // CHECK:       }
 func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
                                 -> tensor<200x100xf64, #DCSR> {
@@ -227,7 +227,8 @@ func.func @sparse_transpose(%arg0: tensor<100x200xf64, #CSR>)
 
 // CHECK-LABEL: func @sparse_expand(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<100xf64, #{{.*}}>) -> tensor<10x10xf64, #{{.*}}> {
-// CHECK:         %[[OUT:.*]] = tensor.expand_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<100xf64, #{{.*}}> into tensor<10x10xf64, #{{.*}}>
+// CHECK:         %[[CST:.*]] = arith.constant dense<10> : tensor<2xi64>
+// CHECK:         %[[OUT:.*]] = tensor.reshape %[[ARG0]](%[[CST]]) : (tensor<100xf64, #{{.*}}>, tensor<2xi64>) -> tensor<10x10xf64, #{{.*}}>
 // CHECK:         return %[[OUT]] : tensor<10x10xf64, #{{.*}}>
 func.func @sparse_expand(%arg0: tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR>
@@ -236,7 +237,8 @@ func.func @sparse_expand(%arg0: tensor<100xf64, #SV>) -> tensor<10x10xf64, #CSR>
 
 // CHECK-LABEL: func @sparse_collapse(
 // CHECK-SAME:    %[[ARG0:.*]]: tensor<10x10xf64, #{{.*}}>) -> tensor<100xf64, #{{.*}}> {
-// CHECK:         %[[OUT:.*]] = tensor.collapse_shape %[[ARG0]] {{\[\[}}0, 1]] : tensor<10x10xf64, #{{.*}}> into tensor<100xf64, #{{.*}}>
+// CHECK:         %[[CST:.*]] = arith.constant dense<100> : tensor<1xi64>
+// CHECK:         %[[OUT:.*]] = tensor.reshape %[[ARG0]](%[[CST]]) : (tensor<10x10xf64, #{{.*}}>, tensor<1xi64>) -> tensor<100xf64, #{{.*}}>
 // CHECK:         return %[[OUT]] : tensor<100xf64, #{{.*}}>
 func.func @sparse_collapse(%arg0: tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV> {
   %0 = "mhlo.reshape"(%arg0) : (tensor<10x10xf64, #CSR>) -> tensor<100xf64, #SV>

@@ -36,6 +36,9 @@ limitations under the License.
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
+#include "tensorflow/core/framework/device.h"
+#include "tensorflow/tsl/framework/device_id_utils.h"
+#include "tensorflow/tsl/platform/statusor.h"
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 using tensorflow::errors::InvalidArgument;
@@ -753,10 +756,19 @@ int64_t TF_GetStepId(TF_OpKernelContext* ctx) {
 
 int TF_GetDeviceId(TF_OpKernelContext* ctx) {
   // TensorFlow always sets device in OpKernelContext.
-  auto* device =
-      reinterpret_cast<::tensorflow::OpKernelContext*>(ctx)->device();
-  if (!device->parsed_name().has_id) return -1;
-  return device->parsed_name().id;
+  const tensorflow::DeviceBase* device_base =
+      reinterpret_cast<tensorflow::OpKernelContext*>(ctx)->device();
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
+  if (!device_base->parsed_name().has_id) return -1;
+  return device_base->parsed_name().id;
+#else
+  const auto* device = reinterpret_cast<const tensorflow::Device*>(
+      device_base->UnderlyingDevice());
+  const tsl::StatusOr<int> id = tsl::GetDeviceIdFromDeviceParsedName(
+      device->parsed_name(), tensorflow::DeviceType(device->device_type()));
+  if (!id.ok()) return -1;
+  return *id;
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 TF_StringView TF_GetOpKernelName(TF_OpKernelContext* ctx) {

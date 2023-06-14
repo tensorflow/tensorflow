@@ -50,14 +50,14 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
   def testComputeAverageLossGlobalBatchSize_BatchSizeNegative(self):
     per_example_loss = [1, 2, 3, 4, 5]
     with self.assertRaisesWithPredicateMatch(
-        errors_impl.InvalidArgumentError, "global_batch_size must be positive"):
+        errors_impl.InvalidArgumentError,
+        "global_batch_size must be non-negative"):
       nn_impl.compute_average_loss(per_example_loss, global_batch_size=-1)
 
   def testComputeAverageLossGlobalBatchSize_BatchSizeZero(self):
     per_example_loss = [1, 2, 3, 4, 5]
-    with self.assertRaisesWithPredicateMatch(
-        errors_impl.InvalidArgumentError, "global_batch_size must be positive"):
-      nn_impl.compute_average_loss(per_example_loss, global_batch_size=0)
+    loss = nn_impl.compute_average_loss(per_example_loss, global_batch_size=0)
+    self.assertEqual(self.evaluate(loss), 0.0)
 
   @combinations.generate(
       combinations.combine(
@@ -77,6 +77,24 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
           nn_impl.compute_average_loss, args=(per_example_loss,))
       loss = distribution.reduce("SUM", per_replica_losses, axis=None)
       self.assertAllClose(self.evaluate(loss), (2.5 + 6.2 + 5.) / 3)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
+  def testComputeAverageLossDefaultGlobalBatchSizeEmptyBatch(self,
+                                                             distribution):
+    per_example_loss = constant_op.constant([], dtypes.float32)
+    loss = nn_impl.compute_average_loss(per_example_loss)
+    self.assertEqual(self.evaluate(loss), 0.0)
+
+    with distribution.scope():
+      per_replica_losses = distribution.run(
+          nn_impl.compute_average_loss, args=(per_example_loss,))
+      loss = distribution.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(self.evaluate(loss), 0.0)
 
   @combinations.generate(
       combinations.combine(
@@ -112,6 +130,33 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
       self.assertAllClose(
           self.evaluate(loss), (2. * 0.3 + 0.5 * 0.7 + 4. * 0.2 + 1. * 0.8) / 2)
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[strategy_combinations.mirrored_strategy_with_two_cpus],
+          mode=["graph", "eager"],
+      )
+  )
+  def testComputeAverageLossSampleWeightsEmptyBatch(self, distribution):
+    empty_rank0 = constant_op.constant([], dtypes.float32)
+
+    with distribution.scope():
+      # Scalar sample weight
+      per_replica_losses = distribution.run(
+          nn_impl.compute_average_loss,
+          args=(empty_rank0,),
+          kwargs={"sample_weight": 2})
+      loss = distribution.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(self.evaluate(loss), 0.0)
+
+      # Per example sample weight
+      per_replica_losses = distribution.run(
+          nn_impl.compute_average_loss,
+          args=(empty_rank0,),
+          kwargs={"sample_weight": empty_rank0})
+      loss = distribution.reduce("SUM", per_replica_losses, axis=None)
+      self.assertAllClose(
+          self.evaluate(loss), 0.0)
+
   def testComputeAverageLossInvalidSampleWeights(self):
     with self.assertRaisesIncompatibleShapesError(
         (ValueError, errors_impl.InvalidArgumentError)):
@@ -137,7 +182,7 @@ class LossUtilitiesTest(test_lib.TestCase, parameterized.TestCase):
       self.assertEqual(loss.dtype, dtypes.float64)
 
   def testComputeAverageLossInvalidRank(self):
-    per_example_loss = constant_op.constant(2)
+    per_example_loss = constant_op.constant(2.)
 
     # Static rank
     with self.assertRaisesRegex(

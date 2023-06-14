@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "ruy/profiler/profiler.h"  // from @ruy
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -103,7 +104,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
     if (params_->Get<bool>("print_preinvoke_state")) {
       TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter pre-invoke "
                           "state begins====";
-      tflite::PrintInterpreterState(interpreter_);
+      tflite::PrintInterpreterState(
+          interpreter_, params_->Get<int32_t>("tensor_name_display_length"),
+          params_->Get<int32_t>("tensor_type_display_length"),
+          params_->Get<int32_t>("alloc_type_display_length"));
       TFLITE_LOG(INFO) << "====Printing out TfLite interpreter pre-invoke "
                           "state ends====\n";
     }
@@ -113,7 +117,10 @@ class InterpreterStatePrinter : public BenchmarkListener {
     if (params_->Get<bool>("print_postinvoke_state")) {
       TFLITE_LOG(INFO) << "\n====Printing out TfLite interpreter post-invoke "
                           "state begins====";
-      tflite::PrintInterpreterState(interpreter_);
+      tflite::PrintInterpreterState(
+          interpreter_, params_->Get<int32_t>("tensor_name_display_length"),
+          params_->Get<int32_t>("tensor_type_display_length"),
+          params_->Get<int32_t>("alloc_type_display_length"));
       TFLITE_LOG(INFO) << "====Printing out TfLite interpreter post-invoke "
                           "state ends====\n";
     }
@@ -377,6 +384,13 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("output_filepath",
                           BenchmarkParam::Create<std::string>(""));
 
+  default_params.AddParam("tensor_name_display_length",
+                          BenchmarkParam::Create<int32_t>(25));
+  default_params.AddParam("tensor_type_display_length",
+                          BenchmarkParam::Create<int32_t>(15));
+  default_params.AddParam("alloc_type_display_length",
+                          BenchmarkParam::Create<int32_t>(18));
+
   tools::ProvidedDelegateList delegate_providers(&default_params);
   delegate_providers.AddAllDelegateParams();
 
@@ -457,7 +471,19 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
                        "Disable delegate clustering."),
       CreateFlag<std::string>(
           "output_filepath", &params_,
-          "File path to export outputs layer as binary data.")};
+          "File path to export outputs layer as binary data."),
+      CreateFlag<int32_t>(
+          "tensor_name_display_length", &params_,
+          "The number of characters to show for the tensor's name when "
+          "printing the interpeter's state, defaults to 25."),
+      CreateFlag<int32_t>(
+          "tensor_type_display_length", &params_,
+          "The number of characters to show for the tensor's type when "
+          "printing the interpeter's state, defaults to 15."),
+      CreateFlag<int32_t>(
+          "alloc_type_display_length", &params_,
+          "The number of characters to show for the tensor's allocation type "
+          "when printing the interpeter's state, defaults to 18.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -504,6 +530,12 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Disable delegate clustering", verbose);
   LOG_BENCHMARK_PARAM(std::string, "output_filepath",
                       "File path to export outputs layer to", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "tensor_name_display_length",
+                      "Tensor name display length", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "tensor_type_display_length",
+                      "Tensor type display length", verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "alloc_type_display_length",
+                      "Tensor allocation type display length", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -538,8 +570,22 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
 }
 
 int64_t BenchmarkTfLiteModel::MayGetModelFileSize() {
-  std::ifstream in_file(params_.Get<std::string>("graph"),
-                        std::ios::binary | std::ios::ate);
+  std::string fd_or_graph_path = params_.Get<std::string>("graph");
+  // Path can be one of the following:
+  // 1) File descriptor path: path must be in the format of
+  // "fd:%model_fd%:%model_offset%:%model_size%".
+  // 2) File path: path to the model file.
+  // Please see tensorflow/lite/tools/model_loader.h for more information.
+  std::vector<absl::string_view> parts = absl::StrSplit(fd_or_graph_path, ':');
+  if (!parts.empty() && parts[0] == "fd") {
+    int64_t model_size = -1;
+    if (parts.size() != 4 || !absl::SimpleAtoi(parts[3], &model_size)) {
+      TFLITE_LOG(ERROR) << "Failed to parse model file size: "
+                        << fd_or_graph_path;
+    }
+    return model_size;
+  }
+  std::ifstream in_file(fd_or_graph_path, std::ios::binary | std::ios::ate);
   return in_file.tellg();
 }
 

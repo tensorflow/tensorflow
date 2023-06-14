@@ -760,6 +760,7 @@ absl::Status GPUOperationFromNodePart0(
     case OperationType::COS:
     case OperationType::ELU:
     case OperationType::EXP:
+    case OperationType::GELU:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::NEG:

@@ -16,16 +16,21 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TRITON_AUTOTUNER_H_
 
 #include <memory>
+#include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_serializable_autotuner.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/tsl/platform/threadpool.h"
+#include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
 
 // Find best tiling configuration for each triton fusion outlined.
-// num_extra_threads: number of threads the pass can use to perform compilation.
 class TritonAutotuner : public HloModulePass {
  public:
   explicit TritonAutotuner(const AutotuningConfig& config,
@@ -49,10 +54,20 @@ class TritonAutotuner : public HloModulePass {
   tsl::thread::ThreadPool* thread_pool_;
 };
 
+// TODO(b/266210099): have a way to generate/load these dynamically.
+// Returns a list of possible tilings for a gemm performed in Triton.
+std::vector<tensorflow::AutotuneResult::TritonGemmKey>
+GetPossibleMatmulAutotuneConfigs(se::CudaComputeCapability compute_capability);
+
 // Extracts an HLO instruction into a new HLO module replacing its operands
 // with parameter instructions.
 std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
     const HloInstruction& hlo);
+
+// Extracts an HLO computation into a new HLO module, using its clone as the
+// root computation.
+std::unique_ptr<HloModule> ExtractComputationIntoNewModule(
+    const HloComputation& computation);
 
 }  // namespace gpu
 }  // namespace xla

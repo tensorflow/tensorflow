@@ -212,6 +212,7 @@ XlaDevice::XlaDevice(const SessionOptions& session_options,
                                             : DefaultPaddedShapeFn,
                     options.use_multiple_streams),
       device_ordinal_(options.device_ordinal),
+      device_name_(options.device_name),
       jit_device_name_(options.compilation_device_name),
       platform_(options.platform),
       intra_op_parallelism_threads_(
@@ -271,7 +272,7 @@ Allocator* XlaDevice::GetAllocatorLocked(AllocatorAttributes attr) {
   }
 
   if (xla_allocator_ == nullptr) {
-    if (UsePjRtForSingleDeviceCompilation()) {
+    if (UsePjRtForSingleDeviceCompilation(device_name_)) {
       VLOG(1) << "XlaDevice " << this << " uses AsyncValueAllocator";
       pjrt_allocator_ = std::make_unique<AsyncValueAllocator>();
       xla_allocator_ = pjrt_allocator_.get();
@@ -307,7 +308,7 @@ Status XlaDevice::EnsureStreamOkLocked(xla::Backend* backend,
 }
 
 StatusOr<std::vector<DeviceContext*>> XlaDevice::GetDeviceContextLocked() {
-  if (UsePjRtForSingleDeviceCompilation()) {
+  if (UsePjRtForSingleDeviceCompilation(device_name_)) {
     if (device_contexts_.empty()) {
       for (const auto& iter : shape_determination_fns_) {
         auto device_context = new PjRtDeviceContext(iter);

@@ -16,14 +16,19 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -31,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
@@ -162,10 +168,11 @@ class GraphConstructor {
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
 
-  // versions and library may be nullptr
+  // versions, library, and debug_info may be nullptr
   static Status Construct(
       const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
-      const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
+      const FunctionDefLibrary* library, const GraphDebugInfo* debug_info,
+      Graph* g, ShapeRefiner* refiner,
       std::vector<std::pair<Node*, int>>* return_tensors,
       std::vector<Node*>* return_nodes,
       std::vector<SafeTensorId>* missing_unused_input_map_keys);
@@ -223,6 +230,11 @@ class GraphConstructor {
   Status PopulateReturnTensors();
   Status PopulateReturnNodes();
   Status PopulateMissingUnusedInputMapKeys();
+
+  FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
+      const FunctionDefLibrary& library) const;
+  std::shared_ptr<AbstractStackTrace> CreateStackTraceForNode(
+      absl::string_view node_name) const;
 
   void Undo();
 
@@ -298,6 +310,8 @@ class GraphConstructor {
   // Destructively reads the function information for the graph, or nullopt if
   // none is available.
   virtual std::optional<FunctionDefLibrary> consume_library() = 0;
+  // Returns the debug info for the graph, or nullptr if none is available.
+  virtual const GraphDebugInfo* debug_info() const = 0;
 
   // From constructor
   const Options opts_;
@@ -406,7 +420,8 @@ class NodeDefCopyingGraphConstructor : public GraphConstructor {
  public:
   NodeDefCopyingGraphConstructor(
       const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
-      const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
+      const FunctionDefLibrary* library, const GraphDebugInfo* debug_info,
+      Graph* g, ShapeRefiner* refiner,
       std::vector<std::pair<Node*, int>>* return_tensors,
       std::vector<Node*>* return_nodes,
       std::vector<SafeTensorId>* missing_unused_input_map_keys)
@@ -414,7 +429,8 @@ class NodeDefCopyingGraphConstructor : public GraphConstructor {
                          missing_unused_input_map_keys),
         node_defs_(node_defs),
         versions_(versions),
-        library_(library) {}
+        library_(library),
+        debug_info_(debug_info) {}
 
  private:
   size_t node_def_count() const override { return node_defs_.size(); }
@@ -428,10 +444,12 @@ class NodeDefCopyingGraphConstructor : public GraphConstructor {
       return *library_;
     }
   }
+  const GraphDebugInfo* debug_info() const override { return debug_info_; }
 
   const NodeDefSlice node_defs_;
   const VersionDef* const versions_;
   const FunctionDefLibrary* const library_;
+  const GraphDebugInfo* const debug_info_;
 };
 
 // Implementation of GraphConstructor that takes ownership of the input
@@ -463,6 +481,9 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   const VersionDef* versions() const override { return &graph_def_.versions(); }
   std::optional<FunctionDefLibrary> consume_library() override {
     return std::move(*graph_def_.mutable_library());
+  }
+  const GraphDebugInfo* debug_info() const override {
+    return &graph_def_.debug_info();
   }
 
   GraphDef graph_def_;
@@ -498,7 +519,8 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
 
 /* static */ Status GraphConstructor::Construct(
     const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
-    const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
+    const FunctionDefLibrary* library, const GraphDebugInfo* debug_info,
+    Graph* g, ShapeRefiner* refiner,
     std::vector<std::pair<Node*, int>>* return_tensors,
     std::vector<Node*>* return_nodes,
     std::vector<SafeTensorId>* missing_unused_input_map_keys) {
@@ -507,9 +529,9 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
                                      TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                      "GraphDef", "graph"));
   }
-  NodeDefCopyingGraphConstructor c(opts, node_defs, versions, library, g,
-                                   refiner, return_tensors, return_nodes,
-                                   missing_unused_input_map_keys);
+  NodeDefCopyingGraphConstructor c(opts, node_defs, versions, library,
+                                   debug_info, g, refiner, return_tensors,
+                                   return_nodes, missing_unused_input_map_keys);
   Status s = c.TryImport();
   if (!s.ok()) {
     c.Undo();
@@ -1128,11 +1150,51 @@ void GraphConstructor::PrintCycles() {
   }
 }
 
+FunctionDefLibraryStackTraces
+GraphConstructor::CreateStackTracesForFunctionDefLibrary(
+    const FunctionDefLibrary& library) const {
+  FunctionDefLibraryStackTraces library_traces;
+  if (debug_info() == nullptr) {
+    return library_traces;
+  }
+  for (const FunctionDef& fdef : library.function()) {
+    const std::string& function_name = fdef.signature().name();
+    StackTracesMap stack_traces;
+    std::string key_suffix = absl::StrCat("@", function_name);
+    for (const auto& [traces_key, stack_trace] : debug_info()->traces()) {
+      if (!absl::EndsWith(traces_key, key_suffix)) continue;
+      std::string node_key =
+          std::string(absl::StripSuffix(traces_key, key_suffix));
+      stack_traces[node_key] =
+          std::make_shared<FrozenStackTrace>(stack_trace, *debug_info());
+    }
+    if (!stack_traces.empty()) {
+      library_traces[function_name] = std::move(stack_traces);
+    }
+  }
+  return library_traces;
+}
+
+std::shared_ptr<AbstractStackTrace> GraphConstructor::CreateStackTraceForNode(
+    absl::string_view node_name) const {
+  if (debug_info() == nullptr) {
+    return nullptr;
+  }
+  auto iterator = debug_info()->traces().find(node_name);
+  if (iterator != debug_info()->traces().end()) {
+    return std::make_shared<FrozenStackTrace>(iterator->second, *debug_info());
+  }
+  return nullptr;
+}
+
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
   if (auto library = consume_library(); library.has_value()) {
-    TF_RETURN_IF_ERROR(g_->AddFunctionLibrary(*std::move(library)));
+    FunctionDefLibraryStackTraces library_traces =
+        CreateStackTracesForFunctionDefLibrary(library.value());
+    TF_RETURN_IF_ERROR(
+        g_->AddFunctionLibrary(*std::move(library), library_traces));
   }
 
   std::vector<InputInfo> inputs;
@@ -1260,6 +1322,14 @@ Status GraphConstructor::Convert() {
     }
 
     TF_RETURN_IF_ERROR(MakeNode(std::move(node_def), &node));
+
+    if (node != nullptr) {
+      std::shared_ptr<AbstractStackTrace> stack_trace =
+          CreateStackTraceForNode(node_name);
+      if (stack_trace != nullptr) {
+        node->SetStackTrace(stack_trace);
+      }
+    }
 
     gdef_nodes_[node_name].node = node;
 
@@ -1464,8 +1534,8 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                               const GraphDef& gdef, Graph* g) {
   ShapeRefiner refiner(gdef.versions().producer(), g->op_registry());
   return GraphConstructor::Construct(
-      opts, gdef.node(), &gdef.versions(), &gdef.library(), g, &refiner,
-      /*return_tensors=*/nullptr, /*return_nodes=*/nullptr,
+      opts, gdef.node(), &gdef.versions(), &gdef.library(), &gdef.debug_info(),
+      g, &refiner, /*return_tensors=*/nullptr, /*return_nodes=*/nullptr,
       /*missing_unused_input_map_keys=*/nullptr);
 }
 
@@ -1487,8 +1557,8 @@ Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
   for (const auto& n : nodes) {
     node_defs.push_back(&n);
   }
-  return GraphConstructor::Construct(opts, node_defs, nullptr, nullptr, g,
-                                     &refiner, /*return_tensors=*/nullptr,
+  return GraphConstructor::Construct(opts, node_defs, nullptr, nullptr, nullptr,
+                                     g, &refiner, /*return_tensors=*/nullptr,
                                      /*return_nodes=*/nullptr,
                                      /*missing_unused_input_map_keys=*/nullptr);
 }
@@ -1556,13 +1626,13 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
 
   if (results == nullptr) {
     return GraphConstructor::Construct(opts, gdef.node(), &gdef.versions(),
-                                       &gdef.library(), g, refiner, nullptr,
-                                       nullptr, nullptr);
+                                       &gdef.library(), &gdef.debug_info(), g,
+                                       refiner, nullptr, nullptr, nullptr);
   } else {
     return GraphConstructor::Construct(
-        opts, gdef.node(), &gdef.versions(), &gdef.library(), g, refiner,
-        &results->return_tensors, &results->return_nodes,
-        &results->missing_unused_input_map_keys);
+        opts, gdef.node(), &gdef.versions(), &gdef.library(),
+        &gdef.debug_info(), g, refiner, &results->return_tensors,
+        &results->return_nodes, &results->missing_unused_input_map_keys);
   }
 }
 

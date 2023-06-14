@@ -145,7 +145,7 @@ SmallVector<IntType> extractVector(ArrayAttr arrayAttr) {
 
 InterpreterValue bitcast(InterpreterState&, vector::BitCastOp op,
                          const InterpreterValue& vector) {
-  ShapedType ty = op->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(op->getResultTypes()[0]);
   auto flattened = vector.coerceLayout({});
   auto buffer = flattened.buffer();
   auto view = flattened.view();
@@ -547,7 +547,7 @@ InterpreterValue outerProduct(InterpreterState&,
                               const InterpreterValue& lhs,
                               const InterpreterValue& rhs,
                               std::optional<InterpreterValue> acc) {
-  ShapedType ty = outerproduct->getResultTypes()[0];
+  ShapedType ty = cast<ShapedType>(outerproduct->getResultTypes()[0]);
   return dispatchScalarType(ty, [&](auto dummy) -> InterpreterValue {
     using T = decltype(dummy);
     using TT = TensorOrMemref<T>;

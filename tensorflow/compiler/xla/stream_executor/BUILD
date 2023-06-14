@@ -43,6 +43,7 @@ cc_library(
         "kernel_cache_config.h",
         "kernel_spec.h",
         "launch_dim.h",
+        "numeric_options.h",
         "module_spec.h",
         "multi_platform_manager.h",
         "platform.h",
@@ -257,6 +258,11 @@ cc_library(
     deps = [
         "//tensorflow/compiler/xla/stream_executor/platform",
     ],
+)
+
+cc_library(
+    name = "numeric_options",
+    hdrs = ["numeric_options.h"],
 )
 
 cc_library(
@@ -674,6 +680,7 @@ cc_library(
         ":device_description_proto_cc",
         ":device_memory",
         ":dnn_proto_cc",
+        ":numeric_options",
         ":stream_executor_headers",
         "//tensorflow/compiler/xla/stream_executor/platform",
         "//tensorflow/tsl/lib/strings:proto_serialization",
@@ -823,6 +830,7 @@ xla_cc_test(
     name = "stream_test",
     size = "small",
     srcs = ["stream_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform",
@@ -835,6 +843,7 @@ xla_cc_test(
     name = "dnn_test",
     size = "small",
     srcs = ["dnn_test.cc"],
+    tags = ["nomsan"],
     deps = [
         ":dnn",
         "//tensorflow/tsl/platform:test",
@@ -890,7 +899,6 @@ cc_library(
         ":scratch_allocator",
         ":stream_executor",
         "//tensorflow/compiler/xla/stream_executor/cuda:cuda_platform_id",
-        "//tensorflow/compiler/xla/stream_executor/host:host_platform",
         "//tensorflow/compiler/xla/stream_executor/host:host_platform_id",
         "//tensorflow/compiler/xla/stream_executor/platform:dso_loader",
         "//tensorflow/compiler/xla/stream_executor/rocm:rocm_platform_id",

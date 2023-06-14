@@ -379,7 +379,7 @@ cc_test(
     srcs = ["quantization_util_test.cc"],
     deps = [
         ":quantization_util",
-        "//tensorflow/lite:util",
+        "//tensorflow/lite:array",
         "//tensorflow/lite/core/c:common",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <numeric>
+#include <vector>
 
 #include "tensorflow/compiler/tf2xla/lib/broadcast.h"
 #include "tensorflow/compiler/tf2xla/mlir_xla_op_kernel.h"

@@ -437,7 +437,8 @@ def compute_average_loss(per_example_loss,
       first dimension of `losses`) * (number of replicas).
 
   Returns:
-    Scalar loss value.
+    Scalar loss value, obtained by summing the `per_example_loss` and dividing
+    by `global_batch_size`. If `global_batch_size` is zero, the result is zero.
   """  # pylint: disable=g-doc-exception
   per_example_loss = ops.convert_to_tensor(per_example_loss)
   input_dtype = per_example_loss.dtype
@@ -465,11 +466,12 @@ def compute_average_loss(per_example_loss,
     check_ops.assert_integer_v2(
         global_batch_size,
         message="global_batch_size must be an integer.")
-    check_ops.assert_positive_v2(
-        global_batch_size, message="global_batch_size must be positive.")
+    check_ops.assert_non_negative_v2(
+        global_batch_size, message="global_batch_size must be non-negative.")
 
+    loss = math_ops.reduce_sum(per_example_loss)
     global_batch_size = math_ops.cast(global_batch_size, input_dtype)
-    return math_ops.reduce_sum(per_example_loss) / global_batch_size
+    return math_ops.div_no_nan(loss, global_batch_size)
 
 
 @tf_export("nn.scale_regularization_loss")

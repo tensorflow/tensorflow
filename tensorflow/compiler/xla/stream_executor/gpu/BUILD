@@ -83,7 +83,7 @@ cc_library(
     deps = [
         ":gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor:device_options",
-        "//tensorflow/compiler/xla/stream_executor/platform",
+        "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:status",
         "//tensorflow/tsl/platform:statusor",
     ] + if_libtpu(
@@ -214,7 +214,7 @@ cc_library(
     name = "gpu_stream_header",
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
     deps = [
-        ":gpu_driver_header",
+        ":gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_internal",
         "@com_google_absl//absl/base:core_headers",
     ],
@@ -225,11 +225,10 @@ cc_library(
     srcs = if_gpu_is_configured(["gpu_stream.cc"]),
     hdrs = if_gpu_is_configured(["gpu_stream.h"]),
     deps = [
-        ":gpu_driver_header",
         ":gpu_executor_header",
+        ":gpu_types_header",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
         "//tensorflow/tsl/platform:status",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/graph/graph.h"
@@ -605,7 +606,7 @@ Status CombineTPUEmbeddingLoadRetrievePass::Run(
       CHECK_NE(old_single_load_op, nullptr);  // Crash OK
       load_nodes.erase(old_single_load_op);
       NodeDef new_no_op_def = old_single_load_op->def();
-      new_no_op_def.set_op("NoOp");
+      ChangeToNoOp(&new_no_op_def);
       new_no_op_def.clear_input();
       new_no_op_def.clear_attr();
       Node* new_no_op;

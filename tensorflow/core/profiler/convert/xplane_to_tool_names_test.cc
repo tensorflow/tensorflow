@@ -91,7 +91,7 @@ TEST_P(XPlaneToToolsTest, ToolsList) {
 
   std::vector<std::string> tools = absl::StrSplit(toolsString.value(), ',');
 
-  std::vector<std::string> expected_tools = {"trace_viewer",
+  std::vector<std::string> expected_tools = {"trace_viewer@",
                                              "overview_page",
                                              "input_pipeline_analyzer",
                                              "tensorflow_stats",

@@ -22,13 +22,12 @@ import platform
 import re
 import sys
 import time
-import timeit
-import unittest
 import weakref
 
 from absl.testing import parameterized
 import numpy
 
+from tensorflow.core.function import trace_type
 from tensorflow.core.function.capture import capture_container
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
@@ -42,7 +41,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
-from tensorflow.python.eager.polymorphic_function import tracing_compiler
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -64,7 +62,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import cond
 from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_assert
 from tensorflow.python.ops import data_flow_ops
@@ -1096,34 +1093,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(5., self.evaluate(concrete()))
     self.assertAllEqual(5., self.evaluate(tensor_init()))
 
-  def testFuncGraphCaptureByValue(self):
-    v = variables.Variable(1.0)
-
-    def trivial_function():
-      return v.read_value()
-
-    graph_function = tracing_compiler.TracingCompiler(
-        trivial_function, 'test', capture_by_value=True)
-
-    self.assertAllEqual(graph_function(), 1.0)
-    v.assign(2.0)
-    self.assertAllEqual(graph_function(), 1.0)
-
-  def testFuncGraphCaptureByValueNested(self):
-    v = variables.Variable(1.0)
-
-    def trivial_function():
-      return cond.cond(
-          array_ops.placeholder_with_default(True, ()), v.read_value,
-          v.read_value)
-
-    graph_function = tracing_compiler.TracingCompiler(
-        trivial_function, 'test', capture_by_value=True)
-
-    self.assertAllEqual(graph_function(), 1.0)
-    v.assign(2.0)
-    self.assertAllEqual(graph_function(), 1.0)
-
   def testDefunShapeInferenceWithCapturedResourceVariable(self):
     v = resource_variable_ops.ResourceVariable([[1, 2], [3, 4]])
 
@@ -1466,7 +1435,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           1.0,  # epsilon,
           [1.0, 1.0, 1.0],  # grad
           False)  # use_locking
-      return None
+      return 1
 
     with self.assertRaisesRegex(
         errors.InvalidArgumentError,
@@ -1545,6 +1514,35 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return t
 
       self.assertEqual(1, int(self.evaluate(read())))
+
+  def testConcreteFunctionType(self):
+    y = constant_op.constant(1)
+
+    @polymorphic_function.function
+    def foo(x):
+      return {'input': x, 'capture': y}
+
+    cf = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+    x = constant_op.constant(2)
+    output = cf(x)
+    self.assertEqual(set(output.keys()), {'input', 'capture'})
+    self.assertEqual(output['input'].numpy(), 2)
+    self.assertEqual(output['capture'].numpy(), 1)
+
+    parameters = list(cf.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, 'x')
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32),
+    )
+
+    captures = cf.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(captures[id(y)], tensor_spec.TensorSpec([], dtypes.int32))
+
+    output = cf.function_type.output
+    self.assertEqual(output, trace_type.from_value({'input': x, 'capture': y}))
 
   def testSequenceInputs(self):
     clip_by_global_norm = polymorphic_function.function(
@@ -1732,7 +1730,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined()
 
     with self.assertRaisesRegex(
-        TypeError, '.*was expected to be of type.* but is.*'
+        TypeError, r'Can not cast .*shape=\(3,\).* to .*shape=\(2,\).*'
     ):
       defined.get_concrete_function(
           tensor_spec.TensorSpec(shape=(3,), dtype=dtypes.float32))
@@ -1747,13 +1745,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         return x
 
       with self.assertRaisesRegex(
-          TypeError, 'Binding inputs to tf.function `f` failed .*'):
+          TypeError, 'Binding inputs to tf.function failed .*'):
         f.get_concrete_function(1)(constant_op.constant(1))
 
       f.get_concrete_function(constant_op.constant(1))(1)
 
       with self.assertRaisesRegex(
-          TypeError, 'Binding inputs to tf.function `f` failed .*'):
+          TypeError, 'Binding inputs to tf.function failed .*'):
         f.get_concrete_function(1)(2)
 
     run_test()
@@ -2798,12 +2796,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return x
 
     conc = func.get_concrete_function(*conc_args, **conc_kwargs)
-
-    # Remove _function_spec, to disable the structured signature.
-    conc._set_function_spec(None)  # pylint: disable=protected-access
-
     with self.assertRaisesRegex(exception, error):
-      self.evaluate(conc(*call_args, **call_kwargs))
+      self.evaluate(conc._call_with_flat_signature(call_args, call_kwargs))  # pylint: disable=protected-access
 
   @test_util.run_in_graph_and_eager_modes
   def testConcreteFunctionAmbiguousSignature(self):
@@ -3420,90 +3414,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     m1 = MyModel()
     self.assertAllEqual(m1.apply(3.0), 6.0)
-
-  @unittest.expectedFailure
-  def testMethodAllowDynamicVariableWithoutGuards(self):
-
-    class Foo:
-
-      def __init__(self):
-        self._var = 0
-
-      def __call__(self, val):
-        self.compute(val)
-        return self._var
-
-      @polymorphic_function.function
-      def compute(self, val):
-        self._var = variables.Variable(val)
-
-    polymorphic_function.set_dynamic_variable_creation(True)
-    foo = Foo()
-    self.assertAllEqual(foo(0.3), 0.3)
-    self.assertAllEqual(
-        foo(0.9), 0.9, 'https://github.com/tensorflow/tensorflow/issues/27120')
-
-  def testMethodAllowDynamicVariable(self):
-
-    class Foo:
-
-      def __init__(self):
-        self._flag_keyed_vars = {}
-        self.trace_count = 0
-
-      def __call__(self, var_creation_flag):
-        self.compute(var_creation_flag)
-        return self._flag_keyed_vars[var_creation_flag]
-
-      @polymorphic_function.function
-      def compute(self, var_creation_flag):
-        self.trace_count += 1
-        if var_creation_flag not in self._flag_keyed_vars:
-          if var_creation_flag:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
-          else:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
-
-    polymorphic_function.set_dynamic_variable_creation(True)
-    foo = Foo()
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(False), 2.0)
-    self.assertEqual(foo.trace_count, 3)
-
-  def testMethodNotAllowDynamicVariable(self):
-
-    class Foo:
-
-      def __init__(self):
-        self._flag_keyed_vars = {}
-        self.trace_count = 0
-
-      def __call__(self, var_creation_flag):
-        self.compute(var_creation_flag)
-        return self._flag_keyed_vars[var_creation_flag]
-
-      @polymorphic_function.function
-      def compute(self, var_creation_flag):
-        self.trace_count += 1
-        if var_creation_flag not in self._flag_keyed_vars:
-          if var_creation_flag:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(1.0)
-          else:
-            self._flag_keyed_vars[var_creation_flag] = variables.Variable(2.0)
-
-    polymorphic_function.set_dynamic_variable_creation(False)
-    foo = Foo()
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    self.assertAllEqual(foo(True), 1.0)
-    self.assertEqual(foo.trace_count, 2)
-    msg = 'singleton tf.Variable.*on the first call'
-    with self.assertRaisesRegex(ValueError, msg):
-      foo(False)
-    self.assertEqual(foo.trace_count, 3)
 
   def testMethodExtensionType(self):
 
@@ -4601,103 +4511,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaises(RecursionError):
       recursive_fn(constant_op.constant(5))
-
-  @test_util.run_v2_only
-  def test_grappler_optimization(self):
-    @polymorphic_function.function
-    def brancher(inp):
-      x = constant_op.constant(1)
-      for _ in range(1000):
-        if inp:
-          x = x + constant_op.constant(1)
-        else:
-          x = x + constant_op.constant(2)
-      return x
-
-    @polymorphic_function.function
-    def brancher_true():
-      left = constant_op.constant(True)
-      x = constant_op.constant(1)
-      for _ in range(1000):
-        if left:
-          x = x + constant_op.constant(1)
-        else:
-          x = x + constant_op.constant(2)
-      return x
-
-    x = constant_op.constant(True)
-    self.assertEqual(brancher(x), brancher_true())  # Trace each function once.
-
-    benchmark = min(timeit.repeat(lambda: brancher(x), repeat=5, number=100))
-    opt_benchmark = min(timeit.repeat(brancher_true, repeat=5, number=100))
-
-    # Constant folded execution is usually 15 - 20 times faster. Here we check
-    # for a 5x speedup to account for various machines the test might run on.
-    self.assertLess(opt_benchmark * 5, benchmark)
-
-  @test_util.run_v2_only
-  def test_small_constants_optimization_with_grappler(self):
-    def func(inp):
-      x = constant_op.constant(1)
-      for _ in range(1000):
-        if inp:
-          x = x + constant_op.constant(1)
-        else:
-          x = x + constant_op.constant(2)
-      return x
-
-    brancher = polymorphic_function.function(func)
-    brancher_opt = polymorphic_function.function(
-        func, experimental_attributes={'runtime_constant_optimization': True}
-    )
-
-    # Trace each function once.
-    with ops.device_v2('CPU'):
-      x = constant_op.constant(True)
-    self.assertEqual(brancher(x), brancher_opt(x))
-
-    benchmark = min(timeit.repeat(lambda: brancher(x), repeat=5, number=100))
-    opt_benchmark = min(
-        timeit.repeat(lambda: brancher_opt(x), repeat=5, number=100)
-    )
-
-    # Constant folded execution is usually 15 - 20 times faster. Here we check
-    # for a 3x speedup to account for various machines the test might run on.
-    # Specially the kokoro machines seems to run much slower.
-    self.assertLess(opt_benchmark * 3, benchmark)
-
-  @test_util.run_v2_only
-  @test_util.run_gpu_only
-  def test_small_constants_optimization_disabled(self):
-    @polymorphic_function.function(
-        experimental_attributes={'runtime_constant_optimization': True}
-    )
-    def func(inp):
-      return inp
-
-    x = constant_op.constant(True)
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError,
-        (
-            'Expecting boolean tensor to be on host when'
-            ' small_constants_optimizer is enabled.'
-        ),
-    ):
-      func(x)
-
-  @test_util.run_v2_only
-  def test_small_constants_optimization_invalid_input(self):
-    @polymorphic_function.function(
-        experimental_attributes={'runtime_constant_optimization': True}
-    )
-    def func(inp):
-      return inp
-
-    with ops.device_v2('CPU'):
-      x = constant_op.constant([True, True])
-    # runtime_constant_optimization should not crash when the tf.function
-    # is passed in a boolean tensor having > 1 element.
-    self.assertAllEqual(func(x), x)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

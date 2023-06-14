@@ -269,6 +269,13 @@ inside device cluster. This would allow shape inference pass to further
 refine operand/result shapes of these ops. This is only safe to do when
 compiling to XLA.
 ### `-tf-einsum`: Transform Einsum to other TF Ops for the supported variants
+### `-tf-embedding-pipelining`: Rewrite graph for embedding pipelining
+For architectures that support accelerated embedding lookups, this pass will
+rewrite the graph to use pipelining for better device utilization.
+### `-tf-embedding-sequencing`: Rewrite graph for sequential execution of embeddings
+This is a strictly sequential and formally correct fallback option for the
+embedding pipelining pass intended for debugging during pipelining
+development.
 ### `-tf-executor-break-up-islands`: Transform from TF control dialect to TF executor dialect.
 ### `-tf-executor-check-control-dependencies`: Checks control dependencies
 This pass analyzes control dependencies between islands and warns about
@@ -1533,6 +1540,25 @@ Then said `ReadVariableOp` is going to get replaced by:
     tf_device.return %2 : tensor<4xf32>
   }) {...} : () -> tensor<4xf32>
 ```
+### `-tf-tpu-colocate-splits`: Colocates each Split op with its predecessor
+It is beneficial for performance to assign a `Split` op to the same device
+as its predecessor. This is because the weight of cut edges is always
+minimized when the `Split` is with its predecessor. This colocation
+constraint will be used by the placer graph optimization to assign a device
+to the op.
+
+This pass should run in the export pipeline after tf-replicate-to-island so
+each replica has its own distinct (predecessor, Split) pair.
+
+The colocation class (`_class`) of the `Split` is set to the same class as
+its predecessor:
+
+```mlir
+%outputs1:2, %control1 = tf_executor.island wraps "tf.IteratorGetNext"(%arg)
+  {_class = ["loc:@dataset_iterator_1"]}
+%outputs2:2, %control2 = tf_executor.island wraps "tf.Split"(%outputs0, %outputs1#1)
+  {_class = ["loc:@dataset_iterator_1", num_split = 2 : i32}
+```
 ### `-tf-tpu-device-propagation`: Propagates TPU devices from ops to users
 ### `-tf-tpu-dynamic-layout-pass`: Inserts TPU layout ops to determine layout at run time.
 A pass that allows TPU input layout to be determined after JIT compilation.
@@ -1971,4 +1997,21 @@ This pass will transform it into
 ### `-tf-verify-for-export`: Verify module is suitable for export back to TF Graph
 Verifies whether all functions in module are of single tf_executor.graph and
 each tf_executor.island in tf_executor.graph only has a single op.
+### `-tf-xla-call-module-deserialization`: Deserializes StableHLO functions embedded in `tf.XlaCallModule` to top level module
+This pass deserializes the StableHLO bytecodes embedded in tf.XlaCallModule,
+then outlines the functions in the deserialized StableHLO module to the top
+level MLIR module, with function renamings to avoid naming conflicts.
+
+After the outlining, it updates tf.XlaCallModule's module attribute to be
+empty, adds an `_entry_function` attribute referring to the entry function.
+It also adds a `_from_xla_call_module: true` attribute to each lifted
+StableHLO function.
+### `-tf-xla-call-module-serialization`: Serializes StableHLO functions from top-level module into `tf.XlaCallModule`'s `module` attribute
+This pass collects StableHLO functions referenced from `tf.XlaCallModule`'s
+`_entry_function` attribute into a module, serializes the module into MLIR
+bytecode, and embed the bytecode to `tf.XlaCallModule`'s `module` attribute.
+
+After serialization, this pass removes the `_entry_function` attribute from
+`tf.XlaCallModule`, and removes all the serialized stablehlo functions
+from the top-level module.
 ### `-tfe-legalize-tfg`: Legalize from TFG to the TFE dialect

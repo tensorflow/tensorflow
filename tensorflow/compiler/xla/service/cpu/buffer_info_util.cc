@@ -23,7 +23,7 @@ namespace cpu {
 using BufferInfo = cpu_function_runtime::BufferInfo;
 
 std::vector<BufferInfo> CreateBufferInfosFromBufferAssignment(
-    const BufferAssignment& buffer_assignment) {
+    const HloModule& module, const BufferAssignment& buffer_assignment) {
   std::vector<BufferInfo> buffer_infos;
   for (const BufferAllocation& allocation : buffer_assignment.Allocations()) {
     if (allocation.is_thread_local()) {
@@ -38,21 +38,58 @@ std::vector<BufferInfo> CreateBufferInfosFromBufferAssignment(
       buffer_infos.push_back(BufferInfo::MakeTempBuffer(allocation.size()));
     }
   }
+
+  // Fill in the result parameters' indices, expanding all tuples.
+  auto root_instr = module.entry_computation()->root_instruction();
+  auto output_allocation = buffer_assignment.GetUniqueTopLevelOutputSlice();
+  if (output_allocation->allocation()->is_tuple()) {
+    int out_index = 0;
+    ShapeUtil::ForEachSubshape(
+        root_instr->shape(),
+        [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.IsTuple()) {
+            return;
+          }
+          int64_t result_index =
+              buffer_assignment.GetUniqueSlice(root_instr, index)->index();
+          assert(result_index < buffer_infos.size());
+          buffer_infos[result_index].set_result_parameter_number(out_index++);
+        });
+  }
+
   return buffer_infos;
 }
 
 std::vector<int32_t> CreateArgIndexTableFromBufferInfos(
     absl::Span<const BufferInfo> buffer_infos) {
-  std::vector<int32_t> result;
+  std::vector<int32_t> ret;
   for (int64_t i = 0; i < buffer_infos.size(); i++) {
-    if (buffer_infos[i].is_entry_parameter()) {
-      if (buffer_infos[i].entry_parameter_number() >= result.size()) {
-        result.resize(buffer_infos[i].entry_parameter_number() + 1);
-      }
-      result[buffer_infos[i].entry_parameter_number()] = i;
+    if (!buffer_infos[i].is_entry_parameter()) {
+      continue;
     }
+    uint64_t param_index = buffer_infos[i].entry_parameter_number();
+    if (param_index >= ret.size()) {
+      ret.resize(param_index + 1);
+    }
+    ret[param_index] = i;
   }
-  return result;
+  return ret;
+}
+
+std::vector<int32_t> CreateResultIndexTableFromBufferInfos(
+    absl::Span<const BufferInfo> buffer_infos) {
+  std::vector<int32_t> ret;
+  for (int64_t i = 0; i < buffer_infos.size(); i++) {
+    if (!buffer_infos[i].is_result_parameter()) {
+      continue;
+    }
+    uint64_t result_index = buffer_infos[i].result_parameter_number();
+    if (result_index >= ret.size()) {
+      ret.resize(result_index + 1);
+    }
+    ret[result_index] = i;
+  }
+  return ret;
 }
 
 }  // namespace cpu

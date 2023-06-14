@@ -118,13 +118,15 @@ class GrpcRemoteWorker : public WorkerInterface {
   void CleanupGraphAsync(const CleanupGraphRequest* request,
                          CleanupGraphResponse* response,
                          StatusCallback done) override {
-    IssueRequest(request, response, cleanupgraph_, std::move(done));
+    IssueRequest(request, response, cleanupgraph_, std::move(done),
+                 /*call_opts=*/nullptr, /*fail_fast=*/false);
   }
 
   void CleanupAllAsync(const CleanupAllRequest* request,
                        CleanupAllResponse* response,
                        StatusCallback done) override {
-    IssueRequest(request, response, cleanupall_, std::move(done));
+    IssueRequest(request, response, cleanupall_, std::move(done),
+                 /*call_opts=*/nullptr, /*fail_fast=*/false);
   }
 
   void RecvBufAsync(CallOptions* call_opts, const RecvBufRequest* request,

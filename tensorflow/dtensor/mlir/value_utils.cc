@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dynamic_shape_utils.h"
 #include "tensorflow/core/platform/errors.h"
@@ -139,6 +140,18 @@ mlir::Value StringConst(mlir::OpBuilder& builder, mlir::Location loc,
   mlir::Attribute const_attr =
       mlir::DenseStringElementsAttr::get(const_type, values);
   return builder.create<mlir::TF::ConstOp>(loc, const_attr).getResult();
+}
+
+mlir::Value IntConstWithMatchingType(mlir::OpBuilder& builder,
+                                     mlir::Location loc,
+                                     llvm::ArrayRef<int64_t> values,
+                                     mlir::Type type) {
+  if (type.cast<mlir::RankedTensorType>().getElementType().isInteger(64)) {
+    return Int64Const(builder, loc, values);
+  } else {
+    llvm::SmallVector<int32, 4> values32(values.begin(), values.end());
+    return IntConst(builder, loc, values32);
+  }
 }
 
 StatusOr<int64_t> ExtractConstIntFromValue(mlir::Value value) {
@@ -263,6 +276,13 @@ mlir::Type GetSubtypeOrSelf(mlir::Value val) {
     }
   }
   return type;
+}
+
+bool IsResourceType(mlir::Value val) {
+  return val.getType()
+      .cast<mlir::TensorType>()
+      .getElementType()
+      .isa<mlir::TF::ResourceType>();
 }
 
 }  // namespace dtensor

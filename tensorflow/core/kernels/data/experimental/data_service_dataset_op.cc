@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/data_service_dataset_op.h"
 
 #include <algorithm>
+#include <atomic>
 #include <functional>
 #include <limits>
 #include <memory>

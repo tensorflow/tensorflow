@@ -30,6 +30,7 @@ int64_t GetSizeOfShape(const Shape& shape, int pointer_size);
 // Determines the schedule of HLO instructions for a module run on the GPU.
 Status ScheduleGpuModule(HloModule* module, int64_t pointer_size,
                          const GpuDeviceInfo& gpu_info);
+HloInstructionSequence PostProcessSchedule(const HloInstructionSequence& input);
 
 constexpr absl::string_view kFingerprintBeforeLHS = "fingerprint_before_lhs";
 

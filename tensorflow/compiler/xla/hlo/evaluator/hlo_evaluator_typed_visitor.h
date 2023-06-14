@@ -66,20 +66,6 @@ T Nibble1(T t) {
   return t;
 }
 
-// TODO(b/79274244): We'd like these type traits to live inside of
-// HloEvaluatorTypedVisitor so they don't pollute namespace xla, but that
-// crashes clang in the frontend.
-//
-// Anyway this is relatively safe as-is because hlo_evaluator_typed_visitor.h is
-// a "private" header that's not exposed outside of hlo_evaluator.cc.
-template <typename T>
-struct is_complex_t : std::false_type {};
-template <typename T>
-struct is_complex_t<std::complex<T>> : std::true_type {};
-
-template <typename T>
-inline constexpr bool is_complex_v = is_complex_t<T>::value;
-
 namespace detail {
 template <typename T>
 using unsigned_promoted_type_t =
@@ -102,38 +88,6 @@ auto ToArithmeticSafeType(T t) {
     return std::move(t);
   }
 }
-
-// std::make_signed_t is “behavior undefined” for custom types, so provide a
-// general util to make signed/unsigned for both primitive and custom types.
-template <typename T>
-struct MakeSigned {
-  using type = std::make_signed_t<T>;
-};
-
-template <>
-struct MakeSigned<u4> {
-  using type = s4;
-};
-
-template <>
-struct MakeSigned<s4> {
-  using type = s4;
-};
-
-template <typename T>
-struct MakeUnsigned {
-  using type = std::make_unsigned_t<T>;
-};
-
-template <>
-struct MakeUnsigned<u4> {
-  using type = u4;
-};
-
-template <>
-struct MakeUnsigned<s4> {
-  using type = u4;
-};
 
 // Templated DfsHloVisitor for use by HloEvaluator.
 //
@@ -676,7 +630,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightArithmetic(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using SignedT = typename MakeSigned<ReturnT>::type;
+      using SignedT = make_specialized_signed_t<ReturnT>;
       TF_ASSIGN_OR_RETURN(
           parent_->evaluated_[shr],
           ElementWiseBinaryOp(
@@ -696,7 +650,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleShiftRightLogical(HloInstruction* shr) override {
     if constexpr (std::is_integral_v<ElementwiseT> &&
                   !std::is_same_v<ElementwiseT, bool>) {
-      using UnsignedT = typename MakeUnsigned<ReturnT>::type;
+      using UnsignedT = make_specialized_unsigned_t<ReturnT>;
       TF_ASSIGN_OR_RETURN(parent_->evaluated_[shr],
                           ElementWiseBinaryOp(shr, [](ElementwiseT lhs_elem,
                                                       ElementwiseT rhs_elem) {
@@ -1665,7 +1619,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   template <typename NativeT>
   static bool IsShiftOutOfBounds(ElementwiseT rhs) {
-    using UnsignedT = typename MakeUnsigned<NativeT>::type;
+    using UnsignedT = make_specialized_unsigned_t<NativeT>;
     UnsignedT lhs_bits_unsigned =
         static_cast<UnsignedT>(std::numeric_limits<UnsignedT>::digits);
     UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
@@ -1697,6 +1651,7 @@ extern template class HloEvaluatorTypedVisitor<complex128>;
 extern template class HloEvaluatorTypedVisitor<bfloat16, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e5m2, float>;
 extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3fn, float>;
+extern template class HloEvaluatorTypedVisitor<tsl::float8_e4m3b11, float>;
 
 }  // namespace xla
 

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_KERNELS_IF_WHILE_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_KERNELS_IF_WHILE_UTILS_H_
 
+#include <functional>
+#include <vector>
+
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/core/lib/core/status.h"
 

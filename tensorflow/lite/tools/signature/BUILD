@@ -70,7 +70,7 @@ pybind_extension(
         ":signature_def_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "@pybind11",
     ],
 )

@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/runtime/ffi.h"
 
-#include <algorithm>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -46,6 +45,9 @@ struct XLA_FFI_ExecutionContext {
 };
 
 //===----------------------------------------------------------------------===//
+
+template <typename T>
+using TensorRef = ::xla::runtime::CustomCall::TensorRef<T>;
 
 namespace xla {
 namespace runtime {
@@ -120,10 +122,25 @@ absl::StatusCode ConvertErrorCode(XLA_FFI_Error_Code errc) {
 // Adaptor from the Xla custom call to an Xla FFI calling convention.
 //===----------------------------------------------------------------------===//
 
-// We use weak linking to provide a default implementation here. The XLA:GPU
-// backend overrides this implementation, and it is picked at link time.
-ABSL_ATTRIBUTE_WEAK XLA_FFI_Stream* GetXlaFfiStream(
-    const CustomCall::UserData* user_data, const DiagnosticEngine* diagnostic) {
+using StreamProvider = XLA_FFI_Stream* (*)(const CustomCall::UserData*,
+                                           const DiagnosticEngine*);
+
+static std::vector<StreamProvider>& GetStreamProviders() {
+  static auto* stream_providers = new std::vector<StreamProvider>();
+  return *stream_providers;
+}
+
+void RegisterXlaFfiStreamProvider(StreamProvider provider) {
+  GetStreamProviders().push_back(provider);
+}
+
+XLA_FFI_Stream* GetXlaFfiStream(const CustomCall::UserData* user_data,
+                                const DiagnosticEngine* diagnostic) {
+  for (auto provider : GetStreamProviders()) {
+    if (XLA_FFI_Stream* stream = provider(user_data, diagnostic)) {
+      return stream;
+    }
+  }
   return nullptr;
 }
 
@@ -473,6 +490,10 @@ const XLA_FFI_Api ffi_api = {
     FfiTypeId<absl::Span<const double>>,
     FfiTypeId<absl::Span<const int32_t>>,
     FfiTypeId<absl::Span<const int64_t>>,
+    FfiTypeId<TensorRef<float>>,
+    FfiTypeId<TensorRef<double>>,
+    FfiTypeId<TensorRef<int32_t>>,
+    FfiTypeId<TensorRef<int64_t>>,
     FfiTypeId<::xla::runtime::MemrefView>,
     FfiTypeId<::xla::runtime::StridedMemrefView>,
     FfiTypeId<::xla::runtime::Dictionary>,

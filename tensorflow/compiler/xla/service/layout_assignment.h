@@ -317,6 +317,10 @@ class LayoutAssignment : public HloModulePass {
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
 
+  LayoutConstraints& mutable_computation_constraints(
+      const HloComputation* computation) {
+    return *FindOrDie(computation_layouts_, computation);
+  }
   LayoutConstraints* mutable_computation_constraints(
       HloComputation* computation) {
     auto it = computation_layouts_.find(computation);
@@ -478,10 +482,6 @@ class LayoutAssignment : public HloModulePass {
                                       LayoutConstraints* constraints,
                                       int64_t priority,
                                       const HloInstruction* user = nullptr);
-
-  // Propagates the memory space defined in the entry computation to the called
-  // computations.
-  virtual Status PropagateMemorySpace(HloModule* module);
 
   // Chooses a layout of operand `operand_no` of `instruction` that minimizes
   // the cost of `instruction`. `output_layout` is the layout of `instruction`.

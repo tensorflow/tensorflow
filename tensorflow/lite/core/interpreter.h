@@ -349,6 +349,8 @@ class Interpreter {
   /// \brief Returns a pointer to the AsyncSignatureRunner instance to run the
   /// part of the graph identified by a SignatureDef. The nullptr is returned if
   /// the given signature key is not valid.
+  /// if the model does not have signature def, pass nullptr to signature_key
+  /// and AsyncSignatureRunner will be created using primary subgraph (0).
   /// The async delegate should be applied before calling this function.
   async::AsyncSignatureRunner* GetAsyncSignatureRunner(
       const char* signature_key);
@@ -632,6 +634,18 @@ class Interpreter {
   ///    For example, set an OpenGL texture as the output of inference, while
   ///    the node which produces output is an OpenGL delegate node.
   TfLiteStatus SetBufferHandle(int tensor_index,
+                               TfLiteBufferHandle buffer_handle,
+                               TfLiteDelegate* delegate);
+
+  /// \warning This is an experimental API and subject to change. \n
+  /// \brief Set the delegate buffer handle to the given tensor.
+  // It can be called in the following cases:
+  // 1. Set the buffer handle to a tensor that is used by other computing
+  // hardware such as EdgeTpu. For example, EdgeTpu delegate imports a tensor's
+  // memory into EdgeTpu's virtual address and returns a buffer handle. Then
+  // EdgeTpu delegate calls this API to associate the tensor with the buffer
+  // handle. Example bug b/277217867.
+  TfLiteStatus SetBufferHandle(TfLiteTensor* tensor,
                                TfLiteBufferHandle buffer_handle,
                                TfLiteDelegate* delegate);
 

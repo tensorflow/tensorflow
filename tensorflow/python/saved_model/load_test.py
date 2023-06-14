@@ -23,6 +23,7 @@ import os
 import pathlib
 import sys
 import tempfile
+import unittest
 import weakref
 
 from absl.testing import parameterized
@@ -75,6 +76,7 @@ from tensorflow.python.trackable import asset
 from tensorflow.python.trackable import autotrackable
 from tensorflow.python.trackable import resource
 from tensorflow.python.training import monitored_session
+from tensorflow.python.types import core as types_core
 from tensorflow.python.util import tf_inspect
 
 
@@ -524,7 +526,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 
-  def test_function_with_defaults_input(self, cycles, use_cpp_bindings):
+  def test_function_with_defaults_input_tensor(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
@@ -543,6 +545,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(5.0, imported.f().numpy())
     self.assertEqual(7.0, imported.f(constant_op.constant(7.0)).numpy())
+
+    # imported.signatures with defaults are not supported.
+    # TODO(b/277814477) support defaults in loaded.signatures
+    # self.assertEqual(
+    #     {"output_0": 5.0},
+    #     self.evaluate(
+    #         imported.signatures["serving_default"]()
+    #     ),
+    # )
+
+  def test_function_with_defaults_input_numpy(self, cycles, use_cpp_bindings):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def func(x=np.array(5.0)):
+      return x
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(5.0, root.f())
+    self.assertAllEqual(7.0, root.f(np.array(7.0)))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    self.assertEqual(5.0, imported.f().numpy())
+    self.assertEqual(7.0, imported.f(np.array(7.0)).numpy())
 
     # imported.signatures with defaults are not supported.
     # TODO(b/277814477) support defaults in loaded.signatures
@@ -767,6 +798,54 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
     self.assertEqual(5, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
+
+  def testConcreteFunctionType(self, cycles, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    y = constant_op.constant(1)
+
+    @def_function.function
+    def foo(x):
+      return {"input": x, "capture": y}
+
+    root = autotrackable.AutoTrackable()
+    root.f = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    x = constant_op.constant(2)
+    output = imported.f(x)
+    self.assertEqual(set(output.keys()), {"input", "capture"})
+    self.assertEqual(output["input"].numpy(), 2)
+    self.assertEqual(output["capture"].numpy(), 1)
+
+    parameters = list(imported.f.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, "x")
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32, name="x"),
+    )
+
+    captures = imported.f.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(
+        list(captures.values())[0], tensor_spec.TensorSpec([], dtypes.int32)
+    )
+
+    output = imported.f.function_type.output
+    self.assertEqual(
+        output.mapping,
+        {
+            "input": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="input"
+            ),
+            "capture": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="capture"
+            ),
+        },
+    )
 
   def test_pretty_print_signature(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
@@ -1254,7 +1333,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(restored_concrete_functions, 1)
 
     with self.assertRaisesRegex(
-        TypeError, "Binding inputs to tf.function `f` failed"
+        TypeError, "Binding inputs to tf.function failed"
     ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
@@ -2823,6 +2902,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       @def_function.function
       def increment_v(x):
         obj.v.assign_add(x)
+        return x
 
       session.run(increment_v(constant_op.constant(3.0)))  # generate signatures
       self.assertAllClose(8, total())
@@ -3098,8 +3178,9 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
     root = autotrackable.AutoTrackable()
     root.f = def_function.function(
-        lambda x: 2. * x,
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
+        lambda x: 2 * x,
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+    )
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     options = save_options.SaveOptions(function_aliases={
         "my_func": root.f,
@@ -3115,6 +3196,126 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
     self.assertLen(loaded.function_aliases, 1)
     self.assertIn("my_func", loaded.function_aliases)
     self.assertEqual(loaded.function_aliases["my_func"](1.0).numpy(), 2.0)
+
+  def test_function_aliases_with_non_saved_function(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    # `f` below will be aliased but not saved because is not tracked
+    f = def_function.function(lambda x: 2 * x)
+    root = autotrackable.AutoTrackable()
+    root.g = def_function.function(lambda x: 2 * f(x))
+    # Create two traces
+    root.g(constant_op.constant(1))
+    root.g(constant_op.constant(1.0, dtype=dtypes.float32))
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f,
+        }
+    )
+    save.save(root, save_dir, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertLen(loaded.function_aliases["my_func"], 2)
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][0], types_core.ConcreteFunction
+    )
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][1], types_core.ConcreteFunction
+    )
+
+  @unittest.skip("skip until unexpected retracing is fixed/handled b/280121368")
+  def test_function_aliases_with_concrete_function(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    # `f` below will be aliased but not saved because is not tracked
+    f = def_function.function(lambda x: 2 * x)
+    root = autotrackable.AutoTrackable()
+    root.g = def_function.function(lambda x: 2 * f(x))
+    # Create two traces
+    root.g(constant_op.constant(1))
+    root.g(constant_op.constant(1.0, dtype=dtypes.float32))
+    self.assertLen(f._list_all_concrete_functions(), 2)
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            "my_func": f.get_concrete_function(
+                tensor_spec.TensorSpec([], dtypes.float32)
+            ),
+        }
+    )
+    self.assertLen(f._list_all_concrete_functions(), 2)
+    save.save(root, save_dir, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertLen(loaded.function_aliases["my_func"], 1)
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][0], types_core.ConcreteFunction
+    )
+
+  @unittest.skip("skip until unexpected retracing is fixed/handled b/280121368")
+  def test_function_aliases_with_concrete_functions(self, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    # `f` below will be aliased but not saved because is not tracked
+    f = def_function.function(lambda x: 2 * x)
+    root = autotrackable.AutoTrackable()
+    root.g = def_function.function(lambda x: 2 * f(x))
+    # Create 3 traces for g, which will in turn create 3 traces for f.
+    root.g(x=constant_op.constant(1))
+    root.g(x=constant_op.constant(1.0, dtype=dtypes.float32))
+    root.g(x=constant_op.constant(1.0, dtype=dtypes.float16))
+    self.assertLen(f._list_all_concrete_functions(), 3)
+
+    save_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    options = save_options.SaveOptions(
+        function_aliases={
+            # Alias 2 out of 3 traces of f
+            "my_func": [
+                f.get_concrete_function(
+                    x=tensor_spec.TensorSpec([], dtypes.int32)
+                ),
+                f.get_concrete_function(
+                    x=tensor_spec.TensorSpec([], dtypes.float32)
+                ),
+            ],
+        }
+    )
+    self.assertLen(f._list_all_concrete_functions(), 3)
+    save.save(root, save_dir, options=options)
+    loaded = test_load(
+        save_dir,
+        use_cpp_bindings=use_cpp_bindings,
+        options=load_options.LoadOptions(
+            experimental_load_function_aliases=True
+        ),
+    )
+    self.assertLen(loaded.function_aliases, 1)
+    self.assertIn("my_func", loaded.function_aliases)
+    self.assertLen(loaded.function_aliases["my_func"], 2)
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][0], types_core.ConcreteFunction
+    )
+    self.assertIsInstance(
+        loaded.function_aliases["my_func"][1], types_core.ConcreteFunction
+    )
 
   def test_function_aliases_name_collision(self, use_cpp_bindings):
     if use_cpp_bindings:

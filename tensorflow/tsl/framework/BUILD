@@ -270,6 +270,7 @@ cc_library(
         "//tensorflow/tsl/platform:str_util",
         "//tensorflow/tsl/util:device_name_utils",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

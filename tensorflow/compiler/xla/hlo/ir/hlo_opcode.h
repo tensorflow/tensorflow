@@ -160,6 +160,7 @@ namespace xla {
   V(kSubtract, "subtract", 2)                                                  \
   V(kTan, "tan", 1)                                                            \
   V(kTanh, "tanh", 1)                                                          \
+  V(kTopK, "topk", 1)                                                          \
   V(kTranspose, "transpose", 1)                                                \
   V(kTriangularSolve, "triangular-solve", 2)                                   \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                                     \

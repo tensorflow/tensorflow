@@ -13,8 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <atomic>
+#include <functional>
+#include <list>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 #define EIGEN_USE_THREADS
 
 #include <optional>
@@ -658,7 +664,7 @@ class RunHandler::Impl {
  public:
   explicit Impl(RunHandlerPool::Impl* pool_impl);
 
-  ~Impl() {}
+  ~Impl() = default;
 
   // Stores now time (in microseconds) since unix epoch when the handler is
   // requested via RunHandlerPool::Get().
@@ -773,12 +779,10 @@ class RunHandlerPool::Impl {
   std::unique_ptr<RunHandler> Get(int64_t step_id, int64_t timeout_in_ms,
                                   const RunHandlerOptions& options)
       TF_LOCKS_EXCLUDED(mu_) {
-    thread_local std::unique_ptr<
-        Eigen::MaxSizeVector<internal::ThreadWorkSource*>>
-        thread_work_sources =
-            std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
+    thread_local auto thread_work_sources =
+        std::make_unique<Eigen::MaxSizeVector<internal::ThreadWorkSource*>>(
 
-                max_handlers_);
+            max_handlers_);
     uint64_t version;
     int num_active_requests;
     RunHandler::Impl* handler_impl;
@@ -1024,7 +1028,7 @@ int RunHandler::Impl::RunHandlerEigenThreadPool::CurrentThreadId() const {
 
 RunHandlerPool::RunHandlerPool(Options options) : impl_(new Impl(options)) {}
 
-RunHandlerPool::~RunHandlerPool() {}
+RunHandlerPool::~RunHandlerPool() = default;
 
 std::unique_ptr<RunHandler> RunHandlerPool::Get(
     int64_t step_id, int64_t timeout_in_ms, const RunHandlerOptions& options) {

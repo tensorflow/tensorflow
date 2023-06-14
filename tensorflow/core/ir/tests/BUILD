@@ -38,6 +38,7 @@ filegroup(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     exclude = [],

@@ -18,8 +18,11 @@ limitations under the License.
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
@@ -76,8 +79,8 @@ class ExecuteNodeArgs : public EagerKernelArgs {
 #endif  // IS_MOBILE_PLATFORM
 
   // Initialize a packed TensorHandle which is the `index`-th argument.
-  Status InitPackedHandle(const int index, EagerContext* ctx,
-                          Device* input_device, TensorHandle* packed_handle);
+  Status InitPackedHandle(int index, EagerContext* ctx, Device* input_device,
+                          TensorHandle* packed_handle);
 
   bool has_remote_inputs_ = false;
   bool has_packed_inputs_ = false;
@@ -98,7 +101,7 @@ class ExecuteNode : public EagerNode {
               GraphCollector* graph_collector,
               CancellationManager* cancellation_manager,
               absl::Span<TensorHandle*> retvals,
-              absl::optional<ManagedStackTrace> stack_trace)
+              std::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
@@ -142,7 +145,7 @@ class ExecuteNode : public EagerNode {
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
   absl::Span<TensorHandle*> retvals_;
-  absl::optional<ManagedStackTrace> stack_trace_;
+  std::optional<ManagedStackTrace> stack_trace_;
 };
 
 class AsyncExecuteNode : public EagerNode {
@@ -154,7 +157,7 @@ class AsyncExecuteNode : public EagerNode {
                    GraphCollector* graph_collector,
                    CancellationManager* cancellation_manager,
                    absl::Span<TensorHandle*> retvals,
-                   absl::optional<ManagedStackTrace> stack_trace)
+                   std::optional<ManagedStackTrace> stack_trace)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
@@ -204,7 +207,9 @@ class AsyncExecuteNode : public EagerNode {
         cancellation_manager_, absl::MakeSpan(retvals_), stack_trace_);
     if (!status.ok()) {
       if (stack_trace_.has_value()) {
-        errors::SetStackTrace(status, stack_trace_->ToStackFrames({}, {}));
+        errors::SetStackTrace(
+            status, stack_trace_->ToStackFrames(
+                        {}, {}, /*reverse_traversal=*/false, /*limit=*/-1));
       }
       Abort(status);
       return status;
@@ -235,7 +240,7 @@ class AsyncExecuteNode : public EagerNode {
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
-  absl::optional<ManagedStackTrace> stack_trace_;
+  std::optional<ManagedStackTrace> stack_trace_;
   absl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

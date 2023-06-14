@@ -84,7 +84,8 @@ Status SnapshotSplitProvider::GetAndValidateSplit(Tensor* split,
     return OkStatus();
   }
 
-  TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
+  TF_RETURN_IF_ERROR(
+      GetSplitsFiles(next_split_index_, split_to_file_map_, repetition_index_));
   TF_RETURN_IF_ERROR(ValidateSplitFiles(split_to_file_map_, next_split_index_,
                                         dispatcher_split_index,
                                         *end_of_splits));
@@ -119,8 +120,8 @@ StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
             return dispatcher_->GetSnapshotSplit(
                 worker_address_, snapshot_task_.base_path(),
-                snapshot_task_.stream_index(), source_index_, *split,
-                local_split_index, *end_of_splits);
+                snapshot_task_.stream_index(), source_index_, repetition_index_,
+                *split, local_split_index, *end_of_splits);
           },
       "Get next split for snapshot",
       /*deadline_micros=*/env_->NowMicros() +
@@ -128,25 +129,34 @@ StatusOr<int64_t> SnapshotSplitProvider::GetSplitFromDispatcher(
   return local_split_index;
 }
 
-StatusOr<absl::btree_map<int64_t, std::string>>
-SnapshotSplitProvider::GetSplitsFiles(int64_t start_index) const
-    TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+Status SnapshotSplitProvider::GetSplitsFiles(
+    int64_t start_index,
+    absl::btree_map<int64_t, std::string>& split_to_file_map,
+    int64_t& repetition_index) const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  split_to_file_map.clear();
   std::string splits_directory = SourceDirectory(
       snapshot_task_.base_path(), snapshot_task_.stream_index(), source_index_);
-  absl::btree_map<int64_t, std::string> splits;
-
-  TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+  TF_ASSIGN_OR_RETURN(std::vector<std::string> repetition_directories,
                       GetChildren(splits_directory, env_));
-  for (const std::string& split_file : split_files) {
-    TF_ASSIGN_OR_RETURN(auto split_indices, ParseSplitFilename(split_file));
-    auto [local_split_index, global_split_index] = split_indices;
-    if (local_split_index >= next_split_index_) {
-      splits[local_split_index] =
-          tsl::io::JoinPath(splits_directory, split_file);
+
+  for (const std::string& repetition : repetition_directories) {
+    std::string repetition_dir = io::JoinPath(splits_directory, repetition);
+    TF_ASSIGN_OR_RETURN(std::vector<std::string> split_files,
+                        GetChildren(repetition_dir, env_));
+    for (const std::string& split_file : split_files) {
+      TF_ASSIGN_OR_RETURN(auto split_index, ParseSplitFilename(split_file));
+      auto [local_split_index, global_split_index] = split_index;
+      if (local_split_index >= start_index) {
+        split_to_file_map[local_split_index] =
+            tsl::io::JoinPath(repetition_dir, split_file);
+      }
     }
   }
-  TF_RETURN_IF_ERROR(ValidateSplitFiles(splits, start_index));
-  return splits;
+
+  TF_RETURN_IF_ERROR(ValidateSplitFiles(split_to_file_map, start_index));
+  repetition_index =
+      repetition_directories.empty() ? 0 : repetition_directories.size() - 1;
+  return OkStatus();
 }
 
 Status SnapshotSplitProvider::ValidateSplitFiles(
@@ -198,7 +208,11 @@ Status SnapshotSplitProvider::ValidateSplitFiles(
   return OkStatus();
 }
 
-Status SnapshotSplitProvider::Reset() { return OkStatus(); }
+Status SnapshotSplitProvider::Reset() {
+  mutex_lock l(mu_);
+  ++repetition_index_;
+  return OkStatus();
+}
 
 Status SnapshotSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
@@ -217,7 +231,8 @@ Status SnapshotSplitProvider::Restore(
       reader->ReadScalar(full_name(kNextSplitIndex), &next_split_index));
   mutex_lock l(mu_);
   next_split_index_ = next_split_index;
-  TF_ASSIGN_OR_RETURN(split_to_file_map_, GetSplitsFiles(next_split_index_));
+  TF_RETURN_IF_ERROR(
+      GetSplitsFiles(next_split_index_, split_to_file_map_, repetition_index_));
   return OkStatus();
 }
 

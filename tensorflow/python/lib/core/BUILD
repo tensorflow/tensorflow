@@ -1,6 +1,6 @@
 # python/lib/core package
 
-load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_py_test", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_external_workspace_visible", "tf_py_strict_test", "tf_python_pybind_extension")
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -32,6 +32,10 @@ cc_library(
     name = "bfloat16_lib",
     hdrs = [
         "bfloat16.h",
+    ],
+    visibility = visibility + [
+        "//third_party/courier:__subpackages__",
+        "//third_party/py/courier:__subpackages__",
     ],
     deps = [
         "//tensorflow/tsl/python/lib/core:bfloat16_lib",
@@ -327,14 +331,18 @@ cc_library(
     ],
 )
 
-tf_py_test(
+tf_py_strict_test(
     name = "custom_float_test",
     size = "small",
     srcs = ["custom_float_test.py"],
     python_version = "PY3",
     deps = [
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python/lib/io:lib",
+        ":_pywrap_custom_casts",
+        ":_pywrap_float8",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/platform:client_testlib",
+        "//tensorflow/tsl/python/lib/core:pywrap_bfloat16",
+        "@absl_py//absl/testing:absltest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

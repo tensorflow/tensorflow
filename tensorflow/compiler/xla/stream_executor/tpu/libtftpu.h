@@ -18,6 +18,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TPU_LIBTFTPU_H_
 
+#ifndef __cplusplus
+#define decltype(expr) __typeof__(expr)
+#endif
+
 // Unfortunately we have to add an Fn suffix because we cannot have the same
 // name for both a function and a element within a struct in the global
 // namespace in gcc. This restriction doesn't exist in clang.
