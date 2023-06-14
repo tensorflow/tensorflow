@@ -16,6 +16,7 @@
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -168,6 +169,16 @@ class WeakTensorTest(test_util.TensorFlowTestCase):
     wt_mismatch = weak_tensor.WeakTensor(constant_op.constant([1.0, 2.0, 3.0]))
     with self.assertRaises(TypeError):
       _ = f(wt_mismatch)
+
+  def test_weak_tensor_gradient(self):
+    x = weak_tensor.WeakTensor(constant_op.constant([3.0, 4.0, 5.0]))
+    with backprop.GradientTape() as g:
+      g.watch(x)
+      y = x
+    dy_dx = g.gradient(y, x)
+    self.assertEqual(
+        dy_dx, weak_tensor.WeakTensor(constant_op.constant([1.0, 1.0, 1.0]))
+    )
 
   def test_weak_tensor_in_restored_function(self):
     class CustomModule(module.Module):

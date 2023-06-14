@@ -20,6 +20,7 @@ from typing import Optional
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
@@ -32,6 +33,16 @@ _ALLOWED_WEAK_DTYPES = (
     dtypes.float64,
     dtypes.complex128,
 )
+
+
+class WeakTensorGradient(composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient for WeakTensor."""
+
+  def get_gradient_components(self, weak_tensor):
+    return weak_tensor.tensor
+
+  def replace_gradient_components(self, weak_tensor, component_grads):
+    return weak_tensor._type_spec._from_components([component_grads])  # pylint: disable=protected-access
 
 
 # TODO(b/285024542): Modify the isinstance() checks to include WeakTensor.
@@ -127,7 +138,7 @@ class WeakTensor(extension_type.ExtensionType):
   def __tf_tensor__(
       self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
   ):
-    return self.tensor.__tf_tensor__(self, dtype=dtype, name=name)
+    return self.tensor.__tf_tensor__(dtype=dtype, name=name)
 
   def __format__(self, format_spec):
     return f"{self.tensor.__format__(format_spec)} weakly typed"
@@ -158,6 +169,8 @@ class WeakTensor(extension_type.ExtensionType):
   @property
   def shape(self):
     return self.tensor.shape
+
+  __composite_gradient__ = WeakTensorGradient()
 
 
 class _WeakTensorIterator(object):
