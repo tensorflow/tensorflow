@@ -76,15 +76,15 @@ filegroup(
 # Test against platforms and architecures that don't support CUDA.
 # TODO(b/153737462): Automatically filter tests to create the appropriate
 # portable test list.
-test_suite(
-    name = "portable_kernel_tests",
-    tags = [
-        "manual",  # Avoid redundancy when using wildcard test patterns.
-    ],
-    tests = [
-        ":eigen_spatial_convolutions_test",
-    ],
-)
+# test_suite(
+#     name = "portable_kernel_tests",
+#     tags = [
+#         "manual",  # Avoid redundancy when using wildcard test patterns.
+#     ],
+#     tests = [
+#         ":eigen_spatial_convolutions_test",
+#     ],
+# )
 
 # Portable Tensorflow for Android/iOS requires these files directly rather than as libraries, so
 # export them to be used there.
