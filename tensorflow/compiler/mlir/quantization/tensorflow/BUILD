@@ -472,6 +472,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@stablehlo//:chlo_ops",
     ],
     # Alwayslink is required for registering the MLIR passes.
     # TODO(b/255530126): Split the pass registration from the definitions to avoid binary size bloat.
