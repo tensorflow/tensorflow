@@ -27,6 +27,8 @@ limitations under the License.
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
@@ -462,9 +464,6 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
                       host_transfer_manager->Initialize(
                           host_transfers, rendezvous_key_base, ctx));
 
-  VLOG(2) << "Cloud TPU: Executing computation on device "
-          << node_context->device_ordinal();
-
   xla::ExecutableRunOptions run_options;
   run_options.set_stream(stream);
   run_options.set_device_assignment(device_assignment);
@@ -504,13 +503,19 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         prefetch.offset());
   }
 
+  VLOG(1) << "TPUExecute: Updating dynamic HLO inputs on "
+          << node_context->device_ordinal();
+
   TF_RETURN_IF_ERROR(UpdateDynamicInputs(stream, backend->memory_allocator(),
                                          &arguments, input_shapes));
 
   // Retrieve the TPU embedding memory addresses to be fed to the TPU. The
   // memory addresses are communicated with a dynamically allocated C array
   // (which needs to be free'd once the function terminates).
-  SE_DeviceMemoryBase* device_memory_addrs;
+  VLOG(1) << "TPUExecute: Updating TPUEmbedding memory addresses on "
+          << node_context->device_ordinal();
+
+  SE_DeviceMemoryBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
   auto device_memory_cleanup =
       absl::MakeCleanup([device_memory_addrs, node_context]() {
@@ -521,7 +526,6 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
         }
       });
 
-  SE_StreamExecutor executor{stream->parent()};
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()
       ->TpuExecute_GetTpuEmbeddingMemoryAllocationsFn(
@@ -533,10 +537,15 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
 
   // Add the TPU embedding memory addresses as additional arguments for the TPU
   // executable.
+  VLOG(1) << "TPUExecute: Adding " << device_memory_addrs_count
+          << " TPUEmbedding memory addresses to HLO parameters.";
   for (int i = 0; i < device_memory_addrs_count; ++i) {
     xla::ShapeTree<xla::MaybeOwningDeviceMemory> tree(
         xla::ShapeUtil::MakeOpaqueShape());
-    *tree.mutable_element({}) = ApiConverter::FromC(device_memory_addrs[i]);
+    const SE_DeviceMemoryBase& addr = device_memory_addrs[i];
+    VLOG(2) << absl::StrFormat("Device memory addr[%i] = {%p, %llu, %llu}", i,
+                               addr.opaque, addr.size, addr.payload);
+    *tree.mutable_element({}) = ApiConverter::FromC(addr);
     xla::ExecutionInput input(std::move(tree));
     arguments.push_back(std::move(input));
   }
