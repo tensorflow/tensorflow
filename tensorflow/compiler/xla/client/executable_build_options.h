@@ -163,8 +163,8 @@ class ExecutableBuildOptions {
     return allow_spmd_sharding_propagation_to_output_;
   }
   bool any_allow_spmd_sharding_propagation_to_output() const {
-    return absl::c_any_of(allow_spmd_sharding_propagation_to_output_,
-                          [](bool b) { return b; });
+    return absl::c_linear_search(allow_spmd_sharding_propagation_to_output_,
+                                 true);
   }
   // Allows sharding propagation to propagate to the outputs. This changes the
   // output shape of the computation (which is undesirable), but it can be used
