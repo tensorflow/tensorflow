@@ -2018,6 +2018,7 @@ transitive_hdrs(
 )
 
 # copybara:uncomment_begin(google-only)
+# # TODO(b/287346201): Look into replacing usages of this target.
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,
