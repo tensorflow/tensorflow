@@ -65,6 +65,12 @@ cc_shared_library(
         "//third_party/" + "eigen3:__subpackages__",
         "@local_config_python//:__subpackages__",
         "@nsync//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
     ],
 )
 
@@ -75,6 +81,12 @@ tsl_pybind_extension(
     static_deps = [
         "@pybind11//:__subpackages__",
         "@local_config_python//:__subpackages__",
+        "@python_x86_64-unknown-linux-gnu//:__subpackages__",
+        "@python_x86_64-pc-windows-msvc//:__subpackages__",
+        "@python_x86_64-apple-darwin//:__subpackages__",
+        "@python_aarch64-unknown-linux-gnu//:__subpackages__",
+        "@python_aarch64-apple-darwin//:__subpackages__",
+        "@pypi_numpy//:__subpackages__",
     ],
     deps = [
         ":bfloat16_lib",

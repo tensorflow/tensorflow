@@ -591,6 +591,7 @@ py_strict_library(
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/util:compat",
+        "@pypi_portpicker//:pkg",
     ],
 )
 

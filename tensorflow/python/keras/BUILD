@@ -42,6 +42,7 @@ py_library(
         "//tensorflow/python/saved_model",
         "//tensorflow/python/training",
         "//tensorflow/python/util:nest",
+        "@pypi_h5py//:pkg",
     ],
 )
 
