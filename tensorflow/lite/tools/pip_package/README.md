@@ -43,7 +43,7 @@ make BASE_IMAGE=ubuntu:18.04 PYTHON=python3 TENSORFLOW_TARGET=native docker-buil
 ```
 
 In addition to the wheel there is a way to build Debian package by adding
-BUILD_DEB=y to the make command (only for python3):
+`BUILD_DEB=y` to the make command (only for python3):
 
 ```sh
 make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
@@ -53,7 +53,7 @@ make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi BUILD_DEB=y d
 
 There is another build steps to build a binary wheel which uses Bazel instead of
 Makefile. You don't need to install additional dependencies.
-This approach can leverage TF's ci_build.sh for ARM cross builds.
+This approach can leverage TF's `ci_build.sh` for ARM cross builds.
 
 ### Normal build for your workstation
 
@@ -114,7 +114,7 @@ bash tensorflow/lite/tools/pip_package/build_pip_package_with_bazel.sh windows
 
 If you want to use TF ops with Python API, you need to enable flex support.
 You can build TFLite interpreter with flex ops support by providing
-"--define=tflite_pip_with_flex=true" to Bazel.
+`--define=tflite_pip_with_flex=true` to Bazel.
 
 Here are some examples.
 
@@ -135,7 +135,7 @@ CI_DOCKER_EXTRA_PARAMS="-e CUSTOM_BAZEL_FLAGS=--define=tflite_pip_with_flex=true
 
 ## Usage
 
-Note, unlike tensorflow this will be installed to a tflite_runtime namespace.
+Note, unlike tensorflow this will be installed to a `tflite_runtime` namespace.
 You can then use the Tensorflow Lite interpreter as.
 
 ```python
@@ -151,4 +151,3 @@ bigger host will be supported.
 
 * You cannot use TensorFlow Select ops, only TensorFlow Lite builtins.
 * Currently custom ops and delegates cannot be registered.
-

@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LAUNCH_DIMENSIONS_H_
 
-#include <map>
-#include <memory>
+#include <ostream>
 #include <string>
 
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/shape.h"
 
@@ -71,11 +71,11 @@ class LaunchDimensions {
   }
 
   std::string ToString() const {
-    return absl::StrCat("blocks: {", block_counts_.x, ", ", block_counts_.y,
-                        ", ", block_counts_.z, "}, threads/block: {",
-                        thread_counts_per_block_.x, ", ",
-                        thread_counts_per_block_.y, ", ",
-                        thread_counts_per_block_.z, "}");
+    return absl::StrCat(
+        "blocks: {", block_counts_.x, ", ", block_counts_.y, ", ",
+        block_counts_.z, "}, threads/block: {", thread_counts_per_block_.x,
+        ", ", thread_counts_per_block_.y, ", ", thread_counts_per_block_.z,
+        "}, shared memory [B]: ", shared_mem_bytes_);
   }
 
   void SetSharedMemBytes(uint32_t shared_mem_bytes) {
@@ -128,7 +128,7 @@ struct LaunchDimensionsConfig {
   }
 };
 
-// Returns -1 if the shape doesn't allows the row vectorization code path.
+// Returns -1 if the shape doesn't allow the row vectorization code path.
 // If supported, return the number of threads to use in that case.
 int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
                                      GpuDeviceInfo gpu_device_info,
@@ -137,7 +137,7 @@ int64_t ThreadsPerBlockRowVectorized(const Shape& shape,
 // Calculates the launch dimensions used to invoke `hlo`.
 StatusOr<LaunchDimensions> CalculateLaunchDimensions(
     const Shape& shape, GpuDeviceInfo gpu_device_info,
-    LaunchDimensionsConfig dim_config = {});
+    LaunchDimensionsConfig dim_config = {}, mlir::Operation* op = nullptr);
 
 }  // namespace gpu
 }  // namespace xla

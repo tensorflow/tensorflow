@@ -252,7 +252,7 @@ def transform_function(
   # pylint: disable=protected-access
   # Get the new ConcreteFunction.
   updated_cf = function_lib.ConcreteFunction(
-      func_graph, attrs=fndef.attr, spec=cf._function_spec
+      func_graph, attrs=fndef.attr, function_type=cf.function_type
   )
 
   # Set arg_keywords and positional_args

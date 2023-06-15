@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iterator>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -47,11 +49,10 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("task_id", &PyTpuClient::process_index)
       .def("get_default_device_assignment",
            [](PyTpuClient* client, int num_replicas, int num_partitions)
-               -> StatusOr<
-                   std::vector<std::vector<std::shared_ptr<PjRtDevice>>>> {
-             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                                 client->GetDefaultDeviceAssignment(
-                                     num_replicas, num_partitions));
+               -> std::vector<std::vector<std::shared_ptr<PjRtDevice>>> {
+             DeviceAssignment device_assignment =
+                 xla::ValueOrThrow(client->GetDefaultDeviceAssignment(
+                     num_replicas, num_partitions));
              std::vector<std::vector<std::shared_ptr<PjRtDevice>>> result;
              result.resize(num_replicas);
              for (int r = 0; r < num_replicas; ++r) {
@@ -67,11 +68,11 @@ PYBIND11_MODULE(tpu_client_extension, m) {
            })
       // TODO(skye): delete after all callers can handle 2D output
       .def("get_default_device_assignment",
-           [](PyTpuClient* client, int num_replicas)
-               -> StatusOr<std::vector<std::shared_ptr<PjRtDevice>>> {
-             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
-                                 client->GetDefaultDeviceAssignment(
-                                     num_replicas, /*num_partitions=*/1));
+           [](PyTpuClient* client,
+              int num_replicas) -> std::vector<std::shared_ptr<PjRtDevice>> {
+             DeviceAssignment device_assignment =
+                 xla::ValueOrThrow(client->GetDefaultDeviceAssignment(
+                     num_replicas, /*num_partitions=*/1));
              std::vector<std::shared_ptr<PjRtDevice>> result;
              for (int i = 0; i < num_replicas; ++i) {
                int device_id = device_assignment(i, 0);
@@ -86,57 +87,61 @@ PYBIND11_MODULE(tpu_client_extension, m) {
               int device_ordinal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return client->TransferToInfeed(literal, device_ordinal);
+             xla::ThrowIfError(
+                 client->TransferToInfeed(literal, device_ordinal));
            })
       .def("transfer_from_outfeed",
-           [](PyTpuClient* client, const Shape& shape,
-              int device_ordinal) -> StatusOr<py::object> {
-             GlobalPyRefManager()->CollectGarbage();
-             std::shared_ptr<Literal> literal_shared;
-             {
-               py::gil_scoped_release gil_release;
-               TF_ASSIGN_OR_RETURN(Literal literal, client->TransferFromOutfeed(
-                                                        shape, device_ordinal));
-               literal_shared = std::make_shared<Literal>(std::move(literal));
-             }
-             return LiteralToPython(std::move(literal_shared));
-           })
-      .def(
-          "buffer_from_pyval",
-          [](std::shared_ptr<PyTpuClient> client,
-             const pybind11::object& argument,
-             std::shared_ptr<PjRtDevice> device,
-             bool force_copy) -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
-            if (device == nullptr) {
-              TF_RET_CHECK(!client->local_devices().empty());
-              device = client->local_devices().front();
-            }
-            auto iter = client->id_to_device().find(device->id());
-            if (iter->second != device) {
-              return InvalidArgument(
-                  "Cannot copy value to device '%s' with '%s' backend",
-                  device->DebugString(), client->platform_name());
-            }
-            GlobalPyRefManager()->CollectGarbage();
-            TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
-                                GetPythonBufferTree(argument));
-            std::shared_ptr<PythonRefManager::ManagedPyObjects> py_buffer_ref =
-                GlobalPyRefManager()->ManageReferences(
-                    absl::MakeSpan(tree.arrays));
-            tree.arrays.clear();
+           xla::ValueOrThrowWrapper(xla::ValueOrThrowWrapper(
+               [](PyTpuClient* client, const Shape& shape,
+                  int device_ordinal) -> StatusOr<py::object> {
+                 GlobalPyRefManager()->CollectGarbage();
+                 std::shared_ptr<Literal> literal_shared;
+                 {
+                   py::gil_scoped_release gil_release;
+                   TF_ASSIGN_OR_RETURN(
+                       Literal literal,
+                       client->TransferFromOutfeed(shape, device_ordinal));
+                   literal_shared =
+                       std::make_shared<Literal>(std::move(literal));
+                 }
+                 return LiteralToPython(std::move(literal_shared));
+               })))
+      .def("buffer_from_pyval",
+           xla::ValueOrThrowWrapper(
+               [](std::shared_ptr<PyTpuClient> client,
+                  const pybind11::object& argument,
+                  std::shared_ptr<PjRtDevice> device,
+                  bool force_copy) -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
+                 if (device == nullptr) {
+                   TF_RET_CHECK(!client->local_devices().empty());
+                   device = client->local_devices().front();
+                 }
+                 auto iter = client->id_to_device().find(device->id());
+                 if (iter->second != device) {
+                   return InvalidArgument(
+                       "Cannot copy value to device '%s' with '%s' backend",
+                       device->DebugString(), client->platform_name());
+                 }
+                 GlobalPyRefManager()->CollectGarbage();
+                 TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
+                                     GetPythonBufferTree(argument));
+                 std::shared_ptr<PythonRefManager::ManagedPyObjects>
+                     py_buffer_ref = GlobalPyRefManager()->ManageReferences(
+                         absl::MakeSpan(tree.arrays));
+                 tree.arrays.clear();
 
-            std::vector<BorrowingLiteral> leaves;
-            leaves.insert(leaves.end(),
-                          std::make_move_iterator(tree.leaves.begin()),
-                          std::make_move_iterator(tree.leaves.end()));
+                 std::vector<BorrowingLiteral> leaves;
+                 leaves.insert(leaves.end(),
+                               std::make_move_iterator(tree.leaves.begin()),
+                               std::make_move_iterator(tree.leaves.end()));
 
-            py::gil_scoped_release gil_release;
-            return PyTpuBuffer::FromLiterals(
-                std::move(leaves), tree.shape, std::move(py_buffer_ref),
-                std::move(client), std::move(device));
-          },
-          py::arg("argument"), py::arg("device") = nullptr,
-          py::arg("force_copy") = false)
+                 py::gil_scoped_release gil_release;
+                 return PyTpuBuffer::FromLiterals(
+                     std::move(leaves), tree.shape, std::move(py_buffer_ref),
+                     std::move(client), std::move(device));
+               }),
+           py::arg("argument"), py::arg("device") = nullptr,
+           py::arg("force_copy") = false)
       .def(
           "compile",
           [](std::shared_ptr<PyTpuClient> client,
@@ -228,22 +233,37 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("size_of_generated_code_in_bytes",
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyTpuExecutable::Delete)
-      .def("Execute", &PyTpuExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      .def("ExecuteOnLocalDevices", &PyTpuExecutable::ExecuteOnLocalDevices,
+      .def(
+          "Execute",
+          [](PyTpuExecutable& self,
+             absl::Span<PyTpuBuffer* const> argument_handles) {
+            return xla::ValueOrThrow(self.Execute(argument_handles));
+          },
+          py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("ExecuteOnLocalDevices",
+           xla::ValueOrThrowWrapper(&PyTpuExecutable::ExecuteOnLocalDevices),
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("delete", &PyTpuExecutable::Delete)
-      .def("execute", &PyTpuExecutable::Execute,
+      .def(
+          "execute",
+          [](PyTpuExecutable& self,
+             absl::Span<PyTpuBuffer* const> argument_handles) {
+            return xla::ValueOrThrow(self.Execute(argument_handles));
+          },
+          py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def("execute_with_token",
+           xla::ValueOrThrowWrapper(&PyTpuExecutable::ExecuteWithToken),
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      .def("execute_with_token", &PyTpuExecutable::ExecuteWithToken,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      .def("execute_on_local_devices", &PyTpuExecutable::ExecuteOnLocalDevices,
+      .def("execute_on_local_devices",
+           xla::ValueOrThrowWrapper(&PyTpuExecutable::ExecuteOnLocalDevices),
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_sharded_on_local_devices",
-           &PyTpuExecutable::ExecuteShardedOnLocalDevices,
+           xla::ValueOrThrowWrapper(
+               &PyTpuExecutable::ExecuteShardedOnLocalDevices),
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("execute_sharded_on_local_devices_with_tokens",
-           &PyTpuExecutable::ExecuteShardedOnLocalDevicesWithTokens,
+           xla::ValueOrThrowWrapper(
+               &PyTpuExecutable::ExecuteShardedOnLocalDevicesWithTokens),
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       // TODO(phawkins): implement traceback support.
       .def_property_readonly("traceback",

@@ -18,7 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/runtime_fallback/runtime/runtime_fallback_kernels.h"
 
+#include <algorithm>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
@@ -130,7 +133,7 @@ using tfrt::TensorShape;
 
 #define TFD_REPORT_AND_RETURN_IF_ERROR(handler, status) \
   if (!status.ok()) {                                   \
-    handler.ReportError(status.error_message());        \
+    handler.ReportError(status.message());              \
     return;                                             \
   }
 
@@ -143,7 +146,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
   tensorflow::Status status = th->NumDims(&rank);
   if (!status.ok())
     return tfrt::MakeErrorAsyncValueRef(tfrt::StrCat(
-        "error getting rank from TF tensor handle: ", status.error_message()));
+        "error getting rank from TF tensor handle: ", status.message()));
 
   llvm::SmallVector<tfrt::Index, 4> dims;
   for (auto i = 0; i < rank; ++i) {
@@ -152,7 +155,7 @@ static AsyncValueRef<RuntimeFallbackTensor> CreateRuntimeFallbackTensor(
     if (!status.ok())
       return tfrt::MakeErrorAsyncValueRef(
           tfrt::StrCat("error getting dimension from TFE tensor handle: ",
-                       status.error_message()));
+                       status.message()));
     dims.push_back(dim);
   }
 
@@ -589,7 +592,7 @@ AsyncValueRef<Chain> RuntimeFallbackExecute(
   auto emit_error = [&exec_ctx, results](const tensorflow::Status& status) {
     // Set the correct TFRT error code according to the error propagated from
     // runtime fallback execution.
-    auto error = EmitErrorAsync(exec_ctx, ToAbslStatus(status));
+    auto error = EmitErrorAsync(exec_ctx, status);
     // Set all results to error.
     std::fill(results.begin(), results.end(), error);
     return error;
@@ -906,8 +909,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
           result_ref->ForwardTo(std::move(knfb_tensor));
           return;
         }
-        auto expected_tf_tensor =
-            TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host());
+        auto expected_tf_tensor = tfrt::TFRTTensorToTFTensor(knfb_tensor.get());
         if (!expected_tf_tensor) {
           auto error = tfrt::EmitErrorAsync(
               exec_ctx, toString(expected_tf_tensor.takeError()));
@@ -921,7 +923,7 @@ void CoreRTTensorHandleToFallbackTensorInternal(
       });
     } else {
       set_result(tf_tensor_results[i],
-                 TFRTTensorToTFTensor(knfb_tensor.get(), exec_ctx.host()));
+                 tfrt::TFRTTensorToTFTensor(knfb_tensor.get()));
     }
   }
 }
@@ -1035,7 +1037,7 @@ static void RuntimeFallbackExecuteOp(
   Status s = eager_ctx->local_device_mgr()->LookupDevice(device_name, &device);
   if (!s.ok()) {
     // The device name can be invalid in certain cases. Use default CPU device.
-    VLOG(1) << s.error_message() << " using default CPU device.";
+    VLOG(1) << s.message() << " using default CPU device.";
   }
 
   // First we convert tensorflow::Tensor to RuntimeFallbackTensors.
@@ -1084,7 +1086,7 @@ static void RuntimeFallbackExecuteOp(
     const tensorflow::Tensor* tf_tensor = nullptr;
     tensorflow::Status s =
         runtime_fallback_tensor.GetTensorHandle()->Tensor(&tf_tensor);
-    DCHECK(s.ok()) << s.ToString();
+    DCHECK(s.ok()) << s;
     results[i] =
         tfrt::MakeAvailableAsyncValueRef<tensorflow::Tensor>(*tf_tensor);
   }
@@ -1142,7 +1144,7 @@ static llvm::Expected<tfrt::Value> ConvertTFTensorHandleToTFRTTensor(
       tensor_handle->Resolve(&status)};
   if (!status.ok()) {
     return tfrt::MakeStringError("error resolving TensorHandle: ",
-                                 status.error_message());
+                                 status.message());
   }
   auto tf_dtype = tensor_interface->Type();
   if (tf_dtype == DT_STRING) {

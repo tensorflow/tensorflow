@@ -21,6 +21,9 @@
 //             version 3.
 // Version 3b: Rename fields in SignatureDef. Has backward compatibility with
 //             version 3 and 3a.
+// Version 3c: Move constant tensor buffers & custom op buffers outside from
+//             Flatbuffers. Has backward compatibility with version 3, 3a and
+//             3b.
 
 namespace tflite;
 
@@ -880,6 +883,8 @@ table StridedSliceOptions {
   ellipsis_mask: int;
   new_axis_mask: int;
   shrink_axis_mask: int;
+  // If true, then the end tensor is an offset of the begin tensor.
+  offset: bool;
 }
 
 table LogSoftmaxOptions {
@@ -1252,6 +1257,13 @@ table Operator {
   // computation, which may require relevant metadata such as quantization
   // parameters.
   intermediates:[int];
+
+  // When an op is using custom_options in a model that is larger than 2GB, then
+  // we instead use the following attributes to find the buffer location which
+  // is stored outside of flatbuffers, the offset is calculated relative to the
+  // beginning of the file and is only valid if > 1
+  custom_options_offset: ulong;
+  custom_options_size: ulong;
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -1280,6 +1292,13 @@ table SubGraph {
 // by index. The generous alignment accommodates mmap-friendly data structures.
 table Buffer {
   data:[ubyte] (force_align: 16);
+
+  // In a model that is larger than 2GB, then buffers instead uses the following
+  // attributes to find stored data, which is outside of flatbuffers
+  // the offset is calculated relative to the beginning of the file and is only
+  // valid if > 1.
+  offset: ulong;
+  size: ulong;
 }
 
 table Metadata {

@@ -40,7 +40,7 @@ static inline llvm::StringRef StringViewToRef(absl::string_view view) {
 
 namespace tensorflow {
 
-OpOrArgNameMapper::~OpOrArgNameMapper() {}
+OpOrArgNameMapper::~OpOrArgNameMapper() = default;
 
 llvm::StringRef OpOrArgNameMapper::GetUniqueName(llvm::StringRef prefix,
                                                  int hash_value) {

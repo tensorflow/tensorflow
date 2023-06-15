@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "absl/strings/string_view.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -89,7 +91,7 @@ mlir::LogicalResult MaybeUpcastForReduction(ReduceOpType reduce_op,
   if (!reduce_layout.ok())
     return reduce_op.emitOpError(llvm::formatv(
         "Malformed layout specification for DTensor reduce op found: {0}",
-        reduce_layout.status().error_message()));
+        reduce_layout.status().message()));
 
   // The original output tensor type that would have been used by all users of
   // the reduce op.

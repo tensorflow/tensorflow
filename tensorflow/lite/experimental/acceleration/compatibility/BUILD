@@ -203,11 +203,11 @@ cc_library(
         ":database_fbs",
         ":devicedb",
         ":gpu_compatibility_binary_embed",
+        "//tensorflow/lite/delegates/gpu:delegate_options",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@flatbuffers",
-        "//tensorflow/lite/delegates/gpu:delegate_options",
-        "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ] + tflite_extra_gles_deps(),
 )
 

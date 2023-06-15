@@ -791,7 +791,7 @@ ENTRY %reduce {
 }
 
 TEST_P(ParameterizedMetadataTestWithOutput,
-       ShardedTupleReduceForwardAndBackwardPass) {
+       ShardedOnNonReduceDimTupleReduceForwardAndBackwardPass) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -850,6 +850,73 @@ ENTRY %main {
   if (GetParam().allow_root_sharding_propagation) {
     EXPECT_THAT(module->entry_computation()->root_instruction(),
                 op::Sharding("{{devices=[2]0,1},{devices=[2]0,1}}"));
+  }
+}
+
+TEST_P(ParameterizedMetadataTestWithOutput,
+       ShardedOnReduceDimTupleReduceForwardAndBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+
+%minmax_func {
+  %lhs_value = f32[] parameter(0)
+  %rhs_value = f32[] parameter(2)
+  %compare.2 = pred[] compare(%lhs_value, %rhs_value), direction=GT
+  %select.4 = f32[] select(%compare.2, %lhs_value, %rhs_value)
+  %lhs_index = s32[] parameter(1)
+  %rhs_index = s32[] parameter(3)
+  %select.5 = s32[] select(%compare.2, %lhs_index, %rhs_index)
+  ROOT %tuple.2 = (f32[], s32[]) tuple(%select.4, %select.5)
+}
+
+ENTRY %main {
+  %param0 = f32[28,10] parameter(0)
+  %param1 = s32[28,10] parameter(1), sharding={devices=[2,2]0,1,2,3 metadata={op_name="a"}}
+  %copy_param0 = f32[28,10] copy(%param0)
+  %init0 = f32[] parameter(2)
+  %init1 = s32[] parameter(3)
+  %reduce = (f32[28], s32[28]) reduce(%copy_param0, %param1, %init0, %init1),
+    dimensions={1}, to_apply=%minmax_func
+  %gte0 = f32[28] get-tuple-element(%reduce), index=0
+  %gte1 = s32[28] get-tuple-element(%reduce), index=1
+  %copy0 = f32[28] copy(%gte0)
+  %copy1 = s32[28] copy(%gte1)
+  ROOT %tuple = (f32[28], s32[28]) tuple(%copy0, %copy1)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/true, GetParam().propagate_metadata,
+                          {GetParam().allow_root_sharding_propagation})
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* reduce = FindInstruction(module.get(), "reduce");
+  ASSERT_NE(reduce, nullptr);
+  EXPECT_THAT(reduce, op::Sharding("{{devices=[2,2]0,1,2,3 "
+                                   "last_tile_dim_replicate},{devices=[2,2]0,1,"
+                                   "2,3 last_tile_dim_replicate}}"));
+  auto* copy_param0 = FindInstruction(module.get(), "copy_param0");
+  ASSERT_NE(copy_param0, nullptr);
+  EXPECT_THAT(copy_param0, op::Sharding("{devices=[2,2]0,1,2,3}"));
+  for (const HloSharding& sharding :
+       {copy_param0->sharding(), reduce->sharding().tuple_elements()[0],
+        reduce->sharding().tuple_elements()[1]}) {
+    if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+      EXPECT_THAT(sharding, ShardingMetadata({CreateMetadata("a")}));
+    } else {
+      EXPECT_THAT(sharding, ShardingMetadata({}));
+    }
+  }
+  if (GetParam().allow_root_sharding_propagation) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                op::Sharding("{{devices=[2,2]0,1,2,3 "
+                             "last_tile_dim_replicate},{devices=[2,2]0,1,2,3 "
+                             "last_tile_dim_replicate}}"));
   }
 }
 
@@ -1351,6 +1418,72 @@ ENTRY %reshape {
   auto* instruction = FindInstruction(module.get(), "reshape");
   ASSERT_NE(instruction, nullptr);
   EXPECT_THAT(instruction, op::Sharding("{devices=[2,1,1]0,1}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, ReshapeForwardPassPartialMatch) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[14,32] parameter(0),
+    sharding={devices=[4,4]0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 metadata={op_name="a"}}
+  %reshape = f32[7,2,2,16] reshape(%param0)
+  ROOT %copy = f32[7,2,2,16] copy(%reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "reshape");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(instruction,
+              op::Sharding("{devices=[1,1,2,2,4]0,4,8,12,1,5,9,13,2,6,10,14,3,"
+                           "7,11,15 last_tile_dim_replicate}"));
+  if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
+    EXPECT_THAT(instruction->sharding(),
+                ShardingMetadata({CreateMetadata("a")}));
+  } else {
+    EXPECT_THAT(instruction->sharding(), ShardingMetadata({}));
+  }
+}
+
+TEST_P(ParameterizedMetadataTest, ReshapeForwardPassPartialMatch2) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[12,8] parameter(0),
+    sharding={devices=[2,4]0,1,2,3,4,5,6,7 metadata={op_name="a"}}
+  %reshape = f32[8,12] reshape(%param0)
+  ROOT %copy = f32[8,12] copy(%reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  if (GetParam().clear_metadata) {
+    ClearMetadata(module.get());
+  }
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
+          .Run(module.get()));
+  XLA_VLOG_LINES(1, module->ToString());
+  EXPECT_TRUE(changed);
+  auto* instruction = FindInstruction(module.get(), "reshape");
+  ASSERT_NE(instruction, nullptr);
+  EXPECT_THAT(
+      instruction,
+      op::Sharding("{devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
   if (GetParam().propagate_metadata && !GetParam().clear_metadata) {
     EXPECT_THAT(instruction->sharding(),
                 ShardingMetadata({CreateMetadata("a")}));
@@ -2290,7 +2423,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: count is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -2336,7 +2469,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: data is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -2382,7 +2515,7 @@ ENTRY %entry {
   auto result =
       ShardingPropagation(/*is_spmd=*/false, GetParam().propagate_metadata)
           .Run(module.get());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               ::testing::HasSubstr(
                   "Instruction: while is on device: 0, which conflicts with "
                   "device: 1 of channel instruction: recv"));
@@ -8401,9 +8534,7 @@ ENTRY %reshape {
   EXPECT_TRUE(changed);
   auto* instruction = FindInstruction(module.get(), "custom-call");
   ASSERT_NE(instruction, nullptr);
-  EXPECT_THAT(
-      instruction,
-      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+  EXPECT_THAT(instruction, op::Sharding("{devices=[1,2,2]0,1,2,3}"));
 }
 
 TEST_P(ParameterizedMetadataTest, PropagateThroughSingleUsers) {

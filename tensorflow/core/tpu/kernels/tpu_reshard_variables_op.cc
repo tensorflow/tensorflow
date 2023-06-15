@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_reshard_variables_op.h"
 
+#include <memory>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "tensorflow/compiler/jit/xla_device.h"

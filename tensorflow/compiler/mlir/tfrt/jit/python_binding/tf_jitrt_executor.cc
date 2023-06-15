@@ -19,6 +19,7 @@ limitations under the License.
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "mlir/Dialect/Bufferization/Transforms/Bufferize.h"
 #include "mlir/ExecutionEngine/CRunnerUtils.h"

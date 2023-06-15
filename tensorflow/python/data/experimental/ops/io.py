@@ -16,17 +16,11 @@
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.util import deprecation
-from tensorflow.python.util import lazy_loader
 from tensorflow.python.util.tf_export import tf_export
 
 COMPRESSION_GZIP = "GZIP"
 COMPRESSION_SNAPPY = "NONE"
 DATASET_SPEC_FILENAME = "dataset_spec.pb"
-# TODO(b/176933539): Use the regular import.
-# TODO(b/238903802): Use TypeSpec serialization methods directly.
-nested_structure_coder = lazy_loader.LazyLoader(
-    "nested_structure_coder", globals(),
-    "tensorflow.python.saved_model.nested_structure_coder")
 
 
 @tf_export("data.experimental.save", v1=[])

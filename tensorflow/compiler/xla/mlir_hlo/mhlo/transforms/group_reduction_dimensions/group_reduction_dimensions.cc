@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -270,6 +271,11 @@ struct GroupReductionDimensionsPattern : public OpRewritePattern<ReduceOp> {
     if (op.getInputs().size() != 1 || op.getInitValues().size() != 1)
       return failure();
     Value arg = op.getInputs().front();
+    // Only apply to non-sparse tensors.
+    if (auto rtp = arg.getType().cast<RankedTensorType>();
+        rtp.getEncoding() != nullptr)
+      return failure();
+
     auto argTy = arg.getType().cast<RankedTensorType>();
 
     // Sort reduction dimensions, which is not an invariant of the op.

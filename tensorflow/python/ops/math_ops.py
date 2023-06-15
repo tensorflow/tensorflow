@@ -91,6 +91,7 @@ from tensorflow.python.ops import gen_sparse_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.ops.numpy_ops import np_dtypes
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -99,13 +100,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import traceback_utils
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
-
-
-np_dtypes = LazyLoader(
-    "np_dtypes", globals(),
-    "tensorflow.python.ops.numpy_ops.np_dtypes")
 
 
 # Aliases for some automatically-generated names.
@@ -220,8 +215,11 @@ def linspace_nd(start, stop, num, name=None, axis=0):
     all_tensors = (expanded_start, res, expanded_stop)
     concatenated = array_ops.concat(all_tensors, axis=axis)
     begin = array_ops.zeros_like(shape)
-    size = array_ops.where_v2(mask, num_int, shape)
-
+    # Preserve shape information for final slice.
+    size = array_ops.concat(
+        (shape[0:axis], array_ops.reshape(num_int, [1]), shape[axis + 1 :]),
+        axis=0,
+    )
     return array_ops.slice(concatenated, begin, size)
 
 
@@ -822,8 +820,14 @@ def real(input, name=None):
     if input.dtype.is_complex:
       real_dtype = input.dtype.real_dtype
       return gen_math_ops.real(input, Tout=real_dtype, name=name)
-    else:
+    elif input.dtype.is_numeric:
       return input
+    else:
+      raise TypeError(
+          "input must be a numeric tensor, but got tensor with dtype {}".format(
+              input.dtype
+          )
+      )
 
 
 @tf_export("math.imag", v1=["math.imag", "imag"])
@@ -1050,7 +1054,10 @@ def saturate_cast(value, dtype, name=None):
         # Clamp real and imag components separately, if required.
         real_in_dtype = in_dtype.real_dtype
         real_out_dtype = dtype.real_dtype
-        if real_in_dtype.min < real_out_dtype.min or real_in_dtype.max > real_out_dtype.max:
+        if (
+            real_in_dtype.min < real_out_dtype.min
+            or real_in_dtype.max > real_out_dtype.max
+        ):
           value = gen_math_ops._clip_by_value(
               value,
               ops.convert_to_tensor(
@@ -1701,17 +1708,38 @@ def div_no_nan(x, y, name=None):
   <tf.Tensor: shape=(), dtype=float32, numpy=0.0>
 
   Args:
-    x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
-    y: A `Tensor` whose dtype is compatible with `x`.
+    x: A `Tensor` of a floating or integer dtype.
+    y: A `Tensor` with the same dtype as `x` and a compatible shape.
     name: A name for the operation (optional).
 
   Returns:
-    The element-wise value of the x divided by y.
+    The element-wise quotient as in `tf.math.divide(x, y)`,
+    except that division by zero produces `0.0`, not `nan`.
   """
 
   with ops.name_scope(name, "div_no_nan", [x, y]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    if not tensor_util.is_tf_type(x) and tensor_util.is_tf_type(y):
+      # Treat this case specially like divide() does above.
+      y = ops.convert_to_tensor(y, name="y")
+      x = ops.convert_to_tensor(x, dtype=y.dtype.base_dtype, name="x")
+    else:
+      x = ops.convert_to_tensor(x, name="x")
+      y = ops.convert_to_tensor(y, dtype_hint=x.dtype.base_dtype, name="y")
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError(f"`x` and `y` must have the same dtype, "
+                      f"got {x_dtype!r} != {y_dtype!r}.")
+    try:
+      dtype = _TRUEDIV_TABLE[x_dtype]
+    except KeyError as e:
+      raise TypeError(
+          f"Invalid dtype {x_dtype!r} in tf.math.divide_no_nan. Expected one "
+          f"of {{{', '.join([repr(x) for x in _TRUEDIV_TABLE.keys()])}}}."
+      ) from e
+    if dtype is not None:
+      x = cast(x, dtype)
+      y = cast(y, dtype)
     return gen_math_ops.div_no_nan(x, y, name=name)
 
 
@@ -2563,15 +2591,23 @@ def count_nonzero_v2(
     keepdims = False
   with ops.name_scope(name, "count_nonzero", [input]):
     input = ops.convert_to_tensor(input, name="input")
-    # A scalar of 'zero' is enough as `not_equal` will broadcast.
-    zero = array_ops.zeros([], dtype=input.dtype)
+    # if the input is already of type bool, then there is no need
+    # to compare to zero.
+    if input.dtype == dtypes.bool:
+      predicate = input
+    else:
+      # A scalar of 'zero' is enough as `not_equal` will broadcast.
+      zero = array_ops.zeros([], dtype=input.dtype)
+      predicate = gen_math_ops.not_equal(input, zero)
     return cast(
         reduce_sum(
             # int64 reduction happens on GPU
-            cast(gen_math_ops.not_equal(input, zero), dtypes.int64),
+            cast(predicate, dtypes.int64),
             axis=axis,
-            keepdims=keepdims),
-        dtype=dtype)
+            keepdims=keepdims,
+        ),
+        dtype=dtype,
+    )
 
 
 @tf_export(v1=["math.reduce_mean", "reduce_mean"])

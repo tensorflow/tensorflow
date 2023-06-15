@@ -94,7 +94,7 @@ ENTRY entry {
 
   auto result = decomposer.Run(module.get());
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(), HasSubstr("have same bits"));
+  EXPECT_THAT(result.status().message(), HasSubstr("have same bits"));
 }
 
 TEST_F(StochasticConvertDecomposerTest, WrongRandomType) {
@@ -114,7 +114,7 @@ ENTRY entry {
 
   auto result = decomposer.Run(module.get());
   EXPECT_NE(OkStatus(), result.status());
-  EXPECT_THAT(result.status().error_message(),
+  EXPECT_THAT(result.status().message(),
               HasSubstr("must be unsigned integers"));
 }
 

@@ -16,8 +16,8 @@ animation.
 
 The end-to-end workflow involves the following steps:
 
-1.  [Train a model](#train_a_model) (in Python): A jupyter notebook to train,
-    convert and optimize a model for on-device use.
+1.  [Train a model](#train_a_model) (in Python): A python file to train, convert
+    and optimize a model for on-device use.
 2.  [Run inference](#run_inference) (in C++ 17): An end-to-end unit test that
     runs inference on the model using the [C++ library](library.md).
 
@@ -50,12 +50,13 @@ Learn more about supported platforms in
 Note: You can skip this section and use the trained model included in the
 example code.
 
-Use Google Colaboratory to
-[train your own model](https://colab.research.google.com/github/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train/train_hello_world_model.ipynb).
-For more details, refer to the `README.md`:
+Use
+[train.py](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/examples/hello_world/train.py)
+for hello world model training for sinwave recognition
 
-<a class="button button-primary" href="https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/hello_world/train/README.md">Hello
-World Training README.md</a>
+Run: `bazel build tensorflow/lite/micro/examples/hello_world:train`
+`bazel-bin/tensorflow/lite/micro/examples/hello_world/train --save_tf_model
+--save_dir=/tmp/model_created/`
 
 ## Run inference
 
@@ -76,14 +77,15 @@ To use the TensorFlow Lite for Microcontrollers library, we must include the
 following header files:
 
 ```C++
-#include "tensorflow/lite/micro/all_ops_resolver.h"
-#include "tensorflow/lite/micro/micro_log.h"
+
+#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 ```
 
--   [`all_ops_resolver.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/all_ops_resolver.h)
+-   [`micro_mutable_op_resolver.h`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
     provides the operations used by the interpreter to run the model.
 -   [`micro_log.h`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/micro_log.h)
     outputs debug information.
@@ -164,23 +166,29 @@ if (model->version() != TFLITE_SCHEMA_VERSION) {
 
 ### 7. Instantiate operations resolver
 
-An
-[`AllOpsResolver`](https://github.com/tensorflow/tflite-micro/blob/main/tensorflow/lite/micro/all_ops_resolver.h)
-instance is declared. This will be used by the interpreter to access the
-operations that are used by the model:
+A
+[`MicroMutableOpResolver`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/micro_mutable_op_resolver.h)
+instance is declared. This will be used by the interpreter to register and
+access the operations that are used by the model:
 
 ```C++
-tflite::AllOpsResolver resolver;
+using HelloWorldOpResolver = tflite::MicroMutableOpResolver<1>;
+
+TfLiteStatus RegisterOps(HelloWorldOpResolver& op_resolver) {
+  TF_LITE_ENSURE_STATUS(op_resolver.AddFullyConnected());
+  return kTfLiteOk;
+
 ```
 
-The `AllOpsResolver` loads all of the operations available in TensorFlow Lite
-for Microcontrollers, which uses a lot of memory. Since a given model will only
-use a subset of these operations, it's recommended that real world applications
-load only the operations that are needed.
+The `MicroMutableOpResolver`requires a template parameter indicating the number
+of ops that will be registered. The `RegisterOps` function registers the ops
+with the resolver.
 
-This is done using a different class, `MicroMutableOpResolver`. You can see how
-to use it in the *Micro speech* example's
-[`micro_speech_test.cc`](https://github.com/tensorflow/tflite-micro/tree/main/tensorflow/lite/micro/examples/micro_speech/micro_speech_test.cc).
+```C++
+HelloWorldOpResolver op_resolver;
+TF_LITE_ENSURE_STATUS(RegisterOps(op_resolver));
+
+```
 
 ### 8. Allocate memory
 
@@ -345,5 +353,4 @@ result from the output tensor:
     return kTfLiteError;
     }
 ```
-
 

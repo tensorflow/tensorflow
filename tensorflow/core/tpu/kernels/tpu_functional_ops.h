@@ -16,6 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_FUNCTIONAL_OPS_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_FUNCTIONAL_OPS_H_
 
+#include <map>
+#include <memory>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <vector>
+
 #include "absl/base/call_once.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/xla/stream_executor/tpu/tpu_api.h"
@@ -124,7 +131,7 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
         &runtime_params_);
   }
 
-  ~TPUPartitionedCallOp() override {}
+  ~TPUPartitionedCallOp() override = default;
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
 

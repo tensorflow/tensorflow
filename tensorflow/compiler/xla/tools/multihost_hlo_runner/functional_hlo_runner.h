@@ -45,6 +45,17 @@ enum class InputFormat {
                          // xla_dump_hlo_snapshots.
 };
 
+// Interface for profiler plugins. If being set in RunningOptions, profiling
+// session will be created for the last run of the HLO module.
+class ProfilerInterface {
+ public:
+  virtual ~ProfilerInterface() = default;
+  // Creates profiling session while running HLO module.
+  virtual void CreateSession() = 0;
+  // Uploads profiling session data after finishing running HLO module.
+  virtual void UploadSession() = 0;
+};
+
 bool AbslParseFlag(absl::string_view text, InputFormat* input_format,
                    std::string* error);
 std::string AbslUnparseFlag(InputFormat input_format);
@@ -174,6 +185,7 @@ class FunctionalHloRunner {
     // This indicates whether we log the inputs and outputs to stderr.
     LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
     const MultiSliceConfig* multi_slice_config = nullptr;
+    ProfilerInterface* profiler = nullptr;
 
     // Should we log the inputs and outputs to stderr?
     bool log_input_output() const {
@@ -406,6 +418,8 @@ bool AbslParseFlag(absl::string_view text,
                    FunctionalHloRunner::ModuleOutputMode* output_mode,
                    std::string* error);
 std::string AbslUnparseFlag(FunctionalHloRunner::ModuleOutputMode output_mode);
+
+void AddShardingAnnotationsToSpmdPartitionedModule(HloModule* hlo_module);
 
 }  // namespace xla
 

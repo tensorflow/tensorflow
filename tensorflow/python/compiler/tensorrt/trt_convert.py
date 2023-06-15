@@ -946,14 +946,15 @@ def _construct_function_from_graph_def(func, graph_def, frozen_func=None):
       context.context().remove_function(f.signature.name)
 
   captures = {
-      c.internal.name.split(":")[0]: c.external
-      for c in frozen_func.graph._function_captures.by_val_captures.values()  # pylint: disable = protected-access
+      c[1].name.split(":")[0]: c[0]
+      for c in frozen_func.graph.captures
   }
   new_func = wrap_function.function_from_graph_def(
       graph_def, [tensor.name for tensor in frozen_func.inputs],
       [tensor.name for tensor in frozen_func.outputs], captures)
   new_func.graph.structured_outputs = nest.pack_sequence_as(
       func.graph.structured_outputs, new_func.graph.structured_outputs)
+  new_func._function_type = func.function_type  # pylint: disable=protected-access
 
   # Copy structured input signature from original function (used during
   # serialization)

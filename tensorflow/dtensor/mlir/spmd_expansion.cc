@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <optional>
+#include <vector>
+
 #include "absl/types/optional.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseSet.h"
@@ -103,7 +107,7 @@ mlir::Operation* NextTFOp(mlir::Operation* op) {
 // this function is an no-op.
 mlir::LogicalResult UpdateResourceArgumentType(
     const int arg_index, mlir::func::FuncOp function,
-    absl::optional<mlir::RankedTensorType> new_subtype = absl::nullopt) {
+    std::optional<mlir::RankedTensorType> new_subtype = std::nullopt) {
   auto resource_arg = function.getArgument(arg_index);
   if (new_subtype) {
     auto new_var_type = mlir::RankedTensorType::get(
@@ -145,7 +149,7 @@ mlir::LogicalResult UpdateResourceArgumentType(
   } else {
     auto layout_or_status = ExtractLayoutFromOperand(resource_arg);
     if (!layout_or_status.ok())
-      return function.emitOpError(layout_or_status.status().error_message());
+      return function.emitOpError(layout_or_status.status().message());
 
     const auto& layout = layout_or_status.value();
     if (!layout) return mlir::success();
@@ -204,10 +208,11 @@ mlir::LogicalResult UpdateFunctionArgsUsingLayout(mlir::func::FuncOp function) {
     if (!arg_layout.ok())
       return function.emitOpError(llvm::formatv(
           "Invalid layout attribute found during SPMD expansion: {0}",
-          arg_layout.status().error_message()));
+          arg_layout.status().message()));
 
     // XLA SPMD will handle argument shape updating for us.
-    if (arg_layout->mesh().use_xla_spmd()) {
+    if (arg_layout->mesh().IsSingleDevice() ||
+        arg_layout->mesh().use_xla_spmd()) {
       continue;
     }
 
@@ -328,7 +333,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
   TopologicalIterator iterator(main_func);
   while (iterator.hasNext()) {
     mlir::Operation* op = iterator.next();
-    absl::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
+    std::optional<mlir::func::FuncOp> func = MaybeFindFunction(op);
     if (func.has_value()) {
       if (mlir::failed(
               UpdateFunctionWithLocalInputShapes(op->getOpOperands(), *func)))
@@ -349,7 +354,7 @@ mlir::LogicalResult ConductSPMDExpansion(mlir::ModuleOp module) {
       if (expanded_op != nullptr) emit_op = expanded_op;
       return emit_op->emitError(WithContext(status, __FILE__, __LINE__,
                                             "While computing SPMD expansion")
-                                    .error_message());
+                                    .message());
     }
 
     // If expanded op is terminator of tf_device.Cluster or a function, then

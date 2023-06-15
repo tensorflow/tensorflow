@@ -38,6 +38,7 @@ enum class TfrtDeviceInfraTarget {
 std::ostream& operator<<(std::ostream& os, TfrtDeviceInfraTarget device_target);
 
 struct TfrtCompileOptions {
+  std::string saved_model_dir;
   // TODO(tfrt-devs): Ideally, compiler should make the decision where
   // to place the variable.
   std::string variable_device = "/job:localhost/replica:0/task:0/device:CPU:0";
@@ -102,6 +103,9 @@ struct TfrtCompileOptions {
   // TODO(tfrt-devs): Set the default value to true after testing as it is
   // supposed to be turned on by default.
   bool hoist_invariant_ops = false;
+
+  // If true, get_resource_op will be fused during hoisting.
+  bool fuse_get_resource_ops_in_hoisting = true;
 
   // If true, the compiler will try to sink in the invariant ops (e.g. const
   // ops, var handle ops, etc.) to the nested function (e.g. batch function) to

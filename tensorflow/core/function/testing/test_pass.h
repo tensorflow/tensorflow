@@ -16,9 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FUNCTION_TESTING_TEST_PASS_H_
 #define TENSORFLOW_CORE_FUNCTION_TESTING_TEST_PASS_H_
 
+#include <memory>
+
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/ir/dialect.h"
 #include "tensorflow/core/ir/ops.h"
 #include "tensorflow/core/ir/tf_op_wrapper.h"
@@ -32,9 +37,10 @@ namespace testing {
 
 // A simple testing pass for BinaryFunction that replaces an AddV2 node named
 // `x_plus_y` with a Mul one.
-struct TestPass
-    : public mlir::PassWrapper<TestPass, mlir::OperationPass<mlir::ModuleOp>> {
-  TestPass() = default;
+struct TestPassTfgDialect
+    : public mlir::PassWrapper<TestPassTfgDialect,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+  TestPassTfgDialect() = default;
 
   llvm::StringRef getArgument() const final { return "test-pass"; }
 
@@ -72,12 +78,51 @@ struct TestPass
   }
 };
 
-inline std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> CreateTestPass() {
-  return std::make_unique<TestPass>();
+// A simple testing pass that replaces the first Mul node in the module
+// to a AddV2 node and names it `x_plus_y`.
+struct TestPassTfDialect
+    : public mlir::PassWrapper<TestPassTfDialect,
+                               mlir::OperationPass<mlir::ModuleOp>> {
+  TestPassTfDialect() = default;
+
+  llvm::StringRef getArgument() const final { return "test-pass-tf-dialect"; }
+
+  void runOnOperation() override {
+    auto module = getOperation();
+    mlir::OpBuilder builder(module);
+
+    mlir::Operation* target = nullptr;
+    module->walk([&target](mlir::Operation* op) {
+      if (op->getName().getStringRef() == "tf.Mul") {
+        target = op;
+        return;
+      }
+    });
+    DCHECK(target != nullptr);
+
+    builder.setInsertionPoint(target);
+    auto replacement = builder.create<mlir::TF::AddV2Op>(
+        mlir::NameLoc::get(
+            mlir::StringAttr::get(builder.getContext(), "x_plus_y")),
+        target->getResultTypes(), target->getOperand(0), target->getOperand(1));
+    target->replaceAllUsesWith(replacement->getResults());
+    target->erase();
+  }
+};
+
+inline std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTfgDialectTestPass() {
+  return std::make_unique<TestPassTfgDialect>();
+}
+
+inline std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+CreateTfDialectTestPass() {
+  return std::make_unique<TestPassTfDialect>();
 }
 
 inline void RegisterTestPass() {
-  mlir::registerPass([] { return CreateTestPass(); });
+  mlir::registerPass([] { return CreateTfgDialectTestPass(); });
+  mlir::registerPass([] { return CreateTfDialectTestPass(); });
 }
 
 }  // namespace testing

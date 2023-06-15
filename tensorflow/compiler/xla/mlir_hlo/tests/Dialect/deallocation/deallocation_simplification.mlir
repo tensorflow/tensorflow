@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -allow-unregistered-dialect -hlo-deallocation-simplification -canonicalize | FileCheck %s
+// RUN: mlir-hlo-opt %s -allow-unregistered-dialect -hlo-deallocation-simplification | FileCheck %s
 
 func.func @retain_is_dealloc() {
   %alloc = memref.alloc() : memref<2xf32>
@@ -10,7 +10,8 @@ func.func @retain_is_dealloc() {
 
 // CHECK-LABEL: @retain_is_dealloc
 // CHECK-NEXT: %[[ALLOC:.*]] = memref.alloc()
-// CHECK: memref.dealloc %[[ALLOC]]
+// CHECK-NEXT: test.use
+// CHECK-NEXT: memref.dealloc %[[ALLOC]]
 
 // -----
 
@@ -39,9 +40,14 @@ func.func @retain_is_dealloc_for(%lb: index, %ub: index, %step: index) {
 }
 
 // CHECK-LABEL: @retain_is_dealloc_for
-// CHECK: %[[ALLOC:.*]] = memref.alloc()
-// CHECK: scf.for
-// CHECK: memref.dealloc %[[ALLOC]]
+// CHECK-NEXT: memref.alloc()
+// CHECK-NEXT: deallocation.null
+// CHECK-NEXT: %[[FOR:.*]]:2 = scf.for
+// CHECK-NEXT:   some.use
+// CHECK-NEXT:   scf.yield
+// CHECK-NEXT: }
+// CHECK-NEXT: memref.dealloc %[[FOR]]#0
+// CHECK-NEXT: return
 
 // -----
 
@@ -61,10 +67,12 @@ func.func @retain_is_dealloc_reallocated(%lb: index, %ub: index, %step: index) {
 }
 
 // CHECK-LABEL: @retain_is_dealloc_reallocated
-// CHECK: %[[FOR:.*]] = scf.for
-// CHECK:   memref.dealloc
-// CHECK: }
-// CHECK: memref.dealloc %[[FOR]]
+// CHECK-NEXT: memref.alloc
+// CHECK-NEXT: deallocation.null
+// CHECK-NEXT: %[[FOR:.*]]:2 = scf.for
+// CHECK:        memref.dealloc
+// CHECK:      }
+// CHECK:      memref.dealloc %[[FOR]]
 
 // -----
 
@@ -109,8 +117,8 @@ func.func @retain_is_dealloc_while() {
 }
 
 // CHECK-LABEL: @retain_is_dealloc_while
-// CHECK: %[[WHILE:.*]] = scf.while
-// CHECK: memref.dealloc %[[WHILE]]
+// CHECK: %[[WHILE:.*]]:2 = scf.while
+// CHECK: memref.dealloc %[[WHILE]]#0
 
 // -----
 
@@ -170,5 +178,4 @@ func.func @retain_of_null(%arg0: memref<4xi32>, %arg1: memref<4xi32>,
 }
 
 // CHECK-LABEL: @retain_of_null
-// CHECK-NOT: deallocation.null
 // CHECK-NOT: deallocation.retain()

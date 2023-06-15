@@ -21,7 +21,6 @@ from typing import List, Dict, Optional, Union
 import numpy as np
 
 from tensorflow.dtensor.proto import layout_pb2
-from tensorflow.dtensor.python import config
 from tensorflow.python import _pywrap_dtensor_device
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
@@ -268,43 +267,11 @@ class Mesh(_pywrap_dtensor_device.Mesh):
     _pywrap_dtensor_device.Mesh.__init__(mesh, single_device=device)
     return mesh
 
-  # TODO(b/242201545): implement this in Mesh C++ class
-  def host_mesh(self):
-    """Returns the 1-1 mapped host mesh."""
-    if self.device_type().upper() == 'CPU':
-      return self
-
-    v_cpus_counts = config.num_local_devices('CPU')
-    if v_cpus_counts < len(self.local_devices()):
-      raise ValueError(
-          'Must have at least {0} virtual CPUs for mesh : {1}, '
-          'but got : {2} virtual CPUs. '
-          'Call tf.experimental.dtensor.initialize_accelerator_system() '
-          'to initialize the host CPU devices with the accelerators.'.format(
-              len(self.local_devices()), self.to_string(), v_cpus_counts
-          )
-      )
-    local_device_specs = [
-        tf_device.DeviceSpec.from_string(d) for d in self.local_devices()
-    ]
-    global_device_specs = [
-        tf_device.DeviceSpec.from_string(d) for d in self.global_devices()
-    ]
-
-    device_array = np.asarray(
-        [spec.replace(device_type='CPU') for spec in local_device_specs]
-    ).reshape((len(self.local_devices()), 1))
-    global_devices = [
-        spec.replace(device_type='CPU') for spec in global_device_specs
-    ]
-    h_mesh = Mesh(
-        self.dim_names,
-        self.global_device_ids(),
-        self.local_device_ids(),
-        np.ravel(device_array).tolist(),
-        global_devices=global_devices,
-    )
-    return h_mesh
+  def host_mesh(self) -> 'Mesh':
+    """Returns a host mesh."""
+    # TODO(b/242201545): Find a way to get the super class to return correct
+    # typed objects.
+    return Mesh.from_string(super().host_mesh().to_string())
 
   # TODO(b/242201545): implement this in Mesh C++ class
   def local_device_locations(self) -> List[Dict[str, int]]:

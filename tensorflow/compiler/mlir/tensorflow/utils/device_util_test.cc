@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 

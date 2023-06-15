@@ -32,8 +32,8 @@ func.func @realloc_not_yielded(%size: index, %cond: i1) {
 
 // -----
 
-func.func @realloc_arg(%arg: memref<?xi32>, %size: index) {  // expected-error {{invalid realloc of memref}}
-  %realloc = memref.realloc %arg(%size) : memref<?xi32> to memref<?xi32>
+func.func @realloc_arg(%arg: memref<?xi32>, %size: index) {
+  %realloc = memref.realloc %arg(%size) : memref<?xi32> to memref<?xi32>  // expected-error {{unable to find ownership indicator for operand}}
   return
 }
 
@@ -48,7 +48,7 @@ func.func @realloc_twice(%size: index) {  // expected-error {{invalid realloc of
 
 // -----
 
-func.func @realloc_twice_in_if(%size: index, %cond: i1) {
+func.func @realloc_twice_in_if(%size: index, %cond: i1) {  // expected-error {{invalid realloc of memref}}
   %alloc = memref.alloc(%size) : memref<?xi32>
   scf.if %cond -> memref<?xi32> {
     %realloc = memref.realloc %alloc(%size) : memref<?xi32> to memref<?xi32>
@@ -56,7 +56,7 @@ func.func @realloc_twice_in_if(%size: index, %cond: i1) {
   } else {
     scf.yield %alloc : memref<?xi32>
   }
-  scf.if %cond -> memref<?xi32> {  // expected-error {{Same value reallocated twice}}
+  scf.if %cond -> memref<?xi32> {
     %realloc = memref.realloc %alloc(%size) : memref<?xi32> to memref<?xi32>
     scf.yield %realloc : memref<?xi32>
   } else {

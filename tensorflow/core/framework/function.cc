@@ -18,6 +18,7 @@ limitations under the License.
 #include <ctype.h>
 
 #include <map>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -25,15 +26,18 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_debug_info_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -42,7 +46,9 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/equal_graph_def.h"
+#include "tensorflow/core/util/managed_stack_trace.h"
 #include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/path.h"
 
 namespace tensorflow {
 
@@ -1217,15 +1223,119 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
   return OkStatus();
 }
 
+// Ignore the frames containing this substring for common prefix calculation.
+static const char* kFilenameToIgnorePrefix = "<embedded";
+
+// Converts the given stack frame to a string.
+std::string StackFrameToString(const StackFrame& frame,
+                               int shared_prefix_length) {
+  std::string out = absl::StrFormat(
+      "File \"%s\", line %d, in %s",
+      absl::StrContains(frame.file_name, kFilenameToIgnorePrefix)
+          ? frame.file_name
+          : frame.file_name.substr(shared_prefix_length),
+      frame.line_number, frame.function_name);
+  return out;
+}
+
+std::string ToStringHelper(absl::Span<const StackFrame> stack_frames,
+                           int shared_prefix_length) {
+  return absl::StrJoin(
+      stack_frames, "\n", [&](std::string* out, const StackFrame& frame) {
+        absl::StrAppend(out, StackFrameToString(frame, shared_prefix_length));
+      });
+}
+
+FrozenStackTrace::FrozenStackTrace(absl::Span<StackFrame const> frames,
+                                   absl::Span<StackFrame const> user_frames)
+    : frames_(frames.begin(), frames.end()),
+      user_frames_(user_frames.begin(), user_frames.end()) {
+  if (user_frames.empty()) {
+    user_frames_ = frames_;
+  }
+}
+
+FrozenStackTrace::FrozenStackTrace(
+    const GraphDebugInfo::StackTrace& stack_trace,
+    const GraphDebugInfo& debug_info) {
+  for (const GraphDebugInfo::FileLineCol& file_line_col :
+       stack_trace.file_line_cols()) {
+    int file_index = file_line_col.file_index();
+    std::string file_name =
+        (file_index >= 0 && file_index < debug_info.files_size())
+            ? debug_info.files(file_index)
+            : "<UNKNOWN_FILE_NAME>";
+    frames_.push_back(
+        StackFrame(file_name, file_line_col.line(), file_line_col.func()));
+  }
+}
+
+absl::Span<StackFrame const> FrozenStackTrace::ToFrames() const {
+  return frames_;
+}
+
+StackFrame FrozenStackTrace::LastUserFrame() const { return frames_.back(); }
+
+std::vector<StackFrame> FrozenStackTrace::GetUserFrames(int limit) const {
+  std::vector<StackFrame> result;
+  if (limit < 0 || limit > user_frames_.size()) {
+    limit = user_frames_.size();
+  }
+  for (int i = 0; i < limit; ++i) {
+    result.push_back(user_frames_[i]);
+  }
+  return result;
+}
+
+std::string FrozenStackTrace::ToString(const TracePrintingOptions& opts) const {
+  int shared_prefix_length = 0;
+  if (opts.filter_common_prefix) {
+    std::vector<std::string> prefix_file_names;
+    for (const StackFrame& frame : frames_) {
+      if (!absl::StrContains(frame.file_name, kFilenameToIgnorePrefix)) {
+        prefix_file_names.push_back(frame.file_name);
+      }
+    }
+    shared_prefix_length = tsl::io::CommonPathPrefix(prefix_file_names).size();
+  }
+
+  if (!opts.drop_internal_frames) {
+    return ToStringHelper(frames_, shared_prefix_length);
+  }
+
+  std::vector<StackFrame> non_internal_frames;
+  for (const StackFrame& frame : frames_) {
+    if (!IsInternalFrameForFilename(frame.file_name)) {
+      non_internal_frames.push_back(frame);
+    }
+  }
+  return ToStringHelper(non_internal_frames, shared_prefix_length);
+}
+
+tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
+    const tensorflow::StackTracesMap& map, bool user_frames) {
+  GraphDebugInfoBuilder builder;
+  GraphDebugInfoBuilder::Options options;
+  options.user_frames = user_frames;
+  options.user_frames_limit = -1;
+  builder.AccumulateStackTracesMap(map, "", options);
+  return builder.Build();
+}
+
 FunctionRecord::FunctionRecord(const FunctionDef& fdef,
                                const StackTracesMap& stack_traces,
                                bool finalized)
+    : FunctionRecord(FunctionDef(fdef), StackTracesMap(stack_traces),
+                     finalized) {}
+
+FunctionRecord::FunctionRecord(FunctionDef&& fdef,
+                               StackTracesMap&& stack_traces, bool finalized)
     : finalized_(finalized),
-      fdef_(fdef),
-      stack_traces_(stack_traces),
+      fdef_(std::move(fdef)),
+      stack_traces_(std::move(stack_traces)),
       // Exact shape inference for functions is handled by ShapeRefiner.
       // Here we pass a dummy shape inference function for legacy code paths.
-      op_registration_data_(fdef.signature(), shape_inference::UnknownShape,
+      op_registration_data_(fdef_.signature(), shape_inference::UnknownShape,
                             true /* is_function */) {}
 
 void FunctionRecord::finalize() {
@@ -1352,8 +1462,9 @@ Status FunctionLibraryDefinition::AddFunctionDef(
 }
 
 Status FunctionLibraryDefinition::AddFunctionDefHelper(
-    const FunctionDef& fdef, const StackTracesMap& stack_traces, bool* added) {
-  FunctionRecord* record = new FunctionRecord(fdef, stack_traces, true);
+    FunctionDef&& fdef, StackTracesMap&& stack_traces, bool* added) {
+  FunctionRecord* record =
+      new FunctionRecord(std::move(fdef), std::move(stack_traces), true);
   core::ScopedUnref scoped_unref(record);
   Status status = AddHelper(record, added);
   return status;
@@ -1446,16 +1557,20 @@ Status FunctionLibraryDefinition::AddLibrary(
     const FunctionLibraryDefinition& other) {
   // Clone `other` to ensure thread-safety (grabbing `other`'s lock for
   // the duration of the function could lead to deadlock).
-  FunctionLibraryDefinition clone(other);
+  return AddLibrary(FunctionLibraryDefinition(other));
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    FunctionLibraryDefinition&& other) {
   mutex_lock l(mu_);
-  mutex_lock l2(clone.mu_);
+  mutex_lock l2(other.mu_);
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   std::vector<string> funcs;
   std::vector<string> funcs_with_grads;
   Status s;
   bool added;
-  for (const auto& [name, record] : clone.records_) {
+  for (const auto& [name, record] : other.records_) {
     s = AddHelper(record, &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
@@ -1468,7 +1583,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       funcs.push_back(record->fdef().signature().name());
     }
   }
-  for (auto iter : clone.func_grad_) {
+  for (auto iter : other.func_grad_) {
     GradientDef grad;
     grad.set_function_name(iter.first);
     grad.set_gradient_func(iter.second);
@@ -1489,6 +1604,22 @@ Status FunctionLibraryDefinition::AddLibrary(
 
 Status FunctionLibraryDefinition::AddLibrary(
     const FunctionDefLibrary& lib_def) {
+  return AddLibrary(FunctionDefLibrary(lib_def), /*stack_traces=*/{});
+}
+
+Status FunctionLibraryDefinition::AddLibrary(FunctionDefLibrary&& lib_def) {
+  return AddLibrary(std::move(lib_def), /*stack_traces=*/{});
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    const FunctionDefLibrary& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces) {
+  return AddLibrary(FunctionDefLibrary(lib_def), library_traces);
+}
+
+Status FunctionLibraryDefinition::AddLibrary(
+    FunctionDefLibrary&& lib_def,
+    const FunctionDefLibraryStackTraces& library_traces) {
   // Remember the funcs and grads that we added successfully so that
   // we can roll them back on error.
   mutex_lock l(mu_);
@@ -1496,8 +1627,12 @@ Status FunctionLibraryDefinition::AddLibrary(
   std::vector<string> funcs_with_grads;
   Status s;
   bool added;
-  for (const FunctionDef& fdef : lib_def.function()) {
-    s = AddFunctionDefHelper(fdef, /*stack_traces=*/{}, &added);
+  for (FunctionDef& fdef : *lib_def.mutable_function()) {
+    std::string name = fdef.signature().name();
+    StackTracesMap stack_traces = library_traces.contains(name)
+                                      ? StackTracesMap(library_traces.at(name))
+                                      : StackTracesMap();
+    s = AddFunctionDefHelper(std::move(fdef), std::move(stack_traces), &added);
     if (!s.ok()) {
       Status remove_status = Remove(funcs, funcs_with_grads);
       if (!remove_status.ok()) {
@@ -1506,7 +1641,7 @@ Status FunctionLibraryDefinition::AddLibrary(
       return s;
     }
     if (added) {
-      funcs.push_back(fdef.signature().name());
+      funcs.push_back(std::move(name));
     }
   }
   for (const GradientDef& grad : lib_def.gradient()) {
@@ -1531,7 +1666,8 @@ Status FunctionLibraryDefinition::ReplaceFunction(
   mutex_lock l(mu_);
   bool added;
   TF_RETURN_IF_ERROR(RemoveFunctionHelper(func));
-  TF_RETURN_IF_ERROR(AddFunctionDefHelper(fdef, stack_traces, &added));
+  TF_RETURN_IF_ERROR(AddFunctionDefHelper(
+      FunctionDef(fdef), StackTracesMap(stack_traces), &added));
   return OkStatus();
 }
 

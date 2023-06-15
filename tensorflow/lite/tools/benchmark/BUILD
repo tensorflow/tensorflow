@@ -106,7 +106,6 @@ cc_test(
         "//tensorflow/lite:testdata/string_input_model.bin",
     ],
     tags = [
-        "no_oss",  # TODO(b/275623299): Enable when fixed.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
@@ -177,6 +176,22 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "benchmark_tflite_model_lib_test",
+    srcs = [
+        "benchmark_tflite_model_test.cc",
+    ],
+    data = ["@tflite_mobilenet_float//:mobilenet_v1_1.0_224.tflite"],
+    deps = [
+        ":benchmark_model_lib",
+        ":benchmark_params",
+        ":benchmark_tflite_model_lib",
+        "//tensorflow/lite/tools:tool_params",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "benchmark_multirun_stats_recorder",
     hdrs = ["benchmark_multirun_stats_recorder.h"],
@@ -196,7 +211,6 @@ cc_library(
         ":benchmark_multirun_stats_recorder",
         ":benchmark_params",
         ":benchmark_utils",
-        "@com_google_absl//absl/memory",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
@@ -205,6 +219,7 @@ cc_library(
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools:logging",
+        "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",

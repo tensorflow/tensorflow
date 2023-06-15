@@ -18,9 +18,11 @@ limitations under the License.
 #include <algorithm>
 #include <atomic>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
@@ -47,6 +49,23 @@ namespace tensorflow {
 namespace {
 
 const char kScopedAllocatorAttrName[] = "_scoped_allocator";
+
+// For stateless RNGs ops, they are pure but device-dependent. Those ops are not
+// constant-foldable.
+static absl::flat_hash_set<std::string>* kBlockList =
+    new absl::flat_hash_set<std::string>({"StatelessRandomGetKeyCounter"});
+
+// Always allow these ops to fold even if their shape information is incomplete.
+static absl::flat_hash_set<std::string>* kAllowList =
+    new absl::flat_hash_set<std::string>({
+        "Cast",
+        "Const",
+        "Identity",
+        "IdentityN",
+        "Less",
+        "NoOp",
+        "StopGradient",
+    });
 
 // Test to see if the Op is one that turns into a constant when its
 // inputs' shapes are known.
@@ -242,9 +261,14 @@ bool IsConstantFoldable(
     if (shape_it != shape_map->end()) {
       for (int64_t i = 0; i < shape_it->second.size(); ++i) {
         const auto& out_shape = shape_it->second[i];
-        if (out_shape.IsFullyDefined() &&
-            out_shape.num_elements() * DataTypeSize(n->output_type(i)) >
-                max_constant_size_in_bytes) {
+        // Don't fold nodes that are too large or if we can't determine the
+        // shape. We special case nodes that are known to have a safe expansion.
+        if (!out_shape.IsFullyDefined() &&
+            !kAllowList->contains(n->type_string())) {
+          return false;
+        }
+        if (out_shape.num_elements() * DataTypeSize(n->output_type(i)) >
+            max_constant_size_in_bytes) {
           return false;
         }
       }
@@ -284,6 +308,11 @@ bool IsConstantFoldable(
             << "] for constant folding due to scoped allocator";
     return false;
   }
+  if (kBlockList->contains(n->type_string())) {
+    VLOG(2) << "Skip node [" << n->DebugString()
+            << "] for constant folding, it is in constant folding block list";
+    return false;
+  }
   return true;
 }
 
@@ -296,51 +325,51 @@ void ConsiderConstantFoldableNode(
     std::unordered_map<const Node*, gtl::FlatSet<Node*>>* constant_control_deps,
     std::unordered_map<const Node*, std::vector<Tensor>>* shape_replacement_map,
     bool* internal_node_inserted) {
-  if (IsConstantFoldable(n, opts.shape_map, opts.consider,
-                         opts.max_constant_size_in_bytes,
-                         shape_replacement_map)) {
-    // A node is constant provided all of its non-control incoming Tensors come
-    // from constant nodes, or it's a shape Op with statically known inputs in
-    // which case it is placed in shape_replacement_map.
-    //
-    // We allow control dependencies from non-constant nodes to constant nodes,
-    // but to preserve the graph structure we must transfer the control
-    // dependency onto any constant replacement.
-    bool all_parents_constant = true;
-    for (const Edge* in : n->in_edges()) {
-      // Allows non-constant -> constant control edges.
-      if (!in->IsControlEdge() &&
-          constant_control_deps->count(in->src()) == 0) {
-        all_parents_constant = false;
-        break;
+  if (!IsConstantFoldable(n, opts.shape_map, opts.consider,
+                          opts.max_constant_size_in_bytes,
+                          shape_replacement_map)) {
+    return;
+  }
+  // A node is constant provided all of its non-control incoming Tensors come
+  // from constant nodes, or it's a shape Op with statically known inputs in
+  // which case it is placed in shape_replacement_map.
+  //
+  // We allow control dependencies from non-constant nodes to constant nodes,
+  // but to preserve the graph structure we must transfer the control
+  // dependency onto any constant replacement.
+  bool all_parents_constant = true;
+  for (const Edge* in : n->in_edges()) {
+    // Allows non-constant -> constant control edges.
+    if (!in->IsControlEdge() && constant_control_deps->count(in->src()) == 0) {
+      all_parents_constant = false;
+      break;
+    }
+  }
+  if (all_parents_constant || shape_replacement_map->count(n) != 0) {
+    gtl::FlatSet<Node*>& control_deps = (*constant_control_deps)[n];
+    for (const Edge* e : n->in_edges()) {
+      if (constant_control_deps->count(e->src()) == 0) {
+        // This branch is taken if the incoming edge is a control dependency,
+        // in which case we want to add it to the dependencies being
+        // accumulated for this node, or the incoming edge is not
+        // constant. The latter may happen when n is a shape node and the
+        // source has known shape. In that case add a control dependency from
+        // the source node, since there was previously a data dependency and
+        // we want to preserve sequencing constraints.
+        if (!e->src()->IsSource()) {
+          control_deps.insert(e->src());
+        }
+      } else {
+        // If the parent has been accumulating control dependencies, add all
+        // of its transitive control deps.
+        const gtl::FlatSet<Node*>& parent_deps =
+            (*constant_control_deps)[e->src()];
+        control_deps.insert(parent_deps.begin(), parent_deps.end());
       }
     }
-    if (all_parents_constant || shape_replacement_map->count(n) != 0) {
-      gtl::FlatSet<Node*>& control_deps = (*constant_control_deps)[n];
-      for (const Edge* e : n->in_edges()) {
-        if (constant_control_deps->count(e->src()) == 0) {
-          // This branch is taken if the incoming edge is a control dependency,
-          // in which case we want to add it to the dependencies being
-          // accumulated for this node, or the incoming edge is not
-          // constant. The latter may happen when n is a shape node and the
-          // source has known shape. In that case add a control dependency from
-          // the source node, since there was previously a data dependency and
-          // we want to preserve sequencing constraints.
-          if (!e->src()->IsSource()) {
-            control_deps.insert(e->src());
-          }
-        } else {
-          // If the parent has been accumulating control dependencies, add all
-          // of its transitive control deps.
-          const gtl::FlatSet<Node*>& parent_deps =
-              (*constant_control_deps)[e->src()];
-          control_deps.insert(parent_deps.begin(), parent_deps.end());
-        }
-      }
-      nodes->push_back(n);
-      if (!n->IsConstant()) {
-        *internal_node_inserted = true;
-      }
+    nodes->push_back(n);
+    if (!n->IsConstant()) {
+      *internal_node_inserted = true;
     }
   }
 }

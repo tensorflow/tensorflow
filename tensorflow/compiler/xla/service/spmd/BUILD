@@ -35,6 +35,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/xla:comparison_util",
+        "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -46,6 +47,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/hlo/ir:hlo_reachability",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/hlo/utils:hlo_sharding_util",
         "//tensorflow/compiler/xla/service:call_graph",
         "//tensorflow/compiler/xla/service:custom_call_sharding_helper",
@@ -56,7 +58,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_lexer",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:sharding_propagation",
@@ -121,8 +122,8 @@ cc_library(
     hdrs = ["canonicalize_all_gather_for_cse.h"],
     deps = [
         "//tensorflow/compiler/xla/hlo/ir:hlo",
+        "//tensorflow/compiler/xla/hlo/utils:hlo_query",
         "//tensorflow/compiler/xla/service:hlo_pass",
-        "//tensorflow/compiler/xla/service:hlo_query",
         "@com_google_absl//absl/types:span",
     ],
 )

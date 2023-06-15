@@ -69,7 +69,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
     absl::call_once(failure_logged, [&]() {
       LOG(WARNING) << "Failed to check cudnn convolutions for out-of-bounds "
                    << "reads and writes with an error message: '"
-                   << rz_status.status().error_message()
+                   << rz_status.status().message()
                    << "'; skipping this check. This only means that we won't "
                    << "check cudnn for out-of-bounds reads and writes. This "
                    << "message will only be printed once.";

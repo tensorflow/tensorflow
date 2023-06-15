@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
@@ -186,7 +187,7 @@ XLineBuilder CreateXLine(XPlaneBuilder* plane, absl::string_view name,
 
 XEventBuilder CreateXEvent(XPlaneBuilder* plane, XLineBuilder line,
                            absl::string_view event_name,
-                           absl::optional<absl::string_view> display,
+                           std::optional<absl::string_view> display,
                            int64_t offset_ns, int64_t duration_ns) {
   XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(event_name);
   if (display) event_metadata->set_display_name(std::string(*display));
@@ -240,19 +241,19 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
     auto l1 = CreateXLine(&src, "l1", "d1", kLineIdOnlyInSrcPlane, 100);
     auto e1 = CreateXEvent(&src, l1, "event1", "display1", 1, 2);
     CreateXStats(&src, &e1, "event_stat1", 2.0);
-    auto e2 = CreateXEvent(&src, l1, "event2", absl::nullopt, 3, 4);
+    auto e2 = CreateXEvent(&src, l1, "event2", std::nullopt, 3, 4);
     CreateXStats(&src, &e2, "event_stat2", 3);
 
     auto l2 = CreateXLine(&src, "l2", "d2", kLineIdInBothPlanes, 200);
-    auto e3 = CreateXEvent(&src, l2, "event3", absl::nullopt, 5, 7);
+    auto e3 = CreateXEvent(&src, l2, "event3", std::nullopt, 5, 7);
     CreateXStats(&src, &e3, "event_stat3", 2.0);
-    auto e4 = CreateXEvent(&src, l2, "event4", absl::nullopt, 6, 8);
+    auto e4 = CreateXEvent(&src, l2, "event4", std::nullopt, 6, 8);
     CreateXStats(&src, &e4, "event_stat4", 3);
     CreateXStats(&src, &e4, "event_stat5", 3);
 
     auto l5 = CreateXLine(&src, "l5", "d5", kLineIdInBothPlanes2, 700);
-    CreateXEvent(&src, l5, "event51", absl::nullopt, 9, 10);
-    CreateXEvent(&src, l5, "event52", absl::nullopt, 11, 12);
+    CreateXEvent(&src, l5, "event51", std::nullopt, 9, 10);
+    CreateXEvent(&src, l5, "event52", std::nullopt, 11, 12);
   }
 
   {  // Populate the destination plane.
@@ -261,20 +262,20 @@ TEST(XPlaneUtilsTest, MergeXPlaneTest) {
     CreateXStats(&dst, &dst, "plane_stat3", 4);  // shared but different.
 
     auto l3 = CreateXLine(&dst, "l3", "d3", kLineIdOnlyInDstPlane, 300);
-    auto e5 = CreateXEvent(&dst, l3, "event5", absl::nullopt, 11, 2);
+    auto e5 = CreateXEvent(&dst, l3, "event5", std::nullopt, 11, 2);
     CreateXStats(&dst, &e5, "event_stat6", 2.0);
-    auto e6 = CreateXEvent(&dst, l3, "event6", absl::nullopt, 13, 4);
+    auto e6 = CreateXEvent(&dst, l3, "event6", std::nullopt, 13, 4);
     CreateXStats(&dst, &e6, "event_stat7", 3);
 
     auto l2 = CreateXLine(&dst, "l4", "d4", kLineIdInBothPlanes, 400);
-    auto e7 = CreateXEvent(&dst, l2, "event7", absl::nullopt, 15, 7);
+    auto e7 = CreateXEvent(&dst, l2, "event7", std::nullopt, 15, 7);
     CreateXStats(&dst, &e7, "event_stat8", 2.0);
     auto e8 = CreateXEvent(&dst, l2, "event8", "display8", 16, 8);
     CreateXStats(&dst, &e8, "event_stat9", 3);
 
     auto l6 = CreateXLine(&dst, "l6", "d6", kLineIdInBothPlanes2, 300);
-    CreateXEvent(&dst, l6, "event61", absl::nullopt, 21, 10);
-    CreateXEvent(&dst, l6, "event62", absl::nullopt, 22, 12);
+    CreateXEvent(&dst, l6, "event61", std::nullopt, 21, 10);
+    CreateXEvent(&dst, l6, "event62", std::nullopt, 22, 12);
   }
 
   MergePlanes(src_plane, &dst_plane);
@@ -615,8 +616,8 @@ TEST(XplaneutilsTest, TestIsHostPlane) {
   EXPECT_TRUE(IsHostPlane(*xplane_metadata));
   EXPECT_TRUE(IsHostPlane(*xplane_syscalls));
   EXPECT_TRUE(IsHostPlane(*xplane_python_tracer));
-  EXPECT_TRUE(IsHostPlane(*xplane_custom_prefix));
-  EXPECT_TRUE(IsHostPlane(*xplane_legacy_custom));
+  EXPECT_FALSE(IsHostPlane(*xplane_custom_prefix));
+  EXPECT_FALSE(IsHostPlane(*xplane_legacy_custom));
   EXPECT_TRUE(IsHostPlane(*xplane_cupti));
 }
 
@@ -625,8 +626,17 @@ TEST(XplaneutilsTest, TestIsDevicePlane) {
   auto xplane_host_thread = FindOrAddMutablePlaneWithName(&xspace, "/host:CPU");
   auto xplane_device_thread =
       FindOrAddMutablePlaneWithName(&xspace, "/device:TPU");
+  auto xplane_task_env_thread =
+      FindOrAddMutablePlaneWithName(&xspace, "Task Environment");
+  auto xplane_custom_prefix =
+      FindOrAddMutablePlaneWithName(&xspace, "/device:CUSTOM:123");
+  auto xplane_legacy_custom =
+      FindOrAddMutablePlaneWithName(&xspace, "/custom:456");
   EXPECT_FALSE(IsDevicePlane(*xplane_host_thread));
+  EXPECT_FALSE(IsDevicePlane(*xplane_task_env_thread));
   EXPECT_TRUE(IsDevicePlane(*xplane_device_thread));
+  EXPECT_TRUE(IsDevicePlane(*xplane_custom_prefix));
+  EXPECT_TRUE(IsDevicePlane(*xplane_legacy_custom));
 }
 
 }  // namespace

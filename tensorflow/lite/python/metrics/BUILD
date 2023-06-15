@@ -38,7 +38,7 @@ pybind_extension(
     visibility = ["//visibility:private"],
     deps = [
         ":metrics_wrapper_lib",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@com_google_protobuf//:protobuf",
         "@pybind11",
@@ -64,8 +64,8 @@ py_test(
     deps = [
         ":metrics_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -125,8 +125,8 @@ py_test(
         ":metrics",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:lite",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

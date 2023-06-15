@@ -47,12 +47,7 @@ StatusOr<std::pair<ncclDataType_t, int>> ToNcclDataTypeAndCountMultiplier(
     PrimitiveType element_type, Thunk::Kind reduction_op);
 
 bool IsGlobalNcclConfig();
-bool IsNcclLaunchModeParallel();
 
-#ifndef TENSORFLOW_USE_ROCM
-Status ToStatus(cudaError_t s, const char* file, int64_t line,
-                const char* expr);
-#endif
 Status ToStatus(ncclResult_t s, const char* file, int64_t line,
                 const char* expr);
 
@@ -129,7 +124,8 @@ struct NcclComm : public Lockable<ncclComm_t> {
 StatusOr<NcclComm::Lock> AcquireNcclComm(
     RunId run_id, OpId op_id, std::vector<GlobalDeviceId> participants,
     size_t num_local_participants,
-    const NcclUniqueIdCallback& unique_id_callback, int rank);
+    const NcclUniqueIdCallback& unique_id_callback, int rank,
+    int64_t stream_id);
 
 }  // namespace gpu
 }  // namespace xla

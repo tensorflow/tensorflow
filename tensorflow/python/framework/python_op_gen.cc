@@ -304,6 +304,7 @@ class GenPythonOp {
   const string function_name_;
   const int num_outs_;
   python_op_gen_internal::GeneratedCodeAnnotator* annotator_ = nullptr;
+  uint32_t def_offset_start_ = 0;
 
   // Return value from Code() is prelude_ + result_.
   string prelude_;  // Code before function definition
@@ -1237,6 +1238,12 @@ string GenPythonOp::Code() {
     return result_;
   }
 
+  if (annotator_ != nullptr) {
+    // prelude_ will be prepended.
+    def_offset_start_ += prelude_.length();
+    annotator_->AddAnnotation(op_def_, function_name_, def_offset_start_);
+  }
+
   return prelude_ + result_;
 }
 
@@ -1636,8 +1643,7 @@ bool GenPythonOp::AddEagerFastPathAndGraphCode(
   if (annotator_ != nullptr) {
     // The generated function name will start at the character after
     // the current cursor + len("def ")
-    annotator_->AddAnnotation(op_def_, function_name_,
-                              /*offset_start =*/result_.length() + 5);
+    def_offset_start_ = result_.length() + 4;
   }
   AddDefLine(function_name_, parameters);
   AddDocStringDescription();
@@ -2000,10 +2006,6 @@ from tensorflow.python.util.tf_export import tf_export
 
 from typing import TypeVar
 )");
-  if (annotate) {
-    annotator.SetBase(result.length());
-  }
-
   for (const auto& op_def : ops.op()) {
     const auto* api_def = api_defs.GetApiDef(op_def.name());
 
@@ -2044,12 +2046,12 @@ from typing import TypeVar
       continue;
     }
 
-    strings::StrAppend(&result,
-                       GetEagerPythonOp(op_def, *api_def, function_name,
-                                        annotate ? &annotator : nullptr));
     if (annotate) {
       annotator.SetBase(result.length());
     }
+    strings::StrAppend(&result,
+                       GetEagerPythonOp(op_def, *api_def, function_name,
+                                        annotate ? &annotator : nullptr));
   }
 
   if (annotate) {

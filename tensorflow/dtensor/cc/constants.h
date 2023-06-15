@@ -94,6 +94,10 @@ static constexpr char kMeshCoordinatesAttr[] = "_mesh_coordinates";
 // such as IR dumps etc.
 static constexpr char kDoNotLog[] = "dtensor.do_not_log";
 
+// Attribute used to record the name of the eager operation triggered the
+// DTensor rewrites.
+static constexpr char kEagerOperationName[] = "dtensor.eager_operation_name";
+
 // The number of TPU cores in a donut.
 static constexpr int kTpuDonutSize = 8;
 
@@ -111,6 +115,10 @@ static constexpr char kSkipXlaCompilation[] = "_skip_xla_compilation";
 // An attribute which stores the cache_key for the graph in the module. Used
 // to uniquely name functions.
 static constexpr char kCacheKey[] = "dtensor.cache_key";
+
+// An attribute on Const nodes to record which argument it was originally
+// from.
+static constexpr char kFromArgIndex[] = "dtensor.from_arg_index";
 
 // An attribute that determines whether a tensor is a sparse tensor. If this
 // attribute exists in a tensor, then this tensor is a sparse tensor.
@@ -144,6 +152,16 @@ static constexpr char kIteratorOutputShapes[] = "output_shapes";
 
 // The number of list of regular tensors used to represent sparse tensors.
 static constexpr int kSparseTensorNum = 3;
+
+// Attribute which stores the environment variable value for all_reduce
+// optimization group size: DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE.
+static constexpr char kAllReduceNumOpsInGroup[] =
+    "dtensor.all_reduce_combiner.num_ops_in_group";
+
+// Attribute which stores the environment variable value for whether
+// multi-device expansion is enabled: DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION.
+static constexpr char kEnableMultiDeviceMode[] =
+    "dtensor.enable_multi_device_mode";
 
 }  // namespace dtensor
 }  // namespace tensorflow

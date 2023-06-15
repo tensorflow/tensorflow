@@ -359,7 +359,8 @@ static absl::Status ConvImpl(
   }
 
   // Get or create the convolution runner state.
-  absl::StatusOr<ConvRunner*> conv =
+  TF_ASSIGN_OR_RETURN(
+      ConvRunner * conv,
       runner.GetOrCreate([&]() -> absl::StatusOr<ConvRunner> {
         GpuConvDescriptor descriptor = GetConvDescriptor(
             kind, operand0, operand1, output, scratch, conv_dims,
@@ -368,12 +369,11 @@ static absl::Status ConvImpl(
             backend_config, {feature_group_count, result_scale}, fused_attrs,
             side_input_attrs);
 
-        StatusOr<GpuConvConfig> conv_config = GetGpuConvConfig(descriptor, "");
-        if (!conv_config.ok()) return ToAbslStatus(conv_config.status());
+        TF_ASSIGN_OR_RETURN(GpuConvConfig conv_config,
+                            GetGpuConvConfig(descriptor, ""));
 
-        return ConvRunner(*std::move(conv_config));
-      });
-  if (!conv.ok()) return conv.status();
+        return ConvRunner(std::move(conv_config));
+      }));
 
   // Prepare buffer arguments.
   std::vector<se::DeviceMemoryBase> buffers = {GetDeviceAddress(operand0),
@@ -397,49 +397,49 @@ static absl::Status ConvImpl(
     DeviceConfig device_config = {stream_exec, allocator};
     GpuConvAlgorithmPicker conv_algorithm_picker(device_config);
 
-    GpuConvConfig gpu_conv_config = conv.value()->config;
-    auto autotune_result =
+    GpuConvConfig gpu_conv_config = conv->config;
+    TF_ASSIGN_OR_RETURN(
+        AutotuneResult best_algo,
         conv_algorithm_picker.PickBestAlgorithmWithAllocatedBuffer(
             gpu_conv_config, run_options, debug_options, buffers,
-            result_buffer);
-    if (!autotune_result.ok()) return ToAbslStatus(autotune_result.status());
+            result_buffer));
 
     // Set algorithm in the convolution runner state.
-    AutotuneResult best_algo = autotune_result.value();
     se::dnn::AlgorithmDesc algo_desc(best_algo.conv().algorithm(),
                                      best_algo.conv().tensor_ops_enabled());
-    (*conv)->config.algorithm = algo_desc;
+    conv->config.algorithm = algo_desc;
 
     // Set scratch buffer size according to the selected algorithm.
     scratch_buffer_size = best_algo.scratch_bytes();
   }
 
   RunConvOptions opts;
-  opts.runner_cache = &(*conv)->runner;
+  opts.runner_cache = &conv->runner;
 
   if (scratch_buffer_size > scratch_buffer.size()) {
     // Need to reallocate scratch buffer.
     se::DeviceMemoryAllocator* allocator = run_options->allocator();
-    StatusOr<se::OwningDeviceMemory> allocated_buffer =
-        allocator->Allocate(run_options->device_ordinal(), scratch_buffer_size);
-    if (!allocated_buffer.ok()) return ToAbslStatus(allocated_buffer.status());
-    se::DeviceMemoryBase new_scratch_buffer(allocated_buffer->ptr(),
+    TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory allocated_buffer,
+                        allocator->Allocate(run_options->device_ordinal(),
+                                            scratch_buffer_size));
+    se::DeviceMemoryBase new_scratch_buffer(allocated_buffer.ptr(),
                                             scratch_buffer_size);
 
     // Run the convolution using the new scratch buffer.
-    auto st = RunGpuConv((*conv)->config, buffers, result_buffer,
-                         new_scratch_buffer, run_options->stream(), opts);
-    if (!st.ok() || !run_options->stream()->ok()) {
-      return ToAbslStatus(st);
+    TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffer,
+                                  new_scratch_buffer, run_options->stream(),
+                                  opts));
+    if (!run_options->stream()->ok()) {
+      return absl::InternalError("run_options stream not ok");
     }
     return absl::OkStatus();
   }
 
   // Run the convolution.
-  auto st = RunGpuConv((*conv)->config, buffers, result_buffer, scratch_buffer,
-                       run_options->stream(), opts);
-  if (!st.ok() || !run_options->stream()->ok()) {
-    return ToAbslStatus(st);
+  TF_RETURN_IF_ERROR(RunGpuConv(conv->config, buffers, result_buffer,
+                                scratch_buffer, run_options->stream(), opts));
+  if (!run_options->stream()->ok()) {
+    return absl::InternalError("run_options stream not ok");
   }
 
   return absl::OkStatus();

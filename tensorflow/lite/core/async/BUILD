@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
+load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -83,15 +84,12 @@ cc_test(
     ],
 )
 
-cc_library(
+cc_library_with_tflite(
     name = "backend_async_kernel_interface",
-    srcs = ["backend_async_kernel_interface.cc"],
     hdrs = ["backend_async_kernel_interface.h"],
-    deps = [
-        "//tensorflow/lite/core/async/c:async_kernel",
-        "//tensorflow/lite/core/async/c:types",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
+    deprecation = "Use //tensorflow/lite/async:backend_async_kernel_interface instead.",
+    tflite_deps = [
+        "//tensorflow/lite/async:backend_async_kernel_interface",
     ],
 )
 
@@ -124,26 +122,13 @@ cc_test(
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/lite/core/async/c:task",
         "//tensorflow/lite/core/async/c:types",
+        "//tensorflow/lite/core/async/interop:attribute_map_internal",
         "//tensorflow/lite/core/async/testing:mock_async_kernel",
         "//tensorflow/lite/core/async/testing:test_backend",
         "//tensorflow/lite/core/c:c_api_experimental",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "backend_async_kernel_interface_test",
-    srcs = ["backend_async_kernel_interface_test.cc"],
-    deps = [
-        ":async_kernel_internal",
-        ":backend_async_kernel_interface",
-        "//tensorflow/lite/core/async/c:types",
-        "//tensorflow/lite/core/async/testing:mock_async_kernel",
-        "//tensorflow/lite/core/c:c_api_types",
-        "//tensorflow/lite/core/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

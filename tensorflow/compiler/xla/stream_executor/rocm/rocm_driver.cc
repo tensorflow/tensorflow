@@ -501,8 +501,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                GpuStreamHandle stream,
                                                StreamCallback callback,
                                                void* data) {
-  hipError_t res = wrap::hipStreamAddCallback(
-      stream, (hipStreamCallback_t)callback, data, 0 /* = flags */);
+  hipError_t res = wrap::hipLaunchHostFunc(stream, (hipHostFn_t)callback, data);
   if (res != hipSuccess) {
     LOG(ERROR) << "unable to add host callback: " << ToString(res);
     return false;
@@ -690,6 +689,23 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     return false;
   }
   return true;
+}
+
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  ScopedActivateContext activation(context);
+  if (stream_priority == stream_executor::StreamPriority::Default) {
+    return 0;
+  }
+  int lowest, highest;
+  hipError_t res = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
+  if (res != hipSuccess) {
+    LOG(ERROR)
+        << "Could not query stream priority range. Returning default priority.";
+    return 0;
+  }
+  return stream_priority == stream_executor::StreamPriority::Highest ? highest
+                                                                     : lowest;
 }
 
 /* static */ tsl::Status GpuDriver::DestroyEvent(GpuContext* context,
@@ -1390,6 +1406,11 @@ static tsl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   }
 
   return max_blocks;
+}
+
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  return 0;
 }
 
 }  // namespace gpu

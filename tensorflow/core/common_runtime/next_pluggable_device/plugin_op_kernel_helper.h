@@ -16,24 +16,21 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_OP_KERNEL_HELPER_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_NEXT_PLUGGABLE_DEVICE_PLUGIN_OP_KERNEL_HELPER_H_
 
-#include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
-
-#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
-#include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_op_kernel.h"
-#else
 #include "tensorflow/c/kernels.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/c_plugin_op_kernel.h"
-#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
+#include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_op_kernel.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/next_pluggable_device_c_api_flag.h"
+#include "tensorflow/core/common_runtime/next_pluggable_device/plugin_op_kernel.h"
 
 namespace tensorflow {
 
 inline PluginOpKernelConstruction* CreatePluginOpKernelConstruction(void* ctx) {
-#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
-  return new DirectPluginOpKernelConstruction(ctx);
-#else
-  return new CPluginOpKernelConstruction(ctx);
-#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
+  if (!npd::kTfNextPluggableDeviceUseCApi) {
+    return new DirectPluginOpKernelConstruction(ctx);
+  } else {
+    return new CPluginOpKernelConstruction(ctx);
+  }
 }
 
 inline void DeletePluginOpKernelConstruction(
@@ -42,11 +39,11 @@ inline void DeletePluginOpKernelConstruction(
 }
 
 inline PluginOpKernelContext* CreatePluginOpKernelContext(void* ctx) {
-#ifndef TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
-  return new DirectPluginOpKernelContext(ctx);
-#else
-  return new CPluginOpKernelContext(ctx);
-#endif  // TF_NEXT_PLUGGABLE_DEVICE_USE_C_API
+  if (!npd::kTfNextPluggableDeviceUseCApi) {
+    return new DirectPluginOpKernelContext(ctx);
+  } else {
+    return new CPluginOpKernelContext(ctx);
+  }
 }
 
 inline void DeletePluginOpKernelContext(PluginOpKernelContext* wrapper) {

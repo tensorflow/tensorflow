@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <array>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>

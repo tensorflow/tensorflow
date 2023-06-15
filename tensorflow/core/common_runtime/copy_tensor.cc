@@ -208,7 +208,7 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         bool sync_dst_compute) {
   profiler::ScopedAnnotation annotation(
       [&] { return absl::StrCat("#edge_name=", edge_name, "#"); });
-  VLOG(1) << "Copy " << edge_name;
+  VLOG(4) << "Copy " << edge_name;
 
   const DeviceType src_device_type(
       src_alloc_attr.on_host() ? DEVICE_CPU : src->attributes().device_type());

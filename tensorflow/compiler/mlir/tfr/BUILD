@@ -194,6 +194,7 @@ tf_cc_binary(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "//tensorflow/compiler/mlir:run_lit.sh",
     test_file_exts = ["mlir"],
@@ -286,6 +287,7 @@ tf_py_test(
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -317,6 +319,7 @@ tf_py_test(
     ],
     deps = [
         "//tensorflow/compiler/mlir/tfr/resources:composite_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -326,8 +329,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tfr",
-        "//tensorflow/python:pybind11_lib",
-        "//tensorflow/python:pybind11_status",
+        "//tensorflow/python/lib/core:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
@@ -367,7 +370,7 @@ py_library(
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:op_def_registry",
-        "//tensorflow/python/platform",
+        "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
         "@gast_archive//:gast",
     ],
@@ -385,8 +388,9 @@ tf_py_test(
         ":tfr_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
         "//tensorflow/compiler/mlir/tfr/resources:test_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:math_ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -412,6 +416,7 @@ tf_py_test(
         ":composite",
         ":op_reg_gen",
         "//tensorflow/compiler/mlir/python/mlir_wrapper:filecheck_wrapper",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 
@@ -421,6 +426,7 @@ py_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/platform:client_testlib",
     ],
 )
 

@@ -17,6 +17,7 @@ limitations under the License.
 // tiled loops.
 
 #include <cstdint>
+#include <memory>
 #include <tuple>
 #include <utility>
 

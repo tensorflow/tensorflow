@@ -1,3 +1,4 @@
+#include "tensorflow/tsl/lib/core/status_test_util.h"
 /* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,9 +19,18 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/python/ifrt/device.h"
+#include "tensorflow/compiler/xla/python/ifrt/dtype.h"
+#include "tensorflow/compiler/xla/python/ifrt/shape.h"
+#include "tensorflow/tsl/platform/statusor.h"
+#include "tensorflow/tsl/platform/test.h"
+#include "tfrt/concurrency/ref_count.h"  // from @tf_runtime
 
 namespace xla {
 namespace ifrt {
@@ -35,6 +45,36 @@ bool IsClientFactoryRegistered();
 
 // Gets a new IFRT client using the registered client factory.
 StatusOr<std::unique_ptr<Client>> GetClient();
+
+// Asserts the content of an Array.
+// This will blocking copy the data to host buffer.
+template <typename ElementT>
+void AssertPerShardData(
+    tsl::RCReference<Array> actual, DType expected_dtype,
+    Shape expected_per_shard_shape,
+    absl::Span<const absl::Span<const ElementT>> expected_per_shard_data,
+    DeviceList expected_device_list) {
+  ASSERT_EQ(actual->dtype(), expected_dtype);
+  EXPECT_THAT(GetDeviceIds(actual->sharding().devices()),
+              testing::ElementsAreArray(GetDeviceIds(expected_device_list)));
+  TF_ASSERT_OK_AND_ASSIGN(auto actual_per_shard_arrays,
+                          actual->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kAlwaysCopy));
+  ASSERT_EQ(actual_per_shard_arrays.size(), expected_per_shard_data.size());
+  for (int i = 0; i < actual_per_shard_arrays.size(); ++i) {
+    SCOPED_TRACE(absl::StrCat("Shard ", i));
+    tsl::RCReference<Array> array = actual_per_shard_arrays[i];
+    ASSERT_EQ(array->shape(), expected_per_shard_shape);
+    std::vector<ElementT> actual_data(expected_per_shard_shape.num_elements());
+    TF_ASSERT_OK(array
+                     ->CopyToHostBuffer(actual_data.data(),
+                                        /*byte_strides=*/std::nullopt,
+                                        ArrayCopySemantics::kAlwaysCopy)
+                     .Await());
+    EXPECT_THAT(actual_data,
+                testing::ElementsAreArray(expected_per_shard_data[i]));
+  }
+}
 
 }  // namespace test_util
 }  // namespace ifrt

@@ -32,8 +32,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using ::llvm::StringRef;
-using ::mlir::DialectRegistry;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;

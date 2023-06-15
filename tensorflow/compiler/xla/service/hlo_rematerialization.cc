@@ -31,11 +31,14 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_clone_context.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_schedule.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -43,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -1147,6 +1149,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(
         RematerializeBuffer(old_buffer, remat_item, std::move(unplaced_users));
 
     remat_item->buffers_defined.push_back(new_buffer.id);
+    remat_item->buffers_output.push_back(new_buffer.id);
     auto update_buffers = [old_buffer_id, new_buffer_id = new_buffer.id](
                               BufferIdList& to_update) {
       std::replace(to_update.begin(), to_update.end(), old_buffer_id,
@@ -1450,9 +1453,7 @@ MemoryUsageTracker::PickRematerializationCandidates(
                           << candidate->ToShortString() << ")"
                           << " now best when compressed into "
                           << compact_shape.ToString(true);
-                  RematStrategy strategy;
-                  strategy.kind = RematStrategy::kCompress;
-                  best_strategy = strategy;
+                  best_strategy.kind = RematStrategy::kCompress;
                   best_strategy.compact_shape = compact_shape;
                   best_items = block;
                   best_cost = cost;
@@ -1550,7 +1551,7 @@ const UsesList MemoryUsageTracker::GetItemUses(Item* item) const {
 StatusOr<int64_t> RematerializeInstructions(
     MemoryUsageTracker* memory_tracker, std::vector<Item*>* best_items,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
-    InstructionList* instruction_list,
+    InstructionList* instruction_list, HloSchedule* schedule,
     HloRematerialization* rematerialization) {
   int64_t net_instructions_added = 0;
   int64_t total_memory_saved =
@@ -1571,8 +1572,21 @@ StatusOr<int64_t> RematerializeInstructions(
       continue;
     }
 
+    HloCloneContext context(computation->parent());
     HloInstruction* remat =
-        computation->AddInstruction(best->Clone(/*suffix=*/"remat"));
+        computation->AddInstruction(best->Clone(/*suffix=*/"remat", &context));
+    for (auto& cloned_computation_pair : context.cloned_computations()) {
+      if (!schedule->is_computation_scheduled(cloned_computation_pair.first)) {
+        continue;
+      }
+      HloInstructionSequence& sequence =
+          schedule->GetOrCreateSequence(cloned_computation_pair.second);
+      HloInstructionSequence& old_sequence =
+          schedule->GetOrCreateSequence(cloned_computation_pair.first);
+      for (HloInstruction* instr : old_sequence.instructions()) {
+        sequence.push_back(instr);
+      }
+    }
     // Increment channel_id on channel instructions with a channel id.
     if (DynCast<HloChannelInstruction>(best) &&
         DynCast<HloChannelInstruction>(best)->channel_id()) {
@@ -1795,7 +1809,8 @@ struct InstructionsAdded {
 // instructions can be found. Returns number of instructions rematerialized.
 StatusOr<InstructionsAdded> RematerializeBestBlock(
     int min_block_size, int max_block_size, MemoryUsageTracker* memory_tracker,
-    InstructionList* instruction_list, int64_t memory_limit_bytes,
+    InstructionList* instruction_list, HloSchedule* schedule,
+    int64_t memory_limit_bytes,
     absl::flat_hash_map<const HloInstruction*, bool>* rematerializable_map,
     absl::flat_hash_set<const HloInstruction*>* remat_move_instructions,
     HloRematerialization* rematerialization) {
@@ -1836,7 +1851,7 @@ StatusOr<InstructionsAdded> RematerializeBestBlock(
         num_instructions_added.net_instructions_added,
         RematerializeInstructions(memory_tracker, &best_items,
                                   remat_move_instructions, instruction_list,
-                                  rematerialization));
+                                  schedule, rematerialization));
   }
   return num_instructions_added;
 }
@@ -1896,10 +1911,19 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
     HloComputation* computation, HloSchedule* schedule,
     int64_t memory_limit_bytes, int64_t min_remat_size,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  const auto peak_memory_usage = computation_peak_memory_.at(computation);
+  if (peak_memory_usage <= memory_limit_bytes) {
+    // Nothing to do.
+    VLOG(1) << "Asked to rematerialize computation of size "
+            << peak_memory_usage
+            << " but it already fits within the given memory limit ("
+            << memory_limit_bytes << ")";
+    return false;
+  }
   VLOG(1) << "Rematerializing computation " << computation->name()
           << " with limit " << HumanReadableNumBytes(memory_limit_bytes);
   VLOG(1) << "peak memory usage is "
-          << HumanReadableNumBytes(computation_peak_memory_.at(computation));
+          << HumanReadableNumBytes(peak_memory_usage);
   CHECK(!ContainsKey(rematerialized_computations_, computation));
 
   InstructionList instruction_list(schedule->sequence(computation));
@@ -1977,7 +2001,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         TF_ASSIGN_OR_RETURN(
             InstructionsAdded instructions_added,
             RematerializeBestBlock(min_block_size, max_block_size,
-                                   &memory_tracker, &instruction_list,
+                                   &memory_tracker, &instruction_list, schedule,
                                    memory_limit_bytes, &rematerializable_map,
                                    &remat_move_instructions, this));
         net_instructions_added += instructions_added.net_instructions_added;

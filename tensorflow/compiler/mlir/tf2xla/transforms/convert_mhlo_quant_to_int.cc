@@ -13,26 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
 #include <cstdint>
-#include <map>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
-#include <vector>
 
-#include "absl/strings/string_view.h"
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/Debug.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
 #include "mlir/Dialect/SparseTensor/IR/SparseTensor.h"  // from @llvm-project
-#include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -44,10 +34,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "stablehlo/dialect/ChloOps.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/tf2xla/transforms/passes.h"
-#include "tensorflow/compiler/mlir/tf2xla/transforms/utils.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/mlir_hlo/mhlo/transforms/rewriters.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace mhlo {
@@ -114,7 +101,6 @@ class ConvertUniformQuantizeOp
         op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
                           element_type.getStorageTypeMax())));
 
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
     auto res_float_tensor_type_or =
         GetSameShapeTensorType(op, op.getOperand().getType().cast<TensorType>(),
                                rewriter.getF32Type(), rewriter);
@@ -123,11 +109,12 @@ class ConvertUniformQuantizeOp
     }
     Value res_float = rewriter.create<chlo::BroadcastDivOp>(
         op->getLoc(), *res_float_tensor_type_or, adaptor.getOperand(), scale,
-        scalar_broadcast_dims);
+        nullptr);
+    // TODO: b/260280919 - Consider using round_nearest_even.
     res_float = rewriter.create<chlo::BroadcastAddOp>(
-        op->getLoc(), *res_float_tensor_type_or, res_float, half,
-        scalar_broadcast_dims);
+        op->getLoc(), *res_float_tensor_type_or, res_float, half, nullptr);
     res_float = rewriter.create<mhlo::FloorOp>(op->getLoc(), res_float);
+    // TODO: b/260280919 - Consider avoiding conversion to int32.
     auto res_int32_tensor_type_or =
         GetSameShapeTensorType(op, res_float.getType().cast<TensorType>(),
                                rewriter.getI32Type(), rewriter);
@@ -136,15 +123,16 @@ class ConvertUniformQuantizeOp
     }
     Value res_int32 = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_float);
+    // TODO: b/260280919 - Use mhlo::Clamp instead.
     res_int32 = rewriter.create<chlo::BroadcastAddOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, zero_point,
-        scalar_broadcast_dims);
+        nullptr);
     res_int32 = rewriter.create<chlo::BroadcastMaxOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, quantization_min,
-        scalar_broadcast_dims);
+        nullptr);
     res_int32 = rewriter.create<chlo::BroadcastMinOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, quantization_max,
-        scalar_broadcast_dims);
+        nullptr);
     auto res_final_tensor_type_or =
         GetSameShapeTensorType(op, res_int32.getType().cast<TensorType>(),
                                rewriter.getI8Type(), rewriter);
@@ -177,7 +165,7 @@ class ConvertUniformDequantizeOp
                           static_cast<int32_t>(element_type.getZeroPoint())));
 
     Value input = adaptor.getOperand();
-    auto scalar_broadcast_dims = GetI64ElementsAttr({}, &rewriter);
+    // TODO: b/260280919 - Consider avoiding conversion to int32.
     auto res_int32_tensor_type_or =
         GetSameShapeTensorType(op, input.getType().cast<TensorType>(),
                                rewriter.getI32Type(), rewriter);
@@ -188,7 +176,7 @@ class ConvertUniformDequantizeOp
         op->getLoc(), *res_int32_tensor_type_or, input);
     res_int32 = rewriter.create<chlo::BroadcastSubOp>(
         op->getLoc(), *res_int32_tensor_type_or, res_int32, zero_point,
-        scalar_broadcast_dims);
+        nullptr);
     auto res_float_tensor_type_or =
         GetSameShapeTensorType(op, res_int32.getType().cast<TensorType>(),
                                rewriter.getF32Type(), rewriter);
@@ -198,7 +186,84 @@ class ConvertUniformDequantizeOp
     Value res_float = rewriter.create<mhlo::ConvertOp>(
         op->getLoc(), *res_float_tensor_type_or, res_int32);
     res_float = rewriter.replaceOpWithNewOp<chlo::BroadcastMulOp>(
-        op, *res_float_tensor_type_or, res_float, scale, scalar_broadcast_dims);
+        op, *res_float_tensor_type_or, res_float, scale, nullptr);
+    return success();
+  }
+};
+
+class ConvertUniformQuantizedAddOp : public OpConversionPattern<mhlo::AddOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(
+      mhlo::AddOp op, AddOpAdaptor adaptor,
+      ConversionPatternRewriter &rewriter) const override {
+    auto lhs_type = op.getLhs()
+                        .getType()
+                        .getElementType()
+                        .dyn_cast<quant::UniformQuantizedType>();
+    auto rhs_type = op.getRhs()
+                        .getType()
+                        .getElementType()
+                        .dyn_cast<quant::UniformQuantizedType>();
+    auto result_type = op.getResult()
+                           .getType()
+                           .getElementType()
+                           .dyn_cast<quant::UniformQuantizedType>();
+
+    // We only handle cases where lhs, rhs and results are all
+    // UniformQuantizedTypes with int8 storage type.
+    if (!lhs_type || !rhs_type || !result_type || lhs_type != rhs_type ||
+        lhs_type != result_type) {
+      op->emitError(
+          "AddOp requires the same quantized element type for all operands and "
+          "results");
+      return failure();
+    }
+    if (!result_type.getStorageType().isInteger(8)) {
+      op->emitError("AddOp result storage type must be int8");
+      return failure();
+    }
+
+    // TODO: b/260280919 - Consider avoiding conversion to int32.
+    auto res_int32_tensor_type_or =
+        GetSameShapeTensorType(op, op.getResult().getType().cast<TensorType>(),
+                               rewriter.getI32Type(), rewriter);
+    if (failed(res_int32_tensor_type_or)) {
+      return failure();
+    }
+
+    Value result_quantization_min = rewriter.create<mhlo::ConstantOp>(
+        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                          result_type.getStorageTypeMin())));
+    Value result_quantization_max = rewriter.create<mhlo::ConstantOp>(
+        op->getLoc(), rewriter.getI32IntegerAttr(static_cast<int32_t>(
+                          result_type.getStorageTypeMax())));
+
+    Value lhs = adaptor.getLhs();
+    Value rhs = adaptor.getRhs();
+
+    // Convert inputs to int32 type and add.
+    // This assumes result storage type is always int8.
+    Value lhs_int32_tensor = rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), *res_int32_tensor_type_or, lhs);
+    Value rhs_int32_tensor = rewriter.create<mhlo::ConvertOp>(
+        op->getLoc(), *res_int32_tensor_type_or, rhs);
+    Value res_int32 = rewriter.create<chlo::BroadcastAddOp>(
+        op->getLoc(), *res_int32_tensor_type_or, lhs_int32_tensor,
+        rhs_int32_tensor, nullptr);
+
+    // Clamp results by [quantization_min, quantization_max].
+    res_int32 = rewriter.create<mhlo::ClampOp>(
+        op->getLoc(), *res_int32_tensor_type_or, result_quantization_min,
+        res_int32, result_quantization_max);
+
+    // Convert results back to int8.
+    auto res_final_tensor_type_or =
+        GetSameShapeTensorType(op, res_int32_tensor_type_or->cast<TensorType>(),
+                               rewriter.getI8Type(), rewriter);
+    rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
+                                                 res_int32);
     return success();
   }
 };
@@ -210,9 +275,12 @@ void ConvertMHLOQuantToInt::runOnOperation() {
   RewritePatternSet patterns(context);
 
   // Populate MHLO quant ops conversion patterns.
-  patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp>(context);
+  patterns.add<ConvertUniformQuantizeOp, ConvertUniformDequantizeOp,
+               ConvertUniformQuantizedAddOp>(context);
 
   ConversionTarget target(*op->getContext());
+  // An addDynamicallyLegalDialect callback that declares a given operation as
+  // legal only if its all operands and results are non-quantized types.
   auto is_legal = [](Operation *op) {
     auto is_not_quant = [](Type type) {
       return !getElementTypeOrSelf(type).isa<quant::UniformQuantizedType>();

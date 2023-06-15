@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/c_api_opaque.h"
 #include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/delegate_test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/testing/util.h"
@@ -323,6 +324,63 @@ TEST(CApiSimple, DelegateExternal_GetExecutionPlan) {
     EXPECT_EQ(kTfLiteOk,
               TfLiteOpaqueContextGetExecutionPlan(context, &execution_plan));
     EXPECT_EQ(2, execution_plan->size);
+
+    return kTfLiteOk;
+  };
+
+  TfLiteOpaqueDelegate* opaque_delegate =
+      TfLiteOpaqueDelegateCreate(&opaque_delegate_builder);
+
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddDelegate(options, opaque_delegate);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+
+  // The delegate should have been applied.
+  EXPECT_TRUE(delegate_prepared);
+
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteModelDelete(model);
+  TfLiteOpaqueDelegateDelete(opaque_delegate);
+}
+
+// NOTE: This function does not illustrate intended usage by applications, and
+// clients should not mimic such a scenario in their code.
+// This is a helper function that retrieves whether the subgraph pointed by the
+// given subgraph_index is marked as "delegation-skippable", a check that is
+// expected to happen in the TFLite runtime (in the
+// Interpreter::ModifyGraphWithDelegate function call).
+// The following cast is safe only because this code is part of the API testing.
+bool SubgraphIsDelegationSkippable(TfLiteOpaqueContext* context,
+                                   int subgraph_index) {
+  TfLiteOpaqueContext* skipped_subgraph_context;
+  EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextAcquireSubgraphContext(
+                           context, subgraph_index, &skipped_subgraph_context));
+  tflite::Subgraph* subgraph = reinterpret_cast<::tflite::Subgraph*>(
+      reinterpret_cast<TfLiteContext*>(skipped_subgraph_context)->impl_);
+  EXPECT_EQ(kTfLiteOk,
+            TfLiteOpaqueContextReleaseSubgraphContext(context, subgraph_index));
+  return subgraph->IsDelegationSkippable();
+}
+
+TEST(CApiSimple, DelegateExternal_MarkSubgraphAsDelegationSkippable) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile(tensorflow::GetDataDependencyFilepath(
+                                    "tensorflow/lite/testdata/2_subgraphs.bin")
+                                    .c_str());
+
+  // Create and install a delegate instance.
+  bool delegate_prepared = false;
+  TfLiteOpaqueDelegateBuilder opaque_delegate_builder{};
+  opaque_delegate_builder.data = &delegate_prepared;
+  opaque_delegate_builder.Prepare = [](TfLiteOpaqueContext* context,  // NOLINT
+                                       TfLiteOpaqueDelegate* opaque_delegate,
+                                       void* data) {
+    *static_cast<bool*>(data) = true;
+
+    EXPECT_EQ(kTfLiteOk,
+              TfLiteOpaqueContextMarkSubgraphAsDelegationSkippable(context, 1));
+    EXPECT_TRUE(SubgraphIsDelegationSkippable(context, 1));
 
     return kTfLiteOk;
   };
@@ -1419,6 +1477,14 @@ TEST(CApiSimple, OpaqueApiAccessors) {
           // 1 node for ADD and 1 node for the delegate kernel.
           EXPECT_EQ(2, TfLiteOpaqueContextGetNumNodes(opaque_context));
 
+          TfLiteOpaqueContext* acquired_opaque_context;
+          EXPECT_EQ(kTfLiteOk,
+                    TfLiteOpaqueContextAcquireSubgraphContext(
+                        opaque_context, 0, &acquired_opaque_context));
+          EXPECT_EQ(opaque_context, acquired_opaque_context);
+          EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextReleaseSubgraphContext(
+                                   opaque_context, 0));
+
           TfLiteOpaqueNode* node = nullptr;
           TfLiteRegistrationExternal* registration_external = nullptr;
           TfLiteOpaqueContextGetNodeAndRegistration(
@@ -1499,6 +1565,7 @@ TEST(CApiSimple, OpaqueApiAccessors) {
     TfLiteOpaqueContextGetExecutionPlan(context, &execution_plan);
     TfLiteOpaqueContextReplaceNodeSubsetsWithDelegateKernels(
         context, reg, execution_plan, delegate);
+    EXPECT_EQ(kTfLiteOk, TfLiteOpaqueContextReleaseSubgraphContext(context, 0));
     return kTfLiteOk;
   };
   TfLiteDelegate my_delegate{};

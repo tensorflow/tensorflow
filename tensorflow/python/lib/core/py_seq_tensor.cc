@@ -696,7 +696,7 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
                         "Failed to convert a NumPy array to a Tensor (",
-                        status.error_message(), ").")
+                        status.message(), ").")
                         .c_str());
     return nullptr;
   }
@@ -780,7 +780,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   ConverterState state;
   Status status = InferShapeAndType(obj, &state);
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
   DataType requested_dtype = DT_INVALID;
@@ -909,7 +909,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
   }
 
   if (!status.ok()) {
-    PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
+    PyErr_SetString(PyExc_ValueError, tsl::NullTerminatedMessage(status));
     return nullptr;
   }
 

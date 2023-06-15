@@ -14,7 +14,13 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_common.h"
 
+#include <atomic>
+#include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_cat.h"
@@ -154,7 +160,7 @@ void TpuCompileOpKernelCommon::Compute(OpKernelContext* ctx) {
     // correctly propagates the status payload set.
     const std::string new_error_message =
         absl::StrCat(TpuCompileInterface::kTpuCompileErrorMessage, ". ",
-                     compile_status.error_message());
+                     compile_status.message());
 
     tpu::CompilationResultProto proto;
     proto.set_status_code(static_cast<error::Code>(compile_status.code()));
@@ -200,8 +206,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
   if (use_mlir_) {
     const ConfigProto* config = flib_runtime->config_proto();
     ConfigProto::Experimental::MlirBridgeRollout rollout_state =
-        GetMlirBridgeRolloutState(config ? absl::make_optional(*config)
-                                         : absl::nullopt);
+        GetMlirBridgeRolloutState(config ? std::make_optional(*config)
+                                         : std::nullopt);
     compile_status =
         Compile(MlirToHloArgs{mlir_module_, rollout_state}, mesh_state->data(),
                 arg_shapes, &key, tpu_program_group);
@@ -222,8 +228,8 @@ Status TpuCompileOpKernelCommon::CompileLocallyAndFillHostCacheInternal(
             << session_name << " took " << duration << " and "
             << (compile_status.ok() ? "succeeded" : "failed");
   tpu_program_group->LogProgramMemorySummary();
-  metrics::UpdateTpuErrorCounter("TpuCompileOp",
-                                 error_name(compile_status.code()));
+  metrics::UpdateTpuErrorCounter(
+      "TpuCompileOp", absl::StatusCodeToString(compile_status.code()));
   metrics::UpdateXlaCompilationTime(absl::ToInt64Microseconds(duration));
   TpuCompilationMetrics::IncrementCompilationCount(session_name);
 
@@ -406,7 +412,7 @@ Status TpuCompileOpKernelCommon::ComputeInternal(OpKernelContext* ctx) {
     proto.set_status_code(static_cast<error::Code>(status.code()));
     if (!status.ok()) {
       proto.set_status_error_message(TruncateMessage(
-          absl::StrCat("Compilation failure: ", status.error_message()), 128));
+          absl::StrCat("Compilation failure: ", status.message()), 128));
     }
     if (return_hlo_protos_) {
       // Return the HloProtos as part of compilation status.

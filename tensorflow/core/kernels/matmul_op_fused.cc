@@ -59,6 +59,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/kernels/matmul_op_impl.h"
 #include "tensorflow/core/kernels/matmul_util.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
@@ -340,7 +341,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
     TF_RETURN_IF_ERROR(stream->parent()->GetFusedMatmulRunners(
         CudnnUseFrontend(), element_type, element_type, element_type, stream,
         trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
-        /*use_fallback=*/false, &runners));
+        /*use_fallback=*/false, GetNumericOptions(), &runners));
 
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
@@ -384,7 +385,7 @@ StatusOr<AutotuneEntry<se::dnn::FusedMatmulOp>> AutotuneFusedMatmul(
       TF_RETURN_IF_ERROR(stream->parent()->GetFusedMatmulRunners(
           CudnnUseFrontend(), element_type, element_type, element_type, stream,
           trans_a, trans_b, m, n, k, lda, ldb, ldc, activation_mode,
-          /*use_fallback=*/true, &fallback_runners));
+          /*use_fallback=*/true, GetNumericOptions(), &fallback_runners));
 
       TF_ASSIGN_OR_RETURN(
           auto fallback_results,

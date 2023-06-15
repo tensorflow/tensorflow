@@ -649,6 +649,31 @@ func.func @main(%arg0: tensor<i32>, %arg1: tensor<4x16xf32> {tf._layout = "shard
 
 // -----
 
+// Check that relayout uses all-to-all for unsharded,x to x,unsharded.
+// CHECK-LABEL: module @test_relayout_using_all_to_all
+module @test_relayout_using_all_to_all {
+// CHECK: func @main
+func.func @main(%arg0: tensor<i32>, %arg1: tensor<32x32xf32> { tf._layout = "sharding_specs:unsharded,x, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"}) -> tensor<32x32xf32>  {
+  // CHECK:      "tf_device.cluster"
+  // CHECK-NEXT: %[[CST:.*]] = "tf.Const"
+  // CHECK-NEXT: %[[BIAS_ADD_OUT:.*]] = "tf.BiasAdd"(%arg1, %cst)
+  // CHECK-NEXT: %[[ALL_TO_ALL_OUT:.*]] = "tf.DTensorAllToAll"(%[[BIAS_ADD_OUT]])
+  // CHECK-SAME: input_layout = #dtensor.layout<sharding_specs:unsharded,x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1,/job:localhost/replica:0/task:0/device:TPU:2,/job:localhost/replica:0/task:0/device:TPU:3>
+  // CHECK-SAME: output_layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1,/job:localhost/replica:0/task:0/device:TPU:2,/job:localhost/replica:0/task:0/device:TPU:3>
+  // CHECK-NEXT: tf_device.return
+  %0 = "tf_device.cluster"() ({
+    %cst = "tf.Const"() {value = dense<0.000000e+00> : tensor<32xf32>, _layout = ["sharding_specs:x, mesh:TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"]} : () -> tensor<32xf32>
+    %1 = "tf.DTensorLayout"(%arg1) {global_shape = #tf_type.shape<32x32>, layout = #dtensor.layout<sharding_specs:unsharded,x, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1,/job:localhost/replica:0/task:0/device:TPU:2,/job:localhost/replica:0/task:0/device:TPU:3>} : (tensor<32x32xf32>) -> tensor<32x32xf32>
+    %2 = "tf.BiasAdd"(%1, %cst) {global_shape = #tf_type.shape<32x32>} : (tensor<32x32xf32>, tensor<32xf32>) -> (tensor<32x32xf32>)
+    %3 = "tf.DTensorLayout"(%2) {global_shape = #tf_type.shape<32x32>, layout = #dtensor.layout<sharding_specs:x,unsharded, mesh:|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/replica:0/task:0/device:TPU:0,/job:localhost/replica:0/task:0/device:TPU:1,/job:localhost/replica:0/task:0/device:TPU:2,/job:localhost/replica:0/task:0/device:TPU:3>} : (tensor<32x32xf32>) -> tensor<32x32xf32>
+    tf_device.return %3 : tensor<32x32xf32>
+ }) {_mesh = "TPU|x=2,y=2|0,1,2,3|0,1,2,3|/job:localhost/task:0/device:TPU:0,/job:localhost/task:0/device:TPU:1,/job:localhost/task:0/device:TPU:2,/job:localhost/task:0/device:TPU:3"} : () -> (tensor<32x32xf32>)
+ func.return %0 : tensor<32x32xf32>
+}
+}
+
+// -----
+
 // Check SPMD expansion of TensorListReserve replicated and TensorListSet with a sharded tensor emits a gather to replicated.
 // CHECK-LABEL: module @test_spmd_tensor_list_reserve_replicated
 module @test_spmd_tensor_list_reserve_replicated {

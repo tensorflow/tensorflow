@@ -30,7 +30,7 @@ void CompareNumericalAndAutodiffGradients(
   std::vector<AbstractTensorHandle*> outputs(num_inputs);
   auto s = RunModel(grad_model, ctx, inputs, absl::MakeSpan(outputs),
                     /*use_function=*/use_function);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 
   for (int i = 0; i < num_inputs; ++i) {
     if (!outputs[i]) continue;
@@ -41,18 +41,18 @@ void CompareNumericalAndAutodiffGradients(
       s = CalcNumericalGrad(ctx, model, inputs,
                             /*input_index=*/i, use_function,
                             &numerical_grad_raw);
-      ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+      ASSERT_EQ(errors::OK, s.code()) << s.message();
       numerical_grad.reset(numerical_grad_raw);
     }
 
     TF_Tensor* numerical_tensor;
     s = GetValue(numerical_grad.get(), &numerical_tensor);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     auto num_elem_numerical = TF_TensorElementCount(numerical_tensor);
 
     TF_Tensor* analytical_tensor;
     s = GetValue(outputs[i], &analytical_tensor);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ASSERT_EQ(errors::OK, s.code()) << s.message();
     auto num_elem_analytical = TF_TensorElementCount(analytical_tensor);
 
     ASSERT_EQ(num_elem_numerical, num_elem_analytical);
@@ -79,7 +79,7 @@ void CheckTensorValue(AbstractTensorHandle* t, absl::Span<const float> manuals,
                       absl::Span<const int64_t> dims, double abs_error) {
   TF_Tensor* analytical_tensor;
   auto s = GetValue(t, &analytical_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(errors::OK, s.code()) << s.message();
 
   int64_t num_elem_analytical = 1;
   auto num_dims_analytical = TF_NumDims(analytical_tensor);

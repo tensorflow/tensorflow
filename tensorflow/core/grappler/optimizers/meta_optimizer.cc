@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -65,7 +66,7 @@ limitations under the License.
 #include "tensorflow/core/util/xla_config_registry.h"
 
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
-#ifndef __Fuchsia__
+#if !NO_LLVM_SUPPORT
 #include "tensorflow/core/grappler/optimizers/tfg_optimizer_hook.h"
 #include "tensorflow/core/grappler/optimizers/tfg_passes_builder.h"
 #endif
@@ -286,11 +287,14 @@ Status MetaOptimizer::InitializeOptimizers(
   }
 
   // #TODO(b/200087693): LLVM does not build on Fuchsia.
-#ifndef __Fuchsia__
-  // Hooks the MLIR optimizer, it won't run any optimizations right now. This
-  // optimizer instance runs on functions one at a time; don't use any threads.
-  optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
-      mlir::tfg::DefaultGrapplerPipeline));
+#if !NO_LLVM_SUPPORT
+  if (!cfg_.disable_tfg_optimizer()) {
+    // Hooks the MLIR optimizer, it won't run any optimizations right now. This
+    // optimizer instance runs on functions one at a time; don't use any
+    // threads.
+    optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
+        mlir::tfg::DefaultGrapplerPipeline));
+  }
 #endif
 
 // A set of macro utilities which check if the toggle of an optimization.
@@ -428,11 +432,11 @@ Status MetaOptimizer::InitializeOptimizers(
         !enable_mlir_pass || USER_IS_EXPERIMENTAL_BOTH(remapping);
     if (enable_mlir_pass) {
 // #TODO(b/200087693): LLVM does not build on Fuchsia.
-#ifndef __Fuchsia__
+#if !NO_LLVM_SUPPORT
       optimizers->push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
           mlir::tfg::RemapperPassBuilder));
 #else
-      VLOG(2) << "mlir Remapper pass is not supported on Fuchsia";
+      VLOG(2) << "mlir Remapper pass is not supported on this platform";
 #endif
     }
     if (enable_grappler_pass) {
@@ -938,20 +942,21 @@ Status MetaOptimizer::RunOptimizer(
   string message;
   if (!status.ok()) {
     *optimized_graph = std::move(optimized_item->graph);
-    if (errors::IsAborted(status)) {
+    if (absl::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
       message = strings::StrCat(optimizer->name(),
                                 " did nothing. time = ", duration_ms, "ms.");
       // Swallow the non-critical error.
       status = OkStatus();
-    } else if (errors::IsDeadlineExceeded(status)) {
+    } else if (absl::IsDeadlineExceeded(status)) {
       message =
           strings::StrCat(status.ToString(), ", time = ", duration_ms, "ms.");
-      LOG(WARNING) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(WARNING, 60)
+          << optimizer->name() << " failed: " << message;
     } else {
       message = status.ToString();
-      LOG(ERROR) << optimizer->name() << " failed: " << message;
+      LOG_EVERY_N_SEC(ERROR, 60) << optimizer->name() << " failed: " << message;
     }
   } else {
     message = strings::StrCat(
@@ -1273,8 +1278,8 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   // TODO(jeffniu): None of the TFG optimizations are meant to create new
   // opportunities for other optimizers; they could, but it's unclear whether
   // re-running all the other optimizers is worthwhile.
-#ifndef __Fuchsia__
-  {
+#if !NO_LLVM_SUPPORT
+  if (!cfg_.disable_tfg_optimizer()) {
     // Create a Grappler optimization pipeline with only the TFG optimizer.
     std::vector<std::unique_ptr<GraphOptimizer>> optimizers;
     optimizers.push_back(std::make_unique<mlir::tfg::TFGGrapplerOptimizer>(
@@ -1382,7 +1387,7 @@ Status OptimizeGraph(
   // Add all available devices so that inlined function can be placed.
   for (const Device* d : device_set.devices()) {
     Status added_device = item.AddDevice(d->name());
-    if (!added_device.ok()) VLOG(3) << added_device.error_message();
+    if (!added_device.ok()) VLOG(3) << added_device.message();
   }
   VLOG(3) << "Grappler available devices: "
           << absl::StrJoin(item.devices(), ", ");

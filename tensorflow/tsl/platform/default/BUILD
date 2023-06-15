@@ -159,6 +159,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],
@@ -341,7 +342,6 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "@com_google_absl//absl/base",
         "//tensorflow/tsl/platform",
         "//tensorflow/tsl/platform:byte_order",
         "//tensorflow/tsl/platform:dynamic_annotations",
@@ -349,6 +349,7 @@ cc_library(
         "//tensorflow/tsl/platform:macros",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/platform/profile_utils:profile_utils_cpu_utils",
+        "@com_google_absl//absl/base",
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
@@ -556,13 +557,6 @@ cc_library(
     ],
     textual_hdrs = ["status.h"],
     visibility = set_external_visibility(["//tensorflow:__subpackages__"]),
-    deps = [
-        "//tensorflow/tsl/platform:types",
-        "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 bzl_library(

@@ -568,7 +568,7 @@ Status HloValueSemanticsPropagation::HandleReplicaId(
 
 Status HloValueSemanticsPropagation::HandleClamp(HloInstruction* clamp) {
   const ShapeTree<const HloValueSemantics*>& operand_semantics =
-      analysis_->GetInstructionSemantics(clamp->operand(0));
+      analysis_->GetInstructionSemantics(clamp->operand(1));
   analysis_->DeepCopyHloValueSemantics(clamp, operand_semantics);
   return OkStatus();
 }

@@ -39,8 +39,6 @@ cc_library(
     hdrs = ["image_preprocessing_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "@com_google_absl//absl/base",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:types",
@@ -50,6 +48,8 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:preprocessing_steps_cc_proto",
         "//tensorflow/tsl/util:stats_calculator_portable",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:portable_jpeg_internal",
@@ -118,6 +118,7 @@ cc_library(
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "//tensorflow/tsl/util:stats_calculator_portable",
+        "@com_google_absl//absl/base:core_headers",
     ],
 )
 

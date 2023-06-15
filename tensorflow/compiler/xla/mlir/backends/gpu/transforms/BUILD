@@ -28,6 +28,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "add_concurrent_regions.cc",
         "add_hlo_trace_annotations.cc",
         "gpu_to_gpu_runtime.cc",
         "lmhlo_gpu_to_gpu_runtime.cc",
@@ -44,6 +45,8 @@ cc_library(
     compatible_with = [],
     deps = [
         ":passes_inc_gen",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:xla_proto_cc",
         "//tensorflow/compiler/xla/mlir/runtime/ir:rt",
         "//tensorflow/compiler/xla/mlir/runtime/utils:custom_calls",
         "//tensorflow/compiler/xla/mlir_hlo:lhlo",
@@ -54,8 +57,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:nccl_collective_thunks",
         "//tensorflow/compiler/xla/stream_executor:blas",
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:location_exporter",
-        "//tensorflow/tsl/platform:logging",
-        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",

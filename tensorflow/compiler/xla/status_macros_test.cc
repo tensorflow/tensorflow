@@ -43,14 +43,14 @@ Status RetCheckSuccess() {
 TEST(StatusMacros, RetCheckFailing) {
   Status status = RetCheckFail();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("RET_CHECK failure.*2 > 3"));
 }
 
 TEST(StatusMacros, RetCheckFailingWithExtraMessage) {
   Status status = RetCheckFailWithExtraMessage();
   EXPECT_EQ(status.code(), tsl::error::INTERNAL);
-  EXPECT_THAT(status.error_message(),
+  EXPECT_THAT(status.message(),
               ::testing::ContainsRegex("RET_CHECK.*2 > 3 extra message"));
 }
 

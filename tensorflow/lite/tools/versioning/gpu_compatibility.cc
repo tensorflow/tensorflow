@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/versioning/gpu_compatibility.h"
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -440,6 +441,11 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
       const TfLiteAddParams* tf_options;
       return RetrieveBuiltinData(op_sig, &tf_options);
     }
+    case kTfLiteBuiltinAddN: {
+      return op_sig.inputs.size() == 2
+                 ? absl::OkStatus()
+                 : absl::UnimplementedError("ADD_N only supports 2 inputs.");
+    }
 
     case kTfLiteBuiltinAveragePool2d:
       return CheckPooling2DGpuDelegateCompatibility(op_sig);
@@ -854,11 +860,6 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
                            "Pad operation. But node has ",
                            tf_options->mode));
         }
-      } else if (opcode == kTfLiteBuiltinPadv2 && op_sig.inputs.size() == 3) {
-        if (op_sig.inputs.at(2).type != kTfLiteFloat32) {
-          return absl::InvalidArgumentError(
-              "constant_values must be a scalar float");
-        }
       }
       RETURN_IF_ERROR(CheckInputsOutputs(op_sig,
                                          /*required_runtime_inputs=*/1,
@@ -885,6 +886,7 @@ absl::Status CheckGpuDelegateCompatibility(const OpSignature& op_sig) {
     case kTfLiteBuiltinElu:
     case kTfLiteBuiltinExp:
     case kTfLiteBuiltinFloor:
+    case kTfLiteBuiltinGelu:
     case kTfLiteBuiltinLog:
     case kTfLiteBuiltinLogistic:  // Sigmoid
     case kTfLiteBuiltinNeg:

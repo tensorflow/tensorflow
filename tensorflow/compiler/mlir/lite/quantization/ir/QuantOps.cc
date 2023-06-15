@@ -104,7 +104,7 @@ LogicalResult StatisticsOp::verify() {
 
   // Verify layerStats attribute.
   {
-    auto layerStatsType = getLayerStats().getType();
+    auto layerStatsType = getLayerStats().getShapedType();
     if (!layerStatsType.getElementType().isa<FloatType>()) {
       return emitOpError("layerStats must have a floating point element type");
     }
@@ -121,7 +121,7 @@ LogicalResult StatisticsOp::verify() {
         std::accumulate(std::next(shape.begin(), *getAxis()), shape.end(), 1,
                         std::multiplies<int64_t>());
 
-    auto axisStatsType = getAxisStats()->getType();
+    auto axisStatsType = getAxisStats()->getShapedType();
     if (!axisStatsType.getElementType().isa<FloatType>()) {
       return emitOpError("axisStats must have a floating point element type");
     }

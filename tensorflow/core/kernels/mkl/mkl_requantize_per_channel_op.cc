@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL)
 #define EIGEN_USE_THREADS
 
 #include <math.h>
@@ -106,8 +106,16 @@ class MklRequantizePerChannelOp : public OpKernel {
       }
 
       dnnl::primitive_attr reorder_attr;
+#ifndef ENABLE_ONEDNN_V3
       reorder_attr.set_output_scales(2, scales);
+#else
+      reorder_attr.set_scales_mask(DNNL_ARG_SRC, 2);
+      auto scale_mem =
+          memory({{scales.size()}, MklDnnType<float>(), memory::format_tag::x},
+                 cpu_engine_, scales.data());
+#endif  // !ENABLE_ONEDNN_V3
 
+      MklDnnThreadPool eigen_tp(ctx);
       memory::dims dims_mkl_order =
           TFShapeToMklDnnDimsInNCHW(input.shape(), FORMAT_NHWC);
       memory::desc input_md = memory::desc(dims_mkl_order, MklDnnType<qint32>(),
@@ -139,10 +147,13 @@ class MklRequantizePerChannelOp : public OpKernel {
           ReorderPd(cpu_engine_, input_mem_prim->get_desc(), cpu_engine_,
                     output_mem_prim->get_desc(), reorder_attr);
       std::shared_ptr<stream> reorder_stream;
-      MklDnnThreadPool eigen_tp(ctx);
+
       reorder_stream.reset(CreateStream(&eigen_tp, cpu_engine_));
       std::unordered_map<int, dnnl::memory> reorder_args = {
           {DNNL_ARG_FROM, *input_mem_prim}, {DNNL_ARG_TO, *output_mem_prim}};
+#ifdef ENABLE_ONEDNN_V3
+      reorder_args.insert({DNNL_ARG_ATTR_SCALES | DNNL_ARG_SRC, scale_mem});
+#endif  // ENABLE_ONEDNN_V3
       std::unique_ptr<dnnl::primitive> reorder_prim(
           new dnnl::reorder(reorder_pd));
       reorder_prim->execute(*reorder_stream, reorder_args);

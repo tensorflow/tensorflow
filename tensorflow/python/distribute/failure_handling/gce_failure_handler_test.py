@@ -220,7 +220,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
                 max([int(ckpt_index) for ckpt_index in checkpoint_index]), 1)
 
         else:
-          # Test if arguments to _save_checkpoint_if_preempted are passed
+          # Test if arguments to save_checkpoint_if_preempted are passed
           # successfully.
           self.assertEqual(
               max([int(ckpt_index) for ckpt_index in checkpoint_index]),
@@ -237,7 +237,7 @@ class GceFailureHandlingTest(test.TestCase, parameterized.TestCase):
             preemption_handler.run(distributed_train_step, epoch, step)
 
           else:
-            preemption_handler._save_checkpoint_if_preempted(
+            preemption_handler.save_checkpoint_if_preempted(
                 checkpoint_number=preemption_handler.total_run_calls)
             distributed_train_step(epoch, step)
 

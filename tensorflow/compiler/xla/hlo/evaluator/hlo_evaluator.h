@@ -376,7 +376,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleComplex(HloInstruction* complex) override;
 
-  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduce(HloInstruction* hlo) override;
 
   Status HandleReduceWindow(HloInstruction* hlo) override;
 

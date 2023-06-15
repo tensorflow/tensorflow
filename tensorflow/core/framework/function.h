@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/framework/graph_debug_info.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
@@ -45,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/threadpool_interface.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tsl/protobuf/error_codes.pb.h"
@@ -374,12 +377,57 @@ class AbstractStackTrace {
   // Returns the last stack frame from user code, attempting to ignore the
   // framework code. Returns an empty frame if no such stack frame was found.
   virtual StackFrame LastUserFrame() const = 0;
+
+  // Returns stack trace from user code (instead of op creation ones returned in
+  // ToFrames).
+  virtual std::vector<StackFrame> GetUserFrames(int limit) const = 0;
+
   virtual std::string ToString(const TracePrintingOptions& opts) const = 0;
+};
+
+// A frozen sequence of StackFrames; an adapter for a span of StackFrames that
+// conforms to the AbstractStackTrace contract.
+class FrozenStackTrace : public AbstractStackTrace {
+ public:
+  // Constructs a FrozenStackTrace from a span of StackFrames by making a copy
+  // of each stack frame.
+  explicit FrozenStackTrace(absl::Span<StackFrame const> frames,
+                            absl::Span<StackFrame const> user_frames = {});
+
+  explicit FrozenStackTrace(std::vector<StackFrame>&& frames)
+      : frames_(std::move(frames)), user_frames_({}) {}
+
+  // Constructs a FrozenStackTrace from serialized proto data.
+  FrozenStackTrace(const GraphDebugInfo::StackTrace& stack_trace,
+                   const GraphDebugInfo& debug_info);
+
+  ~FrozenStackTrace() override = default;
+
+  absl::Span<StackFrame const> ToFrames() const override;
+
+  StackFrame LastUserFrame() const override;
+
+  std::vector<StackFrame> GetUserFrames(int limit) const override;
+
+  std::string ToString(const TracePrintingOptions& opts) const override;
+
+ private:
+  std::vector<StackFrame> frames_;
+  std::vector<StackFrame> user_frames_;
 };
 
 using StackTracesMap =
     std::unordered_map<std::string,
                        std::shared_ptr<tensorflow::AbstractStackTrace>>;
+
+// Map of function names to StackTracesMaps.
+using FunctionDefLibraryStackTraces =
+    absl::flat_hash_map<std::string, StackTracesMap>;
+
+// Generates a GraphDebugInfo proto from a StackTracesMap object. Returns user
+// frames by default. If `user_frames` is false, returns all frames.
+tensorflow::GraphDebugInfo StackTracesMapToGraphDebugInfo(
+    const tensorflow::StackTracesMap& map, bool user_frames = true);
 
 // Holds Function information that can be shared in multiple places.
 // FunctionRecord must be explicitly finalized before being saved in
@@ -387,6 +435,8 @@ using StackTracesMap =
 class FunctionRecord : public core::RefCounted {
  public:
   FunctionRecord(const FunctionDef& fdef, const StackTracesMap& stack_traces,
+                 bool finalized);
+  FunctionRecord(FunctionDef&& fdef, StackTracesMap&& stack_traces,
                  bool finalized);
 
   // Mark FunctionRecord as finalized (disable mutation).
@@ -503,11 +553,23 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // This operation is atomic.
   Status AddLibrary(const FunctionLibraryDefinition& other)
       TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionLibraryDefinition&& other) TF_LOCKS_EXCLUDED(mu_);
+
+  // Adds the functions and gradients in 'lib_def' to this function library.
+  // Duplicate functions and gradients are ignored. This overload adds the
+  // functions with no stack traces. This operation is atomic.
+  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def) TF_LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def) TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(const FunctionDefLibrary& lib_def,
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
+  Status AddLibrary(FunctionDefLibrary&& lib_def,
+                    const FunctionDefLibraryStackTraces& library_traces)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
@@ -619,9 +681,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef,
-                              const StackTracesMap& stack_traces, bool* added)
-      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddFunctionDefHelper(FunctionDef&& fdef, StackTracesMap&& stack_traces,
+                              bool* added) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -678,7 +739,7 @@ struct FunctionArgIndex {
   int sub_index = -1;
 };
 
-class FunctionLibraryRuntime {
+class FunctionLibraryRuntime : public core::WeakRefCounted {
  public:
   virtual ~FunctionLibraryRuntime() {}
 
@@ -839,6 +900,11 @@ class FunctionLibraryRuntime {
     // Instantiates the function for XLA compilation on device_type. If empty,
     // function is not compiled.
     std::string xla_compile_device_type;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function enabling soft placement or outside compilation.
+    bool allow_soft_placement = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const std::string& function_name, AttrSlice attrs,
@@ -875,8 +941,7 @@ class FunctionLibraryRuntime {
   // RPC calls.
   struct Options {
     Options() {}
-    explicit Options(const int64_t step_id)
-        : step_id(step_id), cleanup_rendezvous_after_run(false) {}
+    explicit Options(const int64_t step_id) : step_id(step_id) {}
 
     // Choose a step ID that is guaranteed not to clash with any
     // Session-generated step ID. DirectSession only generates
@@ -885,18 +950,13 @@ class FunctionLibraryRuntime {
     // always 0, so a negative random step ID should suffice.
     const int64_t step_id = -std::abs(static_cast<int64_t>(random::New64()));
 
-    // Whether to clean up rendezvous after run.
-    // If the function is a remote component of a cross-process function, a
-    // higher level component should determine the end of a step, and cleanup
-    // the rendezvous.
-    const bool cleanup_rendezvous_after_run = true;
-
     // op_id of the function running in eager mode. Set when we want to copy
     // remote outputs lazily. All components of a remote multi-device function
     // should use the same op_id, in order to correctly map remote output
     // tensors to the remote TensorHandles in the default device.
     absl::optional<int64_t> op_id = absl::nullopt;
 
+    // Not owned. Caller makes sure that the rendezvous outlives this Options.
     RendezvousInterface* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;

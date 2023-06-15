@@ -126,7 +126,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   ImmediateTensorHandlePtr expected_handle =
       testing::CreateTensorHandle(context(), dtype, shape_vector, 42);
   AbstractTensorPtr expected_tensor(expected_handle->Resolve(&status));
-  TF_EXPECT_OK(status) << status.error_message();
+  TF_EXPECT_OK(status) << status.message();
 
   // Assign the tensorhandle to the variable.
   TF_EXPECT_OK(var->Assign(expected_handle.get()));
@@ -135,7 +135,7 @@ TEST_P(SavedVariableLoadingTest, AssignAndReadVariableSuccesful) {
   ImmediateTensorHandlePtr output_handle;
   TF_EXPECT_OK(var->ReadValue(&output_handle));
   AbstractTensorPtr output_tensor(output_handle->Resolve(&status));
-  TF_EXPECT_OK(status) << status.error_message();
+  TF_EXPECT_OK(status) << status.message();
 
   // Check that output_tensor == expected_tensor
   EXPECT_EQ(output_tensor->Type(), expected_tensor->Type());

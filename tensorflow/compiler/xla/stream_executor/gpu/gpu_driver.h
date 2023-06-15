@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_types.h"
-#include "tensorflow/compiler/xla/stream_executor/platform/port.h"
+#include "tensorflow/compiler/xla/stream_executor/platform.h"
 #include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 
@@ -141,6 +141,13 @@ class GpuDriver {
   // TODO(leary) verify an error will be returned if the location wasn't
   // previously registered.
   static bool HostUnregister(GpuContext* context, void* location);
+
+  // Queries the priority range and returns the corresponding integer value via
+  // cuCtxGetStreamPriorityRange
+  //
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__CTX.html#group__CUDA__CTX_1g137920ab61a71be6ce67605b9f294091
+  static int GetGpuStreamPriority(
+      GpuContext* context, stream_executor::StreamPriority stream_priority);
 
   // Virtual memory support was added to CUDA in 10.2
 #if CUDA_VERSION >= 10020
@@ -373,9 +380,8 @@ class GpuDriver {
   // * Callbacks must not make any CUDA API calls.
   // * Callbacks from independent streams execute in an undefined order and may
   //   be serialized.
-  // http://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__STREAM.html#group__CUDA__STREAM_1g613d97a277d7640f4cb1c03bd51c2483
-  typedef void (*StreamCallback)(GpuStreamHandle stream, GpuStatus status,
-                                 void* data);
+  // https://docs.nvidia.com/cuda/cuda-driver-api/group__CUDA__EXEC.html#group__CUDA__EXEC_1gab95a78143bae7f21eebb978f91e7f3f
+  typedef void (*StreamCallback)(void* data);
 
   // Enqueues a callback operation into stream.
   // See StreamCallback above and the NVIDIA documentation for additional
@@ -503,9 +509,14 @@ class GpuDriver {
   static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerCore(
       GpuDeviceHandle device);
 
-  // Returns the amount of shared memory available for a single block
+  // Returns the amount of static shared memory available for a single block
   // (cooperative thread array).
   static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerBlock(
+      GpuDeviceHandle device);
+
+  // Returns the total amount of shared memory available for a single block
+  // (cooperative thread array).
+  static tsl::StatusOr<int64_t> GetMaxSharedMemoryPerBlockOptin(
       GpuDeviceHandle device);
 
   // Returns the maximum supported number of registers per block.

@@ -27,6 +27,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/dynamic_annotations.h"
+#include "absl/synchronization/barrier.h"
+#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_options.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/tests/testlib_pipeline.h"
 #include "tensorflow/compiler/xla/mlir/runtime/utils/async_runtime_api.h"
@@ -37,8 +40,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/runtime/logical_result.h"
 #include "tensorflow/compiler/xla/runtime/results.h"
 #include "tensorflow/compiler/xla/runtime/types.h"
+#include "tensorflow/tsl/platform/env.h"
 #include "tensorflow/tsl/platform/test.h"
 #include "tensorflow/tsl/platform/test_benchmark.h"
+#include "tensorflow/tsl/platform/threadpool.h"
 
 namespace xla {
 namespace runtime {
@@ -852,6 +857,43 @@ TEST(ExecutableTest, AsyncExecute) {
                   .ok());
 
   EXPECT_EQ(result.get(), 42);
+}
+
+//===----------------------------------------------------------------------===//
+// Multi-threaded compilation to detect tsan errors.
+//===----------------------------------------------------------------------===//
+
+TEST(ExecutableTest, ConcurrentCompilation) {
+  CustomCallRegistry registry;
+
+  absl::string_view module = R"(
+    func.func @test() -> i32 {
+      %0 = arith.constant 42 : i32
+      return %0 : i32
+    }
+  )";
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "test", 32);
+
+  int num_tasks = 256;
+
+  absl::Notification wait;
+  absl::BlockingCounter done(num_tasks);
+
+  for (int i = 0; i < num_tasks; ++i) {
+    pool.Schedule([&] {
+      wait.WaitForNotification();
+
+      StatusOr<JitExecutable> jit_executable =
+          Compile(module, {"test"}, registry);
+      EXPECT_TRUE(jit_executable.ok());
+
+      done.DecrementCount();
+    });
+  }
+
+  wait.Notify();
+  done.Wait();
 }
 
 //===----------------------------------------------------------------------===//

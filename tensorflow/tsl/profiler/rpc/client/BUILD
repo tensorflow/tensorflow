@@ -44,6 +44,8 @@ cc_library(
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_proto_cc",
         "//tensorflow/tsl/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/tsl/profiler/utils:session_manager",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
     ],
@@ -111,14 +113,12 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = set_external_visibility([
+        "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",
     ]),
     deps = [
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:status",
@@ -126,6 +126,9 @@ cc_library(
         "//tensorflow/tsl/profiler/protobuf:profiler_analysis_cc_grpc_proto",
         "//tensorflow/tsl/profiler/protobuf:profiler_service_cc_grpc_proto",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ] + tsl_grpc_cc_dependencies(),
     alwayslink = True,
 )
@@ -135,15 +138,15 @@ cc_library(
     testonly = 1,
     hdrs = ["profiler_client_test_util.h"],
     deps = [
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
         "//tensorflow/tsl/platform:logging",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/protobuf:profiler_options_proto_cc",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ] + tf_protos_profiler_service(),
 )
 
@@ -154,7 +157,6 @@ tsl_cc_test(
         ":profiler_client",
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
-        "@com_google_absl//absl/time",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
@@ -166,6 +168,7 @@ tsl_cc_test(
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/profiler/utils:time_utils_impl",
+        "@com_google_absl//absl/time",
     ] + tf_protos_profiler_service(),
 )
 
@@ -198,7 +201,6 @@ tsl_cc_test(
         ":profiler_client_impl",  # for oss
         ":profiler_client_test_util",
         ":remote_profiler_session_manager",
-        "@com_google_absl//absl/time",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:status",
@@ -211,5 +213,7 @@ tsl_cc_test(
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc:profiler_service_impl",
         "//tensorflow/tsl/profiler/utils:time_utils_impl",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
     ] + tf_protos_profiler_service(),
 )

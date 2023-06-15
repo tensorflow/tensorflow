@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <system_error>
 
 #include "absl/strings/string_view.h"
 #include "llvm/Support/CommandLine.h"

@@ -37,6 +37,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/autotuning.pb.h"
 #include "tensorflow/core/util/autotune_maps/conv_parameters.h"
@@ -289,8 +290,7 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
     auto no_transpose = se::blas::Transpose::kNoTranspose;
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                  a_ptr, k, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
     return;
   } else if (!is_grouped_convolution && filter_planes == in_planes &&
              filter_rows == in_rows && filter_cols == in_cols &&
@@ -311,8 +311,7 @@ void LaunchConvOpImpl(OpKernelContext* ctx, bool cudnn_use_autotune,
     auto no_transpose = se::blas::Transpose::kNoTranspose;
     OP_REQUIRES_OK(
         ctx, stream->ThenBlasGemm(no_transpose, no_transpose, n, m, k, b_ptr, n,
-                                  a_ptr, k, &c_ptr, n,
-                                  se::blas::kDefaultComputePrecision));
+                                  a_ptr, k, &c_ptr, n, GetNumericOptions()));
     return;
   }
 

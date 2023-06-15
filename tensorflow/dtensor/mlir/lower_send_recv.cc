@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -44,13 +46,13 @@ mlir::LogicalResult LowerDTensorSendRecvsOps(mlir::ModuleOp module) {
     auto recv_op = GetCorrespondingDTensorSendRecvOp<mlir::TF::DTensorSend>(
         module, send_op);
     if (!recv_op.ok()) {
-      result = send_op.emitOpError(recv_op.status().error_message());
+      result = send_op.emitOpError(recv_op.status().message());
       return;
     }
 
     auto status = LowerDTensorSendAndRecv(send_op, *recv_op);
     if (!status.ok()) {
-      result = send_op->emitOpError(status.status().error_message());
+      result = send_op->emitOpError(status.status().message());
       return;
     }
   });

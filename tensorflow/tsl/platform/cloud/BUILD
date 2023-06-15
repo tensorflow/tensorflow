@@ -82,6 +82,11 @@ cc_library(
     deps = [
         ":http_request",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:retrying_utils",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -130,6 +135,7 @@ cc_library(
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -173,6 +179,7 @@ cc_library(
         "//tensorflow/tsl/platform:thread_annotations",
         "//tensorflow/tsl/profiler/lib:traceme",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/status",
         "@jsoncpp_git//:jsoncpp",
     ],
     alwayslink = 1,
@@ -272,8 +279,10 @@ cc_library(
     deps = [
         ":curl_http_request",
         ":http_request",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:retrying_utils",
         "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -434,6 +443,7 @@ tsl_cc_test(
         "//tensorflow/tsl/platform:platform_port",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -487,6 +497,7 @@ tsl_cc_test(
     deps = [
         ":compute_engine_metadata_client",
         ":http_request_fake",
+        "//tensorflow/tsl/platform:env",
         "//tensorflow/tsl/platform:env_impl",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",

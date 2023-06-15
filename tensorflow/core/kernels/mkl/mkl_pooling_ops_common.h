@@ -16,13 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MKL_MKL_POOLING_OPS_COMMON_H_
 #define TENSORFLOW_CORE_KERNELS_MKL_MKL_POOLING_OPS_COMMON_H_
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && !defined(ENABLE_ONEDNN_V3)
 
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "dnnl.hpp"
+#include "tensorflow/core/framework/kernel_shape_util.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/padding.h"
 #ifdef DNNL_AARCH64_USE_ACL
@@ -736,5 +738,5 @@ class MklPoolingBackwardOpBase : public MklPoolingOpBase<T> {
 
 }  // namespace tensorflow
 
-#endif  // INTEL_MKL
+#endif  // INTEL_MKL && !ENABLE_ONEDNN_V3
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_MKL_POOLING_OPS_COMMON_H_

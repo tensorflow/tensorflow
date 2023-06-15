@@ -159,7 +159,6 @@ class LoadedExecutable
   // TODO(hyeontaek): Move the following XLA-specific methods to
   // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
 
-  virtual const DeviceAssignment& device_assignment() const = 0;
   using LogicalDeviceIds = ::xla::PjRtLoadedExecutable::LogicalDeviceIds;
   virtual absl::Span<const LogicalDeviceIds> addressable_device_logical_ids()
       const = 0;

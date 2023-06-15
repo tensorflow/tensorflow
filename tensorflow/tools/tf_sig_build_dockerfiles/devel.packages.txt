@@ -28,6 +28,7 @@ build-essential
 ca-certificates
 llvm-16
 clang-16
+lld-16
 clang-format-12
 colordiff
 curl

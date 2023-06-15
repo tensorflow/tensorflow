@@ -50,7 +50,7 @@ struct GreedyFusionPattern : public OpRewritePattern<scf::ForallOp> {
     if (hasLabel(op, kTestFusionAppliedLabel)) return failure();
 
     rewriter.updateRootInPlace(op, [&]() {
-      fuseGreedily(rewriter, op.getRegion().front(), [](Operation *op) {
+      fuseGreedily(rewriter, &op.getRegion().front(), [](Operation *op) {
         return isa<linalg::BroadcastOp, linalg::FillOp, linalg::MapOp,
                    tensor::CollapseShapeOp, tensor::ExpandShapeOp>(op);
       });

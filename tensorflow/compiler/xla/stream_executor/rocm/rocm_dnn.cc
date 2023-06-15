@@ -222,31 +222,31 @@ namespace wrap {
 
 #else
 
-#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                         \
-    static const char* kName;                                            \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
-    static void* GetDsoHandle() {                                        \
-      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();          \
-      return s.value();                                                  \
-    }                                                                    \
-    static FuncPtrT LoadOrDie() {                                        \
-      void* f;                                                           \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                         kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                        \
-                    << " in miopen DSO; dlerror: " << s.error_message(); \
-      return reinterpret_cast<FuncPtrT>(f);                              \
-    }                                                                    \
-    static FuncPtrT DynLoad() {                                          \
-      static FuncPtrT f = LoadOrDie();                                   \
-      return f;                                                          \
-    }                                                                    \
-    template <typename... Args>                                          \
-    miopenStatus_t operator()(Args... args) {                            \
-      return DynLoad()(args...);                                         \
-    }                                                                    \
-  } __name;                                                              \
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                        \
+  struct DynLoadShim__##__name {                                   \
+    static const char* kName;                                      \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;   \
+    static void* GetDsoHandle() {                                  \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();    \
+      return s.value();                                            \
+    }                                                              \
+    static FuncPtrT LoadOrDie() {                                  \
+      void* f;                                                     \
+      auto s = tsl::Env::Default()                                 \
+          -> GetSymbolFromLibrary(GetDsoHandle(), kName, &f);      \
+      CHECK(s.ok()) << "could not find " << kName                  \
+                    << " in miopen DSO; dlerror: " << s.message(); \
+      return reinterpret_cast<FuncPtrT>(f);                        \
+    }                                                              \
+    static FuncPtrT DynLoad() {                                    \
+      static FuncPtrT f = LoadOrDie();                             \
+      return f;                                                    \
+    }                                                              \
+    template <typename... Args>                                    \
+    miopenStatus_t operator()(Args... args) {                      \
+      return DynLoad()(args...);                                   \
+    }                                                              \
+  } __name;                                                        \
   const char* DynLoadShim__##__name::kName = #__name;
 
 #endif
@@ -1819,10 +1819,14 @@ miopenDataType_t ToMIOpenDataType(
     dnn::DataType data_type,
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   switch (data_type) {
+    case dnn::DataType::kBF16:
+      return miopenBFloat16;
     case dnn::DataType::kFloat:
       return miopenFloat;
     case dnn::DataType::kHalf:
       return miopenHalf;
+    case dnn::DataType::kInt8:
+      if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
     case dnn::DataType::kDouble:
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
@@ -2314,8 +2318,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (reserve_space_size_in_bytes > 0) {
       auto allocated =
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
-      if (!allocated.ok() ||
-          (reserve_space = allocated.value()) == nullptr) {
+      if (!allocated.ok() || (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return false;
       }
@@ -2566,8 +2569,8 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
-    int* ctc_loss_algo_id) {
+    const NumericOptions& numeric_options, ScratchAllocator* scratch_allocator,
+    DeviceMemory<uint8>* scratch_memory, int* ctc_loss_algo_id) {
   auto miopen = miopen_->GetHandle(parent_, stream);
 
   MIOpenCTCLossDescriptor miopen_ctc_loss_desc(ToMIOpenDataType(element_type));
@@ -2608,7 +2611,7 @@ tsl::Status MIOpenSupport::DoPrepareForCtcLoss(
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
-          << scratch_or.status().error_message() << "\n"
+          << scratch_or.status().message() << "\n"
           << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
@@ -2688,8 +2691,8 @@ MIOpenSupport::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
@@ -3051,7 +3054,7 @@ tsl::Status MIOpenSupport::DoPrepareForConvolution(
     } else {
       LOG(ERROR)
           << "Failed to allocate scratch memory - "
-          << allocated.status().error_message() << "\n"
+          << allocated.status().message() << "\n"
           << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
@@ -3244,21 +3247,6 @@ tsl::Status MIOpenSupport::DoConvolve(
                    filter_data, output_data);
 }
 
-bool MIOpenSupport::GetConvolveAlgorithms(
-    // ROCM TODO: refactor cc_major / cc_minor
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoDirect, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoFFT, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoWinograd, false),
-      // clang-format on
-  });
-  return true;
-}
-
 tsl::Status MIOpenSupport::GetConvolveRunners(
     bool use_cudnn_frontend, dnn::ConvolutionKind kind,
     dnn::DataType input_type, dnn::DataType output_type, Stream* stream,
@@ -3267,7 +3255,7 @@ tsl::Status MIOpenSupport::GetConvolveRunners(
     DeviceMemoryBase filter_data, const dnn::BatchDescriptor& output_descriptor,
     DeviceMemoryBase output_data,
     const dnn::ConvolutionDescriptor& convolution_descriptor, bool use_fallback,
-    ScratchAllocator* scratch_allocator,
+    ScratchAllocator* scratch_allocator, const NumericOptions& numeric_options,
     std::vector<std::unique_ptr<const dnn::ConvRunner>>* out_runners) {
   if (input_type != output_type) {
     return tsl::errors::Unimplemented(
@@ -3637,7 +3625,7 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
     } else {
       LOG(FATAL)
           << "Failed to allocate scratch memory - "
-          << allocated.status().error_message() << "\n"
+          << allocated.status().message() << "\n"
           << "\tYou can set the env var TF_CUDNN_WORKSPACE_LIMIT_IN_MB to a "
              "larger number (e.g. 8192) to increase the max memory limit.\n"
           << "\tIncreasing the max memory limit might help resolve this "
@@ -3718,34 +3706,6 @@ bool MIOpenSupport::GetMIOpenConvolveAlgorithmsFindMode(
 bool MIOpenSupport::GetRnnAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   // ROCM TODO: implement this with proper MIOpen API
-  return true;
-}
-
-bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
-    // ROCM TODO: refactor cc_major / cc_minor
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false),
-      // clang-format on
-  });
-  return true;
-}
-
-bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
-    // ROCM TODO: refactor cc_major / cc_minor
-    CudaComputeCapability cuda_compute_capability, dnn::DataType input_type,
-    std::vector<dnn::AlgorithmDesc>* out_algorithms) {
-  out_algorithms->assign({
-      // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoDirect, false),
-      // clang-format on
-  });
   return true;
 }
 
@@ -3986,8 +3946,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
+                            input_data, k, output_data, m, NumericOptions{})
              .ok()) {
       return false;
     }
@@ -4070,7 +4029,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
                                 toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                ldc, batch_count, NumericOptions{});
   }
 
   return stream->ok();
@@ -5161,8 +5120,7 @@ void initialize_miopen() {
             });
 
     if (!status.ok()) {
-      LOG(ERROR) << "Unable to register MIOpen factory: "
-                 << status.error_message();
+      LOG(ERROR) << "Unable to register MIOpen factory: " << status.message();
     }
 
     PluginRegistry::Instance()->SetDefaultFactory(

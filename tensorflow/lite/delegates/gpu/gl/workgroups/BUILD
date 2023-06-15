@@ -35,14 +35,14 @@ cc_library(
         "//conditions:default": [
             ":calculator",
             ":default_calculator",
-            "@com_google_absl//absl/container:flat_hash_map",
-            "@com_google_absl//absl/memory",
-            "@flatbuffers",
             "//tensorflow/lite/delegates/gpu/common:gpu_info",
             "//tensorflow/lite/delegates/gpu/common:types",
             "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:metadata_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:workgroups_cc_fbs",
+            "@com_google_absl//absl/container:flat_hash_map",
+            "@com_google_absl//absl/memory",
+            "@flatbuffers",
         ],
     }),
 )

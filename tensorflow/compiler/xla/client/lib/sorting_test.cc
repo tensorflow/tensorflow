@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
 
+#include <algorithm>
+#include <functional>
 #include <limits>
+#include <random>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"

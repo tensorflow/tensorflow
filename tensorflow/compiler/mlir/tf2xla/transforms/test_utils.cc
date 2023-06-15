@@ -33,7 +33,6 @@ using ::mlir::DialectRegistry;
 using ::mlir::MLIRContext;
 using ::mlir::ModuleOp;
 using ::mlir::OwningOpRef;
-using ::mlir::RegisterAllTensorFlowDialects;
 using ::tsl::StatusOr;
 
 StatusOr<OwningOpRef<ModuleOp>> GetMlirModuleFromString(

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tfrt/runtime/work_queue_interface.h"
 
+#include <thread>
 #include <utility>
 
 #include <gmock/gmock.h>

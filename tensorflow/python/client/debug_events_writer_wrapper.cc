@@ -30,7 +30,7 @@ PYBIND11_MODULE(_pywrap_debug_events_writer, m) {
 
   m.def("Init",
         [](const std::string& dump_root, const std::string& tfdbg_run_id,
-           const int64 circular_buffer_size) {
+           const int64_t circular_buffer_size) {
           DebugEventsWriter* writer = DebugEventsWriter::GetDebugEventsWriter(
               dump_root, tfdbg_run_id, circular_buffer_size);
           if (!writer->Init().ok()) {

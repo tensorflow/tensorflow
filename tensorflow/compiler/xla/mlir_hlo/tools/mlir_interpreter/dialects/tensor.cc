@@ -16,8 +16,7 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
 // clang-format erroneously puts the Tensor.h header above.
-#include <iterator>  // NOLINT
-#include <variant>   // NOLINT
+#include <optional>  // NOLINT
 
 #include "llvm/ADT/STLExtras.h"
 #include "tools/mlir_interpreter/dialects/util.h"
@@ -61,11 +60,41 @@ InterpreterValue fromElements(InterpreterState&, tensor::FromElementsOp op,
   return result;
 }
 
-template <typename Op>
-llvm::SmallVector<InterpreterValue> tensorReshape(
-    InterpreterState&, Op op, const InterpreterValue& tensor) {
+llvm::SmallVector<InterpreterValue> collapseShape(
+    InterpreterState&, tensor::CollapseShapeOp op,
+    const InterpreterValue& tensor) {
+  SmallVector<int64_t> sizes;
+  for (const auto& indices : op.getReassociationIndices()) {
+    int64_t size = 1;
+    for (auto dim : indices) {
+      size *= tensor.view().sizes[dim];
+    }
+    sizes.push_back(size);
+  }
+  return {reshapeTensor(tensor, sizes)};
+}
+
+llvm::SmallVector<InterpreterValue> expandShape(
+    InterpreterState&, tensor::ExpandShapeOp op,
+    const InterpreterValue& tensor) {
   auto ty = op->getResultTypes().front().template cast<mlir::ShapedType>();
-  return {reshapeTensor(tensor, ty.getShape())};
+  auto sizes = llvm::to_vector(ty.getShape());
+  for (const auto& [srcIndex, dstIndices] :
+       llvm::enumerate(op.getReassociationIndices())) {
+    int64_t size = tensor.view().sizes[srcIndex];
+    std::optional<int64_t> dynIndex = std::nullopt;
+    for (auto dim : dstIndices) {
+      if (sizes[dim] < 0) {
+        dynIndex = dim;
+      } else {
+        size /= sizes[dim];
+      }
+    }
+    if (dynIndex) {
+      sizes[*dynIndex] = size;
+    }
+  }
+  return {reshapeTensor(tensor, sizes)};
 }
 
 llvm::SmallVector<InterpreterValue> extractSlice(
@@ -209,8 +238,10 @@ InterpreterValue pad(InterpreterState& state, tensor::PadOp pad,
 REGISTER_MLIR_INTERPRETER_OP("tensor.cast",
                              "builtin.unrealized_conversion_cast");
 REGISTER_MLIR_INTERPRETER_OP("tensor.yield", noOpTerminator);
+REGISTER_MLIR_INTERPRETER_OP(collapseShape);
 REGISTER_MLIR_INTERPRETER_OP(dim);
 REGISTER_MLIR_INTERPRETER_OP(empty);
+REGISTER_MLIR_INTERPRETER_OP(expandShape);
 REGISTER_MLIR_INTERPRETER_OP(extract);
 REGISTER_MLIR_INTERPRETER_OP(extractSlice);
 REGISTER_MLIR_INTERPRETER_OP(fromElements);
@@ -219,8 +250,6 @@ REGISTER_MLIR_INTERPRETER_OP(insert);
 REGISTER_MLIR_INTERPRETER_OP(insertSlice<tensor::InsertSliceOp>);
 REGISTER_MLIR_INTERPRETER_OP(insertSlice<tensor::ParallelInsertSliceOp>);
 REGISTER_MLIR_INTERPRETER_OP(pad);
-REGISTER_MLIR_INTERPRETER_OP(tensorReshape<tensor::CollapseShapeOp>);
-REGISTER_MLIR_INTERPRETER_OP(tensorReshape<tensor::ExpandShapeOp>);
 
 }  // namespace
 }  // namespace interpreter

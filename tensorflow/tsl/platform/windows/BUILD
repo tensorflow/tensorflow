@@ -72,6 +72,7 @@ cc_library(
         "//tensorflow/tsl/platform:types",
         "//tensorflow/tsl/protobuf:error_codes_proto_impl_cc",
         "//third_party/eigen3",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
     ],

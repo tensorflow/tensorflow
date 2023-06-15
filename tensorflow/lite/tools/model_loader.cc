@@ -130,7 +130,8 @@ bool PipeModelLoader::InitInternal() {
 
 #endif  // !_WIN32
 
-std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
+std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(
+    const std::string& path) {
   std::vector<absl::string_view> parts = absl::StrSplit(path, ':');
   if (parts.empty()) {
     return nullptr;
@@ -142,7 +143,8 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     if (parts.size() != 4 || !absl::SimpleAtoi(parts[1], &model_fd) ||
         !absl::SimpleAtoi(parts[2], &model_offset) ||
         !absl::SimpleAtoi(parts[3], &model_size)) {
-      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s", path);
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s",
+                      path.c_str());
       return nullptr;
     }
     return std::make_unique<MmapModelLoader>(model_fd, model_offset,
@@ -154,7 +156,8 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     if (parts.size() != 4 || !absl::SimpleAtoi(parts[1], &read_fd) ||
         !absl::SimpleAtoi(parts[2], &write_fd) ||
         !absl::SimpleAtoi(parts[3], &model_size)) {
-      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s", path);
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s",
+                      path.c_str());
       return nullptr;
     }
     // If set, close the write pipe for the read process / thread.
@@ -169,7 +172,8 @@ std::unique_ptr<ModelLoader> CreateModelLoaderFromPath(absl::string_view path) {
     size_t model_size;
     if (parts.size() != 3 || !absl::SimpleAtoi(parts[1], &buffer_handle) ||
         !absl::SimpleAtoi(parts[2], &model_size)) {
-      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s", path);
+      TFLITE_LOG_PROD(TFLITE_LOG_ERROR, "Failed to parse model path: %s",
+                      path.c_str());
       return nullptr;
     }
     return std::make_unique<BufferModelLoader>(

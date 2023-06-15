@@ -4404,16 +4404,14 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal input_wrong_shape = LiteralUtil::CreateR1<int32_t>({0, 1});
 
-  EXPECT_EQ(HloEvaluator()
-                .Evaluate(*m_, {&input_wrong_shape})
-                .status()
-                .error_message(),
-            "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
-            "but arg was s32[2]{0}.");
+  EXPECT_EQ(
+      HloEvaluator().Evaluate(*m_, {&input_wrong_shape}).status().message(),
+      "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
+      "but arg was s32[2]{0}.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input_wrong_shape})
                 .status()
-                .error_message(),
+                .message(),
             "Shape mismatch at parameter 0. Computation expected s32[1]{0}, "
             "but arg was s32[2]{0}.");
 }
@@ -4431,13 +4429,12 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   Literal input = LiteralUtil::CreateR1<int32_t>({0});
 
-  EXPECT_EQ(
-      HloEvaluator().Evaluate(*m_, {&input, &input}).status().error_message(),
-      "Expected 1 argument, but got 2.");
+  EXPECT_EQ(HloEvaluator().Evaluate(*m_, {&input, &input}).status().message(),
+            "Expected 1 argument, but got 2.");
   EXPECT_EQ(HloEvaluator()
                 .Evaluate(*m_->entry_computation(), {&input, &input})
                 .status()
-                .error_message(),
+                .message(),
             "Expected 1 argument, but got 2.");
 }
 
@@ -4970,6 +4967,35 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
   m_->AddEntryComputation(b.Build());
   Literal expected = LiteralUtil::CreateR2<float>({{0.f, 2.f}, {2.f, 4.f}});
   TestRecursivelyEvaluateInstruction(gte2, expected);
+}
+
+TEST_F(HloEvaluatorTest, SlowReduceWindow) {
+  constexpr absl::string_view kHloModule = R"(
+    HloModule SlowReduceWindow
+    %add {
+      %lhs = s32[] parameter(0)
+      %rhs = s32[] parameter(1)
+      ROOT %sum = s32[] add(%lhs, %rhs)
+    }
+    ENTRY slow_reduce_window {
+      %input = s32[8192] parameter(0)
+      %zero = s32[] constant(0)
+      ROOT %scan = s32[8192] reduce-window(%input, %zero), window={size=8192 pad=8191_0}, to_apply=%add
+    }
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  std::vector<int32_t> data(8192, 1);
+  auto input = LiteralUtil::CreateR1<int32_t>(data);
+  HloEvaluator evaluator;
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal actual_literal,
+      evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
+  std::vector<int32_t> expected(8192);
+  std::iota(expected.begin(), expected.end(), 1);
+  EXPECT_THAT(actual_literal.data<int32_t>(),
+              ::testing::ElementsAreArray(expected));
 }
 
 class PatternMatchParseWhileLoopTest : public HloTestBase {};

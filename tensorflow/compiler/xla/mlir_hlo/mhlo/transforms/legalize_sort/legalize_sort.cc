@@ -15,6 +15,7 @@ limitations under the License.
 
 // This file implements logic for lowering mhlo.sort to the SCF dialect.
 #include <iterator>
+#include <memory>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -28,9 +29,9 @@ limitations under the License.
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/IRMapping.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
@@ -50,10 +51,8 @@ namespace mhlo {
 namespace {
 
 using ::mlir::arith::AddIOp;
-using ::mlir::arith::CmpIPredicate;
 using ::mlir::arith::MinSIOp;
 using ::mlir::arith::SelectOp;
-using ::mlir::arith::SubIOp;
 
 constexpr int64_t kInsertionSortSize = 16;
 

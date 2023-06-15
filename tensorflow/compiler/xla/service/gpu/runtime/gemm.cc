@@ -53,6 +53,7 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
   VLOG(3) << "Running GEMM runtime autotuning";
   std::vector<se::blas::AlgorithmType> algorithms;
   stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms);
+  const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   // Set autotune_level to 3 to disable correctness checking, which avoids
   // memory allocation during runtime.
@@ -84,8 +85,8 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
             // we pass a non-null ProfileResult, DoGemmWithAlgorithm should
             // always return true, and the actual success-ness is returned in
             // ProfileResult::is_valid.
-            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, stream, algorithm,
-                                       &profile_result));
+            TF_RETURN_IF_ERROR(RunGemm(config, lhs, rhs, out, deterministic_ops,
+                                       stream, algorithm, &profile_result));
             return std::move(profile_result);
           }));
 
@@ -110,13 +111,14 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
   se::DeviceMemoryBase lhs_data = GetDeviceAddress(lhs);
   se::DeviceMemoryBase rhs_data = GetDeviceAddress(rhs);
   se::DeviceMemoryBase output_data = GetDeviceAddress(out);
+  const bool deterministic_ops = debug_options->xla_gpu_deterministic_ops();
 
   VLOG(3) << "Running GEMM";
   se::Stream* stream = run_options->stream();
   Shape output_shape = ToShape(out);
 
   // Get the gemm config from the state.
-  absl::StatusOr<GemmConfig*> config_from_state = state.GetOrCreate([&] {
+  TF_ASSIGN_OR_RETURN(GemmConfig * gemm_config, state.GetOrCreate([&] {
     StatusOr<GemmConfig> gemm_config =
         GetGemmConfig(lhs, rhs, out, algorithm, alpha_real, alpha_imag, beta,
                       dot_dims.lhs_batch, dot_dims.lhs_contract,
@@ -124,10 +126,7 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
                       precision.empty() ? se::blas::kDefaultComputePrecision
                                         : *absl::c_max_element(precision));
     return ToAbsl(gemm_config);
-  });
-
-  if (!config_from_state.ok()) return config_from_state.status();
-  GemmConfig* gemm_config = *config_from_state;
+  }));
 
   // Set the gemm algorithm by runtime autotuning. We do runtime autotuning
   // outside of state.GetOrCreate() because otherwise it would be a potential
@@ -146,12 +145,8 @@ static absl::Status GemmImpl(const ServiceExecutableRunOptions* run_options,
 #endif
   }
 
-  Status executed =
-      RunGemm(*gemm_config, lhs_data, rhs_data, output_data, stream);
-
-  if (!executed.ok()) return ToAbslStatus(executed);
-
-  return absl::OkStatus();
+  return RunGemm(*gemm_config, lhs_data, rhs_data, output_data,
+                 deterministic_ops, stream);
 }
 
 XLA_RUNTIME_DEFINE_CUSTOM_CALL(

@@ -54,7 +54,7 @@ Status GenNode::ParseInputs(const GenNodeMap* map) {
     return Status(
         absl::StatusCode::kInvalidArgument,
         absl::StrFormat("Node '%s' contains an undefined operation '%s': %s",
-                        name(), opcode(), st.error_message()));
+                        name(), opcode(), st.message()));
   }
 
   int n_inputs = node_->input_size();

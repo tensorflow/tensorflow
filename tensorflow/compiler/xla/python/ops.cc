@@ -110,7 +110,8 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("reduction_dim"), py::arg("comparator"),
           py::arg("recall_target") = 0.9, py::arg("aggregate_to_topk") = true,
           py::arg("reduction_input_size_override") = -1);
-  ops.def("ApproxTopKReductionOutputSize", &ApproxTopKReductionOutputSize,
+  ops.def("ApproxTopKReductionOutputSize",
+          xla::ValueOrThrowWrapper(ApproxTopKReductionOutputSize),
           py::arg("input_size"), py::arg("rank"), py::arg("top_k"),
           py::arg("recall_target"), py::arg("aggregate_to_topk") = true,
           py::arg("input_size_override") = -1);
@@ -282,7 +283,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("builder"), py::arg("type"), py::arg("size"));
   ops.def(
       "LU",
-      [](XlaOp a) -> StatusOr<std::tuple<XlaOp, XlaOp, XlaOp>> {
+      [](XlaOp a) -> std::tuple<XlaOp, XlaOp, XlaOp> {
         LuDecompositionResult lu = LuDecomposition(a);
         return std::make_tuple(lu.lu, lu.pivots, lu.permutation);
       },
@@ -308,7 +309,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("taus"));
   ops.def(
       "QR",
-      [](XlaOp a, bool full_matrices) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+      [](XlaOp a, bool full_matrices) -> std::pair<XlaOp, XlaOp> {
         XlaOp q, r;
         QrExplicit(a, full_matrices, q, r);
         return std::make_pair(q, r);
@@ -316,7 +317,7 @@ void BuildOpsSubmodule(py::module* m) {
       py::arg("operand"), py::arg("full_matrices"));
   ops.def(
       "QrDecomposition",
-      [](XlaOp a) -> StatusOr<std::pair<XlaOp, XlaOp>> {
+      [](XlaOp a) -> std::pair<XlaOp, XlaOp> {
         QrDecomposition d = Qr(a);
         return std::make_pair(d.q_and_r, d.taus);
       },
@@ -408,11 +409,11 @@ void BuildOpsSubmodule(py::module* m) {
       [](XlaBuilder* builder, absl::Span<const XlaOp> operands,
          std::optional<const XlaComputation*> comparator, int64_t dimension,
          bool is_stable) -> XlaOp {
-        return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+        return builder->ReportErrorOrReturn([&]() -> XlaOp {
           std::vector<PrimitiveType> operand_types;
           operand_types.reserve(operands.size());
           for (const auto& operand : operands) {
-            TF_ASSIGN_OR_RETURN(auto operand_shape, builder->GetShape(operand));
+            auto operand_shape = xla::ValueOrThrow(builder->GetShape(operand));
             operand_types.push_back(operand_shape.element_type());
           }
 

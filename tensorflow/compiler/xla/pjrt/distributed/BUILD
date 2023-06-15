@@ -44,12 +44,8 @@ cc_library(
         ":key_value_store",
         ":protocol",
         ":protocol_cc_grpc_proto",
+        ":topology_util",
         ":util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -62,17 +58,20 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ] + tsl_grpc_cc_dependencies(),
 )
 
 xla_cc_test(
-    name = "service_test",
-    srcs = ["service_test.cc"],
+    name = "topology_util_test",
+    srcs = ["topology_util_test.cc"],
     deps = [
         ":protocol_proto_cc",
-        ":service",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
-        "//tensorflow/compiler/xla/service:gpu_plugin",
+        ":topology_util",
         "//tensorflow/tsl/lib/core:status_test_util",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
@@ -91,8 +90,6 @@ cc_library(
         ":protocol",
         ":protocol_cc_grpc_proto",
         ":util",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -106,6 +103,8 @@ cc_library(
         "//tensorflow/tsl/platform:random",
         "//tensorflow/tsl/protobuf:coordination_config_proto_cc",
         "//tensorflow/tsl/protobuf:coordination_service_proto_cc",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ] + tsl_grpc_cc_dependencies(),
 )
 
@@ -128,6 +127,18 @@ cc_library(
     ] + tsl_grpc_cc_dependencies(),
 )
 
+cc_library(
+    name = "topology_util",
+    srcs = ["topology_util.cc"],
+    hdrs = ["topology_util.h"],
+    deps = [
+        ":protocol_proto_cc",
+        "//tensorflow/tsl/platform:logging",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_cc_test(
     name = "client_server_test",
     size = "small",
@@ -137,9 +148,6 @@ xla_cc_test(
         ":distributed",
         ":protocol_proto_cc",
         ":service",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "//tensorflow/compiler/xla:protobuf_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/tsl/lib/core:status_test_util",
@@ -147,5 +155,8 @@ xla_cc_test(
         "//tensorflow/tsl/platform:errors",
         "//tensorflow/tsl/platform:test",
         "//tensorflow/tsl/platform:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ] + tsl_grpc_cc_dependencies(),
 )

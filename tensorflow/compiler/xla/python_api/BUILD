@@ -11,7 +11,7 @@ generate_backend_suites()
 
 py_library(
     name = "types",
-    srcs = ["types.py"],
+    srcs = ["types_.py"],
     srcs_version = "PY3",
     visibility = ["//visibility:public"],
     deps = [
