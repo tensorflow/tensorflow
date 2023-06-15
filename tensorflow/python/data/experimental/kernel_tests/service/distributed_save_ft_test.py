@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Fault tolerance tests for tf.data service snapshots."""
+import collections
 import os
 import pathlib
 import tempfile
@@ -40,20 +41,20 @@ def write_file(path):
     pass
 
 
-def get_stream_assignment(cluster, worker_idx, snapshot_idx=0):
-  while not cluster.workers[worker_idx].snapshot_task_progresses():
+def get_stream_assignment(cluster, worker_idx, path):
+  while True:
+    for progress in cluster.workers[worker_idx].snapshot_task_progresses():
+      if progress.snapshot_task_base_path.decode() == path:
+        return progress.snapshot_task_stream_index
     time.sleep(0.1)
-  return (
-      cluster.workers[worker_idx]
-      .snapshot_task_progresses()[snapshot_idx]
-      .snapshot_task_stream_index
-  )
 
 
-def get_stream_assignments(cluster, n, snapshot_idx=0):
-  assignments = {}
-  for i in range(n):
-    assignments[i] = get_stream_assignment(cluster, i, snapshot_idx)
+def get_stream_assignments(cluster, num_workers, paths):
+  assignments = collections.defaultdict(dict)
+  for worker_idx in range(num_workers):
+    for path in paths:
+      assignments[worker_idx][path] = get_stream_assignment(
+          cluster, worker_idx, path)
   return assignments
 
 
@@ -231,7 +232,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
-    get_stream_assignments(cluster, n)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, n, [self._path])
     cluster.stop_worker(0)
     self.assertTrue(
         os.path.exists(
@@ -252,7 +254,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         ds, self._path, cluster.dispatcher_address()
     ))
 
-    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 3, [self._path])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
@@ -270,7 +273,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         num_sources=num_sources,
     )
     # Blocks until all workers have streams.
-    get_stream_assignments(cluster, num_workers)
+    get_stream_assignments(cluster, num_workers, [self._path])
     cluster.stop_worker(0)
     cluster.restart_worker(0)
     self._wait_for_snapshot()
@@ -317,7 +320,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         )
     )
 
-    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 3, [snapshot_path1, snapshot_path2])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
@@ -342,7 +346,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.evaluate(
         distributed_save_op.distributed_save(
             dataset, self._path, cluster.dispatcher_address()))
-    get_stream_assignments(cluster, 1)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 1, [self._path])
     time.sleep(1)
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
