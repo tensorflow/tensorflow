@@ -1927,7 +1927,7 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
   """  # fmt: skip
 
   # pylint: disable=useless-super-delegation
-  def __init__(self, funcs, trackable_obj=None):
+  def __init__(self, funcs, trackable_obj=None, supported_types=None):
     """Constructor for TFLiteConverter.
 
     Args:
@@ -1940,6 +1940,8 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
         maintained by the user (e.g. `from_saved_model`).
     """
     super(TFLiteConverterV2, self).__init__(funcs, trackable_obj)
+    if supported_types is not None:
+      self.target_spec.supported_types = supported_types
 
   @classmethod
   def from_concrete_functions(cls, funcs, trackable_obj=None):
