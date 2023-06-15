@@ -265,8 +265,6 @@ build:cuda --@local_config_cuda//:enable_cuda
 build:cuda_clang --config=cuda
 build:cuda_clang --repo_env TF_CUDA_CLANG=1
 build:cuda_clang --@local_config_cuda//:cuda_compiler=clang
-build:cuda_clang --linkopt="-fuse-ld=lld"
-build:cuda_clang --linkopt="-lm"
 
 # Debug config
 build:dbg -c dbg

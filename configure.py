@@ -841,8 +841,6 @@ def set_clang_compiler_path(environ_cp):
   write_action_env_to_bazelrc('CLANG_COMPILER_PATH', clang_compiler_path)
   write_to_bazelrc('build --repo_env=CC=%s' % clang_compiler_path)
   write_to_bazelrc('build --repo_env=BAZEL_COMPILER=%s' % clang_compiler_path)
-  write_to_bazelrc('build --linkopt="-fuse-ld=lld"')
-  write_to_bazelrc('build --linkopt="-lm"')
 
   return clang_compiler_path
 
