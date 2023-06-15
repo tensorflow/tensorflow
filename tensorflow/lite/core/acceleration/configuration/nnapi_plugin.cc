@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file implements the TFLite Delegate Plugin for the NNAPI Delegate.
 
-#include "tensorflow/lite/acceleration/configuration/nnapi_plugin.h"
+#include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
 namespace tflite {
 namespace delegates {

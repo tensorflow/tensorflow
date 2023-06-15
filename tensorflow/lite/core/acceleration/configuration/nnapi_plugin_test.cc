@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/acceleration/configuration/nnapi_plugin.h"
+#include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
 #include <algorithm>
 #include <memory>
