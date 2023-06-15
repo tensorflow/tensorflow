@@ -587,17 +587,9 @@ std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
     return {root};
   }
 
-  if (root->opcode() == HloOpcode::kBitcast) {
-    HloInstruction* current = root->mutable_operand(0);
-    while (current->opcode() == HloOpcode::kBitcast) {
-      current = current->mutable_operand(0);
-    }
-
-    if (current->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      return {current};
-    }
-
-    return {};
+  if (root->opcode() == HloOpcode::kBitcast &&
+      root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return {root->mutable_operand(0)};
   }
 
   std::vector<HloInstruction*> dus_ops;
@@ -646,28 +638,95 @@ GetOutputDefiningDynamicUpdateSliceOps(mlir::lmhlo::FusionOp fusion) {
 bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     mlir::lmhlo::FusionOp fusion,
     absl::Span<const BufferAllocation> allocations) {
-  auto results = fusion.getFusionResults();
-  if (results.size() != 1) {
-    return false;
-  }
-  auto dus = mlir::dyn_cast<mlir::mhlo::DynamicUpdateSliceOp>(
-      results[0].getDefiningOp());
-  if (!dus) {
+  std::vector<mlir::mhlo::DynamicUpdateSliceOp> dus_ops =
+      GetOutputDefiningDynamicUpdateSliceOps(fusion);
+
+  // This check could probably be relaxed: if code generation is made to use a
+  // separate parallel loop for each dynamic slice update, then it shouldn't be
+  // necessary for every output to be a dynamic slice update, nor to have the
+  // same shape.
+  if (dus_ops.size() != fusion.getFusionResults().size()) {
     return false;
   }
 
   auto output_buffers = fusion.getOutputBuffers();
-  CHECK_EQ(1, output_buffers.size());
-  auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
-      dus.getOperand().getDefiningOp());
+  CHECK_GE(output_buffers.size(), 1);
+  CHECK_EQ(dus_ops.size(), output_buffers.size());
 
-  if (!parameter) {
-    return false;
+  auto update_shape =
+      dus_ops[0].getUpdate().getType().cast<mlir::ShapedType>().getShape();
+
+  // We can safely assume here that the slices being updated do not overlap, as
+  // constructing a fusion with them would not be safe otherwise.
+  for (auto [dus, output_buffer] : llvm::zip(dus_ops, output_buffers)) {
+    auto operand = dus.getOperand();
+    // A bitcast separating a fusion input from a dynamic slice update can be
+    // treated as a no-op.
+    if (auto bitcast =
+            mlir::dyn_cast<mlir::mhlo::BitcastOp>(operand.getDefiningOp())) {
+      // We require that the parameter being updated and the bitcast is only
+      // ever read by the dynamic slice update, since we otherwise risk a race
+      // condition when updating the parameter inplace.
+      if (!bitcast->hasOneUse()) {
+        return false;
+      }
+      operand = bitcast.getOperand();
+    }
+
+    auto parameter = mlir::dyn_cast<mlir::bufferization::ToTensorOp>(
+        operand.getDefiningOp());
+
+    if (!parameter) {
+      return false;
+    }
+
+    // We require that the parameter being updated is only read by the
+    // dynamic slice update, since we otherwise risk a race condition when
+    // updating the parameter inplace.
+    if (!parameter->hasOneUse()) {
+      return false;
+    }
+
+    // This check could probably be relaxed: if code generation is made to use a
+    // separate parallel loop for each dynamic slice update, then it shouldn't
+    // be necessary for the shape to be the same for all the dynamic slice
+    // updates. Note that this equality check purposefully ignores the element
+    // type.
+    if (dus.getUpdate().getType().cast<mlir::ShapedType>().getShape() !=
+        update_shape) {
+      return false;
+    }
+
+    // Dynamic slice updates should have a single path to the root---this to
+    // avoid allowing a dynamic slice update to depend on another, as this would
+    // not be guaranteed to work with the current codegen.
+    if (!dus->hasOneUse()) {
+      return false;
+    }
+
+    // Since the direct consumer of an output dynamic slice update may be a
+    // bitcast, we also check that this bitcast is used a single time.
+    // This property is also important because reads and writes on the parameter
+    // to be updated are done using the shape and layout of the dynamic slice
+    // update. This is a valid approach only if a subsequent bitcast is not read
+    // by any other op within the fusion---as this may result in codegen
+    // accessing elements using the wrong physical layout.
+    if (auto bitcast =
+            mlir::dyn_cast<mlir::mhlo::BitcastOp>(*dus->getUsers().begin())) {
+      if (!bitcast->hasOneUse()) {
+        return false;
+      }
+    }
+
+    auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
+    auto maybe_rhs = GetAllocationSlice(output_buffer, allocations);
+
+    if (!(maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs)) {
+      return false;
+    }
   }
 
-  auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);
-  auto maybe_rhs = GetAllocationSlice(output_buffers[0], allocations);
-  return maybe_lhs.ok() && maybe_rhs.ok() && *maybe_lhs == *maybe_rhs;
+  return true;
 }
 
 Shape GetShape(mlir::Value value) {

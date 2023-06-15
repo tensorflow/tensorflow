@@ -5777,6 +5777,37 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
     return OkStatus();
   }
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
+  auto get_output_array = [&](int output_index) -> llvm_ir::IrArray& {
+    CHECK_LT(output_index, dus_ops.size());
+    return ir_arrays[ir_arrays.size() - dus_ops.size() + output_index];
+  };
+
+  // In case a dynamic slice update's input or output is bitcasted, we need to
+  // ensure we read from the input array and write to the output array using the
+  // shape and layout of the dynamic slice update.
+  // This cast is known to be safe to do iff
+  // 1. the parameter to be updated has a single user (the bitcast or the
+  //    dynamic slice update)
+  // 2. if the output of the dynamic slice update is bitcasted, that bitcast
+  //    is either the fusion's output, or has a single user and is part of the
+  //    fusion's tuple output.
+  // Both conditions should be enforced explicitly in the
+  // 'CanEmitFusedDynamicUpdateSliceInPlaceForGpu' matcher.
+  for (int output_ix = 0; output_ix < dus_ops.size(); output_ix++) {
+    auto dus_op = dus_ops[output_ix];
+    auto parameter = dus_op->operand(0);
+    if (parameter->opcode() == HloOpcode::kBitcast) {
+      parameter = parameter->operand(0);
+    }
+    CHECK_EQ(parameter->opcode(), HloOpcode::kParameter);
+    int updated_parameter_number = parameter->parameter_number();
+
+    IrArray& input_array = ir_arrays[updated_parameter_number];
+    IrArray& output_array = get_output_array(output_ix);
+
+    input_array = input_array.CastToShape(dus_op->shape(), &b_);
+    output_array = output_array.CastToShape(dus_op->shape(), &b_);
+  }
 
   FusedIrEmitter fused_emitter(elemental_emitter_);
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
