@@ -1160,7 +1160,6 @@ cuda_py_strict_test(
         "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
     ],
 )
 

@@ -268,7 +268,6 @@ py_test(
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:resource_loader",
-        "@pypi_jax//:pkg",
     ],
 )
 

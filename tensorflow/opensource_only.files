@@ -173,7 +173,6 @@ tensorflow/tools/toolchains/cpus/py/BUILD:
 tensorflow/tools/toolchains/cpus/py3/BUILD:
 tensorflow/tools/toolchains/embedded/arm-linux/BUILD:
 tensorflow/tools/toolchains/java/BUILD:
-tensorflow/tools/toolchains/python/BUILD:
 tensorflow/tools/toolchains/remote/BUILD:
 tensorflow/tools/toolchains/remote_config/BUILD:
 tensorflow/tools/toolchains/win/BUILD:

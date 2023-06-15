@@ -35,6 +35,5 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
-        "@pypi_portpicker//:pkg",
     ],
 )

@@ -351,7 +351,6 @@ py_strict_library(
         "//tensorflow/python/util:deprecation",
         "//tensorflow/python/util:tf_export",
         "//third_party/py/numpy",
-        "@pypi_packaging//:pkg",
     ] + if_xla_available([
         "//tensorflow/python:_pywrap_tfcompile",
     ]),
@@ -1998,7 +1997,6 @@ py_strict_library(
         "//tensorflow/python/util/protobuf",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
     ],
 )
 

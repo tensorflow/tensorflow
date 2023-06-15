@@ -60,6 +60,5 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/util:nest",
-        "@pypi_portpicker//:pkg",
     ],
 )

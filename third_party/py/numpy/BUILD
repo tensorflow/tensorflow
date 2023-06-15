@@ -2,14 +2,15 @@ licenses(["restricted"])
 
 package(default_visibility = ["//visibility:public"])
 
-alias(
+py_library(
     name = "numpy",
-    actual = "@pypi_numpy//:pkg",
+    srcs = ["tf_numpy_dummy.py"],
+    srcs_version = "PY3",
 )
 
 alias(
     name = "headers",
-    actual = "@pypi_numpy//:numpy_headers",
+    actual = "@local_config_python//:numpy_headers",
 )
 
 genrule(

@@ -43,7 +43,6 @@ cuda_py_strict_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:test_lib",
-        "@pypi_portpicker//:pkg",
     ],
 )
 
