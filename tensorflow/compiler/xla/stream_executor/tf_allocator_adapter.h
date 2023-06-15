@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_TF_ALLOCATOR_ADAPTER_H_
 
 #include <memory>
-#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -75,9 +74,6 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
  public:
   using AllocatorWithStream =
       std::pair<std::unique_ptr<tsl::Allocator>, Stream *>;
-  using AllocatorWithLogicalIdAndStream =
-      std::tuple<std::unique_ptr<tsl::Allocator>, int, Stream *>;
-
   MultiDeviceAdapter(const Platform *platform,
                      std::vector<AllocatorWithStream> tf_allocators)
       : DeviceMemoryAllocator(platform) {
@@ -91,23 +87,6 @@ class MultiDeviceAdapter : public DeviceMemoryAllocator {
       per_device_allocators_[device_ordinal] =
           std::make_unique<TfAllocatorAdapter>(p.first.get(), p.second);
       tf_allocators_.push_back(std::move(p.first));
-    }
-  }
-
-  MultiDeviceAdapter(const Platform *platform,
-                     std::vector<AllocatorWithLogicalIdAndStream> tf_allocators)
-      : DeviceMemoryAllocator(platform) {
-    tf_allocators_.reserve(tf_allocators.size());
-    for (AllocatorWithLogicalIdAndStream &t : tf_allocators) {
-      const int device_ordinal = std::get<1>(t);
-      Stream *stream = std::get<2>(t);
-      if (per_device_allocators_.size() <= device_ordinal) {
-        per_device_allocators_.resize(device_ordinal + 1);
-      }
-      CHECK(!per_device_allocators_[device_ordinal]);
-      per_device_allocators_[device_ordinal] =
-          std::make_unique<TfAllocatorAdapter>(std::get<0>(t).get(), stream);
-      tf_allocators_.push_back(std::move(std::get<0>(t)));
     }
   }
 
