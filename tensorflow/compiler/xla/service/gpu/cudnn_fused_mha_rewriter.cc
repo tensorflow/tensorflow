@@ -16,7 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_mha_rewriter.h"
 
 #include <functional>
+#include <numeric>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
