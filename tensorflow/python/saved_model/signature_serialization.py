@@ -172,7 +172,22 @@ def canonicalize_signatures(signatures):
 
     if hasattr(function, "__name__"):
       signature_wrapper.__name__ = "signature_wrapper_" + function.__name__
-    wrapped_function = def_function.function(signature_wrapper)
+
+    # Extract experimental attributes and propagate it to the wrapped_function.
+    # At the moment only the `disable_summaries_at_runtime` attr needs to be
+    # propagated.
+    experimental_attributes = None
+    summary_optimizer = signature_function.function_def.attr.get(
+        "disable_summaries_at_runtime", None
+    )
+    if summary_optimizer is not None:
+      experimental_attributes = {
+          "disable_summaries_at_runtime": summary_optimizer
+      }
+
+    wrapped_function = def_function.function(
+        signature_wrapper, experimental_attributes=experimental_attributes
+    )
     tensor_spec_signature = {}
     if signature_function.structured_input_signature is not None:
       # The structured input signature may contain other non-tensor arguments.
