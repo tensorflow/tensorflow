@@ -1219,6 +1219,28 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
 
+// Same as above, but if indices are already 1D, then no reshape is needed.
+def ReplaceOneHotDynamicShapeFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp:$outputs
+    (TFL_OneHotOp
+      1DTensorOf<[I32]>:$indices,
+      (Arith_ConstantOp $depth),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    $keep_num_dims,
+    $asymmetric_quantize_inputs),
+  (TFL_EmbeddingLookupOp $indices,
+    (TFL_TransposeOp
+      $filter,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">))),
+  [(I32ElementsVal $indices),
+   (IsNoneType $bias)]>;
+
 def AreInputDimensionsOneInAxes : Constraint<CPred<
   "AreInputDimensionsOneInAxes($0, $1)">>;
 
