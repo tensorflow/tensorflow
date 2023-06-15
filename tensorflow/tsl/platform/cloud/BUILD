@@ -82,6 +82,11 @@ cc_library(
     deps = [
         ":http_request",
         "//tensorflow/tsl/platform:env",
+        "//tensorflow/tsl/platform:errors",
+        "//tensorflow/tsl/platform:retrying_utils",
+        "//tensorflow/tsl/platform:status",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 

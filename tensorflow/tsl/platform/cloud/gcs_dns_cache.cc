@@ -14,6 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/tsl/platform/cloud/gcs_dns_cache.h"
+
+#include <cstring>
+
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/retrying_utils.h"
+#include "tensorflow/tsl/platform/status.h"
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -33,19 +41,9 @@ namespace {
 const std::vector<string>& kCachedDomainNames =
     *new std::vector<string>{"www.googleapis.com", "storage.googleapis.com"};
 
-inline void print_getaddrinfo_error(const string& name, int error_code) {
-#ifndef _WIN32
-  if (error_code == EAI_SYSTEM) {
-    LOG(ERROR) << "Error resolving " << name
-               << " (EAI_SYSTEM): " << strerror(errno);
-  } else {
-    LOG(ERROR) << "Error resolving " << name << ": "
-               << gai_strerror(error_code);
-  }
-#else
-  // TODO:WSAGetLastError is better than gai_strerror
-  LOG(ERROR) << "Error resolving " << name << ": " << gai_strerror(error_code);
-#endif
+inline void print_getaddrinfo_error(const string& name, Status return_status) {
+  // Status doesn't map well to EAI type errors.
+  LOG(ERROR) << "Error resolving " << name << ": " << return_status;
 }
 
 // Selects one item at random from a vector of items, using a uniform
@@ -101,10 +99,88 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
   hints.ai_family = AF_INET;  // Only use IPv4 for now.
   hints.ai_socktype = SOCK_STREAM;
   addrinfo* result = nullptr;
-  int return_code = getaddrinfo(name.c_str(), nullptr, &hints, &result);
+  RetryConfig retryConfig(
+      /* init_delay_time_us = */ 5000,
+      /* max_delay_time_us = */ 50 * 1000 * 5000,
+      /* max_retries = */ 5);
+
+  const Status getaddrinfo_status = RetryingUtils::CallWithRetries(
+      [&name, &hints, &result]() {
+        int return_code = getaddrinfo(name.c_str(), nullptr, &hints, &result);
+        absl::Status return_status;
+        switch (return_code) {
+          case 0:
+            return_status = OkStatus();
+            break;
+#ifndef _WIN32
+          case EAI_ADDRFAMILY:
+          case EAI_SERVICE:
+          case EAI_SOCKTYPE:
+          case EAI_NONAME:
+            return_status = absl::FailedPreconditionError(
+                absl::StrCat("System in invalid state for getaddrinfo call: ",
+                             gai_strerror(return_code)));
+            break;
+          case EAI_AGAIN:
+          case EAI_NODATA:  // lump nodata in here - the domains being resolved
+                            // should always have data
+            return_status = absl::UnavailableError(absl::StrCat(
+                "Resolving ", name, " is temporarily unavailable"));
+            break;
+          case EAI_BADFLAGS:
+          case EAI_FAMILY:
+            return_status = absl::InvalidArgumentError(absl::StrCat(
+                "Bad arguments for getaddrinfo: ", gai_strerror(return_code)));
+            break;
+          case EAI_FAIL:
+            return_status = absl::NotFoundError(
+                absl::StrCat("Permanent failure resolving ", name, ": ",
+                             gai_strerror(return_code)));
+            break;
+          case EAI_MEMORY:
+            return_status = absl::ResourceExhaustedError("Out of memory");
+            break;
+          case EAI_SYSTEM:
+          default:
+            return_status = absl::UnknownError(strerror(return_code));
+#else
+          // mapping from
+          // https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-getaddrinfo#return-value
+          case WSATYPE_NOT_FOUND:
+          case WSAESOCKTNOSUPPORT:
+          case WSAHOST_NOT_FOUND:
+            return_status = absl::FailedPreconditionError(
+                absl::StrCat("System in invalid state for getaddrinfo call: ",
+                             gai_strerror(return_code)));
+            break;
+          case WSATRY_AGAIN:
+            return_status = absl::UnavailableError(absl::StrCat(
+                "Resolving ", name, " is temporarily unavailable"));
+            break;
+          case WSAEINVAL:
+          case WSAEAFNOSUPPORT:
+            return_status = absl::InvalidArgumentError(absl::StrCat(
+                "Bad arguments for getaddrinfo: ", gai_strerror(return_code)));
+            break;
+          case WSANO_RECOVERY:
+            return_status = absl::NotFoundError(
+                absl::StrCat("Permanent failure resolving ", name, ": ",
+                             gai_strerror(return_code)));
+            break;
+          case WSA_NOT_ENOUGH_MEMORY:
+            return_status = absl::ResourceExhaustedError("Out of memory");
+            break;
+          default:
+            return_status = absl::UnknownError(strerror(return_code));
+#endif
+        }
+
+        return Status(return_status);
+      },
+      retryConfig);
 
   std::vector<string> output;
-  if (return_code == 0) {
+  if (getaddrinfo_status.ok()) {
     for (const addrinfo* i = result; i != nullptr; i = i->ai_next) {
       if (i->ai_family != AF_INET || i->ai_addr->sa_family != AF_INET) {
         LOG(WARNING) << "Non-IPv4 address returned. ai_family: " << i->ai_family
@@ -125,7 +201,7 @@ void GcsDnsCache::AnnotateRequest(HttpRequest* request) {
       }
     }
   } else {
-    print_getaddrinfo_error(name, return_code);
+    print_getaddrinfo_error(name, getaddrinfo_status);
   }
   if (result != nullptr) {
     freeaddrinfo(result);
