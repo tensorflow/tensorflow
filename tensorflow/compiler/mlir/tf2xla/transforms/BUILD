@@ -252,6 +252,7 @@ cc_library(
     deps = [
         ":legalize_tf",
         ":legalize_utils",
+        ":tf_xla_passes_inc_gen",
         ":xla_legalize_targets",
         ":xla_legalize_tf_no_fallback",
         ":xla_legalize_tf_passes_inc_gen",
@@ -283,6 +284,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Pass",

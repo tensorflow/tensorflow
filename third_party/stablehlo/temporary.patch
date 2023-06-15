@@ -297,4 +297,23 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests
  
  func.func @constant_like(%arg0: tensor<1x2xi64>) -> (tensor<1x2xi32>) {
    // expected-error @+1 {{'chlo.constant_like' op value's type doesn't match element return type}}
+diff --ruN a/stablehlo/stablehlo/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/tools/StablehloOptMain.cpp
+--- stablehlo/stablehlo/tools/StablehloOptMain.cpp
++++ stablehlo/stablehlo/tools/StablehloOptMain.cpp
+@@ -16,6 +16,7 @@
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+ #include "mlir/Dialect/Tosa/Transforms/Passes.h"
+ #include "mlir/InitAllDialects.h"
++#include "mlir/InitAllExtensions.h"
+ #include "mlir/InitAllPasses.h"
+ #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+ #include "stablehlo/conversions/tosa/transforms/Passes.h"
+@@ -32,6 +33,7 @@
+ 
+   mlir::DialectRegistry registry;
+   mlir::registerAllDialects(registry);
++  mlir::registerAllExtensions(registry);
+   mlir::stablehlo::registerAllDialects(registry);
+ 
+   return failed(
 
