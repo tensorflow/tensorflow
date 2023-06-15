@@ -55,9 +55,9 @@ export TF_NEED_TENSORRT=0
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
 
-${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
-${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
-${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
+python${TF_PYTHON_VERSION} -m pip install --upgrade pip wheel
+python${TF_PYTHON_VERSION} -m pip install --upgrade setuptools
+python${TF_PYTHON_VERSION} -m pip install -r tensorflow/tools/ci_build/release/requirements_ubuntu.txt
 sudo touch /custom_sponge_config.csv
 sudo chown ${CI_BUILD_USER}:${CI_BUILD_GROUP} /custom_sponge_config.csv
 

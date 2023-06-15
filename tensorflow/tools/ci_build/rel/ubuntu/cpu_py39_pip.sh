@@ -24,8 +24,8 @@ install_bazelisk
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"
 export CONTAINER_TYPE="CPU"
-export TF_PYTHON_VERSION='python3.9'
-export PYTHON_BIN_PATH="$(which ${TF_PYTHON_VERSION})"
+export TF_PYTHON_VERSION='3.9'
+export PYTHON_BIN_PATH="$(which python${TF_PYTHON_VERSION})"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh

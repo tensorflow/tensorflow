@@ -25,7 +25,7 @@
 # Required environment variable(s):
 #   CONTAINER_TYPE:      (CPU | GPU)
 #   OS_TYPE:             (UBUNTU | MACOS)
-#   TF_PYTHON_VERSION:   ( python3.6 | python3.7 | python3.8 )
+#   TF_PYTHON_VERSION:   ( 3.8 | 3.9 | 3.10 | 3.11 )
 #   TF_BUILD_FLAGS:      Bazel build flags.
 #                          e.g. TF_BUILD_FLAGS="--config=opt"
 #   TF_TEST_FLAGS:       Bazel test flags.
@@ -247,7 +247,7 @@ source "${SCRIPT_DIR}/builds_common.sh"
 # Checks on values for these vars are done in "Build TF PIP Package" section.
 CONTAINER_TYPE=$(lowercase "${CONTAINER_TYPE}")
 OS_TYPE=$(lowercase "${OS_TYPE}")
-PYTHON_VER=$(lowercase "${TF_PYTHON_VERSION}")
+PYTHON_VER=python${TF_PYTHON_VERSION}
 
 # Python bin path
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
