@@ -178,6 +178,18 @@ selects.config_setting_group(
 )
 
 config_setting(
+    name = "windows_x86_64",
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows_aarch64",
+    values = {"cpu": "arm64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "windows",
     # Internal builds query the target OS.
     flag_values = if_google(

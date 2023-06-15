@@ -868,6 +868,7 @@ def if_llvm_aarch32_available(then, otherwise = []):
 def if_llvm_aarch64_available(then, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:linux_aarch64"): then,
+        clean_dep("//tensorflow/tsl:windows_aarch64"): then,
         "//conditions:default": otherwise,
     })
 
@@ -893,6 +894,7 @@ def if_llvm_system_z_available(then, otherwise = []):
 def if_llvm_x86_available(then, otherwise = []):
     return select({
         clean_dep("//tensorflow/tsl:linux_x86_64"): then,
+        clean_dep("//tensorflow/tsl:windows_x86_64"): then,
         "//conditions:default": otherwise,
     })
 
