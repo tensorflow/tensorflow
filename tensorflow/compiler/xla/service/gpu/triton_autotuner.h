@@ -57,7 +57,8 @@ class TritonAutotuner : public HloModulePass {
 // TODO(b/266210099): have a way to generate/load these dynamically.
 // Returns a list of possible tilings for a gemm performed in Triton.
 std::vector<tensorflow::AutotuneResult::TritonGemmKey>
-GetPossibleMatmulAutotuneConfigs(se::CudaComputeCapability compute_capability);
+GetPossibleMatmulAutotuneConfigs(se::CudaComputeCapability compute_capability,
+                                 bool exhaustive_tiling_search = false);
 
 // Extracts an HLO instruction into a new HLO module replacing its operands
 // with parameter instructions.

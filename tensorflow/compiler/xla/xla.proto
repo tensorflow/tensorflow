@@ -531,7 +531,9 @@ message DebugOptions {
   // kernel on GPU.
   bool xla_gpu_enable_experimental_block_size = 214;
 
-  // Next id: 219
+  bool xla_gpu_exhaustive_tiling_search = 219;
+
+  // Next id: 220
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
