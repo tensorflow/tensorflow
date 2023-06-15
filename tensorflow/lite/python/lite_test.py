@@ -2925,5 +2925,48 @@ class QuantizationModeTest(LiteTest, parameterized.TestCase):
     logging.root.removeHandler(handler)
 
 
+class TestTFLiteConverterV2(LiteTest):
+
+  def test_int8_supported_type(self):
+    """Tests if the supported_types attribute can be set to [tf.int8]."""
+
+    # Create a Keras model.
+    model = keras.models.Sequential([
+      keras.layers.Dense(units=1, input_shape=[1])
+    ])
+
+    # Prepare the converter.
+    converter = lite.TFLiteConverter.from_keras_model(model)
+    converter.target_spec.supported_types = [dtypes.int8]
+    tflite_model = converter.convert()
+
+    # Load TFLite model and allocate tensors.
+    interpreter = lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+
+    # Get input and output tensors.
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    # Check if input and output types are as expected.
+    self.assertEqual(input_details[0]['dtype'], np.int8)
+    self.assertEqual(output_details[0]['dtype'], np.int8)
+
+  def test_default_supported_type(self):
+    """Tests if the supported_types attribute defaults to None."""
+
+    # Create a Keras model.
+    model = keras.models.Sequential([
+      keras.layers.Dense(units=1, input_shape=[1])
+    ])
+
+    # Prepare the converter without specifying supported types.
+    converter = lite.TFLiteConverter.from_keras_model(model)
+
+    # Assert that the default value of supported_types is None
+    self.assertIsNone(converter.target_spec.supported_types)
+
+
+
 if __name__ == '__main__':
   test.main()
