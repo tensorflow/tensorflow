@@ -157,12 +157,12 @@ ENTRY entry {
   mlir::MLIRContext mlir_context;
 
   tensorflow::AutotuneResult::TritonGemmKey config;
-  config.set_block_m(512);
-  config.set_block_n(512);
+  config.set_block_m(16);
+  config.set_block_n(32);
   config.set_block_k(512);
   config.set_split_k(1);
-  config.set_num_stages(1);
-  config.set_num_warps(2);
+  config.set_num_stages(4);
+  config.set_num_warps(8);
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_computation,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
@@ -170,12 +170,13 @@ ENTRY entry {
                     dev_info, config, &llvm_module, &MatMul, mlir_context),
       tsl::testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
-          absl::StrFormat("Requires too much shared memory: 1310720 > %d",
+          absl::StrFormat("Requires too much shared memory: 294912 > %d",
                           dev_info.shared_memory_per_block_optin)));
 
   config.set_block_m(64);
   config.set_block_n(128);
   config.set_block_k(128);
+  config.set_num_stages(1);
   TF_ASSERT_OK_AND_ASSIGN(
       const LaunchDimensions launch_dimensions,
       TritonWrapper("test_fn", triton_dot_computation,
@@ -525,6 +526,65 @@ ENTRY e {
   MatchOptimizedHlo(hlo_text, R"(
 ; CHECK-NOT: __triton
 )");
+}
+
+// This tests the complexity heuristics in TritonWrapper.
+TEST_F(TritonGemmTest, FailForTooComplexTiling) {
+  const std::string kHloText = R"(
+HloModule module, is_scheduled=true
+
+triton_gemm_dot {
+  p0 = s8[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  c0 = f32[1024,1024] convert(p0)
+  ROOT dot.0 = f32[1024,1024] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = s8[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  const HloComputation* triton_dot_computation =
+      hlo_module->entry_computation()
+          ->root_instruction()
+          ->fused_instructions_computation();
+  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+
+  // Fails if the tiling is too complex.
+  tensorflow::AutotuneResult::TritonGemmKey config;
+  config.set_block_m(512);
+  config.set_block_n(512);
+  config.set_block_k(32);
+  config.set_split_k(1);
+  config.set_num_stages(1);
+  config.set_num_warps(2);
+  EXPECT_THAT(
+      TritonWrapper("test_fn", triton_dot_computation,
+                    se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
+                                              /*minor=*/0},
+                    dev_info, config, &llvm_module, &MatMul, mlir_context),
+      tsl::testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          "Tiling complexity heuristic exceeded: 147456 > 9000"));
+
+  // Succeeds if the tiling is not too complex.
+  config.set_block_m(32);
+  config.set_block_n(32);
+  config.set_block_k(32);
+  TF_CHECK_OK(
+      TritonWrapper("test_fn", triton_dot_computation,
+                    se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
+                                              /*minor=*/0},
+                    dev_info, config, &llvm_module, &MatMul, mlir_context)
+          .status());
 }
 
 class TritonGemmTestAny : public TritonGemmTest {

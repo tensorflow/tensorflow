@@ -797,6 +797,41 @@ StatusOr<LaunchDimensions> TritonWrapper(
     const se::CudaComputeCapability& cc, const GpuDeviceInfo& device_info,
     const AutotuneResult::TritonGemmKey& config, llvm::Module* llvm_module,
     LaunchDimensionsGenerator generator, mlir::MLIRContext& mlir_context) {
+  // This is a heuristic that serves as a proxy for register usage and code
+  // size.
+  //
+  // We have noticed that tilings with very long LLVM IR code are both slow to
+  // compile and slow to run. This can be for example due to register spills.
+  // So we should skip these tilings to save time. But it's better to skip them
+  // before the LLVM IR is generated. To do that, we came up with a formula that
+  // strongly correlates with the LLVM IR size.
+  // The formula is the size of the
+  // two input and the output thread block tiles divided by the number of warps.
+  // We read https://developer.nvidia.com/blog/cutlass-linear-algebra-cuda/ as a
+  // reference, and found the formula by trial and error.
+  //
+  // To regenerate the limit, we have to run an exhaustive search on all
+  // tilings for a few different HLOs, printing the runtimes and the heuristic
+  // values.
+  // From that, we can find a limit, such that all tilings within alpha *
+  // optimal_runtime have a heuristic value less than or equal to the limit.
+  //
+  // In our measurements, all tilings which were within 1.13 * optimal_runtime
+  // had a complexity_heuristic_value <= kComplexityHeuristicLimit.
+  //
+  // See go/tiling-heuristic for more details.
+  constexpr int64_t kComplexityHeuristicLimit = 9000;
+  int64_t complexity_heuristic_value =
+      (config.block_m() * config.block_n() +
+       (config.block_m() + config.block_n()) * config.block_k()) /
+      config.num_warps();
+  VLOG(2) << "Complexity heuristic: " << complexity_heuristic_value;
+  if (complexity_heuristic_value > kComplexityHeuristicLimit) {
+    return ResourceExhausted("Tiling complexity heuristic exceeded: %d > %d",
+                             complexity_heuristic_value,
+                             kComplexityHeuristicLimit);
+  }
+
   mlir_context.loadDialect<mt::TritonDialect>();
   mlir::OpBuilder b(&mlir_context);
   auto loc = mlir::NameLoc::get(b.getStringAttr(hlo_computation->name()));
