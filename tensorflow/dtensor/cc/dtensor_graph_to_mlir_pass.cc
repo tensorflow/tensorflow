@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -26,8 +25,10 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/InitAllExtensions.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/jit/flags.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
@@ -55,6 +56,11 @@ namespace tensorflow {
 
 DTensorMlirPassRunner::DTensorMlirPassRunner()
     : pass_manager_(&context_), logging_enabled_(false) {
+  mlir::DialectRegistry registry;
+  mlir::registerAllExtensions(registry);
+  mlir::RegisterAllTensorFlowDialects(registry);
+  context_.appendDialectRegistry(registry);
+
   logging_enabled_ = dtensor::MaybeEnableLogging(&pass_manager_);
   if (logging_enabled_) pass_manager_.getContext()->enableMultithreading();
 
