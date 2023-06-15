@@ -1143,10 +1143,12 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto a, GetAllocationSlice(gemm.getA()));
   TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
   TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
+  bool deterministic_ops =
+      hlo_module_config_.debug_options().xla_gpu_deterministic_ops();
 
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
-  auto thunk =
-      std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config), a, b, c);
+  auto thunk = std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config),
+                                           a, b, c, deterministic_ops);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();

@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
-#include "tensorflow/tsl/platform/tensor_float_32_utils.h"
 #include "tensorflow/tsl/platform/test.h"
 
 namespace xla {
@@ -52,16 +51,6 @@ class GemmRewriteTest : public GpuCodegenTest {
         ->GetDeviceDescription()
         .cuda_compute_capability();
   }
-  void SetUp() override {
-    tf32_state_ = tsl::tensor_float_32_execution_enabled();
-    tsl::enable_tensor_float_32_execution(false);
-  }
-  void TearDown() override {
-    tsl::enable_tensor_float_32_execution(tf32_state_);
-  }
-
- private:
-  bool tf32_state_;
 };
 
 TEST_F(GemmRewriteTest, CheckCustomCallTarget) {
@@ -1125,7 +1114,7 @@ HloModule test
 ENTRY test {
   Arg_0.1 = f16[4,3]{1,0} parameter(0)
   Arg_1.2 = f16[3,6]{1,0} parameter(1)
-  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT dot.3 = f32[4,6]{1,0} dot(Arg_0.1, Arg_1.2), lhs_contracting_dims={1}, rhs_contracting_dims={0}, operand_precision={highest, highest}
 }
 )";
 
@@ -6308,8 +6297,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
           }
 
 )";
-  bool tf32_state_ = tsl::tensor_float_32_execution_enabled();
-  tsl::enable_tensor_float_32_execution(true);
 
   CheckFp8IfOnHopper(hlo_text);
   RunAndFilecheckHloRewrite(hlo_text,
@@ -6318,7 +6305,6 @@ TEST_P(ParameterizedFp8GemmRewriteTest, ScaledABUnscaledDF8TF32E5M2) {
                             R"(
     ; CHECK:           custom_call_target="__cublas$lt$matmul$f8",
           )");
-  tsl::enable_tensor_float_32_execution(tf32_state_);
 }
 
 INSTANTIATE_TEST_SUITE_P(Fp8CublasTestsBothLegacyAndLt,
