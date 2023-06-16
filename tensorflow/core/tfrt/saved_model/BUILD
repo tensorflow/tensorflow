@@ -37,7 +37,6 @@ cc_library(
         "//tensorflow/cc/saved_model:constants",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/xla/service:compiler",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/core/ops",
