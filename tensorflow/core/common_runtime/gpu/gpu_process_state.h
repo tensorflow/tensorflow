@@ -16,6 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_PROCESS_STATE_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_PROCESS_STATE_H_
 
+// TODO(b/282059652): Merge google internal and open-source code path once TF
+// dependency issue is resolved.
+#if (defined(PLATFORM_GOOGLE) && defined(TF_PLATFORM_LINUX_X86_64))
+#define TF_GPU_USE_PJRT
+#endif  // PLATFORM_GOOGLE && TF_PLATFORM_LINUX_X86_64
+
 #include <functional>
 #include <map>
 #include <memory>
@@ -158,6 +164,13 @@ class GPUProcessState {
     GPUBFCAllocator* bfc_allocator;
     SubAllocator* sub_allocator;  // owned by allocator
     std::unique_ptr<Allocator> recording_allocator;
+
+#ifdef TF_GPU_USE_PJRT
+    // Not owning GPU allocator. The allocator is owned by PJRT. If
+    // `allocator_not_owned` is set, `allocator` owned by AllocatorParts won't
+    // be set.
+    Allocator* allocator_not_owned;
+#endif  // TF_GPU_USE_PJRT
   };
   std::vector<AllocatorParts> gpu_allocators_ TF_GUARDED_BY(mu_);
   std::vector<std::vector<SubAllocator::Visitor>> gpu_visitors_
