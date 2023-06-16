@@ -347,9 +347,10 @@ Status DimensionOrder::HandleCopyOrTranspose(const HloInstruction* hlo) {
 // physically once by other dimensions. Other ones can be only split logically.
 // All subdimensions within a dimension have to be ordered.
 Status RequireTritonGemmSupportedDimOrder(const DimensionOrder& order) {
-  // At most: contracting, non-contracting, split-K, another batch.
-  std::array<int, 4> subdim_counters = {-1, -1, -1, -1};
-  std::array<int, 4> split_counters = {-1, -1, -1, -1};
+  std::array<int, DotFusionAnalysis::kMaxDimsPerTensor> subdim_counters = {
+      -1, -1, -1, -1};
+  std::array<int, DotFusionAnalysis::kMaxDimsPerTensor> split_counters = {
+      -1, -1, -1, -1};
   const DimensionOrder::DimOrderVector& dim_order_vector =
       order.GetDimOrderVector();
   for (int i = 0; i < dim_order_vector.size(); i++) {
@@ -535,24 +536,32 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   if (tiling.split_k() > shape.dimensions(contracting_dim_idx)) {
     return Cancelled("Too small total contracting dimension size.");
   }
-  int64_t size_to_split = tiling.split_k();
-  auto fragment = analysis.IterSpec(operand_number, contracting_dim_idx)[0]
-                      .subfragments.crbegin();
-  while (size_to_split > *fragment) {
-    if (size_to_split % *fragment) {
+  DotFusionAnalysis::Scope scope = (operand_number == 0)
+                                       ? DotFusionAnalysis::Scope::LHS
+                                       : DotFusionAnalysis::Scope::RHS;
+  for (const HloInstruction* param : analysis.ScopeParameters(scope)) {
+    // If an operand of dot does not read any parameters its K dimension
+    // does not need analysis for fragmentation.
+    const DotFusionAnalysis::DimIterationSpec* spec =
+        analysis.IterSpec(scope, param, contracting_dim_idx);
+    // Split contracting dimension is not implemented yet.
+    CHECK_EQ(spec->size(), 1);
+    auto fragment = spec->at(0).subfragments.crbegin();
+    int64_t size_to_split = tiling.split_k();
+    while (size_to_split > *fragment) {
+      if (size_to_split % *fragment) {
+        return Cancelled("Contracting dimension is too fragmented.");
+      }
+      size_to_split /= *fragment;
+      ++fragment;
+    }
+    if (*fragment % size_to_split) {
       return Cancelled("Contracting dimension is too fragmented.");
     }
-    size_to_split /= *fragment;
-    ++fragment;
-  }
-  if (*fragment % size_to_split) {
-    return Cancelled("Contracting dimension is too fragmented.");
-  }
-  if (tiling.split_k() >
-      ceil(1.0 *
-           analysis.IterSpec(operand_number, contracting_dim_idx)[0].count /
-           tiling.block_k())) {
-    return Cancelled("Too small divisible part of the contracting dimension.");
+    if (tiling.split_k() > ceil(1.0 * spec->at(0).count / tiling.block_k())) {
+      return Cancelled(
+          "Too small divisible part of the contracting dimension.");
+    }
   }
 
   for (int i = 0; i < shape.rank(); ++i) {
@@ -679,8 +688,8 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
     root = root->operand(0);
   }
 
-  for (int64_t operand_number = 0; operand_number < root->operand_count();
-       ++operand_number) {
+  for (const Scope scope : {Scope::LHS, Scope::RHS}) {
+    const int operand_number = static_cast<int>(scope);
     const HloInstruction* parameter = root->operand(operand_number);
     DimensionOrder dim_order =
         DimensionOrder::FromDotOperand(*root, operand_number, split_k);
@@ -692,7 +701,7 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
           << " " << root->parent()->ToString();
       parameter = parameter->operand(0);
     }
-    operand_to_parameter_[operand_number] = parameter;
+    CHECK(parameters_[scope].insert(parameter).second) << parameter->ToString();
     VLOG(5) << parameter->ToString();
 
     const DimensionOrder::DimOrderVector& dim_order_vector =
@@ -709,8 +718,8 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
         continue;
       }
 
-      IterationSpec& iter_spec =
-          iter_specs_[operand_number][dim.target_dim_number];
+      DimIterationSpec& iter_spec =
+          iter_specs_[scope][parameter][dim.target_dim_number];
       if (dim_order_index > 0 &&
           dim_order_vector[dim_order_index - 1].target_dim_number ==
               dim.target_dim_number) {
@@ -730,6 +739,16 @@ DotFusionAnalysis::DotFusionAnalysis(const HloInstruction* root,
       accumulated_stride *= dim.size;
     }
   }
+}
+
+const DotFusionAnalysis::DimIterationSpec* DotFusionAnalysis::IterSpec(
+    const DotFusionAnalysis::Scope scope, const HloInstruction* hlo,
+    const int dimension) const {
+  auto ret = iter_specs_.at(scope).find(hlo);
+  if (ret != iter_specs_.at(scope).end()) {
+    return &ret->second.at(dimension);
+  }
+  return nullptr;
 }
 
 bool IsTritonHandledGEMM(const HloInstruction& dot,

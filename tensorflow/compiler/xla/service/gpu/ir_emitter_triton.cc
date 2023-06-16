@@ -338,8 +338,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
   }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
   const DotFusionAnalysis analysis(dot_instr, config.split_k());
-  const HloInstruction* hlo_lhs_param = analysis.OperandToParameter(0);
-  const HloInstruction* hlo_rhs_param = analysis.OperandToParameter(1);
+  const HloInstruction* hlo_lhs_param =
+      *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).cbegin();
+  const HloInstruction* hlo_rhs_param =
+      *analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).cbegin();
 
   Type lhs_ty = TritonType(b, hlo_lhs_param->shape().element_type());
   Type rhs_ty = TritonType(b, hlo_rhs_param->shape().element_type());
@@ -389,8 +391,16 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   // Non-contracting dimension lengths.
   // Just the fastest-varying part of it if the dimension is split.
-  const int m_minor = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].count;
-  const int n = analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].count;
+  const int m_minor = analysis
+                          .IterSpec(DotFusionAnalysis::Scope::LHS,
+                                    hlo_lhs_param, lhs_noncontracting_dim_idx)
+                          ->at(0)
+                          .count;
+  const int n = analysis
+                    .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
+                              rhs_noncontracting_dim_idx)
+                    ->at(0)
+                    .count;
 
   // Contracting dimension length.
   const int k = dot_instr->operand(0)->shape().dimensions(
@@ -399,24 +409,54 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   // LHS non-contracting can be split into two.
   const bool lhs_nc_split =
-      (analysis.IterSpec(0, lhs_noncontracting_dim_idx).size() > 1);
-  CHECK_EQ(analysis.IterSpec(0, lhs_noncontracting_dim_idx).size(),
+      (analysis
+           .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                     lhs_noncontracting_dim_idx)
+           ->size() > 1);
+  CHECK_EQ(analysis
+               .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                         lhs_noncontracting_dim_idx)
+               ->size(),
            1 + lhs_nc_split);
   // For now split non-contracting and batch are not supported simultaneously
   // because they are implemented via same mechanism.
   CHECK_LE(have_batch + lhs_nc_split, 1);
   // Splitting of the other ones is not supported yet.
-  CHECK_EQ(analysis.IterSpec(1, rhs_noncontracting_dim_idx).size(), 1);
-  CHECK_EQ(analysis.IterSpec(0, dims.lhs_contracting_dimensions(0)).size(), 1);
+  CHECK_EQ(analysis
+               .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
+                         rhs_noncontracting_dim_idx)
+               ->size(),
+           1);
+  CHECK_EQ(analysis
+               .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                         dims.lhs_contracting_dimensions(0))
+               ->size(),
+           1);
 
   const IndexT stride_lhs_m =
-      analysis.IterSpec(0, lhs_noncontracting_dim_idx)[0].stride;
+      analysis
+          .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                    lhs_noncontracting_dim_idx)
+          ->at(0)
+          .stride;
   const IndexT stride_lhs_k =
-      analysis.IterSpec(0, dims.lhs_contracting_dimensions(0))[0].stride;
+      analysis
+          .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                    dims.lhs_contracting_dimensions(0))
+          ->at(0)
+          .stride;
   const IndexT stride_rhs_k =
-      analysis.IterSpec(1, dims.rhs_contracting_dimensions(0))[0].stride;
+      analysis
+          .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
+                    dims.rhs_contracting_dimensions(0))
+          ->at(0)
+          .stride;
   const IndexT stride_rhs_n =
-      analysis.IterSpec(1, rhs_noncontracting_dim_idx)[0].stride;
+      analysis
+          .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
+                    rhs_noncontracting_dim_idx)
+          ->at(0)
+          .stride;
 
   // Either batch size or upper part of the length of a split nc dimension.
   int batch_size = 1;
@@ -426,25 +466,47 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // m_minor.
   int m_full = m_minor;
   if (lhs_nc_split) {
-    batch_size = analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].count;
-    stride_batch_lhs =
-        analysis.IterSpec(0, lhs_noncontracting_dim_idx)[1].stride;
+    batch_size = analysis
+                     .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                               lhs_noncontracting_dim_idx)
+                     ->at(1)
+                     .count;
+    stride_batch_lhs = analysis
+                           .IterSpec(DotFusionAnalysis::Scope::LHS,
+                                     hlo_lhs_param, lhs_noncontracting_dim_idx)
+                           ->at(1)
+                           .stride;
     stride_batch_rhs = 0;
     m_full *= batch_size;
   } else if (have_batch) {
     // Batch dimension should have same length left and right.
     int batch_dim_idx = have_split_k ? 1 : 0;
-    CHECK_EQ(
-        analysis.IterSpec(0, dims.lhs_batch_dimensions(batch_dim_idx))[0].count,
-        analysis.IterSpec(1, dims.rhs_batch_dimensions(batch_dim_idx))[0]
-            .count);
-    batch_size =
-        analysis.IterSpec(0, dims.lhs_batch_dimensions(batch_dim_idx))[0].count;
+    CHECK_EQ(analysis
+                 .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                           dims.lhs_batch_dimensions(batch_dim_idx))
+                 ->at(0)
+                 .count,
+             analysis
+                 .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
+                           dims.rhs_batch_dimensions(batch_dim_idx))
+                 ->at(0)
+                 .count);
+    batch_size = analysis
+                     .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                               dims.lhs_batch_dimensions(batch_dim_idx))
+                     ->at(0)
+                     .count;
     stride_batch_lhs =
-        analysis.IterSpec(0, dims.lhs_batch_dimensions(batch_dim_idx))[0]
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+                      dims.lhs_batch_dimensions(batch_dim_idx))
+            ->at(0)
             .stride;
     stride_batch_rhs =
-        analysis.IterSpec(1, dims.rhs_batch_dimensions(batch_dim_idx))[0]
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
+                      dims.rhs_batch_dimensions(batch_dim_idx))
+            ->at(0)
             .stride;
   }
 

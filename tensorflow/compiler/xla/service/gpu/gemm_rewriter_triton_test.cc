@@ -123,23 +123,24 @@ ENTRY e {
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
-  const HloInstruction* dot = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot);
-  EXPECT_EQ(analysis.OperandToParameter(0),
-            dot_computation->parameter_instruction(0));
-  EXPECT_EQ(analysis.OperandToParameter(1),
-            dot_computation->parameter_instruction(1));
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
+            p1);
   EXPECT_THAT(
-      analysis.IterSpec(0, 0),
+      *analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
       ElementsAre(FieldsAre(/*stride=*/4, /*count=*/48, ElementsAre(48))));
   EXPECT_THAT(
-      analysis.IterSpec(0, 1),
+      *analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4, ElementsAre(4))));
   EXPECT_THAT(
-      analysis.IterSpec(1, 0),
+      *analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 0),
       ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4, ElementsAre(4))));
   EXPECT_THAT(
-      analysis.IterSpec(1, 1),
+      *analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 1),
       ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3, ElementsAre(3))));
 }
 
@@ -170,22 +171,23 @@ ENTRY e {
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
-  const HloInstruction* dot = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot);
-  EXPECT_EQ(analysis.OperandToParameter(0),
-            dot_computation->parameter_instruction(0));
-  EXPECT_EQ(analysis.OperandToParameter(1),
-            dot_computation->parameter_instruction(1));
-  EXPECT_THAT(analysis.IterSpec(0, 0),
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/4, /*count=*/6 * 8,
                                     /*subfragments=*/ElementsAre(6, 8))));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 0),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
@@ -214,22 +216,23 @@ ENTRY e {
                           ParseAndReturnVerifiedModule(hlo_text));
   const HloComputation* dot_computation =
       module->entry_computation()->root_instruction()->called_computations()[0];
-  const HloInstruction* dot = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot);
-  EXPECT_EQ(analysis.OperandToParameter(0),
-            dot_computation->parameter_instruction(1));
-  EXPECT_EQ(analysis.OperandToParameter(1),
-            dot_computation->parameter_instruction(0));
-  EXPECT_THAT(analysis.IterSpec(0, 0),
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
+            p1);
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
+            p0);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/2, /*count=*/24000,
                                     /*subfragments=*/ElementsAre(24000))));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
                                     /*subfragments=*/ElementsAre(2))));
-  EXPECT_THAT(analysis.IterSpec(1, 0),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/2, /*count=*/2,
                                     /*subfragments=*/ElementsAre(2))));
-  EXPECT_THAT(analysis.IterSpec(1, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/2,
                                     /*subfragments=*/ElementsAre(2))));
 }
@@ -262,22 +265,23 @@ ENTRY e {
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
-  const HloInstruction* dot = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot);
-  EXPECT_EQ(analysis.OperandToParameter(0),
-            dot_computation->parameter_instruction(0));
-  EXPECT_EQ(analysis.OperandToParameter(1),
-            dot_computation->parameter_instruction(1));
-  EXPECT_THAT(analysis.IterSpec(0, 0),
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6,
                                     /*subfragments=*/ElementsAre(6, 8))));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 0),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
@@ -311,22 +315,23 @@ ENTRY e {
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
-  const HloInstruction* dot = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot);
-  EXPECT_EQ(analysis.OperandToParameter(0),
-            dot_computation->parameter_instruction(0));
-  EXPECT_EQ(analysis.OperandToParameter(1),
-            dot_computation->parameter_instruction(1));
-  EXPECT_THAT(analysis.IterSpec(0, 0),
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8 * 6,
                                     /*subfragments=*/ElementsAre(6, 8))));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/8 * 6, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 0),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
@@ -357,24 +362,25 @@ ENTRY e {
                                               ->root_instruction()
                                               ->operand(0)
                                               ->called_computations()[0];
-  const HloInstruction* dot = dot_computation->root_instruction();
-  const DotFusionAnalysis analysis(dot);
-  EXPECT_EQ(analysis.OperandToParameter(0),
-            dot_computation->parameter_instruction(0));
-  EXPECT_EQ(analysis.OperandToParameter(1),
-            dot_computation->parameter_instruction(1));
-  EXPECT_THAT(analysis.IterSpec(0, 0),
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  const HloInstruction* p1 = dot_computation->parameter_instruction(1);
+  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
+            p0);
+  EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
+            p1);
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/8,
                                     /*subfragments=*/ElementsAre(8)),
                           FieldsAre(/*stride=*/4 * 8, /*count=*/3,
                                     /*subfragments=*/ElementsAre(3))));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/8, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 0),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 0),
               ElementsAre(FieldsAre(/*stride=*/3, /*count=*/4,
                                     /*subfragments=*/ElementsAre(4))));
-  EXPECT_THAT(analysis.IterSpec(1, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::RHS, p1, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/3,
                                     /*subfragments=*/ElementsAre(3))));
 }
@@ -609,14 +615,19 @@ ENTRY e {
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
-  const HloInstruction* batch_dot = root->operand(0)->fused_expression_root();
-  EXPECT_EQ(batch_dot->shape(),
+  const HloComputation* dot_computation = module->entry_computation()
+                                              ->root_instruction()
+                                              ->operand(0)
+                                              ->called_computations()[0];
+  const HloInstruction* p0 = dot_computation->parameter_instruction(0);
+  DotFusionAnalysis analysis(dot_computation->root_instruction(),
+                             key.split_k());
+  EXPECT_EQ(dot_computation->root_instruction()->shape(),
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
-  DotFusionAnalysis analysis(batch_dot, key.split_k());
-  EXPECT_THAT(analysis.IterSpec(0, 0),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
               ElementsAre(FieldsAre(/*stride=*/320, /*count=*/8,
                                     /*subfragments=*/ElementsAre(4, 2))));
-  EXPECT_THAT(analysis.IterSpec(0, 1),
+  EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 1),
               ElementsAre(FieldsAre(/*stride=*/1, /*count=*/320,
                                     /*subfragments=*/ElementsAre(20, 4, 4))));
 }
