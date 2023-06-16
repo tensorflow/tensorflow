@@ -4970,6 +4970,9 @@ TEST_F(HloEvaluatorTest, GetTupleElementInterleavedWithTupleSucceeds) {
 }
 
 TEST_F(HloEvaluatorTest, SlowReduceWindow) {
+#ifdef THREAD_SANITIZER
+  GTEST_SKIP();
+#endif
   constexpr absl::string_view kHloModule = R"(
     HloModule SlowReduceWindow
     %add {
