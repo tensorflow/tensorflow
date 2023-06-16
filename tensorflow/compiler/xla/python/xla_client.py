@@ -185,18 +185,6 @@ def make_tpu_client(use_pjrt_c_api: bool = False):
       max_inflight_computations=max_inflight_computations)
 
 
-def make_plugin_device_client():
-  """Returns a plugin device client."""
-  try:
-    return _xla.get_plugin_device_client()
-  except AttributeError as e:
-    raise AttributeError(
-        'xla_extension has no attributes named get_plugin_device_client. '
-        'Compile TensorFlow with '
-        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
-        '(defaults to false) to enable this.') from e
-
-
 class OpMetadata:
   """Python representation of a xla.OpMetadata protobuf."""
   __slots__ = ('op_type', 'op_name', 'source_file', 'source_line')

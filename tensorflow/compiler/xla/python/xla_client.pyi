@@ -115,9 +115,6 @@ def pjrt_plugin_loaded(plugin_name: str) -> bool:
 def load_pjrt_plugin_dynamically(plugin_name: str, library_path: str) -> None:
   ...
 
-def make_plugin_device_client() -> Client:
-  ...
-
 class OpMetadata:
 
   def __init__(self,

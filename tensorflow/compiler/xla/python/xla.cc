@@ -53,9 +53,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/interpreter_device.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/pjrt_ifrt/pjrt_client.h"
-#ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
-#include "tensorflow/compiler/xla/pjrt/pjrt_plugin_device_client.h"
-#endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 #include "tensorflow/compiler/xla/pjrt/pjrt_c_api_client.h"
 #include "tensorflow/compiler/xla/pjrt/tfrt_cpu_pjrt_client.h"
 #ifdef XLA_PYTHON_ENABLE_TPU
@@ -515,16 +512,6 @@ PYBIND11_MODULE(xla_extension, m) {
             -> std::shared_ptr<PjRtTopologyDescription> {
           return xla::ValueOrThrow(GetCApiTopology(platform_name));
         });
-
-#ifdef XLA_PYTHON_ENABLE_PLUGIN_DEVICE
-  m.def("get_plugin_device_client", []() -> std::shared_ptr<PyClient> {
-    py::gil_scoped_release gil_release;
-    std::unique_ptr<PjRtClient> client =
-        xla::ValueOrThrow(GetTfrtPluginDeviceClient());
-    return std::make_shared<PyClient>(
-        ifrt::PjRtClient::Create(std::move(client)));
-  });
-#endif  // XLA_PYTHON_ENABLE_PLUGIN_DEVICE
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
   jax::RegisterSharding(m);
