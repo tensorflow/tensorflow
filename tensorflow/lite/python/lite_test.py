@@ -2270,11 +2270,13 @@ class FromKerasFile(TestModels, parameterized.TestCase):
     model.train_on_batch(x, y)
     model.predict(x)
 
+    fd = None
     try:
       fd, self._keras_file = tempfile.mkstemp('.h5')
       keras.models.save_model(model, self._keras_file)
     finally:
-      os.close(fd)
+      if fd is not None:
+        os.close(fd)
 
     if include_custom_layer:
       self._custom_objects = {'MyAddLayer': MyAddLayer}

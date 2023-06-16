@@ -970,27 +970,27 @@ class TFLiteConverterBase:
 
     if quant_mode.is_post_training_float16_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_FLOAT16
       )
 
     if quant_mode.is_post_training_dynamic_range_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_DYNAMIC_RANGE
       )
 
     if quant_mode.is_post_training_int8_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_FULL_INTEGER
       )
 
     if quant_mode.is_post_training_int16x8_quantization():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16
+        conversion_metdata_fb.ModelOptimizationMode.PTQ_INT16
       )
 
     if quant_mode.is_quantization_aware_training():
       self._metadata.options.modelOptimizationModes.append(
-          conversion_metdata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
+        conversion_metdata_fb.ModelOptimizationMode.QUANTIZATION_AWARE_TRAINING
       )
 
   def _set_conversion_latency_metric(self, value):
