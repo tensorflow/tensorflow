@@ -23,6 +23,7 @@ from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
@@ -231,9 +232,10 @@ class WrappedFunction(function.ConcreteFunction):
         fn_graph.structured_outputs,
         fn_graph.function_captures.capture_types,
     )
-    super().__init__(
-        fn_graph, attrs=attrs, function_type=function_type
+    atomic_fn = atomic_function.from_func_graph(
+        function._inference_name(fn_graph.name), fn_graph, attrs, function_type
     )
+    super().__init__(atomic_fn)
 
   def _call_impl(self, args, kwargs):
     if self._arg_keywords is None:

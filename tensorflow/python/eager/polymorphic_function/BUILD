@@ -12,7 +12,10 @@ py_strict_library(
     srcs = ["attributes.py"],
     srcs_version = "PY3",
     visibility = ["//tensorflow/python:__subpackages__"],
-    deps = [],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:compat",
+    ],
 )
 
 py_strict_library(
@@ -48,6 +51,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:auto_control_deps_utils",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:func_graph",

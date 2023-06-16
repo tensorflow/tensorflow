@@ -26,6 +26,7 @@ from tensorflow.python.eager import record
 from tensorflow.python.eager.polymorphic_function import attributes as attributes_lib
 from tensorflow.python.eager.polymorphic_function import function_type_utils
 from tensorflow.python.framework import auto_control_deps_utils as acd
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -137,6 +138,14 @@ class AtomicFunction:
   def definition(self):
     """Current FunctionDef in the Runtime."""
     return self._bound_context.get_function_def(self.name)
+
+  @property
+  def attributes(self):
+    """Returns FunctionDef attributes in the Runtime."""
+    attrs = self.definition.attr
+    # Remove construction context since it is specific to runtime and this fn.
+    attrs.pop(attributes_lib.EAGER_RUNTIME_CONSTRUCTION_CONTEXT, None)
+    return attrs
 
   @property
   def graph_debug_info(self):
@@ -393,29 +402,61 @@ def make_call_op_in_graph(atomic, tensor_inputs, context_call_attrs):
   return op.outputs
 
 
-def from_func_graph(name, graph, inputs, outputs, attrs, overwrite=False):
+def from_func_graph(name, graph, attrs, function_type=None, overwrite=False):
   """Initializes an AtomicFunction from FuncGraph.
 
   Args:
     name: str, the name for the created function.
     graph: Graph, the graph containing the operations in the function
-    inputs: the tensors in the graph to be used as inputs to the function
-    outputs: the tensors in the graph which will be outputs from the function
     attrs: dict mapping names of attributes to their AttrValue values
+    function_type: known FunctionType to use, otherwise one is derived.
     overwrite: overwrites function definition in the current context if needed
 
   Returns:
     An AtomicFunction instance.
   """
-  input_ops = set(arg.op for arg in inputs)
+  if attrs and attributes_lib.IMPLEMENTS in attrs:
+    # The alternative is to silently drop "implements" tag
+    # but it seems likely it would lead to hard to catch bugs.
+    # Another alternative is to make func_body to preserve the order
+    # of arguments if variables are present. Yet another option
+    # is to automatically replace variables as arguments to functions
+    # to v.read_value() whenever "implements" tag is present
+    # Anytime we annotate existing function we probably want to wrap
+    # it with safe read_value for backward compatibility.
+    has_resource_vars = any(
+        inp.dtype == dtypes.resource for inp in graph.inputs
+    )
+
+    captured_inputs = graph.external_captures + graph.deferred_external_captures
+    assert not any(
+        (has_resource_vars, captured_inputs)
+    ), (
+        'Function {name} has "{attr}={value}" attribute and thus can not '
+        "depend on any tensors outside of its signature or modify variables. "
+        "\n\nNote: variables are always captured and cause function "
+        "re-tracing for every variable called.\n"
+        "  inputs: {inputs}\n  captures: {captured}\n\n"
+        "To pass a variable to such function use  "
+        "use variable.read_value().".format(
+            name=graph.name,
+            attr=attributes_lib.IMPLEMENTS,
+            value=attrs[attributes_lib.IMPLEMENTS],
+            inputs=graph.inputs,
+            captured=captured_inputs,
+        )
+    )
+
+  input_ops = set(arg.op for arg in graph.inputs)
   operations = [op for op in graph.get_operations() if op not in input_ops]
 
   graph_output_names = graph._output_names  # pylint: disable=protected-access
   if graph_output_names is not None and all(
-      ops.tensor_id(t) in graph_output_names for t in outputs
+      ops.tensor_id(t) in graph_output_names for t in graph.outputs
   ):
     output_names = [
-        compat.as_bytes(graph_output_names[ops.tensor_id(t)]) for t in outputs
+        compat.as_bytes(graph_output_names[ops.tensor_id(t)])
+        for t in graph.outputs
     ]
     if len(set(output_names)) != len(output_names):
       # There are duplicate names for some reason, probably an invalid
@@ -429,8 +470,8 @@ def from_func_graph(name, graph, inputs, outputs, attrs, overwrite=False):
         compat.as_str(name),
         False,
         [o._c_op for o in operations],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
-        [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in graph.inputs],  # pylint: disable=protected-access
+        [t._as_tf_output() for t in graph.outputs],  # pylint: disable=protected-access
         output_names,
         [o._c_op for o in graph.control_outputs],  # pylint: disable=protected-access
         [],  # control_output_names
@@ -438,6 +479,7 @@ def from_func_graph(name, graph, inputs, outputs, attrs, overwrite=False):
         compat.as_str(""),
     )
 
+  attrs = attributes_lib.parse_func_attrs(attrs or {})
   for attr_name, attr_value in attrs.items():
     serialized = attr_value.SerializeToString()
     pywrap_tf_session.TF_FunctionSetAttrValueProto(
@@ -461,7 +503,8 @@ def from_func_graph(name, graph, inputs, outputs, attrs, overwrite=False):
       is_stateful=any(op._is_stateful for op in operations),  # pylint: disable=protected-access
   )
 
-  function_type = function_type_utils.derive_from_graph(graph)
+  if not function_type:
+    function_type = function_type_utils.derive_from_graph(graph)
 
   return AtomicFunction(
       name,

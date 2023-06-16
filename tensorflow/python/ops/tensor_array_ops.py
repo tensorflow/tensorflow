@@ -1509,6 +1509,9 @@ class TensorArrayTraceType(trace.TraceType):
   def placeholder_value(self, placeholder_context):
     return self._value
 
+  def _flatten(self) -> list[trace.TraceType]:
+    return [tensor_spec.TensorSpec([], dtypes.variant)]
+
   def _from_tensors(self, tensors):
     return next(tensors)
 
