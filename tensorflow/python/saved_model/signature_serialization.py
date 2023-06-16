@@ -180,7 +180,7 @@ def canonicalize_signatures(signatures):
     experimental_attributes = {}
     for attr in attributes.POLYMORPHIC_FUNCTION_ALLOWLIST:
       attr_value = signature_function.function_def.attr.get(attr, None)
-      if attr_value is not None:
+      if attr != attributes.NO_INLINE and attr_value is not None:
         experimental_attributes[attr] = attr_value
     if not experimental_attributes:
       experimental_attributes = None
