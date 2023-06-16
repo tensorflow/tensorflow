@@ -764,9 +764,14 @@ ENTRY main {
     ROOT out = (f16[4096], f16[4096]) tuple(r1, r2)
 }
   )";
-  auto expected_ir = R"(
-; CHECK: load <2 x half>, ptr
+  std::string expected_ir = R"(
+; CHECK: PLATFORM_SPECIFIC_TYPE, ptr
   )";
+
+  expected_ir = absl::StrReplaceAll(
+      expected_ir,
+      {{"PLATFORM_SPECIFIC_TYPE", is_built_with_rocm_ ? "half" : "<2 x half>"}});
+
   auto hlo_module = ParseAndReturnVerifiedModule(kHloString).value();
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
                      /*match_optimized_ir=*/true);
