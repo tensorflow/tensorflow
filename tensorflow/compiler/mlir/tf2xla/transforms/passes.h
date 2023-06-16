@@ -50,7 +50,7 @@ namespace mhlo {
 /// functions are imported into the module. Importing functions into a
 /// module is not thread safe.
 std::unique_ptr<OperationPass<ModuleOp>> createLegalizeTFPass(
-    bool allow_partial_conversion = false, bool legalize_chlo = true,
+    bool legalize_chlo = true,
     std::optional<StringRef> tf2xla_fallback_device_type = std::nullopt,
     bool prefer_tf2xla = false);
 
