@@ -41,7 +41,7 @@ class MklFusedInstanceNormOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr("reduction_axes", &mean_reduction_axes));
     OP_REQUIRES(context, InferDataFormat(mean_reduction_axes),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Failed to infer data format from reduction axes"));
     CheckFusedActivation(context);
   }
@@ -57,19 +57,19 @@ class MklFusedInstanceNormOp : public OpKernel {
                       (src_tensor.dims() == 4 && data_format_ == "NCHW") ||
                       (src_tensor.dims() == 5 && data_format_ == "NDHWC") ||
                       (src_tensor.dims() == 5 && data_format_ == "NCDHW"),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Unsupported input: ", src_tensor.shape().DebugString(),
-                      ", ", data_format_));
+                      ", ", data_format_)));
       size_t num_elements_scale = scale_tensor.NumElements();
       size_t num_elements_shift = shift_tensor.NumElements();
-      OP_REQUIRES(
-          ctx, num_elements_scale == num_elements_shift,
-          errors::InvalidArgument("Number of elements in scale and shift",
-                                  "tensors are not same."));
+      OP_REQUIRES(ctx, num_elements_scale == num_elements_shift,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Number of elements in scale and shift",
+                                   "tensors are not same.")));
 
       TensorFormat tensor_format;
       OP_REQUIRES(ctx, FormatFromString(data_format_, &tensor_format),
-                  errors::InvalidArgument("Invalid data format"));
+                  absl::InvalidArgumentError("Invalid data format"));
 
       MklDnnThreadPool eigen_tp(ctx);
       std::shared_ptr<stream> engine_stream_ptr;
@@ -217,8 +217,8 @@ class MklFusedInstanceNormOp : public OpKernel {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
                          string(__FILE__) + ":" + std::to_string(__LINE__);
-      OP_REQUIRES_OK(
-          ctx, errors::Aborted("Operation received an exception:", error_msg));
+      OP_REQUIRES_OK(ctx, absl::AbortedError(absl::StrCat(
+                              "Operation received an exception:", error_msg)));
     }
   }
 
@@ -247,8 +247,9 @@ class MklFusedInstanceNormOp : public OpKernel {
                      context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha_));
     } else {
       OP_REQUIRES(context, false,
-                  errors::Unimplemented("Fusion is not implemented: [",
-                                        absl::StrJoin(fused_ops, ","), "]"));
+                  absl::UnimplementedError(
+                      absl::StrCat("Fusion is not implemented: [",
+                                   absl::StrJoin(fused_ops, ","), "]")));
     }
   }
 
@@ -291,7 +292,7 @@ class MklFusedInstanceNormOp : public OpKernel {
     (void)fp32_shift_buf;
 #else
     OP_REQUIRES(ctx, (fp32_shift_buf != nullptr),
-                errors::InvalidArgument("Invalid shift buffer"));
+                absl::InvalidArgumentError("Invalid shift buffer"));
     shift_buf_dst = fp32_shift_buf;
 #endif  // !ENABLE_ONEDNN_V3
 
