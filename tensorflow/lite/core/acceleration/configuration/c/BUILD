@@ -38,6 +38,17 @@ package(
     licenses = ["notice"],
 )
 
+# LINT.IfChange(tflite_acceleration_exported_headers)
+exports_files([
+    "delegate_plugin.h",
+    "gpu_plugin.h",
+    "xnnpack_plugin.h",
+])
+# LINT.ThenChange(
+#     ../../../../acceleration/configuration/c/BUILD:tflite_acceleration_exported_headers,
+#     ../../../../java/BUILD:tflite_acceleration_exported_headers
+# )
+
 tflite_cc_library_with_c_headers_test(
     name = "delegate_plugin",
     hdrs = ["delegate_plugin.h"],
