@@ -17,7 +17,9 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/match.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/MemRef/IR/MemRef.h"  // from @llvm-project
@@ -27,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir/runtime/utils/custom_calls.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo_gpu/IR/lhlo_gpu_ops.h"
 
@@ -149,6 +152,17 @@ bool HasDependency(llvm::ArrayRef<BufferUse> region_buffer_uses,
 
 using RegionStartAndEnd = std::pair<Operation*, Operation*>;
 
+int GetKernelCount(llvm::ArrayRef<Operation*> region) {
+  int kernel_count = 0;
+  for (Operation* op : region) {
+    if (!isa<memref::ViewOp, memref::ReinterpretCastOp, arith::ConstantOp>(
+            op)) {
+      kernel_count++;
+    }
+  }
+  return kernel_count;
+}
+
 //
 // Return a list of pairs of operations, in which the first element is the
 // first operation in the region, and the second is the last operation in the
@@ -174,7 +188,8 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
   llvm::SmallVector<BufferUse> buffer_uses;
 
   auto store_region_and_start_new_region = [&]() {
-    if (region.size() >= 2) {
+    int kernel_count = GetKernelCount(region);
+    if (kernel_count >= 2) {
       region_start_and_end.push_back({region.front(), region.back()});
     }
     region.clear();
@@ -209,7 +224,11 @@ llvm::SmallVector<RegionStartAndEnd> GetRegionStartAndEnd(FuncOp capture_func) {
       BufferUse dst_buffer = GetBufferUse(memcpy.getDst(), /*read_only=*/false);
       operand_buffer_uses.push_back(src_buffer);
       operand_buffer_uses.push_back(dst_buffer);
-    } else {
+    } else if ((!isa<memref::ViewOp>(operation) &&
+                !isa<memref::ReinterpretCastOp>(operation) &&
+                !isa<arith::ConstantOp>(operation)) ||
+               region.empty()) {
+      // Operation is unsupported by multi-streaming.
       store_region_and_start_new_region();
       continue;
     }
