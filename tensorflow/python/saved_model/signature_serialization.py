@@ -18,6 +18,7 @@ from absl import logging
 
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
+from tensorflow.python.eager.polymorphic_function import attributes
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -176,14 +177,13 @@ def canonicalize_signatures(signatures):
     # Extract experimental attributes and propagate it to the wrapped_function.
     # At the moment only the `disable_summaries_at_runtime` attr needs to be
     # propagated.
-    experimental_attributes = None
-    summary_optimizer = signature_function.function_def.attr.get(
-        "disable_summaries_at_runtime", None
-    )
-    if summary_optimizer is not None:
-      experimental_attributes = {
-          "disable_summaries_at_runtime": summary_optimizer
-      }
+    experimental_attributes = {}
+    for attr in attributes.POLYMORPHIC_FUNCTION_ALLOWLIST:
+      attr_value = signature_function.function_def.attr.get(attr, None)
+      if attr_value is not None:
+        experimental_attributes[attr] = attr_value
+    if not experimental_attributes:
+      experimental_attributes = None
 
     wrapped_function = def_function.function(
         signature_wrapper, experimental_attributes=experimental_attributes

@@ -11,6 +11,7 @@ py_strict_library(
     name = "attributes",
     srcs = ["attributes.py"],
     srcs_version = "PY3",
+    visibility = ["//tensorflow/python:__subpackages__"],
     deps = [],
 )
 
