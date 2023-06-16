@@ -3043,6 +3043,17 @@ void XlaLaunchOp::getEffects(
   }
 }
 
+// For `XlaLaunch` ops the `device` attribute corresponds to the resource
+// instance.
+std::optional<std::string> XlaLaunchOp::GetResourceInstanceStr() {
+  auto device_attr = (*this)->getAttrOfType<StringAttr>("device");
+  // Treat missing device attribute like unspecified (= empty string) attribute.
+  // Note that different op instances with the same string (including empty
+  // string) are seen as dependent (same resource instance).
+  if (!device_attr) return "";
+  return device_attr.str();
+}
+
 //===----------------------------------------------------------------------===//
 // UnpackOp
 //===----------------------------------------------------------------------===//
