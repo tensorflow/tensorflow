@@ -1,334 +1,145 @@
-diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
---- stablehlo/stablehlo/dialect/Base.cpp
-+++ stablehlo/stablehlo/dialect/Base.cpp
-@@ -65,6 +65,38 @@
-         isCompatible(rankedType2.getShape(), boundedAttr1));
-   }
-   return success();
-+}
-+
-+bool isCompatibleElementTypeForHloTypeInference(Type tp1, Type tp2) {
-+  // Get element type if shaped
-+  tp1 = getElementTypeOrSelf(tp1);
-+  tp2 = getElementTypeOrSelf(tp2);
-+
-+  // Quantization: In the most general case, we allow any combination of
-+  // quantized/non-quantized across any combination of operands/results,
-+  // and some differences in quantization parameters across operands/results.
-+  // Individual ops may introduce additional constraints.
-+  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
-+  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
-+  if (qtp1 && qtp2) {
-+    if (qtp1.getStorageType() != qtp2.getStorageType() ||
-+        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
-+        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
-+      return false;
-+  }
-+  auto etp1 = getExpressedTypeOrSelf(tp1);
-+  auto etp2 = getExpressedTypeOrSelf(tp2);
-+
-+  // Sparsity: In the most general case, we allow any combination of
-+  // sparsity/denseness across any combination of operands/results, as well as
-+  // differences in sparsity encodings for operands and results.
-+  // Individual ops may introduce additional constraints.
-+  // No additional code is needed to check this because of how sparsity is
-+  // currently implemented.
-+
-+  // Default case: Unless dynamism, quantization and/or sparsity are involved,
-+  // the types are required to be exactly equal.
-+  return etp1 == etp2;
- }
+diff --ruN a/stablehlo/CMakeLists.txt b/stablehlo/CMakeLists.txt
+--- stablehlo/CMakeLists.txt
++++ stablehlo/CMakeLists.txt
+@@ -13,110 +13,20 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ #
+-cmake_minimum_required(VERSION 3.15.0)
  
- bool isCompatibleForHloTypeInference(Type tp1, Type tp2) {
-@@ -81,34 +113,10 @@
-   auto stp2 = tp2.dyn_cast<ShapedType>();
-   if (stp1 && stp2)
-     return succeeded(verifyCompatibleShapeWithBounds(stp1, stp2)) &&
--           isCompatibleForHloTypeInference(stp1.getElementType(),
--                                           stp2.getElementType());
+-if(POLICY CMP0068)
+-  cmake_policy(SET CMP0068 NEW)
+-  set(CMAKE_BUILD_WITH_INSTALL_NAME_DIR ON)
+-endif()
 -
--  // Quantization: In the most general case, we allow any combination of
--  // quantized/non-quantized across any combination of operands/results,
--  // and some differences in quantization parameters across operands/results.
--  // Individual ops may introduce additional constraints.
--  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
--  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
--  if (qtp1 && qtp2) {
--    if (qtp1.getStorageType() != qtp2.getStorageType() ||
--        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
--        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
--      return false;
--  }
--  auto etp1 = getExpressedTypeOrSelf(tp1);
--  auto etp2 = getExpressedTypeOrSelf(tp2);
+-if(POLICY CMP0075)
+-  cmake_policy(SET CMP0075 NEW)
+-endif()
 -
--  // Sparsity: In the most general case, we allow any combination of
--  // sparsity/denseness across any combination of operands/results, as well as
--  // differences in sparsity encodings for operands and results.
--  // Individual ops may introduce additional constraints.
--  // No additional code is needed to check this because of how sparsity is
--  // currently implemented.
+-if(POLICY CMP0077)
+-  cmake_policy(SET CMP0077 NEW)
+-endif()
 -
--  // Default case: Unless dynamism, quantization and/or sparsity are involved,
--  // the types are required to be exactly equal.
--  return etp1 == etp2;
-+           isCompatibleElementTypeForHloTypeInference(stp1.getElementType(),
-+                                                      stp2.getElementType());
-+
-+  return isCompatibleElementTypeForHloTypeInference(tp1, tp2);
- }
+-# CMP0116: Ninja generators transform `DEPFILE`s from `add_custom_command()`
+-# New in CMake 3.20. https://cmake.org/cmake/help/latest/policy/CMP0116.html
+-if(POLICY CMP0116)
+-  cmake_policy(SET CMP0116 OLD)
+-endif()
++# This build of StableHLO is meant to be embedded in MLIR-HLO.
++# As a result, its root CMakeLists.txt is different from the original
++# CMakeLists.txt from https://github.com/openxla/stablehlo.
++# All other files of this build of StableHLO except for this one are the same
++# as the original files.
++# To get access to a standalone build of StableHLO, check out the
++# openxla/stablehlo repository.
  
- bool isCompatibleForHloTypeInference(TypeRange tp1, TypeRange tp2) {
-diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
---- stablehlo/stablehlo/dialect/Base.h
-+++ stablehlo/stablehlo/dialect/Base.h
-@@ -60,6 +60,11 @@
- //  different element types.
- LogicalResult verifyCompatibleShapeWithBounds(Type type1, Type type2);
+ #-------------------------------------------------------------------------------
+ # Options and settings
+ #-------------------------------------------------------------------------------
+-option(STABLEHLO_BUILD_EMBEDDED "Build StableHLO as part of another project" OFF)
+-option(STABLEHLO_ENABLE_BINDINGS_PYTHON "Enables StableHLO Python bindings" OFF)
+-option(STABLEHLO_ENABLE_STRICT_BUILD "Build StableHLO with strict warnings and warnings as errors" OFF)
  
-+// Returns true if the given element types are compatible for the purposes of
-+// HLO type inference, accounting for special properties of quantization and
-+// sparsity.
-+bool isCompatibleElementTypeForHloTypeInference(Type tp1, Type tp2);
-+
- // Returns true if the given types are compatible for the purposes of HLO type
- // inference, accounting for special properties of dynamism, quantization and
- // sparsity.
-@@ -266,6 +271,31 @@
-       }
-     }
-     return success();
-+  }
-+};
-+
-+template <typename ConcreteType>
-+class CompatibleOperandsAndResultElementType
-+    : public mlir::OpTrait::TraitBase<ConcreteType,
-+                                      CompatibleOperandsAndResultElementType> {
-+ public:
-+  static LogicalResult verifyTrait(Operation *op) {
-+    Type expected;
-+    if (op->getNumResults() != 0) expected = op->getResult(0).getType();
-+    if (op->getNumOperands() != 0) expected = op->getOperand(0).getType();
-+    if (!expected) return failure();
-+
-+    auto typeMatch = [&](Type actual) {
-+      return isCompatibleElementTypeForHloTypeInference(actual, expected);
-+    };
-+    auto allMatch = llvm::all_of(op->getOperandTypes(), typeMatch) &&
-+                    llvm::all_of(op->getResultTypes(), typeMatch);
-+    if (!allMatch) {
-+      return op->emitOpError(
-+          "requires compatible element types for all operands and results");
-+    }
-+
-+    return success(allMatch);
-   }
- };
+-#-------------------------------------------------------------------------------
+-# Project setup and globals
+-#-------------------------------------------------------------------------------
+-set(STABLEHLO_STANDALONE_BUILD OFF)
+-
+-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+-  set(STABLEHLO_STANDALONE_BUILD ON)
+-  project(stablehlo LANGUAGES CXX C)
+-  set(CMAKE_C_STANDARD 11)
+-  set(CMAKE_CXX_STANDARD 17)
+-endif()
+-
+-if(NOT STABLEHLO_STANDALONE_BUILD AND NOT MLIR_BINARY_DIR)
+-  # Building as part of LLVM via the external project mechanism.
+-  set(STABLEHLO_EXTERNAL_PROJECT_BUILD ON)
+-endif()
+-
+-#-------------------------------------------------------------------------------
+-# MLIR/LLVM Configuration
+-#-------------------------------------------------------------------------------
+-if (STABLEHLO_ENABLE_STRICT_BUILD)
+-  set(LLVM_ENABLE_WARNINGS ON)
+-  set(LLVM_ENABLE_WERROR ON)
+-  set(LLVM_ENABLE_PEDANTIC ON)
+-endif()
+-
+-# Find MLIR to install if we are building standalone. If building as part of
+-# another project, let it handle the MLIR dependency. The dependent project
+-# might use a bundled version of MLIR instead of installing, for instance.
+-if(STABLEHLO_EXTERNAL_PROJECT_BUILD)
+-  message(STATUS "Building StableHLO as an external LLVM project")
+-  set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir ) # --src-root
+-  set(MLIR_INCLUDE_DIR ${MLIR_MAIN_SRC_DIR}/include ) # --includedir
+-  set(MLIR_GENERATED_INCLUDE_DIR ${LLVM_BINARY_DIR}/tools/mlir/include)
+-  include_directories(SYSTEM ${MLIR_INCLUDE_DIR})
+-  include_directories(SYSTEM ${MLIR_GENERATED_INCLUDE_DIR})
+-  include_directories(SYSTEM ${MLIR_TABLEGEN_OUTPUT_DIR})
+-
+-  set(BACKEND_PACKAGE_STRING "${PACKAGE_STRING}")
+-  list(APPEND CMAKE_MODULE_PATH "${MLIR_MAIN_SRC_DIR}/cmake/modules")
+-elseif(NOT STABLEHLO_BUILD_EMBEDDED)
+-  message(STATUS "Building StableHLO with an installed MLIR")
+-  find_package(MLIR REQUIRED CONFIG)
+-  message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
+-  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
+-  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
+-  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
+-  list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
+-  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
+-else()
+-  message(STATUS "Building StableHLO embedded in another project")
+-endif()
+-
+-include(TableGen)
+-include(AddLLVM)
+-include(AddMLIR)
+-include(HandleLLVMOptions)
+-include_directories(${LLVM_INCLUDE_DIRS})
+-include_directories(${MLIR_INCLUDE_DIRS})
+-include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+-link_directories(${LLVM_BUILD_LIBRARY_DIR})
+-add_definitions(${LLVM_DEFINITIONS})
+-
+-#-------------------------------------------------------------------------------
+-# Python configuration
+-#-------------------------------------------------------------------------------
+-
+-if(STABLEHLO_ENABLE_BINDINGS_PYTHON)
+-  if(STABLEHLO_STANDALONE_BUILD)
+-    message(WARNING "StableHLO Python bindings are not supported in standalone mode. See build_tools/README.md for instructions.")
+-  endif()
+-
+-  include(MLIRDetectPythonEnv)
+-  mlir_configure_python_dev_packages()
+-endif()
++set(STABLEHLO_ENABLE_BINDINGS_PYTHON ${MHLO_ENABLE_BINDINGS_PYTHON})
  
-diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
---- stablehlo/stablehlo/dialect/Base.td
-+++ stablehlo/stablehlo/dialect/Base.td
-@@ -202,6 +202,9 @@
-     HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
-   ]>;
- 
-+def HLO_CompatibleOperandsAndResultElementType :
-+  HLO_NativeOpTrait<"CompatibleOperandsAndResultElementType">;
+ #-------------------------------------------------------------------------------
+ # Directory setup
+diff --ruN a/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp b/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
+--- stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
++++ stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
+@@ -1,3 +1,18 @@
++/* Copyright 2023 The StableHLO Authors.
 +
- def HLO_BoundedAttrInterface : AttrInterface<"BoundedAttrInterface"> {
-   let cppNamespace = "::mlir::hlo";
- 
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
---- stablehlo/stablehlo/dialect/ChloOps.cpp
-+++ stablehlo/stablehlo/dialect/ChloOps.cpp
-@@ -26,6 +26,7 @@
- #include "mlir/IR/Diagnostics.h"
- #include "mlir/IR/PatternMatch.h"
- #include "mlir/Transforms/InliningUtils.h"
-+#include "stablehlo/dialect/Base.h"
- #include "stablehlo/dialect/BroadcastUtils.h"
- #include "stablehlo/dialect/ChloBytecode.h"
- #include "stablehlo/dialect/TypeInference.h"
-@@ -143,7 +144,8 @@
-   ShapedType lhsType = operands[0].getType().cast<ShapedType>();
-   ShapedType rhsType = operands[1].getType().cast<ShapedType>();
-   if (!lhsType || !rhsType ||
--      lhsType.getElementType() != rhsType.getElementType())
-+      !hlo::isCompatibleElementTypeForHloTypeInference(
-+          lhsType.getElementType(), rhsType.getElementType()))
-     return emitOptionalError(location, "mismatched operand types");
-   if (!elementType) elementType = lhsType.getElementType();
-   inferredReturnShapes.push_back(
-diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
---- stablehlo/stablehlo/dialect/ChloOps.td
-+++ stablehlo/stablehlo/dialect/ChloOps.td
-@@ -117,7 +117,7 @@
- }
- 
- def CHLO_BroadcastAddOp : CHLO_BroadcastBinaryElementwiseOp<"broadcast_add",
--    [Commutative, Pure, SameOperandsAndResultElementType]> {
-+    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
-   string summary = "Addition operator (with optional broadcasting)";
- 
-   string description = [{
-diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
---- stablehlo/stablehlo/dialect/VhloAttrs.td
-+++ stablehlo/stablehlo/dialect/VhloAttrs.td
-@@ -39,15 +39,14 @@
-   let cppNamespace = "::mlir::vhlo";
-   let extraClassDeclaration = [{
-     mlir::vhlo::Version getMinVersion() {
--      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
--      return *version;
-+      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
-     }
-     mlir::vhlo::Version getMaxVersion() {
--      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
--      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
--      return *version;
-+      }] # !if(
-+        !eq(maxVersion, "current"),
-+        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
-+        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
-+      ) # [{
-     }
-   }];
- }
-diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
---- stablehlo/stablehlo/dialect/VhloEnums.td
-+++ stablehlo/stablehlo/dialect/VhloEnums.td
-@@ -32,15 +32,14 @@
-   : EnumAttr<VHLO_Dialect, enumInfo, name, [VHLO_VersionedAttrInterface]> {
-   let extraClassDeclaration = [{
-     mlir::vhlo::Version getMinVersion() {
--      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
--      return *version;
-+      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
-     }
-     mlir::vhlo::Version getMaxVersion() {
--      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
--      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
--      return *version;
-+      }] # !if(
-+        !eq(maxVersion, "current"),
-+        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
-+        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
-+      ) # [{
-     }
-   }];
- }
-diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
---- stablehlo/stablehlo/dialect/VhloOps.td
-+++ stablehlo/stablehlo/dialect/VhloOps.td
-@@ -40,15 +40,14 @@
-       [DeclareOpInterfaceMethods<VHLO_VersionedOpInterface>] # traits> {
-   let extraClassDefinition = [{
-     mlir::vhlo::Version $cppClass::getMinVersion() {
--      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # mnemonic # [{");
--      return *version;
-+      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
-     }
-     mlir::vhlo::Version $cppClass::getMaxVersion() {
--      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
--      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # mnemonic # [{");
--      return *version;
-+      }] # !if(
-+        !eq(maxVersion, "current"),
-+        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
-+        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
-+      ) # [{
-     }
-   }];
- }
-diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
---- stablehlo/stablehlo/dialect/VhloTypes.td
-+++ stablehlo/stablehlo/dialect/VhloTypes.td
-@@ -38,15 +38,14 @@
-   let mnemonic = name;
-   let extraClassDeclaration = [{
-     mlir::vhlo::Version getMinVersion() {
--      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
--      return *version;
-+      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
-     }
-     mlir::vhlo::Version getMaxVersion() {
--      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
--      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
--      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
--      return *version;
-+      }] # !if(
-+        !eq(maxVersion, "current"),
-+        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
-+        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
-+      ) # [{
-     }
-   }];
- }
-diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
---- stablehlo/stablehlo/tests/ops_chlo.mlir
-+++ stablehlo/stablehlo/tests/ops_chlo.mlir
-@@ -1,4 +1,21 @@
- // RUN: stablehlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
++Licensed under the Apache License, Version 2.0 (the "License");
++you may not use this file except in compliance with the License.
++You may obtain a copy of the License at
 +
++    http://www.apache.org/licenses/LICENSE-2.0
 +
-+// CHECK-LABEL: func @broadcast_add_quantized
-+func.func @broadcast_add_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
-+  %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
-+  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
-+}
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++==============================================================================*/
 +
-+// -----
-+
-+func.func @broadcast_add_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
-+  // expected-error @+1{{'chlo.broadcast_add' op requires compatible element types for all operands and results}}
-+  %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
-+  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
-+}
-+
-+// -----
- 
- func.func @constant_like(%arg0: tensor<1x2xi64>) -> (tensor<1x2xi32>) {
-   // expected-error @+1 {{'chlo.constant_like' op value's type doesn't match element return type}}
-diff --ruN a/stablehlo/stablehlo/tools/CMakeLists.txt b/stablehlo/stablehlo/tools/CMakeLists.txt
---- stablehlo/stablehlo/tools/CMakeLists.txt
-+++ stablehlo/stablehlo/tools/CMakeLists.txt
-@@ -22,9 +22,11 @@
- # stablehlo-opt
- get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
- get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-+get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
- set(LIBS
-         ${dialect_libs}
-         ${conversion_libs}
-+        ${extension_libs}
-         MLIROptLib
-         StablehloRegister
-         StablehloTestUtils
-diff --ruN a/stablehlo/stablehlo/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/tools/StablehloOptMain.cpp
---- stablehlo/stablehlo/tools/StablehloOptMain.cpp
-+++ stablehlo/stablehlo/tools/StablehloOptMain.cpp
-@@ -16,6 +16,7 @@
- #include "mlir/Dialect/Tosa/IR/TosaOps.h"
- #include "mlir/Dialect/Tosa/Transforms/Passes.h"
  #include "mlir/InitAllDialects.h"
-+#include "mlir/InitAllExtensions.h"
+ #include "mlir/InitAllExtensions.h"
  #include "mlir/InitAllPasses.h"
- #include "mlir/Tools/mlir-opt/MlirOptMain.h"
- #include "stablehlo/conversions/tosa/transforms/Passes.h"
-@@ -32,6 +33,7 @@
- 
-   mlir::DialectRegistry registry;
-   mlir::registerAllDialects(registry);
-+  mlir::registerAllExtensions(registry);
-   mlir::stablehlo::registerAllDialects(registry);
- 
-   return failed(
 
