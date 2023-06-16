@@ -370,8 +370,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
             FlatBufferIntArrayToVector(op->intermediates()),
             reinterpret_cast<const char*>(op->custom_options()->data()),
             op->custom_options()->size(), nullptr, registration);
-      } else if (op->custom_options_offset() > 1 && allocation_) {
-        if (op->custom_options_offset() + op->custom_options_size() >
+      } else if (op->large_custom_options_offset() > 1 && allocation_) {
+        if (op->large_custom_options_offset() +
+                op->large_custom_options_size() >
             allocation_->bytes()) {
           TF_LITE_REPORT_ERROR(
               error_reporter_,
@@ -385,8 +386,8 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
             FlatBufferIntArrayToVector(op->outputs()),
             FlatBufferIntArrayToVector(op->intermediates()),
             reinterpret_cast<const char*>(allocation_->base()) +
-                op->custom_options_offset(),
-            op->custom_options_size(), nullptr, registration);
+                op->large_custom_options_offset(),
+            op->large_custom_options_size(), nullptr, registration);
       } else {
         subgraph->AddNodeWithParameters(
             FlatBufferIntArrayToVector(op->inputs()),
