@@ -343,7 +343,7 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 template <int n>
 static std::unique_ptr<se::KernelArgsArrayBase> MakeKernelArgs(
     absl::Span<const se::DeviceMemoryBase> args, uint32_t shared_mem_bytes) {
-  auto kernel_args = std::make_unique<se::KernelDeviceMemArgsArray<n>>();
+  auto kernel_args = std::make_unique<se::KernelArgsArray<n>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
@@ -358,35 +358,18 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              const LaunchDimensions& dims, se::Stream* stream) {
   int shared_mem_bytes = 0;
   kernel.metadata().shared_memory_bytes(&shared_mem_bytes);
-
-  // Allocate arguments array on the stack if it's below 512 bytes.
-  static_assert(
-      sizeof(se::KernelDeviceMemArgsArray<24>) <= 512,
-      "24 kernel device mem arguments can't be allocated on the stack");
-  se::KernelDeviceMemArgsArray<24> stack_kernel_args;
-
-  // If kernel arguments can't fit into stack allocated array, we'll allocate
-  // them in heap.
-  std::unique_ptr<se::KernelArgsArrayBase> heap_kernel_args;
-
-  // Pointer to initialized kernels arguments array (on heap or stack).
-  se::KernelArgsArrayBase* kernel_args = nullptr;
-
-  // The KernelDeviceMemArgsArray structure can be expensive to allocate for
-  // large number of arguments, so we add specializations for smaller sizes.
-  if (args.size() <= 24) {
-    for (auto& buf : args) stack_kernel_args.add_device_memory_argument(buf);
-    stack_kernel_args.add_shared_bytes(shared_mem_bytes);
-    kernel_args = &stack_kernel_args;
-  } else if (args.size() <= 64) {
-    heap_kernel_args = MakeKernelArgs<64>(args, shared_mem_bytes);
-    kernel_args = heap_kernel_args.get();
+  static constexpr int kKernelArgsLimit = 1024;
+  std::unique_ptr<se::KernelArgsArrayBase> kernel_args;
+  // The KernelArgsArray structure requires at a minimum 48 * args.size()
+  // bytes. It can be expensive to allocate, say, 48KiB, so we add
+  // specializations for smaller sizes. 64 arguments are likely to fit in a
+  // 4KiB page.
+  if (args.size() <= 64) {
+    kernel_args = MakeKernelArgs<64>(args, shared_mem_bytes);
   } else if (args.size() <= 256) {
-    heap_kernel_args = MakeKernelArgs<256>(args, shared_mem_bytes);
-    kernel_args = heap_kernel_args.get();
+    kernel_args = MakeKernelArgs<256>(args, shared_mem_bytes);
   } else {
-    heap_kernel_args = MakeKernelArgs<1024>(args, shared_mem_bytes);
-    kernel_args = heap_kernel_args.get();
+    kernel_args = MakeKernelArgs<kKernelArgsLimit>(args, shared_mem_bytes);
   }
 
   LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
