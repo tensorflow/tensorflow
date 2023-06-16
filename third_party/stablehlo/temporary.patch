@@ -297,6 +297,21 @@ diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests
  
  func.func @constant_like(%arg0: tensor<1x2xi64>) -> (tensor<1x2xi32>) {
    // expected-error @+1 {{'chlo.constant_like' op value's type doesn't match element return type}}
+diff --ruN a/stablehlo/stablehlo/tools/CMakeLists.txt b/stablehlo/stablehlo/tools/CMakeLists.txt
+--- stablehlo/stablehlo/tools/CMakeLists.txt
++++ stablehlo/stablehlo/tools/CMakeLists.txt
+@@ -22,9 +22,11 @@
+ # stablehlo-opt
+ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
++get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+ set(LIBS
+         ${dialect_libs}
+         ${conversion_libs}
++        ${extension_libs}
+         MLIROptLib
+         StablehloRegister
+         StablehloTestUtils
 diff --ruN a/stablehlo/stablehlo/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/tools/StablehloOptMain.cpp
 --- stablehlo/stablehlo/tools/StablehloOptMain.cpp
 +++ stablehlo/stablehlo/tools/StablehloOptMain.cpp
