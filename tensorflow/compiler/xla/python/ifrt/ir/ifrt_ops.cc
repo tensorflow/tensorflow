@@ -105,7 +105,7 @@ mlir::LogicalResult VerifySameGlobalShape(mlir::Operation* op,
 }
 
 // Verifies that
-// 1. Elements in `devices` are unique.
+// 1. Elements in `devices` are non-negative and unique.
 // 2. Each of `inputs` and `outputs` is placed on a subset of `devices`.
 mlir::LogicalResult VerifyDevicePlacement(
     mlir::Operation* op, llvm::ArrayRef<int> devices,
@@ -113,6 +113,10 @@ mlir::LogicalResult VerifyDevicePlacement(
     llvm::ArrayRef<IfrtArrayType> outputs) {
   llvm::SmallSet<int, 4> attr_devices;
   for (const int device : devices) {
+    if (device < 0) {
+      return op->emitOpError()
+             << "has negative device id " << device << " in `devices` attr";
+    }
     if (!attr_devices.insert(device).second) {
       return op->emitOpError()
              << "has duplicate device id " << device << " in `devices` attr";
