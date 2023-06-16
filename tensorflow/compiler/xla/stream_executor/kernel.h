@@ -313,10 +313,8 @@ class KernelArgIterator {
       ++shmem_bytes_iter_;
     } else {
       result.is_shared = false;
-      result.address = *arg_address_iter_;
-      result.size = *arg_size_iter_;
-      ++arg_address_iter_;
-      ++arg_size_iter_;
+      result.address = *arg_address_iter_++;
+      result.size = arg_size_iter_ ? *arg_size_iter_++ : sizeof(void *);
     }
     ++arg_index_;
     return result;
@@ -492,6 +490,65 @@ class KernelArgsArray : public KernelArgsArrayBase {
 
   // The number of generic arguments that have been added to generic_arguments_.
   size_t number_of_generic_arguments_ = 0;
+};
+
+// A list of device memory arguments for a kernel call.
+//
+// The template parameter kNumArgs is the maximum number of arguments which can
+// be stored in the list.
+//
+// This is a specialization of a generic `KernelArgsArray` defined above that
+// supports only device memory arguments.
+template <size_t kNumArgs>
+class KernelDeviceMemArgsArray : public KernelArgsArrayBase {
+ public:
+  // Adds a device memory argument to the list.
+  void add_device_memory_argument(const DeviceMemoryBase &arg) {
+    const void **copy_ptr =
+        &device_memory_opaque_pointers_[number_of_argument_addresses_];
+    *copy_ptr = arg.opaque();
+    argument_addresses_[number_of_argument_addresses_] = copy_ptr;
+    ++number_of_argument_addresses_;
+  }
+
+  // Adds a shared memory size annotation.
+  void add_shared_bytes(size_t number_of_bytes) {
+    total_shared_memory_bytes_ += number_of_bytes;
+  }
+
+  // Virtual method overrides.
+  size_t number_of_arguments() const override {
+    return number_of_argument_addresses_;
+  }
+
+  uint64_t number_of_shared_bytes() const override {
+    return total_shared_memory_bytes_;
+  }
+
+  absl::Span<const void *const> argument_addresses() const override {
+    return absl::Span<const void *const>(argument_addresses_.data(),
+                                         number_of_argument_addresses_);
+  }
+
+  KernelArgIterator arg_iterator() const final {
+    return KernelArgIterator(
+        number_of_argument_addresses_, /*number_of_shared_memory_arguments=*/0,
+        argument_addresses_.data(), /*arg_sizes_data=*/nullptr,
+        /*shmem_bytes_data=*/nullptr, /*shmem_indices_data=*/nullptr);
+  }
+
+ private:
+  // A place to store copies of opaque pointers from device memory arguments.
+  std::array<const void *, kNumArgs> device_memory_opaque_pointers_;
+
+  // Addresses for memory arguments.
+  std::array<const void *, kNumArgs> argument_addresses_;
+
+  // Number of significant entries in argument_addresses_.
+  size_t number_of_argument_addresses_ = 0;
+
+  // Total shared memory size.
+  size_t total_shared_memory_bytes_ = 0;
 };
 
 // Typed variant of KernelBase, like a typed device function pointer. See the
