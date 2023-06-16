@@ -596,7 +596,7 @@ SavedModelImpl::LoadSavedModel(Options options,
       saved_model_dir;
 
   mlir::DialectRegistry registry;
-  mlir::func::registerAllExtensions(registry);
+  RegisterMlirDialect(registry);
   mlir::MLIRContext context(registry);
 
   // Step 1: Import saved model from a proto to an MLIR module.
@@ -1048,7 +1048,10 @@ StatusOr<JoinedSignature> JoinSignatures(
 StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 1: Import the combined subgraph from proto to an MLIR module.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  mlir::MLIRContext context(registry);
+
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportSubgraph(&context, joined_signature.input_nodes,
                                   joined_signature.output_nodes,
