@@ -786,22 +786,6 @@ bool StreamExecutor::CreateStreamDependency(Stream* dependent, Stream* other) {
   return implementation_->CreateStreamDependency(dependent, other);
 }
 
-bool StreamExecutor::AllocateTimer(Timer* timer) {
-  return implementation_->AllocateTimer(timer);
-}
-
-void StreamExecutor::DeallocateTimer(Timer* timer) {
-  return implementation_->DeallocateTimer(timer);
-}
-
-bool StreamExecutor::StartTimer(Stream* stream, Timer* timer) {
-  return implementation_->StartTimer(stream, timer);
-}
-
-bool StreamExecutor::StopTimer(Stream* stream, Timer* timer) {
-  return implementation_->StopTimer(stream, timer);
-}
-
 std::unique_ptr<DeviceDescription> StreamExecutor::CreateDeviceDescription()
     const {
   return implementation_->CreateDeviceDescription().value();

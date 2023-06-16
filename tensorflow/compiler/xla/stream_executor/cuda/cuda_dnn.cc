@@ -35,8 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_platform_id.h"
 #include "tensorflow/compiler/xla/stream_executor/cuda/cuda_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/cuda/cuda_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/dnn.h"
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/initialize.h"
 #include "tensorflow/compiler/xla/stream_executor/platform/logging.h"
@@ -2044,18 +2044,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
                                              reserve_space_size_in_bytes));
     }
 
-    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+    TF_RETURN_IF_ERROR(timer.status());
     const bool is_profiling = output_profile_result != nullptr;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      // The start and stop of the timer should be as close to the Cudnn call as
-      // possible. It is still possible for other threads to issue workload on
-      // to this stream. So it could take multiple profiling measurements.
-      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
 
     RETURN_IF_CUDNN_ERROR(cudnnRNNForward(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2075,9 +2066,7 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
         /*reserveSpace=*/reserve_space.opaque()));
 
     if (is_profiling) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
+      TF_RETURN_IF_ERROR(timer->Stop());
       auto algo_desc = *rnn_desc.algorithm_config().algorithm();
       output_profile_result->set_algorithm(algo_desc);
       output_profile_result->set_elapsed_time_in_ms(
@@ -2106,17 +2095,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
     }
   }
 
-  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   const bool is_profiling = output_profile_result != nullptr;
-  if (is_profiling) {
-    timer.reset(new GpuTimer(parent_));
-    // The start and stop of the timer should be as close to the Cudnn call as
-    // possible. It is still possible for other threads to issue workload on
-    // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return tsl::Status(absl::StatusCode::kInternal, "Failed to start timer");
-    }
-  }
+  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+  TF_RETURN_IF_ERROR(timer.status());
 
   if (!is_training) {
     if (input_desc.is_var_seq_lengths()) {
@@ -2185,9 +2166,7 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    if (!timer->Stop(AsGpuStream(stream))) {
-      return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-    }
+    TF_RETURN_IF_ERROR(timer->Stop());
     auto algo_desc = *rnn_desc.algorithm_config().algorithm();
     output_profile_result->set_algorithm(algo_desc);
     output_profile_result->set_elapsed_time_in_ms(
@@ -2252,18 +2231,9 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
                                          workspace_size_in_bytes));
     }
 
-    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+    TF_RETURN_IF_ERROR(timer.status());
     const bool is_profiling = output_profile_result != nullptr;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      // The start and stop of the timer should be as close to the Cudnn call as
-      // possible. It is still possible for other threads to issue workload on
-      // to this stream. So it could take multiple profiling measurements.
-      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
 
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardData_v8(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2309,9 +2279,7 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
     }
 
     if (is_profiling) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
+      TF_RETURN_IF_ERROR(timer->Stop());
       auto algo_desc = *rnn_desc.algorithm_config().algorithm();
       output_profile_result->set_algorithm(algo_desc);
       output_profile_result->set_elapsed_time_in_ms(
@@ -2324,17 +2292,9 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
 
-  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
+  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+  TF_RETURN_IF_ERROR(timer.status());
   const bool is_profiling = output_profile_result != nullptr;
-  if (is_profiling) {
-    timer.reset(new GpuTimer(parent_));
-    // The start and stop of the timer should be as close to the Cudnn call as
-    // possible. It is still possible for other threads to issue workload on
-    // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-      return tsl::Status(absl::StatusCode::kInternal, "Failed to start timer");
-    }
-  }
 
   if (input_desc.is_var_seq_lengths()) {
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardDataEx(
@@ -2418,9 +2378,7 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    if (!timer->Stop(AsGpuStream(stream))) {
-      return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-    }
+    TF_RETURN_IF_ERROR(timer->Stop());
     auto algo_desc = *rnn_desc.algorithm_config().algorithm();
     output_profile_result->set_algorithm(algo_desc);
     output_profile_result->set_elapsed_time_in_ms(
@@ -4928,17 +4886,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
 
     const bool is_profiling = profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));  // NOLINT
-      // The start and stop of the timer should be as close to the Cudnn call as
-      // possible. It is still possible for other threads to issue workload on
-      // to this stream. So it could take multiple profiling measurements.
-      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
+    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+    TF_RETURN_IF_ERROR(timer.status());
 
     const auto get_fwd_bugs = [&]() -> tsl::Status {
 #if CUDNN_VERSION < 8000
@@ -5017,9 +4966,7 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
     }
 
     if (is_profiling) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
+      TF_RETURN_IF_ERROR(timer->Stop());
       profile_result->set_algorithm(algo);
       profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
       profile_result->set_scratch_size(scratch_memory.size());
@@ -5305,26 +5252,15 @@ class CudnnExecutionPlanRunner<void(Args...)>
 
     const bool is_profiling = profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));  // NOLINT
-      // The start and stop of the timer should be as close to the Cudnn call as
-      // possible. It is still possible for other threads to issue workload on
-      // to this stream. So it could take multiple profiling measurements.
-      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
+    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+    TF_RETURN_IF_ERROR(timer.status());
 
     cudnnStatus_t status = cudnnBackendExecute(
         cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
     RETURN_IF_CUDNN_ERROR(status);
 
     if (is_profiling) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
+      TF_RETURN_IF_ERROR(timer->Stop());
       TF_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
       profile_result->set_algorithm(desc);
       profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
@@ -5727,17 +5663,8 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
     auto algo = MakeAlgorithmDesc();
 
-    std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
-    if (profile_result) {
-      timer.reset(new GpuTimer(parent_));  // NOLINT
-      // The start and stop of the timer should be as close to the Cudnn call as
-      // possible. It is still possible for other threads to issue workload on
-      // to this stream. So it could take multiple profiling measurements.
-      if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
+    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
+    TF_RETURN_IF_ERROR(timer.status());
     auto side_input_data_ptr = (side_input_scale_ == 0)
                                    ? output_data.opaque()
                                    : side_input_data.opaque();
@@ -5792,9 +5719,7 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     RETURN_IF_CUDNN_ERROR(status);
 
     if (profile_result) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
+      TF_RETURN_IF_ERROR(timer->Stop());
       profile_result->set_algorithm(algo);
       profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
       profile_result->set_scratch_size(scratch_memory.size());

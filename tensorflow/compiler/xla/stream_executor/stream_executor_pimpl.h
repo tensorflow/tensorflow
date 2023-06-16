@@ -564,7 +564,6 @@ class StreamExecutor {
   friend class ScopedTracer;
   friend class Event;
   friend class Stream;
-  friend class Timer;
   template <typename... Params>
   friend class TypedKernel;
   template <typename... Args>
@@ -645,19 +644,6 @@ class StreamExecutor {
   // Causes dependent to not begin execution until other has finished its
   // last-enqueued work.
   bool CreateStreamDependency(Stream* dependent, Stream* other);
-
-  // Allocates timer resources on the underlying platform and initializes its
-  // internals.
-  bool AllocateTimer(Timer* timer);
-
-  // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer* timer);
-
-  // Records a start event for an interval timer.
-  bool StartTimer(Stream* stream, Timer* timer);
-
-  // Records a stop event for an interval timer.
-  bool StopTimer(Stream* stream, Timer* timer);
 
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.

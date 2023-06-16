@@ -118,7 +118,6 @@ XLA_TEST_F(LocalClientExecuteTest, AddVectorsWithProfile) {
 
   LiteralTestUtil::ExpectR1Near<float>(
       {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
-  EXPECT_GT(profile.compute_and_transfer_time_ns(), 0);
 }
 
 XLA_TEST_F(LocalClientExecuteTest, AddArraysWithDifferentInputLayouts) {

@@ -316,19 +316,6 @@ Stream &Stream::Init() {
   return *this;
 }
 
-Stream &Stream::InitTimer(Timer *timer) {
-  VLOG_CALL(PARAM(timer));
-
-  CheckError(parent_->AllocateTimer(timer));
-  return *this;
-}
-
-Stream &Stream::InitWithTimer(Timer *timer) {
-  VLOG_CALL(PARAM(timer));
-
-  return Init().InitTimer(timer);
-}
-
 Stream &Stream::ThenRecordEvent(Event *event) {
   VLOG_CALL(PARAM(event));
 
@@ -1082,20 +1069,6 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
   LOG(FATAL) << DebugStreamPointers()
              << " did not create the returned sub-stream "
              << sub_stream->DebugStreamPointers();
-}
-
-Stream &Stream::ThenStartTimer(Timer *t) {
-  VLOG_CALL(PARAM(t));
-
-  CheckError(parent_->StartTimer(this, t));
-  return *this;
-}
-
-Stream &Stream::ThenStopTimer(Timer *t) {
-  VLOG_CALL(PARAM(t));
-
-  CheckError(parent_->StopTimer(this, t));
-  return *this;
 }
 
 Stream &Stream::ThenWaitFor(Stream *other) {

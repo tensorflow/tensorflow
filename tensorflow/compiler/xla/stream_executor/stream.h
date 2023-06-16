@@ -51,7 +51,6 @@ namespace host {
 class HostBlas;
 class HostFft;
 class HostRng;
-class HostTimer;
 }  // namespace host
 
 namespace ocl {
@@ -65,8 +64,6 @@ class StreamInterface;
 class DeviceMemoryBase;
 template <typename ElemT>
 class DeviceMemory;
-
-class Timer;
 
 namespace dnn {
 class BatchDescriptor;
@@ -149,12 +146,6 @@ class Stream {
   // operations.
   Stream &Init() TF_LOCKS_EXCLUDED(mu_);
 
-  // Initializes timer t via the StreamExecutor.
-  Stream &InitTimer(Timer *t);
-
-  // Convenience wrapper around Init() and InitTimer().
-  Stream &InitWithTimer(Timer *t);
-
   // Get or create a sub-stream from this stream. If there is any sub-stream in
   // the pool that can be reused then just return this sub-stream.  Otherwise
   // create a new sub-stream.
@@ -195,16 +186,6 @@ class Stream {
   template <typename... Params, typename... Args>
   tsl::Status ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
                          const TypedKernel<Params...> &kernel, Args... args);
-
-  // Record a "start" event for the interval timer at this point in the
-  // stream's execution (relative to the previously and subsequently enqueued
-  // items in the stream's execution). Streams may be started/stopped multiple
-  // times.
-  Stream &ThenStartTimer(Timer *t);
-
-  // Record a "stop" event for the interval timer at this point in the
-  // stream's execution. See also Stream::ThenStartTimer.
-  Stream &ThenStopTimer(Timer *t);
 
   // TODO(leary) If work is added to the stream that is being depended upon,
   //              then what? Have to describe what happens.

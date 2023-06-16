@@ -566,29 +566,22 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                                        launch_dimensions[1].SharedMemBytes()));
     }
 
-    se::gpu::GpuExecutor* cuda_executor =
-        dynamic_cast<se::gpu::GpuExecutor*>(stream->parent()->implementation());
-    std::unique_ptr<se::gpu::GpuTimer, se::gpu::GpuTimerDeleter> timer(
-        new se::gpu::GpuTimer(cuda_executor));
-
     // Warmup: in and out buffers are reused while probing different configs, so
     // GPU caches should be in some comparable states during measurements.
     TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*matmul_kernel, matmul_args,
                                              launch_dimensions[0], stream));
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
-    if (!timer->Init() || !timer->Start(se::gpu::AsGpuStream(stream))) {
-      return Status(absl::StatusCode::kInternal, "Failed to start timer");
-    }
+    StatusOr<se::gpu::GpuTimer> timer =
+        se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+    TF_RETURN_IF_ERROR(timer.status());
     TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*matmul_kernel, matmul_args,
                                              launch_dimensions[0], stream));
     if (have_reduction) {
       TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*reduce_kernel, reduce_args,
                                                launch_dimensions[1], stream));
     }
-    if (!timer->Stop(se::gpu::AsGpuStream(stream))) {
-      return Status(absl::StatusCode::kInternal, "Failed to stop timer");
-    }
+    TF_RETURN_IF_ERROR(timer->Stop());
     return std::make_optional(absl::Nanoseconds(timer->Nanoseconds()));
   }
 

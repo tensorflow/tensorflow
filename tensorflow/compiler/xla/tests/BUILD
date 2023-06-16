@@ -2234,44 +2234,6 @@ xla_test(
 )
 
 xla_test(
-    name = "execution_profile_test",
-    srcs = ["execution_profile_test.cc"],
-    disabled_backends = [
-        # Execution profiles are not supported on the interpreter backend.
-        "interpreter",
-    ],
-    deps = [
-        ":client_library_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/tsl/platform:test",
-    ],
-)
-
-xla_test(
-    name = "execution_profile_test_with_xla_hlo_profile",
-    srcs = ["execution_profile_test.cc"],
-    args = ["--xla_hlo_profile"],
-    disabled_backends = [
-        # Hlo profiles are not supported on the interpreter backend.
-        "interpreter",
-    ],
-    tags = ["no_aarch64"],
-    deps = [
-        ":client_library_test_base",
-        ":test_macros_header",
-        ":xla_internal_test_main",
-        "//tensorflow/compiler/xla/client:global_data",
-        "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/tsl/platform:test",
-    ],
-)
-
-xla_test(
     name = "replay_test",
     srcs = ["replay_test.cc"],
     deps = [
