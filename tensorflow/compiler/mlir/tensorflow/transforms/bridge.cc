@@ -468,7 +468,12 @@ void CreateTFXLABridgePipeline(OpPassManager &pm) {
   // Outline clusters into cluster functions.
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   // Rewrite cluster functions into XLA  launch ops.
-  pm.addPass(TFDevice::CreateXlaRewritePass());
+  if (tensorflow::GetMlirCommonFlags()
+          ->tf_mlir_enable_generic_outside_compilation) {
+    pm.addPass(TFDevice::CreateXlaRewriteV2Pass());
+  } else {
+    pm.addPass(TFDevice::CreateXlaRewritePass());
+  }
   // Re-run the canonicalizer pass as some cleanup during resource op lifting
   // pass opens up some opportunities for canonicalization of cluster ops.
   // Specifically, we want to eliminate pass through results from the cluster

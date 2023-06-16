@@ -1313,6 +1313,7 @@ cc_library(
         "transforms/xla_cluster_formation.cc",
         "transforms/xla_inline_device_ops.cc",
         "transforms/xla_rewrite.cc",
+        "transforms/xla_rewrite_v2.cc",
         "transforms/xla_validate_inputs.cc",
         "translate/breakup-islands.cc",
         "translate/split_into_island_per_op_pass.cc",
