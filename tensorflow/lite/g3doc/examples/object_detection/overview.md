@@ -11,7 +11,7 @@ annotated:
 <img src="images/android_apple_banana.png" alt="Screenshot of Android example" width="30%">
 
 Note: (1) To integrate an existing model, try
-[TensorFlow Lite Task Library](https://www.tensorflow.org/lite/inference_with_metadata/task_library/object_detector).
+[TensorFlow Lite Task Library](../../inference_with_metadata/task_library/object_detector).
 (2) To customize a model, try
 [TensorFlow Lite Model Maker](https://www.tensorflow.org/lite/guide/model_maker).
 
@@ -55,7 +55,7 @@ You can leverage the out-of-box API from
 [TensorFlow Lite Task Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/inference_with_metadata/task_library/object_detector.md)
 to integrate object detection models in just a few lines of code. You can also
 build your own custom inference pipeline using the
-[TensorFlow Lite Interpreter Java API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/inference.md#load-and-run-a-model-in-java).
+[TensorFlow Lite Interpreter Java API](../../guide/inference.md#load-and-run-a-model-in-java).
 
 The Android example below demonstrates the implementation for both methods as
 [lib_task_api](https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/android/lib_task_api)
@@ -69,7 +69,7 @@ Android example</a>
 #### iOS
 
 You can integrate the model using the
-[TensorFlow Lite Interpreter Swift API](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/guide/inference.md#load-and-run-a-model-in-swift).
+[TensorFlow Lite Interpreter Swift API](../../guide/inference.md#load-and-run-a-model-in-swift).
 See the iOS example below.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/object_detection/ios">View
