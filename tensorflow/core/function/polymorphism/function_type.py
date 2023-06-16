@@ -394,6 +394,23 @@ class FunctionType(inspect.Signature):
     return dealiased_inputs
 
   @property
+  def flat_captures(self):
+    """Flat tensor captures needed by this FunctionType."""
+    if not hasattr(self, "_cached_flat_captures"):
+      self._cached_flat_captures = []
+      for t in self.captures.values():
+        self._cached_flat_captures.extend(t._flatten())  # pylint: disable=protected-access
+
+    return self._cached_flat_captures
+
+  def unpack_captures(self, captures):
+    """Unpacks captures to flat tensors."""
+    flat = []
+    for v, t in zip(captures, self.captures.values()):
+      flat.extend(t._to_tensors(v))  # pylint: disable=protected-access
+    return flat
+
+  @property
   def flat_outputs(self):
     """Flat tensor outputs returned by this FunctionType."""
     if not hasattr(self, "_cached_flat_outputs"):

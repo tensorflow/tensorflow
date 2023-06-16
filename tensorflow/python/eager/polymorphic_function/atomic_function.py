@@ -198,6 +198,17 @@ class AtomicFunction:
 
     return self._generated_graph
 
+  def structured_call(self, args, kwargs, captures):
+    """Calls with structured tensor inputs and returns structured output."""
+    tensor_inputs = self.function_type.unpack_inputs(args, kwargs)
+    capture_inputs = self.function_type.unpack_captures(captures)
+    return self.flat_call(tensor_inputs + capture_inputs)
+
+  def flat_call(self, args):
+    """Calls with tensor inputs and returns the structured output."""
+    flat_outputs = self(*args)
+    return self.function_type.pack_output(flat_outputs)
+
   def __call__(self, *args):
     """Calls with flat tensor inputs and returns flat tensor outputs.
 
@@ -212,11 +223,10 @@ class AtomicFunction:
       FunctionAlreadyGarbageCollectedError: if the function is no longer
         available to be called because it has been garbage collected.
     """
-    if len(args) != len(self.cached_definition.signature.input_arg):
+    expected_len = len(self.cached_definition.signature.input_arg)
+    if len(args) != expected_len:
       raise ValueError(
-          "Signature specifies"
-          f" {len(list(self.cached_definition.signature.input_arg))} arguments,"
-          f" got: {len(args)}."
+          f"Signature specifies {expected_len} arguments, got: {len(args)}."
       )
 
     with InterpolateRuntimeError(self):
@@ -400,6 +410,18 @@ def make_call_op_in_graph(atomic, tensor_inputs, context_call_attrs):
   )
 
   return op.outputs
+
+
+def from_function_def(function_def, function_type):
+  """Create a new AtomicFunction from FunctionDef + FunctionType."""
+  bound_context = context.context()
+  if bound_context.has_function(compat.as_bytes(function_def.signature.name)):
+    raise ValueError("Function already registered in context.")
+
+  bound_context.add_function_def(function_def)
+  return AtomicFunction(
+      function_def.signature.name, bound_context, function_type
+  )
 
 
 def from_func_graph(name, graph, attrs, function_type=None, overwrite=False):

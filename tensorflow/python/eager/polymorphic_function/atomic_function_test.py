@@ -13,14 +13,13 @@
 # limitations under the License.
 # ==============================================================================
 
-from tensorflow.python.eager import context
 from tensorflow.python.eager.polymorphic_function import atomic_function
 from tensorflow.python.eager.polymorphic_function import polymorphic_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import compat
 
 
 def get_function_def_and_type(foo, inputs):
@@ -30,17 +29,6 @@ def get_function_def_and_type(foo, inputs):
   return atomic.definition, atomic.function_type
 
 
-def make_atomic_function(definition, func_type):
-  bound_context = context.context()
-  if bound_context.has_function(compat.as_bytes(definition.signature.name)):
-    raise ValueError("Function already registered in context.")
-
-  bound_context.add_function_def(definition)
-  return atomic_function.AtomicFunction(
-      definition.signature.name, bound_context, func_type
-  )
-
-
 class AtomicFunctionTest(test.TestCase):
 
   def test_call_eager(self):
@@ -48,7 +36,7 @@ class AtomicFunctionTest(test.TestCase):
         lambda x, y: x + y, (constant_op.constant(1), constant_op.constant(2))
     )
 
-    atomic = make_atomic_function(definition, func_type)
+    atomic = atomic_function.from_function_def(definition, func_type)
 
     self.assertEqual(
         atomic(constant_op.constant(3), constant_op.constant(4))[0].numpy(),
@@ -60,7 +48,7 @@ class AtomicFunctionTest(test.TestCase):
         lambda x, y: x + y, (constant_op.constant(1), constant_op.constant(2))
     )
 
-    atomic = make_atomic_function(definition, func_type)
+    atomic = atomic_function.from_function_def(definition, func_type)
 
     @polymorphic_function.function
     def foo(a, b):
@@ -77,7 +65,7 @@ class AtomicFunctionTest(test.TestCase):
         (resource_variable_ops.ResourceVariable(1), constant_op.constant(2)),
     )
 
-    atomic = make_atomic_function(definition, func_type)
+    atomic = atomic_function.from_function_def(definition, func_type)
 
     self.assertEqual(
         atomic(
@@ -93,7 +81,7 @@ class AtomicFunctionTest(test.TestCase):
         (resource_variable_ops.ResourceVariable(1), constant_op.constant(2)),
     )
 
-    atomic = make_atomic_function(definition, func_type)
+    atomic = atomic_function.from_function_def(definition, func_type)
 
     @polymorphic_function.function
     def foo(a, b):
@@ -107,6 +95,40 @@ class AtomicFunctionTest(test.TestCase):
         7,
     )
 
+  def test_structured_call(self):
+
+    my_capture = constant_op.constant(2)
+
+    @polymorphic_function.function
+    def foo(x):
+      my_dict = {}
+      my_dict["my_tensor"] = x["my_tensor"]
+      my_dict["my_resource"] = x["my_variable"].handle
+      my_dict["my_capture"] = my_capture
+      my_dict["my_ints"] = x["my_ints"]
+      return my_dict
+
+    structured_inputs = {
+        "my_tensor": constant_op.constant(1),
+        "my_variable": resource_variable_ops.ResourceVariable(1),
+        "my_ints": [1, 2, 3],
+    }
+
+    function_def, function_type = get_function_def_and_type(
+        foo, (structured_inputs,)
+    )
+
+    atomic = atomic_function.from_function_def(function_def, function_type)
+
+    result = atomic.structured_call((structured_inputs,), {}, [my_capture])
+    self.assertEqual(
+        result["my_tensor"].numpy(), structured_inputs["my_tensor"].numpy()
+    )
+    self.assertEqual(result["my_resource"].dtype, dtypes.resource)
+    self.assertEqual(result["my_capture"].numpy(), my_capture.numpy())
+    self.assertEqual(result["my_ints"][0].numpy(), 1)
+    self.assertEqual(result["my_ints"][1].numpy(), 2)
+    self.assertEqual(result["my_ints"][2].numpy(), 3)
 
 if __name__ == "__main__":
   ops.enable_eager_execution()

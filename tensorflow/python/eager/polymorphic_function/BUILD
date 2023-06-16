@@ -71,13 +71,11 @@ cuda_py_strict_test(
     deps = [
         ":atomic_function",
         ":polymorphic_function",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:compat",
     ],
 )
 

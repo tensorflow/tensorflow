@@ -1261,7 +1261,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     if (possible_gradient_type == gradients_util.POSSIBLE_GRADIENT_TYPES_NONE
         and executing_eagerly):
       # No tape is watching; skip to running the function.
-      return self._build_call_outputs(self._inference_function(*args))
+      return self._inference_function.flat_call(args)
     forward_backward = self._select_forward_and_backward_functions(
         args,
         possible_gradient_type,
@@ -1275,7 +1275,7 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
            "StatefulPartitionedCall": self._get_gradient_function()}):
         flat_outputs = forward_function(*args_with_tangents)
     forward_backward.record(flat_outputs)
-    return self._build_call_outputs(flat_outputs)
+    return self.function_type.pack_output(flat_outputs)
 
   @property
   def name(self):
@@ -1588,19 +1588,6 @@ class ConcreteFunction(core.ConcreteFunction, trackable.Trackable):
     return _ForwardBackwardCall(
         self._delayed_rewrite_functions, args, input_tangents.tangents,
         tape_watching=False)
-
-  def _build_call_outputs(self, result):
-    """Maps the fdef output list to actual output structure.
-
-    Args:
-      result: Output lists defined by FunctionDef.
-    Returns:
-      The actual call output.
-    """
-    if self.function_type is None:
-      return result
-
-    return self.function_type.pack_output(result)
 
   @property
   def _as_name_attr_list(self):
