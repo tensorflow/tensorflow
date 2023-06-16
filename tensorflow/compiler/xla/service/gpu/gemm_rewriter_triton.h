@@ -65,7 +65,7 @@ class DotFusionAnalysis {
   // Execute analysis of dot fusion computation.
   // split_k indicates whether this operation was converted to the split-K
   // form and tells the analysis how to interpret the batch dimensions.
-  explicit DotFusionAnalysis(const HloInstruction* root, int64_t split_k = 1);
+  explicit DotFusionAnalysis(const HloComputation*, int64_t split_k = 1);
 
   // A scope is an HLO graph that can be tiled efficiently using same or
   // compatible tile shapes on all operations. GEMM fusion has 3 scopes

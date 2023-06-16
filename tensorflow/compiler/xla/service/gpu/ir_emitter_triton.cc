@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
+#include "tensorflow/compiler/xla/hlo/utils/hlo_query.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_rewriter_triton.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
@@ -238,7 +239,7 @@ void CreateTritonPipeline(mlir::OpPassManager& pm,
   pm.addPass(mlir::createSymbolDCEPass());
 }
 
-// Extact additional attributes from an LLVM function that are not passed
+// Extract additional attributes from an LLVM function that are not passed
 // to the builder directly.
 SmallVector<mlir::NamedAttribute> GetExtraAttrs(ml::LLVMFuncOp func) {
   llvm::StringSet<> registered_attr_names{
@@ -324,6 +325,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
     mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
     mlir::triton::FuncOp fn,
     const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+  const HloInstruction* root = dot_instr->parent()->root_instruction();
+  CHECK(!root->shape().IsTuple());
+
   // We'll be creating a lot of instructions from a single dot, use an
   // implicit loc builder so we don't have to pass around the location all the
   // time.
@@ -337,14 +341,14 @@ StatusOr<LaunchDimensions> MatMulImpl(
     int_ty = b.getI32Type();
   }
   const DotDimensionNumbers& dims = dot_instr->dot_dimension_numbers();
-  const DotFusionAnalysis analysis(dot_instr, config.split_k());
-  const HloInstruction* hlo_lhs_param =
+  const DotFusionAnalysis analysis(dot_instr->parent(), config.split_k());
+  const HloInstruction* lhs_param0 =
       *analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).cbegin();
-  const HloInstruction* hlo_rhs_param =
+  const HloInstruction* rhs_param0 =
       *analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).cbegin();
 
-  Type lhs_ty = TritonType(b, hlo_lhs_param->shape().element_type());
-  Type rhs_ty = TritonType(b, hlo_rhs_param->shape().element_type());
+  Type lhs_ty = TritonType(b, lhs_param0->shape().element_type());
+  Type rhs_ty = TritonType(b, rhs_param0->shape().element_type());
 
   // Rely on dot decomposer: there is just one contracting and one
   // non-contracting dimension on each side + batch ones optionally.
@@ -389,18 +393,13 @@ StatusOr<LaunchDimensions> MatMulImpl(
   const int split_k_out_idx = have_split_k ? 0 : -1;
   const int batch_out_idx = have_batch ? (have_split_k ? 1 : 0) : -1;
 
-  // Non-contracting dimension lengths.
-  // Just the fastest-varying part of it if the dimension is split.
-  const int m_minor = analysis
-                          .IterSpec(DotFusionAnalysis::Scope::LHS,
-                                    hlo_lhs_param, lhs_noncontracting_dim_idx)
-                          ->at(0)
-                          .count;
-  const int n = analysis
-                    .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
-                              rhs_noncontracting_dim_idx)
-                    ->at(0)
-                    .count;
+  // LHS non-contracting dimension length.
+  // LHS non-contracting can be split, so this holds its full size unlike the
+  // m_minor.
+  int m =
+      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx)
+          ->at(0)
+          .count;
 
   // Contracting dimension length.
   const int k = dot_instr->operand(0)->shape().dimensions(
@@ -408,153 +407,125 @@ StatusOr<LaunchDimensions> MatMulImpl(
                 config.split_k();
 
   // LHS non-contracting can be split into two.
-  const bool lhs_nc_split =
-      (analysis
-           .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                     lhs_noncontracting_dim_idx)
-           ->size() > 1);
-  CHECK_EQ(analysis
-               .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                         lhs_noncontracting_dim_idx)
-               ->size(),
-           1 + lhs_nc_split);
+  bool lhs_nc_split = false;
+  // Either batch size or upper part of the length of a split nc dimension.
+  int batch_size = 1;
+  IndexT stride_lhs_m = 0;
+  IndexT stride_lhs_k = 0;
+  IndexT stride_lhs_batch = 0;
+  IndexT stride_rhs_batch = 0;
+  const DotFusionAnalysis::DimIterationSpec* lhs_nc_iter_spec =
+      analysis.IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                        lhs_noncontracting_dim_idx);
+  lhs_nc_split = lhs_nc_iter_spec->size() > 1;
   // For now split non-contracting and batch are not supported simultaneously
   // because they are implemented via same mechanism.
   CHECK_LE(have_batch + lhs_nc_split, 1);
-  // Splitting of the other ones is not supported yet.
+  if (lhs_nc_split) {
+    batch_size = lhs_nc_iter_spec->at(1).count;
+    CHECK_GE(batch_size, 1);
+    stride_lhs_batch = lhs_nc_iter_spec->at(1).stride;
+    CHECK_GE(stride_lhs_batch, 1);
+  } else if (have_batch) {
+    const int64_t lhs_batch_dim_idx = *(dims.lhs_batch_dimensions().cend() - 1);
+    batch_size = analysis
+                     .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                               lhs_batch_dim_idx)
+                     ->at(0)
+                     .count;
+    CHECK_GE(batch_size, 1);
+    stride_lhs_batch = analysis
+                           .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                                     lhs_batch_dim_idx)
+                           ->at(0)
+                           .stride;
+    CHECK_GE(stride_lhs_batch, 1);
+  }
+
+  CHECK_EQ(lhs_nc_iter_spec->size(), 1 + lhs_nc_split);
   CHECK_EQ(analysis
-               .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
-                         rhs_noncontracting_dim_idx)
-               ->size(),
-           1);
-  CHECK_EQ(analysis
-               .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
+               .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
                          dims.lhs_contracting_dimensions(0))
                ->size(),
            1);
-
-  const IndexT stride_lhs_m =
-      analysis
-          .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                    lhs_noncontracting_dim_idx)
-          ->at(0)
-          .stride;
-  const IndexT stride_lhs_k =
-      analysis
-          .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                    dims.lhs_contracting_dimensions(0))
-          ->at(0)
-          .stride;
-  const IndexT stride_rhs_k =
-      analysis
-          .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
-                    dims.rhs_contracting_dimensions(0))
-          ->at(0)
-          .stride;
-  const IndexT stride_rhs_n =
-      analysis
-          .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
-                    rhs_noncontracting_dim_idx)
-          ->at(0)
-          .stride;
-
-  // Either batch size or upper part of the length of a split nc dimension.
-  int batch_size = 1;
-  IndexT stride_batch_lhs = 0;
-  IndexT stride_batch_rhs = 0;
-  // LHS non-contracting can be split, so this holds its full size unlike the
-  // m_minor.
-  int m_full = m_minor;
-  if (lhs_nc_split) {
-    batch_size = analysis
-                     .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                               lhs_noncontracting_dim_idx)
-                     ->at(1)
-                     .count;
-    stride_batch_lhs = analysis
-                           .IterSpec(DotFusionAnalysis::Scope::LHS,
-                                     hlo_lhs_param, lhs_noncontracting_dim_idx)
-                           ->at(1)
-                           .stride;
-    stride_batch_rhs = 0;
-    m_full *= batch_size;
-  } else if (have_batch) {
-    // Batch dimension should have same length left and right.
-    int batch_dim_idx = have_split_k ? 1 : 0;
-    CHECK_EQ(analysis
-                 .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                           dims.lhs_batch_dimensions(batch_dim_idx))
-                 ->at(0)
-                 .count,
-             analysis
-                 .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
-                           dims.rhs_batch_dimensions(batch_dim_idx))
-                 ->at(0)
-                 .count);
-    batch_size = analysis
-                     .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                               dims.lhs_batch_dimensions(batch_dim_idx))
+  stride_lhs_m = lhs_nc_iter_spec->at(0).stride;
+  stride_lhs_k = analysis
+                     .IterSpec(DotFusionAnalysis::Scope::LHS, lhs_param0,
+                               dims.lhs_contracting_dimensions(0))
                      ->at(0)
-                     .count;
-    stride_batch_lhs =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::LHS, hlo_lhs_param,
-                      dims.lhs_batch_dimensions(batch_dim_idx))
-            ->at(0)
-            .stride;
-    stride_batch_rhs =
-        analysis
-            .IterSpec(DotFusionAnalysis::Scope::RHS, hlo_rhs_param,
-                      dims.rhs_batch_dimensions(batch_dim_idx))
-            ->at(0)
-            .stride;
+                     .stride;
+  // Just the fastest-varying part of it if the dimension is split.
+  m = lhs_nc_iter_spec->at(0).count;
+
+  CHECK_GE(m, 1);
+
+  IndexT stride_rhs_k = 0;
+  IndexT stride_rhs_n = 0;
+  // Splitting of RHS non-contracting is not supported yet.
+  CHECK_EQ(analysis
+               .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                         rhs_noncontracting_dim_idx)
+               ->size(),
+           1);
+  stride_rhs_k = analysis
+                     .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                               dims.rhs_contracting_dimensions(0))
+                     ->at(0)
+                     .stride;
+  stride_rhs_n = analysis
+                     .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                               rhs_noncontracting_dim_idx)
+                     ->at(0)
+                     .stride;
+  if (have_batch) {
+    const int64_t rhs_batch_dim_idx = *(dims.rhs_batch_dimensions().cend() - 1);
+    stride_rhs_batch = analysis
+                           .IterSpec(DotFusionAnalysis::Scope::RHS, rhs_param0,
+                                     rhs_batch_dim_idx)
+                           ->at(0)
+                           .stride;
+    CHECK_GE(stride_rhs_batch, 1);
   }
 
   constexpr int group_m = 8;
 
-  IndexT stride_out_m = 0;
-  IndexT stride_out_n = 0;
+  IndexT stride_out_m =
+      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, lhs_nc_out_idx)
+          ->at(0)
+          .stride;
+  const int64_t n =
+      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, rhs_nc_out_idx)
+          ->at(0)
+          .count;
+  CHECK_GE(n, 1);
+  IndexT stride_out_n =
+      analysis.IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, rhs_nc_out_idx)
+          ->at(0)
+          .stride;
   IndexT stride_out_split_k = 0;
-  IndexT stride_out_batch = 0;
-
-  // Iterate over output's physical dimension starting from the fastest
-  // varying one; detect their types and populate the strides accordingly.
-  int64_t out_stride_size_accumulator = 1;
-  for (int64_t logical_idx : dot_instr->shape().layout().minor_to_major()) {
-    const int64_t dim_size = dot_instr->shape().dimensions(logical_idx);
-    if (logical_idx == rhs_nc_out_idx) {
-      CHECK_EQ(dim_size, n);
-      stride_out_n = out_stride_size_accumulator;
-    } else if (logical_idx == lhs_nc_out_idx) {
-      CHECK_EQ(dim_size, m_full);
-      stride_out_m = out_stride_size_accumulator;
-      if (lhs_nc_split) {
-        // Dimension of the output produced by the non-contracting LHS one
-        // is physically contiguous even if the producing LHS one is split.
-        // Because the major part of the split is implemented using the batch
-        // logic stride_out_batch is populated here as the stride of the minor
-        // part times its size.
-        stride_out_batch = out_stride_size_accumulator * m_minor;
-      }
-    } else if (logical_idx == split_k_out_idx) {
-      CHECK_EQ(dim_size, config.split_k());
-      stride_out_split_k = out_stride_size_accumulator;
-    } else if (logical_idx == batch_out_idx) {
-      CHECK_EQ(dim_size, batch_size);
-      stride_out_batch = out_stride_size_accumulator;
-    } else {
-      CHECK(false) << "Unexpected dimension";
-    }
-    out_stride_size_accumulator *= dim_size;
-  }
-  CHECK_GE(stride_out_m, 1);
-  CHECK_GE(stride_out_n, 1);
-  // The next two should never be minor-most, so stride > 1.
   if (have_split_k) {
-    CHECK_GT(stride_out_split_k, 1);
+    stride_out_split_k =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, split_k_out_idx)
+            ->at(0)
+            .stride;
+    CHECK_GE(stride_out_split_k, 1);
   }
-  if (have_batch || lhs_nc_split) {
-    CHECK_GT(stride_out_batch, 1);
+  IndexT stride_out_batch = 0;
+  if (have_batch) {
+    stride_out_batch =
+        analysis
+            .IterSpec(DotFusionAnalysis::Scope::OUTPUT, root, batch_out_idx)
+            ->at(0)
+            .stride;
+    CHECK_GE(stride_out_batch, 1);
+  } else if (lhs_nc_split) {
+    // Dimension of the output produced by the non-contracting LHS one
+    // is physically contiguous even if the producing LHS one is split.
+    // Because the major part of the split is implemented using the batch
+    // logic stride_out_batch is populated here as the stride of the minor
+    // part times its size.
+    stride_out_batch = stride_out_m * m;
   }
 
   const int block_m = config.block_m();
@@ -568,7 +539,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
   VLOG(3) << block_m << " " << block_k << " " << block_n << " "
           << config.num_warps() << " " << config.num_stages();
 
-  const int grid_m = ceil(1.0 * m_minor / block_m);
+  const int grid_m = ceil(1.0 * m / block_m);
   const int grid_n = ceil(1.0 * n / block_n);
   const int width = group_m * grid_n;
 
@@ -595,8 +566,8 @@ StatusOr<LaunchDimensions> MatMulImpl(
   // Otherwise only f64 x f64 -> f64 uses f64 accumulator.
   mlir::FloatType acc_ty =
       (root_ty.isF64() && dot_ty.isF64()) ? b.getF64Type() : b.getF32Type();
-  Value lhs = fn.getArgument(hlo_lhs_param->parameter_number());
-  Value rhs = fn.getArgument(hlo_rhs_param->parameter_number());
+  Value lhs = fn.getArgument(lhs_param0->parameter_number());
+  Value rhs = fn.getArgument(rhs_param0->parameter_number());
   Value out = fn.getArguments().back();
 
   // X block size is 32-bit, Y and Z are 16-bit. Use X for large dimensions.
@@ -690,7 +661,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   SmallVector<int64_t, 2> shape_m_1{block_m, 1};
   auto range_lhs_m = convert_range(
-      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m_minor, block_m)));
+      b.create<ma::RemSIOp>(range_m, CreateConst(b, i32_ty, m, block_m)));
   auto lhs_offset_m =
       b.create<ma::MulIOp>(b.create<mt::ExpandDimsOp>(range_lhs_m, 1),
                            CreateConst(b, int_ty, stride_lhs_m, shape_m_1));
@@ -705,7 +676,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
       build_bcast(lhs_offset_k.getResult().template cast<TensorValue>(),
                   shape_m_k));
   auto lhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_batch_lhs));
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_lhs_batch));
   mt::AddPtrOp lhs_ptrs_base = build_addptr(
       build_splat(build_addptr(lhs, lhs_offset_batch), shape_m_k), lhs_offset);
 
@@ -726,7 +697,7 @@ StatusOr<LaunchDimensions> MatMulImpl(
       build_bcast(rhs_offset_n.getResult().template cast<TensorValue>(),
                   shape_k_n));
   auto rhs_offset_batch = b.create<ma::MulIOp>(
-      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_batch_rhs));
+      convert_scalar(pid_batch), CreateConst(b, int_ty, stride_rhs_batch));
   mt::AddPtrOp rhs_ptrs_base = build_addptr(
       build_splat(build_addptr(rhs, rhs_offset_batch), shape_k_n), rhs_offset);
   SmallVector<int64_t, 2> shape_m_n{block_m, block_n};
@@ -825,9 +796,9 @@ StatusOr<LaunchDimensions> MatMulImpl(
                   shape_m_n));
 
   // Output tile store mask: check that the indices are within [M, N].
-  auto rm_cmp = b.create<ma::CmpIOp>(
-      ma::CmpIPredicate::slt, b.create<mt::ExpandDimsOp>(range_m, 1),
-      CreateConst(b, i32_ty, m_minor, shape_m_1));
+  auto rm_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
+                                     b.create<mt::ExpandDimsOp>(range_m, 1),
+                                     CreateConst(b, i32_ty, m, shape_m_1));
   auto rn_cmp = b.create<ma::CmpIOp>(ma::CmpIPredicate::slt,
                                      b.create<mt::ExpandDimsOp>(range_n, 0),
                                      CreateConst(b, i32_ty, n, shape_1_n));
@@ -843,9 +814,11 @@ StatusOr<LaunchDimensions> MatMulImpl(
 }  // namespace
 
 StatusOr<LaunchDimensions> MatMul(
-    mlir::OpBuilder builder, const HloDotInstruction* dot_instr,
+    mlir::OpBuilder builder, const HloComputation* computation,
     mlir::triton::FuncOp fn,
     const tensorflow::AutotuneResult::TritonGemmKey& config, int shmem_budget) {
+  const HloDotInstruction* dot_instr = DynCast<HloDotInstruction>(
+      hlo_query::GetFirstInstructionWithOpcode(*computation, HloOpcode::kDot));
   // Use 32-bit indexing if addressing any of the inputs or the output (which
   // could grow if split_k is set) does not cross the INT_MAX boundary.
   // Otherwise, fall back to 64-bit indexing, which is slower.
@@ -906,13 +879,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   auto triton_module = mlir::ModuleOp::create(loc);
   b.setInsertionPointToEnd(triton_module.getBody());
 
-  const HloInstruction* root =
-      (hlo_computation->root_instruction()->opcode() == HloOpcode::kBitcast)
-          ? hlo_computation->root_instruction()->operand(0)
-          : hlo_computation->root_instruction();
-  CHECK_EQ(root->opcode(), HloOpcode::kDot);
-  VLOG(3) << root->parent()->ToString();
-
+  VLOG(3) << hlo_computation->ToString();
   VLOG(2) << config.DebugString();
 
   // Build Triton kernel.
@@ -934,10 +901,9 @@ StatusOr<LaunchDimensions> TritonWrapper(
   fn.addEntryBlock();
   b.setInsertionPointToStart(&fn.front());
 
-  TF_ASSIGN_OR_RETURN(
-      LaunchDimensions launch_dimensions,
-      generator(b, xla::Cast<HloDotInstruction>(root), fn, config,
-                device_info.shared_memory_per_block_optin));
+  TF_ASSIGN_OR_RETURN(LaunchDimensions launch_dimensions,
+                      generator(b, hlo_computation, fn, config,
+                                device_info.shared_memory_per_block_optin));
 
   b.create<mt::ReturnOp>(loc);
   CHECK(mlir::succeeded(mlir::verify(triton_module)));
@@ -992,7 +958,7 @@ StatusOr<LaunchDimensions> TritonWrapper(
   }
 
   // Integrate LLVM matmul kernel into XLA's LLVM module.
-  int shared_mem_bytes =
+  const int shared_mem_bytes =
       triton_module->getAttrOfType<mlir::IntegerAttr>("triton_gpu.shared")
           .getInt();
   VLOG(2) << "Shared memory usage: " << shared_mem_bytes << " B";

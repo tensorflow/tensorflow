@@ -125,7 +125,7 @@ ENTRY e {
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  const DotFusionAnalysis analysis(dot_computation);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
@@ -173,7 +173,7 @@ ENTRY e {
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  const DotFusionAnalysis analysis(dot_computation);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
@@ -218,7 +218,7 @@ ENTRY e {
       module->entry_computation()->root_instruction()->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  const DotFusionAnalysis analysis(dot_computation);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
             p1);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
@@ -267,7 +267,7 @@ ENTRY e {
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  const DotFusionAnalysis analysis(dot_computation);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
@@ -317,7 +317,7 @@ ENTRY e {
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  const DotFusionAnalysis analysis(dot_computation);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
@@ -364,7 +364,7 @@ ENTRY e {
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
   const HloInstruction* p1 = dot_computation->parameter_instruction(1);
-  const DotFusionAnalysis analysis(dot_computation->root_instruction());
+  const DotFusionAnalysis analysis(dot_computation);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::LHS).begin(),
             p0);
   EXPECT_EQ(*analysis.ScopeParameters(DotFusionAnalysis::Scope::RHS).begin(),
@@ -620,8 +620,7 @@ ENTRY e {
                                               ->operand(0)
                                               ->called_computations()[0];
   const HloInstruction* p0 = dot_computation->parameter_instruction(0);
-  DotFusionAnalysis analysis(dot_computation->root_instruction(),
-                             key.split_k());
+  DotFusionAnalysis analysis(dot_computation, key.split_k());
   EXPECT_EQ(dot_computation->root_instruction()->shape(),
             ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
   EXPECT_THAT(*analysis.IterSpec(DotFusionAnalysis::Scope::LHS, p0, 0),
