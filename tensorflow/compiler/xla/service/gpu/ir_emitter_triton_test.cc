@@ -1114,7 +1114,7 @@ TEST_F(CompareTest, SplitKBatch) {
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "No BF16 before Ampere.";
   }
-  const std::string hlo_text_ref = R"(
+  const std::string kHloTextRef = R"(
 HloModule m, is_scheduled=true
 
 triton_gemm_dot.24 {
@@ -1134,7 +1134,7 @@ ENTRY e {
     backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":8}}
 })";
 
-  const std::string hlo_text_splitk = R"(
+  const std::string kHloTextSplitK = R"(
 HloModule m, is_scheduled=true
 
 triton_gemm_dot {
@@ -1145,7 +1145,7 @@ triton_gemm_dot {
   parameter_0 = f32[1,5,700,800]{3,2,1,0} parameter(0)
   bitcast.2 = f32[5,700,800]{2,1,0} bitcast(parameter_0)
   bitcast.1 = f32[5,700,8,100]{3,2,1,0} bitcast(bitcast.2)
-  ROOT dot = f32[5,8,128,700]{3,2,1,0} dot(bitcast, bitcast.1), lhs_batch_dims={2,0}, lhs_contracting_dims={1}, rhs_batch_dims={0,2}, rhs_contracting_dims={3}
+  ROOT dot = f32[8,5,128,700]{3,2,1,0} dot(bitcast, bitcast.1), lhs_batch_dims={0,2}, lhs_contracting_dims={1}, rhs_batch_dims={2,0}, rhs_contracting_dims={3}
 }
 
 add {
@@ -1157,14 +1157,14 @@ add {
 ENTRY e {
   tmp_3 = f32[1,5,700,800]{3,2,1,0} parameter(0)
   tmp_0 = bf16[1,1,800,5,128]{4,3,2,1,0} parameter(1)
-  triton_gemm_dot.24 = f32[5,8,128,700]{3,2,1,0} fusion(tmp_3, tmp_0),
+  triton_gemm_dot.24 = f32[8,5,128,700]{3,2,1,0} fusion(tmp_3, tmp_0),
     kind=kCustom, calls=triton_gemm_dot,
     backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":8,"num_stages":1,"num_warps":4}}
   constant = f32[] constant(0)
-  ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={1}, to_apply=add
+  ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={0}, to_apply=add
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_splitk,
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
                                       ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
                                       /*run_hlo_passes=*/false));
 }

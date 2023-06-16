@@ -582,8 +582,8 @@ StatusOr<HloInstruction*> MakeSplitKOperand(
   return MakeBitcastHlo(dot.mutable_operand(operand_number), new_shape);
 }
 
-}  // anonymous namespace
-
+// Apply split K configuration from the tiling to the fused dot() computation:
+// bitcast the operands, change the output shape and the dot dimensions.
 Status MakeDotComputationSplitKBatch(
     HloComputation* computation,
     const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
@@ -601,10 +601,10 @@ Status MakeDotComputationSplitKBatch(
       old_dim_numbers.lhs_contracting_dimensions(),
       *new_dim_numbers.mutable_lhs_contracting_dimensions(),
       lhs_contracting_idx);
+  new_dim_numbers.mutable_lhs_batch_dimensions()->Add(lhs_contracting_idx);
   CopyIncrementingAboveThreshold(
       old_dim_numbers.lhs_batch_dimensions(),
       *new_dim_numbers.mutable_lhs_batch_dimensions(), lhs_contracting_idx);
-  new_dim_numbers.mutable_lhs_batch_dimensions()->Add(lhs_contracting_idx);
 
   const int64_t rhs_contracting_idx = FirstContractingDimensionIndex(*dot, 1);
   TF_ASSIGN_OR_RETURN(
@@ -614,10 +614,10 @@ Status MakeDotComputationSplitKBatch(
       old_dim_numbers.rhs_contracting_dimensions(),
       *new_dim_numbers.mutable_rhs_contracting_dimensions(),
       rhs_contracting_idx);
+  new_dim_numbers.mutable_rhs_batch_dimensions()->Add(rhs_contracting_idx);
   CopyIncrementingAboveThreshold(
       old_dim_numbers.rhs_batch_dimensions(),
       *new_dim_numbers.mutable_rhs_batch_dimensions(), rhs_contracting_idx);
-  new_dim_numbers.mutable_rhs_batch_dimensions()->Add(rhs_contracting_idx);
 
   HloInstruction* new_dot =
       MakeDotHlo(lhs, rhs, new_dim_numbers, dot->precision_config(),
@@ -632,26 +632,31 @@ Status MakeDotComputationSplitKBatch(
   return OkStatus();
 }
 
+}  // anonymous namespace
+
 Status MakeDotSplitKBatch(
     HloInstruction* dot_fusion,
     const tensorflow::AutotuneResult::TritonGemmKey& tiling) {
   CHECK_EQ(dot_fusion->opcode(), HloOpcode::kFusion);
 
-  Layout old_dot_layout = dot_fusion->fused_expression_root()->shape().layout();
+  if (dot_fusion->shape().IsTuple()) {
+    return Unimplemented("Tuple output is not supported with split-K yet.");
+  }
+
+  const Layout old_dot_layout = dot_fusion->shape().layout();
 
   TF_RETURN_IF_ERROR(MakeDotComputationSplitKBatch(
       dot_fusion->fused_instructions_computation(), tiling));
-  const HloInstruction* dot = dot_fusion->fused_expression_root();
+  const HloInstruction* root = dot_fusion->fused_expression_root();
 
-  *dot_fusion->mutable_shape() = dot->shape();
+  *dot_fusion->mutable_shape() = root->shape();
   HloInstruction* zero =
       dot_fusion->parent()->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::Zero(dot->shape().element_type())));
-  const int new_batch_dim_idx =
-      dot->dot_dimension_numbers().lhs_batch_dimensions().size() - 1;
-  HloInstruction* reduce =
-      MakeReduceHlo(dot_fusion, zero, {new_batch_dim_idx}, HloOpcode::kAdd)
-          .value();
+          LiteralUtil::Zero(root->shape().element_type())));
+  // The batch dimension to reduce is the first one by construction.
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * reduce,
+      MakeReduceHlo(dot_fusion, zero, /*dimensions=*/{0}, HloOpcode::kAdd));
 
   // If the original dot had non-standard layout, this reduce should have that
   // too.

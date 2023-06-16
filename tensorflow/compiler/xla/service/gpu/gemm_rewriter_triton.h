@@ -26,17 +26,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/tsl/protobuf/autotuning.pb.h"
 
 namespace xla {
 namespace gpu {
-
-// Apply split K configuration from the tiling to the fused dot() computation:
-// bitcast the operands, change the output shape and the dot dimensions.
-Status MakeDotComputationSplitKBatch(
-    HloComputation* computation,
-    const tensorflow::AutotuneResult::TritonGemmKey& tiling);
 
 // Apply split K configuration from the tiling to the fusion instruction:
 // in addition to MakeDotComputationSplitKBatch on its computation add the

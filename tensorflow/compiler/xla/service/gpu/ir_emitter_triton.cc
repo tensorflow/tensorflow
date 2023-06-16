@@ -351,12 +351,12 @@ StatusOr<LaunchDimensions> MatMulImpl(
 
   const bool have_split_k = config.split_k() > 1;
   if (have_split_k) {
-    // Split-K dimension has to be the last batch one and have an index
+    // Split-K dimension has to be the first batch one and have an index
     // just before the contracting one.
     // Size of this dimension has to match the split_k value.
-    CHECK_EQ(*dims.lhs_batch_dimensions().rbegin(),
+    CHECK_EQ(dims.lhs_batch_dimensions(0),
              dims.lhs_contracting_dimensions(0) - 1);
-    CHECK_EQ(*dims.rhs_batch_dimensions().rbegin(),
+    CHECK_EQ(dims.rhs_batch_dimensions(0),
              dims.rhs_contracting_dimensions(0) - 1);
     CHECK_EQ(config.split_k(), dot_instr->operand(0)->shape().dimensions(
                                    dims.lhs_contracting_dimensions(0) - 1));
@@ -378,6 +378,14 @@ StatusOr<LaunchDimensions> MatMulImpl(
                             dims.rhs_batch_dimensions(),
                             dims.rhs_contracting_dimensions())
           .value()[0];
+
+  // Logical output dimensions are always ordered as:
+  //   split-K, batch, non-contracting LHS, non-contracting RHS,
+  // where split-K and batch are optional.
+  const int rhs_nc_out_idx = dot_instr->shape().rank() - 1;
+  const int lhs_nc_out_idx = dot_instr->shape().rank() - 2;
+  const int split_k_out_idx = have_split_k ? 0 : -1;
+  const int batch_out_idx = have_batch ? (have_split_k ? 1 : 0) : -1;
 
   // Non-contracting dimension lengths.
   // Just the fastest-varying part of it if the dimension is split.
@@ -425,24 +433,22 @@ StatusOr<LaunchDimensions> MatMulImpl(
     m_full *= batch_size;
   } else if (have_batch) {
     // Batch dimension should have same length left and right.
-    CHECK_EQ(analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count,
-             analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].count);
-    batch_size = analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].count;
+    int batch_dim_idx = have_split_k ? 1 : 0;
+    CHECK_EQ(
+        analysis.IterSpec(0, dims.lhs_batch_dimensions(batch_dim_idx))[0].count,
+        analysis.IterSpec(1, dims.rhs_batch_dimensions(batch_dim_idx))[0]
+            .count);
+    batch_size =
+        analysis.IterSpec(0, dims.lhs_batch_dimensions(batch_dim_idx))[0].count;
     stride_batch_lhs =
-        analysis.IterSpec(0, dims.lhs_batch_dimensions(0))[0].stride;
+        analysis.IterSpec(0, dims.lhs_batch_dimensions(batch_dim_idx))[0]
+            .stride;
     stride_batch_rhs =
-        analysis.IterSpec(1, dims.rhs_batch_dimensions(0))[0].stride;
+        analysis.IterSpec(1, dims.rhs_batch_dimensions(batch_dim_idx))[0]
+            .stride;
   }
 
   constexpr int group_m = 8;
-
-  // Logical output dimensions are always ordered as:
-  //   batch, split-K, non-contracting LHS, non-contracting RHS,
-  // where batch and split-K are optional.
-  const int rhs_nc_out_logical_idx = dot_instr->shape().rank() - 1;
-  const int lhs_nc_out_logical_idx = dot_instr->shape().rank() - 2;
-  const int split_k_out_logical_idx = have_split_k ? (have_batch ? 1 : 0) : -1;
-  const int batch_out_logical_idx = have_batch ? 0 : -1;
 
   IndexT stride_out_m = 0;
   IndexT stride_out_n = 0;
@@ -454,10 +460,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
   int64_t out_stride_size_accumulator = 1;
   for (int64_t logical_idx : dot_instr->shape().layout().minor_to_major()) {
     const int64_t dim_size = dot_instr->shape().dimensions(logical_idx);
-    if (logical_idx == rhs_nc_out_logical_idx) {
+    if (logical_idx == rhs_nc_out_idx) {
       CHECK_EQ(dim_size, n);
       stride_out_n = out_stride_size_accumulator;
-    } else if (logical_idx == lhs_nc_out_logical_idx) {
+    } else if (logical_idx == lhs_nc_out_idx) {
       CHECK_EQ(dim_size, m_full);
       stride_out_m = out_stride_size_accumulator;
       if (lhs_nc_split) {
@@ -468,10 +474,10 @@ StatusOr<LaunchDimensions> MatMulImpl(
         // part times its size.
         stride_out_batch = out_stride_size_accumulator * m_minor;
       }
-    } else if (logical_idx == split_k_out_logical_idx) {
+    } else if (logical_idx == split_k_out_idx) {
       CHECK_EQ(dim_size, config.split_k());
       stride_out_split_k = out_stride_size_accumulator;
-    } else if (logical_idx == batch_out_logical_idx) {
+    } else if (logical_idx == batch_out_idx) {
       CHECK_EQ(dim_size, batch_size);
       stride_out_batch = out_stride_size_accumulator;
     } else {

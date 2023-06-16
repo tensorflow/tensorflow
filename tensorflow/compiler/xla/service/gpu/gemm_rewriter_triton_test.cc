@@ -18,12 +18,11 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/hlo/ir/hlo_instruction.h"
-#include "tensorflow/compiler/xla/hlo/ir/hlo_module.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher_gmock.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/stream_executor/device_description.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
 #include "tensorflow/tsl/platform/errors.h"
 #include "tensorflow/tsl/platform/status_matchers.h"
@@ -610,8 +609,10 @@ ENTRY e {
       MakeDotSplitKBatch(module->entry_computation()->root_instruction(), key));
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kReduce);
-  DotFusionAnalysis analysis(root->operand(0)->fused_expression_root(),
-                             key.split_k());
+  const HloInstruction* batch_dot = root->operand(0)->fused_expression_root();
+  EXPECT_EQ(batch_dot->shape(),
+            ShapeUtil::MakeShapeWithDescendingLayout(F16, {8, 7, 5}));
+  DotFusionAnalysis analysis(batch_dot, key.split_k());
   EXPECT_THAT(analysis.IterSpec(0, 0),
               ElementsAre(FieldsAre(/*stride=*/320, /*count=*/8,
                                     /*subfragments=*/ElementsAre(4, 2))));
