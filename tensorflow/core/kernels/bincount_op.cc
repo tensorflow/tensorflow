@@ -15,9 +15,6 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
-#include <vector>
-
-#include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/platform/errors.h"
 #define EIGEN_USE_THREADS
 
@@ -421,10 +418,6 @@ class SparseBincountOp : public OpKernel {
       const int64_t num_rows = shape(0);
       OP_REQUIRES_OK(
           ctx, ctx->allocate_output(0, TensorShape({num_rows, size}), &out_t));
-      // Initialize number of zeros for each row to the number of values
-      // per row and later decrement the appropriate element when a non-zero
-      // value is found.
-      std::vector<int> num_zeros(num_rows, shape(1));
       const auto out = out_t->matrix<T>();
       fill(ctx->eigen_device<Device>(), out_t->flat<T>());
       const auto indices_mat = indices.matrix<int64_t>();
@@ -436,6 +429,11 @@ class SparseBincountOp : public OpKernel {
             errors::InvalidArgument("Index out of bound. `batch` (", batch,
                                     ") must be less than the dimension size (",
                                     out.dimension(0), ")."));
+        OP_REQUIRES(
+            ctx, bin < out.dimension(1),
+            errors::InvalidArgument("Index out ouf bound. `bin` (", bin,
+                                    ") must be less than the dimension size (",
+                                    out.dimension(1), ")."));
         if (bin < size) {
           if (binary_output_) {
             out(batch, bin) = T(1);
@@ -445,27 +443,6 @@ class SparseBincountOp : public OpKernel {
             } else {
               out(batch, bin) += T(1);
             }
-          }
-        }
-        if (bin != 0) {
-          num_zeros[batch] -= 1;
-        }
-      }
-      if ((size > 0) && (weights_size == 0)) {
-        // Weights have the same shape as arr, so when arr has an implicit zero,
-        // the corresponding weight is as an implicit zero. No need to adjust
-        // count for values for implict zeros for the case where there are
-        // weights.
-        OP_REQUIRES(ctx, dense_shape.NumElements() == 2,
-                    errors::InvalidArgument(
-                        "Only 2D arrays supported when axis is -1."));
-        for (int64_t batch = 0; batch < num_rows; ++batch) {
-          if (binary_output_) {
-            if (num_zeros[batch] > 0) {
-              out(batch, 0) = T(1);
-            }
-          } else {
-            out(batch, 0) = static_cast<T>(num_zeros[batch]);
           }
         }
       }
