@@ -54,9 +54,9 @@ cc_library(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:statusor",
         "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/tfrt/eager:virtual_device",
         "//tensorflow/core/tfrt/runtime",
         "//tensorflow/core/tpu:virtual_device",
         "@com_google_absl//absl/status",
@@ -199,7 +199,6 @@ tf_cc_test(
         "//tensorflow/core/common_runtime:placer",
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/grappler/utils:grappler_test",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 

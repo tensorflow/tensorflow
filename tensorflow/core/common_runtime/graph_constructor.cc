@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 
 #include <algorithm>
+#include <memory>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -228,6 +230,11 @@ class GraphConstructor {
   Status PopulateReturnTensors();
   Status PopulateReturnNodes();
   Status PopulateMissingUnusedInputMapKeys();
+
+  FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
+      const FunctionDefLibrary& library) const;
+  std::shared_ptr<AbstractStackTrace> CreateStackTraceForNode(
+      absl::string_view node_name) const;
 
   void Undo();
 
@@ -1143,11 +1150,51 @@ void GraphConstructor::PrintCycles() {
   }
 }
 
+FunctionDefLibraryStackTraces
+GraphConstructor::CreateStackTracesForFunctionDefLibrary(
+    const FunctionDefLibrary& library) const {
+  FunctionDefLibraryStackTraces library_traces;
+  if (debug_info() == nullptr) {
+    return library_traces;
+  }
+  for (const FunctionDef& fdef : library.function()) {
+    const std::string& function_name = fdef.signature().name();
+    StackTracesMap stack_traces;
+    std::string key_suffix = absl::StrCat("@", function_name);
+    for (const auto& [traces_key, stack_trace] : debug_info()->traces()) {
+      if (!absl::EndsWith(traces_key, key_suffix)) continue;
+      std::string node_key =
+          std::string(absl::StripSuffix(traces_key, key_suffix));
+      stack_traces[node_key] =
+          std::make_shared<FrozenStackTrace>(stack_trace, *debug_info());
+    }
+    if (!stack_traces.empty()) {
+      library_traces[function_name] = std::move(stack_traces);
+    }
+  }
+  return library_traces;
+}
+
+std::shared_ptr<AbstractStackTrace> GraphConstructor::CreateStackTraceForNode(
+    absl::string_view node_name) const {
+  if (debug_info() == nullptr) {
+    return nullptr;
+  }
+  auto iterator = debug_info()->traces().find(node_name);
+  if (iterator != debug_info()->traces().end()) {
+    return std::make_shared<FrozenStackTrace>(iterator->second, *debug_info());
+  }
+  return nullptr;
+}
+
 Status GraphConstructor::Convert() {
   // Import functions before adding nodes, since imported nodes may refer to
   // functions
   if (auto library = consume_library(); library.has_value()) {
-    TF_RETURN_IF_ERROR(g_->AddFunctionLibrary(*std::move(library)));
+    FunctionDefLibraryStackTraces library_traces =
+        CreateStackTracesForFunctionDefLibrary(library.value());
+    TF_RETURN_IF_ERROR(
+        g_->AddFunctionLibrary(*std::move(library), library_traces));
   }
 
   std::vector<InputInfo> inputs;
@@ -1275,6 +1322,14 @@ Status GraphConstructor::Convert() {
     }
 
     TF_RETURN_IF_ERROR(MakeNode(std::move(node_def), &node));
+
+    if (node != nullptr) {
+      std::shared_ptr<AbstractStackTrace> stack_trace =
+          CreateStackTraceForNode(node_name);
+      if (stack_trace != nullptr) {
+        node->SetStackTrace(stack_trace);
+      }
+    }
 
     gdef_nodes_[node_name].node = node;
 

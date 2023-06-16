@@ -18,6 +18,9 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -46,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/small_constants_optimizer.h"
+#include "tensorflow/core/common_runtime/eager/summary_optimizer.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -236,10 +240,10 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
   if (opts_.config.experimental().has_session_metadata()) {
     session_metadata = &opts_.config.experimental().session_metadata();
   }
-  pflr_.reset(new ProcessFunctionLibraryRuntime(
+  pflr_ = std::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
       thread_pool, cluster_flr, session_metadata, std::move(rendezvous_factory),
-      StatsPublisherInterface::GetStatsPublisherFactory()));
+      StatsPublisherInterface::GetStatsPublisherFactory());
 }
 
 void EagerContext::InitPrioritizedDeviceTypeList() {
@@ -803,8 +807,8 @@ void EagerContext::EndStep() {
   if (num_active_steps_ == 0) {
     // TODO(b/139809335): This does not properly clean up remote resources
     // Clean up the previous step container and create a new one.
-    step_container_.reset(new ScopedStepContainer(
-        0, [this](const string& name) { ClearResourceContainer(name); }));
+    step_container_ = std::make_unique<ScopedStepContainer>(
+        0, [this](const string& name) { ClearResourceContainer(name); });
   }
 }
 
@@ -949,6 +953,13 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   auto fdefs_to_add =
       small_constants_optimizer::FoldInputTensors(fdef, func_lib_def_);
   for (const auto& fdef_to_add : fdefs_to_add) {
+    TF_RETURN_IF_ERROR(
+        AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
+  }
+
+  auto stripped_fdefs_to_add =
+      summary_optimizer::StripSummaries(fdef, func_lib_def_);
+  for (const auto& fdef_to_add : stripped_fdefs_to_add) {
     TF_RETURN_IF_ERROR(
         AddFunctionDef(fdef_to_add, library, add_to_local_only, stack_traces));
   }
@@ -1181,7 +1192,7 @@ void EagerContext::SetShouldStoreGraphs(bool value) {
   mutex_lock ml(metadata_mu_);
   should_store_graphs_.store(value);
   if (!value) {
-    run_metadata_.reset(new RunMetadata);
+    run_metadata_ = std::make_unique<RunMetadata>();
   }
 }
 

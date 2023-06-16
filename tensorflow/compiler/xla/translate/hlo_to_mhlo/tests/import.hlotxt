@@ -145,6 +145,15 @@ add {
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0}, {1,2}, {3}}, use_global_device_ids=true, to_apply=add
 }
 
+// CHECK-LABEL:  func private @test_tuple_all_reduce
+%test_tuple_all_reduce {
+  %input.1 = f32[8] parameter(0)
+  %input.2 = f32[] parameter(1)
+  // CHECK:        %[[ALL_REDUCE:.*]]:2 = "mhlo.all_reduce"(%arg0, %arg1)
+  // CHECK:        %[[TUPLE:.*]] = mhlo.tuple %[[ALL_REDUCE]]#0, %[[ALL_REDUCE]]#1 {{.*}} : tuple<tensor<8xf32>, tensor<f32>>
+  ROOT result = (f32[8]{0}, f32[]) all-reduce(f32[8]{0} %input.1, f32[] %input.2), replica_groups={}, to_apply=add
+}
+
 // CHECK-LABEL:  func private @test_and
 %test_and (Arg_0.1: pred[4], Arg_1.2: pred[4]) -> pred[4] {
   %Arg_0.1 = pred[4] parameter(0)
@@ -1730,13 +1739,13 @@ add {
 }
 
 // CHECK-LABEL : func private @sparse
-// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ dimLevelType = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>
+// CHECK: tensor<10x10xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<10x10xf32, #sparse_tensor.encoding<{ lvlTypes = [ "dense", "compressed" ], posWidth = 32, crdWidth = 32 }>>
 %sparse {
   ROOT root = f32[10,10]{1,0:D(D,C)} parameter(0)
 }
 
 // CHECK-LABEL : func private @sparse-nu-no
-// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ dimLevelType = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], posWidth = 32, crdWidth = 32 }>>
+// CHECK: tensor<3x4x5xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], posWidth = 32, crdWidth = 32 }>>) -> tensor<3x4x5xf32, #sparse_tensor.encoding<{ lvlTypes = [ "compressed-nu", "singleton-nu-no", "singleton-no" ], posWidth = 32, crdWidth = 32 }>>
 %sparse-nu-no {
   ROOT root = f32[3,4,5]{2,1,0:D(C+,S+~,S~)} parameter(0)
 }

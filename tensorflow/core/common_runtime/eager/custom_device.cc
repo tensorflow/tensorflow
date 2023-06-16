@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/custom_device.h"
 
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/common_runtime/eager/custom_device_op_handler.h"
 
 namespace tensorflow {

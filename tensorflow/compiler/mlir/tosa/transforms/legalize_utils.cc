@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tosa/transforms/legalize_utils.h"
 
+#include <algorithm>
+#include <cmath>
+#include <functional>
 #include <optional>
 
 #include "llvm/ADT/SmallVector.h"

@@ -32,8 +32,9 @@ namespace gpu {
 //===----------------------------------------------------------------------===//
 
 ConcurrentRegionStatus::ConcurrentRegionStatus(
-    const ServiceExecutableRunOptions* run_options, int num_borrowed_streams)
-    : num_borrowed_streams_(num_borrowed_streams),
+    const ServiceExecutableRunOptions* run_options,
+    const int max_num_borrowed_streams)
+    : max_num_borrowed_streams_(max_num_borrowed_streams),
       stream_index_(0),
       run_options_(run_options),
       capture_stream_(nullptr) {}
@@ -42,12 +43,18 @@ ConcurrentRegionStatus::~ConcurrentRegionStatus() {
   DCHECK(!IsInConcurrentRegion());
 }
 
-se::Stream* ConcurrentRegionStatus::GetNextStream() {
+absl::StatusOr<se::Stream*> ConcurrentRegionStatus::GetNextStream() {
   DCHECK(IsInConcurrentRegion());
-  if (borrowed_streams_.empty()) {
-    return nullptr;
+
+  int index = stream_index_ % max_num_borrowed_streams_;
+  if (index == borrowed_streams_.size()) {
+    se::StreamExecutor* executor = run_options_->stream()->parent();
+    TF_ASSIGN_OR_RETURN(StreamPool::Ptr ptr,
+                        run_options_->BorrowStream(executor->device_ordinal()));
+    ptr->ThenWaitFor(capture_stream_);
+    borrowed_streams_.push_back(std::move(ptr));
   }
-  int index = stream_index_ % borrowed_streams_.size();
+
   stream_index_++;
   return borrowed_streams_[index].get();
 }
@@ -55,20 +62,6 @@ se::Stream* ConcurrentRegionStatus::GetNextStream() {
 absl::Status ConcurrentRegionStatus::StartConcurrentRegion(
     se::Stream* capture_stream) {
   DCHECK(!IsInConcurrentRegion());
-  se::StreamExecutor* executor = run_options_->stream()->parent();
-
-  // Stream borrowing should only happen in the first call to this function.
-  for (int i = borrowed_streams_.size(); i < num_borrowed_streams_; i++) {
-    TF_ASSIGN_OR_RETURN(StreamPool::Ptr ptr,
-                        run_options_->BorrowStream(executor->device_ordinal()));
-    borrowed_streams_.push_back(std::move(ptr));
-  }
-
-  // Switch borrowed streams into capture mode
-  for (StreamPool::Ptr& stream : borrowed_streams_) {
-    stream->ThenWaitFor(capture_stream);
-  }
-
   capture_stream_ = capture_stream;
   return absl::OkStatus();
 }
@@ -81,6 +74,7 @@ void ConcurrentRegionStatus::EndConcurrentRegion() {
     capture_stream_->ThenWaitFor(stream.get());
   }
 
+  borrowed_streams_.clear();
   stream_index_ = 0;
   capture_stream_ = nullptr;
 }

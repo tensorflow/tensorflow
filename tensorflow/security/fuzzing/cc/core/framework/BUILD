@@ -1,5 +1,7 @@
 # Fuzztest TensorShape domains
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 cc_library(
     name = "tensor_shape_domains",
     testonly = 1,
@@ -20,7 +22,6 @@ cc_library(
     hdrs = ["tensor_domains.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":datatype_domains",
         ":tensor_shape_domains",
         "//tensorflow/core:framework",
         "//tensorflow/core/framework:types_proto_cc",

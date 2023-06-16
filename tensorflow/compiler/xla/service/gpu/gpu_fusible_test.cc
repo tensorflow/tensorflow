@@ -423,6 +423,33 @@ TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_IgnoreFpPrecision) {
   EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
 }
 
+TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_BitcastCompatible) {
+  auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
+    fused_computation_1 {
+      p0.1 = f32[6400]{0} parameter(0)
+      ROOT mul = f32[6400]{0} multiply(p0.1, p0.1)
+    }
+
+    fused_computation_2 {
+      p0.2 = f32[6400]{0} parameter(0)
+      bitcast = f32[1,6400]{1,0} bitcast(p0.2)
+      ROOT convert = f16[1,6400]{1,0} convert(bitcast)
+    }
+
+    ENTRY entry {
+      p0 = f32[6400]{0} parameter(0)
+      fusion.1 = f32[6400]{0} fusion(p0), kind=kLoop, calls=fused_computation_1
+      fusion.2 = f16[1,6400]{1,0} fusion(p0), kind=kLoop, calls=fused_computation_2
+      ROOT root = (f32[6400]{0}, f16[1,6400]{1,0}) tuple(fusion.1, fusion.2)
+    })"))
+                    .value();
+  const HloInstruction* fusion_1 =
+      module->entry_computation()->root_instruction()->operand(0);
+  const HloInstruction* fusion_2 =
+      module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_TRUE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
+}
+
 TEST_F(GpuFusibleTest, ShapesCompatibleForMultiOutputFusion_Reduce) {
   auto module = ParseAndReturnVerifiedModule(absl::StrCat(kModulePrefix, R"(
     fused_computation_1 {
@@ -600,6 +627,9 @@ TEST_F(
       module->entry_computation()->root_instruction()->operand(0);
   const HloInstruction* fusion_2 =
       module->entry_computation()->root_instruction()->operand(1);
+  EXPECT_FALSE(
+      FusionHeroesAreCompatible(fusion_1->fused_expression_root()->operand(0),
+                                fusion_2->fused_expression_root()->operand(0)));
   EXPECT_FALSE(ShapesCompatibleForMultiOutputFusion(*fusion_1, *fusion_2));
 }
 

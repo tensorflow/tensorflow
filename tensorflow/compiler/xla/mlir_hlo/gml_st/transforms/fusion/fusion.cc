@@ -23,6 +23,7 @@ limitations under the License.
 #include "gml_st/transforms/tiling/tiling.h"
 #include "gml_st/transforms/transforms.h"
 #include "gml_st/utils/tensor_utils.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetOperations.h"
@@ -48,23 +49,36 @@ limitations under the License.
 namespace mlir::gml_st {
 namespace {
 
-bool isEqualOp(const Operation* lhsC, const Operation* rhsC) {
-  return OperationEquivalence::isEquivalentTo(
-      const_cast<Operation*>(lhsC), const_cast<Operation*>(rhsC),
-      OperationEquivalence::exactValueMatch,
-      /*markEquivalent=*/nullptr, OperationEquivalence::IgnoreLocations);
-}
+struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation*> {
+  static unsigned getHashValue(const Operation* opC) {
+    return OperationEquivalence::computeHash(
+        const_cast<Operation*>(opC),
+        /*hashOperands=*/OperationEquivalence::directHashValue,
+        /*hashResults=*/OperationEquivalence::ignoreHashValue,
+        OperationEquivalence::IgnoreLocations);
+  }
+  static bool isEqual(const Operation* lhsC, const Operation* rhsC) {
+    auto* lhs = const_cast<Operation*>(lhsC);
+    auto* rhs = const_cast<Operation*>(rhsC);
+    if (lhs == rhs) return true;
+    if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
+        rhs == getTombstoneKey() || rhs == getEmptyKey())
+      return false;
+    return OperationEquivalence::isEquivalentTo(
+        const_cast<Operation*>(lhsC), const_cast<Operation*>(rhsC),
+        OperationEquivalence::IgnoreLocations);
+  }
+};
 
 template <class OpTy>
 void eliminateEqualOps(PatternRewriter& rewriter, Block& block) {
-  SmallVector<OpTy> uniqueOps;
+  llvm::DenseMap<Operation*, Operation*, SimpleOperationInfo> uniqueOps;
+
   for (auto op : llvm::make_early_inc_range(block.getOps<OpTy>())) {
-    auto* it = llvm::find_if(
-        uniqueOps, [&](OpTy uniqueOp) { return isEqualOp(uniqueOp, op); });
-    if (it == uniqueOps.end()) {
-      uniqueOps.push_back(op);
+    if (auto* equivalentOp = uniqueOps.lookup(op)) {
+      rewriter.replaceOp(op, equivalentOp->getResults());
     } else {
-      rewriter.replaceOp(op, it->getResult());
+      uniqueOps.insert(std::make_pair(op, op));
     }
   }
 }

@@ -222,7 +222,6 @@ HloInstruction *TransposeMatrix(HloInstruction *instr, int64_t contracting_dim,
       HloInstruction::CreateTranspose(new_shape, instr, permutation));
 }
 
-
 // If the bias is a sequence of ops that depend only on broadcasts of
 // constants, materialize the bias if it's small.
 //
@@ -573,6 +572,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       instr = new_add;
     }
 
+    // Attempt to fuse matrix bias into gemm
     if (Match(instr,
               m::AddAnyOrder(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser(),
                              m::Op(&bias).WithPredicate(is_not_broadcast)))) {
@@ -608,7 +608,37 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
         *binary;
+    auto cuda_compute_capability_ =
+        std::get<se::CudaComputeCapability>(gpu_version_);
+    if (instr->GetModule()
+            ->config()
+            .debug_options()
+            .xla_gpu_simplify_all_fp_conversions() &&
+        cuda_compute_capability_.IsAtLeast(se::CudaComputeCapability::VOLTA)) {
+      // Attempt to remove convert if mix type is supported:
+      //   convert(gemm(a, b)) -> gemm(a, b)
+      // Only do this on Volta and above, since on Pascal mixed type matmuls
+      // results have very low precision in some cases.
+      if (Match(
+              instr,
+              m::Convert(GemmOrCublasLtMatmul(&existing_gemm).WithOneUser())) &&
+          existing_gemm->operands().size() == 2) {
+        TF_ASSIGN_OR_RETURN(GemmBackendConfig gemm_backend_config,
+                            existing_gemm->backend_config<GemmBackendConfig>());
 
+        // check if type combination is supported here
+        TF_ASSIGN_OR_RETURN(
+            bool types_are_supported,
+            IsLegacyCublasMatmul(*existing_gemm)
+                ? TypesAreSupportedByLegacyCublas(*existing_gemm,
+                                                  gemm_backend_config, instr)
+                : TypesAreSupportedByCublasLt(*existing_gemm,
+                                              gemm_backend_config, instr));
+        if (types_are_supported) {
+          return FuseMatrixConvert(existing_gemm, instr);
+        }
+      }
+    }
     // Attempt to elide the scaling and conversion of the result of an FP8
     // GEMM, including the optional calculation of the maximum of the absolute
     // values before scaling, and adapt the Custom Call.
@@ -738,15 +768,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
     }
 
-    // If a matrix bias was not fused, set C to a matrix of zeros.
-    if (!c) {
-      Literal c_literal = LiteralUtil::Zero(c_type);
-      HloInstruction *c_const = instr->AddInstruction(
-          HloInstruction::CreateConstant(c_literal.Clone()));
-      c = instr->AddInstruction(HloInstruction::CreateBroadcast(
-          ShapeUtil::ChangeElementType(instr->shape(), c_type), c_const, {}));
-    }
-
     // Each operand must have exactly one contracting and one non-contracting
     // dimension.
     absl::Span<const int64_t> a_contracting_dims =
@@ -841,22 +862,30 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       b = TransposeMatrix(b, b_contracting_dims[0], batch_dims);
     }
 
-    // Pad the non-batch dimensions of the operands to multiples of 16 as
-    // required by cuBLASLt.
-    auto pad_operand = [&instr, &batch_dims](HloInstruction *&x) -> void {
-      PaddingConfig padding_config;
-      Shape padded_shape = x->shape();
-      for (int i = 0; i < x->shape().rank(); ++i) {
-        auto dimension = padding_config.add_dimensions();
+    // Get the padded shape.
+    auto pad_shape = [&batch_dims](const Shape old_shape) {
+      Shape padded_shape = old_shape;
+      for (int i = 0; i < old_shape.rank(); ++i) {
         if (!absl::c_linear_search(batch_dims, i)) {
           int64_t padded_dimension =
-              RoundUpTo<int64_t>(x->shape().dimensions(i), 16);
-          dimension->set_edge_padding_low(0);
-          dimension->set_edge_padding_high(padded_dimension -
-                                           x->shape().dimensions(i));
-          dimension->set_interior_padding(0);
+              RoundUpTo<int64_t>(old_shape.dimensions(i), 16);
           padded_shape.set_dimensions(i, padded_dimension);
         }
+      }
+      return padded_shape;
+    };
+
+    // Pad the non-batch dimensions of the operands to multiples of 16 as
+    // required by cuBLASLt.
+    auto pad_operand = [&instr, &pad_shape](HloInstruction *&x) -> void {
+      PaddingConfig padding_config;
+      Shape padded_shape = pad_shape(x->shape());
+      for (int i = 0; i < x->shape().rank(); ++i) {
+        auto dimension = padding_config.add_dimensions();
+        dimension->set_edge_padding_low(0);
+        dimension->set_edge_padding_high(padded_shape.dimensions(i) -
+                                         x->shape().dimensions(i));
+        dimension->set_interior_padding(0);
       }
       if (!ShapeUtil::Equal(padded_shape, x->shape())) {
         HloInstruction *zero =
@@ -867,17 +896,26 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       }
       return;
     };
+
     pad_operand(a);
     pad_operand(b);
-    pad_operand(c);
+    if (c != nullptr) {
+      pad_operand(c);
+    }
+    Shape new_output_shape = pad_shape(instr->shape());
+
+    std::vector<HloInstruction *> operands_list = {
+        a, b, scales_f32[0], scales_f32[1], one, one};
+    if (c != nullptr) {
+      operands_list.insert(operands_list.begin() + 2, c);
+    }
 
     HloInstruction *new_custom_call =
         instr->AddInstruction(HloInstruction::CreateCustomCall(
             ShapeUtil::MakeShapeWithDenseLayout(
-                instr->shape().element_type(), c->shape().dimensions(),
+                instr->shape().element_type(), new_output_shape.dimensions(),
                 instr->shape().layout().minor_to_major()),
-            {a, b, c, scales_f32[0], scales_f32[1], one, one},
-            kCublasLtMatmulF8CallTarget));
+            operands_list, kCublasLtMatmulF8CallTarget));
 
     TF_RETURN_IF_ERROR(
         new_custom_call->set_backend_config(gemm_backend_config));
@@ -885,7 +923,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
 
     // Slice the result of the GEMM if the operands were padded.
     HloInstruction *slice = nullptr;
-    if (c->shape().dimensions() != instr->shape().dimensions()) {
+    if (new_output_shape.dimensions() != instr->shape().dimensions()) {
       std::vector<int64_t> start_indices(instr->shape().rank(), 0);
       std::vector<int64_t> strides(instr->shape().rank(), 1);
       slice = instr->AddInstruction(HloInstruction::CreateSlice(
@@ -970,28 +1008,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return OkStatus();
     }
 
-    // Change the data type of C to BF16 as required by cuBLASLt for GEMMs with
-    // FP8 outputs (see cuBLASLt documentation).
-    if (existing_gemm->operand(2)->shape().element_type() != BF16 &&
+    TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
+                        existing_gemm->backend_config<GemmBackendConfig>());
+    if (gemm_backend_config.beta() != 0.0 &&
+        existing_gemm->operand(2)->shape().element_type() != BF16 &&
         existing_gemm->operand(2)->shape().element_type() != F16) {
-      TF_ASSIGN_OR_RETURN(auto gemm_backend_config,
-                          existing_gemm->backend_config<GemmBackendConfig>());
-      if (gemm_backend_config.beta() == 1.0) {
-        VLOG(1) << "The scaling and conversion of the result of "
-                << existing_gemm->ToShortString()
-                << " is not fused into the FP8 Custom Call because it "
-                   "conflicts with the existing fusion of the addition of a "
-                   "matrix bias with element type other than BF16 or F16.";
-        return OkStatus();
-      } else {
-        Literal c_literal = LiteralUtil::Zero(BF16);
-        HloInstruction *c = instr->AddInstruction(
-            HloInstruction::CreateConstant(c_literal.Clone()));
-        HloInstruction *c_bcast =
-            instr->AddInstruction(HloInstruction::CreateBroadcast(
-                ShapeUtil::ChangeElementType(instr->shape(), BF16), c, {}));
-        TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(2, c_bcast));
-      }
+      VLOG(1) << "The scaling and conversion of the result of "
+              << existing_gemm->ToShortString()
+              << " is not fused into the FP8 Custom Call because it "
+                 "conflicts with the existing fusion of the addition of a "
+                 "matrix bias with element type other than BF16 or F16.";
+      return OkStatus();
     }
 
     // If necessary, invert the scaling factor of D and convert to F32.
@@ -1006,7 +1033,8 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       d_scale = instr->AddInstruction(HloInstruction::CreateConvert(
           ShapeUtil::MakeScalarShape(F32), d_scale));
     }
-    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(6, d_scale));
+    TF_RETURN_IF_ERROR(existing_gemm->ReplaceOperandWith(
+        gemm_backend_config.beta() == 0.0 ? 5 : 6, d_scale));
 
     // If present, elide the calculation of the maximum of the absolute values
     // of the result of the GEMM.
@@ -1045,6 +1073,11 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, d));
 
     return OkStatus();
+  }
+
+  Status FuseMatrixConvert(HloInstruction *gemm, HloInstruction *convert) {
+    auto new_gemm = gemm->CloneWithNewShape(convert->shape());
+    return ReplaceWithNewInstruction(convert, std::move(new_gemm));
   }
 
   Status FuseMatrixBiasAdd(HloInstruction *instr, HloInstruction *bias,
@@ -1363,19 +1396,117 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     return absl::string_view(kGemmCallTarget);
   }
 
-  StatusOr<bool> TypesAreSupportedByCublasLt(
-      const HloInstruction &instr) const {
+  StatusOr<bool> TypesAreSupportedByLegacyCublas(
+      const HloInstruction &instr, const GemmBackendConfig &gemm_backend_config,
+      const HloInstruction *bias = nullptr) const {
     // Figure out the Atype/Btype.
     const PrimitiveType a_dtype = instr.operand(0)->shape().element_type();
     const PrimitiveType b_dtype = instr.operand(1)->shape().element_type();
+    const PrimitiveType output_type =
+        bias ? bias->shape().element_type() : instr.shape().element_type();
+    const std::array<PrimitiveType, 12> supported_type = {
+        PrimitiveType::S8,  PrimitiveType::F16, PrimitiveType::BF16,
+        PrimitiveType::F32, PrimitiveType::S32, PrimitiveType::F64,
+        PrimitiveType::C64, PrimitiveType::C128};
+    // legacy cublas has a defined set of combinations of types that it
+    // supports. Figure out the computeType and scaleType.
+    if (!absl::c_linear_search(supported_type, output_type)) return false;
+    TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
+                        AsBlasDataType(output_type));
+    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
+                        GetBlasComputationType(
+                            a_dtype, output_type,
+                            stream_executor::blas::kDefaultComputePrecision));
+    se::blas::DataType scale_type =
+        cublas_lt::GetScaleType(output_dtype, compute_type);
+
+    using se::blas::ComputationType;
+    using se::blas::DataType;
+    // This matrix of supported types is taken directly from cublas
+    // documentation.
+    // https://docs.nvidia.com/cuda/cublas/index.html#cublasgemmex
+    const std::array<
+        std::tuple<ComputationType, DataType /*scale_type*/,
+                   PrimitiveType /*a_dtype*/, PrimitiveType /*b_dtype*/,
+                   DataType /*output_dtype*/>,
+        32>
+        supported_type_combinations = {{
+            {ComputationType::kF16, DataType::kHalf, PrimitiveType::F16,
+             PrimitiveType::F16, DataType::kHalf},
+
+            {ComputationType::kI32, DataType::kInt32, PrimitiveType::S8,
+             PrimitiveType::S8, DataType::kInt32},
+
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
+             PrimitiveType::BF16, DataType::kBF16},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
+             PrimitiveType::F16, DataType::kHalf},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::S8,
+             PrimitiveType::S8, DataType::kFloat},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::BF16,
+             PrimitiveType::BF16, DataType::kFloat},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F16,
+             PrimitiveType::F16, DataType::kFloat},
+            {ComputationType::kF32, DataType::kFloat, PrimitiveType::F32,
+             PrimitiveType::F32, DataType::kFloat},
+
+            // There would be an entry here for A/BType complex int8, but we do
+            // not support that type.
+            {ComputationType::kF32, DataType::kComplexFloat, PrimitiveType::C64,
+             PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kF16AsF32, DataType::kFloat, PrimitiveType::F32,
+             PrimitiveType::F32, DataType::kFloat},
+            {ComputationType::kF16AsF32, DataType::kComplexFloat,
+             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kBF16AsF32, DataType::kFloat, PrimitiveType::F32,
+             PrimitiveType::F32, DataType::kFloat},
+            {ComputationType::kBF16AsF32, DataType::kComplexFloat,
+             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kTF32AsF32, DataType::kFloat, PrimitiveType::F32,
+             PrimitiveType::F32, DataType::kFloat},
+            {ComputationType::kTF32AsF32, DataType::kComplexFloat,
+             PrimitiveType::C64, PrimitiveType::C64, DataType::kComplexFloat},
+
+            {ComputationType::kF64, DataType::kDouble, PrimitiveType::F64,
+             PrimitiveType::F64, DataType::kDouble},
+            {ComputationType::kF64, DataType::kComplexDouble,
+             PrimitiveType::C128, PrimitiveType::C128,
+             DataType::kComplexDouble},
+        }};
+
+    return absl::c_linear_search(
+        supported_type_combinations,
+        std::make_tuple(compute_type, scale_type, a_dtype, b_dtype,
+                        output_dtype));
+  }
+
+  StatusOr<bool> TypesAreSupportedByCublasLt(
+      const HloInstruction &instr, const GemmBackendConfig &backend_config,
+      const HloInstruction *bias = nullptr) const {
+    // Figure out the Atype/Btype.
+    const PrimitiveType a_dtype = instr.operand(0)->shape().element_type();
+    const PrimitiveType b_dtype = instr.operand(1)->shape().element_type();
+    const PrimitiveType output_type =
+        bias ? bias->shape().element_type() : instr.shape().element_type();
+    const std::array<PrimitiveType, 12> supported_type = {
+        PrimitiveType::F8E5M2, PrimitiveType::F8E4M3FN, PrimitiveType::S8,
+        PrimitiveType::F16,    PrimitiveType::BF16,     PrimitiveType::F32,
+        PrimitiveType::S32,    PrimitiveType::F64,      PrimitiveType::C64,
+        PrimitiveType::C128};
+    if (!absl::c_linear_search(supported_type, output_type)) return false;
     // cublasLt has a defined set of combinations of types that it supports.
     // Figure out the computeType and scaleType.
     TF_ASSIGN_OR_RETURN(const se::blas::DataType output_dtype,
-                        AsBlasDataType(instr.shape().element_type()));
-    TF_ASSIGN_OR_RETURN(const se::blas::ComputationType compute_type,
-                        GetBlasComputationType(
-                            a_dtype, instr.shape().element_type(),
-                            stream_executor::blas::kDefaultComputePrecision));
+                        AsBlasDataType(output_type));
+    int max_precision = *absl::c_max_element(
+        backend_config.precision_config().operand_precision());
+    TF_ASSIGN_OR_RETURN(
+        const se::blas::ComputationType compute_type,
+        GetBlasComputationType(a_dtype, instr.shape().element_type(),
+                               max_precision));
     se::blas::DataType scale_type =
         cublas_lt::GetScaleType(output_dtype, compute_type);
 
@@ -1511,12 +1642,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   StatusOr<bool> GemmIsSupportedByCublasLt(
       const HloInstruction &instr,
       const GemmBackendConfig &gemm_backend_config) const {
+    if (std::holds_alternative<se::RocmComputeCapability>(gpu_version_)) {
+      return false;
+    }
+
     const HloInstruction *lhs = instr.operand(0);
     const HloInstruction *rhs = instr.operand(1);
     const Shape &output_shape = instr.shape();
 
-    TF_ASSIGN_OR_RETURN(bool types_are_supported_by_cublas_lt,
-                        TypesAreSupportedByCublasLt(instr));
+    TF_ASSIGN_OR_RETURN(
+        bool types_are_supported_by_cublas_lt,
+        TypesAreSupportedByCublasLt(instr, gemm_backend_config));
     if (!types_are_supported_by_cublas_lt) {
       return false;
     }

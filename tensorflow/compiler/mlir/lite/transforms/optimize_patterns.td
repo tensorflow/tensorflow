@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -53,6 +53,10 @@ class HasRankAtLeast<int n> : Constraint<
 class HasRank<int n> : Constraint<
     CPred<"$0.getType().cast<ShapedType>().hasRank() && "
           "$0.getType().cast<ShapedType>().getRank() == " # n>>;
+
+class FloatValueEquals<string val> : Constraint<CPred<
+  "FloatValueEquals($0, " # val # ")">>;
+
 
 // Flattens a constant tensor to 1D.
 def FlattenTo1D : NativeCodeCall<"FlattenTo1D($0)">;
@@ -333,6 +337,23 @@ def MatchHardSwishQuantized : Pat<
     (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
      TFL_AF_None),
   (TFL_HardSwishOp $x)>;
+
+def MatchHardSwishPattern5 : Pat<
+  (TFL_MulOp
+     $arg,
+     (TFL_DivOp
+      (TFL_AddOp
+        $arg,
+        (Arith_ConstantOp F32ElementsAttr:$cst_3),
+        TFL_AF_Relu6),
+      (Arith_ConstantOp F32ElementsAttr:$cst_6),
+      TFL_AF_None),
+     TFL_AF_None),
+  (TFL_HardSwishOp $arg),
+  [
+    (FloatValueEquals<"3"> $cst_3),
+    (FloatValueEquals<"6"> $cst_6),
+  ]>;
 
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
@@ -679,24 +700,61 @@ foreach ValueOp = [TFL_CeilOp, TFL_ExpOp, TFL_FloorOp, TFL_NegOp,
 // if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
+// Returns truncated shape of a ranked-tensor.
+// Truncated, here, means eliminating any contiguous 1s' in the lower
+// dimentions of the tensor
+def GetTruncatedShape: NativeCodeCall<"GetShape($0, true)">;
+
 // Returns True if the operand type is RankedTensorType and valid.
 def HasValidRankedTensor : Constraint<CPred<
   "$0.getType().isa<RankedTensorType>() && "
   "$0.getType().cast<RankedTensorType>().getNumDynamicDims() <= 1">>;
+
+// Check if the truncated shape of the lhs is equal to the shape of rhs
+def IsTruncatedShapeEqualTo : Constraint<CPred<
+  "GetShape($0, true) == GetShape($1)">>;
 
 def ConvertSqueezeToReshape : Pat<
   (TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
   (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $squeeze_op))),
   [(HasValidRankedTensor $squeeze_op)]>;
 
+// Pattern to perform the following optimization
+// transpose [1xAxB] -> [1xBxA]
+//    |
+// reshape [1xBxA] -> [BxA]
+//    |
+// transpose [BxA] -> [AxB]
+//    ||
+// reshape [1xAxB] -> [AxB]
+def ConvertTrasposeReshapeTransposeToReshape : Pat<
+  (TFL_TransposeOp:$second_transpose
+    (TFL_ReshapeOp:$middle_reshape
+      (TFL_TransposeOp:$first_transpose $input, $permutation2),
+        $shape),
+      $permutation1),
+  (TFL_ReshapeOp $input, (Arith_ConstantOp (GetTruncatedShape $input))),
+  [(IsTruncatedShapeEqualTo $first_transpose, $middle_reshape),
+   (IsTruncatedShapeEqualTo $input, $second_transpose)]>;
+
+// Function to map final permutation to initial permutation
+// initial -> permutation1 -> permutation2 -> final
+def RemapPermutation: NativeCodeCall<"RemapPermutation($0, $1)">;
+
+// Pattern to fuse redundant tanspose op
+def FoldDoubleTranspose : Pat<
+  (TFL_TransposeOp
+    (TFL_TransposeOp:$transpose_out1 $input, (Arith_ConstantOp:$permutation1 $p1)),
+    (Arith_ConstantOp:$permutation2 $p2)),
+  (TFL_TransposeOp $input,
+    (Arith_ConstantOp (RemapPermutation $permutation1, $permutation2))),
+  [(HasOneUse $transpose_out1)]>;
+
 // Convert expand_dims to reshape if possible.
 def ConvertExpandDimsToReshape : Pat<
   (TFL_ExpandDimsOp:$expand_dims_op $input, $dim),
   (TFL_ReshapeOp $input, (Arith_ConstantOp (GetShape $expand_dims_op))),
   [(AnyStaticShapeTensor $expand_dims_op)]>;
-
-class FloatValueEquals<string val> : Constraint<CPred<
-  "FloatValueEquals($0, " # val # ")">>;
 
 // Here, the element type can be any integer or float type.
 class IsConstantValueOf<int value> : Constraint<CPred<
@@ -714,6 +772,19 @@ def MinimumOfReluAnd6ToRelu6 :
       (TFL_Relu6Op $x),
       [(IsConstantValueOf<6> $y)]>;
 
+// For both relu1 and relu_0_to_1, the min/max operators commute,
+// so there are two possible orderings we need to rewrite.
+// Concretely, `m < n -> max(m, min(n, x)) = min(m, max(m, x))`.
+// Proof:
+// case (x <= m)
+//   max(m, min(n, x)) = max(m, m) = m and
+//   min(n, max(m, x)) = min(n, m) = m
+// case (m < x < n)
+//   max(m, min(n, x)) = max(m, x) = x and
+//   min(n, max(m, x)) = min(n, x) = x
+// case (n <= x)
+//   max(m, min(n, x)) = max(m, n) = n and
+//   min(n, max(m, x)) = min(n, x) = n
 def MatchRelu1Pattern1 : Pat<
   (TFL_MinimumOp (TFL_MaximumOp $input, (Arith_ConstantOp $NegOne)),
     (Arith_ConstantOp $One)),
@@ -725,6 +796,18 @@ def MatchRelu1Pattern2 : Pat<
     (Arith_ConstantOp $NegOne)),
   (TFL_Relu1Op $input),
   [(FloatValueEquals<"-1"> $NegOne), (FloatValueEquals<"1"> $One)]>;
+
+def MatchRelu0To1Pattern1: Pat<
+  (TFL_MinimumOp (TFL_MaximumOp $x, (Arith_ConstantOp $max_cst)),
+    (Arith_ConstantOp $min_cst)),
+    (TFL_Relu0To1Op $x),
+  [(FloatValueEquals<"0"> $max_cst), (FloatValueEquals<"1"> $min_cst)]>;
+
+def MatchRelu0To1Pattern2: Pat<
+  (TFL_MaximumOp (TFL_MinimumOp $x, (Arith_ConstantOp $min_cst)),
+    (Arith_ConstantOp $max_cst)),
+    (TFL_Relu0To1Op $x),
+  [(FloatValueEquals<"0"> $max_cst), (FloatValueEquals<"1"> $min_cst)]>;
 
 def MatchLeakyRelu : Pat<
   (TFL_MaximumOp
@@ -1027,8 +1110,17 @@ def ReshapeValueDroppingLastDim : NativeCodeCall<
 def IsOneHotIndexAttribute : Constraint<CPred<
   "TFL::IsOneHotIndexAttribute($0)">>;
 
-// Checks if the shape has shape with last dimension equals 1.
+// Checks if the shape has static shape with last dimension equals 1.
 def IsLastDimensionEqualOne : Constraint<CPred<"IsLastDimensionEqualOne($0)">>;
+
+// As above but if shape is not static and rank 2 with last dim 1.
+def IsLastDimensionEqualOneOrDynamicBatchDimRank2 : Constraint<
+  CPred<"IsLastDimensionEqualOne($0) || "
+        "(!$0.getType().cast<ShapedType>().hasStaticShape() && "
+        "  $0.getType().cast<ShapedType>().hasRank() && "
+        "  $0.getType().cast<ShapedType>().getRank() == 2 && "
+        "  !$0.getType().cast<ShapedType>().getShape().empty() && "
+        "  $0.getType().cast<ShapedType>().getShape()[1] == 1)">>;
 
 // Replace
 //   Equal(X, indices)
@@ -1044,7 +1136,7 @@ def ReshapeEqualOpToOneHotOp : Pat<
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "true">),
                 (Arith_ConstantOp ConstantAttr<RankedSignlessIntElementsAttr<1, []>, "false">),
                 ConstantAttr<I32Attr, "-1">),
-  [(IsLastDimensionEqualOne $x),
+  [(IsLastDimensionEqualOneOrDynamicBatchDimRank2 $x),
    (HasRankAtLeast<2> $x),
    (IsOneHotIndexAttribute $series)]>;
 
@@ -1126,6 +1218,28 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
     (Arith_ConstantOp (GetShape (GetIthValue<0> $outputs)))),
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
+
+// Same as above, but if indices are already 1D, then no reshape is needed.
+def ReplaceOneHotDynamicShapeFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp:$outputs
+    (TFL_OneHotOp
+      1DTensorOf<[I32]>:$indices,
+      (Arith_ConstantOp $depth),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    $keep_num_dims,
+    $asymmetric_quantize_inputs),
+  (TFL_EmbeddingLookupOp $indices,
+    (TFL_TransposeOp
+      $filter,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">))),
+  [(I32ElementsVal $indices),
+   (IsNoneType $bias)]>;
 
 def AreInputDimensionsOneInAxes : Constraint<CPred<
   "AreInputDimensionsOneInAxes($0, $1)">>;
@@ -1257,4 +1371,62 @@ def SimplifyDoubleSelectFCZerosRHS : Pat<
   [(IsLastDimensionEqualOne $condition),
    (AllValuesAreZero $zeros_1),
    (AllValuesAreZero $zeros_2)
+  ]>;
+
+def FuseSigmoid : Pat<
+  (TFL_DivOp
+   (Arith_ConstantOp F32ElementsAttr:$ones),
+   (TFL_AddOp:$add_out
+    (TFL_ExpOp:$exp_out
+     (TFL_NegOp:$neg_out $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$ones_1), TFL_AF_None), TFL_AF_None),
+  (TFL_LogisticOp $arg),
+  [(FloatValueEquals<"1"> $ones_1),
+   (FloatValueEquals<"1"> $ones),
+   (HasOneUse $neg_out),
+   (HasOneUse $add_out),
+   (HasOneUse $exp_out),
+  ]>;
+
+def FuseEluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero)),
+   $arg,
+   (TFL_SubOp:$sub_out
+    (TFL_ExpOp:$exp_out
+     (TFL_SelectOp:$select_out
+      (TFL_GreaterOp $arg, (Arith_ConstantOp F32ElementsAttr:$zero_1)),
+      (Arith_ConstantOp F32ElementsAttr:$zero_2),
+      $arg)),
+    (Arith_ConstantOp F32ElementsAttr:$one),
+    TFL_AF_None)),
+  (TFL_EluOp $arg),
+  [
+    (FloatValueEquals<"0"> $zero_2),
+    (FloatValueEquals<"0"> $zero_1),
+    (FloatValueEquals<"0"> $zero),
+    (FloatValueEquals<"1"> $one),
+    (HasOneUse $select_out),
+    (HasOneUse $exp_out),
+    (HasOneUse $sub_out),
+  ]>;
+
+
+def isF32Splat : Constraint<
+  CPred<"IsF32Splat($0)">>;
+
+def ExtractF32AtIndex0: NativeCodeCall<
+    "$_builder.getF32FloatAttr($_self.cast<DenseElementsAttr>().getValues<float>()[0])">;
+
+def FuseLeakyReluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterEqualOp:$geq_out $arg, (Arith_ConstantOp F32ElementsAttr:$threshold)),
+   $arg,
+   (TFL_MulOp:$mul_out $arg, (Arith_ConstantOp F32ElementsAttr:$alpha), TFL_AF_None)),
+  (TFL_LeakyReluOp $arg, ExtractF32AtIndex0:$alpha),
+  [
+    (FloatValueEquals<"0"> $threshold),
+    (isF32Splat $alpha),
+    (HasOneUse $geq_out),
+    (HasOneUse $mul_out),
   ]>;

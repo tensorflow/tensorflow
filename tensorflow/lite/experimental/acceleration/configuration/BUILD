@@ -147,7 +147,7 @@ cc_library(
         "//tensorflow/lite/experimental/acceleration/configuration/c:__pkg__",
     ],
     deps = [
-        "//tensorflow/lite/acceleration/configuration:nnapi_plugin_impl",
+        "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
     ],
 )
 
@@ -159,7 +159,10 @@ cc_library(
         "//tensorflow/lite/core/experimental/acceleration/configuration:delegate_registry",
         "@com_google_absl//absl/memory",
     ] + select({
-        "//tensorflow:android": [
+        "//third_party/bazel_platforms/cpu:aarch64": [
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//third_party/bazel_platforms/cpu:armv7": [
             "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],

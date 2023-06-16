@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_array.h"
 
+#include <cstring>
 #include <memory>
 #include <new>
 #include <optional>
@@ -105,6 +106,7 @@ extern "C" PyObject* PyArray_tp_new(PyTypeObject* type, PyObject*, PyObject*) {
 }
 
 extern "C" void PyArray_tp_dealloc(PyObject* self) {
+  PyObject_GC_UnTrack(self);
   PyTypeObject* tp = Py_TYPE(self);
   auto* obj = reinterpret_cast<PyArrayObject*>(self);
 
@@ -291,6 +293,22 @@ PyArray PyArray::MakeFromSingleDeviceArray(
                  std::move(traceback), std::move(ifrt_array), committed);
 }
 
+PyArray PyArray::MakeFromIfrtArrayAndSharding(
+    std::shared_ptr<PyClient> py_client, std::shared_ptr<Traceback> traceback,
+    tsl::RCReference<ifrt::Array> ifrt_array, py::object sharding,
+    bool weak_type, bool committed) {
+  auto shape_span = ifrt_array->shape().dims();
+  ShapedArrayCacheKey key;
+  key.dims = std::vector<int64_t>(shape_span.begin(), shape_span.end());
+  key.dtype = ifrt::ToPrimitiveType(ifrt_array->dtype()).value();
+  key.weak_type = weak_type;
+  auto aval = MakeShapedArrayCached(key);
+  auto dtype = PrimitiveTypeToDtype(key.dtype).value();
+  return PyArray(std::move(aval), weak_type, dtype, std::move(key.dims),
+                 std::move(sharding), std::move(py_client),
+                 std::move(traceback), std::move(ifrt_array), committed);
+}
+
 PyArrayResultHandler::PyArrayResultHandler(py::object aval, py::object sharding,
                                            bool committed, bool skip_checks)
     : aval_(std::move(aval)),
@@ -380,7 +398,7 @@ py::object PyArray::arrays() {
   // should return the same PyArrays (to avoid duplicate device to host
   // transfers). So we create PyArrays the first time it is called and reuse
   // them later.
-  if (ifrt_array() == nullptr) return py::none();
+  if (ifrt_array() == nullptr || ifrt_array()->IsDeleted()) return py::none();
 
   if (llvm::isa<ifrt::SingleDeviceSharding>(&ifrt_array()->sharding())) {
     std::vector<PyArray> py_arrays;
@@ -452,18 +470,12 @@ StatusOr<PyArray> PyArray::FullyReplicatedShard() {
         "FullyReplicatedShard() called on deleted or donated buffer");
   }
 
-  auto* client = llvm::dyn_cast_or_null<xla::ifrt::PjRtCompatibleClient>(
-      ifrt_array()->client());
-  auto* arr = llvm::dyn_cast_or_null<ifrt::PjRtCompatibleArray>(ifrt_array());
-  if (arr == nullptr) {
-    throw XlaRuntimeError(
-        "This operation is implemented for a PjRt-compatible backend only.");
-  }
-  auto fully_replicated_ifrt_shard =
-      ifrt::PjRtArray::Create(client, std::move(arr->pjrt_buffers().front()));
+  TF_ASSIGN_OR_RETURN(auto fully_replicated_ifrt_shard,
+                      ifrt_array()->FullyReplicatedShard(
+                          ifrt::ArrayCopySemantics::kReuseInput));
   return MakeFromSingleDeviceArray(py_client(), traceback(),
-                                   *fully_replicated_ifrt_shard, weak_type(),
-                                   committed());
+                                   std::move(fully_replicated_ifrt_shard),
+                                   weak_type(), committed());
 }
 
 Status PyArray::BlockUntilReady() const {
@@ -740,6 +752,159 @@ std::vector<py::object> PyClient::LiveArrays() {
   return result;
 }
 
+// PEP 3118 buffer protocol implementation.
+
+namespace {
+
+// Extra data to be kept alive by the consumer of the buffer protocol.
+struct ExtraBufferInfo {
+  explicit ExtraBufferInfo(
+      std::shared_ptr<PjRtBuffer> buffer,
+      std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold)
+      : buffer(std::move(buffer)),
+        external_reference_hold(std::move(external_reference_hold)) {}
+
+  std::vector<Py_ssize_t> strides;
+  // We keep an external reference hold to the PjRtBuffer. This prevents a
+  // use-after-free in the event that Delete() is called on a buffer with an
+  // live buffer protocol view. It does however mean that Delete() sometimes
+  // won't actually delete immediately.
+  std::shared_ptr<PjRtBuffer> buffer;
+  std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold;
+};
+
+int PyArray_bf_getbuffer(PyObject* exporter, Py_buffer* view, int flags) {
+  Status status = [&]() {
+    PyArray py_array = py::reinterpret_borrow<PyArray>(exporter);
+    if (py_array.ifrt_array() == nullptr) {
+      // TODO(phawkins): why is this happening?
+      return InvalidArgument("Array is null");
+    }
+    if (!llvm::isa<ifrt::PjRtCompatibleArray>(py_array.ifrt_array())) {
+      return InvalidArgument("Only local arrays are supported, got %s",
+                             py_array.ifrt_array()->DebugString());
+    }
+    auto* array =
+        static_cast<ifrt::PjRtCompatibleArray*>(py_array.ifrt_array());
+    absl::Span<const std::shared_ptr<PjRtBuffer>> buffers =
+        array->pjrt_buffers();
+
+    PjRtBuffer& buffer = *buffers.front();
+    if (!buffer.IsOnCpu()) {
+      return InvalidArgument(
+          "Python buffer protocol is only defined for CPU buffers.");
+    }
+
+    if (buffers.size() != 1) {
+      return InvalidArgument(
+          "Python buffer protocol is only defined for buffers with a single "
+          "shard.");
+    }
+    if (!py_array.sharding().get_type().is(jax::SingleDeviceSharding::type())) {
+      return InvalidArgument(
+          "Python buffer protocol is only defined for single-device sharded "
+          "buffers.");
+    }
+
+    const xla::Shape& shape = buffer.on_device_shape();
+
+    const char* format =
+        PEP3118FormatDescriptorForPrimitiveType(shape.element_type());
+    // It isn't an option for us to export unknown types as, say, bytes. When
+    // converting an object to an ndarray, NumPy tries the buffer protocol
+    // first. We very much want NumPy to fail and fall back to using
+    // __array__, which allows us to handle custom dtypes correctly.
+    if (!format) {
+      return InvalidArgument(
+          "Buffers of type %s are not supported by the Python buffer protocol.",
+          PrimitiveType_Name(shape.element_type()));
+    }
+
+    // Py_buffer objects are POD C structures, so we don't need to hold the GIL.
+    // Additionally we call BlockHostUntilReady() below, which may block.
+    py::gil_scoped_release gil_release;
+
+    if (!shape.IsArray()) {
+      return InvalidArgument(
+          "Python buffer protocol is only defined for array buffers.");
+    }
+    if ((flags & PyBUF_WRITEABLE) == PyBUF_WRITEABLE) {
+      return InvalidArgument("XLA buffers are read-only.");
+    }
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<PjRtBuffer::ExternalReference> external_reference_hold,
+        buffer.AcquireExternalReference());
+    if (buffer.IsDeleted()) {
+      return InvalidArgument("Deleted buffer used in buffer protocol.");
+    }
+
+    if (((flags & PyBUF_C_CONTIGUOUS) == PyBUF_C_CONTIGUOUS ||
+         (flags & PyBUF_STRIDES) == PyBUF_ND) &&
+        !LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+      return InvalidArgument("Buffer is not in C-contiguous layout.");
+    } else if ((flags & PyBUF_F_CONTIGUOUS) == PyBUF_F_CONTIGUOUS &&
+               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
+      return InvalidArgument("Buffer is not in F-contiguous layout.");
+    } else if ((flags & PyBUF_ANY_CONTIGUOUS) == PyBUF_ANY_CONTIGUOUS &&
+               !LayoutUtil::IsMonotonicWithDim0Major(shape.layout()) &&
+               !LayoutUtil::IsMonotonicWithDim0Minor(shape.layout())) {
+      return InvalidArgument("Buffer is not in contiguous layout.");
+    }
+    std::memset(view, 0, sizeof(Py_buffer));
+    const void* root_ptr =
+        external_reference_hold->OpaqueDeviceMemoryDataPointer();
+    view->buf = const_cast<void*>(root_ptr);
+    auto extra = std::make_unique<ExtraBufferInfo>(
+        buffers.front(), std::move(external_reference_hold));
+    view->itemsize = ShapeUtil::ByteSizeOfPrimitiveType(shape.element_type());
+    view->len = ShapeUtil::ByteSizeOf(shape);
+    view->readonly = 1;
+    if ((flags & PyBUF_FORMAT) == PyBUF_FORMAT) {
+      view->format = const_cast<char*>(format);
+    }
+    if ((flags & PyBUF_ND) == PyBUF_ND) {
+      view->ndim = shape.dimensions_size();
+      static_assert(sizeof(int64_t) == sizeof(Py_ssize_t),
+                    "Py_ssize_t must be 64 bits");
+      if (view->ndim != 0) {
+        view->shape = reinterpret_cast<Py_ssize_t*>(
+            const_cast<int64_t*>(shape.dimensions().data()));
+        if ((flags & PyBUF_STRIDES) == PyBUF_STRIDES) {
+          extra->strides = ByteStridesForShape(shape);
+          view->strides = extra->strides.data();
+        }
+      }
+    }
+    TF_RETURN_IF_ERROR(buffer.BlockHostUntilReady());
+    view->internal = extra.release();
+    return OkStatus();
+  }();
+  if (!status.ok()) {
+    // numpy.asarray(...) eats the PyExc_BufferError. Adding a log here helps
+    // debugging when the error really occurs.
+    VLOG(1) << "Buffer Protocol Error: " << status;
+    PyErr_SetString(PyExc_BufferError, status.ToString().c_str());
+    return -1;
+  }
+  view->obj = exporter;
+  Py_INCREF(view->obj);
+  return 0;
+}
+
+void PyArray_bf_releasebuffer(PyObject*, Py_buffer* buffer) {
+  auto extra = static_cast<ExtraBufferInfo*>(buffer->internal);
+  delete extra;
+}
+
+PyBufferProcs PyArray_tp_as_buffer = []() {
+  PyBufferProcs procs;
+  procs.bf_getbuffer = &PyArray_bf_getbuffer;
+  procs.bf_releasebuffer = &PyArray_bf_releasebuffer;
+  return procs;
+}();
+
+}  // namespace
+
 Status PyArray::SetUpType() {
   static constexpr char kName[] = "ArrayImpl";
 
@@ -767,6 +932,7 @@ Status PyArray::SetUpType() {
   type->tp_as_number = &heap_type->as_number;
   type->tp_as_sequence = &heap_type->as_sequence;
   type->tp_as_mapping = &heap_type->as_mapping;
+  type->tp_as_buffer = &PyArray_tp_as_buffer;
 
   // Allow dynamic attributes.
   EnableDynamicAttribute(heap_type);

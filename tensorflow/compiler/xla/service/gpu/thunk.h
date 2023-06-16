@@ -76,12 +76,15 @@ class Thunk {
     kNcclAllToAll,
     kNcclAllToAllStart,
     kNcclAllToAllDone,
+    kNcclSend,
+    kNcclRecv,
     kOutfeed,
     kReplicaId,
     kPartitionId,
     kSequential,
     kTriangularSolve,
     kWhile,
+    kFusedMHA
   };
 
   struct ThunkInfo {

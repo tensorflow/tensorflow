@@ -38,11 +38,13 @@ namespace gpu {
 
 KernelThunk::KernelThunk(ThunkInfo thunk_info,
                          std::vector<BufferAllocation::Slice> args,
+                         std::vector<bool> written,
                          const std::string& kernel_name,
                          const LaunchDimensions& launch_dimensions,
                          std::vector<mlir::Value> values)
     : Thunk(Kind::kKernel, thunk_info),
       args_(std::move(args)),
+      written_(std::move(written)),
       kernel_name_(kernel_name),
       launch_dimensions_(launch_dimensions),
       values_(std::move(values)) {}

@@ -64,8 +64,9 @@ namespace tensorflow {
 class Edge;
 class EdgeSetTest;
 class Graph;
-class GraphTest;
+class GraphDebugInfo;
 class GraphDef;
+class GraphTest;
 class Node;
 struct OutputTensor;
 class VersionDef;
@@ -630,9 +631,9 @@ class Graph {
   // imported function differs from an existing function or op with the same
   // name.
   Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib,
-                            const StackTracesMap& stack_traces);
+                            const FunctionDefLibraryStackTraces& stack_traces);
   Status AddFunctionLibrary(FunctionDefLibrary&& fdef_lib,
-                            const StackTracesMap& stack_traces);
+                            const FunctionDefLibraryStackTraces& stack_traces);
 
   // Adds the function definition and its stacktraces to this graph's op
   // registry. Ignores duplicate functions, and returns a bad status if an
@@ -814,6 +815,12 @@ class Graph {
   // name: type and simply iterates through the graph once and stores all the
   // information in the map.
   void NodeType(StringPiece name, const FullTypeDef** result);
+
+  // Builds a GraphDebugInfo from the functions and nodes in this graph. Stack
+  // traces associated with function definitions will have a key of the form
+  // <node_name> '@' <function_name>. Stack traces associated with other Nodes
+  // will use the node name as the key.
+  GraphDebugInfo BuildDebugInfo() const;
 
   // TODO(josh11b): uint64 hash() const;
 

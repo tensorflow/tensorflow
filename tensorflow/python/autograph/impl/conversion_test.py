@@ -89,6 +89,10 @@ class ConversionTest(test.TestCase):
     self.assertFalse(conversion.is_allowlisted(tc.converted_method))
 
   def test_is_allowlisted_tfmethodwrapper(self):
+    allowlisted_mod = imp.new_module('test_allowlisted_call')
+    sys.modules['test_allowlisted_call'] = allowlisted_mod
+    config.CONVERSION_RULES = ((config.DoNotConvert('test_allowlisted_call'),) +
+                               config.CONVERSION_RULES)
 
     class TestClass:
 

@@ -1,277 +1,334 @@
-diff --ruN a/stablehlo/BUILD.bazel b/stablehlo/BUILD.bazel
---- stablehlo/BUILD.bazel
-+++ stablehlo/BUILD.bazel
-@@ -370,6 +370,7 @@
-         ":reference_tensor",
-         ":reference_types",
-         ":stablehlo_ops",
-+        ":stablehlo_type_inference",
-         "@llvm-project//llvm:Support",
-         "@llvm-project//mlir:FuncDialect",
-         "@llvm-project//mlir:IR",
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.cpp b/stablehlo/stablehlo/dialect/TypeInference.cpp
---- stablehlo/stablehlo/dialect/TypeInference.cpp
-+++ stablehlo/stablehlo/dialect/TypeInference.cpp
-@@ -376,8 +376,8 @@
- //            padding_high,
- //                         dilatedBound(window_shape[d]))
- //      where (padding_low, padding_high) is the padding-pair for d.
--SmallVector<int64_t> inferWindowOutputShape(
--    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window) {
-+SmallVector<int64_t> inferWindowOutputShape(ArrayRef<int64_t> baseShape,
-+                                            ArrayRef<WindowDimension> window) {
-   assert(baseShape.size() == window.size() &&
-          "Size of window dimensions must match the size of base shape.");
- 
-@@ -652,7 +652,7 @@
-     SmallVector<int64_t>& windowDims,
-     SmallVector<WindowDimension>& inferredWindow) {
-   // reduce_window_c1
--  if (inputArgTypes.size() < 1)
-+  if (inputArgTypes.empty())
-     return emitOptionalError(location, "requires at least 1 input value");
- 
-   // Check for unranked tensors in input operands.
-diff --ruN a/stablehlo/stablehlo/dialect/TypeInference.h b/stablehlo/stablehlo/dialect/TypeInference.h
---- stablehlo/stablehlo/dialect/TypeInference.h
-+++ stablehlo/stablehlo/dialect/TypeInference.h
-@@ -76,8 +76,8 @@
-     ArrayRef<int64_t> lhsDilation, ArrayRef<int64_t> rhsDilation,
-     ArrayRef<bool> windowReversal, std::optional<Location> loc);
- 
--SmallVector<int64_t> inferWindowOutputShape(
--    const ArrayRef<int64_t> baseShape, const ArrayRef<WindowDimension> window);
-+SmallVector<int64_t> inferWindowOutputShape(ArrayRef<int64_t> baseShape,
-+                                            ArrayRef<WindowDimension> window);
- 
- LogicalResult verifyReplicaGroups(std::optional<Location> location,
-                                   DenseIntElementsAttr replicaGroups,
-@@ -297,8 +297,8 @@
-                                SmallVectorImpl<Type>& inferredReturnTypes);
- 
- LogicalResult inferReverseOp(
--    std::optional<Location> location, Type operands,
--    SmallVectorImpl<ShapedTypeComponents>& inferredReturnTypes);
-+    std::optional<Location> location, Type operandType,
-+    SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes);
- 
- LogicalResult inferRngOp(
-     std::optional<Location> location, Value a, Value b, Value shape,
-diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
---- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
-+++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
-@@ -18,7 +18,6 @@
- #include "stablehlo/integrations/c/StablehloAttributes.h"
- #include "stablehlo/integrations/c/StablehloDialect.h"
- #include "stablehlo/integrations/c/StablehloTypes.h"
--#include "stablehlo/integrations/python/PortableApi.h"
- 
- namespace py = pybind11;
- 
-@@ -481,7 +480,10 @@
-   //
-   // Portable APIs
-   //
--  mlir::stablehlo::AddPortableApi(m);
-+  // TODO(b/282235236): Replace with `stablehlo::AddPortableApi(m)`.
-+  // Cannot use AddPortableApi right away because that would break JAX.
-+  m.def("get_current_version", []() { return "0.11.3"; });
-+  m.def("get_minimum_version", []() { return "0.9.0"; });
- 
-   //
-   // Serialization APIs.
-diff --ruN a/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py b/stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
---- stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-+++ stablehlo/stablehlo/integrations/python/mlir/dialects/stablehlo.py
-@@ -17,3 +17,12 @@
- # pylint: disable=wildcard-import,relative-beyond-top-level,g-import-not-at-top
- from ._stablehlo_ops_gen import *
- from .._mlir_libs._stablehlo import *
+diff --ruN a/stablehlo/stablehlo/dialect/Base.cpp b/stablehlo/stablehlo/dialect/Base.cpp
+--- stablehlo/stablehlo/dialect/Base.cpp
++++ stablehlo/stablehlo/dialect/Base.cpp
+@@ -65,6 +65,38 @@
+         isCompatible(rankedType2.getShape(), boundedAttr1));
+   }
+   return success();
++}
 +
++bool isCompatibleElementTypeForHloTypeInference(Type tp1, Type tp2) {
++  // Get element type if shaped
++  tp1 = getElementTypeOrSelf(tp1);
++  tp2 = getElementTypeOrSelf(tp2);
 +
-+def get_earliest_forward_compatible_version():
-+  """Return the earliest StableHLO version that the current StableHLO version
-+    is still forward compatible with.
-+  """
-+  # TODO(b/282232437): Delete this TensorFlow-only API, now that we have an OSS
-+  # equivalent that does the same thing.
-+  return get_minimum_version()
-diff --ruN a/stablehlo/stablehlo/integrations/python/tests/stablehlo.py b/stablehlo/stablehlo/integrations/python/tests/stablehlo.py
---- stablehlo/stablehlo/integrations/python/tests/stablehlo.py
-+++ stablehlo/stablehlo/integrations/python/tests/stablehlo.py
-@@ -210,18 +210,22 @@
-   assert type(api_version) == int
-   assert api_version > 0
- 
++  // Quantization: In the most general case, we allow any combination of
++  // quantized/non-quantized across any combination of operands/results,
++  // and some differences in quantization parameters across operands/results.
++  // Individual ops may introduce additional constraints.
++  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
++  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
++  if (qtp1 && qtp2) {
++    if (qtp1.getStorageType() != qtp2.getStorageType() ||
++        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
++        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
++      return false;
++  }
++  auto etp1 = getExpressedTypeOrSelf(tp1);
++  auto etp2 = getExpressedTypeOrSelf(tp2);
 +
- def is_semver_format(version_str):
--  return re.match('^\d+\.\d+\.\d+$', version_str)
-+  return re.match("^\d+\.\d+\.\d+$", version_str)
++  // Sparsity: In the most general case, we allow any combination of
++  // sparsity/denseness across any combination of operands/results, as well as
++  // differences in sparsity encodings for operands and results.
++  // Individual ops may introduce additional constraints.
++  // No additional code is needed to check this because of how sparsity is
++  // currently implemented.
 +
- 
- @run
- def test_current_version():
-   curr_version = stablehlo.get_current_version()
-   assert is_semver_format(curr_version)
- 
-+
- @run
- def test_minimum_version():
-   curr_version = stablehlo.get_minimum_version()
-   assert is_semver_format(curr_version)
-+
- 
- ASM = """
- func.func @test(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-diff --ruN a/stablehlo/stablehlo/reference/CMakeLists.txt b/stablehlo/stablehlo/reference/CMakeLists.txt
---- stablehlo/stablehlo/reference/CMakeLists.txt
-+++ stablehlo/stablehlo/reference/CMakeLists.txt
-@@ -90,4 +90,5 @@
-   StablehloReferenceScope
-   StablehloReferenceSizes
-   StablehloReferenceTensor
-+  StablehloTypeInference
- )
-diff --ruN a/stablehlo/stablehlo/reference/Ops.cpp b/stablehlo/stablehlo/reference/Ops.cpp
---- stablehlo/stablehlo/reference/Ops.cpp
-+++ stablehlo/stablehlo/reference/Ops.cpp
-@@ -62,10 +62,10 @@
-                                  const Axes &dimensions, Region &body,
-                                  Scope &scope) {
-   SmallVector<Type> inputTypes;
--  for (auto input : inputs) inputTypes.push_back(input.getType());
-+  for (const auto &input : inputs) inputTypes.push_back(input.getType());
- 
-   SmallVector<Type> initValueTypes;
--  for (auto initValue : initValues)
-+  for (const auto &initValue : initValues)
-     initValueTypes.push_back(initValue.getType());
- 
-   SmallVector<ShapedTypeComponents> inferredReduceTypes;
-@@ -78,7 +78,7 @@
-         invalidArgument("Could not infer ReduceOp's return type"));
- 
-   SmallVector<ShapedType> resultTypes;
--  for (auto inferredType : inferredReduceTypes) {
-+  for (const auto &inferredType : inferredReduceTypes) {
-     auto shapedType = hlo::createShapedType(inferredType);
-     if (!shapedType)
-       llvm::report_fatal_error("Could not infer ReduceOp's return type");
-@@ -980,7 +980,7 @@
-        resultIt != results[0].index_end(); ++resultIt) {
-     SmallVector<Tensor> windows;
-     auto windowStart = (*resultIt) * windowStrides;
--    for (auto paddedInput : paddedInputs)
-+    for (const auto &paddedInput : paddedInputs)
-       windows.push_back(evalSliceOp(paddedInput, windowStart,
-                                     windowStart + windowDimensions,
-                                     windowDilations));
-@@ -1108,7 +1108,7 @@
-                                bool isStable, Region &comparator,
-                                Scope &scope) {
-   SmallVector<Tensor> results;
--  for (auto input : inputs) results.push_back(Tensor(input.getType()));
-+  for (const auto &input : inputs) results.push_back(Tensor(input.getType()));
-   auto adjustedDimension =
-       dimension >= 0 ? dimension : dimension + inputs[0].getRank();
- 
-diff --ruN a/stablehlo/stablehlo/reference/Tensor.cpp b/stablehlo/stablehlo/reference/Tensor.cpp
---- stablehlo/stablehlo/reference/Tensor.cpp
-+++ stablehlo/stablehlo/reference/Tensor.cpp
-@@ -93,11 +93,11 @@
- Tensor::Tensor(ShapedType type, AsmResourceBlob blob)
-     : impl_(llvm::makeIntrusiveRefCnt<detail::Buffer>(type, std::move(blob))) {}
- 
--Tensor::Tensor(ShapedType type, const Element &element)
-+Tensor::Tensor(ShapedType type, const Element &initValue)
-     : impl_(llvm::makeIntrusiveRefCnt<detail::Buffer>(type)) {
-   for (auto indexIt = this->index_begin(); indexIt != this->index_end();
-        ++indexIt)
--    this->set(*indexIt, element);
-+    this->set(*indexIt, initValue);
++  // Default case: Unless dynamism, quantization and/or sparsity are involved,
++  // the types are required to be exactly equal.
++  return etp1 == etp2;
  }
  
- Element Tensor::get(const Index &index) const {
-diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
---- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-+++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -19,7 +19,7 @@
+ bool isCompatibleForHloTypeInference(Type tp1, Type tp2) {
+@@ -81,34 +113,10 @@
+   auto stp2 = tp2.dyn_cast<ShapedType>();
+   if (stp1 && stp2)
+     return succeeded(verifyCompatibleShapeWithBounds(stp1, stp2)) &&
+-           isCompatibleForHloTypeInference(stp1.getElementType(),
+-                                           stp2.getElementType());
+-
+-  // Quantization: In the most general case, we allow any combination of
+-  // quantized/non-quantized across any combination of operands/results,
+-  // and some differences in quantization parameters across operands/results.
+-  // Individual ops may introduce additional constraints.
+-  auto qtp1 = tp1.dyn_cast<quant::QuantizedType>();
+-  auto qtp2 = tp2.dyn_cast<quant::QuantizedType>();
+-  if (qtp1 && qtp2) {
+-    if (qtp1.getStorageType() != qtp2.getStorageType() ||
+-        qtp1.getStorageTypeMin() != qtp2.getStorageTypeMin() ||
+-        qtp1.getStorageTypeMax() != qtp2.getStorageTypeMax())
+-      return false;
+-  }
+-  auto etp1 = getExpressedTypeOrSelf(tp1);
+-  auto etp2 = getExpressedTypeOrSelf(tp2);
+-
+-  // Sparsity: In the most general case, we allow any combination of
+-  // sparsity/denseness across any combination of operands/results, as well as
+-  // differences in sparsity encodings for operands and results.
+-  // Individual ops may introduce additional constraints.
+-  // No additional code is needed to check this because of how sparsity is
+-  // currently implemented.
+-
+-  // Default case: Unless dynamism, quantization and/or sparsity are involved,
+-  // the types are required to be exactly equal.
+-  return etp1 == etp2;
++           isCompatibleElementTypeForHloTypeInference(stp1.getElementType(),
++                                                      stp2.getElementType());
++
++  return isCompatibleElementTypeForHloTypeInference(tp1, tp2);
+ }
  
- // -----
+ bool isCompatibleForHloTypeInference(TypeRange tp1, TypeRange tp2) {
+diff --ruN a/stablehlo/stablehlo/dialect/Base.h b/stablehlo/stablehlo/dialect/Base.h
+--- stablehlo/stablehlo/dialect/Base.h
++++ stablehlo/stablehlo/dialect/Base.h
+@@ -60,6 +60,11 @@
+ //  different element types.
+ LogicalResult verifyCompatibleShapeWithBounds(Type type1, Type type2);
  
--// expected-error@-3{{must have no more than one function}}
-+// expected-error@-3{{must have no more than one function or a `main` function to clearly identify which function will be refined}}
- func.func @error_too_many_functions(%arg0: tensor<f32>) -> tensor<f32> {
-   %0 = func.call @helper(%arg0) : (tensor<f32>) -> tensor<f32>
-   func.return %0 : tensor<f32>
-@@ -27,6 +27,24 @@
++// Returns true if the given element types are compatible for the purposes of
++// HLO type inference, accounting for special properties of quantization and
++// sparsity.
++bool isCompatibleElementTypeForHloTypeInference(Type tp1, Type tp2);
++
+ // Returns true if the given types are compatible for the purposes of HLO type
+ // inference, accounting for special properties of dynamism, quantization and
+ // sparsity.
+@@ -266,6 +271,31 @@
+       }
+     }
+     return success();
++  }
++};
++
++template <typename ConcreteType>
++class CompatibleOperandsAndResultElementType
++    : public mlir::OpTrait::TraitBase<ConcreteType,
++                                      CompatibleOperandsAndResultElementType> {
++ public:
++  static LogicalResult verifyTrait(Operation *op) {
++    Type expected;
++    if (op->getNumResults() != 0) expected = op->getResult(0).getType();
++    if (op->getNumOperands() != 0) expected = op->getOperand(0).getType();
++    if (!expected) return failure();
++
++    auto typeMatch = [&](Type actual) {
++      return isCompatibleElementTypeForHloTypeInference(actual, expected);
++    };
++    auto allMatch = llvm::all_of(op->getOperandTypes(), typeMatch) &&
++                    llvm::all_of(op->getResultTypes(), typeMatch);
++    if (!allMatch) {
++      return op->emitOpError(
++          "requires compatible element types for all operands and results");
++    }
++
++    return success(allMatch);
+   }
+ };
  
- func.func private @helper(%arg0: tensor<f32>) -> tensor<f32> {
-   return %arg0 : tensor<f32>
+diff --ruN a/stablehlo/stablehlo/dialect/Base.td b/stablehlo/stablehlo/dialect/Base.td
+--- stablehlo/stablehlo/dialect/Base.td
++++ stablehlo/stablehlo/dialect/Base.td
+@@ -202,6 +202,9 @@
+     HLO_NativeOpTrait<"CompatibleOperandsAndResultType">
+   ]>;
+ 
++def HLO_CompatibleOperandsAndResultElementType :
++  HLO_NativeOpTrait<"CompatibleOperandsAndResultElementType">;
++
+ def HLO_BoundedAttrInterface : AttrInterface<"BoundedAttrInterface"> {
+   let cppNamespace = "::mlir::hlo";
+ 
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -26,6 +26,7 @@
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/Transforms/InliningUtils.h"
++#include "stablehlo/dialect/Base.h"
+ #include "stablehlo/dialect/BroadcastUtils.h"
+ #include "stablehlo/dialect/ChloBytecode.h"
+ #include "stablehlo/dialect/TypeInference.h"
+@@ -143,7 +144,8 @@
+   ShapedType lhsType = operands[0].getType().cast<ShapedType>();
+   ShapedType rhsType = operands[1].getType().cast<ShapedType>();
+   if (!lhsType || !rhsType ||
+-      lhsType.getElementType() != rhsType.getElementType())
++      !hlo::isCompatibleElementTypeForHloTypeInference(
++          lhsType.getElementType(), rhsType.getElementType()))
+     return emitOptionalError(location, "mismatched operand types");
+   if (!elementType) elementType = lhsType.getElementType();
+   inferredReturnShapes.push_back(
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -117,7 +117,7 @@
+ }
+ 
+ def CHLO_BroadcastAddOp : CHLO_BroadcastBinaryElementwiseOp<"broadcast_add",
+-    [Commutative, Pure, SameOperandsAndResultElementType]> {
++    [Commutative, Pure, HLO_CompatibleOperandsAndResultElementType]> {
+   string summary = "Addition operator (with optional broadcasting)";
+ 
+   string description = [{
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -39,15 +39,14 @@
+   let cppNamespace = "::mlir::vhlo";
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloEnums.td b/stablehlo/stablehlo/dialect/VhloEnums.td
+--- stablehlo/stablehlo/dialect/VhloEnums.td
++++ stablehlo/stablehlo/dialect/VhloEnums.td
+@@ -32,15 +32,14 @@
+   : EnumAttr<VHLO_Dialect, enumInfo, name, [VHLO_VersionedAttrInterface]> {
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.td b/stablehlo/stablehlo/dialect/VhloOps.td
+--- stablehlo/stablehlo/dialect/VhloOps.td
++++ stablehlo/stablehlo/dialect/VhloOps.td
+@@ -40,15 +40,14 @@
+       [DeclareOpInterfaceMethods<VHLO_VersionedOpInterface>] # traits> {
+   let extraClassDefinition = [{
+     mlir::vhlo::Version $cppClass::getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # mnemonic # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version $cppClass::getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # mnemonic # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloTypes.td b/stablehlo/stablehlo/dialect/VhloTypes.td
+--- stablehlo/stablehlo/dialect/VhloTypes.td
++++ stablehlo/stablehlo/dialect/VhloTypes.td
+@@ -38,15 +38,14 @@
+   let mnemonic = name;
+   let extraClassDeclaration = [{
+     mlir::vhlo::Version getMinVersion() {
+-      auto version = mlir::vhlo::Version::fromString("}] #  minVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # minVersion # [{ in }] # name # [{");
+-      return *version;
++      return mlir::vhlo::Version(}] # !subst(".", ", ", minVersion) # [{);
+     }
+     mlir::vhlo::Version getMaxVersion() {
+-      if (!strcmp("}] # maxVersion # [{", "current")) return Version::getCurrentVersion();
+-      auto version = mlir::vhlo::Version::fromString("}] #  maxVersion # [{");
+-      if (failed(version)) llvm::report_fatal_error("invalid version }] # maxVersion # [{ in }] # name # [{");
+-      return *version;
++      }] # !if(
++        !eq(maxVersion, "current"),
++        [{ return mlir::vhlo::Version::getCurrentVersion(); }],
++        [{ return mlir::vhlo::Version("}] # !subst(".", ", ", maxVersion) # [{"); }]
++      ) # [{
+     }
+   }];
+ }
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -1,4 +1,21 @@
+ // RUN: stablehlo-opt %s -verify-diagnostics -split-input-file | FileCheck %s
++
++
++// CHECK-LABEL: func @broadcast_add_quantized
++func.func @broadcast_add_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>> {
++  %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>
 +}
 +
 +// -----
 +
-+module @has_main {
-+  // CHECK: main
-+  func.func @main(%arg0: tensor<4xf32>) -> tensor<*xi32> {
-+    // CHECK: stablehlo.bitcast_convert{{.*}} -> tensor<4xi32>
-+    %0 = stablehlo.bitcast_convert %arg0 : (tensor<4xf32>) -> tensor<*xi32>
-+    func.return %0 : tensor<*xi32>
-+  }
++func.func @broadcast_add_quantized(%arg0: tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, %arg1: tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>> {
++  // expected-error @+1{{'chlo.broadcast_add' op requires compatible element types for all operands and results}}
++  %0 = "chlo.broadcast_add"(%arg0, %arg1) : (tensor<2x2x!quant.uniform<i8:f32, 2.0:15>>, tensor<2x2x!quant.uniform<i8:f32, 3.0:15>>) -> tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++  func.return %0: tensor<2x2x!quant.uniform<i16:f32, 2.0:15>>
++}
 +
-+  // CHECK: helper
-+  func.func @helper(%arg0: tensor<4xf32>) -> tensor<*xi32> {
-+    // CHECK: stablehlo.bitcast_convert{{.*}} -> tensor<*xi32>
-+    %0 = stablehlo.bitcast_convert %arg0 : (tensor<4xf32>) -> tensor<*xi32>
-+    func.return %0 : tensor<*xi32>
-+  }
- }
++// -----
  
- // -----
-diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
---- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-+++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
-@@ -1089,18 +1089,29 @@
-     // Current use cases are served well by inlining multiple functions into
-     // a single function, so we leave native support for multiple functions to
-     // future work.
-+    // To enable modules that contain CustomCallOp::called_computations,
-+    // we allow multiple functions, in which case we only refine the main
-+    // function called "main", assuming that the called computations will have
-+    // static shapes. Lifting this assumption and expanding refinement to
-+    // multiple functions is left for future work.
-     ModuleOp module = getOperation();
-     auto funcs = llvm::to_vector(module.getOps<func::FuncOp>());
-     if (funcs.empty()) return;
--    if (funcs.size() != 1) {
--      module.emitOpError() << "must have no more than one function";
-+    func::FuncOp func;
-+    if (funcs.size() == 1) {
-+      func = funcs[0];
-+    } else {
-+      func = module.lookupSymbol<func::FuncOp>("main");
-+    }
-+    if (!func) {
-+      module.emitOpError() << "must have no more than one function or a `main`"
-+          << " function to clearly identify which function will be refined";
-       return signalPassFailure();
-     }
+ func.func @constant_like(%arg0: tensor<1x2xi64>) -> (tensor<1x2xi32>) {
+   // expected-error @+1 {{'chlo.constant_like' op value's type doesn't match element return type}}
+diff --ruN a/stablehlo/stablehlo/tools/CMakeLists.txt b/stablehlo/stablehlo/tools/CMakeLists.txt
+--- stablehlo/stablehlo/tools/CMakeLists.txt
++++ stablehlo/stablehlo/tools/CMakeLists.txt
+@@ -22,9 +22,11 @@
+ # stablehlo-opt
+ get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
+ get_property(conversion_libs GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
++get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+ set(LIBS
+         ${dialect_libs}
+         ${conversion_libs}
++        ${extension_libs}
+         MLIROptLib
+         StablehloRegister
+         StablehloTestUtils
+diff --ruN a/stablehlo/stablehlo/tools/StablehloOptMain.cpp b/stablehlo/stablehlo/tools/StablehloOptMain.cpp
+--- stablehlo/stablehlo/tools/StablehloOptMain.cpp
++++ stablehlo/stablehlo/tools/StablehloOptMain.cpp
+@@ -16,6 +16,7 @@
+ #include "mlir/Dialect/Tosa/IR/TosaOps.h"
+ #include "mlir/Dialect/Tosa/Transforms/Passes.h"
+ #include "mlir/InitAllDialects.h"
++#include "mlir/InitAllExtensions.h"
+ #include "mlir/InitAllPasses.h"
+ #include "mlir/Tools/mlir-opt/MlirOptMain.h"
+ #include "stablehlo/conversions/tosa/transforms/Passes.h"
+@@ -32,6 +33,7 @@
  
-     // Similarly, only one block per function is supported at the moment.
-     // At the StableHLO level, functions are expected to only have one block,
-     // so supporting more is out of scope for this pass.
--    func::FuncOp func = funcs[0];
-     if (!func.getRegion().hasOneBlock()) {
-       func.emitOpError() << "must have exactly one block";
-       return signalPassFailure();
-@@ -1155,7 +1166,7 @@
-     patterns.add<RefineWhileOpPattern>(&getContext());
-     patterns.add<UpdateFunctionTypePattern>(&getContext());
-     patterns.add<UpdateRegionTypePattern>(&getContext());
--    if (failed(applyPatternsAndFoldGreedily(module, std::move(patterns),
-+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns),
-                                             config))) {
-       return signalPassFailure();
-     }
+   mlir::DialectRegistry registry;
+   mlir::registerAllDialects(registry);
++  mlir::registerAllExtensions(registry);
+   mlir::stablehlo::registerAllDialects(registry);
+ 
+   return failed(
 

@@ -526,7 +526,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4, imported.f(constant_op.constant(2), True).numpy())
     self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
 
-  def test_function_with_defaults_input(self, cycles, use_cpp_bindings):
+  def test_function_with_defaults_input_tensor(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
     if use_cpp_bindings:
       self.skipTest("Not implemented for cpp.")
@@ -545,6 +545,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(5.0, imported.f().numpy())
     self.assertEqual(7.0, imported.f(constant_op.constant(7.0)).numpy())
+
+    # imported.signatures with defaults are not supported.
+    # TODO(b/277814477) support defaults in loaded.signatures
+    # self.assertEqual(
+    #     {"output_0": 5.0},
+    #     self.evaluate(
+    #         imported.signatures["serving_default"]()
+    #     ),
+    # )
+
+  def test_function_with_defaults_input_numpy(self, cycles, use_cpp_bindings):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec([])])
+    def func(x=np.array(5.0)):
+      return x
+
+    root = autotrackable.AutoTrackable()
+    root.f = func
+
+    self.assertAllEqual(5.0, root.f())
+    self.assertAllEqual(7.0, root.f(np.array(7.0)))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    self.assertEqual(5.0, imported.f().numpy())
+    self.assertEqual(7.0, imported.f(np.array(7.0)).numpy())
 
     # imported.signatures with defaults are not supported.
     # TODO(b/277814477) support defaults in loaded.signatures
@@ -769,6 +798,54 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
     self.assertEqual(5, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
+
+  def testConcreteFunctionType(self, cycles, use_cpp_bindings):
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+
+    y = constant_op.constant(1)
+
+    @def_function.function
+    def foo(x):
+      return {"input": x, "capture": y}
+
+    root = autotrackable.AutoTrackable()
+    root.f = foo.get_concrete_function(tensor_spec.TensorSpec([], dtypes.int32))
+
+    imported = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+
+    x = constant_op.constant(2)
+    output = imported.f(x)
+    self.assertEqual(set(output.keys()), {"input", "capture"})
+    self.assertEqual(output["input"].numpy(), 2)
+    self.assertEqual(output["capture"].numpy(), 1)
+
+    parameters = list(imported.f.function_type.parameters.values())
+    self.assertLen(parameters, 1)
+    self.assertEqual(parameters[0].name, "x")
+    self.assertEqual(
+        parameters[0].type_constraint,
+        tensor_spec.TensorSpec([], dtypes.int32, name="x"),
+    )
+
+    captures = imported.f.function_type.captures
+    self.assertLen(captures, 1)
+    self.assertEqual(
+        list(captures.values())[0], tensor_spec.TensorSpec([], dtypes.int32)
+    )
+
+    output = imported.f.function_type.output
+    self.assertEqual(
+        output.mapping,
+        {
+            "input": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="input"
+            ),
+            "capture": tensor_spec.TensorSpec(
+                shape=(), dtype=dtypes.int32, name="capture"
+            ),
+        },
+    )
 
   def test_pretty_print_signature(self, cycles, use_cpp_bindings):
     # TODO(b/264869228) Fix LoadTest
@@ -1256,7 +1333,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertLen(restored_concrete_functions, 1)
 
     with self.assertRaisesRegex(
-        TypeError, "Binding inputs to tf.function `f` failed"
+        TypeError, "Binding inputs to tf.function failed"
     ):
       # We cannot call the function with a constant of shape ().
       imported.f(constant_op.constant(2)).numpy()
@@ -2712,6 +2789,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllClose(grads, expected_grads)
 
+  def test_signature_propagates_experimental_attr(
+      self, cycles, use_cpp_bindings
+  ):
+    # TODO(b/264869228) Fix LoadTest
+    if use_cpp_bindings:
+      self.skipTest("Not implemented for cpp.")
+    root = autotrackable.AutoTrackable()
+    experimental_attributes = {"disable_summaries_at_runtime": ["x", True]}
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)],
+        experimental_attributes=experimental_attributes,
+    )
+    def f(x):
+      return x * 2.0
+    root.f = f
+    self.assertEqual(root.f(constant_op.constant(1.0)).numpy(), 2.0)
+    loaded = cycle(root, cycles, use_cpp_bindings=use_cpp_bindings)
+    self.assertEqual(loaded.f(constant_op.constant(1.0)).numpy(), 2.0)
+    self.assertProtoEquals(
+        r"""
+        list {
+            s: 'x',
+            b: True
+        }
+        """,
+        loaded.signatures["serving_default"].function_def.attr[
+            "disable_summaries_at_runtime"
+        ],
+    )
+
 
 @parameterized.named_parameters(*_test_params())
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
@@ -2825,6 +2932,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       @def_function.function
       def increment_v(x):
         obj.v.assign_add(x)
+        return x
 
       session.run(increment_v(constant_op.constant(3.0)))  # generate signatures
       self.assertAllClose(8, total())

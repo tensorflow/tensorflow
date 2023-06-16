@@ -2,6 +2,8 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_binary")
 load("//tensorflow/tsl/platform:rules_cc.bzl", "cc_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
+
 build_test(
     name = "mlir-bisect_build_test",
     targets = [
@@ -19,6 +21,7 @@ xla_cc_binary(
         "//tensorflow/compiler/xla/mlir/tools/mlir_bisect/rewrites",
         "//tensorflow/compiler/xla/mlir/tools/mlir_replay/public:execution_trace_utils",
         "//tensorflow/compiler/xla/mlir_hlo:deallocation",
+        "//tensorflow/compiler/xla/mlir_hlo:deallocation_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_passes",
         "//tensorflow/compiler/xla/mlir_hlo:gml_st_test_passes",
@@ -35,6 +38,7 @@ xla_cc_binary(
         "//tensorflow/tsl/platform:platform_port",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirReduceLib",
         "@llvm-project//mlir:Pass",

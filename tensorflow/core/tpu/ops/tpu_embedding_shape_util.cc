@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <array>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/status_macros.h"

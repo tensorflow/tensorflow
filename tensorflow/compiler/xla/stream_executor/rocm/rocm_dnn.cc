@@ -1819,10 +1819,14 @@ miopenDataType_t ToMIOpenDataType(
     dnn::DataType data_type,
     dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   switch (data_type) {
+    case dnn::DataType::kBF16:
+      return miopenBFloat16;
     case dnn::DataType::kFloat:
       return miopenFloat;
     case dnn::DataType::kHalf:
       return miopenHalf;
+    case dnn::DataType::kInt8:
+      if (data_layout == dnn::DataLayout::kBatchDepthYX) return miopenInt8;
     case dnn::DataType::kDouble:
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
@@ -2314,8 +2318,7 @@ bool MIOpenSupport::DoRnnForwardImpl(
     if (reserve_space_size_in_bytes > 0) {
       auto allocated =
           reserve_space_allocator->AllocateBytes(reserve_space_size_in_bytes);
-      if (!allocated.ok() ||
-          (reserve_space = allocated.value()) == nullptr) {
+      if (!allocated.ok() || (reserve_space = allocated.value()) == nullptr) {
         LOG(ERROR) << "Fail to allocate RNN reserve space";
         return false;
       }
@@ -2688,8 +2691,8 @@ MIOpenSupport::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
@@ -3943,8 +3946,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
+                            input_data, k, output_data, m, NumericOptions{})
              .ok()) {
       return false;
     }
@@ -4027,7 +4029,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
                                 toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                ldc, batch_count, NumericOptions{});
   }
 
   return stream->ok();

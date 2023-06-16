@@ -1,1 +1,256 @@
 Auto generated patch. Do not edit or delete it, even if empty.
+diff -ruN --strip-trailing-cr a/llvm/include/llvm/Transforms/Utils/SCCPSolver.h b/llvm/include/llvm/Transforms/Utils/SCCPSolver.h
+--- a/llvm/include/llvm/Transforms/Utils/SCCPSolver.h
++++ b/llvm/include/llvm/Transforms/Utils/SCCPSolver.h
+@@ -130,7 +130,7 @@
+ 
+   std::vector<ValueLatticeElement> getStructLatticeValueFor(Value *V) const;
+ 
+-  void moveLatticeValue(Value *From, Value *To);
++  void removeLatticeValueFor(Value *V);
+ 
+   /// Invalidate the Lattice Value of \p Call and its users after specializing
+   /// the call. Then recompute it.
+@@ -184,6 +184,7 @@
+   void visitCall(CallInst &I);
+ 
+   bool simplifyInstsInBlock(BasicBlock &BB,
++                            SmallPtrSetImpl<Value *> &InsertedValues,
+                             Statistic &InstRemovedStat,
+                             Statistic &InstReplacedStat);
+ 
+diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MachineScheduler.cpp b/llvm/lib/CodeGen/MachineScheduler.cpp
+--- a/llvm/lib/CodeGen/MachineScheduler.cpp
++++ b/llvm/lib/CodeGen/MachineScheduler.cpp
+@@ -1010,13 +1010,13 @@
+                    SchedModel.getWriteProcResEnd(SC)));
+ 
+     if (MISchedSortResourcesInTrace)
+-      llvm::sort(ResourcesIt.begin(), ResourcesIt.end(),
+-                 [](const MCWriteProcResEntry &LHS,
+-                    const MCWriteProcResEntry &RHS) -> bool {
+-                   return LHS.StartAtCycle < RHS.StartAtCycle ||
+-                          (LHS.StartAtCycle == RHS.StartAtCycle &&
+-                           LHS.Cycles < RHS.Cycles);
+-                 });
++      llvm::stable_sort(ResourcesIt,
++                        [](const MCWriteProcResEntry &LHS,
++                           const MCWriteProcResEntry &RHS) -> bool {
++                          return LHS.StartAtCycle < RHS.StartAtCycle ||
++                                 (LHS.StartAtCycle == RHS.StartAtCycle &&
++                                  LHS.Cycles < RHS.Cycles);
++                        });
+     for (const MCWriteProcResEntry &PI : ResourcesIt) {
+       C = FirstCycle;
+       const std::string ResName =
+@@ -1090,13 +1090,13 @@
+                    SchedModel.getWriteProcResEnd(SC)));
+ 
+     if (MISchedSortResourcesInTrace)
+-      llvm::sort(ResourcesIt.begin(), ResourcesIt.end(),
+-                 [](const MCWriteProcResEntry &LHS,
+-                    const MCWriteProcResEntry &RHS) -> bool {
+-                   return LHS.StartAtCycle < RHS.StartAtCycle ||
+-                          (LHS.StartAtCycle == RHS.StartAtCycle &&
+-                           LHS.Cycles < RHS.Cycles);
+-                 });
++      llvm::stable_sort(ResourcesIt,
++                        [](const MCWriteProcResEntry &LHS,
++                           const MCWriteProcResEntry &RHS) -> bool {
++                          return LHS.StartAtCycle < RHS.StartAtCycle ||
++                                 (LHS.StartAtCycle == RHS.StartAtCycle &&
++                                  LHS.Cycles < RHS.Cycles);
++                        });
+     for (const MCWriteProcResEntry &PI : ResourcesIt) {
+       C = FirstCycle;
+       const std::string ResName =
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/IPO/SCCP.cpp b/llvm/lib/Transforms/IPO/SCCP.cpp
+--- a/llvm/lib/Transforms/IPO/SCCP.cpp
++++ b/llvm/lib/Transforms/IPO/SCCP.cpp
+@@ -209,6 +209,7 @@
+       MadeChanges |= ReplacedPointerArg;
+     }
+ 
++    SmallPtrSet<Value *, 32> InsertedValues;
+     for (BasicBlock &BB : F) {
+       if (!Solver.isBlockExecutable(&BB)) {
+         LLVM_DEBUG(dbgs() << "  BasicBlock Dead:" << BB);
+@@ -222,7 +223,7 @@
+       }
+ 
+       MadeChanges |= Solver.simplifyInstsInBlock(
+-          BB, NumInstRemoved, NumInstReplaced);
++          BB, InsertedValues, NumInstRemoved, NumInstReplaced);
+     }
+ 
+     DominatorTree *DT = FAM->getCachedResult<DominatorTreeAnalysis>(F);
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Scalar/SCCP.cpp b/llvm/lib/Transforms/Scalar/SCCP.cpp
+--- a/llvm/lib/Transforms/Scalar/SCCP.cpp
++++ b/llvm/lib/Transforms/Scalar/SCCP.cpp
+@@ -92,6 +92,7 @@
+   // delete their contents now.  Note that we cannot actually delete the blocks,
+   // as we cannot modify the CFG of the function.
+ 
++  SmallPtrSet<Value *, 32> InsertedValues;
+   SmallVector<BasicBlock *, 8> BlocksToErase;
+   for (BasicBlock &BB : F) {
+     if (!Solver.isBlockExecutable(&BB)) {
+@@ -102,8 +103,8 @@
+       continue;
+     }
+ 
+-    MadeChanges |=
+-        Solver.simplifyInstsInBlock(BB, NumInstRemoved, NumInstReplaced);
++    MadeChanges |= Solver.simplifyInstsInBlock(BB, InsertedValues,
++                                               NumInstRemoved, NumInstReplaced);
+   }
+ 
+   // Remove unreachable blocks and non-feasible edges.
+diff -ruN --strip-trailing-cr a/llvm/lib/Transforms/Utils/SCCPSolver.cpp b/llvm/lib/Transforms/Utils/SCCPSolver.cpp
+--- a/llvm/lib/Transforms/Utils/SCCPSolver.cpp
++++ b/llvm/lib/Transforms/Utils/SCCPSolver.cpp
+@@ -105,14 +105,15 @@
+ 
+ /// Try to use \p Inst's value range from \p Solver to infer the NUW flag.
+ static bool refineInstruction(SCCPSolver &Solver,
++                              const SmallPtrSetImpl<Value *> &InsertedValues,
+                               Instruction &Inst) {
+   if (!isa<OverflowingBinaryOperator>(Inst))
+     return false;
+ 
+-  auto GetRange = [&Solver](Value *Op) {
++  auto GetRange = [&Solver, &InsertedValues](Value *Op) {
+     if (auto *Const = dyn_cast<ConstantInt>(Op))
+       return ConstantRange(Const->getValue());
+-    if (isa<Constant>(Op)) {
++    if (isa<Constant>(Op) || InsertedValues.contains(Op)) {
+       unsigned Bitwidth = Op->getType()->getScalarSizeInBits();
+       return ConstantRange::getFull(Bitwidth);
+     }
+@@ -145,6 +146,7 @@
+ 
+ /// Try to replace signed instructions with their unsigned equivalent.
+ static bool replaceSignedInst(SCCPSolver &Solver,
++                              SmallPtrSetImpl<Value *> &InsertedValues,
+                               Instruction &Inst) {
+   // Determine if a signed value is known to be >= 0.
+   auto isNonNegative = [&Solver](Value *V) {
+@@ -166,7 +168,7 @@
+   case Instruction::SExt: {
+     // If the source value is not negative, this is a zext.
+     Value *Op0 = Inst.getOperand(0);
+-    if (!isNonNegative(Op0))
++    if (InsertedValues.count(Op0) || !isNonNegative(Op0))
+       return false;
+     NewInst = new ZExtInst(Op0, Inst.getType(), "", &Inst);
+     break;
+@@ -174,7 +176,7 @@
+   case Instruction::AShr: {
+     // If the shifted value is not negative, this is a logical shift right.
+     Value *Op0 = Inst.getOperand(0);
+-    if (!isNonNegative(Op0))
++    if (InsertedValues.count(Op0) || !isNonNegative(Op0))
+       return false;
+     NewInst = BinaryOperator::CreateLShr(Op0, Inst.getOperand(1), "", &Inst);
+     break;
+@@ -183,7 +185,8 @@
+   case Instruction::SRem: {
+     // If both operands are not negative, this is the same as udiv/urem.
+     Value *Op0 = Inst.getOperand(0), *Op1 = Inst.getOperand(1);
+-    if (!isNonNegative(Op0) || !isNonNegative(Op1))
++    if (InsertedValues.count(Op0) || InsertedValues.count(Op1) ||
++        !isNonNegative(Op0) || !isNonNegative(Op1))
+       return false;
+     auto NewOpcode = Inst.getOpcode() == Instruction::SDiv ? Instruction::UDiv
+                                                            : Instruction::URem;
+@@ -197,13 +200,15 @@
+   // Wire up the new instruction and update state.
+   assert(NewInst && "Expected replacement instruction");
+   NewInst->takeName(&Inst);
++  InsertedValues.insert(NewInst);
+   Inst.replaceAllUsesWith(NewInst);
+-  Solver.moveLatticeValue(&Inst, NewInst);
++  Solver.removeLatticeValueFor(&Inst);
+   Inst.eraseFromParent();
+   return true;
+ }
+ 
+ bool SCCPSolver::simplifyInstsInBlock(BasicBlock &BB,
++                                      SmallPtrSetImpl<Value *> &InsertedValues,
+                                       Statistic &InstRemovedStat,
+                                       Statistic &InstReplacedStat) {
+   bool MadeChanges = false;
+@@ -216,10 +221,10 @@
+ 
+       MadeChanges = true;
+       ++InstRemovedStat;
+-    } else if (replaceSignedInst(*this, Inst)) {
++    } else if (replaceSignedInst(*this, InsertedValues, Inst)) {
+       MadeChanges = true;
+       ++InstReplacedStat;
+-    } else if (refineInstruction(*this, Inst)) {
++    } else if (refineInstruction(*this, InsertedValues, Inst)) {
+       MadeChanges = true;
+     }
+   }
+@@ -726,11 +731,7 @@
+     return StructValues;
+   }
+ 
+-  void moveLatticeValue(Value *From, Value *To) {
+-    assert(ValueState.count(From) && "From is not existed in ValueState");
+-    ValueState[To] = ValueState[From];
+-    ValueState.erase(From);
+-  }
++  void removeLatticeValueFor(Value *V) { ValueState.erase(V); }
+ 
+   /// Invalidate the Lattice Value of \p Call and its users after specializing
+   /// the call. Then recompute it.
+@@ -2034,8 +2035,8 @@
+   return Visitor->getStructLatticeValueFor(V);
+ }
+ 
+-void SCCPSolver::moveLatticeValue(Value *From, Value *To) {
+-  return Visitor->moveLatticeValue(From, To);
++void SCCPSolver::removeLatticeValueFor(Value *V) {
++  return Visitor->removeLatticeValueFor(V);
+ }
+ 
+ void SCCPSolver::resetLatticeValueFor(CallBase *Call) {
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SCCP/add-nuw-nsw-flags.ll b/llvm/test/Transforms/SCCP/add-nuw-nsw-flags.ll
+--- a/llvm/test/Transforms/SCCP/add-nuw-nsw-flags.ll
++++ b/llvm/test/Transforms/SCCP/add-nuw-nsw-flags.ll
+@@ -125,9 +125,9 @@
+ ; CHECK-NEXT:    br i1 [[CMP]], label [[THEN:%.*]], label [[ELSE:%.*]]
+ ; CHECK:       then:
+ ; CHECK-NEXT:    [[SEXT:%.*]] = zext i8 [[A]] to i16
+-; CHECK-NEXT:    [[ADD_1:%.*]] = add nuw nsw i16 [[SEXT]], 1
+-; CHECK-NEXT:    [[ADD_2:%.*]] = add nuw nsw i16 [[SEXT]], -128
+-; CHECK-NEXT:    [[ADD_3:%.*]] = add nsw i16 [[SEXT]], -127
++; CHECK-NEXT:    [[ADD_1:%.*]] = add i16 [[SEXT]], 1
++; CHECK-NEXT:    [[ADD_2:%.*]] = add i16 [[SEXT]], -128
++; CHECK-NEXT:    [[ADD_3:%.*]] = add i16 [[SEXT]], -127
+ ; CHECK-NEXT:    [[RES_1:%.*]] = xor i16 [[ADD_1]], [[ADD_2]]
+ ; CHECK-NEXT:    [[RES_2:%.*]] = xor i16 [[RES_1]], [[ADD_3]]
+ ; CHECK-NEXT:    ret i16 [[RES_2]]
+@@ -222,7 +222,7 @@
+ ; CHECK-NEXT:    [[CONV:%.*]] = zext i8 [[COND4]] to i16
+ ; CHECK-NEXT:    br i1 [[C:%.*]], label [[THEN:%.*]], label [[ELSE:%.*]]
+ ; CHECK:       then:
+-; CHECK-NEXT:    [[ADD:%.*]] = add nuw nsw i16 1, [[CONV]]
++; CHECK-NEXT:    [[ADD:%.*]] = add i16 1, [[CONV]]
+ ; CHECK-NEXT:    ret i16 [[ADD]]
+ ; CHECK:       else:
+ ; CHECK-NEXT:    ret i16 0
+diff -ruN --strip-trailing-cr a/llvm/test/Transforms/SCCP/ip-ranges-sext.ll b/llvm/test/Transforms/SCCP/ip-ranges-sext.ll
+--- a/llvm/test/Transforms/SCCP/ip-ranges-sext.ll
++++ b/llvm/test/Transforms/SCCP/ip-ranges-sext.ll
+@@ -127,7 +127,7 @@
+ ; CHECK-LABEL: @test7(
+ ; CHECK-NEXT:    [[P:%.*]] = and i16 [[X:%.*]], 15
+ ; CHECK-NEXT:    [[EXT_1:%.*]] = zext i16 [[P]] to i32
+-; CHECK-NEXT:    [[EXT_2:%.*]] = zext i32 [[EXT_1]] to i64
++; CHECK-NEXT:    [[EXT_2:%.*]] = sext i32 [[EXT_1]] to i64
+ ; CHECK-NEXT:    ret i64 [[EXT_2]]
+ ;
+   %p = and i16 %x, 15

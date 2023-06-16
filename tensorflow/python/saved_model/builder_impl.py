@@ -417,9 +417,6 @@ class _SavedModelBuilder(object):
     if not file_io.file_exists(self._export_dir):
       file_io.recursive_create_dir(self._export_dir)
 
-    saved_model_serialized = self._saved_model.SerializeToString(
-        deterministic=True)
-
     if as_text:
       path = file_io.join(
           compat.as_bytes(self._export_dir),
@@ -430,10 +427,10 @@ class _SavedModelBuilder(object):
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
       file_io.write_string_to_file(
-          path, saved_model_serialized)
+          path, self._saved_model.SerializeToString(deterministic=True))
+
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
     metrics.IncrementWrite(write_version="1")
-
     # Placeholder for internal TF1 model fingerprint write
 
     return path

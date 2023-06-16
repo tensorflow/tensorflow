@@ -16,16 +16,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 
 #include <fstream>
-#include <map>
+#include <functional>
+#include <ios>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
@@ -44,10 +46,8 @@ limitations under the License.
 #include "llvm/Passes/StandardInstrumentations.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
@@ -260,15 +260,11 @@ Status LinkWithBitcodeVector(
 
 // Links libdevice into the given module if the module needs libdevice.
 Status LinkLibdeviceIfNecessary(llvm::Module* module,
-                                const std::string& libdevice_dir_path) {
+                                const std::string& libdevice_path) {
   if (!CouldNeedDeviceBitcode(*module)) {
     return OkStatus();
   }
 
-  // CUDA 9+ uses a single libdevice file for all devices, and we don't support
-  // older CUDAs.
-  std::string libdevice_path =
-      tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
   if (!tsl::Env::Default()->FileExists(libdevice_path).ok()) {
     LOG(WARNING)
         << "libdevice is required by this HLO module but was not found at "
@@ -282,10 +278,10 @@ Status LinkLibdeviceIfNecessary(llvm::Module* module,
 
 Status NVPTXTargetModuleLinker(llvm::Module* module, GpuVersion gpu_version,
                                const HloModuleConfig& hlo_module_config,
-                               const std::string& device_bitcode_dir_path) {
+                               const std::string& device_bitcode_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_dir_path));
+  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(module, device_bitcode_path));
 
   // Set the flush-denormals-to-zero flag on the module so the NVVM reflect pass
   // can access it.
@@ -375,13 +371,13 @@ auto DumpCallbackForModule(std::string module_identifier,
 
 Status LinkAndOptimizeModule(llvm::Module* module, GpuVersion gpu_version,
                              const HloModuleConfig& hlo_module_config,
-                             const std::string& device_bitcode_dir_path,
+                             const std::string& device_bitcode_path,
                              TargetModuleLinker module_linker,
                              llvm::Triple default_target_triple,
                              llvm::TargetMachine* target_machine,
                              int inline_threshold) {
   TF_RETURN_IF_ERROR(module_linker(module, gpu_version, hlo_module_config,
-                                   device_bitcode_dir_path));
+                                   device_bitcode_path));
 
   llvm::LoopAnalysisManager lam;
   llvm::FunctionAnalysisManager fam;
@@ -551,16 +547,7 @@ static std::string GetLibdeviceDir(absl::string_view xla_gpu_cuda_data_dir) {
   return ".";
 }
 
-StatusOr<std::string> CompileToPtx(
-    llvm::Module* module, GpuVersion gpu_version,
-    const HloModuleConfig& hlo_module_config,
-    std::function<void(llvm::TargetMachine*)> configure_target) {
-  static absl::once_flag backend_init_flag;
-  absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
-
-  absl::string_view xla_gpu_cuda_data_dir =
-      hlo_module_config.debug_options().xla_gpu_cuda_data_dir();
-
+std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir) {
   static absl::Mutex libdevice_cache_mu(absl::kConstInit);
   static auto& libdevice_dir_path_cache ABSL_GUARDED_BY(libdevice_cache_mu) =
       *new absl::flat_hash_map<std::string, std::string>();
@@ -574,6 +561,17 @@ StatusOr<std::string> CompileToPtx(
         xla_gpu_cuda_data_dir, GetLibdeviceDir(xla_gpu_cuda_data_dir));
     return it2->second;
   }();
+  // CUDA 9+ uses a single libdevice file for all devices, and we don't support
+  // older CUDAs.
+  return tsl::io::JoinPath(libdevice_dir_path, "libdevice.10.bc");
+}
+
+StatusOr<std::string> CompileToPtx(
+    llvm::Module* module, GpuVersion gpu_version,
+    const HloModuleConfig& hlo_module_config,
+    std::function<void(llvm::TargetMachine*)> configure_target) {
+  static absl::once_flag backend_init_flag;
+  absl::call_once(backend_init_flag, NVPTXBackendInit, hlo_module_config);
 
   std::string ptx;
   std::unique_ptr<llvm::TargetMachine> target_machine;
@@ -612,7 +610,9 @@ StatusOr<std::string> CompileToPtx(
 
     // Link with libdevice, and optimize the LLVM module.
     TF_RETURN_IF_ERROR(LinkAndOptimizeModule(
-        module, gpu_version, hlo_module_config, libdevice_dir_path,
+        module, gpu_version, hlo_module_config,
+        LibDevicePath(
+            hlo_module_config.debug_options().xla_gpu_cuda_data_dir()),
         NVPTXTargetModuleLinker, default_target_triple, target_machine.get(),
         kDefaultInlineThreshold));
 
@@ -891,7 +891,7 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   // feature str, based on the underlying GPU HW to get max performance.
   std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
   std::vector<std::string> mapped_tokens;
-  if (tokens.size() > 0) gfx = tokens[0];
+  if (!tokens.empty()) gfx = tokens[0];
   for (auto it = tokens.begin(); it != tokens.end(); it++) {
     // Skip the first token, that is the gfxNNN str
     // The rest of the tokens are the feature/targetid strings

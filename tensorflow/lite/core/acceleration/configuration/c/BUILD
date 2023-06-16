@@ -117,7 +117,7 @@ tflite_cc_library_with_c_headers_test(
     deps = [
         ":delegate_plugin",
         "//tensorflow/lite/acceleration/configuration:configuration_fbs",
-        "//tensorflow/lite/acceleration/configuration:nnapi_plugin_impl",
+        "//tensorflow/lite/core/acceleration/configuration:nnapi_plugin",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
     ],

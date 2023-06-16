@@ -16,6 +16,15 @@
       2.13 may be used when it is necessary to determine if a value is
       specifically a symbolic tensor.
 
+*   `tf.compat.v1.Session`
+    * `tf.compat.v1.Session.partial_run` and
+      `tf.compat.v1.Session.partial_run_setup` will be deprecated in the
+      next release.
+
+*   `tf.estimator`
+    * `tf.estimator` API will be removed in the next release. TF Estimator
+       Python package will no longer be released.
+
 # Known Caveats
 
 * <CAVEATS REGARDING THE RELEASE (BUT NOT BREAKING CHANGES).>
@@ -26,8 +35,29 @@
 
 *   <INSERT MAJOR FEATURE HERE, USING MARKDOWN SYNTAX>
 *   <IF RELEASE CONTAINS MULTIPLE FEATURES FROM SAME AREA, GROUP THEM TOGETHER>
+* `tf.keras`
+    * `Model.compile` now support `steps_per_execution='auto'` as a parameter,
+    allowing automatic tuning of steps per execution during `Model.fit`,
+    `Model.predict`, and `Model.evaluate` for a significant performance boost. 
+
+*   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
+    than 2**32 elements.
+    *   Unary GPU kernels: Abs, Atanh, Acos, Acosh, Asin, Asinh, Atan, Cos,
+        Cosh, Sin, Sinh, Tan, Tanh.
+    *   Binary GPU kernels: AddV2, Sub, Div, DivNoNan, Mul, MulNoNan, FloorDiv,
+        Equal, NotEqual, Greater, GreaterEqual, LessEqual, Less.
 
 # Bug Fixes and Other Changes
+
+* `tf.py_function` and `tf.numpy_function` can now be used as function
+   decorators for clearer code:
+   ```
+   @tf.py_function(Tout=tf.float32)
+   def my_fun(x):
+     print("This always executes eagerly.")
+     return x+1
+   ```
+
 * `tf.lite`
     * Strided_Slice now supports `UINT32`.
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>
@@ -45,6 +75,15 @@
 *  `tf.experimental.dtensor`
     * API changes for Relayout. Added a new API, `dtensor.relayout_like`, for 
       relayouting a tensor according to the layout of another tensor. 
+    * Added `dtensor.get_default_mesh`, for retrieving the current default 
+      mesh under the dtensor context.
+
+*   TensorFlow Debugger (tfdbg) CLI: ncurses-based CLI for tfdbg v1 was removed.
+
+*   TensorFlow now supports C++ RTTI on mobile and Android. To enable this
+    feature, pass the flag `--define=tf_force_rtti=true` to Bazel when building
+    TensorFlow. This may be needed when linking TensorFlow into RTTI-enabled
+    programs since mixing RTTI and non-RTTI code can cause ABI issues.
 
 # Thanks to our Contributors
 
@@ -197,6 +236,9 @@ This release contains contributions from many people at Google, as well as:
         `dataset = dataset.shuffle(dataset.cardinality())`. This will load the
         full dataset into memory so that it can be shuffled, so make sure to
         only use this with datasets of filenames or other small datasets.
+    *   Added a new `tf.data.experimental.pad_to_cardinality` transformation
+        which pads a dataset with zero elements up to a specified cardinality.
+        This is useful for avoiding partial batches while not dropping any data.
 
 *   `tf.math`
 

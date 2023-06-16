@@ -902,7 +902,8 @@ def _fill_meta_graph_def(
   # added, so run the following to validate deserialization dependencies.
   _dependency_sorted_node_ids(saveable_view)
 
-  graph_def = exported_graph.as_graph_def(add_shapes=True)
+  graph_def, _ = exported_graph._as_graph_def(  # pylint: disable=protected-access
+      add_shapes=True, use_pybind11_proto=False)
   graph_def.library.registered_gradients.extend(saveable_view.gradient_defs)
   _verify_ops(graph_def, namespace_whitelist)
 
@@ -1349,13 +1350,12 @@ def save_and_return_nodes(obj,
         "saved_model")
     proto_splitter.SavedModelSplitter(saved_model).write(prefix)
   else:
-    saved_model_serialized = saved_model.SerializeToString(deterministic=True)
-    fingerprinting_utils.write_fingerprint(export_dir, saved_model_serialized)
-
     path = file_io.join(
         compat.as_str(export_dir),
         compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
-    file_io.atomic_write_string_to_file(path, saved_model_serialized)
+    file_io.atomic_write_string_to_file(
+        path, saved_model.SerializeToString(deterministic=True))
+    fingerprinting_utils.write_fingerprint(export_dir)
 
   # Save debug info, if requested.
   if options.save_debug_info:

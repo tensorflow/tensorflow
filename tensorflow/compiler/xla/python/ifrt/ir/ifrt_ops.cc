@@ -41,6 +41,28 @@ limitations under the License.
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/xla/python/ifrt/ir/ifrt_ops.cc.inc"
 
+namespace mlir {
+namespace OpTrait {
+namespace xla {
+namespace ifrt {
+namespace impl {
+
+LogicalResult verifyNestedInIfrtFunc(Operation* op) {
+  auto func_op = op->getParentOfType<func::FuncOp>();
+  if (func_op != nullptr &&
+      !func_op->hasAttr(::xla::ifrt::kIfrtFunctionAttrName)) {
+    return op->emitOpError() << "must be in a FuncOp with attr `"
+                             << ::xla::ifrt::kIfrtFunctionAttrName << "`";
+  }
+  return success();
+}
+
+}  // namespace impl
+}  // namespace ifrt
+}  // namespace xla
+}  // namespace OpTrait
+}  // namespace mlir
+
 namespace xla {
 namespace ifrt {
 
@@ -86,11 +108,11 @@ mlir::LogicalResult VerifySameGlobalShape(mlir::Operation* op,
 // 1. Elements in `devices` are unique.
 // 2. Each of `inputs` and `outputs` is placed on a subset of `devices`.
 mlir::LogicalResult VerifyDevicePlacement(
-    mlir::Operation* op, llvm::ArrayRef<int64_t> devices,
+    mlir::Operation* op, llvm::ArrayRef<int> devices,
     llvm::ArrayRef<IfrtArrayType> inputs,
     llvm::ArrayRef<IfrtArrayType> outputs) {
-  llvm::SmallSet<int64_t, 4> attr_devices;
-  for (const int64_t device : devices) {
+  llvm::SmallSet<int, 4> attr_devices;
+  for (const int device : devices) {
     if (!attr_devices.insert(device).second) {
       return op->emitOpError()
              << "has duplicate device id " << device << " in `devices` attr";
@@ -98,7 +120,7 @@ mlir::LogicalResult VerifyDevicePlacement(
   }
 
   for (const IfrtArrayType input : inputs) {
-    for (const int64_t input_device : input.getDevices()) {
+    for (const int input_device : input.getDevices()) {
       if (!attr_devices.count(input_device)) {
         return op->emitOpError()
                << "requires all inputs placed on `devices` attr. The following "
@@ -109,7 +131,7 @@ mlir::LogicalResult VerifyDevicePlacement(
   }
 
   for (const IfrtArrayType output : outputs) {
-    for (const int64_t output_device : output.getDevices()) {
+    for (const int output_device : output.getDevices()) {
       if (!attr_devices.count(output_device)) {
         return op->emitOpError()
                << "requires all outputs placed on `devices` attr. The "
@@ -187,7 +209,7 @@ mlir::LogicalResult ReshardOp::verify() {
 }
 
 mlir::LogicalResult AssembleOp::verify() {
-  llvm::SmallVector<int64_t, 4> input_devices;
+  llvm::SmallVector<int, 4> input_devices;
   for (const mlir::Value input : getInputs()) {
     const auto array = llvm::cast<IfrtArrayType>(input.getType());
     if (array.getDevices().size() != 1) {
@@ -197,8 +219,7 @@ mlir::LogicalResult AssembleOp::verify() {
     }
     input_devices.push_back(array.getDevices()[0]);
   }
-  const llvm::ArrayRef<int64_t> output_devices =
-      getOutput().getType().getDevices();
+  const llvm::ArrayRef<int> output_devices = getOutput().getType().getDevices();
   if (!std::equal(input_devices.begin(), input_devices.end(),
                   output_devices.begin())) {
     return emitOpError() << "requires the same input/output device list. Input "
@@ -208,7 +229,7 @@ mlir::LogicalResult AssembleOp::verify() {
 }
 
 mlir::LogicalResult DisassembleOp::verify() {
-  llvm::SmallVector<int64_t, 4> output_devices;
+  llvm::SmallVector<int, 4> output_devices;
   for (const mlir::Value output : getOutputs()) {
     const auto array = llvm::cast<IfrtArrayType>(output.getType());
     if (array.getDevices().size() != 1) {
@@ -218,8 +239,7 @@ mlir::LogicalResult DisassembleOp::verify() {
     }
     output_devices.push_back(array.getDevices()[0]);
   }
-  const llvm::ArrayRef<int64_t> input_devices =
-      getInput().getType().getDevices();
+  const llvm::ArrayRef<int> input_devices = getInput().getType().getDevices();
   if (!std::equal(input_devices.begin(), input_devices.end(),
                   output_devices.begin())) {
     return emitOpError() << "requires the same input/output device list. Input "
@@ -243,18 +263,8 @@ void CallOp::setCalleeFromCallable(mlir::CallInterfaceCallable callee) {
 mlir::Operation::operand_range CallOp::getArgOperands() { return getInputs(); }
 
 mlir::LogicalResult CallOp::verifySymbolUses(
-    mlir::SymbolTableCollection& symbolTable) {
-  const auto callee_attr =
-      (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-  if (!callee_attr) {
-    return emitOpError() << "requires `callee` SymbolRefAttr";
-  }
-  auto callee = symbolTable.lookupNearestSymbolFrom<mlir::func::FuncOp>(
-      *this, callee_attr);
-  if (!callee) {
-    return emitOpError() << "requires '" << callee_attr
-                         << "' to reference a valid function";
-  }
+    mlir::SymbolTableCollection& symbol_table) {
+  mlir::func::FuncOp callee = getCalleeOp(symbol_table);
   mlir::FunctionType callee_type = callee.getFunctionType();
 
   // Verify inputs.
@@ -328,19 +338,7 @@ mlir::Operation::operand_range CallLoadedExecutableOp::getArgOperands() {
 }
 
 mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
-    mlir::SymbolTableCollection& symbolTable) {
-  const auto callee_attr =
-      (*this)->getAttrOfType<mlir::SymbolRefAttr>("callee");
-  if (!callee_attr) {
-    return emitOpError() << "requires `callee` SymbolRefAttr";
-  }
-  auto callee = symbolTable.lookupNearestSymbolFrom<LoadedExecutableOp>(
-      *this, callee_attr);
-  if (!callee) {
-    return emitOpError() << "requires '" << callee_attr
-                         << "' to reference a valid LoadedExecutable";
-  }
-
+    mlir::SymbolTableCollection& symbol_table) {
   llvm::SmallVector<mlir::Type, 4> input_types;
   input_types.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
@@ -353,6 +351,7 @@ mlir::LogicalResult CallLoadedExecutableOp::verifySymbolUses(
   }
   auto func_type =
       mlir::FunctionType::get(getContext(), input_types, output_types);
+  LoadedExecutableOp callee = getCalleeOp(symbol_table);
   if (callee.getFunctionType() != func_type) {
     return emitOpError() << "requires callee signature matching " << func_type
                          << ". Actual " << callee.getFunctionType();

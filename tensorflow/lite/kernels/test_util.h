@@ -682,7 +682,7 @@ class SingleOpModel {
     if (reset_interpreter) {
       // Reconstruct interpreter as number of threads may affect internal state,
       // e.g. stratch buffer allocation.
-      BuildInterpreter(input_shapes_, num_threads, allocate_and_delegate_,
+      BuildInterpreter(input_shapes_, num_threads, allow_fp32_relax_to_fp16_,
                        apply_delegate_, allocate_and_delegate_);
     }
     interpreter_->SetNumThreads(num_threads);
@@ -1257,6 +1257,14 @@ class DimsAreMatcher {
 
 inline DimsAreMatcher DimsAre(std::initializer_list<int> dims_list) {
   return DimsAreMatcher(dims_list);
+}
+
+inline DimsAreMatcher DimsAre(const std::vector<int>& dims) {
+  return DimsAreMatcher(dims);
+}
+
+inline DimsAreMatcher DimsAre(absl::Span<int> dims) {
+  return DimsAreMatcher(std::vector<int>(dims.begin(), dims.end()));
 }
 
 }  // namespace tflite

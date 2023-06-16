@@ -173,7 +173,7 @@ bool IsResourceOutputShapesAttribute(const AttrValue& attr_value,
 void LoadImporterDialects(mlir::MLIRContext& context) {
   // Load dialects involved in the conversion
   mlir::DialectRegistry registry;
-  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::RegisterAllTensorFlowDialectsImpl(registry, false);
   context.appendDialectRegistry(registry);
   for (llvm::StringRef name : registry.getDialectNames())
     context.getOrLoadDialect(name);
@@ -1764,7 +1764,7 @@ mlir::Location ImporterBase::GetLocation(const Node& node) {
     // finally to just name.
     if (auto stack_trace = node.GetStackTrace()) {
       DVLOG(1) << "Stack available for " << node.name();
-      std::vector<StackFrame> frames = stack_trace->ToUncachedFrames();
+      absl::Span<const StackFrame> frames = stack_trace->ToFrames();
       locations.reserve(frames.size());
       for (const StackFrame& frame : llvm::reverse(frames)) {
         auto file_name = mlir::StringAttr::get(context_, frame.file_name);
@@ -2485,6 +2485,8 @@ StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
           b.getNamedAttr("_xla_compile_device_type",
                          b.getStringAttr(specs.xla_compile_device_type)));
     }
+    attrs.push_back(b.getNamedAttr("allow_soft_placement",
+                                   b.getBoolAttr(specs.enable_soft_placement)));
   } else {
     // Collects the argument and return nodes by looking up the node names
     // specified by the user.

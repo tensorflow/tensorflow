@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <functional>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "mlir/Conversion/LLVMCommon/Pattern.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
@@ -125,7 +127,8 @@ class TFAllocOpConverter : public ConvertToLLVMCallOpPattern<TFAllocOp> {
                              llvm::to_vector<4>(adaptor.getDynSizes()),
                              rewriter, sizes, strides, sizeBytes);
     // Get number of elements.
-    Value num_elements = getNumElements(loc, sizes, rewriter);
+    Value num_elements =
+        getNumElements(loc, memref_type, adaptor.getDynSizes(), rewriter);
     // Get element size.
     Value element_size =
         getSizeInBytes(loc, memref_type.getElementType(), rewriter);

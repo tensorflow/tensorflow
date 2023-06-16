@@ -40,6 +40,17 @@ std::string PlatformKindString(PlatformKind kind) {
   }
 }
 
+std::string StreamPriorityToString(StreamPriority priority) {
+  switch (priority) {
+    case StreamPriority::Lowest:
+      return "Lowest priority";
+    case StreamPriority::Highest:
+      return "Highest priority";
+    default:
+      return "Default Priority";
+  }
+}
+
 PlatformKind PlatformKindFromString(std::string kind) {
   for (int i = 0; i < static_cast<int>(PlatformKind::kSize); ++i) {
     if (kind == PlatformKindString(static_cast<PlatformKind>(i))) {

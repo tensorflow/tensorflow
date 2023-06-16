@@ -7,6 +7,7 @@ load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_google",
     "if_mobile",
     "if_not_mobile",
     "tf_cc_test",
@@ -29,6 +30,8 @@ package(
 
 exports_files([
     "loader.h",
+    "testdata/chunked_saved_model/chunked_model/saved_model.cpb",
+    "testdata/chunked_saved_model/chunked_model/saved_model.pbtxt",
 ])
 
 cc_library(
@@ -64,7 +67,9 @@ cc_library(
         ":metrics",
         ":util",
         "//tensorflow/core:protos_all_cc",
-    ] + if_not_mobile([
+    ] + if_google([
+        "//tensorflow/tools/proto_splitter:merge",
+    ]) + if_not_mobile([
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
@@ -88,9 +93,8 @@ tf_cc_test(
         ":tag_constants",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/platform:resource_loader",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -255,21 +259,46 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY3",
     deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:tensor_spec",
-        "//tensorflow/python:variables",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:tensor_spec",
         "//tensorflow/python/module",
+        "//tensorflow/python/ops:lookup_ops",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/saved_model:save_options",
         "//tensorflow/python/trackable:asset",
         "@absl_py//absl:app",
     ],
 )
+
+# copybara:uncomment_begin(google-only)
+#
+# py_binary(
+#     name = "testdata/generate_chunked_models",
+#     srcs = ["testdata/generate_chunked_models.py"],
+#     python_version = "PY3",
+#     srcs_version = "PY3",
+#     deps = [
+#         "//tensorflow/python/compat:v2_compat",
+#         "//tensorflow/python/eager:def_function",
+#         "//tensorflow/python/framework:constant_op",
+#         "//tensorflow/python/module",
+#         "//tensorflow/python/platform:client_testlib",
+#         "//tensorflow/python/saved_model:loader",
+#         "//tensorflow/python/saved_model:save",
+#         "//tensorflow/python/saved_model:save_options",
+#         "//tensorflow/python/util:compat",
+#         "//tensorflow/tools/proto_splitter:constants",
+#         "//tensorflow/tools/proto_splitter/python:saved_model",
+#         "@absl_py//absl:app",
+#     ],
+# )
+#
+# copybara:uncomment_end
 
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
@@ -287,6 +316,7 @@ filegroup(
         "testdata/fuzz_generated/**",
         "testdata/SimpleV1Model/**",
         "testdata/OptimizerSlotVariableModule/**",
+        "testdata/chunked_saved_model/**",
     ]),
 )
 
@@ -372,7 +402,7 @@ tf_cc_test(
         ":metrics",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

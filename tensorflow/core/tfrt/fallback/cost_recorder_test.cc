@@ -41,8 +41,8 @@ class CostRecorderTest : public ::testing::TestWithParam<TestParams> {};
 TEST_P(CostRecorderTest, RecordCostTest) {
   CostRecorder recorder(GetParam().normalize_ratio);
 
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
 }
@@ -50,8 +50,8 @@ TEST_P(CostRecorderTest, RecordCostTest) {
 TEST_P(CostRecorderTest, GetCostTest) {
   CostRecorder recorder(GetParam().normalize_ratio);
 
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
-  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, 2 * kTestCost);
 
   EXPECT_EQ(recorder.size(), 1);
   EXPECT_EQ(recorder.GetCost(kTestOpKey), GetParam().normalize_ratio == 1
@@ -87,8 +87,8 @@ TEST_P(CostRecorderTest, ProtoRecordsTest) {
   CostRecorder recorder(GetParam().normalize_ratio);
 
   // Records the cost of op.
-  recorder.RecordCostNanosecond(kTestOpKey, kTestCost);
-  recorder.RecordCostNanosecond(kTestOpKey, 2 * kTestCost);
+  recorder.RecordCost(kTestOpKey, kTestCost);
+  recorder.RecordCost(kTestOpKey, 2 * kTestCost);
   ASSERT_EQ(recorder.size(), 1);
 
   // Writes op's cost to the disk.

@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/types/variant.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -178,14 +179,15 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
     std::vector<std::vector<xla::Shape>>* per_core_arg_shapes,
     xla::CompileOnlyClient* client) {
-  XlaCompilationResult compilation_result;
+  auto compilation_result = std::make_unique<XlaCompilationResult>();
+
   // If there are no MLIR args, compile the given function in the library.
   if (ShouldFallbackToGraphCompiler(computation)) {
     TF_RETURN_IF_ERROR(tf2xla::v0::CompileTensorflowGraphToHlo(
         computation, metadata, use_tuple_args, shape_determination_fns,
         arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
-        &compilation_result));
-    return compilation_result;
+        compilation_result.get()));
+    return *compilation_result;
   }
 
   // We could only end up here if the MLIR bridge was explicitly enabled or
@@ -206,7 +208,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
 
     mlir_bridge_status = CompileFromMlirToXlaHlo(
         enable_op_fallback, computation, metadata, device_type,
-        shape_determination_fns, use_tuple_args, &compilation_result,
+        shape_determination_fns, use_tuple_args, compilation_result.get(),
         custom_legalization_passes, arg_shapes, arg_core_mapping,
         per_core_arg_shapes);
 
@@ -223,7 +225,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     } else {
       mlir_second_phase_count->GetCell(kMlirModeSuccess)->IncrementBy(1);
     }
-    return compilation_result;
+    return *compilation_result;
   } else if (!enable_op_fallback) {
     // Don't fallback to the old bridge if op-by-op fallback isn't enabled.
     mlir_second_phase_count->GetCell(kMlirModeFailure)->IncrementBy(1);
@@ -248,7 +250,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
   Status old_bridge_status = tf2xla::v0::CompileTensorflowGraphToHlo(
       computation, metadata, use_tuple_args, shape_determination_fns,
       arg_shapes, arg_core_mapping, per_core_arg_shapes, client,
-      &compilation_result);
+      compilation_result.get());
 
   // Record filter/failure stats only if the old bridge succeeds. This removes
   // noise from invalid inputs.
@@ -266,6 +268,26 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     return old_bridge_status;
   }
 
+  if (VLOG_IS_ON(2)) {
+    TF_ASSIGN_OR_RETURN(
+        auto hlo_module_config,
+        xla::HloModule::CreateModuleConfigFromProto(
+            compilation_result->computation->proto(), xla::DebugOptions()));
+
+    TF_ASSIGN_OR_RETURN(
+        std::unique_ptr<xla::HloModule> hlo_module,
+        xla::HloModule::CreateFromProto(
+            compilation_result->computation->proto(), hlo_module_config));
+
+    std::string all_computations;
+    for (auto computation : hlo_module->computations()) {
+      all_computations += computation->ToString() + "\n\n";
+    }
+
+    tensorflow::DumpRawStringToFile("legalize_tf_fallback_hlo",
+                                    all_computations);
+  }
+
   if (filtered_graph) {
     mlir_second_phase_count->GetCell(kOldBridgeMlirFilteredSuccess)
         ->IncrementBy(1);
@@ -273,7 +295,7 @@ tsl::StatusOr<tensorflow::XlaCompilationResult> LegalizeMlirToHlo(
     mlir_second_phase_count->GetCell(kOldBridgeWithFallbackModeSuccess)
         ->IncrementBy(1);
   }
-  return compilation_result;
+  return *compilation_result;
 }
 
 };  // namespace v1

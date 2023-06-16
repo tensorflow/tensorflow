@@ -21,12 +21,21 @@ package xla.memory_space_assignment;
 // asynchronous copies, reducing prefetch memory allocation pressure.
 //
 // No prefetch slicing is performed if max_slices == 0.
+//
+// TODO(b/275905276): Consider adding another option that indicates that we want
+// slices of a certain size, rather than just always creating max_slices.
 message SlicedPrefetchOptions {
   // The maximum number of slices into which to slice a prefetch.
   uint32 max_slices = 1;
 
-  // The minimum size (in bytes) of any slice.
-  uint64 min_slice_bytes = 2;
+  // The minimum tensor size in bytes that we will attempt to slice.
+  uint64 min_bytes = 2;
+
+  // This option should never be set to true in production. When this is true,
+  // we will crash if we propose a slice (other than the final slice) with a
+  // size that is not a multiple of the required hardware alignment. Otherwise,
+  // we will choose not to slice such situations, which is always safe.
+  bool fail_on_non_alignment_boundary_slice_proposal = 3;
 }
 
 // Options for memory-bound loop optimizations in memory space assignment. If

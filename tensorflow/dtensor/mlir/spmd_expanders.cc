@@ -51,6 +51,7 @@ limitations under the License.
 #include "tensorflow/dtensor/mlir/expansions/sparse_to_dense_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/split_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/squeeze_spmd_expander.h"
+#include "tensorflow/dtensor/mlir/expansions/strided_slice_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_getitem_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_reserve_spmd_expander.h"
 #include "tensorflow/dtensor/mlir/expansions/tensorlist_setitem_spmd_expander.h"

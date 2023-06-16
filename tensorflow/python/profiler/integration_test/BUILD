@@ -22,15 +22,16 @@ cuda_py_strict_test(
     srcs = ["profiler_api_test.py"],
     python_version = "PY3",
     tags = [
+        "no_oss",  # TODO(b/283175845)
         "no_pip",
         "no_windows",  # TODO(b/192257727)
     ],
     deps = [
         ":mnist_testing_utils",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:multi_process_runner",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",

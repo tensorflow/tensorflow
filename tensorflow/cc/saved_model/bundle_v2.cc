@@ -39,60 +39,6 @@ using strings::StrCat;
 // `tensorflow::SavedModelV2Bundle::Load` API label.
 constexpr char kCCLoadBundleV2Label[] = "cc_load_bundle_v2";
 
-Status ReadSavedModelProto(const string& export_dir,
-                           SavedModel* saved_model_proto) {
-  LOG(INFO) << "Reading SavedModel from: " << export_dir;
-
-  const string saved_model_pb_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePb);
-  Status found_pb = Env::Default()->FileExists(saved_model_pb_path);
-  if (found_pb.ok()) {
-    Status result =
-        ReadBinaryProto(Env::Default(), saved_model_pb_path, saved_model_proto);
-    if (result.ok()) {
-      metrics::SavedModelReadCount(
-          saved_model::GetWriteVersion(*saved_model_proto))
-          .IncrementBy(1);
-    }
-    return result;
-  }
-
-  const string saved_model_pbtxt_path =
-      io::JoinPath(export_dir, kSavedModelFilenamePbTxt);
-  Status found_pbtxt = Env::Default()->FileExists(saved_model_pbtxt_path);
-  if (found_pbtxt.ok()) {
-    Status result = ReadTextProto(Env::Default(), saved_model_pbtxt_path,
-                                  saved_model_proto);
-    if (result.ok()) {
-      metrics::SavedModelReadCount(
-          saved_model::GetWriteVersion(*saved_model_proto))
-          .IncrementBy(1);
-    }
-    return result;
-  }
-
-  Status err;
-  if (found_pb.code() == found_pbtxt.code()) {
-    err = Status(found_pb.code(),
-                 StrCat(found_pb.message(), "\n", found_pbtxt.message()));
-  } else if (found_pb.code() == NOT_FOUND) {
-    err = found_pbtxt;
-  } else if (found_pbtxt.code() == NOT_FOUND) {
-    err = found_pb;
-  } else {
-    // found_pb and found_pbtxt both errored, w/ different codes, neither being
-    // NOT_FOUND.
-    err = Status(
-        absl::StatusCode::kInternal,
-        StrCat("Different errors encountered while looking for saved_model.pb "
-               "and saved_model.pbtxt in the export directory path \"",
-               export_dir, "\": \n", found_pb.ToString(), "\n",
-               found_pbtxt.ToString()));
-  }
-
-  return err;
-}
-
 Status ReadCheckpointObjectGraph(BundleReader* bundle_reader,
                                  TrackableObjectGraph* object_graph) {
   Tensor object_graph_tensor;
@@ -123,7 +69,7 @@ Status SavedModelV2Bundle::Load(const std::string& export_dir,
                                 SavedModelV2Bundle* const bundle) {
   metrics::SavedModelReadApi(kCCLoadBundleV2Label).IncrementBy(1);
   SavedModel saved_model_proto;
-  TF_RETURN_IF_ERROR(ReadSavedModelProto(export_dir, &saved_model_proto));
+  TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
   metrics::SavedModelReadPath().Set(export_dir);
 
   // Load MetaGraphDef.

@@ -54,8 +54,11 @@ TEST(SnapshotManagerTest, CreateStreamAssignment) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                          SnapshotManager::Start(request, Env::Default()));
+  SnapshotAssignmentManager snapshot_assignment_manager;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(request, snapshot_assignment_manager,
+                             Env::Default()));
   WorkerHeartbeatRequest heartbeat_request;
   WorkerHeartbeatResponse heartbeat_response;
   heartbeat_request.set_worker_address("localhost");
@@ -75,8 +78,11 @@ TEST(SnapshotManagerTest, GetSnapshotSplit) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                          SnapshotManager::Start(request, Env::Default()));
+  SnapshotAssignmentManager snapshot_assignment_manager;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(request, snapshot_assignment_manager,
+                             Env::Default()));
   WorkerHeartbeatRequest heartbeat_request;
   WorkerHeartbeatResponse heartbeat_response;
   heartbeat_request.set_worker_address("localhost");
@@ -100,6 +106,58 @@ TEST(SnapshotManagerTest, GetSnapshotSplit) {
   }
 }
 
+TEST(SnapshotManagerTest, HandleStreamCompletion) {
+  std::string snapshot_path = testing::LocalTempFilename();
+  SnapshotRequest request;
+  *request.mutable_dataset() = testing::RangeDataset(10);
+  request.set_path(snapshot_path);
+  *request.mutable_metadata() =
+      testing::CreateDummyDistributedSnapshotMetadata();
+  SnapshotAssignmentManager snapshot_assignment_manager;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(request, snapshot_assignment_manager,
+                             Env::Default()));
+
+  // Creates two streams.
+  WorkerHeartbeatRequest heartbeat_request;
+  WorkerHeartbeatResponse heartbeat_response;
+  heartbeat_request.set_worker_address("localhost:1");
+  TF_ASSERT_OK(
+      snapshot_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
+  heartbeat_request.Clear();
+  heartbeat_response.Clear();
+  heartbeat_request.set_worker_address("localhost:2");
+  TF_ASSERT_OK(
+      snapshot_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
+  ASSERT_EQ(heartbeat_response.snapshot_tasks().size(), 1);
+  const SnapshotTaskDef& snapshot_task = heartbeat_response.snapshot_tasks(0);
+  EXPECT_EQ(snapshot_task.base_path(), snapshot_path);
+  EXPECT_EQ(snapshot_task.stream_index(), 1);
+  EXPECT_EQ(snapshot_task.num_sources(), 1);
+
+  // Reports stream completion.
+  heartbeat_request.Clear();
+  heartbeat_response.Clear();
+  heartbeat_request.set_worker_address("localhost:1");
+  SnapshotTaskProgress progress;
+  *progress.mutable_snapshot_task() = snapshot_task;
+  progress.set_completed(true);
+  (*heartbeat_request.mutable_snapshot_task_progress())[snapshot_path] =
+      progress;
+  TF_ASSERT_OK(
+      snapshot_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
+  EXPECT_TRUE(heartbeat_response.snapshot_tasks().empty());
+
+  // The worker should not receive a stream in the next heartbeat.
+  heartbeat_request.Clear();
+  heartbeat_response.Clear();
+  heartbeat_request.set_worker_address("localhost:1");
+  TF_ASSERT_OK(
+      snapshot_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
+  EXPECT_TRUE(heartbeat_response.snapshot_tasks().empty());
+}
+
 TEST(SnapshotManagerTest, Resume) {
   std::string snapshot_path = testing::LocalTempFilename();
   SnapshotRequest request;
@@ -108,8 +166,11 @@ TEST(SnapshotManagerTest, Resume) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                          SnapshotManager::Start(request, Env::Default()));
+  SnapshotAssignmentManager snapshot_assignment_manager_1;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(request, snapshot_assignment_manager_1,
+                             Env::Default()));
   WorkerHeartbeatRequest heartbeat_request;
   WorkerHeartbeatResponse heartbeat_response;
   heartbeat_request.set_worker_address("localhost");
@@ -119,9 +180,11 @@ TEST(SnapshotManagerTest, Resume) {
 
   // Resumes a snapshot manager.
   heartbeat_response.Clear();
+  SnapshotAssignmentManager snapshot_assignment_manager_2;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> resumed_manager,
-      SnapshotManager::Resume(snapshot_path, Env::Default()));
+      SnapshotManager::Resume(snapshot_path, snapshot_assignment_manager_2,
+                              Env::Default()));
   TF_EXPECT_OK(
       resumed_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
   EXPECT_THAT(heartbeat_response.snapshot_tasks(), SizeIs(1));
@@ -135,9 +198,11 @@ TEST(SnapshotManagerTest, SnapshotStreamError) {
   *snapshot_request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
+  SnapshotAssignmentManager snapshot_assignment_manager;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> snapshot_manager,
-      SnapshotManager::Start(snapshot_request, Env::Default()));
+      SnapshotManager::Start(snapshot_request, snapshot_assignment_manager,
+                             Env::Default()));
   WorkerHeartbeatRequest heartbeat_request;
   WorkerHeartbeatResponse heartbeat_response;
   heartbeat_request.set_worker_address("localhost");
@@ -177,8 +242,11 @@ TEST(SnapshotManagerTest, ResumeFromError) {
   *request.mutable_metadata() =
       testing::CreateDummyDistributedSnapshotMetadata();
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<SnapshotManager> snapshot_manager,
-                          SnapshotManager::Start(request, Env::Default()));
+  SnapshotAssignmentManager snapshot_assignment_manager_1;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<SnapshotManager> snapshot_manager,
+      SnapshotManager::Start(request, snapshot_assignment_manager_1,
+                             Env::Default()));
   WorkerHeartbeatRequest heartbeat_request;
   WorkerHeartbeatResponse heartbeat_response;
   heartbeat_request.set_worker_address("localhost");
@@ -202,9 +270,11 @@ TEST(SnapshotManagerTest, ResumeFromError) {
   // The resumed snapshot manager should be in an error state, which returns an
   // empty response to inform the workers to cancel the ongoing tasks.
   heartbeat_response.Clear();
+  SnapshotAssignmentManager snapshot_assignment_manager_2;
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<SnapshotManager> resumed_manager,
-      SnapshotManager::Resume(snapshot_path, Env::Default()));
+      SnapshotManager::Resume(snapshot_path, snapshot_assignment_manager_2,
+                              Env::Default()));
   TF_EXPECT_OK(
       resumed_manager->WorkerHeartbeat(heartbeat_request, heartbeat_response));
   EXPECT_THAT(heartbeat_response.snapshot_tasks(), IsEmpty());

@@ -16,7 +16,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_step_stats.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -124,7 +127,7 @@ void ConvertGpuXSpaceToStepStats(const XSpace& xspace, StepStats* step_stats) {
       line.ForEachEvent([&](const XEventVisitor& event) {
         GpuEventStats stats(&event);
 
-        auto ns = absl::make_unique<NodeExecStats>();
+        auto ns = std::make_unique<NodeExecStats>();
         SetNodeTimes(event, ns.get());
 
         // Get launch information if available.

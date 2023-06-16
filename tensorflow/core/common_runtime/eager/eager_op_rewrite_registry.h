@@ -15,6 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OP_REWRITE_REGISTRY_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OP_REWRITE_REGISTRY_H_
 
+#include <array>
+#include <list>
+#include <memory>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
 namespace tensorflow {
@@ -29,7 +34,7 @@ class EagerOpRewrite {
     debug_info_.line = line;
   }
 
-  virtual ~EagerOpRewrite() {}
+  virtual ~EagerOpRewrite() = default;
 
   // To be implemented by an Eager op rewrite pass.
   virtual Status Run(EagerOperation* orig_op,

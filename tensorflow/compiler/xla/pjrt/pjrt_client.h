@@ -22,7 +22,6 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/base/attributes.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/framework/allocator.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/fingerprint.h"
 
 // API notes:
 // PjRt stands for "Pretty much Just another RunTime".
@@ -88,6 +86,9 @@ class PjRtMemorySpace {
   // Debug string suitable for logging when errors occur. Should be verbose
   // enough to describe the current memory space unambiguously.
   virtual absl::string_view DebugString() const = 0;
+
+  // Debug string suitable for reading by end users, should be reasonably terse.
+  virtual absl::string_view ToString() const = 0;
 };
 
 class PjRtDevice {
@@ -356,16 +357,6 @@ class PjRtHostMemoryForDeviceManager {
                               size_t dst_size, const Shape& dst_shape) = 0;
 };
 
-struct LoadOptions {
-  // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
-};
-
 class PjRtLoadedExecutable;
 
 // Encapsulates the state of Python session with XLA.
@@ -417,6 +408,21 @@ class PjRtLoadedExecutable;
 // will eventually be able to make progress.
 class PjRtClient {
  public:
+  // In the multi-node case, the caller of PjRtClient can provide a key-value
+  // store accessible across nodes. The caller can provide the two callbacks
+  // below to access the key-value store. There are a few requirements:
+  // (1) KeyValueGetCallback and KeyValuePutCallback must be thread-safe.
+  // (2) The caller that provides the two callbacks is responsible for avoiding
+  // key collisions between different users of key-value store (i.e. between
+  // different plugins, but not between different GPU plugin nodes).
+  // (3) KeyValueGetCallback is blocking.
+  // Subclasses of PjRtClient can optionally take these callbacks in their
+  // constructors.
+  using KeyValueGetCallback = std::function<xla::StatusOr<std::string>(
+      const std::string& key, absl::Duration timeout)>;
+  using KeyValuePutCallback = std::function<xla::Status(
+      const std::string& key, const std::string& value)>;
+
   PjRtClient() = default;
   explicit PjRtClient(std::unique_ptr<PjRtHostMemoryForDeviceManager>
                           host_memory_for_device_manager)
@@ -546,6 +552,18 @@ class PjRtClient {
   virtual StatusOr<std::unique_ptr<PjRtBuffer>> CreateErrorBuffer(
       Status error, const Shape& shape, PjRtDevice* device) {
     return Unimplemented("CreateErrorBuffer not supported.");
+  }
+
+  // Gets the pointer to the topology description held by the client.
+  virtual StatusOr<const PjRtTopologyDescription*> GetTopologyDescription()
+      const {
+    return Unimplemented("GetTopologyDescription not supported!");
+  }
+
+  // Returns topology object for compilation based on this client's topology.
+  virtual StatusOr<const PjRtTopologyDescription*>
+  GetFullTopologyForCompilation() const {
+    return GetTopologyDescription();
   }
 
   // A client may want to create a buffer, and hand the buffer to other PjRt

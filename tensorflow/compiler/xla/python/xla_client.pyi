@@ -84,6 +84,7 @@ def make_cpu_client(*, use_tfrt: bool = ...) -> Client:
 def make_gpu_client(
     distributed_client: Optional[DistributedRuntimeClient] = ...,
     node_id: int = ...,
+    num_nodes: int = ...,
     platform_name: Optional[str] = ...,
     allowed_devices: Optional[Set[int]] = ...) -> Client:
   ...

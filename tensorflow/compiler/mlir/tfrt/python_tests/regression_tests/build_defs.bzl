@@ -31,7 +31,6 @@ def _run_regression_test(name, compare_with_tensorflow, vectorize, data):
             "//third_party/py/numpy",
             "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tf_jitrt",
             "//tensorflow/compiler/mlir/tfrt/jit/python_binding:tfrt_fallback",
-            "//tensorflow/python:client_testlib",
             "//tensorflow/python/platform:tf_logging",
             "//tensorflow/python/platform:client_testlib",
             "//tensorflow/python/platform:resource_loader",

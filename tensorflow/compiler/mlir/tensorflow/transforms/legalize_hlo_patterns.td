@@ -189,6 +189,9 @@ def : Pat<(MHLO_ReverseOp $op, $dims), (TF_ReverseV2Op $op, (TF_ConstOp $dims))>
 def : Pat<(MHLO_ReshapeOp:$output $input),
           (TF_ReshapeOp $input, (ShapeToConst $output))>;
 
+// Both implement the Banker's rounding.
+def : Pat<(MHLO_RoundNearestEvenOp $input), (TF_RoundOp $input)>;
+
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.
 //===----------------------------------------------------------------------===//

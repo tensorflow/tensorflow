@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -119,11 +120,14 @@ void AddExportPasses(const bool duplicate_shape_determining_constants,
   }
 
   pm.addPass(mlir::quant::CreateInsertMainFunctionPass());
+  pm.addPass(mlir::quant::CreateLiftHashTableOpsAsArgsPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateFunctionalToExecutorDialectConversionPass());
   pm.addPass(mlir::CreateBreakUpIslandsPass());
   pm.addPass(mlir::quant::CreateMergeInitializerFunctionOpsToMainPass());
   pm.addPass(mlir::quant::CreateMergeSaveFunctionOpsToMainPass());
+  pm.addNestedPass<mlir::func::FuncOp>(
+      mlir::quant::CreateMergeDuplicateResourceOpsPass());
 
   // Used to clean up the "tf._noinliner" attribute that is previously used to
   // prevent certain functions from being inlined (see
@@ -446,6 +450,7 @@ mlir::MLIRContext CreateMlirContextForTfQuantization() {
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
+  mlir::func::registerAllExtensions(registry);
   return mlir::MLIRContext{registry};
 }
 

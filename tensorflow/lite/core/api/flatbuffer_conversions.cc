@@ -2266,6 +2266,7 @@ TfLiteStatus ParseStridedSlice(const Operator* op,
     params->ellipsis_mask = schema_params->ellipsis_mask();
     params->new_axis_mask = schema_params->new_axis_mask();
     params->shrink_axis_mask = schema_params->shrink_axis_mask();
+    params->offset = schema_params->offset();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

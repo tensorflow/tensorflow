@@ -17,6 +17,7 @@ limitations under the License.
 // operations.
 
 #include <algorithm>
+#include <memory>
 #include <numeric>
 #include <string>
 #include <utility>

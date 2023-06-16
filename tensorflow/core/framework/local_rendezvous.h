@@ -58,7 +58,15 @@ class LocalRendezvous {
   void StartAbort(const Status& status);
   Status status();
 
+  // Releases all the references to the aborted rendezvous. Used in unit tests.
+  static void ReleaseAbortedRendezvous() {
+    mutex_lock l(aborted_rendezs_mu_);
+    aborted_rendezs_.clear();
+  }
+
  private:
+  void DoAbort(const Status& status);
+
   tsl::core::RefCountPtr<Rendezvous> GetOwnerRefCountPtr();
 
   struct Item;
@@ -94,6 +102,15 @@ class LocalRendezvous {
   const std::unique_ptr<TableBucket[]> table_buckets_;
   mutex mu_;
   Status status_ TF_GUARDED_BY(mu_);
+
+  // We deliberately leak one reference of the aborted rendezvous here, so that
+  // they won't be destructed, and lose the status_.
+  // This is necessary because subsequent calls to RendezvousMgr::Find() will
+  // return the aborted rendezvous, and proper errors will be propagated.
+  // TODO(hhb): find a better way to manage rendezvous lifespan.
+  static mutex& aborted_rendezs_mu_;
+  static std::vector<tsl::core::RefCountPtr<Rendezvous> >& aborted_rendezs_
+      TF_GUARDED_BY(aborted_rendezs_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
 };

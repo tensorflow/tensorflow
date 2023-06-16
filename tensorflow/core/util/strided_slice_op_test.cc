@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #include <algorithm>
+#include <ostream>
 #include <tuple>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

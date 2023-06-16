@@ -130,7 +130,7 @@ py_library(
         ":generate_examples_report",
         "//tensorflow:tensorflow_py",
         "//tensorflow/lite/python:test_util",
-        "//tensorflow/python:graph_util",
+        "//tensorflow/python/framework:graph_util",
         "//third_party/py/numpy",
     ],
 )
@@ -269,8 +269,10 @@ cc_library(
         ":test_runner",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core:framework",
+        "//tensorflow/lite/core/api:op_resolver",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
@@ -280,7 +282,10 @@ cc_library(
         "//tensorflow/lite/kernels/gradient:gradient_ops",
         "//tensorflow/lite/kernels/parse_example",
         "//tensorflow/lite/kernels/perception:perception_ops",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
         "//tensorflow/lite/tools/evaluation:utils",
+        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:ios": [],
@@ -601,6 +606,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
+        "//third_party/eigen3",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -644,7 +650,7 @@ pybind_extension(
     deps = [
         ":string_util_lib",
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
-        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python/lib/core:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

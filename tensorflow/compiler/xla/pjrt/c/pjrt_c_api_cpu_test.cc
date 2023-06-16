@@ -88,6 +88,11 @@ TEST_F(PjrtCApiCpuTest, PlatformName) {
   ASSERT_EQ("cpu", platform_name);
 }
 
+TEST_F(PjrtCApiCpuTest, ApiVersion) {
+  CHECK_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
+  CHECK_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);
+}
+
 }  // namespace
 }  // namespace pjrt
 }  // namespace xla

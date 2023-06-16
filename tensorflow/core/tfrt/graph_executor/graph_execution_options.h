@@ -55,8 +55,8 @@ struct GraphExecutionOptions {
   // Model metadata used for monitoring and tracing.
   tensorflow::SessionMetadata model_metadata;
 
-  // The model-specific configurations.
-  tensorflow::tfrt_stub::ModelConfig model_config;
+  // The model-specific runtime configurations.
+  tensorflow::tfrt_stub::RuntimeConfig runtime_config;
 
   // If true, for each client graph, the op costs of the first request will be
   // recorded and used to re-compile the client graph.
@@ -65,6 +65,7 @@ struct GraphExecutionOptions {
 
   // Normalize the op costs recorded during online cost analysis by dividing by
   // this.
+  // TODO(b/278298965): Maybe remove normalization.
   uint64_t online_cost_analysis_normalize_ratio = 1;
 
   // If true, the MLRT interpreter will be used instead of the BEF executor.
@@ -88,7 +89,7 @@ struct GraphExecutionRunOptions {
   // will be raised upon mismatch.
   bool validate_input_specs = false;
 
-  // TODO(b/239749833) Remove after b/239749833 is fixed.
+  // TODO(b/279197040) Remove after b/279197040 is fixed.
   // If true, the input specs will be checked before running, and an error
   // will be logged upon mismatch.
   bool validate_input_specs_dry_run = false;

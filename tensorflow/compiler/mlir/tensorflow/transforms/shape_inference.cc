@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Tensor/IR/Tensor.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -1200,14 +1201,31 @@ bool ShapeInference::InferShapeForXlaCallModule(XlaCallModuleOp op) {
       for (auto attr : op.getDimArgsSpec().getAsRange<StringAttr>()) {
         dim_args_spec.push_back(attr.getValue().str());
       }
-
+      std::vector<std::string> disabled_checks;
+      for (auto attr : op.getDisabledChecks().getAsRange<StringAttr>()) {
+        disabled_checks.push_back(attr.getValue().str());
+      }
+      std::vector<std::string> platforms;
+      for (auto attr : op.getPlatforms().getAsRange<StringAttr>()) {
+        platforms.push_back(attr.getValue().str());
+      }
       // Always use the first platform. The assumption is that shape inference
       // results should be the same regardless of which platform is chosen.
-      int platform_index = op.getPlatforms().size() > 1 ? 0 : -1;
+      // Very old versions of the op have an empty platforms attribute.
+      std::string loading_platform =
+          (platforms.empty() ? "CPU" : platforms.front());
+
+      // It is a terrible idea to have local MLIR contexts so we need to
+      // register extensions here, again.
+      mlir::DialectRegistry registry;
+      registry.insert<mlir::func::FuncDialect>();
+      mlir::func::registerAllExtensions(registry);
+      xla_call_module_context_.appendDialectRegistry(registry);
 
       auto l = tensorflow::XlaCallModuleLoader::Create(
           &xla_call_module_context_, op.getVersion(), op.getModule().str(),
-          std::move(dim_args_spec), platform_index);
+          std::move(dim_args_spec), std::move(disabled_checks),
+          std::move(platforms), std::move(loading_platform));
       if (!l.ok()) {
         LLVM_DEBUG(llvm::dbgs() << "Parsing error in XlaCallModule: "
                                 << l.status().ToString() << "\n");

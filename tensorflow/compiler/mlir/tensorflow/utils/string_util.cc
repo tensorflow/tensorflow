@@ -27,8 +27,11 @@ namespace tensorflow {
 std::string OpAsString(mlir::Operation& op) {
   std::string out;
   llvm::raw_string_ostream op_stream(out);
-  op.print(op_stream,
-           mlir::OpPrintingFlags().enableDebugInfo(true, /*prettyForm=*/true));
+  op.print(op_stream, mlir::OpPrintingFlags()
+                          .elideLargeElementsAttrs()
+                          .assumeVerified()
+                          .skipRegions()
+                          .printGenericOpForm());
   return out;
 }
 

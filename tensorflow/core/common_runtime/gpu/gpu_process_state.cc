@@ -126,7 +126,8 @@ static std::unique_ptr<SubAllocator> CreateSubAllocator(
     platform_peer_gpu_ids.reserve(peer_gpu_ids.size());
     for (const tsl::TfDeviceId tf_device_id : peer_gpu_ids) {
       tsl::PlatformDeviceId platform_device_id;
-      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(tf_device_id, &platform_device_id));
+      TF_CHECK_OK(GpuIdManager::TfToPlatformDeviceId(
+          tf_device_id, &platform_device_id));
       platform_peer_gpu_ids.insert(platform_device_id);
     }
     std::vector<tsl::PlatformDeviceId> platform_peer_gpu_ids_vec(

@@ -7,6 +7,7 @@ package(
 )
 
 glob_lit_tests(
+    name = "all_tests",
     data = [":test_utilities"],
     driver = "@llvm-project//mlir:run_lit.sh",
     # TODO(b/177569789): Fix below tests to use V2.
@@ -52,7 +53,9 @@ tf_cc_binary(
         "//tensorflow/dtensor/mlir:dtensor_mlir_passes",
         "//tensorflow/dtensor/mlir:tf_dtensor_dialect",
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
+        "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@stablehlo//:register",

@@ -141,20 +141,6 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
 
   auto* tls = &tls_data.get();
 
-  // If this is an outermost scope, we must not assume that the CUDA context has
-  // been left in the same state we left it. Other code may have run on this
-  // thread and altered the context.
-  if (tls->depth == 0) {
-    VLOG(3) << "ScopedActivateContext switching to " << cuda_context->id();
-    FAIL_IF_CUDA_RES_ERROR(cuCtxSetCurrent(cuda_context->context()),
-                           "Failed setting context");
-    tls->depth = 1;
-    tls->id = cuda_context->id();
-    tls->context = cuda_context;
-    to_restore_ = nullptr;
-    return;
-  }
-
   tls->depth++;
   if (tls->id == cuda_context->id()) {
     if (kVerifyGpuContext) {
@@ -853,6 +839,23 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
     return false;
   }
   return true;
+}
+
+/* static */ int GpuDriver::GetGpuStreamPriority(
+    GpuContext* context, stream_executor::StreamPriority stream_priority) {
+  ScopedActivateContext activation(context);
+  if (stream_priority == stream_executor::StreamPriority::Default) {
+    return 0;
+  }
+  int lowest, highest;
+  CUresult res = cuCtxGetStreamPriorityRange(&lowest, &highest);
+  if (res != CUDA_SUCCESS) {
+    LOG(ERROR)
+        << "Could not query stream priority range. Returning default priority.";
+    return 0;
+  }
+  return stream_priority == stream_executor::StreamPriority::Highest ? highest
+                                                                     : lowest;
 }
 
 #if CUDA_VERSION >= 10020

@@ -83,10 +83,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/hlo/ir/hlo_opcode.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/mlir/framework/ir/xla_framework.h"
-#include "tensorflow/compiler/xla/mlir/framework/transforms/passes.h"
+#include "tensorflow/compiler/xla/mlir/runtime/ir/rt_dialect.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/calling_convention.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_cpu.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compiler.h"
+#include "tensorflow/compiler/xla/mlir/runtime/transforms/jit_compiler.h"
 #include "tensorflow/compiler/xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "tensorflow/compiler/xla/mlir_hlo/lhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -128,7 +129,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/runtime/convolution_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/custom_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/fft_call.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime/rng.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime/rng_call.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime/xfeed.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/cpu/xla_framework.h"
@@ -205,9 +206,39 @@ void LoadMLIRDialects(mlir::MLIRContext& context) {
                       mlir::scf::SCFDialect, mlir::vector::VectorDialect,
                       mlir::func::FuncDialect, mlir::affine::AffineDialect,
                       mlir::tensor::TensorDialect,
-                      mlir::xla_framework::XLAFrameworkDialect>();
+                      mlir::xla_framework::XLAFrameworkDialect,
+                      xla::runtime::RuntimeDialect>();
   mlir::registerBuiltinDialectTranslation(context);
   mlir::registerLLVMDialectTranslation(context);
+}
+
+xla::cpu::HloXlaRuntimePipelineOptions GetHloXlaRuntimePipelineOptions(
+    llvm::Triple target_triple, llvm::StringRef cpu_name) {
+  xla::cpu::HloXlaRuntimePipelineOptions options;
+  options.enable_tiling_and_fusion =
+      xla::GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
+  if (xla::GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
+    options.matmul_tile_sizes = {
+        xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
+        xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
+        xla::GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
+  }
+  options.experimental_deallocation =
+      xla::GetDebugOptionsFromFlags()
+          .xla_cpu_enable_experimental_deallocation();
+  options.enable_avx2 = [&] {
+    // Derive whether this is an x86 CPU with AVX2 enabled.
+    if (!target_triple.isX86()) return false;
+    llvm::SmallVector<llvm::StringRef> cpu_features;
+    llvm::X86::getFeaturesForCPU(cpu_name, cpu_features);
+    return llvm::is_contained(cpu_features, "avx2");
+  }();
+  options.cpu_name = cpu_name;
+  if (xla::GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
+    options.enable_fusion_outlining = true;
+    options.experimental_deallocation = true;
+  }
+  return options;
 }
 
 }  // namespace
@@ -339,22 +370,9 @@ runtime::JitExecutable::Options GetXlaRuntimeJitExecutableOptions(
   opts.compiler
       .create_compilation_pipeline = [&module, copts](
                                          xla::runtime::PassManager& passes) {
-    HloXlaRuntimePipelineOptions options;
-    options.enable_tiling_and_fusion =
-        GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-    options.experimental_deallocation =
-        GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
-    options.cpu_name = llvm::sys::getHostCPUName();
-    if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
-      options.matmul_tile_sizes = {
-          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
-          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
-          GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
-    }
-    if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
-      options.enable_fusion_outlining = true;
-      options.experimental_deallocation = true;
-    }
+    HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
+        llvm::Triple(llvm::sys::getProcessTriple()),
+        llvm::sys::getHostCPUName());
     options.xla_cpu_sparse_cuda_threads =
         GetDebugOptionsFromFlags().xla_cpu_sparse_cuda_threads();
 
@@ -1081,36 +1099,13 @@ Status LowerMLIRModule(HloModule* module, mlir::ModuleOp mlir_module,
   }
 
   xla::runtime::PassManager xla_pm(&pm);
-  HloXlaRuntimePipelineOptions options;
-  options.enable_tiling_and_fusion =
-      GetDebugOptionsFromFlags().xla_cpu_enable_mlir_tiling_and_fusion();
-  if (GetDebugOptionsFromFlags().xla_cpu_enable_custom_matmul_tiling()) {
-    options.matmul_tile_sizes = {
-        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_m_dim(),
-        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_n_dim(),
-        GetDebugOptionsFromFlags().xla_cpu_matmul_tiling_k_dim()};
-  }
+  HloXlaRuntimePipelineOptions options = GetHloXlaRuntimePipelineOptions(
+      target.getTargetTriple(), target.getTargetCPU());
   options.sparse_bufferization = false;
-  options.outline_with_xla_framework = true;
-  options.experimental_deallocation =
-      GetDebugOptionsFromFlags().xla_cpu_enable_experimental_deallocation();
-  options.enable_avx2 = [&] {
-    // Derive whether this is an x86 CPU with AVX2 enabled.
-    if (!target.getTargetTriple().isX86()) return false;
-    llvm::SmallVector<llvm::StringRef> cpu_features;
-    llvm::X86::getFeaturesForCPU(target.getTargetCPU(), cpu_features);
-    return llvm::is_contained(cpu_features, "avx2");
-  }();
-  options.cpu_name = target.getTargetCPU();
-  if (GetDebugOptionsFromFlags().xla_cpu_enable_mlir_fusion_outlining()) {
-    options.enable_fusion_outlining = true;
-    options.sparse_bufferization = false;
-    options.experimental_deallocation = true;
-  }
   TF_RETURN_IF_ERROR(CreateHloXlaRuntimePipeline(xla_pm, options));
 
   runtime::CpuPipelineOptions cpu_pipeline_opts;
-  CreateDefaultXlaCpuAOTCompilationPipeline(xla_pm, cpu_pipeline_opts);
+  CreateDefaultXlaCpuRuntimeCompilationPipeline(xla_pm, cpu_pipeline_opts);
 
   if (pm.run(mlir_module).failed()) {
     mlir_module->dump();
@@ -1682,7 +1677,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     LLVMTargetMachineFeatures target_machine_features(target_machine.get());
     std::vector<BufferInfo> buffer_infos =
-        CreateBufferInfosFromBufferAssignment(*assignment);
+        CreateBufferInfosFromBufferAssignment(*module, *assignment);
     HloComputation* computation = module->entry_computation();
 
     if (options.use_mlir_hlo_lowering()) {
@@ -1690,10 +1685,11 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
           auto mlir_module,
           createMLIRModule(module, mlir_context, assignment.get()));
       TF_RETURN_IF_ERROR(
+          xla::runtime::ExportMainWithOrdinal0(*mlir_module, mlir_context));
+      TF_RETURN_IF_ERROR(
           LowerMLIRModule(module, *mlir_module, mlir_context, *target_machine));
 
-      llvm::cast<mlir::LLVM::LLVMFuncOp>(
-          mlir_module->lookupSymbol("main_xla_framework"))
+      llvm::cast<mlir::LLVM::LLVMFuncOp>(mlir_module->lookupSymbol("main"))
           .setName(options.entry_point_name());
 
       llvm_module = mlir::translateModuleToLLVMIR(*mlir_module, llvm_context);
@@ -1783,6 +1779,11 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                                         obj_file.getData().size()));
     };
 
+    std::vector<std::string> xla_runtime_abi_conversions;
+    if (options.use_mlir_hlo_lowering()) {
+      xla_runtime_abi_conversions.push_back(options.entry_point_name());
+    }
+
     CompilerFunctor compiler_functor(
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
@@ -1791,7 +1792,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         llvm_ir::GetCpuFastMathFlags(module->config()),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook,
         aot_options.sanitize_dataflow(),
-        aot_options.sanitize_abilists_dataflow());
+        aot_options.sanitize_abilists_dataflow(), xla_runtime_abi_conversions);
     std::unique_ptr<llvm::MemoryBuffer> object_file =
         cantFail(compiler_functor(*llvm_module));
     ObjectFileData object_file_data(object_file->getBufferStart(),

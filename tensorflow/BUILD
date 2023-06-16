@@ -109,6 +109,7 @@ PACKAGE_STATIC_DEPS = [
     "@local_execution_config_platform//:__subpackages__",
     "@mkl_dnn_acl_compatible//:__subpackages__",
     "@mkl_dnn_v1//:__subpackages__",
+    "@ml_dtypes//:__subpackages__",
     "@nccl_archive//:__subpackages__",
     "@nvtx_archive//:__subpackages__",
     "@org_sqlite//:__subpackages__",
@@ -229,6 +230,14 @@ config_setting(
 config_setting(
     name = "no_default_logger",
     define_values = {"no_default_logger": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "force_rtti",
+    define_values = {
+        "tf_force_rtti": "true",
+    },
     visibility = ["//visibility:public"],
 )
 
@@ -1036,7 +1045,13 @@ package_group(
     ],
 )
 
-package_group(name = "ndarray_tensor_allow_list")
+package_group(
+    name = "ndarray_tensor_allow_list",
+    packages = [
+        "//third_party/py/courier/...",
+        "//third_party/py/tensorfn/...",
+    ],
+)
 
 # Packages that use private types symbols, until they are exported.
 # TODO(b/154650521) Remove.

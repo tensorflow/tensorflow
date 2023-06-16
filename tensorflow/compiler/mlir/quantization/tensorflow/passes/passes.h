@@ -213,6 +213,16 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateConvertTpuModelToCpuPass();
 // model quantization.
 std::unique_ptr<OperationPass<ModuleOp>> CreateCastBf16OpsToF32Pass();
 
+// Creates a pass that lifts HashTable ops as function arguments. In the graph
+// execution mode, resource ops with the same `shared_name` attribute point to
+// the same underlying resource. This is not true in the eager execution mode.
+// Lifting resource ops as arguments will help unifying them across functions.
+std::unique_ptr<OperationPass<ModuleOp>> CreateLiftHashTableOpsAsArgsPass();
+
+// Creates a pass that merges duplicate resource ops in each function. Two
+// resource ops are considered duplicated if they have the same `shared_name`.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateMergeDuplicateResourceOpsPass();
 }  // namespace quant
 }  // namespace mlir
 

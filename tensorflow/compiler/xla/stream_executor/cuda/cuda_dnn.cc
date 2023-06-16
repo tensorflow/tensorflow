@@ -954,7 +954,7 @@ static bool TensorOpMathAvailable(
 }
 
 static bool IsTensorMathEnabled(CudaComputeCapability cuda_compute_capability,
-                                dnn::DataType input_type) {
+                                dnn::DataType input_type, bool allow_tf32) {
   if (!TensorOpMathAvailable(cuda_compute_capability)) {
     return false;
   }
@@ -962,7 +962,7 @@ static bool IsTensorMathEnabled(CudaComputeCapability cuda_compute_capability,
 #if CUDNN_VERSION < 8000
     return false;
 #else
-    if (!tsl::tensor_float_32_execution_enabled()) {
+    if (!allow_tf32 || !tsl::tensor_float_32_execution_enabled()) {
       return false;
     }
 #endif
@@ -970,8 +970,10 @@ static bool IsTensorMathEnabled(CudaComputeCapability cuda_compute_capability,
   return true;
 }
 
-static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
-  return IsTensorMathEnabled(stream->GetCudaComputeCapability(), input_type);
+static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type,
+                                bool allow_tf32) {
+  return IsTensorMathEnabled(stream->GetCudaComputeCapability(), input_type,
+                             allow_tf32);
 }
 
 // Turns a PoolingDescriptor structure into a cudnn pooling descriptor handle
@@ -1314,8 +1316,9 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
       int cell_size, int batch_size, cudnnRNNInputMode_t input_mode,
       cudnnDirectionMode_t direction_mode, cudnnRNNMode_t rnn_mode,
       cudnnDataType_t data_type, cudnnDataType_t compute_type,
-      const dnn::AlgorithmConfig& algorithm_config, float dropout,
-      uint64_t seed, ScratchAllocator* state_allocator, bool use_padded_io) {
+      const dnn::AlgorithmConfig& algorithm_config,
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io) {
     TF_ASSIGN_OR_RETURN(
         CudnnDropoutDescriptor dropout_desc,
         CudnnDropoutDescriptor::Create(cudnn, dropout, seed, state_allocator));
@@ -1337,7 +1340,8 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
     bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
     if (data_type == CUDNN_DATA_FLOAT)
-      allow_tensor_ops = tsl::tensor_float_32_execution_enabled();
+      allow_tensor_ops = numeric_options.allow_tf32 &&
+                         tsl::tensor_float_32_execution_enabled();
     bool use_tensor_ops =
         algorithm_config.algorithm().has_value()
             ? algorithm_config.algorithm()->tensor_ops_enabled()
@@ -2471,8 +2475,8 @@ CudnnSupport::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   // Setting up a cudnnRNNDescriptor requires a cuDNN handle, but because it's
   // not enqueueing anything into a stream, we pass in the null stream.
   auto cudnn = cudnn_->GetHandle(parent_, /*stream=*/nullptr);
@@ -2483,7 +2487,8 @@ CudnnSupport::createRnnDescriptor(
           ToCudnnRnnInputMode(input_mode),
           ToCudnnRnnDirectionMode(direction_mode), ToCudnnRnnMode(rnn_mode),
           ToCudnnDataType(data_type), GetRnnComputeType(data_type),
-          algorithm_config, dropout, seed, state_allocator, use_padded_io));
+          algorithm_config, numeric_options, dropout, seed, state_allocator,
+          use_padded_io));
   return std::unique_ptr<dnn::RnnDescriptor>(
       new CudnnRnnDescriptor(std::move(rnn_desc)));
 }
@@ -3087,19 +3092,16 @@ AllocateCudnnConvolutionBackwardFilterWorkspace(
   return scratch_allocator->AllocateBytes(size_in_bytes);
 }
 
-tsl::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
-                                 std::optional<dnn::AlgorithmDesc> desc) {
-  bool use_tensor_ops;
+bool UseTensorOps(dnn::DataType input_type,
+                  std::optional<dnn::AlgorithmDesc> desc) {
   if (desc.has_value()) {
-    use_tensor_ops = desc->tensor_ops_enabled();
-    if (use_tensor_ops && !IsTensorMathEnabled(stream, type)) {
-      return tsl::Status(absl::StatusCode::kInvalidArgument,
-                         "Algo requests disabled tensor op evaluation.");
-    }
+    return desc->tensor_ops_enabled();
   } else {
-    use_tensor_ops = IsTensorMathEnabled(stream, type);
+    // It's unknown whether the user wants to use TensorFloat-32, which is used
+    // with tensor ops when the inputs are FP32. For safety, assume the user
+    // does not want TensorFloat-32 on FP32 inputs.
+    return input_type != dnn::DataType::kFloat;
   }
-  return use_tensor_ops;
 }
 
 cudnnDataType_t GetRnnComputeType(dnn::DataType data_type);
@@ -3118,9 +3120,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
-  bool use_tensor_ops;
-  TF_ASSIGN_OR_RETURN(use_tensor_ops,
-                      UseTensorOps(stream, element_type, algo_desc));
+  bool use_tensor_ops = UseTensorOps(element_type, algo_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
 
   if (!algo_desc.has_value()) {
@@ -3159,8 +3159,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
                      "Returned status: ", scratch_or.status().ToString()));
   }
 
-  TF_ASSIGN_OR_RETURN(use_tensor_ops,
-                      UseTensorOps(stream, element_type, algo_desc));
+  use_tensor_ops = UseTensorOps(element_type, algo_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
   TF_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionForwardWorkspace(
                                     stream, cudnn, input_nd, filter, conv,
@@ -3180,9 +3179,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
-  bool use_tensor_ops;
-  TF_ASSIGN_OR_RETURN(use_tensor_ops,
-                      UseTensorOps(stream, element_type, algo_desc));
+  bool use_tensor_ops = UseTensorOps(element_type, algo_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
 
   if (!algo_desc.has_value()) {
@@ -3220,8 +3217,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
         "while a secondary algorithm is not provided.");
   }
 
-  TF_ASSIGN_OR_RETURN(use_tensor_ops,
-                      UseTensorOps(stream, element_type, algo_desc));
+  use_tensor_ops = UseTensorOps(element_type, algo_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
   TF_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionBackwardDataWorkspace(
                                     stream, cudnn, input_nd, filter, conv,
@@ -3241,9 +3237,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
   CudnnConvolutionDescriptor conv(
       convolution_descriptor,
       ToCudnnDataType(GetConvAccumulatorType(element_type)));
-  bool use_tensor_ops;
-  TF_ASSIGN_OR_RETURN(use_tensor_ops,
-                      UseTensorOps(stream, element_type, algo_desc));
+  bool use_tensor_ops = UseTensorOps(element_type, algo_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
 
   if (!algo_desc.has_value()) {
@@ -3284,8 +3278,7 @@ tsl::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
             scratch_or.status().ToString()));
   }
 
-  TF_ASSIGN_OR_RETURN(use_tensor_ops,
-                      UseTensorOps(stream, element_type, algo_desc));
+  use_tensor_ops = UseTensorOps(element_type, algo_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
   TF_ASSIGN_OR_RETURN(*scratch, AllocateCudnnConvolutionBackwardFilterWorkspace(
                                     stream, cudnn, input_nd, filter, conv,
@@ -4913,9 +4906,6 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                          DeviceMemoryBase output_data) const override {
     auto algo = MakeAlgorithmDesc();
 
-    // Check that the current stream supports tensor ops if they're requested.
-    TF_RETURN_IF_ERROR(UseTensorOps(stream, input_type_, algo).status());
-
     if (static_cast<internal::StreamExecutorInterface*>(parent_) !=
         stream->parent()->implementation()) {
       return tsl::errors::Internal(
@@ -5104,8 +5094,7 @@ tsl::Status CudnnSupport::DoConvolve(
   auto accumulator_type = GetConvAccumulatorType(element_type);
   CudnnConvolutionDescriptor conv(convolution_descriptor,
                                   ToCudnnDataType(accumulator_type));
-  TF_ASSIGN_OR_RETURN(bool use_tensor_ops,
-                      UseTensorOps(stream, element_type, algorithm_desc));
+  bool use_tensor_ops = UseTensorOps(element_type, algorithm_desc);
   conv.set_use_tensor_op_math(use_tensor_ops);
 
   TF_ASSIGN_OR_RETURN(
@@ -5424,13 +5413,18 @@ tsl::Status CreateOpRunners(
     std::vector<std::unique_ptr<const dnn::OpRunner<Sig>>>* out_runners,
     bool need_side_input, const NumericOptions& numeric_options) {
   cudnn_frontend::EngineConfigList filtered_configs;
+  const bool disable_winograd = !CudnnEnvVar<WinogradNonfused>::IsEnabled();
+  const bool disable_nondeterminism = RequireCudnnDeterminism(numeric_options);
+  const bool disable_tensor_core =
+      !IsTensorMathEnabled(stream, input_type, numeric_options.allow_tf32);
   auto generic_filter_fn = [=](cudnnBackendDescriptor_t engine_config) -> bool {
-    return GenericEngineFilter(
-        engine_config,
-        /*disable_winograd*/ !CudnnEnvVar<WinogradNonfused>::IsEnabled(),
-        /*disable_nondeterminism*/ RequireCudnnDeterminism(numeric_options),
-        /*disable_tensor_core*/ !IsTensorMathEnabled(stream, input_type));
+    return GenericEngineFilter(engine_config, disable_winograd,
+                               disable_nondeterminism, disable_tensor_core);
   };
+  VLOG(4) << "Filtering engine configs with disable_winograd="
+          << disable_winograd
+          << ", disable_nondeterminism=" << disable_nondeterminism
+          << ", disable_tensor_core=" << disable_tensor_core;
 
   std::array<std::string, 1> heur_mode = {use_fallback ? "heuristics_fallback"
                                                        : "heuristics_mode_b"};
@@ -6132,8 +6126,8 @@ bool CudnnSupport::GetConvolveAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvFwd);
 
-  bool tensor_op_math_available =
-      IsTensorMathEnabled(cuda_compute_capability, input_type);
+  bool tensor_op_math_available = IsTensorMathEnabled(
+      cuda_compute_capability, input_type, numeric_options.allow_tf32);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types;
@@ -6353,8 +6347,8 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdData);
 
-  bool tensor_op_math_available =
-      IsTensorMathEnabled(cuda_compute_capability, input_type);
+  bool tensor_op_math_available = IsTensorMathEnabled(
+      cuda_compute_capability, input_type, numeric_options.allow_tf32);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -6389,8 +6383,8 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   PreloadCudnnSubLibs(PreloadCudnnType::ConvBwdFilter);
 
-  bool tensor_op_math_available =
-      IsTensorMathEnabled(cuda_compute_capability, input_type);
+  bool tensor_op_math_available = IsTensorMathEnabled(
+      cuda_compute_capability, input_type, numeric_options.allow_tf32);
   out_algorithms->clear();
 
   std::vector<dnn::AlgorithmDesc::Index> algo_types = {
@@ -7090,8 +7084,7 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
+                            input_data, k, output_data, m, NumericOptions{})
              .ok()) {
       return false;
     }
@@ -7174,7 +7167,7 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
                                 toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                ldc, batch_count, NumericOptions{});
   }
 
   return stream->ok();
@@ -7316,7 +7309,7 @@ tsl::Status CudnnSupport::DoPoolForward(
     const dnn::BatchDescriptor& output_dimensions, DeviceMemoryBase output_data,
     ScratchAllocator* workspace_allocator) {
   return DoPoolForward(element_type, stream, pooling_dimensions,
-                       NumericOptions{false}, input_dimensions, input_data,
+                       NumericOptions{}, input_dimensions, input_data,
                        output_dimensions, output_data, workspace_allocator);
 }
 
@@ -7396,7 +7389,7 @@ tsl::Status CudnnSupport::DoPoolBackward(
     DeviceMemoryBase input_diff_data, DeviceMemoryBase output_diff_data,
     ScratchAllocator* workspace_allocator) {
   return DoPoolBackward(element_type, stream, pooling_dimensions,
-                        NumericOptions{false}, input_dimensions, input_data,
+                        NumericOptions{}, input_dimensions, input_data,
                         output_dimensions, output_data, input_diff_data,
                         output_diff_data, workspace_allocator);
 }

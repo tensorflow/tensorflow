@@ -146,3 +146,56 @@ func.func @main() {
   }) : () -> tensor<4x4xf32>
   "func.return"() : () -> ()
 }
+
+// -----
+module attributes {dtensor.all_reduce_combiner.num_ops_in_group = 2} {
+  // Check that when DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE is set, 
+  // independent DTensorAllReduce ops of the same element type and group
+  // assignment are combined no more than the specified size. Use of dummy All-
+  // Reduces (of the same input) gaurantees ops to be grouped together if envvar
+  // is not specified.
+  // The following scenario should have 3 groups *without* envvar set:
+  // group 1: 2 all reduces
+  // group 2: 3 all reduces
+  // group 3: 4 all reduces
+  // With DTENSOR_ALLREDUCE_COMBINE_OPTIMIZATION_GROUP_SIZE=2, we expect to have
+  // the following 5 groups:
+  // group 1: 2 all reduces (original group, test for exact match of size)
+  // group 2: 2 all reduces (2/3 of original group 2, test of uneven split)
+  // group 3: 1 all reduces (1/3 of original group 2, test of uneven split)
+  // group 4: 2 all reduces (2/4 of original group 3, test of even split)
+  // group 5: 2 all reduces (2/4 of original group 3, test of even split)
+  // CHECK-LABEL: func @main
+  func.func @main() {
+    // CHECK:      %[[ALL_REDUCE_1:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<1024xf32>, tensor<2x2xi32>) -> tensor<1024xf32>
+    // CHECK:      %[[ALL_REDUCE_2:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<1024xf32>, tensor<2x2xi32>) -> tensor<1024xf32>
+    // CHECK:      %[[ALL_REDUCE_3:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+    // CHECK:      %[[ALL_REDUCE_4:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<1024xf32>, tensor<2x2xi32>) -> tensor<1024xf32>
+    // CHECK:      %[[ALL_REDUCE_5:.*]] = "tf.DTensorAllReduce"
+    // CHECK-SAME:   (tensor<1024xf32>, tensor<2x2xi32>) -> tensor<1024xf32>
+    %0 = "tf_device.cluster"() ({
+      %1 = "tf.Const"() {value = dense<0.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+      %2 = "tf.Const"() {value = dense<[[0, 1], [2, 3]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+      %3 = "tf.Const"() {value = dense<1.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+      %4 = "tf.Const"() {value = dense<[[3, 2], [1, 0]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+      %5 = "tf.DTensorAllReduce"(%1, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %6 = "tf.DTensorAllReduce"(%1, %2) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %7 = "tf.DTensorAllReduce"(%3, %4) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %8 = "tf.DTensorAllReduce"(%3, %4) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %9 = "tf.DTensorAllReduce"(%3, %4) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %10 = "tf.Const"() {value = dense<0.0> : tensor<4x4xf32>} : () -> tensor<4x4xf32>
+      %11 = "tf.Const"() {value = dense<[[0, 1], [3, 2]]> : tensor<2x2xi32>} : () -> tensor<2x2xi32>
+      %12 = "tf.DTensorAllReduce"(%10, %11) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %13 = "tf.DTensorAllReduce"(%10, %11) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %14 = "tf.DTensorAllReduce"(%10, %11) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %15 = "tf.DTensorAllReduce"(%10, %11) {_layout = ["sharding_specs:x,y, mesh:|x=2,y=2|*GPU"], device_type = "GPU", reduce_op = "Add"} : (tensor<4x4xf32>, tensor<2x2xi32>) -> tensor<4x4xf32>
+      %16 = "tf.Add"(%9, %15) : (tensor<4x4xf32>, tensor<4x4xf32>) -> tensor<4x4xf32>
+      "tf_device.return"(%16) : (tensor<4x4xf32>) -> ()
+    }) : () -> tensor<4x4xf32>
+    "func.return"() : () -> ()
+  }
+}

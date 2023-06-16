@@ -111,6 +111,7 @@ cc_library(
     deps = [
         ":constants",
         ":dstatus",
+        ":dtensor_utils",
         ":small_constant_optimization",
         ":tensor_layout",
         ":tensor_with_layout",
@@ -262,7 +263,8 @@ cc_library(
         "//tensorflow/dtensor/mlir/dtensor_dialect:Dialect",
         "//tensorflow/tsl/platform:status",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@llvm-project//mlir:FuncDialect",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:AllExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -316,6 +318,7 @@ cc_library(
         ":dtensor_meta_ops",
         ":dtensor_ops",
         ":dtensor_tpu_ops",
+        ":dtensor_utils",
         ":parallel_executor_interface",
         ":small_constant_optimization",
         ":tensor_layout",
@@ -383,5 +386,16 @@ cc_library(
     deps = [
         ":tensor_layout",
         "//tensorflow/c:conversion_macros",
+    ],
+)
+
+cc_library(
+    name = "slice_util",
+    srcs = ["slice_util.cc"],
+    hdrs = ["slice_util.h"],
+    deps = [
+        ":tensor_layout",
+        "//tensorflow/core:lib",
+        "@llvm-project//mlir:IR",
     ],
 )

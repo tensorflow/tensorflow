@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -62,31 +63,16 @@ PrimitiveType TypeToPrimitiveType(mlir::Type type) {
     return PrimitiveType::F64;
   } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
     mlir::Type element_ty = complex_type.getElementType();
-    if (element_ty.isF32()) {
-      return PrimitiveType::C64;
-
-    } else if (element_ty.isF64()) {
-      return PrimitiveType::C128;
-    }
-    return PrimitiveType::PRIMITIVE_TYPE_INVALID;
+    return primitive_util::ComplexType(TypeToPrimitiveType(element_ty));
   } else if (auto integer_type = type.dyn_cast<mlir::IntegerType>()) {
     bool is_unsigned = integer_type.isUnsigned();
-    switch (integer_type.getWidth()) {
-      case 1:
-        return PrimitiveType::PRED;
-      case 4:
-        return is_unsigned ? PrimitiveType::U4 : PrimitiveType::S4;
-      case 8:
-        return is_unsigned ? PrimitiveType::U8 : PrimitiveType::S8;
-      case 16:
-        return is_unsigned ? PrimitiveType::U16 : PrimitiveType::S16;
-      case 32:
-        return is_unsigned ? PrimitiveType::U32 : PrimitiveType::S32;
-      case 64:
-        return is_unsigned ? PrimitiveType::U64 : PrimitiveType::S64;
-      default:
-        return PrimitiveType::PRIMITIVE_TYPE_INVALID;
+    if (integer_type.getWidth() == 1) {
+      return PrimitiveType::PRED;
     }
+    return is_unsigned ? primitive_util::UnsignedIntegralTypeForBitWidth(
+                             integer_type.getWidth())
+                       : primitive_util::SignedIntegralTypeForBitWidth(
+                             integer_type.getWidth());
   }
   return PrimitiveType::PRIMITIVE_TYPE_INVALID;
 }
@@ -214,13 +200,13 @@ Shape TypeToShape(mlir::Type type) {
       // added to xla
       if (sparse.getPosWidth() != 32 || sparse.getCrdWidth() != 32) return {};
 
-      llvm::SmallVector<DimLevelType, 3> dim_level_types;
+      llvm::SmallVector<DimLevelType, 3> lvl_types;
       llvm::SmallVector<bool, 3> level_unique;
       llvm::SmallVector<bool, 3> level_ordered;
-      for (auto dlt : sparse.getDimLevelType()) {
+      for (auto dlt : sparse.getLvlTypes()) {
         auto new_dlt = ConvertDimLevelType(dlt);
         if (!new_dlt) return {};
-        dim_level_types.push_back(std::get<0>(*new_dlt));
+        lvl_types.push_back(std::get<0>(*new_dlt));
         level_unique.push_back(std::get<1>(*new_dlt));
         level_ordered.push_back(std::get<2>(*new_dlt));
       }
@@ -228,14 +214,14 @@ Shape TypeToShape(mlir::Type type) {
       std::vector<int64_t> ordering(rank);
       std::iota(ordering.rbegin(), ordering.rend(), 0);
       // Uses an identity map for dim ordering as the default value.
-      auto dimOrder = sparse.getDimOrdering()
-                          ? sparse.getDimOrdering()
+      auto dimToLvl = sparse.getDimToLvl()
+                          ? sparse.getDimToLvl()
                           : mlir::AffineMap::getMultiDimIdentityMap(
                                 rank, sparse.getContext());
       auto final_ordering = mlir::applyPermutationMap(
-          dimOrder, llvm::ArrayRef<int64_t>(ordering));
+          dimToLvl, llvm::ArrayRef<int64_t>(ordering));
       auto sparse_shape = ::xla::ShapeUtil::MakeShapeWithSparseLayout(
-          primitive_type, shape, final_ordering, dim_level_types, level_unique,
+          primitive_type, shape, final_ordering, lvl_types, level_unique,
           level_ordered);
       return sparse_shape;
     }

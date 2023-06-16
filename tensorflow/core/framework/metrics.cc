@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/protobuf/data_service.pb.h"
@@ -185,6 +186,14 @@ auto* tf_data_service_data_transfer_protocol_used =
         "The number of tf.data service worker clients created that use this "
         "data transfer protocol.",
         "data_transfer_protocol");
+
+auto* tf_data_service_data_transfer_protocol_used_by_nature =
+    tsl::monitoring::Counter<2>::New(
+        "/tensorflow/data/service/data_transfer_protocol_used_by_nature",
+        "The number of tf.data service worker clients created that use this "
+        "data transfer protocol and the nature ('default' or 'specified') "
+        "under which this protocol was chosen.",
+        "data_transfer_protocol", "nature");
 
 auto* tf_data_service_data_transfer_protocol_fallback =
     tsl::monitoring::Counter<3>::New(
@@ -483,8 +492,10 @@ void RecordTFDataServiceClientIterators(
 }
 
 void RecordTFDataServiceDataTransferProtocolUsed(
-    const string& data_transfer_protocol) {
-  tf_data_service_data_transfer_protocol_used->GetCell(data_transfer_protocol)
+    const string& data_transfer_protocol, bool user_specified) {
+  std::string nature = user_specified ? "specified" : "default";
+  tf_data_service_data_transfer_protocol_used_by_nature
+      ->GetCell(data_transfer_protocol, nature)
       ->IncrementBy(1);
 }
 

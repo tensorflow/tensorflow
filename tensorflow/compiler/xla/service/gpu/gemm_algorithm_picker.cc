@@ -292,6 +292,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
   const DebugOptions& debug_options =
       gemm->GetModule()->config().debug_options();
   AutotuneConfig autotune_config = GetConfig(debug_options);
+  const bool deterministic_ops = debug_options.xla_gpu_deterministic_ops();
 
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
   // Don't run autotuning concurrently on the same GPU.
@@ -395,9 +396,10 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                               // should always return true, and the actual
                               // success-ness is returned in
                               // ProfileResult::is_valid.
-                              TF_RETURN_IF_ERROR(RunGemm(
-                                  config, lhs_buffer, rhs_buffer, output_buffer,
-                                  stream, algorithm, &profile_result));
+                              TF_RETURN_IF_ERROR(
+                                  RunGemm(config, lhs_buffer, rhs_buffer,
+                                          output_buffer, deterministic_ops,
+                                          stream, algorithm, &profile_result));
                               return std::move(profile_result);
                             }));
 

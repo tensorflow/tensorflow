@@ -48,7 +48,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/mlir_hlo/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/xla/translate/hlo_to_mhlo/mlir_hlo_builder.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -180,6 +179,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::MatrixSolveOp>(),
             TypeID::get<TF::MatrixTriangularSolveOp>(),
             TypeID::get<TF::MaxPool3DGradGradOp>(),
+            TypeID::get<TF::MaxPoolGradOp>(),
             TypeID::get<TF::MaxPoolGradGradOp>(),
             TypeID::get<TF::MirrorPadOp>(),
             TypeID::get<TF::MirrorPadGradOp>(),
@@ -272,6 +272,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
             TypeID::get<TF::UpperBoundOp>(),
             TypeID::get<TF::WhereOp>(),
             TypeID::get<TF::XlaBroadcastHelperOp>(),
+            TypeID::get<TF::XlaCallModuleOp>(),
             TypeID::get<TF::XlaCustomCallV2Op>(),
             TypeID::get<TF::XlaDynamicUpdateSliceOp>(),
             TypeID::get<TF::XlaKeyValueSortOp>(),

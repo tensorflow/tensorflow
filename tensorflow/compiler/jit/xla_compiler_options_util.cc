@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_compiler_options_util.h"
 
+#include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
+
 namespace tensorflow {
 namespace {
 using XlaDeviceCompiler =
     DeviceCompiler<xla::LocalExecutable, xla::LocalClient>;
+using PjRtDeviceCompiler =
+    DeviceCompiler<xla::PjRtLoadedExecutable, xla::PjRtClient>;
 
 inline void LogOptions(const XlaCompiler::Options& options) {
   VLOG(2) << "XlaCompiler::Options[device_type=" << options.device_type
@@ -81,7 +85,8 @@ XlaCompiler::Options GenerateCompilerOptionsForTfrtTpu(
 
 XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     const FunctionLibraryRuntime& function_library,
-    const DeviceBase* device_base, const XlaPlatformInfo& platform_info) {
+    const DeviceBase* device_base, const XlaPlatformInfo& platform_info,
+    const PjRtDeviceCompiler* pjrt_device_compiler) {
   XlaCompiler::Options options;
   options.device_ordinal = device_base->parsed_name().id;
   options.flib_def = function_library.GetFunctionLibraryDefinition();
@@ -96,8 +101,9 @@ XlaCompiler::Options GenerateCompilerOptionsForPjRt(
     options.device_type = metadata->jit_device_type();
     options.shape_determination_fns =
         metadata->default_shape_determination_fns();
+  } else if (pjrt_device_compiler != nullptr) {
+    options.device_type = pjrt_device_compiler->device_type();
   }
-  // TODO(b/255826209): Set options for non-XLA devices once PjRt supports them.
   // TODO(b/255826209): Confirm below options are correctly set after testing.
   options.allow_cpu_custom_calls = false;
   options.alias_passthrough_params = false;

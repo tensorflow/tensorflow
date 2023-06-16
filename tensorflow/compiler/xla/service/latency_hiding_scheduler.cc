@@ -57,7 +57,7 @@ bool IsNopInstruction(const HloInstruction& hlo) {
 }
 }  // namespace
 
-CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
+CanonicalAsyncOp DefaultGetCanonicalAsyncOp(const HloInstruction& hlo) {
   switch (hlo.opcode()) {
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncDone:
@@ -79,8 +79,8 @@ CanonicalAsyncOp GetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-/*static*/ bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
-                                              const HloGraphNode& target) {
+bool LatencyEstimator::IsAsyncPair(const HloGraphNode& from,
+                                   const HloGraphNode& target) const {
   CanonicalAsyncOp from_op = GetCanonicalAsyncOp(from.GetInstr());
   CanonicalAsyncOp target_op = GetCanonicalAsyncOp(target.GetInstr());
   return from_op.outer == HloOpcode::kAsyncStart &&
@@ -122,6 +122,11 @@ bool AsyncTracker::IsSupportedAsyncDone(const HloInstruction& hlo) const {
   }
 
   if (op.outer == HloOpcode::kAsyncDone) {
+    // If there are parallel thread computations, always schedule.
+    if (hlo.IsAsynchronous() &&
+        hlo.async_execution_thread() != hlo.parent()->execution_thread()) {
+      return true;
+    }
     switch (op.inner) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
@@ -144,6 +149,11 @@ bool AsyncTracker::IsSupportedAsyncStart(const HloInstruction& hlo) const {
   }
 
   if (op.outer == HloOpcode::kAsyncStart) {
+    // If there are parallel thread computations, always schedule.
+    if (hlo.IsAsynchronous() &&
+        hlo.async_execution_thread() != hlo.parent()->execution_thread()) {
+      return true;
+    }
     switch (op.inner) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kAllGather:
@@ -1523,10 +1533,11 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     CHECK(edge_it != graph_node.GetSuccessors().end());
     return edge_it;
   };
-  auto find_outstanding_async = [&outstanding_collectives](
-                                    const HloInstruction* instr) {
+  auto find_outstanding_async = [&outstanding_collectives,
+                                 async_tracker](const HloInstruction* instr) {
     const auto& collective_vec =
-        outstanding_collectives[GetCanonicalAsyncOp(*instr).inner];
+        outstanding_collectives[async_tracker->GetCanonicalAsyncOp(*instr)
+                                    .inner];
     auto it = absl::c_find_if(
         collective_vec,
         [instr](const std::tuple<const HloInstruction*, int64_t, int64_t>& p) {
@@ -1552,8 +1563,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
     const HloGraphNode& instr_node = schedule_graph.GetNode(instr);
     current_time += instr_node.GetCost();
     if (async_tracker->IsSupportedAsyncStart(*instr)) {
-      outstanding_collectives[GetCanonicalAsyncOp(*instr).inner].push_back(
-          {instr, current_time, curr_pos});
+      outstanding_collectives[async_tracker->GetCanonicalAsyncOp(*instr).inner]
+          .push_back({instr, current_time, curr_pos});
     } else if (async_tracker->IsSupportedAsyncDone(*instr)) {
       const HloInstruction* start_instr = instr->operand(0);
       auto it = find_outstanding_async(start_instr);
@@ -1561,8 +1572,8 @@ LatencyHidingScheduler::LatencyHidingStatistics(
       auto edge_it = find_node_successor_edge(start_node, instr_node);
       const double async_wasted_cycles =
           std::max(0.0, edge_it->Latency() - (current_time - std::get<1>(*it)));
-      AsyncKind kind =
-          opcode_to_async_kind(GetCanonicalAsyncOp(*start_instr).inner);
+      AsyncKind kind = opcode_to_async_kind(
+          async_tracker->GetCanonicalAsyncOp(*start_instr).inner);
       wasted_time_per_collective[kind] += async_wasted_cycles;
       current_time += async_wasted_cycles;
     }

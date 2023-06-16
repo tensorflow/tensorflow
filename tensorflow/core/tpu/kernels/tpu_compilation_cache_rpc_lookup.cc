@@ -14,6 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_lookup.h"
 
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "grpcpp/security/credentials.h"
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"

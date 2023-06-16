@@ -402,6 +402,16 @@ def EmbeddingPipeliningPass : Pass<"tf-embedding-pipelining", "mlir::ModuleOp"> 
   }];
 }
 
+def EmbeddingSequencingPass : Pass<"tf-embedding-sequencing", "mlir::ModuleOp"> {
+  let summary = "Rewrite graph for sequential execution of embeddings";
+  let constructor = "TFDevice::CreateEmbeddingSequencingPass()";
+    let description = [{
+    This is a strictly sequential and formally correct fallback option for the
+    embedding pipelining pass intended for debugging during pipelining
+    development.
+  }];
+}
+
 def ConvertReadonlyReferenceVariablesToResourceVariablesPass :
   Pass<"tf-readonly-references-to-resources", "mlir::func::FuncOp"> {
   let summary = "Convert readonly reference variables to resource variables.";
@@ -2706,4 +2716,71 @@ def NameAnonymousIteratorsPass : Pass<"tf-name-anonymous-iterators", "ModuleOp">
         %0 = "tf.Iterator"() {shared_name = "_iterator1", ...}
   }];
   let constructor = "TF::CreateNameAnonymousIteratorsPass()";
+}
+
+//===----------------------------------------------------------------------===//
+// XlaCallModule
+//===----------------------------------------------------------------------===//
+
+def XlaCallModuleDeserializationPass
+    : Pass<"tf-xla-call-module-deserialization", "ModuleOp"> {
+  let summary = "Deserializes StableHLO functions embedded in `tf.XlaCallModule` to top level module";
+
+  let description = [{
+    This pass deserializes the StableHLO bytecodes embedded in tf.XlaCallModule,
+    then outlines the functions in the deserialized StableHLO module to the top
+    level MLIR module, with function renamings to avoid naming conflicts.
+
+    After the outlining, it updates tf.XlaCallModule's module attribute to be
+    empty, adds an `_entry_function` attribute referring to the entry function.
+    It also adds a `_from_xla_call_module: true` attribute to each lifted
+    StableHLO function.
+  }];
+
+  // These dialects are needed by stablehlo deserialization.
+  //
+  // We use tensorflow::XlaCallModuleLoader.
+  // tensorflow::XlaCallModuleLoader will get or load dialects:
+  //   Func, Stablehlo, Mhlo, Chlo, and Vhlo.
+  //
+  // XlaCallModuleLoader uses mlir::stablehlo::deserializePortableArtifact,
+  // which runs VhloLegalizeToStablehloPass whose depends on dialects:
+  //   Func, Stablehlo, Shape, and Quantization.
+  //
+  // If we do not register them here, an error will be
+  // triggered because we cannot load a dialect while in a
+  // multi-threaded execution context, and PassManager is
+  // multi-threaded.
+  let dependentDialects = [
+    "chlo::ChloDialect",
+    "mhlo::MhloDialect",
+    "shape::ShapeDialect",
+    "stablehlo::StablehloDialect",
+    "vhlo::VhloDialect",
+    "quant::QuantizationDialect",
+  ];
+
+  let constructor = "TF::CreateXlaCallModuleDeserializationPass()";
+}
+
+def XlaCallModuleSerializationPass
+    : Pass<"tf-xla-call-module-serialization", "ModuleOp"> {
+  let summary = "Serializes StableHLO functions from top-level module into `tf.XlaCallModule`'s `module` attribute";
+
+  let description = [{
+    This pass collects StableHLO functions referenced from `tf.XlaCallModule`'s
+    `_entry_function` attribute into a module, serializes the module into MLIR
+    bytecode, and embed the bytecode to `tf.XlaCallModule`'s `module` attribute.
+
+    After serialization, this pass removes the `_entry_function` attribute from
+    `tf.XlaCallModule`, and removes all the serialized stablehlo functions
+    from the top-level module.
+  }];
+
+  let dependentDialects = [
+    "stablehlo::StablehloDialect",
+    "vhlo::VhloDialect",
+  ];
+
+  let constructor = "TF::CreateXlaCallModuleSerializationPass()";
 }
