@@ -620,6 +620,9 @@ class MemorySpaceAssignment {
     }
     virtual ~Allocation() = default;
 
+    // True if the allocation is for a copy or a sliced-copy.
+    bool is_copy_like_allocation() const;
+
     virtual bool is_copy_allocation() const { return false; }
     virtual bool is_sliced_copy_allocation() const { return false; }
 

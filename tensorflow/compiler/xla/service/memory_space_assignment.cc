@@ -5005,11 +5005,23 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
         CHECK(!request.allocation_value->allocation_sequence()->empty());
         const MemorySpaceAssignment::Allocation* allocation =
             request.allocation_value->allocation_sequence()->back().get();
-        CHECK(allocation->is_copy_allocation());
-        const int64_t prefetch_time =
-            static_cast<const MemorySpaceAssignment::CopyAllocation*>(
-                allocation)
-                ->copy_start_schedule_after();
+        int64_t prefetch_time = 0;
+        if (allocation->is_copy_allocation()) {
+          prefetch_time =
+              static_cast<const MemorySpaceAssignment::CopyAllocation*>(
+                  allocation)
+                  ->copy_start_schedule_after();
+        } else if (allocation->is_sliced_copy_allocation()) {
+          prefetch_time =
+              static_cast<const MemorySpaceAssignment::SlicedCopyAllocation*>(
+                  allocation)
+                  ->sorted_slice_details()
+                  .front()
+                  .copy_start_after_time;
+        } else {
+          LOG(FATAL) << "Prefetch allocation are expected to be "
+                        "CopyAllocations or SlicedCopyAllocations.";
+        }
         if (prefetch_time != *request.preferred_prefetch_time) {
           LOG(WARNING) << "Scheduled prefetch time (" << prefetch_time
                        << ") doesn't match the preferred prefetch time ("
@@ -5216,7 +5228,7 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     // If there was a previous allocation, the buffer location is the
     // same as the previous. Otherwise, it is the operand.
     if (prev_allocation != nullptr &&
-        (prev_allocation->is_copy_allocation() ||
+        (prev_allocation->is_copy_like_allocation() ||
          prev_allocation->defining_position() == defining_position)) {
       prev_allocation->Extend(request.end_time);
     } else {
@@ -5710,6 +5722,10 @@ Status MemorySpaceAssignment::FindAllocationSequence(
                                         heap_simulator_options)
                          .status());
   return OkStatus();
+}
+
+bool MemorySpaceAssignment::Allocation::is_copy_like_allocation() const {
+  return is_copy_allocation() || is_sliced_copy_allocation();
 }
 
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
