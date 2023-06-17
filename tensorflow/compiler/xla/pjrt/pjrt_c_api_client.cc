@@ -1673,7 +1673,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
 }
 
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
-    absl::string_view device_type) {
+    absl::string_view device_type, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options) {
   TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(device_type));
   if (c_api == nullptr) {
     return InternalError("PJRT C API is nullptr for %s", device_type);
@@ -1682,6 +1683,12 @@ StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
   PJRT_TopologyDescription_Create_Args init_args;
   init_args.struct_size = PJRT_TopologyDescription_Create_Args_STRUCT_SIZE;
   init_args.priv = nullptr;
+  TF_ASSIGN_OR_RETURN(std::vector<PJRT_NamedValue> c_options,
+                      pjrt::ConvertToPjRtNamedValueList(create_options));
+  init_args.create_options = c_options.data();
+  init_args.num_options = c_options.size();
+  init_args.topology_name = topology_name.data();
+  init_args.topology_name_size = topology_name.size();
   RETURN_STATUS_IF_ERROR(c_api->PJRT_TopologyDescription_Create(&init_args),
                          c_api);
   PJRT_TopologyDescription* c_topology = init_args.topology;

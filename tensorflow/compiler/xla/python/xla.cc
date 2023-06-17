@@ -508,9 +508,11 @@ PYBIND11_MODULE(xla_extension, m) {
   // TODO(b/262050449): move out from `#ifdef XLA_PYTHON_ENABLE_TPU` when
   // GetCApiTopology does not depend on TPU.
   m.def("get_default_c_api_topology",
-        [](std::string platform_name)
+        [](std::string platform_name, std::string topology_name,
+           const absl::flat_hash_map<std::string, PjRtValueType>& options)
             -> std::shared_ptr<PjRtTopologyDescription> {
-          return xla::ValueOrThrow(GetCApiTopology(platform_name));
+          return xla::ValueOrThrow(
+              GetCApiTopology(platform_name, topology_name, options));
         });
 
   TF_CHECK_OK(PyArray::RegisterTypes(m));
