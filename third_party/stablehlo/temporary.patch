@@ -219,7 +219,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/CMakeLists.txt b/stablehlo/stablehlo/di
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 --- stablehlo/stablehlo/dialect/ExperimentalOps.cpp
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.cpp
-@@ -0,0 +1,265 @@
+@@ -0,0 +1,379 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -271,9 +271,11 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +        attr.getName() != "called_computations")
 +      return op_.emitError()
 +             << attr.getName() << " is not a supported attribute";
-+    if (!op_.getBackendConfig().empty())
-+      return op_.emitError() << "expects an empty backend_config";
 +  }
++  if (!op_.getBackendConfig().empty())
++    return op_.emitError() << "expects an empty backend_config";
++  if (op_.getCallTargetName() != "stablehlo.dynamic_reduce_window")
++    return op_.emitError() << "expects @stablehlo.dynamic_reduce_window";
 +
 +  // reduce_window_c1
 +  // This constraint hold automatically thanks to the checks that we have
@@ -337,9 +339,9 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +  for (auto inputType : inputTypes) {
 +    if (!inputType.hasRank()) continue;
 +    if (!inputShape) inputShape = inputType.getShape();
-+    if (inputType.getShape() != *inputShape)
++    if (failed(verifyCompatibleShape(inputType.getShape(), *inputShape)))
 +      return op_.emitError() << "expects all inputs (operands 0.." << numInputs
-+                             << ") to have the same shape";
++                             << ") to have compatible shapes";
 +  }
 +
 +  // reduce_window_c3
@@ -365,7 +367,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +      if (index < 0) index += op_->getNumOperands();
 +      return op_.emitError()
 +             << "expects " << name << " (operand #" << index << ") "
-+             << "to be have shape [" << expectedShape << "]";
++             << "to have shape [" << expectedShape << "]";
 +    }
 +    return success();
 +  };
@@ -414,8 +416,8 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +
 +    if (!resultType.hasRank()) continue;
 +    if (!resultShape) resultShape = resultType.getShape();
-+    if (resultType.getShape() != *resultShape)
-+      return op_.emitError() << "expects all results to have the same shape";
++    if (failed(verifyCompatibleShape(resultType.getShape(), *resultShape)))
++      return op_.emitError() << "expects all results to have compatible shapes";
 +  }
 +
 +  // reduce_window_c15
@@ -483,12 +485,124 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.cpp b/stablehlo/stableh
 +  return op_.getResults();
 +}
 +
++DynamicRngBitGeneratorOpAdaptor::DynamicRngBitGeneratorOpAdaptor(
++    CustomCallOp op)
++    : op_(op) {}
++
++LogicalResult DynamicRngBitGeneratorOpAdaptor::verify() {
++  // Before checking the constraints inherited from RngBitGeneratorOp,
++  // make sure that the operands and the attributes of the underlying custom
++  // call make sense.
++  if (op_->getNumOperands() != 2)
++    return op_.emitError("expects size(operands) = 2");
++  if (op_->getNumResults() != 2)
++    return op_.emitError("expects size(results) = 2");
++  for (const auto& attr : op_->getAttrs()) {
++    // api_version and backend_config have default values.
++    // call_target_name should be "stablehlo.dynamic_rng_bit_generator".
++    // rng_algorithm comes from the operation.
++    if (attr.getName() != "api_version" && attr.getName() != "backend_config" &&
++        attr.getName() != "call_target_name" &&
++        attr.getName() != "rng_algorithm")
++      return op_.emitError()
++             << attr.getName() << " is not a supported attribute";
++  }
++  if (!op_.getBackendConfig().empty())
++    return op_.emitError() << "expects an empty backend_config";
++  if (op_.getCallTargetName() != "stablehlo.dynamic_rng_bit_generator")
++    return op_.emitError() << "expects @stablehlo.dynamic_rng_bit_generator";
++  if (!op_->hasAttr("rng_algorithm"))
++    return op_.emitError() << "expects an rng_algorithm";
++
++  // dynamic_rng_bit_generator_i1
++  auto rngAlgorithmAttr =
++      op_->getAttr("rng_algorithm").dyn_cast<RngAlgorithmAttr>();
++  if (!rngAlgorithmAttr)
++    return op_.emitError()
++           << "expects a #stablehlo<rng_algorithm ...> rng_algorithm";
++
++  // dynamic_rng_bit_generator_i2
++  // TODO(#643): Clarify supported types for RngBitGeneratorOp.
++  auto initialStateType = getInitialState().getType().dyn_cast<ShapedType>();
++  if (!initialStateType || !initialStateType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects initial_state (operand #0) "
++           << "to be a tensor of integer or floating-point type";
++
++  // dynamic_rng_bit_generator_i3
++  auto outputShapeType = getOutputShape().getType().dyn_cast<ShapedType>();
++  if (!outputShapeType || !outputShapeType.hasRank() ||
++      outputShapeType.getRank() != 1 ||
++      !outputShapeType.getElementType().isIntOrIndex())
++    return op_.emitError()
++           << "expects output_shape (operand #1) "
++           << "to be a 1-dimensional tensor of integer or index type";
++
++  // dynamic_rng_bit_generator_o1
++  // TODO(#643): Clarify supported types for RngBitGeneratorOp.
++  auto outputStateType = getOutputState().getType().dyn_cast<ShapedType>();
++  if (!outputStateType || !outputStateType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects output_state (result #0) "
++           << "to be a tensor of integer or floating-point type";
++
++  // dynamic_rng_bit_generator_o2
++  auto outputType = getOutput().getType().dyn_cast<ShapedType>();
++  if (!outputType || !outputType.getElementType().isIntOrFloat())
++    return op_.emitError()
++           << "expects output (result #1) "
++           << "to be a tensor of integer or floating-point type";
++
++  // dynamic_rng_bit_generator_c1
++  if (!hlo::isCompatibleForHloTypeInference(initialStateType, outputStateType))
++    return op_.emitError()
++           << "expects initial_state (operand #0) and output_state (result #0) "
++           << "to have compatible shapes";
++
++  // dynamic_rng_bit_generator_c2
++  // TODO(#486): Verify rng_algorithm in RngBitGeneratorOp.
++
++  // dynamic_rng_bit_generator_c3
++  if (!hlo::isCompatibleForHloTypeInference(getOutputShape(), outputType))
++    return op_.emitError() << "expects output (result #1) to have shape  "
++                           << "compatible with output_shape (operand #2)";
++
++  return success();
++}
++
++RngAlgorithm DynamicRngBitGeneratorOpAdaptor::getRngAlgorithm() {
++  return op_->getAttr("rng_algorithm").cast<RngAlgorithmAttr>().getValue();
++}
++
++Value DynamicRngBitGeneratorOpAdaptor::getInitialState() {
++  return op_.getInputs()[0];
++}
++
++Value DynamicRngBitGeneratorOpAdaptor::getOutputShape() {
++  return op_.getInputs()[1];
++}
++
++Value DynamicRngBitGeneratorOpAdaptor::getOutputState() {
++  return op_.getResults()[0];
++}
++
++Value DynamicRngBitGeneratorOpAdaptor::getOutput() {
++  return op_.getResults()[1];
++}
++
++std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
++    CustomCallOp op) {
++  if (op.getCallTargetName() != "stablehlo.dynamic_rng_bit_generator")
++    return {};
++  return DynamicRngBitGeneratorOpAdaptor(op);
++}
++
 +}  // namespace stablehlo
 +}  // namespace mlir
 diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo/dialect/ExperimentalOps.h
 --- stablehlo/stablehlo/dialect/ExperimentalOps.h
 +++ stablehlo/stablehlo/dialect/ExperimentalOps.h
-@@ -0,0 +1,96 @@
+@@ -0,0 +1,159 @@
 +/* Copyright 2023 The StableHLO Authors.
 +
 +Licensed under the Apache License, Version 2.0 (the "License");
@@ -581,6 +695,69 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 +std::optional<DynamicReduceWindowOpAdaptor> getDynamicReduceWindowOp(
 +    CustomCallOp op);
 +
++// The DynamicRngBitGeneratorOp experiment provides a dynamic version of
++// RngBitGeneratorOp. Once the dynamism RFC is figured out, we expect to have an
++// upstream representation for this notion.
++//
++// Within this experiment, DynamicRngBitGeneratorOp is represented via the
++// `stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator` custom call.
++// This custom call has the regular operand of RngBitGeneratorOp plus an
++// additional `output_shape` operand that determines the shape of the output:
++//   * [0] => initial_state
++//   * [1] => output_shape
++//
++// Semantics of DynamicRngBitGeneratorOp are inherited from semantics of
++// https://github.com/openxla/stablehlo/blob/main/docs/spec.md#rng_bit_generator
++// extended with an additional input (I3) and an additional constraint (C3):
++//
++// #### Inputs
++//
++// | Label | Name            | Type                                         |
++// |-------|-----------------|----------------------------------------------|
++// | (I1)  | `rng_algorithm` | enum of `DEFAULT`, `THREE_FRY`, and `PHILOX` |
++// | (I2)  | `initial_state` | 1-dimensional tensor of type `ui64`          |
++// | (I3)  | `output_shape`  | 1-dimensional tensor of integer type         |
++//
++// #### Outputs
++//
++// | Name           | Type                                     |
++// |----------------|------------------------------------------|
++// | `output_state` | 1-dimensional tensor of type `ui64`      |
++// | `output`       | tensor of integer or floating-point type |
++//
++// #### Constraints
++//
++// * (C1) `type(initial_state) = type(output_state)`.
++// * (C2) `size(initial_state)` is defined as:
++//   * implementation-defined if `rng_algorithm = DEFAULT`.
++//   * `2` if `rng_algorithm = THREE_FRY`.
++//   * `2` or `3` if `rng_algorithm = PHILOX`.
++// * (C3) `shape(output) = output_shape`.
++class DynamicRngBitGeneratorOpAdaptor {
++ public:
++  DynamicRngBitGeneratorOpAdaptor(CustomCallOp op);
++  LogicalResult verify();
++
++  // Same accessors as for stablehlo::RngBitGeneratorOp, extended with the
++  // additional `output_shape` operand.
++  // These accessors assume that the operation is well-formed (i.e. that it
++  // can pass verification).
++  RngAlgorithm getRngAlgorithm();
++  Value getInitialState();
++  Value getOutputShape();
++  Value getOutputState();
++  Value getOutput();
++
++ private:
++  CustomCallOp op_;
++};
++
++// Wraps a custom call in a DynamicReduceWindowAdaptor.
++// Fails if the call_target_name of the custom call doesn't match
++// "stablehlo.dynamic_rng_bit_generator".
++std::optional<DynamicRngBitGeneratorOpAdaptor> getDynamicRngBitGeneratorOp(
++    CustomCallOp op);
++
 +}  // namespace stablehlo
 +}  // namespace mlir
 +
@@ -588,7 +765,7 @@ diff --ruN a/stablehlo/stablehlo/dialect/ExperimentalOps.h b/stablehlo/stablehlo
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 --- stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir
-@@ -426,6 +426,173 @@
+@@ -426,6 +426,172 @@
  
  // -----
  
@@ -654,8 +831,7 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
 +  func.return %0 : tensor<f32>
 +}
 +
-+// TODO(burmako): Implement tests for verification failures.
-+// It's getting late, so I'm going to sleep and will finish this tomorrow.
++// TODO(burmako): Implement tests for verification failures for dynamic_reduce_window.
 +
 +// -----
 +
@@ -762,10 +938,55 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_canonicalize_dynamism.mlir b/st
  // CHECK-LABEL: func @dynamic_reshape_success
  func.func @dynamic_reshape_success(%arg0: tensor<4xf32>) -> tensor<1x4xf32> {
    // CHECK-NOT: stablehlo.dynamic_reshape
+@@ -452,6 +618,44 @@
+   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<1x?xf32>
+   return %1 : tensor<1x?xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_rng_bit_generator_success
++func.func @dynamic_rng_bit_generator_success(%arg0: tensor<2xui64>) -> tensor<1x4xf32> {
++  // CHECK-NOT: stablehlo.dynamic_rng_bit_generator
++  // CHECK: stablehlo.rng_bit_generator %arg0, algorithm = DEFAULT : (tensor<2xui64>) -> (tensor<2xui64>, tensor<1x4xf32>)
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<1x4xf32>)
++  return %1#1 : tensor<1x4xf32>
++}
++
++// TODO(burmako): Implement tests for verification failures for dynamic_rng_bit_generator.
++
++// -----
++
++// CHECK-LABEL: func @dynamic_rng_bit_generator_inapplicable_dynamic_output_shape
++func.func @dynamic_rng_bit_generator_inapplicable_dynamic_output_shape(%arg0: tensor<2xui64>, %arg1: tensor<2xi64>) -> tensor<1x4xf32> {
++  // CHECK: stablehlo.dynamic_rng_bit_generator
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %arg1) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<1x4xf32>)
++  return %1#1 : tensor<1x4xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @dynamic_rng_bit_generator_inapplicable_dynamic_output_type
++func.func @dynamic_rng_bit_generator_inapplicable_dynamic_output_type(%arg0: tensor<2xui64>) -> tensor<?x?xf32> {
++  // CHECK: stablehlo.dynamic_rng_bit_generator
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<?x?xf32>)
++  return %1#1 : tensor<?x?xf32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 --- stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
 +++ stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir
-@@ -595,6 +595,27 @@
+@@ -595,12 +595,45 @@
  
  // -----
  
@@ -793,6 +1014,24 @@ diff --ruN a/stablehlo/stablehlo/tests/stablehlo_refine_shapes.mlir b/stablehlo/
  // CHECK-LABEL: @refine_dynamic_reshape
  func.func @refine_dynamic_reshape(%arg0: tensor<4xf32>) -> tensor<*xf32> {
    // CHECK: stablehlo.dynamic_reshape{{.*}} -> tensor<1x4xf32>
+   %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
+   %1 = stablehlo.dynamic_reshape %arg0, %0 : (tensor<4xf32>, tensor<2xi64>) -> tensor<*xf32>
+   func.return %1 : tensor<*xf32>
++}
++
++// -----
++
++// CHECK-LABEL: @refine_dynamic_rng_bit_generator
++func.func @refine_dynamic_rng_bit_generator(%arg0: tensor<2xui64>) -> tensor<*xf32> {
++  // CHECK: stablehlo.dynamic_rng_bit_generator{{.*}} -> (tensor<2xui64>, tensor<1x4xf32>)
++  %0 = stablehlo.constant dense<[1, 4]> : tensor<2xi64>
++  %1:2 = stablehlo.custom_call @stablehlo.dynamic_rng_bit_generator(%arg0, %0) {
++    rng_algorithm = #stablehlo<rng_algorithm DEFAULT>
++  } : (tensor<2xui64>, tensor<2xi64>) -> (tensor<2xui64>, tensor<*xf32>)
++  func.return %1#1 : tensor<*xf32>
+ }
+ 
+ // -----
 diff --ruN a/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp b/stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
 --- stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
 +++ stablehlo/stablehlo/tools/StablehloLspServerMain.cpp
@@ -882,14 +1121,44 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloCanonicalizeDynamism.cpp b/
  struct CanonicalizeDynamicReshapeOpPattern
      : public OpRewritePattern<DynamicReshapeOp> {
    using OpRewritePattern::OpRewritePattern;
-@@ -320,6 +370,7 @@
+@@ -210,6 +260,27 @@
+     if (!op.getType().hasStaticShape())
+       return rewriter.notifyMatchFailure(op, "expected static result type");
+     rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), op.getOperand());
++    return success();
++  }
++};
++
++struct CanonicalizeDynamicRngBitGeneratorOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto op = getDynamicRngBitGeneratorOp(impl);
++    if (!op || failed(op->verify())) return failure();
++
++    // This pattern ignores and discards the output_shape operand. We rely on
++    // the verifier to make sure that its value is consistent with result type.
++    if (!succeeded(hlo::matchInts(op->getOutputShape())))
++      return rewriter.notifyMatchFailure(impl, "expected static output_shape");
++    if (!op->getOutput().getType().cast<ShapedType>().hasStaticShape())
++      return rewriter.notifyMatchFailure(impl, "expected static output type");
++    rewriter.replaceOpWithNewOp<RngBitGeneratorOp>(impl, impl->getResultTypes(),
++                                                   op->getRngAlgorithm(),
++                                                   op->getInitialState());
+     return success();
+   }
+ };
+@@ -320,7 +391,9 @@
      patterns.add<CanonicalizeDynamicGatherOpPattern>(&getContext());
      patterns.add<CanonicalizeDynamicIotaOpPattern>(&getContext());
      patterns.add<CanonicalizeDynamicPadOpPattern>(&getContext());
 +    patterns.add<CanonicalizeDynamicReduceWindowOpPattern>(&getContext());
      patterns.add<CanonicalizeDynamicReshapeOpPattern>(&getContext());
++    patterns.add<CanonicalizeDynamicRngBitGeneratorOpPattern>(&getContext());
      patterns.add<CanonicalizeRealDynamicSliceOpToDynamicSliceOpPattern>(
          &getContext());
+     patterns.add<CanonicalizeRealDynamicSliceOpToSliceOpPattern>(&getContext());
 diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 --- stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
 +++ stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp
@@ -901,13 +1170,10 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
  #include "stablehlo/dialect/StablehloOps.h"
  #include "stablehlo/dialect/TypeInference.h"
  #include "stablehlo/transforms/Passes.h"
-@@ -841,6 +842,47 @@
-             rewriter.getI64TensorAttr(interiorPadding), inferredReturnTypes)))
-       return rewriter.notifyMatchFailure(op, "inferPadOp failed");
-     return refineReturnTypes(rewriter, op, inferredReturnTypes);
-+  }
-+};
-+
+@@ -844,12 +845,76 @@
+   }
+ };
+ 
 +struct RefineDynamicReduceWindowOpPattern
 +    : public OpRewritePattern<CustomCallOp> {
 +  using OpRewritePattern::OpRewritePattern;
@@ -946,15 +1212,49 @@ diff --ruN a/stablehlo/stablehlo/transforms/StablehloRefineShapes.cpp b/stablehl
 +            hlo::getPaddingAttr(&rewriter, padding), inferredReturnTypes)))
 +      return rewriter.notifyMatchFailure(impl, "inferReduceWindowOp failed");
 +    return refineReturnTypes(rewriter, impl, inferredReturnTypes);
++  }
++};
++
+ struct RefineDynamicReshapeOpPattern
+     : public OpRewritePattern<DynamicReshapeOp> {
+   using OpRewritePattern::OpRewritePattern;
+   LogicalResult matchAndRewrite(DynamicReshapeOp op,
+                                 PatternRewriter& rewriter) const override {
+     return refineReturnShape(rewriter, op, op.getOutputShape());
++  }
++};
++
++struct RefineDynamicRngBitGeneratorOpPattern
++    : public OpRewritePattern<CustomCallOp> {
++  using OpRewritePattern::OpRewritePattern;
++  LogicalResult matchAndRewrite(CustomCallOp impl,
++                                PatternRewriter& rewriter) const override {
++    auto op = getDynamicRngBitGeneratorOp(impl);
++    if (!op || failed(op->verify())) return failure();
++
++    // At the moment, we only support refining return types using fully static
++    // shape values which serves the current use cases well.
++    // Support for partially static shape values is left for future work.
++    SmallVector<int64_t> outputShape;
++    if (failed(hlo::matchInts(op->getOutputShape(), outputShape)))
++      return rewriter.notifyMatchFailure(impl,
++                                         "expected constant output_shape");
++
++    // We only need to refine the shape of `output` (the second result).
++    // The shape of `output_state` (the first result) is determined by the shape
++    // of `initial_state`, so we ignore it and provide an empty refinement.
++    return refineReturnTypes(rewriter, impl, {{}, {outputShape}});
    }
  };
  
-@@ -1181,6 +1223,7 @@
+@@ -1181,7 +1246,9 @@
      patterns.add<RefineDynamicConvOpPattern>(&getContext());
      patterns.add<RefineDynamicIotaOpPattern>(&getContext());
      patterns.add<RefineDynamicPadOpPattern>(&getContext());
 +    patterns.add<RefineDynamicReduceWindowOpPattern>(&getContext());
      patterns.add<RefineDynamicReshapeOpPattern>(&getContext());
++    patterns.add<RefineDynamicRngBitGeneratorOpPattern>(&getContext());
      patterns.add<RefineInferTypeOpInterfacePattern>(&getContext());
      patterns.add<RefineRealDynamicSliceOpPattern>(&getContext());
+     patterns.add<RefineReduceScatterOpPattern>(&getContext());
 
