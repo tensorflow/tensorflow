@@ -134,7 +134,7 @@ Status GpuTracer::DoStart() {
   options_.enable_event_based_activity = !use_cupti_activity_api;
 
   bool trace_concurrent_kernels = false;
-  ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", false,
+  ReadBoolFromEnvVar("TF_GPU_CUPTI_FORCE_CONCURRENT_KERNEL", true,
                      &trace_concurrent_kernels)
       .IgnoreError();
   options_.activities_selected.push_back(
