@@ -24,13 +24,11 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/inlined_vector.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/pjrt/compile_options.pb.h"
 #include "tensorflow/compiler/xla/service/compilation_environments.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/tsl/platform/threadpool.h"
 
 namespace stream_executor {
@@ -87,10 +85,6 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_device_allocator(
       se::DeviceMemoryAllocator* allocator);
   se::DeviceMemoryAllocator* device_allocator() const;
-
-  // Returns a string representation of the build options, suitable for
-  // debugging.
-  std::string ToString() const;
 
   // The number of replicas of this computation that are to be executed.
   // Defaults to 1.
@@ -191,8 +185,6 @@ class ExecutableBuildOptions {
     return *this;
   }
 
-  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
-
   using LayoutCanonicalizationCallback =
       std::function<StatusOr<std::pair<std::vector<Shape>, Shape>>(
           const HloModule& module)>;
@@ -203,6 +195,15 @@ class ExecutableBuildOptions {
   LayoutCanonicalizationCallback layout_canonicalization_callback() const {
     return layout_canonicalization_callback_;
   }
+
+  absl::string_view fdo_profile() const { return fdo_profile_; }
+  std::string* mutable_fdo_profile() { return &fdo_profile_; }
+
+  // Returns a string representation of the build options, suitable for
+  // debugging.
+  std::string ToString() const;
+
+  StatusOr<ExecutableBuildOptionsProto> ToProto() const;
 
  private:
   int device_ordinal_ = -1;
@@ -226,6 +227,7 @@ class ExecutableBuildOptions {
       false};
   tsl::thread::ThreadPool* compile_thread_pool_ = nullptr;
   LayoutCanonicalizationCallback layout_canonicalization_callback_;
+  std::string fdo_profile_;
 };
 
 StatusOr<ExecutableBuildOptions> ExecutableBuildOptionsFromProto(
