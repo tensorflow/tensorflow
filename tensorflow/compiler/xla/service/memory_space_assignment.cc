@@ -3315,9 +3315,14 @@ HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   if (options_.autotuning_config.has_value()) {
     CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
   }
-
-  // TODO(b/275905276): if slicing is turned on, ensure repacking is disabled,
-  // i.e., max_repacks == 0
+  // TODO(b/275905276): Add support to allow both slicing and repacking to be
+  // enabled. When done, remove this check.
+  CHECK(options_.sliced_prefetch_options.max_slices() < 2 ||
+        options_.max_repacks == 0)
+      << "Repacking must be disabled when slicing is enabled.";
+  VLOG(1) << "Slicing is "
+          << (options_.sliced_prefetch_options.max_slices() >= 2 ? "enabled"
+                                                                 : "disabled");
 
   AllocateReservedScopedAllocations();
   std::vector<BufferInterval> sorted_buffer_intervals =
