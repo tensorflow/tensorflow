@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
+#include "tensorflow/dtensor/cc/dtensor_operation.h"
 #include "tensorflow/dtensor/cc/small_constant_optimization.h"
 #include "tensorflow/dtensor/cc/tensor_layout.h"
 #include "tensorflow/dtensor/cc/tensor_with_layout.h"
@@ -128,17 +129,6 @@ struct ExecutionFunctions {
   // Mesh fingerprint of function_list. Set only when ExecutionFunctions refers
   // to a function for performance reason, since an eager op doesn't use it.
   uint64 function_mesh_fingerprint = 0;
-};
-
-struct DTensorOperation {
-  // For all fields: not owned. lifetime covers the whole usage.
-  const char* name;
-  const FunctionDef* function_def;
-  // Default mesh is used when Mesh Propagation does not identify a mesh
-  // otherwise.
-  const Mesh default_mesh;
-  const StackTracesMap& stack_traces;
-  inline bool is_func() const { return function_def != nullptr; }
 };
 
 class TensorWithLayoutTf
