@@ -43,12 +43,17 @@ namespace tensorflow {
   append_eltwise(scale, alg, alpha, beta)
 #define APPEND_ELTWISE_RELU6(scale, alpha, beta) \
   append_eltwise(scale, dnnl::algorithm::eltwise_bounded_relu, alpha, beta)
+#define OUTPUT_SCALE_DCHECK (post_op_param.name == "output_scale")
 #define SET_MKL_LAYOUT(md) SetMklLayout(&md)
 #define TSCALED_BIAS Tbias
 #else
 #define APPEND_ELTWISE(scale, alg, alpha, beta) append_eltwise(alg, alpha, beta)
 #define APPEND_ELTWISE_RELU6(scale, alpha, beta) \
   append_eltwise(dnnl::algorithm::eltwise_clip, 0.0, alpha)
+#define OUTPUT_SCALE_DCHECK                  \
+  (post_op_param.name == "src_scale") ||     \
+      (post_op_param.name == "wei_scale") || \
+      (post_op_param.name == "dst_scale")
 #define SET_MKL_LAYOUT(md) SetMklLayout(md)
 #define TSCALED_BIAS float
 #endif  // !ENABLE_ONEDNN_V3
@@ -378,15 +383,7 @@ class MklDnnMatMulFwdPrimitive : public MklPrimitive {
                  (post_op_param.name == "tanh") ||
                  (post_op_param.name == "logistic") ||
                  (post_op_param.name == "sum") ||
-                 (post_op_param.name == "leakyrelu") ||
-#ifndef ENABLE_ONEDNN_V3
-                 (post_op_param.name == "output_scale")
-#else
-                 (post_op_param.name == "src_scale") ||
-                 (post_op_param.name == "wei_scale") ||
-                 (post_op_param.name == "dst_scale")
-#endif  // !ENABLE_ONEDNN_V3
-          );
+                 (post_op_param.name == "leakyrelu") || OUTPUT_SCALE_DCHECK);
         }
       }
       post_ops_attr.set_post_ops(post_ops);
