@@ -1034,6 +1034,7 @@ void dnnl_gemm(char transa, char transb, int64_t m, int64_t n, int64_t k,
 
 #undef APPEND_ELTWISE
 #undef APPEND_ELTWISE_RELU6
+#undef OUTPUT_SCALE_DCHECK
 #undef SET_MKL_LAYOUT
 #undef TSCALED_BIAS
 
