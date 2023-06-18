@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_tf_functions.h"
 
 #include <algorithm>
+#include <ostream>
 #include <stack>
 #include <string>
 #include <utility>

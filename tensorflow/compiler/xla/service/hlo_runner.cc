@@ -620,7 +620,8 @@ ServiceExecutableRunOptions HloRunner::GetServiceRunOptionsForDevice(
     run_options.set_device_assignment(device_assignment);
   }
   run_options.set_run_id(run_id);
-  return ServiceExecutableRunOptions(run_options, backend().StreamBorrower());
+  return ServiceExecutableRunOptions(run_options,
+                                     backend().StreamBorrowerWithPriority());
 }
 
 Backend& HloRunner::backend() {

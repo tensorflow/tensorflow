@@ -135,7 +135,7 @@ TfLiteStatus TfliteInferenceStage::Init(
   }
 
   if (apply_default_delegates) {
-    resolver_ = std::make_unique<ops::builtin::BuiltinOpResolverWithXNNPACK>();
+    resolver_ = std::make_unique<ops::builtin::BuiltinOpResolver>();
   } else {
     resolver_ = std::make_unique<
         ops::builtin::BuiltinOpResolverWithoutDefaultDelegates>();

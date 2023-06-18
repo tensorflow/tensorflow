@@ -18,20 +18,37 @@ limitations under the License.
 #include <array>
 #include <memory>
 #include <numeric>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
+#include "tensorflow/compiler/xla/pjrt/utils.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/tsl/lib/core/status_test_util.h"
+#include "tensorflow/tsl/platform/errors.h"
+#include "tensorflow/tsl/platform/status.h"
+#include "tensorflow/tsl/platform/status_matchers.h"
+#include "tfrt/host_context/async_dispatch.h"  // from @tf_runtime
+#include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
+#include "tfrt/host_context/diagnostic.h"  // from @tf_runtime
+#include "tfrt/host_context/host_allocator.h"  // from @tf_runtime
+#include "tfrt/host_context/host_context.h"  // from @tf_runtime
 
 namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
+using ::tsl::testing::StatusIs;
 
 StatusOr<std::unique_ptr<xla::PjRtLoadedExecutable>> CompileExecutable(
     absl::string_view program, xla::PjRtClient& client,
@@ -90,7 +107,7 @@ static constexpr char const* kProgram = R"(HloModule HostTransfer
 TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
+
                                               /*node_id=*/0));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -144,7 +161,6 @@ TEST(StreamExecutorGpuClientTest, SendRecvChunked) {
 TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -180,7 +196,6 @@ TEST(StreamExecutorGpuClientTest, SendErrorNoDeadLock) {
 TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
 
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
@@ -219,7 +234,6 @@ TEST(StreamExecutorGpuClientTest, RecvErrorNoDeadLock) {
 TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
@@ -258,7 +272,6 @@ TEST(StreamExecutorGpuClientTest, ToLiteralAsync) {
 TEST(StreamExecutorGpuClientTest, FromHostAsync) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
-                                              /*distributed_client=*/nullptr,
                                               /*node_id=*/0));
   ASSERT_GE(client->addressable_devices().size(), 1);
 
@@ -324,6 +337,61 @@ TEST(StreamExecutorGpuClientTest, FromHostAsync) {
         literals[i]->Relayout(src_literals[i].shape().layout()).data<float>());
   }
 }
+TEST(StreamExecutorGpuClientTest, CopyRawToHostFullBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+
+  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+
+  auto result =
+      buffer->CopyRawToHost(dst, 0, buffer->GetOnDeviceSizeInBytes().value());
+  EXPECT_OK(result.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+  EXPECT_EQ(*(static_cast<float*>(dst) + 1), 42.0f);
+
+  aligned_free(dst);
+}
+
+TEST(StreamExecutorGpuClientTest, CopyRawToHostSubBuffer) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+
+  auto result = buffer->CopyRawToHost(dst, 0, sizeof(float));
+  EXPECT_OK(result.Await());
+  EXPECT_EQ(*(static_cast<float*>(dst)), 41.0f);
+
+  aligned_free(dst);
+}
+
+TEST(StreamExecutorGpuClientTest, CopyRawToHostOutOfRange) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto client, GetStreamExecutorGpuClient(true, /*allocator_config=*/{},
+                                              /*node_id=*/0));
+  auto literal = xla::LiteralUtil::CreateR1<float>({41.0f, 42.0f});
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->BufferFromHostLiteral(literal, client->addressable_devices()[0]));
+  void* dst = aligned_malloc(buffer->GetOnDeviceSizeInBytes().value(), 0);
+
+  auto result =
+      buffer->CopyRawToHost(dst, 1, buffer->GetOnDeviceSizeInBytes().value());
+  EXPECT_THAT(result.Await(), StatusIs(absl::StatusCode::kInvalidArgument,
+                                       HasSubstr("invalid offset 1")));
+  aligned_free(dst);
+}
 
 TEST(GpuTopology, FromProto) {
   GpuTopologyProto msg;
@@ -341,6 +409,61 @@ TEST(GpuTopology, ToProto) {
   GpuTopology gpu_topology({3, 2, 1});
   GpuTopologyProto msg = gpu_topology.ToProto();
   EXPECT_THAT(msg.device_ids(), ElementsAre(3, 2, 1));
+}
+
+TEST(StreamExecutorGpuClientTest, DistributeInit) {
+  absl::flat_hash_map<std::string, std::string> kv_store;
+  absl::Mutex mu;
+  PjRtClient::KeyValueGetCallback kv_get =
+      [&kv_store, &mu](const std::string& k,
+                       absl::Duration timeout) -> xla::StatusOr<std::string> {
+    absl::Duration wait_interval = absl::Milliseconds(10);
+    int num_retry = timeout / wait_interval;
+    for (int i = 0; i < num_retry; i++) {
+      {
+        absl::MutexLock lock(&mu);
+        auto iter = kv_store.find(k);
+        if (iter != kv_store.end()) {
+          return iter->second;
+        }
+      }
+      absl::SleepFor(wait_interval);
+    }
+    return absl::NotFoundError(
+        absl::StrCat(k, " is not found in the kv store."));
+  };
+  PjRtClient::KeyValuePutCallback kv_put =
+      [&kv_store, &mu](const std::string& k,
+                       const std::string& v) -> xla::Status {
+    {
+      absl::MutexLock lock(&mu);
+      kv_store[k] = v;
+    }
+    return tsl::OkStatus();
+  };
+  auto host_context = std::make_unique<tfrt::HostContext>(
+      [](const tfrt::DecodedDiagnostic& diag) {
+        LOG(ERROR) << "Encountered runtime error: " << diag.message() << "\n";
+      },
+      tfrt::CreateMallocAllocator(),
+      tfrt::CreateMultiThreadedWorkQueue(
+          /*num_threads=*/DefaultThreadPoolSize(),
+          /*num_blocking_threads=*/4));
+  int num_nodes = 2;
+  for (int i = 0; i < num_nodes; i++) {
+    tfrt::EnqueueWork(host_context.get(), [&kv_get, &kv_put, i, num_nodes] {
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto client,
+          GetStreamExecutorGpuClient(
+              true, /*allocator_config=*/{},
+              /*node_id=*/i, num_nodes, /*allowed_devices=*/std::nullopt,
+              /*platform_name=*/std::nullopt,
+              /*should_stage_host_to_device_transfers=*/true, kv_get, kv_put));
+      EXPECT_EQ(client->platform_name(), "gpu");
+      EXPECT_EQ(client->addressable_device_count(), 1);
+      EXPECT_EQ(client->device_count(), 2);
+    });
+  }
 }
 
 }  // namespace

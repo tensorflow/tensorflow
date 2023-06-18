@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/lib/monitoring/collection_registry.h"
 
+#include <memory>
+
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/percentile_sampler.h"

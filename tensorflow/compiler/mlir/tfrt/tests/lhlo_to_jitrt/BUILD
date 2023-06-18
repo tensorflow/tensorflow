@@ -9,6 +9,7 @@ package(
 # copybara:uncomment_begin
 #
 # glob_lit_tests(
+#     name = "all_tests",
 #     data = [":test_utilities"],
 #     driver = "//tensorflow/compiler/mlir:run_lit.sh",
 #     features = if_oss(["--path=org_tensorflow/tensorflow/compiler/mlir/tfrt"]),

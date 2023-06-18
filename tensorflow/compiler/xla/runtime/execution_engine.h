@@ -97,10 +97,10 @@ class ExecutionEngine {
     SymbolsBinding symbols_binding = nullptr;
 
     // Notify the llvm's global GDB notifications listener.
-    bool enable_gdb_listener = true;
+    bool enable_gdb_listener = false;
 
     // Notify the llvm's global Perf notifications listener.
-    bool enable_perf_listener = true;
+    bool enable_perf_listener = false;
 
     // Save compiled object file.
     bool save_compiled_obj_file = true;

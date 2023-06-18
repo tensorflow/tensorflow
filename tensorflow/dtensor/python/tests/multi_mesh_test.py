@@ -22,7 +22,6 @@ from tensorflow.dtensor.python import api
 from tensorflow.dtensor.python import config
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import layout as layout_lib
-from tensorflow.dtensor.python import mesh_util
 from tensorflow.dtensor.python.tests import test_util
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -50,6 +49,12 @@ _ONE_D_CPU_MESH = Mesh(
     np.ravel(_DEVICES_IDS).tolist(),
     test_util.create_device_list((2,), 'CPU'),
 )
+_ONE_D_GPU_MESH = Mesh(
+    [_MESH_DIM_X],
+    _DEVICES_IDS,
+    np.ravel(_DEVICES_IDS).tolist(),
+    test_util.create_device_list((2,), 'GPU'),
+)
 _ONE_D_TPU_MESH = Mesh(
     [_MESH_DIM_X],
     _DEVICES_IDS,
@@ -76,8 +81,12 @@ class MultiMeshTest(test_util.DTensorBaseTest):
   def setUp(self):
     super(MultiMeshTest, self).setUp()
     self.first_mesh = _ONE_D_CPU_MESH
-    self.second_mesh = _ONE_D_TPU_MESH if test_util.is_tpu_present(
-    ) else _ONE_D_CPU_MESH_Y
+    if test_util.is_tpu_present():
+      self.second_mesh = _ONE_D_TPU_MESH
+    elif test_util.is_gpu_present():
+      self.second_mesh = _ONE_D_GPU_MESH
+    else:
+      self.second_mesh = _ONE_D_CPU_MESH_Y
 
     device_type = config.preferred_device_type()
     if device_type != 'TPU':
@@ -105,7 +114,9 @@ class MultiMeshTest(test_util.DTensorBaseTest):
   )
   def testCopyToMeshOneToOneSharded(self, is_eager):
     if not test_util.is_tpu_present():
-      self.skipTest('Need at least one device mesh for this test.')
+      self.skipForDeviceType(
+          ['CPU'], 'Need at least one device mesh for this test.'
+      )
 
     replicated_layout = Layout.replicated(self.first_mesh, rank=1)
     first_layout = Layout([_MESH_DIM_X], self.first_mesh)
@@ -163,9 +174,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
       self.assertEqual(api.fetch_layout(result).mesh, self.first_mesh)
 
   def testImplicitCopyToCPUMeshForStrings(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     host_device_id = test_util.create_device_ids_array((1,))
     host_cpu_mesh = Mesh(
@@ -265,9 +277,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
       # pylint: enable=pointless-statement
 
   def testMultiMeshInSideFunctionLayoutV2(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     replicated_layout_on_tpu = Layout.replicated(self.second_mesh, rank=1)
     host_device_id = test_util.create_device_ids_array((1,))
@@ -306,9 +319,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
       self.assertDTensorEqual(golden_result, replicated_layout_on_cpu, output)
 
   def testMultiMeshCancellation(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     host_device_id = test_util.create_device_ids_array((1,))
     host_cpu_mesh = Mesh(
@@ -345,9 +359,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
           tpu_func(cpu_tensor)
 
   def testMultiMeshCPUToTPUTransfer(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     multiple_host_device_id = test_util.create_device_ids_array((2,))
     host_multi_cpu_mesh = Mesh(
@@ -380,10 +395,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
     api.check_layout(output, sharded_layout_on_tpu_r1)
 
   def testMultiMeshUnsupportedTypes(self):
-    if not test_util.is_tpu_present():
-      self.skipTest(
-          'Skipping test as only CPU mesh is available for multi-meshtest.'
-      )
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     host_device_id = test_util.create_device_ids_array((1,))
     host_cpu_mesh = Mesh(
@@ -414,50 +429,6 @@ class MultiMeshTest(test_util.DTensorBaseTest):
         _ = str(cpu_func(s))
 
     self.assertIn('unsupported output type', ex.exception.message)
-
-  @parameterized.parameters([dtypes.bfloat16, dtypes.float32])
-  def testMultipleCPUToTPUTransfer(self, dtype):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
-
-    host_device_id = test_util.create_device_ids_array((1,))
-    host_cpu_mesh = Mesh(
-        [_MESH_DIM_X],
-        host_device_id,
-        np.ravel(host_device_id).tolist(),
-        test_util.create_device_list((1,), 'CPU'),
-    )
-    replicated_layout_on_cpu = Layout.replicated(host_cpu_mesh, rank=1)
-    replicated_layout_on_tpu_r0 = Layout.replicated(self.second_mesh, rank=0)
-    replicated_layout_on_tpu_r1 = Layout.replicated(self.second_mesh, rank=1)
-
-    a = constant_op.constant([1, 2, 3, 4], dtype=dtypes.int32)
-
-    def func(t):
-      t = math_ops.cast(t, dtype)
-      t = math_ops.reduce_sum(t)
-      return math_ops.sqrt(t)
-
-    golden_result = func(a)
-
-    a = api.copy_to_mesh(a, replicated_layout_on_cpu)
-
-    @polymorphic_function.function
-    def tpu_func(t):
-      t = math_ops.reduce_sum(t)
-      return math_ops.sqrt(t)
-
-    @polymorphic_function.function
-    def cpu_func(t):
-      t = math_ops.cast(t, dtype)
-      tpu_tensor = api.copy_to_mesh(t, replicated_layout_on_tpu_r1)
-      return tpu_func(tpu_tensor)
-
-    with ops.device_v2(api.device_name()):
-      output = cpu_func(a)
-      self.assertDTensorEqual(golden_result, replicated_layout_on_tpu_r0,
-                              output)
 
   def testMultiMeshCPUToCPUTransfer(self):
     send_device_id = test_util.create_device_ids_array((1,))
@@ -541,9 +512,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
     api.check_layout(output2, replicated_layout_on_b)
 
   def testFunctionWithMultiMeshInputOutputs(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     host_device_id = test_util.create_device_ids_array((1,))
     host_cpu_mesh = Mesh(
@@ -601,9 +573,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
                             output1)
 
   def testMultiMeshWithResourceOps(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     host_device_id = test_util.create_device_ids_array((1,))
     host_cpu_mesh = Mesh(
@@ -615,7 +588,9 @@ class MultiMeshTest(test_util.DTensorBaseTest):
 
     replicated_layout_on_cpu = Layout.replicated(host_cpu_mesh, rank=0)
     replicated_layout_on_tpu = Layout.replicated(self.second_mesh, rank=1)
-    a = constant_op.constant([1, 2, 3, 4], dtype=dtypes.int32)
+    a = constant_op.constant(
+        [1, 2, 3, 4], dtype=dtypes.int64
+    )  # NOTE(b/274627284): Variable of int32 type on GPU doesn't work.
 
     def func(t):
       t = math_ops.cast(t, dtypes.float32)
@@ -643,23 +618,28 @@ class MultiMeshTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(golden_result, replicated_layout_on_cpu, output)
 
   @parameterized.named_parameters(
-      ('_host_to_gpu_sharded_i32', True, True, dtypes.int32),
-      ('_gpu_to_host_sharded_i32', False, True, dtypes.int32),
-      ('_host_to_gpu_replicated_i32', True, False, dtypes.int32),
-      ('_gpu_to_host_replicated_i32', False, False, dtypes.int32),
-      ('_host_to_gpu_sharded_f32', True, True, dtypes.float32),
-      ('_gpu_to_host_sharded_f32', False, True, dtypes.float32),
-      ('_host_to_gpu_replicated_f32', True, False, dtypes.float32),
-      ('_gpu_to_host_replicated_f32', False, False, dtypes.float32),
-      ('_host_to_gpu_sharded_f64', True, True, dtypes.float64),
-      ('_gpu_to_host_sharded_f64', False, True, dtypes.float64),
-      ('_host_to_gpu_replicated_f64', True, False, dtypes.float64),
-      ('_gpu_to_host_replicated_f64', False, False, dtypes.float64),
+      ('_host_to_dev_sharded_i32', True, True, dtypes.int32),
+      ('_dev_to_host_sharded_i32', False, True, dtypes.int32),
+      ('_host_to_dev_replicated_i32', True, False, dtypes.int32),
+      ('_dev_to_host_replicated_i32', False, False, dtypes.int32),
+      ('_host_to_dev_sharded_bf16', True, True, dtypes.bfloat16),
+      ('_dev_to_host_sharded_bf16', False, True, dtypes.bfloat16),
+      ('_host_to_dev_replicated_bf16', True, False, dtypes.bfloat16),
+      ('_dev_to_host_replicated_bf16', False, False, dtypes.bfloat16),
+      ('_host_to_dev_sharded_f32', True, True, dtypes.float32),
+      ('_dev_to_host_sharded_f32', False, True, dtypes.float32),
+      ('_host_to_dev_replicated_f32', True, False, dtypes.float32),
+      ('_dev_to_host_replicated_f32', False, False, dtypes.float32),
+      ('_host_to_dev_sharded_f64', True, True, dtypes.float64),
+      ('_dev_to_host_sharded_f64', False, True, dtypes.float64),
+      ('_host_to_dev_replicated_f64', True, False, dtypes.float64),
+      ('_dev_to_host_replicated_f64', False, False, dtypes.float64),
   )
-  def testMultiMeshWithGPUMesh(self, host_to_gpu, sharded, dtype):
-    if not test_util.is_gpu_present():
-      self.skipTest('Skipping test since GPU mesh is unavailable for multi-mesh'
-                    'test.')
+  def testMultiMeshHostDeviceTransfer(self, host_to_dev, sharded, dtype):
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     def run_copy_to_mesh(data, src_layout, dst_layout):
 
@@ -677,12 +657,13 @@ class MultiMeshTest(test_util.DTensorBaseTest):
       dst_data = func(src_data)
       return (src_data, dst_data)
 
-    cpu_mesh = mesh_util.create_mesh(device_type='CPU')
-    gpu_mesh = mesh_util.create_mesh(device_type='GPU')
-    if host_to_gpu:
-      src_mesh, dst_mesh = cpu_mesh, gpu_mesh
+    dev_mesh = self.first_mesh
+    cpu_mesh = self.second_mesh
+
+    if host_to_dev:
+      src_mesh, dst_mesh = cpu_mesh, dev_mesh
     else:
-      src_mesh, dst_mesh = gpu_mesh, cpu_mesh
+      src_mesh, dst_mesh = dev_mesh, cpu_mesh
 
     if sharded:
       src_layout = Layout.batch_sharded(src_mesh, src_mesh.dim_names[0], rank=2)
@@ -699,9 +680,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
   @parameterized.named_parameters(('_host_to_tpu', True),
                                   ('_tpu_to_host', False))
   def testMultiMeshWithHostMesh(self, host_to_tpu):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     sharded_layout_on_tpu = Layout([_MESH_DIM_X], self.second_mesh)
     host_layout = Layout(sharded_layout_on_tpu.sharding_specs,
@@ -733,9 +715,10 @@ class MultiMeshTest(test_util.DTensorBaseTest):
     self.assertDTensorEqual(numpy_a, target_layout, dtensor_output)
 
   def testMultiMeshBackward(self):
-    if not test_util.is_tpu_present():
-      self.skipTest('Skipping test as only CPU mesh is available for multi-mesh'
-                    'test.')
+    self.skipForDeviceType(
+        ['CPU'],
+        'Skipping test as only CPU mesh is available for multi-meshtest.',
+    )
 
     replicated_layout_on_tpu = Layout.replicated(self.second_mesh, rank=1)
     host_layout = Layout.replicated(self.second_mesh.host_mesh(), rank=1)

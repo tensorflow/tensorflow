@@ -20,7 +20,6 @@ py_strict_library(
     srcs_version = "PY3",
     deps = [
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/framework:config",
@@ -29,6 +28,7 @@ py_strict_library(
         "//tensorflow/python/tpu:tpu_strategy_util",
         "//tensorflow/python/tpu:tpu_system_metadata",
         "//tensorflow/python/tpu/client",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
     ] + tf_additional_rpc_deps(),
 )
@@ -43,15 +43,15 @@ tf_py_strict_test(
     deps = [
         ":tpu_cluster_resolver_py",
         "//tensorflow/core/protobuf/tpu:topology_proto_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:training_server_lib",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:errors",
+        "//tensorflow/python/framework:test_lib",
+        "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/tpu/client",
+        "//tensorflow/python/training:server_lib",
         "//tensorflow/python/util:compat",
     ],
 )

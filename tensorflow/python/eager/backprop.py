@@ -1022,11 +1022,12 @@ class GradientTape:
                       " of Tensors, Variables or CompositeTensors to be "
                       "differentiated, but received None.")
 
-    flat_targets = []
-    for t in nest.flatten(target):
-      flat_targets.append(_handle_or_self(t))
     flat_targets = composite_tensor_gradient.get_flat_tensors_for_gradients(
-        flat_targets)
+        nest.flatten(target))
+    # TODO(b/246997907): Remove this once
+    # ResourceVariableGradient.get_gradient_components returns the handle.
+    flat_targets = nest.map_structure(_handle_or_self, flat_targets)
+
     for t in flat_targets:
       if not backprop_util.IsTrainable(t):
         logging.vlog(

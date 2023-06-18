@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/escaping.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -3579,7 +3580,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                   edge->src_output());
             }
           }
-          if (arg_shardings[orig_arg_num].type() == xla::OpSharding::OTHER) {
+          if (IsSplitSharding(arg_shardings[orig_arg_num])) {
             // Don't automatically add a split node when input node is
             // kTPUPartitionedInput
             if (_IsTPUPartitionedInput(edge->src())) {
@@ -3632,8 +3633,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                              split_node_and_index.index, node, i);
             }
           } else if (_IsTPUPartitionedInput(edge->src()) &&
-                     arg_shardings[orig_arg_num].type() ==
-                         xla::OpSharding::REPLICATED) {
+                     IsReplicatedSharding(arg_shardings[orig_arg_num])) {
             graph->AddEdge(replicate_input_fan_in_nodes[input_num][core].node,
                            replicate_input_fan_in_nodes[input_num][core].port,
                            node, i);
@@ -3699,7 +3699,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                     mpmd, num_cores_per_replica, replica, arg_shapes,
                     &per_host_var_copies, graph));
 
-            if (arg_shardings[orig_arg_num].type() == xla::OpSharding::OTHER) {
+            if (IsSplitSharding(arg_shardings[orig_arg_num])) {
               ShardedInputInfo sharded_input_info;
 
               if (EnableXlaParamBroadcast(enable_xla_param_broadcast_, mpmd,
@@ -3757,7 +3757,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
         int output_num =
             replica * num_retvals_per_replica + core_retval_nums[core][i];
         const auto& sharding = retval_shardings[core_retval_nums[core][i]];
-        if (sharding.type() == xla::OpSharding::OTHER) {
+        if (IsSplitSharding(sharding)) {
           int retval_index = core_retval_nums[core][i];
           retval_index_to_output_index_mapping[retval_index][core] = i;
           bool is_last_core =
@@ -3841,7 +3841,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
 
         // If this is a replicated output, outputs on all cores will be the
         // same, and we only take the output from core 0.
-        if (sharding.type() == xla::OpSharding::REPLICATED && core != 0) {
+        if (IsReplicatedSharding(sharding) && core != 0) {
           continue;
         }
 
@@ -3871,7 +3871,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           const auto& sharding = arg_shardings[orig_arg_num];
           // If this is a tiling sharded variable, concat variable updates from
           // all cores.
-          if (sharding.type() == xla::OpSharding::OTHER) {
+          if (IsSplitSharding(sharding)) {
             orig_arg_num_to_output_index_mapping[orig_arg_num][core] = i;
 
             // Do this in the iteration of last core in tile assignment, so all
@@ -3935,7 +3935,7 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
           // If this is a replicated variable, outputs on all cores will be the
           // same, and we only take the output from core 0 for the variable
           // update.
-          if (sharding.type() == xla::OpSharding::REPLICATED && core != 0) {
+          if (IsReplicatedSharding(sharding) && core != 0) {
             continue;
           }
           VariableWrite& write = variable_writes->at(core_variable_writes[i]);

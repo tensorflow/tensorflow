@@ -5861,15 +5861,36 @@ std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
                       prev_allocation_.ToString());
 }
 
-std::string MemorySpaceAssignment::SlicedCopyAllocation::SliceParam::ToString()
-    const {
+std::string MemorySpaceAssignment::SliceParam::ToString() const {
   return absl::StrCat("[", start_inclusive, ",", end_exclusive, ")");
 }
 
-bool MemorySpaceAssignment::SlicedCopyAllocation::SliceParam::operator==(
+bool MemorySpaceAssignment::SliceParam::operator==(
     const SliceParam& other) const {
   return start_inclusive == other.start_inclusive &&
          end_exclusive == other.end_exclusive;
+}
+
+std::string MemorySpaceAssignment::SliceProposal::ToString() const {
+  return absl::StrCat(
+      "{ slice_shape: ", slice_shape.ToString(true), ", slice_params: { ",
+      absl::StrJoin(slice_params, ", ",
+                    [](std::string* out, const SliceParam& param) {
+                      absl::StrAppend(out, param.ToString());
+                    }),
+      " }, slice_size: ", slice_size, " }");
+}
+
+std::tuple<const Shape&, const std::vector<MemorySpaceAssignment::SliceParam>&,
+           int64_t>
+MemorySpaceAssignment::SliceProposal::ToTuple() const {
+  return std::make_tuple(std::ref(slice_shape), std::ref(slice_params),
+                         slice_size);
+}
+
+bool MemorySpaceAssignment::SliceProposal::operator==(
+    const SliceProposal& other) const {
+  return ToTuple() == other.ToTuple();
 }
 
 std::string
@@ -5884,13 +5905,13 @@ MemorySpaceAssignment::SlicedCopyAllocation::SliceDetails::ToString() const {
       " } }");
 }
 
-std::tuple<
-    const MemorySpaceAssignment::Chunk&, int64_t, int64_t,
-    const std::vector<MemorySpaceAssignment::SlicedCopyAllocation::SliceParam>,
-    const HloInstruction*, const HloInstruction*>
+std::tuple<const MemorySpaceAssignment::Chunk&, int64_t, int64_t,
+           const std::vector<MemorySpaceAssignment::SliceParam>&,
+           const HloInstruction*, const HloInstruction*>
 MemorySpaceAssignment::SlicedCopyAllocation::SliceDetails::ToTuple() const {
-  return std::make_tuple(chunk, copy_start_after_time, copy_done_before_time,
-                         slice_params, copy_start, copy_done);
+  return std::make_tuple(std::ref(chunk), copy_start_after_time,
+                         copy_done_before_time, std::ref(slice_params),
+                         copy_start, copy_done);
 }
 
 bool MemorySpaceAssignment::SlicedCopyAllocation::SliceDetails::operator==(

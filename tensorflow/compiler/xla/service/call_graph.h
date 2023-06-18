@@ -18,6 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CALL_GRAPH_H_
 
+#include <memory>
 #include <ostream>
 
 #include "absl/container/flat_hash_map.h"
@@ -149,7 +150,9 @@ class CallGraphNode {
   // If instruction calls any computations adds a call site for this instruction
   // to the call graph node. If the instruction calls no computations then no
   // call site is added.
-  void AddCallSiteForInstruction(HloInstruction* instruction);
+  void AddCallSiteForInstruction(
+      HloInstruction* instruction,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Computation represented by this call graph node.
   HloComputation* computation_;
@@ -187,8 +190,12 @@ class CallGraph {
  public:
   using VisitorFunction = absl::FunctionRef<Status(const CallGraphNode&)>;
 
-  // Builds and returns a call graph for the given HLO module.
-  static std::unique_ptr<CallGraph> Build(const HloModule* module);
+  // Builds and returns a call graph for the given HLO module. If a non-empty
+  // execution_threads is provided, only computations that are in
+  // execution_threads will be part of the returned call graph.
+  static std::unique_ptr<CallGraph> Build(
+      const HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Returns the node associated with the given computation.
   const CallGraphNode& GetNode(const HloComputation* computation) const;
@@ -259,7 +266,9 @@ class CallGraph {
   std::string ToString() const;
 
  private:
-  CallGraph(const HloModule* module);
+  explicit CallGraph(
+      const HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads = {});
 
   // Not copyable.
   CallGraph(const CallGraph&) = delete;
@@ -295,6 +304,9 @@ class CallGraph {
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
   absl::flat_hash_map<const HloComputation*, int64_t> node_indices_;
+
+  // The execution threads that the call graph is built for.
+  absl::flat_hash_set<absl::string_view> execution_threads_;
 };
 
 }  // namespace xla

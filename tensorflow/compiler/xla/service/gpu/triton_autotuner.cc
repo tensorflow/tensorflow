@@ -269,18 +269,21 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
     if (!stream_exec->SynchronizeAllActivity()) {
       return InternalError("Failed to synchronize GPU for autotuning.");
     }
+    se::DeviceMemoryAllocator* allocator = device_config.allocator;
+    if (allocator == nullptr) {
+      allocator = stream_exec->GetAllocator();
+    }
 
     HloInstruction* root = fusion.root_instruction();
-    TF_ASSIGN_OR_RETURN(
-        se::Stream* const stream,
-        device_config.allocator->GetStream(stream_exec->device_ordinal()));
+    TF_ASSIGN_OR_RETURN(se::Stream* const stream,
+                        allocator->GetStream(stream_exec->device_ordinal()));
 
     const DebugOptions debug_opts = fusion.parent()->config().debug_options();
     const AutotuneConfig autotune_cfg = GetConfig(debug_opts);
 
     std::vector<AutotuneResult> results;
     se::RedzoneAllocator rz_allocator(
-        stream, device_config.allocator, PtxOptsFromDebugOptions(debug_opts),
+        stream, allocator, PtxOptsFromDebugOptions(debug_opts),
         /*memory_limit=*/std::numeric_limits<int64_t>::max(),
         /*redzone_size=*/autotune_cfg.should_check_correctness()
             ? se::RedzoneAllocator::kDefaultRedzoneSize
@@ -713,6 +716,9 @@ std::unique_ptr<HloModule> ExtractInstructionIntoNewModule(
 StatusOr<bool> TritonAutotuner::Run(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  if (module->config().debug_options().xla_gpu_autotune_level() == 0) {
+    return false;
+  }
   return TritonAutotunerVisitor{config_, thread_pool_}.RunOnModule(
       module, execution_threads);
 }

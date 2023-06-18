@@ -653,8 +653,8 @@ std::vector<HloInstruction*> GetFusionRoots(HloComputation* computation) {
   return out;
 }
 
-std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
-                                          Vector3& permutation) {
+std::optional<TransposeDescription> FindTiledTranspose(
+    const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kCopy) {
     return std::nullopt;
   }
@@ -666,8 +666,7 @@ std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      permutation = Vector3{0, 2, 1};
-      return tr;
+      return TransposeDescription{*tr, /*permutation=*/Vector3{0, 2, 1}};
     }
   }
   if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedTransposeShape(
@@ -677,16 +676,15 @@ std::optional<Vector3> FindTiledTranspose(const HloInstruction& instr,
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      permutation = Vector3{2, 1, 0};
-      return tr;
+      return TransposeDescription{*tr, /*permutation=*/Vector3{2, 1, 0}};
     }
   }
   return std::nullopt;
 }
 
 // Find 021 or 210 transpose in logical + physical transposition.
-std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
-                                                 Vector3& permutation) {
+std::optional<TransposeDescription> FindTiledLogicalTranspose(
+    const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kTranspose) {
     return std::nullopt;
   }
@@ -700,8 +698,7 @@ std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
         (tr->at(1) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(1) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      permutation = Vector3{0, 2, 1};
-      return tr;
+      return TransposeDescription{*tr, /*permutation=*/Vector3{0, 2, 1}};
     }
   }
   if (std::optional<Vector3> tr = ShapeUtil::GetNormalizedLogicalTransposeShape(
@@ -712,14 +709,13 @@ std::optional<Vector3> FindTiledLogicalTranspose(const HloInstruction& instr,
         (tr->at(0) >= kMinDimensionToTransposeTiled2 &&
          tr->at(2) >= kMinDimensionToTransposeTiled2 &&
          tr->at(0) * tr->at(2) >= kMinTotalDimensionsToTransposeTiled)) {
-      permutation = Vector3{2, 1, 0};
-      return tr;
+      return TransposeDescription{*tr, /*permutation=*/Vector3{2, 1, 0}};
     }
   }
   return std::nullopt;
 }
 
-std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
+std::optional<TransposeDescription> FindAnyTiledTranspose(
     const HloInstruction& instr) {
   const HloInstruction& hero = FindNonTrivialHero(instr);
   // TODO(b/284431534): Figure out how to make the shared memory transpose
@@ -729,13 +725,11 @@ std::optional<std::pair<Vector3, Vector3>> FindAnyTiledTranspose(
     return std::nullopt;
   }
 
-  Vector3 permutation;
-  if (std::optional<Vector3> d1 = FindTiledTranspose(hero, permutation)) {
-    return std::make_pair(d1.value(), permutation);
+  if (auto d1 = FindTiledTranspose(hero)) {
+    return d1;
   }
-  if (std::optional<Vector3> d2 =
-          FindTiledLogicalTranspose(hero, permutation)) {
-    return std::make_pair(d2.value(), permutation);
+  if (auto d2 = FindTiledLogicalTranspose(hero)) {
+    return d2;
   }
   return std::nullopt;
 }
@@ -787,8 +781,7 @@ const HloInstruction& FindNonTrivialHero(const HloInstruction& instr) {
   while (!q.empty()) {
     const HloInstruction* hlo = q.front();
     q.pop();
-    Vector3 permutation;
-    if (FindTiledLogicalTranspose(*hlo, permutation)) {
+    if (FindTiledLogicalTranspose(*hlo)) {
       // If we do not find a unique transpose op, use the original non-trivial
       // hero.
       if (non_trivial_hero != nullptr) {

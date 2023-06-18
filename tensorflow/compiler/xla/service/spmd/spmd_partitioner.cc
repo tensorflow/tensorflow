@@ -703,7 +703,8 @@ std::optional<PartitionedHlo::WindowedInputShardReturnValue>
 PartitionedHlo::ReshardAsWindowedInput(const Window& window,
                                        const HloSharding& target,
                                        HloInstruction* pad_value,
-                                       bool mask_invalid_region) {
+                                       bool mask_invalid_region,
+                                       bool force_mask_in_compact) {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].window_reshard_cache;
   for (auto& entry : cache) {
     if (std::get<0>(entry) == target &&
@@ -1177,7 +1178,8 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
         padded_shape.dimensions(dim), shard_shape.dimensions(dim), dim,
         *halo_exchange_target, offsets_on_padded_shape[dim], pad_value,
         partition_ordinals[dim], state_.collective_ops_creator,
-        state_.next_channel_id, state_.b, mask_invalid_region);
+        state_.next_channel_id, state_.b, mask_invalid_region,
+        force_mask_in_compact);
     if (!resharded) {
       VLOG(1) << "ReshardAsWindowedInput failed without replicate first: halo "
                  "is beyond the neighbor.";

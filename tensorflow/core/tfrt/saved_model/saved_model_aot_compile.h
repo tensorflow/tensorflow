@@ -23,9 +23,8 @@ limitations under the License.
 
 namespace tensorflow::tfrt_stub {
 struct AotOptions {
-  // TODO(b/282777195) change default graph_execution_options to not be nullptr
-  GraphExecutionOptions graph_execution_options =
-      GraphExecutionOptions{nullptr};
+  GraphExecutionOptions graph_execution_options;
+  AotOptions();
 };
 
 // AOT Compiles saved_model in input_model_dir, writing output

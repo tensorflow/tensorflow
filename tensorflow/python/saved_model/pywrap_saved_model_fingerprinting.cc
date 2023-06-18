@@ -19,8 +19,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "pybind11/pybind11.h"  // from @pybind11
 #include "pybind11/stl.h"  // from @pybind11
+#include "pybind11_abseil/absl_casters.h"  // from @pybind11_abseil
+#include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/cc/saved_model/fingerprinting.h"
+#include "tensorflow/cc/saved_model/reader.h"
+#include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/protobuf/saved_model.pb.h"
+#include "tensorflow/python/lib/core/pybind11_status.h"
 
 namespace tensorflow {
 namespace saved_model {
@@ -76,13 +82,15 @@ void DefineFingerprintingModule(py::module main_module) {
 
   m.def(
       "CreateFingerprintDef",
-      [](std::string serialized_saved_model, std::string export_dir) {
+      [](std::string export_dir) -> StatusOr<py::bytes> {
         // Deserialize the SavedModel.
         SavedModel saved_model_pb;
-        saved_model_pb.ParseFromString(serialized_saved_model);
+        auto env = Env::Default();
+        TF_RETURN_IF_ERROR(
+            tensorflow::ReadSavedModel(export_dir, &saved_model_pb));
 
         StatusOr<FingerprintDef> fingerprint =
-            fingerprinting::CreateFingerprintDef(saved_model_pb, export_dir);
+            fingerprinting::CreateFingerprintDef(&saved_model_pb, export_dir);
         if (fingerprint.ok()) {
           return py::bytes(fingerprint.value().SerializeAsString());
         }
@@ -91,7 +99,7 @@ void DefineFingerprintingModule(py::module main_module) {
                         export_dir)
                 .c_str());
       },
-      py::arg("saved_model"), py::arg("export_dir"),
+      py::arg("export_dir"),
       py::doc(
           "Returns the serialized FingerprintDef of a serialized SavedModel."));
 

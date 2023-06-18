@@ -27,7 +27,6 @@ const bool kUnused =
        gpu_config.preallocate = true;
        gpu_config.memory_fraction = 0.08;
        return GetStreamExecutorGpuClient(/*asynchronous=*/true, gpu_config,
-                                         /*distributed_client=*/nullptr,
                                          /*node_id=*/0);
      }),
      true);

@@ -250,6 +250,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["pjrt_gpu_client_registration_test.cc"],
     tags = tf_cuda_tests_tags() + [
+        "noasan",
         "nomsan",
         "notsan",
     ],

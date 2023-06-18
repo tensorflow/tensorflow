@@ -187,12 +187,18 @@ Status ExecuteThunks(const std::string& module_name, ModuleIdentifier module_id,
                      const ThunkSequence& thunk_sequence,
                      const ServiceExecutableRunOptions* run_options,
                      const BufferAllocations& buffer_allocations,
-                     bool block_host_until_done) {
+                     bool block_host_until_done,
+                     bool use_highest_priority_for_async_stream) {
   se::Stream* main_stream = run_options->stream();
   se::StreamExecutor* executor = main_stream->parent();
+  stream_executor::StreamPriority stream_priority =
+      stream_executor::StreamPriority::Default;
+  if (use_highest_priority_for_async_stream) {
+    stream_priority = stream_executor::StreamPriority::Highest;
+  }
 
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(executor->device_ordinal());
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
 
@@ -551,7 +557,6 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   const bool block_host_until_done =
       !memory_allocator->AllowsAsynchronousDeallocation();
 
-
   // Lock the GPU with a shared lock so that we don't interfere with autotuning
   // that may be running during JIT compilation while allowing multiple XLA
   // computations to use the same GPU simultaneously.
@@ -725,8 +730,14 @@ Status GpuExecutable::ExecuteThunksOrXlaRuntime(
       TF_RETURN_IF_ERROR(thunk->Initialize(*this, executor));
     }
 
-    return ExecuteThunks(module_name_, unique_id, *thunks_, run_options,
-                         buffer_allocations, block_host_until_done);
+    return ExecuteThunks(
+        module_name_, unique_id, *thunks_, run_options, buffer_allocations,
+        block_host_until_done,
+        /*use_highest_priority_for_async_stream*/
+        has_module() ? module_config()
+                           .debug_options()
+                           .xla_gpu_enable_highest_priority_async_stream()
+                     : false);
   }
 
   if (gpu_runtime_executable_) {

@@ -22,7 +22,6 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/mlir/runtime/transforms/compilation_pipeline_gpu.h"
 #include "tensorflow/compiler/xla/runtime/executable.h"
 #include "tensorflow/compiler/xla/runtime/ffi.h"
@@ -57,7 +56,6 @@ using ::xla::runtime::CustomCallAttrEncodingSet;
 using ::xla::runtime::DirectCustomCallRegistry;
 using ::xla::runtime::Executable;
 using ::xla::runtime::JitExecutable;
-using ::xla::runtime::success;
 using ::xla::runtime::Tagged;
 using ::xla::runtime::TypeIDNameRegistry;
 
@@ -344,12 +342,16 @@ Status GpuRuntimeExecutable::Execute(
 
   // Get the async communications stream for async collectives.
   se::StreamExecutor* executor = run_options->stream()->parent();
-  int device_ordinal = executor->device_ordinal();
+  se::StreamPriority stream_priority = se::StreamPriority::Default;
+  if (debug_options_.xla_gpu_enable_highest_priority_async_stream()) {
+    stream_priority = se::StreamPriority::Highest;
+  }
+
   StatusOr<StreamPool::Ptr> async_comms_stream =
-      run_options->BorrowStream(device_ordinal);
+      run_options->BorrowStream(executor->device_ordinal(), stream_priority);
 
   // Async Collectives support and Send/Recv events instantiated for each Gpu
-  // executable run, so that concurrent executions can run independenty using a
+  // executable run, so that concurrent executions can run independently using a
   // separate set of events for communication.
   AsyncCollectivesSupport async_collectives(
       async_comms_stream.ok() ? async_comms_stream->get() : nullptr);

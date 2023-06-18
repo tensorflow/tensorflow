@@ -86,7 +86,7 @@ void ProcessOneTfActivity(const TfActivity& activity,
   switch (activity.activity_type) {
     case kTfOpBegin: {
       tf_op_stack->Push(tf_op_id,
-                        absl::make_unique<TfOpInfo>(activity.timestamp_ps));
+                        std::make_unique<TfOpInfo>(activity.timestamp_ps));
       break;
     }
     case kTfOpEnd: {
@@ -144,7 +144,7 @@ void CollectTfActivities(const XLineVisitor& line,
     if (tf_op != nullptr) {
       ++tf_op_id;
       bool is_eager = false;
-      if (absl::optional<XStatVisitor> stat =
+      if (std::optional<XStatVisitor> stat =
               event.GetStat(StatType::kIsEager)) {
         is_eager = stat->IntValue();
       }

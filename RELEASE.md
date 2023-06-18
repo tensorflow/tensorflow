@@ -36,6 +36,11 @@
     allowing automatic tuning of steps per execution during `Model.fit`,
     `Model.predict`, and `Model.evaluate` for a significant performance boost. 
 
+*   Enable JIT-compiled i64-indexed kernels on GPU for large tensors with more
+    than 2**32 elements.
+    *   Unary GPU kernels: Abs, Atanh, Acos, Acosh, Asin, Asinh, Atan, Cos,
+        Cosh, Sin, Sinh, Tan, Tanh.
+
 # Bug Fixes and Other Changes
 * `tf.lite`
     * Strided_Slice now supports `UINT32`.

@@ -19,7 +19,7 @@ import time
 from tensorflow.python.eager import monitoring
 from tensorflow.python.util import tf_contextlib
 
-enable_metrics = False
+enable_metrics = True
 _METRICS_MAPPING = {}
 
 

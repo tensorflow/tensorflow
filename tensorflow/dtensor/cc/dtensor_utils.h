@@ -66,6 +66,8 @@ bool EnableReplicatedSpmdAsDefault(const std::string& op_name);
 // Returns whether to use all-to-all collective for relayout when possible.
 bool EnableAllToAllForRelayout();
 
+// Returns the maximum number of AllReduce ops to merge into a group.
+int AllReduceCombineOptimizationGroupSize();
 }  // namespace dtensor
 }  // namespace tensorflow
 

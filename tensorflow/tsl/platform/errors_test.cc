@@ -103,6 +103,21 @@ TEST(Status, StackTracePropagation) {
               "third_party/tensorflow/tsl/platform/errors_test.cc");
   }
 }
+
+TEST(Status, SourceLocationsPreservedByAppend) {
+  Status s = PropagateError2();
+  ASSERT_EQ(s.GetSourceLocations().size(), 3);
+  errors::AppendToMessage(&s, "A new message.");
+  ASSERT_EQ(s.GetSourceLocations().size(), 3);
+}
+
+TEST(Status, SourceLocationsPreservedByUpdate) {
+  Status s = PropagateError2();
+  ASSERT_EQ(s.GetSourceLocations().size(), 3);
+  Status s2 = errors::CreateWithUpdatedMessage(s, "New message.");
+  ASSERT_EQ(s2.GetSourceLocations().size(), 3);
+}
+
 #endif
 
 }  // namespace tsl

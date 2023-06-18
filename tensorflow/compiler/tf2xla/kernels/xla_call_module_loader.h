@@ -35,7 +35,9 @@ class XlaCallModuleLoader {
  public:
   static tsl::StatusOr<std::unique_ptr<XlaCallModuleLoader>> Create(
       mlir::MLIRContext* context, int version, std::string module_str,
-      std::vector<std::string> dim_args_spec, int platform_index);
+      std::vector<std::string> dim_args_spec,
+      std::vector<std::string> disabled_checks,
+      std::vector<std::string> platforms, std::string loading_platform);
 
   int nr_outputs() { return main_.getNumResults(); }
   mlir::TypeRange output_types() { return main_.getResultTypes(); }
@@ -80,7 +82,9 @@ class XlaCallModuleLoader {
   tsl::Status LoadAndPreprocessModule(mlir::MLIRContext* context, int version,
                                       std::string module_str,
                                       std::vector<std::string> dim_args_spec,
-                                      int platform_index);
+                                      std::vector<std::string> disabled_checks,
+                                      std::vector<std::string> platforms,
+                                      std::string loading_platform);
 
   // Adds a wrapper for the "main" function to compute the platform index and
   // the dimension arguments.
@@ -89,6 +93,8 @@ class XlaCallModuleLoader {
   mlir::MLIRContext* context_;
   int version_;
   mlir::OwningOpRef<mlir::ModuleOp> module_;
+  // Index in platforms of the current platform, or -1 if module does not take
+  // a platform index arg.
   int platform_index_;
   std::vector<std::string> dim_args_spec_;
   mlir::func::FuncOp main_;
