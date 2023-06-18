@@ -150,7 +150,7 @@ class ConvertUniformQuantizeOp
         nullptr);
     auto res_final_tensor_type_or =
         GetSameShapeTensorType(op, res_int32.getType().cast<TensorType>(),
-                               rewriter.getI8Type(), rewriter);
+                               quantized_type.getStorageType(), rewriter);
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
                                                  res_int32);
     return success();
@@ -244,9 +244,9 @@ class ConvertUniformQuantizeOp
         op->getLoc(), *res_int32_tensor_type_or, quantization_min, res_int32,
         quantization_max);
 
-    auto res_final_tensor_type_or =
-        GetSameShapeTensorType(op, res_int32.getType().cast<TensorType>(),
-                               rewriter.getI8Type(), rewriter);
+    auto res_final_tensor_type_or = GetSameShapeTensorType(
+        op, res_int32.getType().cast<TensorType>(),
+        output_quantized_type.getStorageType(), rewriter);
     rewriter.replaceOpWithNewOp<mhlo::ConvertOp>(op, *res_final_tensor_type_or,
                                                  res_int32);
     return success();
