@@ -26,8 +26,11 @@ limitations under the License.
 
 namespace tensorflow {
 #ifndef ENABLE_ONEDNN_V3
+#define AVG_POOLING_DCHECK(params) \
+  params.alg_kind == dnnl::algorithm::pooling_avg ||
 #define GET_MEMORY_DESC(md) md.data
 #else
+#define AVG_POOLING_DCHECK(params)
 #define GET_MEMORY_DESC(md) md
 #endif  // !ENABLE_ONEDNN_V3
 using dnnl::prop_kind;
@@ -35,9 +38,7 @@ using dnnl::prop_kind;
 template <typename T>
 void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
   DCHECK(fwdParams.alg_kind == dnnl::algorithm::pooling_max ||
-#ifndef ENABLE_ONEDNN_V3
-         fwdParams.alg_kind == dnnl::algorithm::pooling_avg ||
-#endif  // !ENABLE_ONEDNN_V3
+         AVG_POOLING_DCHECK(fwdParams)
          fwdParams.alg_kind == dnnl::algorithm::pooling_avg_include_padding ||
          fwdParams.alg_kind == dnnl::algorithm::pooling_avg_exclude_padding)
       << "Pooling algorithm kind is not supported";
@@ -148,9 +149,7 @@ template class MklPoolingFwdPrimitive<qint8>;
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   DCHECK(bwdParams.alg_kind == dnnl::algorithm::pooling_max ||
-#ifndef ENABLE_ONEDNN_V3
-         bwdParams.alg_kind == dnnl::algorithm::pooling_avg ||
-#endif  // !ENABLE_ONEDNN_V3
+         AVG_POOLING_DCHECK(bwdParams)
          bwdParams.alg_kind == dnnl::algorithm::pooling_avg_include_padding ||
          bwdParams.alg_kind == dnnl::algorithm::pooling_avg_exclude_padding)
       << "Pooling algorithm kind is not supported";
@@ -433,6 +432,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
   }
 }
 
+#undef AVG_POOLING_DCHECK
 #undef GET_MEMORY_DESC
 
 }  // namespace tensorflow
