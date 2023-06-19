@@ -42,11 +42,15 @@ cc_library(
         "quantize.h",
     ],
     compatible_with = [],
-    defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) +
-              if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) +
-              if_llvm_powerpc_available(["TF_LLVM_POWERPC_AVAILABLE=1"]) +
-              if_llvm_system_z_available(["TF_LLVM_S390X_AVAILABLE=1"]) +
-              if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
+    defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) + if_llvm_aarch64_available([
+        "TF_LLVM_AARCH64_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "TF_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
+        "TF_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "TF_LLVM_X86_AVAILABLE=1",
+    ]),
     visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/python:__pkg__",
