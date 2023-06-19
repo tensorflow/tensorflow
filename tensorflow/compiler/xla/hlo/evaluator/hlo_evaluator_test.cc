@@ -4536,10 +4536,10 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_HandlerError) {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
-  evaluator.set_custom_call_handler(
-      [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
-        return InternalError("Test error");
-      });
+  evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
+                                       absl::Span<const Literal*> operands) {
+    return InternalError("Test error");
+  });
   EXPECT_EQ(evaluator.Evaluate(*m_, {&args[0]}).status().code(),
             ::tsl::error::INTERNAL);
 }
@@ -4561,19 +4561,19 @@ TEST_F(HloEvaluatorTest, EvaluateCustomCall_ManyInputs) {
   TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
   auto args = MakeFakeArguments(m_.get()).value();
   HloEvaluator evaluator;
-  evaluator.set_custom_call_handler(
-      [](HloInstruction* custom_call, absl::Span<const Literal*> operands) {
-        EXPECT_EQ(HloOpcode::kCustomCall, custom_call->opcode());
-        EXPECT_EQ("_my_custom_call", custom_call->custom_call_target());
-        EXPECT_EQ(2, custom_call->operand_count());
-        EXPECT_EQ(2, operands.size());
-        auto output = Literal::CreateFromShape(custom_call->shape());
-        auto operand0_data = operands[0]->data<uint32_t>();
-        auto operand1_data = operands[1]->data<uint32_t>();
-        auto output_data = output.data<uint32_t>();
-        output_data[0] = operand0_data[0] + operand1_data[0];
-        return output;
-      });
+  evaluator.set_custom_call_handler([](const HloInstruction* custom_call,
+                                       absl::Span<const Literal*> operands) {
+    EXPECT_EQ(HloOpcode::kCustomCall, custom_call->opcode());
+    EXPECT_EQ("_my_custom_call", custom_call->custom_call_target());
+    EXPECT_EQ(2, custom_call->operand_count());
+    EXPECT_EQ(2, operands.size());
+    auto output = Literal::CreateFromShape(custom_call->shape());
+    auto operand0_data = operands[0]->data<uint32_t>();
+    auto operand1_data = operands[1]->data<uint32_t>();
+    auto output_data = output.data<uint32_t>();
+    output_data[0] = operand0_data[0] + operand1_data[0];
+    return output;
+  });
   TF_ASSERT_OK_AND_ASSIGN(
       Literal actual_literal,
       evaluator.Evaluate(*m_->entry_computation(), {&args[0], &args[1]}));
