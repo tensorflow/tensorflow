@@ -1,46 +1,151 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/llvm/lib/CodeGen/MachineScheduler.cpp b/llvm/lib/CodeGen/MachineScheduler.cpp
---- a/llvm/lib/CodeGen/MachineScheduler.cpp
-+++ b/llvm/lib/CodeGen/MachineScheduler.cpp
-@@ -1010,13 +1010,13 @@
-                    SchedModel.getWriteProcResEnd(SC)));
+diff -ruN --strip-trailing-cr a/lldb/source/API/SBPlatform.cpp b/lldb/source/API/SBPlatform.cpp
+--- a/lldb/source/API/SBPlatform.cpp
++++ b/lldb/source/API/SBPlatform.cpp
+@@ -488,7 +488,7 @@
+ void SBPlatform::SetSDKRoot(const char *sysroot) {
+   LLDB_INSTRUMENT_VA(this, sysroot);
+   if (PlatformSP platform_sp = GetSP())
+-    platform_sp->SetSDKRootDirectory(sysroot);
++    platform_sp->SetSDKRootDirectory(llvm::StringRef(sysroot).str());
+ }
  
-     if (MISchedSortResourcesInTrace)
--      llvm::sort(ResourcesIt.begin(), ResourcesIt.end(),
--                 [](const MCWriteProcResEntry &LHS,
--                    const MCWriteProcResEntry &RHS) -> bool {
--                   return LHS.StartAtCycle < RHS.StartAtCycle ||
--                          (LHS.StartAtCycle == RHS.StartAtCycle &&
--                           LHS.Cycles < RHS.Cycles);
--                 });
-+      llvm::stable_sort(ResourcesIt,
-+                        [](const MCWriteProcResEntry &LHS,
-+                           const MCWriteProcResEntry &RHS) -> bool {
-+                          return LHS.StartAtCycle < RHS.StartAtCycle ||
-+                                 (LHS.StartAtCycle == RHS.StartAtCycle &&
-+                                  LHS.Cycles < RHS.Cycles);
-+                        });
-     for (const MCWriteProcResEntry &PI : ResourcesIt) {
-       C = FirstCycle;
-       const std::string ResName =
-@@ -1090,13 +1090,13 @@
-                    SchedModel.getWriteProcResEnd(SC)));
+ SBError SBPlatform::Get(SBFileSpec &src, SBFileSpec &dst) {
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/Linalg/Transforms/Vectorization.cpp b/mlir/lib/Dialect/Linalg/Transforms/Vectorization.cpp
+--- a/mlir/lib/Dialect/Linalg/Transforms/Vectorization.cpp
++++ b/mlir/lib/Dialect/Linalg/Transforms/Vectorization.cpp
+@@ -1199,38 +1199,43 @@
+   //   a. Get the first max ranked shape.
+   VectorType firstMaxRankedType;
+   for (Value operand : op->getOperands()) {
+-    auto vecType = dyn_cast<VectorType>(bvm.lookup(operand).getType());
++    auto vecOperand = bvm.lookup(operand);
++    assert(vecOperand && "Vector operand couldn't be found");
++
++    auto vecType = dyn_cast<VectorType>(vecOperand.getType());
+     if (vecType && (!firstMaxRankedType ||
+                     firstMaxRankedType.getRank() < vecType.getRank()))
+       firstMaxRankedType = vecType;
+   }
+   //   b. Broadcast each op if needed.
+-  SmallVector<Value> vectorizedOperands;
++  SmallVector<Value> vecOperands;
+   for (Value scalarOperand : op->getOperands()) {
+-    Value vectorizedOperand = bvm.lookup(scalarOperand);
+-    auto vecType =
+-        VectorType::get(firstMaxRankedType.getShape(),
+-                        getElementTypeOrSelf(vectorizedOperand.getType()),
+-                        firstMaxRankedType.getNumScalableDims());
+-    vectorizedOperands.push_back(
+-        !firstMaxRankedType
+-            ? vectorizedOperand
+-            : broadcastIfNeeded(rewriter, vectorizedOperand, vecType));
++    Value vecOperand = bvm.lookup(scalarOperand);
++    assert(vecOperand && "Vector operand couldn't be found");
++
++    if (firstMaxRankedType) {
++      auto vecType = VectorType::get(firstMaxRankedType.getShape(),
++                                     getElementTypeOrSelf(vecOperand.getType()),
++                                     firstMaxRankedType.getNumScalableDims());
++      vecOperands.push_back(broadcastIfNeeded(rewriter, vecOperand, vecType));
++    } else {
++      vecOperands.push_back(vecOperand);
++    }
+   }
+   //   c. for elementwise, the result is the vector with the firstMaxRankedShape
+   SmallVector<Type> resultTypes;
+   for (Type resultType : op->getResultTypes()) {
+     resultTypes.push_back(
+-        !firstMaxRankedType
+-            ? resultType
+-            : VectorType::get(firstMaxRankedType.getShape(), resultType,
+-                              firstMaxRankedType.getNumScalableDims()));
++        firstMaxRankedType
++            ? VectorType::get(firstMaxRankedType.getShape(), resultType,
++                              firstMaxRankedType.getNumScalableDims())
++            : resultType);
+   }
+   //   d. Build and return the new op.
+   return VectorizationResult{
+       VectorizationStatus::NewOp,
+-      rewriter.create(op->getLoc(), op->getName().getIdentifier(),
+-                      vectorizedOperands, resultTypes, op->getAttrs())};
++      rewriter.create(op->getLoc(), op->getName().getIdentifier(), vecOperands,
++                      resultTypes, op->getAttrs())};
+ }
  
-     if (MISchedSortResourcesInTrace)
--      llvm::sort(ResourcesIt.begin(), ResourcesIt.end(),
--                 [](const MCWriteProcResEntry &LHS,
--                    const MCWriteProcResEntry &RHS) -> bool {
--                   return LHS.StartAtCycle < RHS.StartAtCycle ||
--                          (LHS.StartAtCycle == RHS.StartAtCycle &&
--                           LHS.Cycles < RHS.Cycles);
--                 });
-+      llvm::stable_sort(ResourcesIt,
-+                        [](const MCWriteProcResEntry &LHS,
-+                           const MCWriteProcResEntry &RHS) -> bool {
-+                          return LHS.StartAtCycle < RHS.StartAtCycle ||
-+                                 (LHS.StartAtCycle == RHS.StartAtCycle &&
-+                                  LHS.Cycles < RHS.Cycles);
-+                        });
-     for (const MCWriteProcResEntry &PI : ResourcesIt) {
-       C = FirstCycle;
-       const std::string ResName =
+ /// Generic vectorization function that rewrites the body of a `linalgOp` into
+diff -ruN --strip-trailing-cr a/mlir/lib/Dialect/SparseTensor/Transforms/LoopEmitter.cpp b/mlir/lib/Dialect/SparseTensor/Transforms/LoopEmitter.cpp
+--- a/mlir/lib/Dialect/SparseTensor/Transforms/LoopEmitter.cpp
++++ b/mlir/lib/Dialect/SparseTensor/Transforms/LoopEmitter.cpp
+@@ -528,7 +528,7 @@
+         makeLoopCondKind(isSparse, isSlice, isAffine, isUnRedu));
+   }
+ 
+-  std::sort(spConds.begin(), spConds.end(), [](auto lhs, auto rhs) {
++  std::stable_sort(spConds.begin(), spConds.end(), [](auto lhs, auto rhs) {
+     // AffineUnRed > Affine > Slice > Trivial
+     return static_cast<uint8_t>(lhs.second) > static_cast<uint8_t>(rhs.second);
+   });
+@@ -849,6 +849,7 @@
+     // Must be a recognizable sparse level.
+     assert(isCompressedDLT(lvlTp) || isCompressedWithHiDLT(lvlTp) ||
+            isSingletonDLT(lvlTp));
++    (void)lvlTp;
+ 
+     unsigned prevSz = ivs.size();
+     const auto reassoc = getCollapseReassociation(tid, lvl);
+@@ -1054,12 +1055,14 @@
+     OpBuilder &builder, Location loc, ArrayRef<TensorLevel> tidLvls,
+     MutableArrayRef<Value> reduc, bool tryParallel, bool genDedup,
+     bool needsUniv) {
++#ifndef NDEBUG
+   // Sanity checks.
+   assert(!tidLvls.empty());
+   for (auto [t, l] : unpackTensorLevelRange(tidLvls)) {
+     assert(!coords[t][l] ||                 // We cannot re-enter the same level
+            !dependentLvlMap[t][l].empty()); // unless it is a slice-driver loop
+   }
++#endif
+   // TODO: support multiple return on parallel for?
+   tryParallel = tryParallel && reduc.size() <= 1;
+ 
+diff -ruN --strip-trailing-cr a/mlir/test/Dialect/Linalg/vectorization.mlir b/mlir/test/Dialect/Linalg/vectorization.mlir
+--- a/mlir/test/Dialect/Linalg/vectorization.mlir
++++ b/mlir/test/Dialect/Linalg/vectorization.mlir
+@@ -1719,3 +1719,35 @@
+   %1 = get_closest_isolated_parent %0 : (!transform.any_op) -> !transform.any_op
+   %2 = transform.structured.vectorize %1  { vectorize_padding } : (!transform.any_op) -> !transform.any_op
+ }
++
++// -----
++
++func.func @zero_dim_tensor(%input: tensor<f32>, %output: tensor<f32>) -> tensor<f32>
++{
++  %0 = linalg.generic { indexing_maps = [ affine_map<() -> ()>, affine_map<() -> ()> ],
++                        iterator_types = [] }
++                        ins(%input : tensor<f32>)
++                        outs(%output : tensor<f32>) {
++    ^bb0(%arg0: f32, %arg1: f32):
++      %2 = arith.addf %arg0, %arg1 : f32
++      linalg.yield %2 : f32
++    } -> tensor<f32>
++  return %0 : tensor<f32>
++}
++
++transform.sequence failures(propagate) {
++^bb1(%arg1: !transform.any_op):
++  %3 = transform.structured.match ops{["linalg.generic"]} in %arg1 : (!transform.any_op) -> !transform.any_op
++  %4 = get_closest_isolated_parent %3 : (!transform.any_op) -> !transform.any_op
++  %5 = transform.structured.vectorize %4 : (!transform.any_op) -> !transform.any_op
++}
++
++// CHECK-LABEL: func @zero_dim_tensor
++//       CHECK:     vector.transfer_read {{.*}} : tensor<f32>, vector<f32>
++//       CHECK:     vector.extractelement
++//       CHECK:     vector.transfer_read {{.*}} : tensor<f32>, vector<f32>
++//       CHECK:     vector.extractelement
++//       CHECK:     arith.addf {{.*}} : f32
++//       CHECK:     vector.broadcast %{{.*}} : f32 to vector<f32>
++//       CHECK:     vector.transfer_write {{.*}} : vector<f32>, tensor<f32>
++

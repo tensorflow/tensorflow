@@ -1277,7 +1277,7 @@ class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
     }
     auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
                                               op.getOperand(0));
-    rewriter.replaceOp(op, {shape});
+    rewriter.replaceOp(op, shape);
     return success();
   }
 };

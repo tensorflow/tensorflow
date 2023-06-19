@@ -4751,7 +4751,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<OpTy> {
       rewriter.create<ReturnOp>(loc, reducer.getResult());
     }
 
-    rewriter.replaceOp(op, {result});
+    rewriter.replaceOp(op, result);
 
     return success();
   }
