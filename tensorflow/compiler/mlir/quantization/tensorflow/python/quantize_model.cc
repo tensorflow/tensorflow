@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/IR/SCF.h"  // from @llvm-project
@@ -449,6 +450,7 @@ mlir::MLIRContext CreateMlirContextForTfQuantization() {
                   mlir::tf_saved_model::TensorFlowSavedModelDialect,
                   mlir::TF::TensorFlowDialect, mlir::shape::ShapeDialect,
                   mlir::quant::QuantizationDialect>();
+  mlir::func::registerAllExtensions(registry);
   return mlir::MLIRContext{registry};
 }
 

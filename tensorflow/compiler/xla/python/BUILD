@@ -728,6 +728,7 @@ cc_library(
         "//tensorflow/tsl/platform:errors",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -751,6 +752,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
@@ -783,6 +785,7 @@ cc_library(
         "//tensorflow/tsl/profiler/lib:profiler_session",
         "//tensorflow/tsl/profiler/rpc:profiler_server_impl",
         "//tensorflow/tsl/profiler/rpc/client:capture_profile",
+        "//tensorflow/tsl/profiler/rpc/client:profiler_client_impl",
         "@pybind11",
     ],
 )
@@ -934,18 +937,6 @@ config_setting(
     },
 )
 
-bool_flag(
-    name = "enable_plugin_device",
-    build_setting_default = False,
-)
-
-config_setting(
-    name = "plugin_device_enabled",
-    flag_values = {
-        ":enable_plugin_device": "True",
-    },
-)
-
 # If this flag is enabled, it sets RPATH on the xla_extension to values that are suitable for
 # finding NVIDIA's CUDA libraries when they are installed as pip packages.
 bool_flag(
@@ -981,9 +972,6 @@ tsl_pybind_extension(
         "//conditions:default": [],
     }) + select({
         ":tpu_enabled": ["XLA_PYTHON_ENABLE_TPU=1"],
-        "//conditions:default": [],
-    }) + select({
-        ":plugin_device_enabled": ["XLA_PYTHON_ENABLE_PLUGIN_DEVICE=1"],
         "//conditions:default": [],
     }),
     linkopts = select({
@@ -1064,11 +1052,6 @@ tsl_pybind_extension(
         ":tpu_enabled": [
             "//tensorflow/compiler/xla/pjrt:tpu_client",
             "//tensorflow/compiler/xla/stream_executor/tpu:tpu_initializer_helper",
-        ],
-        "//conditions:default": [],
-    }) + select({
-        ":plugin_device_enabled": [
-            "//tensorflow/compiler/xla/pjrt:pjrt_plugin_device_client",
         ],
         "//conditions:default": [],
     }),

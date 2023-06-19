@@ -46,7 +46,7 @@ namespace m = ::xla::match;
 
 using HloExtractionTest = HloTestBase;
 
-TEST_F(HloExtractionTest, ExtractionIsCorrect) {
+TEST_F(HloExtractionTest, InstructionExtractionIsCorrect) {
   std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
 HloModule module
 
@@ -78,6 +78,46 @@ ENTRY entry {
   EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
   EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 3);
+  TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
+                               /*layout_sensitive=*/true,
+                               /*allow_mixed_precision=*/false));
+}
+
+TEST_F(HloExtractionTest, ComputationExtractionIsCorrect) {
+  std::unique_ptr<VerifiedHloModule> module = ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+triton_gemm_dot {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  c0 = f32[10,10] convert(p0)
+  ROOT dot.0 = f32[10,10] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = s8[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  s = f32[10,10] sqrt(p1)
+  d = f32[10,10] fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot
+  ROOT r = f32[10,10] add(d, s)
+})")
+                                                  .value();
+
+  std::unique_ptr<HloModule> extracted_module =
+      ExtractComputationIntoNewModule(*module->entry_computation()
+                                           ->root_instruction()
+                                           ->operand(0)
+                                           ->fused_instructions_computation());
+
+  // Destroy the original module to be sure that the extracted one has no
+  // dependency on it.
+  module.release();
+
+  EXPECT_THAT(extracted_module->entry_computation()->root_instruction(),
+              GmockMatch(m::Dot(m::Convert(m::Parameter()), m::Parameter())));
+  EXPECT_EQ(extracted_module->entry_computation()->instruction_count(), 4);
   TF_EXPECT_OK(VerifyHloModule(extracted_module.get(),
                                /*layout_sensitive=*/true,
                                /*allow_mixed_precision=*/false));
@@ -172,10 +212,10 @@ ENTRY e {
 }
 )";
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out_computation (
-// CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: "block_m":
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
@@ -196,10 +236,10 @@ ENTRY e {
 )";
 
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out_computation (
-// CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: "block_m":
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -224,8 +264,11 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
-; CHECK: fusion(%p0, %p1), kind=kCustom
-; CHECK: ROOT %fusion.1
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: kCustom
+; CHECK-NEXT: kLoop
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.5, /*arel=*/1e-1}));
@@ -275,6 +318,36 @@ ENTRY e {
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
                          ::testing::Range(0, 5));
+
+class TritonAutotunerExhaustiveTest : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerExhaustiveTest, DISABLED_CompileOnly) {
+  const std::string hlo = R"(
+HloModule module
+
+ENTRY e {
+  x = s8[16,16] parameter(0)
+  c = f16[16,16] convert(x)
+  y = f16[16,16] parameter(1)
+  ROOT out = f16[16,16] dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK:   %triton_gemm_out_computation (
+// CHECK:   ROOT %out.1 = f16[16,16]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// CHECK:   ROOT %triton_gemm_out = f16[16,16]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
+// CHECK-SAME: "block_m":
+)");
+}
 
 }  // namespace
 }  // namespace gpu

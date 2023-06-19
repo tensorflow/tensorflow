@@ -20,10 +20,8 @@ from tensorflow.python.compat import v2_compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import tpu_strategy
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import remote
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import gen_math_ops
@@ -48,9 +46,7 @@ class TPUEmbeddingTPUStrategyV2Test(
     self._num_cores_per_replica = 2
 
   def _get_strategy(self) -> tpu_strategy.TPUStrategy:
-    resolver = tpu_cluster_resolver.TPUClusterResolver('')
-    remote.connect_to_cluster(resolver)
-    topology = tpu_cluster_resolver.initialize_tpu_system(resolver)
+    topology = self._init_tpu_system()
 
     d_assign = device_lib.device_assignment(
         topology,
@@ -58,13 +54,8 @@ class TPUEmbeddingTPUStrategyV2Test(
         num_replicas=1,
     )
 
-    self.assertEqual(d_assign.num_replicas, self._num_replicas)
-    self.assertEqual(
-        d_assign.num_cores_per_replica, self._num_cores_per_replica
-    )
-
     return tpu_strategy.TPUStrategyV2(
-        resolver,
+        self.resolver,
         experimental_device_assignment=d_assign,
         experimental_spmd_xla_partitioning=True,
     )

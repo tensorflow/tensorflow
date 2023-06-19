@@ -158,6 +158,11 @@ static constexpr int kSparseTensorNum = 3;
 static constexpr char kAllReduceNumOpsInGroup[] =
     "dtensor.all_reduce_combiner.num_ops_in_group";
 
+// Attribute which stores the environment variable value for whether
+// multi-device expansion is enabled: DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION.
+static constexpr char kEnableMultiDeviceMode[] =
+    "dtensor.enable_multi_device_mode";
+
 }  // namespace dtensor
 }  // namespace tensorflow
 

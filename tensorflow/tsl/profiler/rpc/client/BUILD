@@ -113,6 +113,7 @@ cc_library(
     ],
     copts = tf_profiler_copts(),
     visibility = set_external_visibility([
+        "//tensorflow/compiler/xla/python:__pkg__",
         "//tensorflow/core/profiler/rpc/client:__pkg__",
         "//tensorflow/python:__pkg__",
         "//tensorflow/python/profiler/internal:__pkg__",

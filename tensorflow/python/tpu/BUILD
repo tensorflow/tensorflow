@@ -1,4 +1,4 @@
-# load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 # Description: Operations defined for Cloud TPUs
@@ -29,6 +29,11 @@ package(
 )
 
 exports_files(["tpu_test_wrapper.py"])
+
+bzl_library(
+    name = "tpu_test_wrapper_bzl",
+    srcs = ["tpu_test_wrapper.bzl"],
+)
 
 py_strict_test(
     name = "tpu_test_wrapper_test",
@@ -86,13 +91,13 @@ tpu_py_strict_test(
         ":tpu_estimator",
         ":tpu_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:metrics",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/lib/io:lib",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/platform:client_testlib",
@@ -248,7 +253,6 @@ pytype_strict_library(
         ":tensor_tracer_report",
         ":tpu_replication",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:nn",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:constant_op",
@@ -269,6 +273,7 @@ pytype_strict_library(
         "//tensorflow/python/ops:logging_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:math_ops_gen",
+        "//tensorflow/python/ops:nn_impl",
         "//tensorflow/python/ops:state_ops",
         "//tensorflow/python/ops:string_ops",
         "//tensorflow/python/ops:summary_ops_v2",
@@ -909,7 +914,6 @@ tpu_py_strict_test(
         ":tpu_py",
         ":tpu_replication",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:image_ops",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
         "//tensorflow/python/eager:def_function",
@@ -924,6 +928,7 @@ tpu_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:gradients_impl",
+        "//tensorflow/python/ops:image_ops",
         "//tensorflow/python/ops:logging_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",

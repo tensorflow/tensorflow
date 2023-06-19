@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <tuple>
@@ -432,8 +433,8 @@ class StreamExecutor {
       int batch_size, dnn::RnnInputMode input_mode,
       dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
       dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-      float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-      bool use_padded_io);
+      const NumericOptions& numeric_options, float dropout, uint64_t seed,
+      ScratchAllocator* state_allocator, bool use_padded_io);
 
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
@@ -563,7 +564,6 @@ class StreamExecutor {
   friend class ScopedTracer;
   friend class Event;
   friend class Stream;
-  friend class Timer;
   template <typename... Params>
   friend class TypedKernel;
   template <typename... Args>
@@ -644,19 +644,6 @@ class StreamExecutor {
   // Causes dependent to not begin execution until other has finished its
   // last-enqueued work.
   bool CreateStreamDependency(Stream* dependent, Stream* other);
-
-  // Allocates timer resources on the underlying platform and initializes its
-  // internals.
-  bool AllocateTimer(Timer* timer);
-
-  // Deallocates timer resources on the underlying platform.
-  void DeallocateTimer(Timer* timer);
-
-  // Records a start event for an interval timer.
-  bool StartTimer(Stream* stream, Timer* timer);
-
-  // Records a stop event for an interval timer.
-  bool StopTimer(Stream* stream, Timer* timer);
 
   // Allocates a new metadata object, appropriately populated, on the heap, with
   // ownership transfer to caller.

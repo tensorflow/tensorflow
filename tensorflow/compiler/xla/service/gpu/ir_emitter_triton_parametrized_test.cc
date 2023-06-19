@@ -71,9 +71,9 @@ ENTRY e {
       primitive_util::LowercasePrimitiveTypeName(params.rhs_ty), params.m,
       params.k, params.n);
   MatchOptimizedHlo(hlo_string, R"(
-; CHECK: fusion(%p0, %p1)
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "block_m":
+; CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{params.aabs, params.arel}));

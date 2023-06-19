@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstring>
 #include <functional>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #include "absl/types/span.h"
@@ -29,9 +30,19 @@ limitations under the License.
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
+#include "tensorflow/lite/kernels/variants/list_ops_lib.h"
+
+using ::tflite::subgraph_test_util::SetupTensor;
+using ::tflite::variants::detail::ListReserveOptions;
+using ::tflite::variants::ops::Register_LIST_RESERVE;
 
 namespace tflite {
-using ::tflite::subgraph_test_util::SetupTensor;
+
+ListReserveOptions* ListOpsSubgraphBuilder::RequestReserveOptions(
+    TensorType element_type) {
+  list_reserve_opts_.push_back(ListReserveOptions{element_type});
+  return &list_reserve_opts_.back();
+}
 
 void ListOpsSubgraphBuilder::CreateConstantInt32Tensor(
     Subgraph* subgraph, int tensor_index, absl::Span<const int> shape,
@@ -89,6 +100,43 @@ void ListOpsSubgraphBuilder::AddConstSubgraph(Subgraph* subgraph) {
   int node_index;
   TfLiteStatus stat = subgraph->AddNodeWithParameters(
       {kLHS, kRHS}, {kOut}, {}, nullptr, 0, params, add_reg, &node_index);
+  TF_LITE_ASSERT_EQ(stat, kTfLiteOk);
+}
+
+void ListOpsSubgraphBuilder::AddReserveSubgraph(Subgraph* subgraph,
+                                                TensorType element_type) {
+  constexpr int kElementShape = 0;
+  constexpr int kNumElements = 1;
+  constexpr int kListOut = 2;
+  constexpr int kTensorCount = 3;
+  // kElementShape(0) --> +-------------------+
+  //                      |    ListReserve    | --> kListOut(2)
+  // kNumElements(1)  --> +-------------------+
+
+  int first_new_tensor_index;
+  TF_LITE_ASSERT_EQ(subgraph->AddTensors(kTensorCount, &first_new_tensor_index),
+                    kTfLiteOk);
+  TF_LITE_ASSERT_EQ(first_new_tensor_index, 0);
+
+  TF_LITE_ASSERT_EQ(subgraph->SetOutputs({kListOut}), kTfLiteOk);
+  SetupTensor(subgraph, kListOut, kTfLiteVariant);
+
+  TF_LITE_ASSERT_EQ(subgraph->SetInputs({kElementShape, kNumElements}),
+                    kTfLiteOk);
+  SetupTensor(subgraph, kElementShape, kTfLiteInt32);
+  SetupTensor(subgraph, kNumElements, kTfLiteInt32);
+
+  TfLiteRegistration* reserve_reg = Register_LIST_RESERVE();
+  reserve_reg->builtin_code = BuiltinOperator_CUSTOM;
+  reserve_reg->custom_name = "ListReserve";
+
+  ListReserveOptions* options = RequestReserveOptions(element_type);
+
+  int node_index;
+  TfLiteStatus stat = subgraph->AddNodeWithParameters(
+      {kElementShape, kNumElements}, {kListOut}, {},
+      reinterpret_cast<const char*>(options), sizeof(ListReserveOptions),
+      nullptr, reserve_reg, &node_index);
   TF_LITE_ASSERT_EQ(stat, kTfLiteOk);
 }
 

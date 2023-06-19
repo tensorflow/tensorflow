@@ -2756,8 +2756,8 @@ MIOpenSupport::createRnnDescriptor(
     int batch_size, dnn::RnnInputMode input_mode,
     dnn::RnnDirectionMode direction_mode, dnn::RnnMode rnn_mode,
     dnn::DataType data_type, const dnn::AlgorithmConfig& algorithm_config,
-    float dropout, uint64_t seed, ScratchAllocator* state_allocator,
-    bool use_padded_io) {
+    const NumericOptions& numeric_options, float dropout, uint64_t seed,
+    ScratchAllocator* state_allocator, bool use_padded_io) {
   // ROCM TODO: batch_size is used in dynamic persistent RNN algorithm and is
   // not supported by MIOpen now.
   if (use_padded_io) {
@@ -3167,22 +3167,9 @@ class RocmConvRunner : public dnn::ConvRunner {
     float beta = 0.0;
 
     const bool is_profiling = profile_result != nullptr;
-
-    std::unique_ptr<GpuTimer> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      if (!timer->Init()) {
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to init timer");
-      }
-      // The start and stop of the timer should be as close to the MIOpen call
-      // as possible. It is still possible for other threads to issue workload
-      // on to this stream. So it could take multiple profiling measurements.
-      if (!timer->Start(AsGpuStream(stream))) {
-        timer->Destroy();
-        return tsl::Status(absl::StatusCode::kInternal,
-                           "Failed to start timer");
-      }
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
     switch (kind_) {
@@ -3250,17 +3237,15 @@ class RocmConvRunner : public dnn::ConvRunner {
     }
 
     if (is_profiling) {
-      if (!timer->Stop(AsGpuStream(stream))) {
-        timer->Destroy();
-        return tsl::Status(absl::StatusCode::kInternal, "Failed to stop timer");
-      }
       if (status == miopenStatusSuccess) {
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
+        profile_result->set_elapsed_time_in_ms(
+            absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
         profile_result->set_algorithm(algotype);
-        profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
         profile_result->set_scratch_size(scratch_memory.size());
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -4162,8 +4147,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     if (!stream
              ->ThenBlasGemm(blas::Transpose::kNoTranspose,
                             blas::Transpose::kNoTranspose, m, n, k, weights, m,
-                            input_data, k, output_data, m,
-                            blas::kDefaultComputePrecision)
+                            input_data, k, output_data, m, NumericOptions{})
              .ok()) {
       return false;
     }
@@ -4246,7 +4230,7 @@ bool MIOpenSupport::DoMatMul(Stream* stream,
     stream->ThenBlasGemmBatched(blas::Transpose::kNoTranspose,
                                 blas::Transpose::kNoTranspose, m, n, k, alpha,
                                 toPtrs(a), lda, toPtrs(b), ldb, beta, toPtrs(c),
-                                ldc, batch_count);
+                                ldc, batch_count, NumericOptions{});
   }
 
   return stream->ok();
@@ -4886,13 +4870,9 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
 
   if (fusion_plan.CompilationSucceeded()) {
     const bool is_profiling = output_profile_result != nullptr;
-
-    std::unique_ptr<GpuTimer> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -4915,12 +4895,12 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -4985,12 +4965,9 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
   if (fusion_plan.CompilationSucceeded()) {
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -5010,12 +4987,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -5096,12 +5073,9 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
   if (fusion_plan.CompilationSucceeded()) {
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -5122,12 +5096,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {
@@ -5212,12 +5186,10 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
   if (fusion_plan.CompilationSucceeded()) {
     const bool is_profiling = output_profile_result != nullptr;
 
-    std::unique_ptr<GpuTimer> timer;
-    if (is_profiling) {
-      timer.reset(new GpuTimer(parent_));
-      timer->Init();
-      timer->Start(AsGpuStream(stream));
-    }
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                                 output_profile_result != nullptr));
 
     miopenStatus_t status = miopenStatusSuccess;
 
@@ -5240,12 +5212,12 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
     }
 
     if (is_profiling) {
-      timer->Stop(AsGpuStream(stream));
       if (status == miopenStatusSuccess) {
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
-      timer->Destroy();
     }
 
     if (status != miopenStatusSuccess) {

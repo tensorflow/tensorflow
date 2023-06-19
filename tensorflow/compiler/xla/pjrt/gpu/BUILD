@@ -6,6 +6,7 @@ load("//tensorflow/compiler/xla:xla.bzl", "xla_cc_test")
 load("//tensorflow/compiler/xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//tensorflow/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 load("//tensorflow/tsl/platform:build_config.bzl", "tf_proto_library")
+load("//tensorflow/tsl/platform:build_config_root.bzl", "tf_cuda_tests_tags")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -89,7 +90,7 @@ xla_cc_test(
     name = "se_gpu_pjrt_client_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_client_test.cc"]),
     local_defines = if_cuda_is_configured(["GOOGLE_CUDA=1"]),
-    tags = ["requires-gpu-nvidia"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":se_gpu_pjrt_client",
         "//tensorflow/compiler/xla:statusor",
@@ -195,14 +196,13 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "@com_google_absl//absl/status",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(
     name = "se_gpu_pjrt_compiler_test",
     srcs = if_gpu_is_configured(["se_gpu_pjrt_compiler_test.cc"]),
-    tags = [
-        "requires-gpu-nvidia",
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":se_gpu_pjrt_client",
         ":se_gpu_pjrt_compiler",

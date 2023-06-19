@@ -537,8 +537,9 @@ cc_library(
     hdrs = ["numeric_options_utils.h"],
     deps = [
         "//tensorflow/compiler/xla/stream_executor:numeric_options",
+        "//tensorflow/core/platform:tensor_float_32_hdr_lib",
         "//tensorflow/core/util:determinism_for_kernels",
-    ],
+    ] + if_static(["//tensorflow/core/platform:tensor_float_32_utils"]),
 )
 
 tf_cuda_library(
@@ -1538,6 +1539,7 @@ tf_kernel_library(
     deps = [
         ":cast_op",
         ":gpu_utils",
+        ":numeric_options_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -1590,9 +1592,13 @@ tf_cc_test(
     deps = [
         ":batch_kernel_test_util",
         ":batch_kernels",
+        ":function_ops",
+        ":shape_ops",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/batching_util:warmup",
+        "//tensorflow/tsl/platform:blocking_counter",
     ],
 )
 
@@ -3479,11 +3485,15 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
+<<<<<<< HEAD
         ":matmul_util",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
+=======
+        ":numeric_options_utils",
+>>>>>>> upstream/master
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/proto:proto_utils",
@@ -4178,6 +4188,7 @@ tf_kernel_library(
         "//tensorflow/core/util:determinism_for_kernels",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
+        "//tensorflow/compiler/xla/stream_executor/gpu:gpu_timer",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core/platform:stream_executor",

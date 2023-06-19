@@ -24,11 +24,9 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/dtensor/cc/constants.h"
 #include "tensorflow/dtensor/cc/dtensor_utils.h"
 #include "tensorflow/dtensor/mlir/create_dtensor_mlir_passes.h"
-#include "tensorflow/dtensor/mlir/ir/tf_dtensor.h"
 #include "tensorflow/dtensor/mlir/utils/dtensor_mlir_passes_internal.h"
 
 namespace tensorflow {
@@ -320,6 +318,9 @@ void CreateDTensorMLIRPass(const mlir::TF::StandardPipelineOptions &options,
     // Rename functions with unique names, to avoid collisions in the function
     // library.
     pm->addPass(CreateFunctionRenamingPass());
+
+    // Expands the DTensor call ops across devices within a "multi-device" main.
+    pm->addPass(CreateDTensorMultiDeviceExpansionPass());
 
     // As DTensor SPMD expansion handles sharded inputs for model
     // parallelism, we set input/output sharding to maximal sharding

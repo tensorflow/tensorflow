@@ -324,6 +324,7 @@ py_strict_library(
         ":signature_constants",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
+        "//tensorflow/python/eager/polymorphic_function:attributes",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:tensor_spec",

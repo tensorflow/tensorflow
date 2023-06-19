@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
+#include "tensorflow/core/kernels/batching_util/warmup.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
@@ -357,6 +358,20 @@ Status BatchResourceBase::RegisterInput(
   BatcherQueueT* batcher_queue;
   TF_RETURN_IF_ERROR(
       LookupOrCreateBatcherQueue(batcher_queue_name, &batcher_queue));
+
+  if (!session_metadata().name().empty()) {
+    absl::MutexLock lock(&outstanding_batch_mu_);
+    WarmupStateRegistry::Key key(session_metadata().name(),
+                                 session_metadata().version());
+    if (GetGlobalWarmupStateRegistry().Lookup(key)) {
+      outstanding_batch_mu_.Await({+[](int* num_outstanding_batches) {
+                                     return *num_outstanding_batches == 0;
+                                   },
+                                   &num_outstanding_batches_});
+    }
+    ++num_outstanding_batches_;
+  }
+
   return batcher_queue->Schedule(&batch_components);
 }
 
@@ -913,6 +928,10 @@ Status BatchResourceBase::LookupOrCreateBatcherQueue(const string& queue_name,
 
   std::unique_ptr<BatcherQueueT> new_queue;
   auto process_batch_callback = [this](std::unique_ptr<BatchT> batch) {
+    if (!session_metadata().name().empty()) {
+      absl::MutexLock lock(&outstanding_batch_mu_);
+      --num_outstanding_batches_;
+    }
     if (!has_process_batch_function_) {
       ProcessBatch(std::move(batch));
     } else {

@@ -743,7 +743,12 @@ class Tensor(internal.NativeObject, core_tf_types.Symbol):
 
   def __tf_tracing_type__(self, signature_context):
     if self.dtype == dtypes.resource or self.dtype == dtypes.variant:
-      handle_data = handle_data_util.get_handle_data(self)
+      shape_inference_handle_data = handle_data_util.get_handle_data(self)
+      handle_data = (
+          dtypes.HandleData(shape_inference_handle_data)
+          if shape_inference_handle_data
+          else None
+      )
       dtype = dtypes.DType(self.dtype._type_enum, handle_data)
     else:
       dtype = self.dtype
@@ -1026,10 +1031,10 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     handle_data = self.dtype._handle_data  # pylint: disable=protected-access
     if (
         handle_data is not None
-        and handle_data.is_set
-        and handle_data.shape_and_type
+        and handle_data.shape_inference.is_set
+        and handle_data.shape_inference.shape_and_type
     ):
-      handle_data_util.set_handle_data(placeholder, handle_data)
+      handle_data_util.set_handle_data(placeholder, handle_data.shape_inference)
 
     # Record the composite device as an attribute to the placeholder.
     # This attribute would be propagated into the arg_attr of the FunctionDef.
@@ -1074,14 +1079,18 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
     return result
 
   def _to_tensors(self, value):
-    assert isinstance(value, Tensor)
+    value = self._cast(value, trace_type.InternalCastContext())
+    if not value.shape.is_subtype_of(self.shape):
+      raise TypeError(
+          f"Received tensor of shape {value.shape} instead of {self.shape}"
+      )
     return [value]
 
   def _from_tensors(self, tensors):
     tensor = next(tensors)
     handle_data = self.dtype._handle_data  # pylint: disable=protected-access
     if handle_data:
-      handle_data_util.set_handle_data(tensor, handle_data)
+      handle_data_util.set_handle_data(tensor, handle_data.shape_inference)
     return tensor
 
   def _flatten(self):
@@ -1096,16 +1105,24 @@ class TensorSpec(DenseSpec, type_spec.BatchableTypeSpec,
       assert value.is_subtype_of(self), f"Can not cast {value!r} to {self!r}"
       return self
 
-    value = tensor_conversion_registry.convert(value, self.dtype)
+    if not isinstance(value, Tensor):
+      value = tensor_conversion_registry.convert(value, self.dtype)
     value_spec = TensorSpec(value.shape, value.dtype, self.name)
 
     if not value_spec.is_subtype_of(self):
       if self.is_subtype_of(value_spec):
         value.set_shape(self.shape)
       else:
-        raise AssertionError(f"Can not cast {value_spec!r} to {self!r}")
+        raise TypeError(f"Can not cast {value_spec!r} to {self!r}")
 
     return value
+
+  def _alias_id(self):
+    """Returns an id specifying identical tensors to avoid duplication."""
+    alias_id = None
+    if self.dtype._handle_data:  # pylint: disable=protected-access
+      alias_id = self.dtype._handle_data.alias_id  # pylint: disable=protected-access
+    return alias_id
 
   @classmethod
   def from_spec(cls, spec, name=None):

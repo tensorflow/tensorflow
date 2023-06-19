@@ -436,22 +436,6 @@ cc_library(
 )
 
 cc_library(
-    name = "pjrt_plugin_device_client",
-    deps = [
-        ":pjrt_plugin_device_client_headers",
-        "//tensorflow/compiler/xla/pjrt/plugin",
-    ],
-)
-
-cc_library(
-    name = "pjrt_plugin_device_client_headers",
-    hdrs = ["pjrt_plugin_device_client.h"],
-    deps = [
-        "//tensorflow/compiler/xla:statusor",
-    ],
-)
-
-cc_library(
     name = "mlir_to_hlo",
     srcs = ["mlir_to_hlo.cc"],
     hdrs = ["mlir_to_hlo.h"],
@@ -465,6 +449,7 @@ cc_library(
         "//tensorflow/compiler/xla/translate/mhlo_to_hlo:mlir_hlo_to_hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

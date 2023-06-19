@@ -282,7 +282,6 @@ bool HloComputation::IsSafelyRemovable(const HloInstruction* instruction,
   // If the instruction has control predecessors or successors then we cannot
   // remove the instruction without violating ordering constraints (added, for
   // example, to avert interference due to buffer aliasing).
-
   if (!ignore_control_dependency && instruction->HasControlDependencies()) {
     return false;
   }
@@ -796,6 +795,8 @@ void HloComputation::AppendInstructionsIntoCalledComputation(
     absl::Span<HloInstruction* const> instructions_to_append,
     HloInstruction* caller) {
   HloInstruction* root = instructions_to_append.front();
+  TF_CHECK_OK(caller->CopyAllControlDepsFrom(root));
+  TF_CHECK_OK(root->DropAllControlDeps());
   TF_CHECK_OK(root->ReplaceAllUsesWith(caller));
   if (root == root_instruction()) {
     set_root_instruction(caller);
@@ -868,7 +869,9 @@ StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
   async_start->CopyBackendConfigFrom(instruction);
   async_done->set_metadata(instruction->metadata());
   async_done->CopyBackendConfigFrom(instruction);
+  TF_RETURN_IF_ERROR(async_done->CopyAllControlDepsFrom(instruction));
   if (replace) {
+    TF_RETURN_IF_ERROR(instruction->DropAllControlDeps());
     TF_RETURN_IF_ERROR(ReplaceInstruction(instruction, async_done));
   }
   return async_done;

@@ -217,14 +217,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
-  bool AllocateTimer(Timer* timer) override;
-
-  void DeallocateTimer(Timer* timer) override;
-
-  bool StartTimer(Stream* stream, Timer* timer) override;
-
-  bool StopTimer(Stream* stream, Timer* timer) override;
-
   tsl::Status AllocateEvent(Event* event) override;
 
   tsl::Status DeallocateEvent(Event* event) override;
@@ -282,8 +274,6 @@ class GpuExecutor : public internal::StreamExecutorInterface {
       override;
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override;
 
   void* GpuContextHack() override;
 

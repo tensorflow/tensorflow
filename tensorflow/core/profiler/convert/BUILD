@@ -570,18 +570,6 @@ cc_library(
 )
 
 cc_library(
-    name = "post_process_single_host_xplane",
-    hdrs = ["post_process_single_host_xplane.h"],
-    copts = tf_profiler_copts(),
-    visibility = ["//tensorflow/core/profiler:internal"],
-    deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "//tensorflow/tsl/profiler/convert:post_process_single_host_xplane",
-    ],
-)
-
-cc_library(
     name = "preprocess_single_host_xplane",
     srcs = ["preprocess_single_host_xplane.cc"],
     hdrs = ["preprocess_single_host_xplane.h"],
@@ -782,28 +770,19 @@ cc_library(
 )
 
 cc_library(
-    name = "xla_op_utils",
-    hdrs = ["xla_op_utils.h"],
-    deps = [
-        "//tensorflow/tsl/profiler/convert:xla_op_utils",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "op_profile_builder",
     srcs = ["op_profile_builder.cc"],
     hdrs = ["op_profile_builder.h"],
     deps = [
         ":op_metrics_db_combiner",
         ":op_metrics_to_record",
-        ":xla_op_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "//tensorflow/core/profiler/protobuf:op_profile_proto_cc",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "//tensorflow/tsl/profiler/convert:xla_op_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/strings",

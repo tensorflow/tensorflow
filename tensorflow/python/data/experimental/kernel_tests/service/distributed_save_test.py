@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.data.experimental.kernel_tests.service import test_base as data_service_test_base
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distributed_save_op
+from tensorflow.python.data.experimental.service import _pywrap_snapshot_utils
 from tensorflow.python.data.kernel_tests import checkpoint_test_base
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -417,12 +418,14 @@ class LoadCheckpointTest(
 
 
 def _wait_for_snapshot(snapshot_path):
-  while not os.path.exists(os.path.join(snapshot_path, "DONE")):
+  while not os.path.exists(
+      _pywrap_snapshot_utils.TF_DATA_SnapshotDoneFilePath(snapshot_path)):
     time.sleep(0.1)
 
 
 def _wait_for_error(snapshot_path):
-  while not os.path.exists(os.path.join(snapshot_path, "ERROR")):
+  while not os.path.exists(
+      _pywrap_snapshot_utils.TF_DATA_SnapshotErrorFilePath(snapshot_path)):
     time.sleep(0.1)
 
 

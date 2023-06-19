@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/rng.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
@@ -118,15 +117,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   void DeallocateStream(Stream* stream) override;
   bool CreateStreamDependency(Stream* dependent, Stream* other) override;
 
-  // No special initialization is necessary for host timers.
-  bool AllocateTimer(Timer* timer) override { return true; }
-
-  void DeallocateTimer(Timer* timer) override {}
-
-  bool StartTimer(Stream* stream, Timer* timer) override;
-
-  bool StopTimer(Stream* stream, Timer* timer) override;
-
   tsl::Status BlockHostUntilDone(Stream* stream) override;
 
   int PlatformDeviceCount() override { return 1; }
@@ -170,10 +160,6 @@ class HostExecutor : public internal::StreamExecutorInterface {
   }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation() override;
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(new HostTimer());
-  }
 
   void* GpuContextHack() override { return nullptr; }
 

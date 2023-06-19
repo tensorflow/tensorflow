@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/python/ifrt/array.h"
 #include "tensorflow/compiler/xla/python/ifrt/client.h"
@@ -45,6 +46,9 @@ bool IsClientFactoryRegistered();
 
 // Gets a new IFRT client using the registered client factory.
 StatusOr<std::unique_ptr<Client>> GetClient();
+
+// Set a default test filter if user doesn't provide one using --gtest_filter.
+void SetTestFilterIfNotUserSpecified(absl::string_view custom_filter);
 
 // Asserts the content of an Array.
 // This will blocking copy the data to host buffer.

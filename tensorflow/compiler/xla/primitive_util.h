@@ -34,19 +34,24 @@ namespace xla {
 namespace primitive_util {
 
 // Returns the count of significand (mantissa) bits for float datatypes.
-// For non-float datatypes, results in a LOG(FATAL).
+// This includes the implicit leading mantissa bit. For example, returns 24 for
+// F32. For non-float datatypes, results in a LOG(FATAL).
 int SignificandWidth(PrimitiveType type);
 
-// Returns the count of exponent bits for float datatypes.
-// For non-float datatypes, results in a LOG(FATAL).
+// Returns the count of exponent bits for float datatypes. For example, returns
+// 8 for F32. For non-float datatypes, results in a LOG(FATAL).
 int ExponentWidth(PrimitiveType type);
 
-// Returns the exponent of the smallest number which cannot be represented.
-// For non-float datatypes, results in a LOG(FATAL).
+// Returns the smallest integer n such that 2**(n-1) is a normalized number for
+// the given float datatype. In other words, returns one plus the exponent of
+// the smallest normalized number. For example, returns -125 for F32. For
+// non-float datatypes, results in a LOG(FATAL).
 int UnderflowExponent(PrimitiveType type);
 
-// Returns the exponent of the smallest number which cannot be represented.
-// For non-float datatypes, results in a LOG(FATAL).
+// Returns the largest integer n such that 2**(n-1) is a finite number for the
+// given float datatype. In other words, returns the smallest exponent that
+// causes overflow. For example, returns 128 for F32. For non-float datatypes,
+// results in a LOG(FATAL).
 int OverflowExponent(PrimitiveType type);
 
 // Returns the XLA primitive type (eg, F32) corresponding to the given

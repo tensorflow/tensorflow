@@ -29,19 +29,22 @@ namespace gpu {
 GemmThunk::GemmThunk(ThunkInfo thunk_info, GemmConfig config,
                      const BufferAllocation::Slice& lhs_buffer,
                      const BufferAllocation::Slice& rhs_buffer,
-                     const BufferAllocation::Slice& output_buffer)
+                     const BufferAllocation::Slice& output_buffer,
+                     bool deterministic)
     : Thunk(Kind::kGemm, thunk_info),
       config_(std::move(config)),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
-      output_buffer_(output_buffer) {}
+      output_buffer_(output_buffer),
+      deterministic_(deterministic) {}
 
 Status GemmThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Running GEMM thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
   return RunGemm(config_, allocs.GetDeviceAddress(lhs_buffer_),
                  allocs.GetDeviceAddress(rhs_buffer_),
-                 allocs.GetDeviceAddress(output_buffer_), params.stream);
+                 allocs.GetDeviceAddress(output_buffer_), deterministic_,
+                 params.stream);
 }
 
 }  // namespace gpu

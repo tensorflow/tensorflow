@@ -82,6 +82,12 @@ bool TensorArray::Set(int index, TensorUniquePtr tensor) {
   return true;
 }
 
+TensorArray::~TensorArray() {
+  Clear();
+  free(elements_);
+  elements_ = nullptr;
+}
+
 void TensorArray::Drop(int i) {
   RefCountedTensor* t = elements_ + i;
   int* count = t->count;
@@ -97,12 +103,6 @@ void TensorArray::Drop(int i) {
     return;
   }
   (*count)--;
-}
-
-TensorArray::~TensorArray() {
-  Clear();
-  free(elements_);
-  elements_ = nullptr;
 }
 
 // `Drop`s each element in the list.

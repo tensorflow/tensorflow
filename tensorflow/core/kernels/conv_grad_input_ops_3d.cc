@@ -45,6 +45,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cast_op.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 using stream_executor::dnn::DimIndex;
 #include "tensorflow/core/protobuf/autotuning.pb.h"
@@ -732,10 +733,9 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(
-        context,
-        stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
-                             k, &c_ptr, n, se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
+                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
+                                                 n, GetNumericOptions()));
     return;
   } else if (!is_grouped_convolution &&
              dims.filter_size(0) == dims.input_size(0) &&
@@ -757,10 +757,9 @@ void LaunchConvBackpropInputOpImpl(
     auto transpose = se::blas::Transpose::kTranspose;
     auto no_transpose = se::blas::Transpose::kNoTranspose;
 
-    OP_REQUIRES_OK(
-        context,
-        stream->ThenBlasGemm(transpose, no_transpose, n, m, k, b_ptr, k, a_ptr,
-                             k, &c_ptr, n, se::blas::kDefaultComputePrecision));
+    OP_REQUIRES_OK(context, stream->ThenBlasGemm(transpose, no_transpose, n, m,
+                                                 k, b_ptr, k, a_ptr, k, &c_ptr,
+                                                 n, GetNumericOptions()));
     return;
   }
 

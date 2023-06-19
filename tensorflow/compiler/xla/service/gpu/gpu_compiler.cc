@@ -91,6 +91,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/all_reduce_blueconnect.h"
 #include "tensorflow/compiler/xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "tensorflow/compiler/xla/service/gpu/conv_layout_normalization.h"
+#include "tensorflow/compiler/xla/service/gpu/copy_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/dot_dimension_sorter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_broadcast_folding_rewriter.h"
@@ -704,6 +705,10 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
     fusion.AddPass<GpuInstructionFusion>(/*may_duplicate=*/true,
                                          gpu_device_info);
     fusion.AddPass<FusionMerger>(gpu_device_info, ShapeSizeBytesFunction());
+    // Running CSE affects how many users an op has. This plays a role in what
+    // we detect as a tiled transpose fusion.
+    fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                           /*only_fusion_computations=*/true);
     fusion.AddPass<GpuMultiOutputFusion>(gpu_device_info,
                                          ShapeSizeBytesFunction());
     fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
@@ -752,7 +757,7 @@ Status GpuCompiler::OptimizeHloModule(HloModule* hlo_module,
 
     {
       // Convert all collectives to their async form, and then annotate the ones
-      // that actually need to run asynchronously with an GPU specific backend
+      // that actually need to run asynchronously with a GPU specific backend
       // config.
       AsyncCollectiveCreator::CollectiveCreatorConfig config;
       config.convert_all_reduce = HloPredicateTrue;
@@ -840,6 +845,7 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   auto& sub_pipeline =
       pipeline.AddPass<HloPassPipeline>("horizontal-loop-fusion-for-copy");
   // To fuse the copy.
+  sub_pipeline.AddPass<CopyFusion>();
   sub_pipeline.AddPass<GpuHorizontalLoopFusion>("copy_");
   sub_pipeline.AddPass<HloDCE>();
   pipeline.AddPass<GpuSanitizeConstantNames>();
@@ -1731,13 +1737,12 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   }
 
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be two fusion
-  // outputs that consume the fusion parameter, because we do not want to share
-  // the same fusion operand with two different fusion outputs. To make sure
+  // iteration order as the fusion output. Also, there should not be any other
+  // fusion output that accesses it in a different iteration order. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
-  // bitcast or a dynamic update slice with the first operand being on this
-  // path.
+  // bitcast or an elementwise dynamic update slice (i.e. with the first operand
+  // being on this path).
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
@@ -1754,23 +1759,17 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // The output should have at most 1 user: the tuple op (in case of a
-      // multi-output fusion)
-      if (hlo_operand->user_count() > 1) {
-        return false;
-      }
-      continue;
+      // We still need to process the users of 'hlo_operand'. There can be other
+      // users in addition to the tuple user.
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
       if (visited.contains(hlo)) {
         continue;
       }
-      // This check also catches the case that we reach a different fusion
-      // output, as that fusion output would have a tuple op as user, which we
-      // do not allow here.
       if ((!hlo->IsElementwiseOnOperand(hlo->operand_index(hlo_operand)) ||
            hlo->opcode() == HloOpcode::kCopy) &&
-          hlo->opcode() != HloOpcode::kBitcast) {
+          hlo->opcode() != HloOpcode::kBitcast &&
+          hlo->opcode() != HloOpcode::kTuple) {
         return false;
       }
       visited.insert(hlo);

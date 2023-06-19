@@ -579,6 +579,11 @@ def build_conversion_flags(
     enable_mlir_variable_quantization=False,
     disable_fuse_mul_and_fc=False,
     quantization_options: Optional[quant_opts_pb2.QuantizationOptions] = None,
+    enable_hlo_to_tf_conversion=False,
+    mlir_dump_dir=None,
+    mlir_dump_pass_regex=None,
+    mlir_dump_func_regex=None,
+    mlir_enable_timing=None,
     **_
 ):
   """Builds protocol buffer describing a conversion of a model.
@@ -676,6 +681,19 @@ def build_conversion_flags(
       a custom method, and allows finer, modular control. This option will
       override any other existing quantization flags. We plan on gradually
       migrating all quantization-related specs into this option.
+    enable_hlo_to_tf_conversion: Enable HLO to TF conversion in the Converter.
+      Set this to False by default as this may increase the conversion time if
+      set otherwise.
+    mlir_dump_dir: A string specifying the target directory to output MLIR dumps
+      produced during conversion. If populated, enables MLIR dumps.
+    mlir_dump_pass_regex: A string containing a regular expression for filtering
+      the pass names to be dumped. Effective only if `mlir_dump_dir` is
+      populated.
+    mlir_dump_func_regex: A string containing a regular expression for filtering
+      the function names to be dumped. Effective only if `mlir_dump_dir` is
+      populated.
+    mlir_enable_timing: A boolean, if set to true reports the execution time of
+      each MLIR pass.
 
   Returns:
     conversion_flags: protocol buffer describing the conversion process.
@@ -758,6 +776,20 @@ def build_conversion_flags(
   conversion_flags.disable_fuse_mul_and_fc = disable_fuse_mul_and_fc
   if quantization_options:
     conversion_flags.quantization_options.CopyFrom(quantization_options)
+
+  conversion_flags.enable_hlo_to_tf_conversion = enable_hlo_to_tf_conversion
+
+  # Transfer debug options. Check for existence before populating in order to
+  # leverage defaults specified in proto definition.
+  if mlir_dump_dir is not None:
+    conversion_flags.debug_options.mlir_dump_dir = mlir_dump_dir
+  if mlir_dump_pass_regex is not None:
+    conversion_flags.debug_options.mlir_dump_pass_regex = mlir_dump_pass_regex
+  if mlir_dump_func_regex is not None:
+    conversion_flags.debug_options.mlir_dump_func_regex = mlir_dump_func_regex
+  if mlir_enable_timing is not None:
+    conversion_flags.debug_options.mlir_enable_timing = mlir_enable_timing
+
   return conversion_flags
 
 

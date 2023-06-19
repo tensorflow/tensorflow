@@ -51,6 +51,10 @@ bool AllOperandsAreConstants(const HloInstruction& instruction);
 // Returns whether the instruction is a scalar constant.
 bool IsScalarConstant(const HloInstruction* instruction);
 
+// Returns first HLO of the computation with the opcode, otherwise nullptr.
+HloInstruction* GetFirstInstructionWithOpcode(const HloComputation& computation,
+                                              HloOpcode opcode);
+
 // Determines whether the given computation contains an instruction with one of
 // the given opcodes.  Checks both comp's instructions and the instructions of
 // any computations nested within it.

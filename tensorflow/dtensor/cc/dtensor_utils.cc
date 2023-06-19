@@ -157,5 +157,12 @@ int AllReduceCombineOptimizationGroupSize() {
                   "using the default value 0.";
   return 0;
 }
+
+bool EnableMultiDeviceMode() {
+  bool multi_device_mode;
+  absl::Status status = tsl::ReadBoolFromEnvVar(
+      "DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION", false, &multi_device_mode);
+  return status.ok() && multi_device_mode;
+}
 }  // namespace dtensor
 }  // namespace tensorflow
