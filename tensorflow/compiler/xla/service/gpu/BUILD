@@ -3733,6 +3733,7 @@ cc_library(
     srcs = ["copy_fusion.cc"],
     hdrs = ["copy_fusion.h"],
     deps = [
+        ":ir_emission_utils",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
