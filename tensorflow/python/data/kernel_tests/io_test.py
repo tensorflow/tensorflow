@@ -147,18 +147,22 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.evaluate(dataset.save(self._corrupted_dataset_dir))
 
-    run_id_dir = [x for x in os.listdir(self._corrupted_dataset_dir) if os.path.isdir(self._corrupted_dataset_dir + '/' + x)][0]
-    _snapshot_path = f'{self._corrupted_dataset_dir}/{run_id_dir}/00000000.shard/00000000.snapshot'
+    list_dir = [f'{self._corrupted_dataset_dir}/{p}' 
+                for p in os.listdir(self._corrupted_dataset_dir)]
+    run_id_dir = [p for p in list_dir if os.path.isdir(p)][0]
+    _snapshot_path = (f'{self._corrupted_dataset_dir}/'
+                      f'{run_id_dir}/00000000.shard/'
+                      f'00000000.snapshot')
 
     with open(_snapshot_path, 'rb') as file:
-        b = file.read()
+      b = file.read()
     ba = bytearray(b)
     ba[39] += 1
     with open(_snapshot_path, 'wb') as file:
-        file.write(bytes(ba))
+      file.write(bytes(ba))
 
-    
-    dataset2 = dataset_ops.Dataset.load(self._corrupted_dataset_dir, dataset.element_spec)
+    dataset2 = dataset_ops.Dataset.load(self._corrupted_dataset_dir, 
+                                        dataset.element_spec)
     dataset2 = dataset2.ignore_errors()
     self.assertEqual(self.evaluate(dataset2.cardinality()), 1)
 
