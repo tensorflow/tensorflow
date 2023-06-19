@@ -67,29 +67,20 @@ GpuTimer::~GpuTimer() {
   }
 }
 
-float GpuTimer::GetElapsedMilliseconds() const {
-  CHECK(elapsed_milliseconds_.has_value());
-  return *elapsed_milliseconds_;
-}
-
-tsl::Status GpuTimer::Stop() {
-  if (stop_event_ == nullptr) {
-    return absl::InternalError("Stopping inactive timer");
+tsl::StatusOr<absl::Duration> GpuTimer::GetElapsedDuration() {
+  if (is_stopped_) {
+    return absl::InternalError("Measuring inactive timer");
   }
   TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(), stop_event_,
                                             stream_->gpu_stream()));
-
-  if (elapsed_milliseconds_.has_value()) {
-    return absl::InternalError("Timer already stoppped");
-  }
   float elapsed_milliseconds = NAN;
   if (!GpuDriver::GetEventElapsedTime(parent_->gpu_context(),
                                       &elapsed_milliseconds, start_event_,
                                       stop_event_)) {
     return absl::InternalError("Error stopping the timer");
   }
-  elapsed_milliseconds_ = elapsed_milliseconds;
-  return tsl::OkStatus();
+  is_stopped_ = true;
+  return absl::Milliseconds(elapsed_milliseconds);
 }
 
 }  // namespace gpu

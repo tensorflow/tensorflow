@@ -3180,10 +3180,12 @@ class RocmConvRunner : public dnn::ConvRunner {
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_RETURN_IF_ERROR(timer->Stop());
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
+        profile_result->set_elapsed_time_in_ms(
+            absl::ToDoubleMilliseconds(elapsed));
         dnn::AlgorithmDesc algotype(algo_id_, false);
         profile_result->set_algorithm(algotype);
-        profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
         profile_result->set_scratch_size(scratch_memory.size());
       }
     }
@@ -4678,9 +4680,10 @@ bool MIOpenSupport::DoFusedConvolutionBiasActivationImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        TF_RETURN_IF_ERROR(timer->Stop());
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
     }
 
@@ -4769,9 +4772,10 @@ bool MIOpenSupport::DoFusedBatchNormActivationInferenceImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        timer->Stop();
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
     }
 
@@ -4877,9 +4881,10 @@ bool MIOpenSupport::DoFusedBatchNormActivationForwardImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        timer->Stop();
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
     }
 
@@ -4992,9 +4997,10 @@ bool MIOpenSupport::DoFusedBatchNormActivationBackwardImpl(
 
     if (is_profiling) {
       if (status == miopenStatusSuccess) {
-        timer->Stop();
+        TF_ASSIGN_OR_RETURN(absl::Duration elapsed,
+                            timer->GetElapsedDuration());
         output_profile_result->set_elapsed_time_in_ms(
-            timer->GetElapsedMilliseconds());
+            absl::ToDoubleMilliseconds(elapsed));
       }
     }
 

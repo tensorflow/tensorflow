@@ -352,9 +352,9 @@ tsl::Status BlasLt::DoMatmul(Stream* stream, const BlasLt::MatmulPlan& plan,
   }
 
   if (profile_result != nullptr) {
-    TF_RETURN_IF_ERROR(timer->Stop());
+    TF_ASSIGN_OR_RETURN(absl::Duration elapsed, timer->GetElapsedDuration());
     profile_result->set_is_valid(true);
-    profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
+    profile_result->set_elapsed_time_in_ms(absl::ToDoubleMilliseconds(elapsed));
   }
   return tsl::OkStatus();
 }

@@ -580,8 +580,9 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
       TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*reduce_kernel, reduce_args,
                                                launch_dimensions[1], stream));
     }
-    TF_RETURN_IF_ERROR(timer.Stop());
-    return std::make_optional(absl::Nanoseconds(timer.Nanoseconds()));
+    TF_ASSIGN_OR_RETURN(absl::Duration timer_duration,
+                        timer.GetElapsedDuration());
+    return std::make_optional(timer_duration);
   }
 
   StatusOr<std::unique_ptr<Executable>> CompileMatmulWithCublas(

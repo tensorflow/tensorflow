@@ -765,11 +765,11 @@ static tsl::Status PopulateProfileFromTimer(
     std::optional<GpuTimer> &timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
   if (output_profile_result) {
-    TF_RETURN_IF_ERROR(timer->Stop());
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algorithm);
     output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+        absl::ToDoubleMilliseconds(duration));
   }
   return ::tsl::OkStatus();
 }

@@ -1983,6 +1983,23 @@ tsl::StatusOr<DeviceMemory<uint8_t>> CreateBatchNormBackwardWorkspace(
 
 }  // namespace
 
+// Populates the profile result if not empty.
+static tsl::Status PopulateProfileFromTimer(
+    std::optional<GpuTimer>& timer, const dnn::AlgorithmDesc& algorithm,
+    dnn::ProfileResult* profile_result,
+    std::optional<uint64_t> scratch_size = std::nullopt) {
+  if (profile_result) {
+    TF_ASSIGN_OR_RETURN(absl::Duration duration, timer->GetElapsedDuration());
+    profile_result->set_algorithm(algorithm);
+    profile_result->set_elapsed_time_in_ms(
+        absl::ToDoubleMilliseconds(duration));
+    if (scratch_size.has_value()) {
+      profile_result->set_scratch_size(*scratch_size);
+    }
+  }
+  return tsl::OkStatus();
+}
+
 template <class T>
 tsl::Status CudnnSupport::DoRnnForwardImpl(
     Stream* stream, const CudnnRnnDescriptor& rnn_desc,
@@ -2067,11 +2084,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
         /*reserveSpace=*/reserve_space.opaque()));
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-      output_profile_result->set_algorithm(algo_desc);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer, *rnn_desc.algorithm_config().algorithm(),
+          output_profile_result));
     }
     return tsl::OkStatus();
   }
@@ -2168,11 +2183,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(timer->Stop());
-    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-    output_profile_result->set_algorithm(algo_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
   }
 
   return ::tsl::OkStatus();
@@ -2282,11 +2295,9 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
     }
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-      output_profile_result->set_algorithm(algo_desc);
-      output_profile_result->set_elapsed_time_in_ms(
-          timer->GetElapsedMilliseconds());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+          timer, *rnn_desc.algorithm_config().algorithm(),
+          output_profile_result));
     }
     return tsl::OkStatus();
   }
@@ -2382,11 +2393,9 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    TF_RETURN_IF_ERROR(timer->Stop());
-    auto algo_desc = *rnn_desc.algorithm_config().algorithm();
-    output_profile_result->set_algorithm(algo_desc);
-    output_profile_result->set_elapsed_time_in_ms(
-        timer->GetElapsedMilliseconds());
+    TF_RETURN_IF_ERROR(PopulateProfileFromTimer(
+        timer, *rnn_desc.algorithm_config().algorithm(),
+        output_profile_result));
   }
 
   return ::tsl::OkStatus();
@@ -4970,10 +4979,8 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
     }
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      profile_result->set_algorithm(algo);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, algo, profile_result,
+                                                  scratch_memory.size()));
     }
 
     return ::tsl::OkStatus();
@@ -5264,16 +5271,14 @@ class CudnnExecutionPlanRunner<void(Args...)>
     RETURN_IF_CUDNN_ERROR(status);
 
     if (is_profiling) {
-      TF_RETURN_IF_ERROR(timer->Stop());
       TF_ASSIGN_OR_RETURN(auto desc, ToAlgorithmDesc());
-      profile_result->set_algorithm(desc);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, desc, profile_result,
+                                                  scratch_memory.size()));
 
       VLOG(4) << "cudnn op with plan " << plan_.getTag()
               << ", workspace_size=" << workspace_size << " -> "
               << CudnnStatusToString(status) << " in "
-              << timer->GetElapsedMilliseconds() << "ms";
+              << profile_result->elapsed_time_in_ms() << "ms";
     }
 
     return tsl::OkStatus();
@@ -5724,15 +5729,13 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
     RETURN_IF_CUDNN_ERROR(status);
 
     if (profile_result) {
-      TF_RETURN_IF_ERROR(timer->Stop());
-      profile_result->set_algorithm(algo);
-      profile_result->set_elapsed_time_in_ms(timer->GetElapsedMilliseconds());
-      profile_result->set_scratch_size(scratch_memory.size());
+      TF_RETURN_IF_ERROR(PopulateProfileFromTimer(timer, algo, profile_result,
+                                                  scratch_memory.size()));
       VLOG(4) << "conv with algorithm " << ToConvForwardAlgo(algo)
               << ", tensor_ops_enabled=" << tensor_ops_enabled_
               << ", workspace_size=" << scratch_memory.size() << " -> "
               << CudnnStatusToString(status) << " in "
-              << timer->GetElapsedMilliseconds() << "ms";
+              << profile_result->elapsed_time_in_ms() << "ms";
     }
 
     return ::tsl::OkStatus();

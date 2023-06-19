@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 
 #include <optional>
+#include <utility>
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
@@ -28,7 +29,7 @@ namespace gpu {
 class GpuExecutor;
 class GpuStream;
 
-// Timer is started once it's created, and can only be stopped once.
+// Timer is started once it's created, and is stopped once read.
 class GpuTimer {
  public:
   static tsl::StatusOr<GpuTimer> Create(GpuStream* stream);
@@ -50,33 +51,20 @@ class GpuTimer {
       : parent_(other.parent_),
         start_event_(std::exchange(other.start_event_, nullptr)),
         stop_event_(std::exchange(other.stop_event_, nullptr)),
-        stream_(other.stream_),
-        elapsed_milliseconds_(other.elapsed_milliseconds_) {}
+        stream_(other.stream_) {}
 
   ~GpuTimer();
 
-  // Records the "timer stop" event at the current point in the stream.
-  // Returns "error status" if called multiple times.
-  tsl::Status Stop();
-
-  // Returns the elapsed time, in milliseconds, between the start and stop
-  // events. Crashes if <Stop> wasn't called before.
-  float GetElapsedMilliseconds() const;
-
-  uint64_t Microseconds() const { return GetElapsedMilliseconds() * 1e3; }
-
-  uint64_t Nanoseconds() const { return GetElapsedMilliseconds() * 1e6; }
+  // Stops the timer on the first call and returns the elapsed duration.
+  // Subsequent calls error out.
+  tsl::StatusOr<absl::Duration> GetElapsedDuration();
 
  private:
   GpuExecutor* parent_;
-  GpuEventHandle start_event_ =
-      nullptr;  // Event recorded to indicate the "start"
-                // timestamp executing in a stream.
-  GpuEventHandle stop_event_ =
-      nullptr;  // Event recorded to indicate the "stop"
-                // timestamp executing in a stream.
+  GpuEventHandle start_event_ = nullptr;
+  GpuEventHandle stop_event_ = nullptr;
   GpuStream* stream_;
-  std::optional<float> elapsed_milliseconds_;
+  bool is_stopped_ = false;
 
   SE_DISALLOW_COPY_AND_ASSIGN(GpuTimer);
 };
