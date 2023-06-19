@@ -33,12 +33,25 @@ class GpuTimer {
  public:
   static tsl::StatusOr<GpuTimer> Create(GpuStream* stream);
 
+  // An ugly but a very convenient helper: creates a timer only when we need
+  // one, but always returns an object. If `is_needed` is false, returns an
+  // empty optional, acts like `Create` otherwise.
+  static tsl::StatusOr<std::optional<GpuTimer>> CreateIfNeeded(
+      GpuStream* stream, bool is_needed);
+
   explicit GpuTimer(GpuExecutor* parent, GpuEventHandle start_event,
                     GpuEventHandle stop_event, GpuStream* stream)
       : parent_(parent),
         start_event_(start_event),
         stop_event_(stop_event),
         stream_(stream) {}
+
+  GpuTimer(GpuTimer&& other)
+      : parent_(other.parent_),
+        start_event_(std::exchange(other.start_event_, nullptr)),
+        stop_event_(std::exchange(other.stop_event_, nullptr)),
+        stream_(other.stream_),
+        elapsed_milliseconds_(other.elapsed_milliseconds_) {}
 
   ~GpuTimer();
 
@@ -47,7 +60,7 @@ class GpuTimer {
   tsl::Status Stop();
 
   // Returns the elapsed time, in milliseconds, between the start and stop
-  // events.
+  // events. Crashes if <Stop> wasn't called before.
   float GetElapsedMilliseconds() const;
 
   uint64_t Microseconds() const { return GetElapsedMilliseconds() * 1e3; }

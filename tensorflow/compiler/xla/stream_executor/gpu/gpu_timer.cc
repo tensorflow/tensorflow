@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 
+#include <optional>
+#include <utility>
+
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_stream.h"
@@ -23,7 +26,7 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-tsl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
+/*static*/ tsl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
   GpuExecutor* parent = stream->parent();
   GpuContext* context = parent->gpu_context();
   GpuEventHandle start_event;
@@ -39,16 +42,28 @@ tsl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
                                  stop_event, stream};
 }
 
+/*static*/ tsl::StatusOr<std::optional<GpuTimer>> GpuTimer::CreateIfNeeded(
+    GpuStream* stream, bool is_needed) {
+  if (is_needed) {
+    TF_ASSIGN_OR_RETURN(GpuTimer t, GpuTimer::Create(stream));
+    return {std::make_optional(std::move(t))};
+  }
+  return std::nullopt;
+}
+
 GpuTimer::~GpuTimer() {
   GpuContext* context = parent_->gpu_context();
-  tsl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
+  if (start_event_ != nullptr) {
+    tsl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
   }
-
-  status = GpuDriver::DestroyEvent(context, &stop_event_);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
+  if (stop_event_ != nullptr) {
+    tsl::Status status = GpuDriver::DestroyEvent(context, &stop_event_);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
   }
 }
 
@@ -58,6 +73,9 @@ float GpuTimer::GetElapsedMilliseconds() const {
 }
 
 tsl::Status GpuTimer::Stop() {
+  if (stop_event_ == nullptr) {
+    return absl::InternalError("Stopping inactive timer");
+  }
   TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(), stop_event_,
                                             stream_->gpu_stream()));
 

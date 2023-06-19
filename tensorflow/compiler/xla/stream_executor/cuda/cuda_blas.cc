@@ -762,14 +762,14 @@ static tsl::StatusOr<cublasMath_t> GetMathTypeForGemmEx(
 }
 
 static tsl::Status PopulateProfileFromTimer(
-    GpuTimer &timer, blas::AlgorithmType algorithm,
+    std::optional<GpuTimer> &timer, blas::AlgorithmType algorithm,
     blas::ProfileResult *output_profile_result) {
-  TF_RETURN_IF_ERROR(timer.Stop());
   if (output_profile_result) {
+    TF_RETURN_IF_ERROR(timer->Stop());
     output_profile_result->set_is_valid(true);
     output_profile_result->set_algorithm(algorithm);
     output_profile_result->set_elapsed_time_in_ms(
-        timer.GetElapsedMilliseconds());
+        timer->GetElapsedMilliseconds());
   }
   return ::tsl::OkStatus();
 }
@@ -786,9 +786,10 @@ tsl::Status CUDABlas::DoBlasGemmWithAlgorithm(
       cublasMath_t math_type,
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
 
-  CHECK(stream);
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                               output_profile_result != nullptr));
 
   // Since we are converting 'algorithm' to cublasGemmAlgo_t by static_cast,
   // we do the following compile-time check on the default value:
@@ -802,7 +803,7 @@ tsl::Status CUDABlas::DoBlasGemmWithAlgorithm(
       ldc, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(*timer, algorithm, output_profile_result));
+      PopulateProfileFromTimer(timer, algorithm, output_profile_result));
   return ::tsl::OkStatus();
 }
 
@@ -818,8 +819,10 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
   TF_ASSIGN_OR_RETURN(
       cublasMath_t math_type,
       GetMathTypeForGemmEx(stream, algorithm, type_a, type_b, numeric_options));
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                               output_profile_result != nullptr));
   cudaDataType_t cuda_in_type = AsCudaDataType(type_a);
 
 #if CUDA_VERSION >= 11000
@@ -843,7 +846,7 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
           static_cast<cublasGemmAlgo_t>(algorithm)));
     }
     TF_RETURN_IF_ERROR(
-        PopulateProfileFromTimer(*timer, algorithm, output_profile_result));
+        PopulateProfileFromTimer(timer, algorithm, output_profile_result));
     return tsl::OkStatus();
   }
 #endif
@@ -856,7 +859,7 @@ tsl::Status CUDABlas::DoBlasGemmStridedBatchedWithAlgorithm(
       batch_count, AsCublasComputeType(computation_type),
       static_cast<cublasGemmAlgo_t>(algorithm)));
   TF_RETURN_IF_ERROR(
-      PopulateProfileFromTimer(*timer, algorithm, output_profile_result));
+      PopulateProfileFromTimer(timer, algorithm, output_profile_result));
   return ::tsl::OkStatus();
 }
 

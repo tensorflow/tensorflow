@@ -572,17 +572,16 @@ class TritonAutotunerVisitor : public DfsHloRewriteVisitor {
                                              launch_dimensions[0], stream));
     TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
-    StatusOr<se::gpu::GpuTimer> timer =
-        se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(
+        auto timer, se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream)));
     TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*matmul_kernel, matmul_args,
                                              launch_dimensions[0], stream));
     if (have_reduction) {
       TF_RETURN_IF_ERROR(ExecuteKernelOnStream(*reduce_kernel, reduce_args,
                                                launch_dimensions[1], stream));
     }
-    TF_RETURN_IF_ERROR(timer->Stop());
-    return std::make_optional(absl::Nanoseconds(timer->Nanoseconds()));
+    TF_RETURN_IF_ERROR(timer.Stop());
+    return std::make_optional(absl::Nanoseconds(timer.Nanoseconds()));
   }
 
   StatusOr<std::unique_ptr<Executable>> CompileMatmulWithCublas(

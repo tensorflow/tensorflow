@@ -2044,9 +2044,10 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
                                              reserve_space_size_in_bytes));
     }
 
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
     const bool is_profiling = output_profile_result != nullptr;
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     RETURN_IF_CUDNN_ERROR(cudnnRNNForward(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2096,8 +2097,9 @@ tsl::Status CudnnSupport::DoRnnForwardImpl(
   }
 
   const bool is_profiling = output_profile_result != nullptr;
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   if (!is_training) {
     if (input_desc.is_var_seq_lengths()) {
@@ -2231,9 +2233,10 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
                                          workspace_size_in_bytes));
     }
 
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
     const bool is_profiling = output_profile_result != nullptr;
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardData_v8(
         /*handle=*/cudnn.handle(), /*rnnDesc=*/rnn_desc.handle(),
@@ -2292,9 +2295,10 @@ tsl::Status CudnnSupport::DoRnnBackwardImpl(
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
 
-  tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-  TF_RETURN_IF_ERROR(timer.status());
   const bool is_profiling = output_profile_result != nullptr;
+  TF_ASSIGN_OR_RETURN(
+      std::optional<GpuTimer> timer,
+      GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
   if (input_desc.is_var_seq_lengths()) {
     RETURN_IF_CUDNN_ERROR(cudnnRNNBackwardDataEx(
@@ -4885,9 +4889,9 @@ class CudnnLegacyConvRunner : public dnn::ConvRunner {
                      : static_cast<void*>(&fbeta);
 
     const bool is_profiling = profile_result != nullptr;
-
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     const auto get_fwd_bugs = [&]() -> tsl::Status {
 #if CUDNN_VERSION < 8000
@@ -5251,9 +5255,9 @@ class CudnnExecutionPlanRunner<void(Args...)>
             << "\nVariantPack: " << variantPack.describe();
 
     const bool is_profiling = profile_result != nullptr;
-
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(
+        std::optional<GpuTimer> timer,
+        GpuTimer::CreateIfNeeded(AsGpuStream(stream), is_profiling));
 
     cudnnStatus_t status = cudnnBackendExecute(
         cudnn.handle(), plan_.get_raw_desc(), variantPack.get_raw_desc());
@@ -5663,8 +5667,9 @@ class CudnnLegacyFusedConvRunner : public dnn::FusedConvRunner {
 
     auto algo = MakeAlgorithmDesc();
 
-    tsl::StatusOr<GpuTimer> timer = GpuTimer::Create(AsGpuStream(stream));
-    TF_RETURN_IF_ERROR(timer.status());
+    TF_ASSIGN_OR_RETURN(std::optional<GpuTimer> timer,
+                        GpuTimer::CreateIfNeeded(AsGpuStream(stream),
+                                                 profile_result != nullptr));
     auto side_input_data_ptr = (side_input_scale_ == 0)
                                    ? output_data.opaque()
                                    : side_input_data.opaque();
