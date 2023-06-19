@@ -484,6 +484,10 @@ class Reader::Dataset : public DatasetBase {
         return s;
       }
 
+      if (!absl::IsOutOfRange(s)) {
+        LOG(WARNING) << "Advance to next file as error raised with error message " << s.message();
+      }
+      
       // stop processing current file if any error occurs, as there's no way to determinate correct offset of next record
       // 'tf.data.Dataset.ignore_errors' will execute 'ReadTensors' repeatedly if not advance to next file on error
       Status status = AdvanceToNextFile(ctx->env());
