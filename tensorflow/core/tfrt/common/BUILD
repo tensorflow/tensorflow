@@ -42,6 +42,7 @@ cc_library(
     ],
     visibility = [":friends"],
     deps = [
+        "//tensorflow/compiler/xla/pjrt:utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/memory",
