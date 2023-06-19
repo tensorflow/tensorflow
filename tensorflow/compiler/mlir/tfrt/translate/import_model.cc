@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -195,6 +197,10 @@ Status ConvertTfMlirToRuntimeExecutable(
   if (VLOG_IS_ON(1)) {
     tensorflow::DumpMlirOpToFile("tf_dialect", module);
   }
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  module.getContext()->appendDialectRegistry(registry);
 
   // Lower MLIR TF Dialect to MLIR TFRT CoreRT dialect.
   mlir::PassManager pm(module.getContext());

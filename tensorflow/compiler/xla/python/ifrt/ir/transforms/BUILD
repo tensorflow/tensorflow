@@ -27,6 +27,7 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        "ifrt_duplicated_callee_elimination_pass.cc",
         "spmd_expandable_interface_verification_pass.cc",
     ],
     hdrs = ["passes.h"],

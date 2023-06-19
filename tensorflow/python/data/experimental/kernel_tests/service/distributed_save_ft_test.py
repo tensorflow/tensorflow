@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Fault tolerance tests for tf.data service snapshots."""
+import collections
 import os
 import pathlib
 import tempfile
@@ -29,6 +30,8 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import test
 
+_MAX_STREAMS_PER_WORKER = 2
+
 # Enum value for `SnapshotStreamInfo` states.
 _ORPHAN = 2
 _DONE = 4
@@ -40,21 +43,55 @@ def write_file(path):
     pass
 
 
-def get_stream_assignment(cluster, worker_idx, snapshot_idx=0):
-  while not cluster.workers[worker_idx].snapshot_task_progresses():
+def get_stream_assignment(
+    cluster,
+    worker_idx,
+    path,
+    block=True,
+    active_only=False):
+  while True:
+    for progress in cluster.workers[worker_idx].snapshot_task_progresses():
+      if (progress.snapshot_task_base_path.decode() == path
+          and not (active_only and progress.completed)):
+        return progress.snapshot_task_stream_index
+    if not block:
+      break
     time.sleep(0.1)
-  return (
-      cluster.workers[worker_idx]
-      .snapshot_task_progresses()[snapshot_idx]
-      .snapshot_task_stream_index
-  )
 
 
-def get_stream_assignments(cluster, n, snapshot_idx=0):
-  assignments = {}
-  for i in range(n):
-    assignments[i] = get_stream_assignment(cluster, i, snapshot_idx)
+def get_stream_assignments(
+    cluster,
+    num_workers,
+    paths,
+    block=True,
+    active_only=False):
+  assignments = collections.defaultdict(dict)
+  for worker_idx in range(num_workers):
+    for path in paths:
+      assignment = get_stream_assignment(
+          cluster, worker_idx, path, block, active_only)
+      if assignment is not None:
+        assignments[worker_idx][path] = assignment
   return assignments
+
+
+def snapshot_is_done(path):
+  return os.path.exists(os.path.join(path, "DONE"))
+
+
+def snapshot_has_error(path):
+  return os.path.exists(os.path.join(path, "ERROR"))
+
+
+def snapshots_are_done(paths):
+  return all([snapshot_is_done(path) for path in paths])
+
+
+def wait_for_snapshots(paths, f=lambda: None):
+  while not all([snapshot_is_done(path) or snapshot_has_error(path)
+                 for path in paths]):
+    f()
+    time.sleep(0.1)
 
 
 class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
@@ -135,7 +172,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadStreamName(self, bad_stream_dir_name):
     cluster, _ = self.setup(num_workers=0)
     self._make_stream_dir(bad_stream_dir_name)
-    with self.assertRaisesRegex(ValueError, "can't parse"):
+    with self.assertRaisesRegex(ValueError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -149,14 +186,14 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithBadSourceName(self, bad_source_dir_name):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), bad_source_dir_name))
-    with self.assertRaisesRegex(ValueError, "can't parse"):
+    with self.assertRaisesRegex(ValueError, "Can't parse"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
   def testSnapshotRecoveryFailsWithOutOfBoundsSourceName(self):
     cluster, _ = self.setup(num_workers=0)
     os.makedirs(os.path.join(self.splits_dir(), "source_1"))
-    with self.assertRaisesRegex(ValueError, "found conflict"):
+    with self.assertRaisesRegex(ValueError, "Found conflict"):
       cluster.restart_dispatcher()
 
   @combinations.generate(
@@ -192,7 +229,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
   def testSnapshotRecoveryFailsWithMissingGlobalIndexInSplitNames(self):
     cluster, _ = self.setup(num_workers=0)
     write_file(os.path.join(self.source_dir(), "split_0_1"))
-    with self.assertRaisesRegex(ValueError, "found missing global"):
+    with self.assertRaisesRegex(ValueError, "Found missing global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -202,7 +239,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     write_file(
         os.path.join(self.source_dir(stream_idx=1, worker=1), "split_0_1")
     )
-    with self.assertRaisesRegex(ValueError, "found duplicate global"):
+    with self.assertRaisesRegex(ValueError, "Found duplicate global"):
       cluster.restart_dispatcher()
 
   @combinations.generate(test_base.default_test_combinations())
@@ -228,10 +265,53 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertCountEqual([stream.index for stream in streams], range(n))
 
   @combinations.generate(test_base.default_test_combinations())
+  def testWorkersDontExceedMaxStreamAssignments(self):
+    num_workers = 3
+    num_snapshots = 12
+    cluster = data_service_test_base.TestCluster(num_workers=num_workers)
+
+    paths = []
+    for i in range(num_snapshots):
+      paths.append(f"{self._path}_{i}")
+      self.evaluate(
+          distributed_save_op.distributed_save(
+              dataset_ops.Dataset.range(2**i),
+              paths[i],
+              cluster.dispatcher_address()))
+
+    # A mapping of worker idx to max active assignments observed at any time.
+    max_assignments = collections.defaultdict(int)
+
+    def get_assignments_and_update_max_assignments():
+      assignments = get_stream_assignments(
+          cluster, num_workers, paths, block=False, active_only=True)
+      for worker_idx, worker_assignments in assignments.items():
+        max_assignments[worker_idx] = max(max_assignments[worker_idx],
+                                          len(worker_assignments))
+      return assignments
+
+    # Blocks until each worker has at least the max expected active assignments.
+    while True:
+      assignments = get_assignments_and_update_max_assignments()
+      all_workers_have_assignments = len(assignments) == num_workers
+      each_worker_has_enough_assignments = all([
+          len(per_worker_assignments) >= _MAX_STREAMS_PER_WORKER
+          for per_worker_assignments in assignments.values()])
+      if all_workers_have_assignments and each_worker_has_enough_assignments:
+        break
+      time.sleep(0.1)
+
+    cluster.restart_dispatcher()
+    wait_for_snapshots(paths, get_assignments_and_update_max_assignments)
+    self.assertValuesEqual(list(max_assignments.values()),
+                           [_MAX_STREAMS_PER_WORKER] * num_workers)
+
+  @combinations.generate(test_base.default_test_combinations())
   def testLargeMultiSourceSnapshotRecoversAndCompletes(self):
     n = 5
     cluster, _ = self.setup(num_workers=n, ds_size=1000, num_sources=3)
-    get_stream_assignments(cluster, n)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, n, [self._path])
     cluster.stop_worker(0)
     self.assertTrue(
         os.path.exists(
@@ -252,7 +332,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         ds, self._path, cluster.dispatcher_address()
     ))
 
-    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 3, [self._path])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
@@ -270,7 +351,7 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         num_sources=num_sources,
     )
     # Blocks until all workers have streams.
-    get_stream_assignments(cluster, num_workers)
+    get_stream_assignments(cluster, num_workers, [self._path])
     cluster.stop_worker(0)
     cluster.restart_worker(0)
     self._wait_for_snapshot()
@@ -317,7 +398,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
         )
     )
 
-    get_stream_assignments(cluster, 3)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 3, [snapshot_path1, snapshot_path2])
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
     cluster.restart_worker(0)
@@ -342,7 +424,8 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.evaluate(
         distributed_save_op.distributed_save(
             dataset, self._path, cluster.dispatcher_address()))
-    get_stream_assignments(cluster, 1)  # Blocks until all workers have streams.
+    # Blocks until all workers have streams.
+    get_stream_assignments(cluster, 1, [self._path])
     time.sleep(1)
     cluster.stop_worker(0)
     cluster.restart_dispatcher()
@@ -351,14 +434,13 @@ class SnapshotFtTest(data_service_test_base.TestBase, parameterized.TestCase):
     self.assertTrue(self._snapshot_is_done())
 
   def _snapshot_is_done(self):
-    return os.path.exists(os.path.join(self._path, "DONE"))
+    return snapshot_is_done(self._path)
 
   def _snapshot_has_error(self):
-    return os.path.exists(os.path.join(self._path, "ERROR"))
+    return snapshot_has_error(self._path)
 
   def _wait_for_snapshot(self):
-    while not (self._snapshot_is_done() or self._snapshot_has_error()):
-      time.sleep(0.1)
+    return wait_for_snapshots([self._path])
 
 
 if __name__ == "__main__":

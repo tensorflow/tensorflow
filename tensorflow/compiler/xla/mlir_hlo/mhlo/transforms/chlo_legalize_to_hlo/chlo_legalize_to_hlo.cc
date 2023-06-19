@@ -1796,9 +1796,8 @@ struct ConvertTrivialNonBroadcastBinaryOp
       }
     }
 
-    rewriter.replaceOp(op,
-                       {Adaptor::createOp(op, op.getResult().getType(),
-                                          adaptor.getOperands(), rewriter)});
+    rewriter.replaceOp(op, Adaptor::createOp(op, op.getResult().getType(),
+                                             adaptor.getOperands(), rewriter));
     return success();
   }
 };

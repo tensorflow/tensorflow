@@ -23,32 +23,23 @@ limitations under the License.
 namespace stream_executor {
 namespace gpu {
 
-bool GpuTimer::Init() {
-  CHECK(start_event_ == nullptr && stop_event_ == nullptr);
-  GpuContext* context = parent_->gpu_context();
-  tsl::Status status = GpuDriver::InitEvent(context, &start_event_,
-                                            GpuDriver::EventFlags::kDefault);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-    return false;
-  }
-
-  status = GpuDriver::InitEvent(context, &stop_event_,
-                                GpuDriver::EventFlags::kDefault);
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-    status = GpuDriver::DestroyEvent(context, &start_event_);
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
-    return false;
-  }
-
-  CHECK(start_event_ != nullptr && stop_event_ != nullptr);
-  return true;
+tsl::StatusOr<GpuTimer> GpuTimer::Create(GpuStream* stream) {
+  GpuExecutor* parent = stream->parent();
+  GpuContext* context = parent->gpu_context();
+  GpuEventHandle start_event;
+  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &start_event,
+                                          GpuDriver::EventFlags::kDefault));
+  GpuEventHandle stop_event;
+  TF_RETURN_IF_ERROR(GpuDriver::InitEvent(context, &stop_event,
+                                          GpuDriver::EventFlags::kDefault));
+  CHECK(start_event != nullptr && stop_event != nullptr);
+  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent->gpu_context(), start_event,
+                                            stream->gpu_stream()));
+  return tsl::StatusOr<GpuTimer>{absl::in_place, parent, start_event,
+                                 stop_event, stream};
 }
 
-void GpuTimer::Destroy() {
+GpuTimer::~GpuTimer() {
   GpuContext* context = parent_->gpu_context();
   tsl::Status status = GpuDriver::DestroyEvent(context, &start_event_);
   if (!status.ok()) {
@@ -62,31 +53,25 @@ void GpuTimer::Destroy() {
 }
 
 float GpuTimer::GetElapsedMilliseconds() const {
-  CHECK(start_event_ != nullptr && stop_event_ != nullptr);
-  // TODO(leary) provide a way to query timer resolution?
-  // CUDA docs say a resolution of about 0.5us
+  CHECK(elapsed_milliseconds_.has_value());
+  return *elapsed_milliseconds_;
+}
+
+tsl::Status GpuTimer::Stop() {
+  TF_RETURN_IF_ERROR(GpuDriver::RecordEvent(parent_->gpu_context(), stop_event_,
+                                            stream_->gpu_stream()));
+
+  if (elapsed_milliseconds_.has_value()) {
+    return absl::InternalError("Timer already stoppped");
+  }
   float elapsed_milliseconds = NAN;
-  (void)GpuDriver::GetEventElapsedTime(
-      parent_->gpu_context(), &elapsed_milliseconds, start_event_, stop_event_);
-  return elapsed_milliseconds;
-}
-
-bool GpuTimer::Start(GpuStream* stream) {
-  tsl::Status status = GpuDriver::RecordEvent(
-      parent_->gpu_context(), start_event_, stream->gpu_stream());
-  if (!status.ok()) {
-    LOG(ERROR) << status;
+  if (!GpuDriver::GetEventElapsedTime(parent_->gpu_context(),
+                                      &elapsed_milliseconds, start_event_,
+                                      stop_event_)) {
+    return absl::InternalError("Error stopping the timer");
   }
-  return status.ok();
-}
-
-bool GpuTimer::Stop(GpuStream* stream) {
-  tsl::Status status = GpuDriver::RecordEvent(
-      parent_->gpu_context(), stop_event_, stream->gpu_stream());
-  if (!status.ok()) {
-    LOG(ERROR) << status;
-  }
-  return status.ok();
+  elapsed_milliseconds_ = elapsed_milliseconds;
+  return tsl::OkStatus();
 }
 
 }  // namespace gpu

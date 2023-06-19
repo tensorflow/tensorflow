@@ -55,25 +55,38 @@ Status SetOutputForConstant(
 
 // Converts input tensors and variables which are parameters of the
 // XlaComputation into PjRtBuffers to be fed as input to the
-// PjRtLoadedExecutable. `input_mapping` is a vector that maps from the
-// parameters of the XlaComputation to their original argument positions. This
-// can be sourced from `XlaCompiler::CompilationResult::input_mapping`.
+// PjRtLoadedExecutable.
+//
+// Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
+// compilation_result are missing in `inputs` and adjusts indexing into `inputs`
+// accordingly.
+// `input_mapping` is a vector that maps from the parameters of the
+// XlaComputation to their original argument positions. This can be sourced from
+// `XlaCompiler::CompilationResult::input_mapping`.
+// `variable_snapshots` is a map of {index of the input to the
+// compilation_result -> underlying Tensor the variable is/was pointing to (i.e.
+// the value of the variable at the time of lowering/compilation)}.
 //
 // The obtained PjRtBuffers are populated to `args` vector.
 // `non_donatable_input_indices` will also be set, which contains the indices of
 // the input that should not be donated to output.
 void PreparePjRtExecutableArguments(
-    const std::vector<int>& input_mapping,
+    int num_missing_prefix_ctx_inputs, const std::vector<int>& input_mapping,
     const std::vector<const Tensor*>& inputs,
-    const std::vector<VariableInfo>& variables,
+    const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
     std::vector<xla::PjRtBuffer*>* args,
     absl::flat_hash_set<int>* non_donatable_input_indices);
 
 // Populates the OpKernelContext outputs with the outputs of the
 // PjRtLoadedExecutable. Requires the `compilation_result` used to build the
 // PjRtLoadedExecutable.
+// This function only looks at variables that were updated, so `variables` can
+// either be all the variables or only the ones that were updated.
+// Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
+// compilation_result are missing in `inputs` and adjusts indexing into `inputs`
+// accordingly.
 Status PopulateCtxOutputsFromPjRtExecutableOutputs(
-    const std::vector<const Tensor*>& inputs,
+    int num_missing_prefix_ctx_inputs, const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
     const XlaCompiler::CompilationResult& compilation_result,
     std::vector<std::unique_ptr<xla::PjRtBuffer>>& executable_outputs,
@@ -97,6 +110,21 @@ Status RunPjRtExecutable(
     const xla::PjRtClient& pjrt_client,
     const std::vector<const Tensor*>& inputs,
     const std::vector<VariableInfo>& variables,
+    const XlaCompiler::CompilationResult& compilation_result,
+    xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx);
+
+// Same as the above function but takes in `updated_variables` and
+// `variable_snapshots` which is a map of {index of the input to the
+// compilation_result -> underlying Tensor the variable is/was pointing to
+// (i.e. the value of the variable at the time of lowering/compilation)}.
+// Assumes that the first `num_missing_prefix_ctx_inputs` inputs to the
+// compilation_result are missing in `inputs` and adjusts indexing into `inputs`
+// accordingly.
+Status RunPjRtExecutable(
+    const xla::PjRtClient& pjrt_client, int num_missing_prefix_ctx_inputs,
+    const std::vector<const Tensor*>& inputs,
+    const absl::flat_hash_map<int, const Tensor*>& variable_snapshots,
+    const std::vector<VariableInfo>& updated_variables,
     const XlaCompiler::CompilationResult& compilation_result,
     xla::PjRtLoadedExecutable* executable, OpKernelContext* ctx);
 

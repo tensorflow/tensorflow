@@ -213,15 +213,6 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const HloInstruction* hero1 = GetRealHeroForMultiOutputFusion(instr1);
   const HloInstruction* hero2 = GetRealHeroForMultiOutputFusion(instr2);
 
-  auto hero1_is_unnested_reduce =
-      IsReductionFromOrToContiguousDimensions(*hero1);
-  auto tiled_transpose_hero1 = FindAnyTiledTranspose(*hero1);
-  bool hero1_is_unnested_transpose = tiled_transpose_hero1.has_value();
-  bool hero2_is_unnested_reduce =
-      IsReductionFromOrToContiguousDimensions(*hero2);
-  auto tiled_transpose_hero2 = FindAnyTiledTranspose(*hero2);
-  bool hero2_is_unnested_transpose = tiled_transpose_hero2.has_value();
-
   if (NoFusionPossible heroes_are_compatible =
           !FusionHeroesAreCompatible(hero1, hero2)) {
     return !heroes_are_compatible;
@@ -231,10 +222,7 @@ FusionDecision ShapesCompatibleForMultiOutputFusion(
   const Shape& l2 = get_loop_shape(hero2);
 
   // We accept different shapes provided shapes are trivially reshapable.
-  bool accept_unequal_shape =
-      !l1.IsTuple() && !l2.IsTuple() &&
-      (hero1_is_unnested_reduce || hero2_is_unnested_reduce ||
-       hero1_is_unnested_transpose || hero2_is_unnested_transpose);
+  bool accept_unequal_shape = !l1.IsTuple() && !l2.IsTuple();
 
   if (!ShapeUtil::EqualIgnoringElementType(l1, l2) &&
       (!accept_unequal_shape ||

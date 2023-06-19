@@ -1000,6 +1000,10 @@ def func_graph_from_py_func(name,
 
     input_trace_types = trace_type.from_value([func_args, func_kwargs])
     func_graph.inputs = input_trace_types._to_tensors([func_args, func_kwargs])  # pylint: disable=protected-access
+
+    # Reset variables watched while deconstructing inputs.
+    func_graph._watched_variables = object_identity.ObjectIdentityWeakSet()  # pylint: disable=protected-access
+
     for arg in func_graph.inputs:
       if arg.dtype == dtypes.resource:
         func_graph._resource_tensor_inputs.add(arg)  # pylint:disable=protected-access

@@ -1174,7 +1174,6 @@ xla_cc_test(
         "runtime_fft_impl.h",
         "runtime_fft_test.cc",
     ],
-    tags = ["nomsan"],
     deps = [
         ":runtime_single_threaded_fft",
         "//tensorflow/compiler/xla:types",
@@ -1189,7 +1188,6 @@ xla_cc_test(
 xla_cc_test(
     name = "cpu_instruction_fusion_test",
     srcs = ["cpu_instruction_fusion_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_instruction_fusion",
         "//tensorflow/compiler/xla:shape_util",
@@ -1208,7 +1206,6 @@ xla_cc_test(
     name = "xfeed_manager_test",
     size = "small",
     srcs = ["xfeed_manager_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_runtime",
         "//tensorflow/compiler/xla:shape_util",
@@ -1251,7 +1248,6 @@ cc_library(
 xla_cc_test(
     name = "ir_emission_utils_test",
     srcs = ["ir_emission_utils_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ir_emission_utils",
         ":target_machine_features_fake",
@@ -1295,7 +1291,6 @@ xla_cc_test(
     name = "cpu_layout_assignment_test",
     size = "small",
     srcs = ["cpu_layout_assignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_layout_assignment",
         ":target_machine_features_fake",
@@ -1340,7 +1335,6 @@ cc_library(
 xla_cc_test(
     name = "conv_canonicalization_test",
     srcs = ["conv_canonicalization_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":conv_canonicalization",
         ":target_machine_features_fake",
@@ -1365,7 +1359,6 @@ cc_library(
 xla_cc_test(
     name = "shape_partition_test",
     srcs = ["shape_partition_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":shape_partition",
         "//tensorflow/compiler/xla:test_helpers",
@@ -1396,7 +1389,6 @@ cc_library(
 xla_cc_test(
     name = "parallel_task_assignment_test",
     srcs = ["parallel_task_assignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":cpu_executable",
         ":parallel_task_assignment",
@@ -1466,7 +1458,6 @@ xla_cc_test(
     name = "cpu_eigen_tensor_alignment_test",
     size = "small",
     srcs = ["cpu_eigen_tensor_alignment_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":ir_emission_utils",
         ":target_machine_features_fake",
@@ -1480,10 +1471,7 @@ xla_cc_test(
     name = "vectorized_reduce_with_no_vector_registers_test",
     size = "small",
     srcs = ["vectorized_reduce_with_no_vector_registers_test.cc"],
-    tags = [
-        "no_aarch64",
-        "nomsan",
-    ],
+    tags = ["no_aarch64"],
     deps = [
         ":cpu_compiler",
         ":cpu_transfer_manager",

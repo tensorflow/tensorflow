@@ -52,6 +52,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/Linker/Linker.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -90,11 +91,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/custom_call_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/fused_mha_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_asm_opts_util.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_conv_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_fused_mha_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
@@ -493,6 +496,32 @@ int RowReductionGetRowsPerWarp(int reduced_dimension_size) {
     return 1;
   }
   return WarpSize() / reduced_dimension_size;
+}
+
+StatusOr<xla::gpu::CudnnfMHAKind> AsCudnnfMHAKind(
+    mlir::lmhlo_gpu::FusedMhaDagSignature signature) {
+  switch (signature) {
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::Default:
+      return xla::gpu::CudnnfMHAKind::kBmmBmm;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmax:
+      return xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmax;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasMaskSoftmaxDropout:
+      return xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmax:
+      return xla::gpu::CudnnfMHAKind::kScaleMaskSoftmax;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleMaskSoftmaxDropout:
+      return xla::gpu::CudnnfMHAKind::kScaleMaskSoftmaxDropout;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::SoftmaxDropout:
+      return xla::gpu::CudnnfMHAKind::kSoftmaxDropout;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::Softmax:
+      return xla::gpu::CudnnfMHAKind::kSoftmax;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmax:
+      return xla::gpu::CudnnfMHAKind::kScaleBiasSoftmax;
+    case mlir::lmhlo_gpu::FusedMhaDagSignature::ScaleBiasSoftmaxDropout:
+      return xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout;
+    default:
+      return xla::InternalError("unknown fused_mha_dag_signature");
+  }
 }
 
 }  // namespace
@@ -1115,10 +1144,12 @@ Status IrEmitterUnnested::EmitGemmThunk(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto a, GetAllocationSlice(gemm.getA()));
   TF_ASSIGN_OR_RETURN(auto b, GetAllocationSlice(gemm.getB()));
   TF_ASSIGN_OR_RETURN(auto c, GetAllocationSlice(gemm.getC()));
+  bool deterministic_ops =
+      hlo_module_config_.debug_options().xla_gpu_deterministic_ops();
 
   TF_ASSIGN_OR_RETURN(GemmConfig config, GemmConfig::For(gemm));
-  auto thunk =
-      std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config), a, b, c);
+  auto thunk = std::make_unique<GemmThunk>(GetThunkInfo(op), std::move(config),
+                                           a, b, c, deterministic_ops);
 
   AddThunkToThunkSequence(std::move(thunk));
   return OkStatus();
@@ -1240,6 +1271,162 @@ Status IrEmitterUnnested::EmitConvolutionReorderThunk(mlir::Operation* op) {
       std::move(result_slices));
 
   AddThunkToThunkSequence(std::move(thunk));
+  return OkStatus();
+}
+
+Status IrEmitterUnnested::EmitFusedMHAThunk(mlir::Operation* op) {
+  using mlir::dyn_cast;
+  using mlir::lmhlo_gpu::fusedMHAOp;
+  using mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp;
+  using mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp;
+  GpufMHADescriptor descriptor;
+  BufferAllocation::Slice lhs_bmm1_slice, rhs_bmm1_slice, rhs_bmm2_slice,
+      output_slice, scratch_slice;
+
+  auto populate_common = [&](auto fmha) -> Status {
+    if (fmha.getDropoutRate()) {
+      descriptor.backend_config.set_dropout_rate(
+          (*fmha.getDropoutRate()).convertToDouble());
+    }
+
+    if (fmha.getSeed()) {
+      descriptor.backend_config.set_seed((*fmha.getSeed()));
+    }
+
+    auto* algorithm = descriptor.backend_config.mutable_algorithm();
+    algorithm->set_algo_id(fmha.getAlgorithmConfig().getAlgorithm());
+    for (int i = 0; i < fmha.getAlgorithmConfig().getKnobIds().size(); ++i) {
+      // N.B. tuning_knobs is a map rather than a repeated field, so this
+      // doesn't require reserving space up front.
+      (*algorithm->mutable_tuning_knobs())[fmha.getAlgorithmConfig()
+                                               .getKnobIds()[i]] =
+          fmha.getAlgorithmConfig().getKnobValues()[i];
+    }
+    algorithm->set_is_cudnn_frontend(true);
+    auto workspace_size = fmha.getAlgorithmConfig().getWorkspaceSize();
+    if (workspace_size >= 0) {
+      algorithm->mutable_workspace_size()->set_value(workspace_size);
+    }
+
+    descriptor.bmm1_dnums =
+        ConvertDotDimensionNumbers(fmha.getBmm1DotDimensionNumbers());
+    descriptor.bmm2_dnums =
+        ConvertDotDimensionNumbers(fmha.getBmm2DotDimensionNumbers());
+
+    descriptor.lhs_bmm1_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        GetShape(fmha.getLhsBmm1()).element_type(),
+        GetShape(fmha.getLhsBmm1()).dimensions(),
+        GetShape(fmha.getLhsBmm1()).layout().minor_to_major());
+    TF_ASSIGN_OR_RETURN(lhs_bmm1_slice, GetAllocationSlice(fmha.getLhsBmm1()));
+
+    descriptor.rhs_bmm1_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        GetShape(fmha.getRhsBmm1()).element_type(),
+        GetShape(fmha.getRhsBmm1()).dimensions(),
+        GetShape(fmha.getRhsBmm1()).layout().minor_to_major());
+    TF_ASSIGN_OR_RETURN(rhs_bmm1_slice, GetAllocationSlice(fmha.getRhsBmm1()));
+
+    descriptor.rhs_bmm2_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        GetShape(fmha.getRhsBmm2()).element_type(),
+        GetShape(fmha.getRhsBmm2()).dimensions(),
+        GetShape(fmha.getRhsBmm2()).layout().minor_to_major());
+    TF_ASSIGN_OR_RETURN(rhs_bmm2_slice, GetAllocationSlice(fmha.getRhsBmm2()));
+
+    descriptor.output_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        GetShape(fmha.getOutput()).element_type(),
+        GetShape(fmha.getOutput()).dimensions(),
+        GetShape(fmha.getOutput()).layout().minor_to_major());
+    TF_ASSIGN_OR_RETURN(output_slice, GetAllocationSlice(fmha.getOutput()));
+
+    TF_ASSIGN_OR_RETURN(scratch_slice, GetAllocationSlice(fmha.getScratch()));
+
+    TF_ASSIGN_OR_RETURN(auto intermediate_tensor_dims_array,
+                        ConvertMlirArrayAttrToInt64Array(
+                            fmha.getIntermediateTensorDimensions()));
+    TF_ASSIGN_OR_RETURN(
+        auto intermediate_tensor_layout_array,
+        ConvertMlirArrayAttrToInt64Array(fmha.getIntermediateTensorLayout()));
+
+    descriptor.intermediate_lhs_bmm2_shape =
+        ShapeUtil::MakeShapeWithDenseLayout(
+            GetShape(fmha.getOutput()).element_type(),
+            intermediate_tensor_dims_array, intermediate_tensor_layout_array);
+    return OkStatus();
+  };
+
+  BufferAllocation::Slice mask_slice;
+  BufferAllocation::Slice bias_slice;
+  if (auto fmha_op = dyn_cast<fusedMHAOp>(op)) {
+    TF_RET_CHECK(fmha_op != nullptr);
+    TF_ASSIGN_OR_RETURN(CudnnfMHAKind kind,
+                        AsCudnnfMHAKind(fmha_op.getFusedMhaDag()));
+    descriptor.kind = kind;
+    TF_RETURN_IF_ERROR(populate_common(fmha_op));
+  } else if (auto fmha_with_scaled_mask_op =
+                 dyn_cast<fusedMHAWithScaledMaskOp>(op)) {
+    TF_RET_CHECK(fmha_with_scaled_mask_op != nullptr);
+    TF_ASSIGN_OR_RETURN(
+        CudnnfMHAKind kind,
+        AsCudnnfMHAKind(fmha_with_scaled_mask_op.getFusedMhaDag()));
+    descriptor.kind = kind;
+    descriptor.backend_config.set_fmha_scale(
+        fmha_with_scaled_mask_op.getFmhaScale().convertToDouble());
+
+    TF_RET_CHECK(kind != xla::gpu::CudnnfMHAKind::kBmmBmm &&
+                 kind != xla::gpu::CudnnfMHAKind::kSoftmaxDropout &&
+                 kind != xla::gpu::CudnnfMHAKind::kSoftmax);
+
+    descriptor.mask_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        GetShape(fmha_with_scaled_mask_op.getMask()).element_type(),
+        GetShape(fmha_with_scaled_mask_op.getMask()).dimensions(),
+        GetShape(fmha_with_scaled_mask_op.getMask()).layout().minor_to_major());
+
+    TF_ASSIGN_OR_RETURN(mask_slice,
+                        GetAllocationSlice(fmha_with_scaled_mask_op.getMask()));
+
+    if (fmha_with_scaled_mask_op.getBias() != nullptr) {
+      TF_RET_CHECK(kind == xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmax ||
+                   kind ==
+                       xla::gpu::CudnnfMHAKind::kScaleBiasMaskSoftmaxDropout);
+
+      descriptor.bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
+          GetShape(fmha_with_scaled_mask_op.getBias()).element_type(),
+          GetShape(fmha_with_scaled_mask_op.getBias()).dimensions(),
+          GetShape(fmha_with_scaled_mask_op.getBias())
+              .layout()
+              .minor_to_major());
+
+      TF_ASSIGN_OR_RETURN(
+          bias_slice, GetAllocationSlice(fmha_with_scaled_mask_op.getBias()));
+    }
+    TF_RETURN_IF_ERROR(populate_common(fmha_with_scaled_mask_op));
+  } else if (auto fmha_with_bias_op = dyn_cast<fusedMHAWithScaledBiasOp>(op)) {
+    TF_RET_CHECK(fmha_with_bias_op != nullptr);
+    TF_ASSIGN_OR_RETURN(CudnnfMHAKind kind,
+                        AsCudnnfMHAKind(fmha_with_bias_op.getFusedMhaDag()));
+    descriptor.kind = kind;
+    TF_RET_CHECK(kind == xla::gpu::CudnnfMHAKind::kScaleBiasSoftmax ||
+                 kind == xla::gpu::CudnnfMHAKind::kScaleBiasSoftmaxDropout);
+    descriptor.backend_config.set_fmha_scale(
+        fmha_with_bias_op.getFmhaScale().convertToDouble());
+
+    descriptor.bias_shape = ShapeUtil::MakeShapeWithDenseLayout(
+        GetShape(fmha_with_bias_op.getBias()).element_type(),
+        GetShape(fmha_with_bias_op.getBias()).dimensions(),
+        GetShape(fmha_with_bias_op.getBias()).layout().minor_to_major());
+
+    TF_ASSIGN_OR_RETURN(bias_slice,
+                        GetAllocationSlice(fmha_with_bias_op.getBias()));
+
+    TF_RETURN_IF_ERROR(populate_common(fmha_with_bias_op));
+  } else {
+    return InternalError("Unexpected operation");
+  }
+  TF_ASSIGN_OR_RETURN(GpufMHAConfig config, GpufMHAConfig::For(descriptor));
+
+  AddThunkToThunkSequence(std::make_unique<FusedMHAThunk>(
+      GetThunkInfo(op), std::move(config), lhs_bmm1_slice, rhs_bmm1_slice,
+      rhs_bmm2_slice, output_slice, scratch_slice, mask_slice, bias_slice));
+
   return OkStatus();
 }
 
@@ -5555,15 +5742,27 @@ Status IrEmitterUnnested::EmitInputFusibleNonStridedSlices(
 
 Status IrEmitterUnnested::EmitDynamicUpdateSlice(
     mlir::lmhlo::FusionOp fusion_op, const HloComputation* fused_computation) {
-  // Fusion node with dynamic-update-slice as the root where the op's input
-  // (i.e. array to update) shares the same slice as its output.  In this case
-  // we have a special algorithm that modifies the output in place without
-  // touching the un-updated elements.
-  CHECK_EQ(1, GetHloOutputs(fusion_op).size());
+  // Fusion node where the root is either:
+  // 1. a dynamic-update-slice op
+  // 2. a bitcast of a dynamic-update-slice op
+  // 3. a tuple op returning the result of several dynamic-update-slice ops
+  // 4. a tuple op returning the result of several bitcasted
+  //    dynamic-update-slice ops
+  //
+  // Additionally, all the dynamic-update-slice ops have exactly one user, and
+  // they are themselves each the unique user of the fusion parameter that they
+  // update.
+  //
+  // The assumption is that each op's input (i.e. array to update) shares the
+  // same slice as its output. In this case, we have a special algorithm that
+  // modifies the output in place without touching the un-updated elements.
+  // The update slice is assumed to be the exact same for all the
+  // dynamic-update-slice ops.
+  auto dus_ops = GetOutputDefiningDynamicUpdateSlices(fused_computation);
+  CHECK_EQ(dus_ops.size(), GetHloOutputs(fusion_op).size());
 
   // Shape of the dynamic-update-slice's "update" operand.
-  Shape update_shape =
-      fused_computation->root_instruction()->operand(1)->shape();
+  Shape update_shape = dus_ops.front()->operand(1)->shape();
 
   TF_ASSIGN_OR_RETURN(
       LaunchDimensions launch_dimensions,
@@ -5579,6 +5778,37 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
     return OkStatus();
   }
   std::vector<llvm_ir::IrArray>& ir_arrays = opt_ir_arrays.value();
+  auto get_output_array = [&](int output_index) -> llvm_ir::IrArray& {
+    CHECK_LT(output_index, dus_ops.size());
+    return ir_arrays[ir_arrays.size() - dus_ops.size() + output_index];
+  };
+
+  // In case a dynamic slice update's input or output is bitcasted, we need to
+  // ensure we read from the input array and write to the output array using the
+  // shape and layout of the dynamic slice update.
+  // This cast is known to be safe to do iff
+  // 1. the parameter to be updated has a single user (the bitcast or the
+  //    dynamic slice update)
+  // 2. if the output of the dynamic slice update is bitcasted, that bitcast
+  //    is either the fusion's output, or has a single user and is part of the
+  //    fusion's tuple output.
+  // Both conditions should be enforced explicitly in the
+  // 'CanEmitFusedDynamicUpdateSliceInPlaceForGpu' matcher.
+  for (int output_ix = 0; output_ix < dus_ops.size(); output_ix++) {
+    auto dus_op = dus_ops[output_ix];
+    auto parameter = dus_op->operand(0);
+    if (parameter->opcode() == HloOpcode::kBitcast) {
+      parameter = parameter->operand(0);
+    }
+    CHECK_EQ(parameter->opcode(), HloOpcode::kParameter);
+    int updated_parameter_number = parameter->parameter_number();
+
+    IrArray& input_array = ir_arrays[updated_parameter_number];
+    IrArray& output_array = get_output_array(output_ix);
+
+    input_array = input_array.CastToShape(dus_op->shape(), &b_);
+    output_array = output_array.CastToShape(dus_op->shape(), &b_);
+  }
 
   FusedIrEmitter fused_emitter(elemental_emitter_);
   for (int i = 0; i < fused_computation->num_parameters(); i++) {
@@ -5591,12 +5821,18 @@ Status IrEmitterUnnested::EmitDynamicUpdateSlice(
         });
   }
 
-  // Array to write into.  Because this is an in-place operation, this is the
-  // same as operand 0's array.
-  const IrArray& output_array = ir_arrays.back();
+  std::vector<std::pair<const HloInstruction*, const IrArray>>
+      dus_and_output_array;
+  dus_and_output_array.reserve(dus_ops.size());
+
+  for (int i = 0; i < dus_ops.size(); i++) {
+    dus_and_output_array.push_back(std::make_pair(
+        dus_ops[i], ir_arrays[ir_arrays.size() - dus_ops.size() + i]));
+  }
 
   return llvm_ir::EmitParallelFusedDynamicUpdateSliceInPlace(
-      fused_computation, output_array, &fused_emitter, launch_dimensions, &b_);
+      fused_computation, dus_and_output_array, &fused_emitter,
+      launch_dimensions, &b_);
 }
 
 Status IrEmitterUnnested::EmitScatter(mlir::lmhlo::FusionOp fusion_op,
@@ -5749,6 +5985,11 @@ Status IrEmitterUnnested::EmitOp(mlir::Operation* op) {
   if (mlir::isa<mlir::lmhlo_gpu::CudnnConvReorderFilterOp,
                 mlir::lmhlo_gpu::CudnnConvReorderFilterAndBiasOp>(op)) {
     return EmitConvolutionReorderThunk(op);
+  }
+  if (mlir::isa<mlir::lmhlo_gpu::fusedMHAOp,
+                mlir::lmhlo_gpu::fusedMHAWithScaledMaskOp,
+                mlir::lmhlo_gpu::fusedMHAWithScaledBiasOp>(op)) {
+    return EmitFusedMHAThunk(op);
   }
 #endif  // GOOGLE_CUDA
 
@@ -5914,6 +6155,7 @@ void IrEmitterUnnested::GetDependentDialects(mlir::DialectRegistry& registry) {
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerNVVMDialectTranslation(registry);
   mlir::registerROCDLDialectTranslation(registry);
+  mlir::func::registerAllExtensions(registry);
 }
 
 Thunk::ThunkInfo IrEmitterUnnested::GetThunkInfo(mlir::Operation* op) {

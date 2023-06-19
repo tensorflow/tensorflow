@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/stream_executor/blas.h"
 #include "tensorflow/compiler/xla/stream_executor/device_memory.h"
+#include "tensorflow/compiler/xla/stream_executor/numeric_options.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -551,6 +552,7 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
                            Scale beta, se::Stream* stream,
                            se::blas::AlgorithmType algorithm,
                            se::blas::ComputePrecision compute_precision,
+                           const se::NumericOptions& numeric_options,
                            se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   PrimitiveType lhs_type = primitive_util::NativeToPrimitiveType<Input>();
@@ -566,13 +568,13 @@ Status DoGemmWithAlgorithm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
         lhs.leading_dim_stride, lhs.batch_stride, rhs.cast<Input>(),
         rhs.leading_dim_stride, rhs.batch_stride, beta, &output_data,
         output.leading_dim_stride, output.batch_stride, batch_size,
-        computation_type, algorithm, compute_precision, profile_result);
+        computation_type, algorithm, numeric_options, profile_result);
   } else {
     return stream->ThenBlasGemmWithAlgorithm(
         lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
         lhs.leading_dim_stride, rhs.cast<Input>(), rhs.leading_dim_stride, beta,
         &output_data, output.leading_dim_stride, computation_type, algorithm,
-        compute_precision, profile_result);
+        numeric_options, profile_result);
   }
 }
 
@@ -583,6 +585,7 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
               se::Stream* stream,
               std::optional<se::blas::AlgorithmType> algorithm,
               se::blas::ComputePrecision compute_precision,
+              const se::NumericOptions& numeric_options,
               se::blas::ProfileResult* profile_result) {
   CHECK(output.transpose == se::blas::Transpose::kNoTranspose);
   se::DeviceMemory<Output> output_data(output.data);
@@ -591,7 +594,7 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
   if (algorithm) {
     return DoGemmWithAlgorithm<Scale, Input, Output>(
         batch_size, m, n, k, lhs, rhs, output, alpha, beta, stream, *algorithm,
-        compute_precision, profile_result);
+        compute_precision, numeric_options, profile_result);
   }
 #endif
 
@@ -601,20 +604,21 @@ Status DoGemm(int64_t batch_size, int64_t m, int64_t n, int64_t k,
         lhs.leading_dim_stride, lhs.batch_stride, rhs.cast<Input>(),
         rhs.leading_dim_stride, rhs.batch_stride, beta, &output_data,
         output.leading_dim_stride, output.batch_stride, batch_size,
-        compute_precision);
+        numeric_options);
   }
 
   return stream->ThenBlasGemm(
       lhs.transpose, rhs.transpose, m, n, k, alpha, lhs.cast<Input>(),
       lhs.leading_dim_stride, rhs.cast<Input>(), rhs.leading_dim_stride, beta,
-      &output_data, output.leading_dim_stride, compute_precision);
+      &output_data, output.leading_dim_stride, numeric_options);
 }
 
 }  // namespace
 
 Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
                se::DeviceMemoryBase rhs_buffer,
-               se::DeviceMemoryBase output_buffer, se::Stream* stream,
+               se::DeviceMemoryBase output_buffer, bool deterministic_ops,
+               se::Stream* stream,
                std::optional<se::blas::AlgorithmType> algorithm,
                se::blas::ProfileResult* profile_result) {
   VLOG(2) << "Executing a GemmThunk";
@@ -635,6 +639,9 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
   MatrixDescriptor rhs = GetMatrixDesc(rhs_layout, rhs_buffer);
   MatrixDescriptor output = GetMatrixDesc(output_layout, output_buffer);
   int64_t batch_size = output_layout.batch_size;
+  se::NumericOptions numeric_options{
+      deterministic_ops,
+      /*allow_tf32=*/config.compute_precision <= 1};
 
   if (!algorithm) algorithm = config.algorithm;
 
@@ -651,7 +658,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         batch_size, m, n, k, lhs, rhs, output,                              \
         static_cast<NativeScaleType>(config.alpha.real()),                  \
         static_cast<NativeScaleType>(config.beta), stream, algorithm,       \
-        config.compute_precision, profile_result);                          \
+        config.compute_precision, numeric_options, profile_result);         \
   }
 
 #define TYPED_GEMM_COMPLEX(SCALENTYPE, ATYPE, BTYPE, CTYPE)                 \
@@ -664,7 +671,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         batch_size, m, n, k, lhs, rhs, output,                              \
         static_cast<NativeScaleType>(config.alpha),                         \
         static_cast<NativeScaleType>(config.beta), stream, algorithm,       \
-        config.compute_precision, profile_result);                          \
+        config.compute_precision, numeric_options, profile_result);         \
   }
 
   if (output_layout.dtype == S32) {
@@ -673,7 +680,7 @@ Status RunGemm(const GemmConfig& config, se::DeviceMemoryBase lhs_buffer,
         batch_size, m, n, k, lhs, rhs, output,
         static_cast<int32_t>(config.alpha.real()),
         static_cast<int32_t>(config.beta), stream, *algorithm,
-        se::blas::kDefaultComputePrecision, profile_result);
+        se::blas::kDefaultComputePrecision, numeric_options, profile_result);
   }
 
   TYPED_GEMM(F32, BF16, BF16, BF16)

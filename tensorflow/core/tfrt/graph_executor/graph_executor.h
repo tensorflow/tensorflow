@@ -308,6 +308,8 @@ class GraphExecutor {
   std::unique_ptr<mlrt::KernelRegistry> kernel_registry_;
 };
 
+void RegisterMlirDialect(mlir::DialectRegistry& registry);
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 

@@ -332,12 +332,8 @@ bool CanInlineFunctionsPostLegalization(llvm::StringRef device_type) {
 void AddLegalizationPasses(mlir::OpPassManager& pm, bool legalize_chlo,
                            llvm::StringRef device_type,
                            bool enable_op_fallback) {
-  // Run LegalizeTFPass with allow_partial_conversion = true as we verify
-  // in VerifyTFXLALegalization that full conversion happened.
-  // TODO(b/188389290): Cleanup allow_partial_conversion as a legalization
-  // parameter.
   pm.addPass(mlir::mhlo::createLegalizeTFPass(
-      /*allow_partial_conversion=*/true, legalize_chlo,
+      legalize_chlo,
       /*tf2xla_fallback_device_type=*/device_type, enable_op_fallback));
 
   // This has to run after legalization.

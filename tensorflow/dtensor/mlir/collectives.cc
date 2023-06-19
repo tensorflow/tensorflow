@@ -25,9 +25,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/dtensor/cc/dstatus.h"
@@ -291,7 +293,18 @@ StatusOr<mlir::Value> EmitRelayout(
   // This produces intermediate layout 2.
   // A split is performed from intermediate layout 2 to the tgt layout.
 
-  if (src_layout.IsEquivalent(tgt_layout)) return input;
+  if (src_layout == tgt_layout) {
+    return input;
+  }
+
+  mlir::OpBuilder builder(input.getContext());
+  TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
+  if (src_layout.IsEquivalent(tgt_layout)) {
+    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
+        input.getLoc(), input.getType(), input);
+    if (newly_created_ops != nullptr) newly_created_ops->insert(op);
+    return op.getOutput();
+  }
 
   // Save whether the input is from a SparseToDenseOp. If it is, then we will
   // emit a DenseToSparse and a SparseToDense op.
@@ -312,9 +325,6 @@ StatusOr<mlir::Value> EmitRelayout(
     return errors::Internal(
         "Attempted to relayout to a different global shape.");
   }
-
-  mlir::OpBuilder builder(input.getContext());
-  TF_RETURN_IF_ERROR(SetBuilderInsertionAfterValue(input, builder));
 
   if (EnableAllToAllForRelayout() && !is_sparse &&
       CanUseAllToAll(src_layout, tgt_layout)) {

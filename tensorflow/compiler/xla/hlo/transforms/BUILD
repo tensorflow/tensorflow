@@ -27,7 +27,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_constant_splitter_test",
     srcs = ["hlo_constant_splitter_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_constant_splitter",
         "//tensorflow/compiler/xla:test",

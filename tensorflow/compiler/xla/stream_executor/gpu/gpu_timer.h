@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the GpuTimer type - the CUDA-specific implementation of the generic
-// StreamExecutor Timer interface.
-
 #ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
 #define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_GPU_GPU_TIMER_H_
+
+#include <optional>
 
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/compiler/xla/stream_executor/gpu/gpu_executor.h"
@@ -29,61 +28,44 @@ namespace gpu {
 class GpuExecutor;
 class GpuStream;
 
-// Wraps a pair of GpuEventHandles in order to satisfy the platform-independent
-// TimerInterface -- both a start and a stop event are present which may be
-// recorded in a stream.
-class GpuTimer : public internal::TimerInterface {
+// Timer is started once it's created, and can only be stopped once.
+class GpuTimer {
  public:
-  explicit GpuTimer(GpuExecutor* parent)
-      : parent_(parent), start_event_(nullptr), stop_event_(nullptr) {}
+  static tsl::StatusOr<GpuTimer> Create(GpuStream* stream);
 
-  // Note: teardown needs to be explicitly handled in this API by a call to
-  // StreamExecutor::DeallocateTimer(), which invokes Destroy().
-  // TODO(csigg): Change to RAII.
-  ~GpuTimer() override {}
+  explicit GpuTimer(GpuExecutor* parent, GpuEventHandle start_event,
+                    GpuEventHandle stop_event, GpuStream* stream)
+      : parent_(parent),
+        start_event_(start_event),
+        stop_event_(stop_event),
+        stream_(stream) {}
 
-  // Allocates the platform-specific pieces of the timer, called as part of
-  // StreamExecutor::AllocateTimer().
-  bool Init();
-
-  // Deallocates the platform-specific pieces of the timer, called as part of
-  // StreamExecutor::DeallocateTimer().
-  void Destroy();
-
-  // Records the "timer start" event at the current point in the stream.
-  bool Start(GpuStream* stream);
+  ~GpuTimer();
 
   // Records the "timer stop" event at the current point in the stream.
-  bool Stop(GpuStream* stream);
+  // Returns "error status" if called multiple times.
+  tsl::Status Stop();
 
   // Returns the elapsed time, in milliseconds, between the start and stop
   // events.
   float GetElapsedMilliseconds() const;
 
-  // See Timer::Microseconds().
-  // TODO(leary) make this into an error code interface...
-  uint64_t Microseconds() const override {
-    return GetElapsedMilliseconds() * 1e3;
-  }
+  uint64_t Microseconds() const { return GetElapsedMilliseconds() * 1e3; }
 
-  // See Timer::Nanoseconds().
-  uint64_t Nanoseconds() const override {
-    return GetElapsedMilliseconds() * 1e6;
-  }
+  uint64_t Nanoseconds() const { return GetElapsedMilliseconds() * 1e6; }
 
  private:
   GpuExecutor* parent_;
-  GpuEventHandle start_event_;  // Event recorded to indicate the "start"
-                                // timestamp executing in a stream.
-  GpuEventHandle stop_event_;   // Event recorded to indicate the "stop"
-                                // timestamp executing in a stream.
-};
+  GpuEventHandle start_event_ =
+      nullptr;  // Event recorded to indicate the "start"
+                // timestamp executing in a stream.
+  GpuEventHandle stop_event_ =
+      nullptr;  // Event recorded to indicate the "stop"
+                // timestamp executing in a stream.
+  GpuStream* stream_;
+  std::optional<float> elapsed_milliseconds_;
 
-struct GpuTimerDeleter {
-  void operator()(GpuTimer* t) {
-    t->Destroy();
-    delete t;
-  }
+  SE_DISALLOW_COPY_AND_ASSIGN(GpuTimer);
 };
 
 }  // namespace gpu

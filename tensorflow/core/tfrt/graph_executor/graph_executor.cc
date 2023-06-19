@@ -35,8 +35,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -70,7 +75,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
 #include "tensorflow/core/tfrt/utils/utils.h"
 #include "tensorflow/tsl/platform/errors.h"
-#include "tensorflow/tsl/platform/status.h"
 #include "tensorflow/tsl/platform/statusor.h"
 #include "tfrt/bef_converter/mlir_to_bef.h"  // from @tf_runtime
 #include "tfrt/core_runtime/core_runtime.h"  // from @tf_runtime
@@ -578,18 +582,14 @@ GraphExecutor::ImportAndCompileClientGraph(
     const GraphExecutor::ClientGraph& client_graph) {
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();
-  auto context = std::make_unique<mlir::MLIRContext>();
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  auto context = std::make_unique<mlir::MLIRContext>(registry);
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.
   SymbolUids symbol_uids;
-
-  if (auto tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-      tf_symbol_uid.ok()) {
-    symbol_uids.tf_symbol_uid = *tf_symbol_uid;
-  } else {
-    LOG(ERROR) << tf_symbol_uid.status();
-  }
+  symbol_uids.tf_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto import_duration = absl::Now() - import_start_time;
   LOG(INFO) << "TFRT finished importing client graph (" << &client_graph
@@ -633,13 +633,7 @@ GraphExecutor::ImportAndCompileClientGraph(
     executable_context = std::make_shared<ExecutableContext>(
         std::move(bef), std::move(bef_file));
   }
-
-  if (auto tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
-      tfrt_symbol_uid.ok()) {
-    symbol_uids.tfrt_symbol_uid = *tfrt_symbol_uid;
-  } else {
-    LOG(ERROR) << tfrt_symbol_uid.status();
-  }
+  symbol_uids.tfrt_symbol_uid = MaybeUploadMlirToXsymbol(module.get());
 
   auto compile_duration = absl::Now() - compile_start_time;
   LOG(INFO) << "TFRT finished compiling client graph (" << &client_graph
@@ -954,6 +948,11 @@ tensorflow::Status GraphExecutor::CompileGraph(
              output_tensor_names, target_tensor_names,
              /*work_queue=*/nullptr, graph_name)
       .status();
+}
+
+void RegisterMlirDialect(mlir::DialectRegistry& registry) {
+  registry.insert<mlir::BuiltinDialect, mlir::func::FuncDialect>();
+  mlir::RegisterAllTensorFlowDialects(registry);
 }
 
 }  // namespace tfrt_stub

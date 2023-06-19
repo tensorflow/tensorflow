@@ -1,5 +1,6 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "if_google",
     "if_linux_x86_64",
     "tf_cc_test",
@@ -197,6 +198,8 @@ tf_cuda_library(
             "//tensorflow/compiler/xla/pjrt/gpu:se_gpu_pjrt_client",
             "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
             "//tensorflow/core/tfrt/common:pjrt_util",
+        ]) + if_cuda_or_rocm([
+            "//tensorflow/compiler/xla/service:gpu_plugin_impl",  # for registering cuda compiler.
         ]),
     ),
     alwayslink = 1,

@@ -679,5 +679,35 @@ ENTRY main {
 )");
 }
 
+TEST_F(LayoutNormalizationTest, BitcastConvertToBiggerType) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = u32[4,2]{0,1} parameter(0)
+  ROOT out = u64[4]{0} bitcast-convert(u32[4,2]{0,1} p0), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
+)");
+}
+
+TEST_F(LayoutNormalizationTest, BitcastConvertToSmallerType) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = u64[4]{0} parameter(0)
+  ROOT out = u32[4,2]{0,1} bitcast-convert(u64[4]{0} p0), metadata={op_name="test"}
+}
+)";
+
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: bitcast-convert({{.*}}), metadata={op_name="test"}
+)");
+}
+
 }  // namespace
 }  // namespace xla

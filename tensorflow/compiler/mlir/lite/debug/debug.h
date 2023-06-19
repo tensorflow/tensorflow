@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the GpuTimer type - the CUDA-specific implementation of the generic
-// StreamExecutor Timer interface.
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_DEBUG_DEBUG_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_DEBUG_DEBUG_H_
 
-#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
-#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/lite/debug/debug_options.pb.h"
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
+namespace tensorflow {
 
-namespace stream_executor {
-namespace cuda {
+// Initializes the pass manager with default options that make debugging easier.
+void InitPassManager(mlir::PassManager& pm,
+                     const converter::DebugOptions& options);
 
-using CUDATimer = gpu::GpuTimer;
+}  // namespace tensorflow
 
-}  // namespace cuda
-}  // namespace stream_executor
-
-#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_DEBUG_DEBUG_H_

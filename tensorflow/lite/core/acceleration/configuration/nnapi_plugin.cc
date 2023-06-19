@@ -12,19 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
-#define TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
 
-#include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/tsl/profiler/convert/post_process_single_host_xplane.h"
+// This file implements the TFLite Delegate Plugin for the NNAPI Delegate.
 
-namespace tensorflow {
-namespace profiler {
+#include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
-using tsl::profiler::PostProcessSingleHostXSpace;  // NOLINT
+namespace tflite {
+namespace delegates {
 
-}  // namespace profiler
-}  // namespace tensorflow
+TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(NnapiPlugin, NnapiPlugin::New);
 
-#endif  // TENSORFLOW_CORE_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
+}  // namespace delegates
+}  // namespace tflite

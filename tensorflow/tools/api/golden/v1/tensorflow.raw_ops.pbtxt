@@ -4505,6 +4505,10 @@ tf_module {
     argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseSegmentMeanGradV2"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'dense_output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseSegmentMeanWithNumSegments"
     argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4517,6 +4521,10 @@ tf_module {
     argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "SparseSegmentSqrtNGradV2"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'dense_output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "SparseSegmentSqrtNWithNumSegments"
     argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -4527,6 +4535,10 @@ tf_module {
   member_method {
     name: "SparseSegmentSumGrad"
     argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "SparseSegmentSumGradV2"
+    argspec: "args=[\'grad\', \'indices\', \'segment_ids\', \'dense_output_dim0\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "SparseSegmentSumWithNumSegments"

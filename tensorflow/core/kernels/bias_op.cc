@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
 #include "tensorflow/core/kernels/bias_op_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -481,14 +482,15 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       profiler::ScopedAnnotation trace("bias_grad_autotuning");
 
       BiasGradGPUProfileResult best_result;
+
       // Initialize the timer.
-      perftools::gputools::Timer timer(stream->parent());
-      stream->InitTimer(&timer);
-      stream->ThenStartTimer(&timer);
+      StatusOr<se::gpu::GpuTimer> timer =
+          se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+      OP_REQUIRES_OK(context, timer.status());
       ComputeWithCustomKernel(context, output_backprop, batch, width, height,
                               depth, channel, output);
-      stream->ThenStopTimer(&timer);
-      uint64 elapsed_microseconds = timer.Microseconds();
+      OP_REQUIRES_OK(context, timer->Stop());
+      uint64 elapsed_microseconds = timer->Microseconds();
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
               << " Native algo latency: " << elapsed_microseconds;
       if (elapsed_microseconds < best_result.elapsed_time()) {
@@ -497,12 +499,15 @@ class BiasGradOp<GPUDevice, T> : public OpKernel {
       }
 
       // Try reduction and profile.
-      stream->ThenStartTimer(&timer);
+      StatusOr<se::gpu::GpuTimer> reduction_timer =
+          se::gpu::GpuTimer::Create(se::gpu::AsGpuStream(stream));
+      OP_REQUIRES_OK(context, reduction_timer.status());
       ComputeWithReduceSum(context, output_backprop, batch, width, height,
                            depth, channel, output);
-      stream->ThenStopTimer(&timer);
+      OP_REQUIRES_OK(context, reduction_timer->Stop());
 
-      elapsed_microseconds = timer.Microseconds();
+      elapsed_microseconds =
+          timer->Microseconds() + reduction_timer->Microseconds();
       VLOG(1) << "BiasAddGrad " << bias_parameters.ToString()
               << " Reduction algo latency: " << elapsed_microseconds;
       if (elapsed_microseconds < best_result.elapsed_time()) {

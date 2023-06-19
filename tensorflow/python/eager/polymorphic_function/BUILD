@@ -11,7 +11,11 @@ py_strict_library(
     name = "attributes",
     srcs = ["attributes.py"],
     srcs_version = "PY3",
-    deps = [],
+    visibility = ["//tensorflow/python:__subpackages__"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/util:compat",
+    ],
 )
 
 py_strict_library(
@@ -47,6 +51,7 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:record",
         "//tensorflow/python/framework:auto_control_deps_utils",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:error_interpolation",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/framework:func_graph",
@@ -66,13 +71,11 @@ cuda_py_strict_test(
     deps = [
         ":atomic_function",
         ":polymorphic_function",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/util:compat",
     ],
 )
 

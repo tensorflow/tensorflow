@@ -1219,6 +1219,28 @@ def ReplaceOneHotFullyConnectedWithLookup : Pat<
   [(I32ElementsVal $indices),     // lookup is not implemented for i64
    (IsNoneType $bias)]>;          // Maybe folded into the lookup matrix later
 
+// Same as above, but if indices are already 1D, then no reshape is needed.
+def ReplaceOneHotDynamicShapeFullyConnectedWithLookup : Pat<
+  (TFL_FullyConnectedOp:$outputs
+    (TFL_OneHotOp
+      1DTensorOf<[I32]>:$indices,
+      (Arith_ConstantOp $depth),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">),
+      (Arith_ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.0f">),
+      ConstantAttr<I32Attr, "-1">),
+    StaticShapeTensorOf<[F32, I8, UI8]>:$filter,
+    $bias,
+    TFL_AF_None,
+    TFL_FCWO_Default,
+    $keep_num_dims,
+    $asymmetric_quantize_inputs),
+  (TFL_EmbeddingLookupOp $indices,
+    (TFL_TransposeOp
+      $filter,
+        (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[2]>, "{1,0}">))),
+  [(I32ElementsVal $indices),
+   (IsNoneType $bias)]>;
+
 def AreInputDimensionsOneInAxes : Constraint<CPred<
   "AreInputDimensionsOneInAxes($0, $1)">>;
 
@@ -1387,4 +1409,24 @@ def FuseEluConst : Pat<
     (HasOneUse $select_out),
     (HasOneUse $exp_out),
     (HasOneUse $sub_out),
+  ]>;
+
+
+def isF32Splat : Constraint<
+  CPred<"IsF32Splat($0)">>;
+
+def ExtractF32AtIndex0: NativeCodeCall<
+    "$_builder.getF32FloatAttr($_self.cast<DenseElementsAttr>().getValues<float>()[0])">;
+
+def FuseLeakyReluConst : Pat<
+  (TFL_SelectOp
+   (TFL_GreaterEqualOp:$geq_out $arg, (Arith_ConstantOp F32ElementsAttr:$threshold)),
+   $arg,
+   (TFL_MulOp:$mul_out $arg, (Arith_ConstantOp F32ElementsAttr:$alpha), TFL_AF_None)),
+  (TFL_LeakyReluOp $arg, ExtractF32AtIndex0:$alpha),
+  [
+    (FloatValueEquals<"0"> $threshold),
+    (isF32Splat $alpha),
+    (HasOneUse $geq_out),
+    (HasOneUse $mul_out),
   ]>;

@@ -61,28 +61,6 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64_t num_tiles,
 }
 
 HloSharding HloSharding::PartialTile(
-    const Array<int64_t>& group_tile_assignment,
-    absl::Span<const absl::Span<const int64_t>> replication_groups,
-    absl::Span<const OpMetadata> metadata) {
-  CHECK_EQ(group_tile_assignment.num_elements(), replication_groups.size());
-  if (replication_groups.size() == 1) {
-    return Replicate(metadata);
-  }
-  std::vector<int64_t> new_tile_dims(group_tile_assignment.dimensions().begin(),
-                                     group_tile_assignment.dimensions().end());
-  new_tile_dims.push_back(replication_groups[0].size());
-  auto new_tile_assignment = Array<int64_t>(new_tile_dims);
-  new_tile_assignment.Each(
-      [&](absl::Span<const int64_t> indices, int64_t* device) {
-        std::vector<int64_t> group_index(indices.begin(), indices.end());
-        group_index.pop_back();
-        int64_t group = group_tile_assignment(group_index);
-        *device = replication_groups[group][indices.back()];
-      });
-  return PartialTile(new_tile_assignment, metadata);
-}
-
-HloSharding HloSharding::PartialTile(
     const Array<int64_t>& tile_assignment_last_dim_replicate,
     absl::Span<const OpMetadata> metadata) {
   if (tile_assignment_last_dim_replicate.num_dimensions() == 1 ||

@@ -12,8 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
-#define TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
+// NOLINTBEGIN(whitespace/line_length)
+/// WARNING: Users of TensorFlow Lite should not include this file directly,
+/// but should instead include
+/// "third_party/tensorflow/lite/acceleration/configuration/delegate_registry.h".
+/// Only the TensorFlow Lite implementation itself should include this
+/// file directly.
+// NOLINTEND(whitespace/line_length)
+#ifndef TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
+#define TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
 
 // This file provides the NNApiPlugin class, which implements the
 // TFLite Delegate Plugin for the NNAPI Delegate.
@@ -162,4 +169,4 @@ class NnapiPlugin : public DelegatePluginInterface {
 }  // namespace delegates
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_
+#endif  // TENSORFLOW_LITE_CORE_ACCELERATION_CONFIGURATION_NNAPI_PLUGIN_H_

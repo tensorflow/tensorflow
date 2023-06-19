@@ -1,4 +1,4 @@
-# load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 
 # Description: Operations defined for Cloud TPUs
@@ -29,6 +29,11 @@ package(
 )
 
 exports_files(["tpu_test_wrapper.py"])
+
+bzl_library(
+    name = "tpu_test_wrapper_bzl",
+    srcs = ["tpu_test_wrapper.bzl"],
+)
 
 py_strict_test(
     name = "tpu_test_wrapper_test",

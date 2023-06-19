@@ -1,12 +1,8 @@
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
+load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites", "tf_xla_py_strict_test")
 load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
-load(
-    "//tensorflow/compiler/tests:build_defs.bzl",
-    "generate_backend_suites",
-)
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -182,6 +178,10 @@ tf_xla_py_strict_test(
     name = "add_n_test",
     size = "small",
     srcs = ["add_n_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     enable_mlir_bridge = False,
@@ -346,6 +346,10 @@ tf_xla_py_strict_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     enable_mlir_bridge = False,
     python_version = "PY3",
     tags = [
@@ -473,6 +477,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/ops:linalg_ops",
         "//tensorflow/python/ops:random_ops",
+        "//tensorflow/python/platform:sysconfig",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -584,6 +589,7 @@ tf_xla_py_strict_test(
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/framework:config",
         "//tensorflow/python/framework:ops",
+        "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:nn_ops",
@@ -1592,6 +1598,10 @@ tf_xla_py_strict_test(
     name = "tensor_list_ops_test",
     size = "small",
     srcs = ["tensor_list_ops_test.py"],
+    # copybara:uncomment_begin
+    # #TODO(b/286470564): Remove once the bug is fixed.
+    # disable_tpu_tfrt = True,
+    # copybara:uncomment_end
     # TensorList ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],
     enable_mlir_bridge = False,
@@ -1646,6 +1656,7 @@ tf_xla_py_strict_test(
     tags = [
         "no_cuda_asan",  # times out
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "noasan",  #times out
     ],
     deps = [
         ":xla_test",

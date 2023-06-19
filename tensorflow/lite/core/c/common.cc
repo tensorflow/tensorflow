@@ -150,7 +150,7 @@ TfLiteFloatArray* TfLiteFloatArrayCopy(const TfLiteFloatArray* src) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { TfLiteVarArrayFree(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteVariantObject) {
+  if (t->allocation_type == kTfLiteVariantObject && t->data.data) {
     delete static_cast<VariantData*>(t->data.data);
   } else if (t->allocation_type == kTfLiteDynamic ||
              t->allocation_type == kTfLitePersistentRo) {
@@ -375,6 +375,7 @@ const char* TfLiteTypeGetName(TfLiteType type) {
 
 TfLiteDelegate TfLiteDelegateCreate() { return TfLiteDelegate{}; }
 
+#ifndef TF_LITE_STATIC_MEMORY
 TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
     const TfLiteOpaqueDelegateBuilder* opaque_delegate_builder) {
   if (!opaque_delegate_builder) return nullptr;
@@ -394,6 +395,7 @@ void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* opaque_delegate) {
   delete tflite_delegate->opaque_delegate_builder;
   delete tflite_delegate;
 }
+#endif  // TF_LITE_STATIC_MEMORY
 
 void* TfLiteOpaqueDelegateGetData(const TfLiteOpaqueDelegate* delegate) {
   if (!delegate) return nullptr;

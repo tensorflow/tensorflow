@@ -13,12 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 """Tests for DTensorDevice in python."""
+import os
 import threading
+from unittest import mock
+
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.dtensor.python import api
-
 from tensorflow.dtensor.python import d_variable
 from tensorflow.dtensor.python import dtensor_device
 from tensorflow.dtensor.python import layout as layout_lib
@@ -97,6 +99,26 @@ class DTensorDeviceTest(test_util.DTensorBaseTest, parameterized.TestCase):
 
     self.assertAllEqual(a.numpy(), [1., 2., 3., 4.])
     self.assertAllEqual(c.numpy(), [2., 4., 6., 8.])
+
+  @mock.patch.dict(os.environ, {"DTENSOR_ENABLE_MULTI_DEVICE_EXPANSION": "1"})
+  def testMultiDeviceExpansion(self):
+    self.skipForDeviceType(
+        ["TPU"], "Multi-device expansion unsupported on TPUs."
+    )
+
+    # Tests for b = Op(a).
+    a = constant_op.constant([1.0, 2.0, 3.0, 4.0])
+    a = api.copy_to_mesh(a, Layout.replicated(self.mesh, rank=1))
+
+    # __getitem__
+    b = a[2:-2]
+    api.check_layout(b, Layout.replicated(self.mesh, rank=1))
+
+    c = a * 2
+    api.check_layout(b, Layout.replicated(self.mesh, rank=1))
+
+    self.assertAllEqual(a.numpy(), [1.0, 2.0, 3.0, 4.0])
+    self.assertAllEqual(c.numpy(), [2.0, 4.0, 6.0, 8.0])
 
   def testNoImplicitCopyOnForLargeIntegerTensors(self):
     a = array_ops.ones([10, 10], dtype=dtypes.int32)

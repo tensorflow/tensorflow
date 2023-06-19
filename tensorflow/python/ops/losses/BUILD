@@ -40,7 +40,6 @@ py_strict_library(
     srcs = ["losses_impl.py"],
     deps = [
         ":util",
-        "//tensorflow/python:nn",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",
@@ -48,6 +47,7 @@ py_strict_library(
         "//tensorflow/python/ops:confusion_matrix",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:weights_broadcast_ops",
         "//tensorflow/python/util:deprecation",

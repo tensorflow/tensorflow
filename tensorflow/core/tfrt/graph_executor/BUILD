@@ -59,6 +59,7 @@ cc_library(
         ":export_mlir",
         ":graph_execution_options",
         ":sync_resource_state",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:import_model",
         "//tensorflow/compiler/mlir/tfrt:import_model",
@@ -101,6 +102,8 @@ cc_library(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:FuncExtensions",
         "@llvm-project//mlir:IR",
         "@tf_runtime//:basic_kernels_alwayslink",
         "@tf_runtime//:bef",
@@ -195,8 +198,5 @@ cc_library(
 cc_library(
     name = "export_mlir",
     hdrs = ["export_mlir.h"],
-    deps = [
-        "//tensorflow/core/platform:statusor",
-        "@llvm-project//mlir:IR",
-    ],
+    deps = ["@llvm-project//mlir:IR"],
 )

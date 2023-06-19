@@ -1316,6 +1316,7 @@ py_strict_library(
     deps = [
         ":auto_control_deps",
         ":composite_tensor",
+        ":constant_op",
         ":dtypes",
         ":errors",
         ":indexed_slices",
@@ -1327,7 +1328,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:execute",
         "//tensorflow/python/eager/polymorphic_function:composite_tensor_utils",
-        "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:tensor_array_ops",
@@ -1599,6 +1599,7 @@ py_strict_library(
     srcs = ["weak_tensor.py"],
     srcs_version = "PY3",
     deps = [
+        ":composite_tensor_gradient",
         ":dtypes",
         ":errors",
         ":extension_type",
@@ -1623,9 +1624,10 @@ tf_py_strict_test(
         ":tensor_spec",
         ":test_lib",
         ":weak_tensor",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:save",
     ],
@@ -1658,8 +1660,8 @@ py_strict_test(
         ":sparse_tensor",
         ":test_lib",
         ":type_spec",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -1809,6 +1811,19 @@ pytype_strict_library(
     ],
 )
 
+pytype_strict_library(
+    name = "flexible_dtypes",
+    srcs = ["flexible_dtypes.py"],
+    deps = [
+        ":constant_op",
+        ":dtypes",
+        ":ops",
+        ":weak_tensor",
+        "//tensorflow/python/util:nest",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_strict_library(
     name = "stack",
     srcs = ["stack.py"],
@@ -1827,6 +1842,8 @@ py_strict_library(
         ":dtypes",
         ":errors",
         ":op_callbacks",
+        ":stack",
+        ":tensor_conversion_registry",
         ":tensor_shape",
         ":tensor_util",
         ":type_spec",
@@ -1837,8 +1854,6 @@ py_strict_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/eager:record",
-        "//tensorflow/python/framework:stack",
-        "//tensorflow/python/framework:tensor_conversion_registry",
         "//tensorflow/python/ops:handle_data_util",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/saved_model:nested_structure_coder",
@@ -1947,7 +1962,6 @@ py_strict_library(
         ":versions",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/config:flags_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python:tf2",
         "//tensorflow/python/client",
@@ -1970,6 +1984,7 @@ py_strict_library(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//tensorflow/python/platform:_pywrap_stacktrace_handler",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/training",
         "//tensorflow/python/util:_pywrap_util_port",
@@ -2172,7 +2187,6 @@ tf_py_strict_test(
         ":sparse_tensor",
         ":subscribe",
         ":test_lib",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:math_ops",
@@ -2180,6 +2194,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:sparse_ops",
         "//tensorflow/python/ops:tensor_array_ops",
         "//tensorflow/python/ops:variable_v1",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2319,13 +2334,13 @@ tf_py_strict_test(
         ":ops",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:metrics",
         "//tensorflow/python/client:session",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:data_flow_ops",
         "//tensorflow/python/ops:gradients_impl",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:metrics",
         "//tensorflow/python/ops:nn_ops",
         "//tensorflow/python/ops:partitioned_variables",
         "//tensorflow/python/ops:random_ops",
@@ -2373,7 +2388,7 @@ tf_py_strict_test(
     deps = [
         ":test_lib",
         ":traceable_stack",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/util:tf_decorator",
     ],
 )
@@ -2422,7 +2437,7 @@ tf_py_strict_test(
         ":common_shapes",
         ":tensor_shape",
         ":test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2453,8 +2468,6 @@ tf_py_strict_test(
         ":type_spec",
         ":versions",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/autograph/core:ag_ctx",
         "//tensorflow/python/client:session",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -2466,6 +2479,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:cond",
         "//tensorflow/python/ops:control_flow_ops_gen",
+        "//tensorflow/python/ops:gradients",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:resource_variable_ops",
         "//tensorflow/python/ops:resources",
@@ -2473,6 +2487,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/util:compat",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2523,8 +2538,8 @@ tf_py_strict_test(
     python_version = "PY3",
     deps = [
         ":ops",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2620,7 +2635,7 @@ tf_py_strict_test(
         ":test_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2642,9 +2657,9 @@ tf_py_strict_test(
         ":type_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/util:compat",
         "//tensorflow/python/util:nest",
         "//third_party/py/numpy",
@@ -2669,9 +2684,9 @@ tf_py_strict_test(
         ":type_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2693,12 +2708,12 @@ tf_py_strict_test(
         ":test_lib",
         ":type_utils",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:sparse_ops",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2712,7 +2727,7 @@ tf_py_strict_test(
     deps = [
         ":device_spec",
         ":test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2728,9 +2743,9 @@ tf_py_strict_test(
         ":device_spec",
         ":ops",
         ":test_lib",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -2804,7 +2819,6 @@ cuda_py_strict_test(
         ":test_lib",
         ":test_ops",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:pywrap_sanitizers",
         "//tensorflow/python/compat",
         "//tensorflow/python/eager:context",
@@ -2818,6 +2832,7 @@ cuda_py_strict_test(
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/util/protobuf:compare_test_proto_py",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -2874,7 +2889,7 @@ tf_py_strict_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/trace_type",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -2896,8 +2911,8 @@ tf_py_strict_test(
         ":tensor_spec",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/platform:test",
         "//tensorflow/python/util:compat",
     ],
 )
@@ -2911,7 +2926,7 @@ tf_py_strict_test(
     deps = [
         ":kernels",
         ":test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2941,7 +2956,7 @@ tf_py_strict_test(
     deps = [
         ":c_api_util",
         ":test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -2984,8 +2999,6 @@ tf_py_strict_test(
         ":tensor_spec",
         ":test_lib",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:rnn_cell",
-        "//tensorflow/python:while_v2",
         "//tensorflow/python/client:session",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/grappler:tf_optimizer",
@@ -2999,10 +3012,13 @@ tf_py_strict_test(
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:math_ops_gen",
         "//tensorflow/python/ops:ref_variable",
+        "//tensorflow/python/ops:rnn",
+        "//tensorflow/python/ops:rnn_cell_impl",
         "//tensorflow/python/ops:variable_scope",
         "//tensorflow/python/ops:variable_v1",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/ops:while_loop",
+        "//tensorflow/python/ops:while_v2",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/python/saved_model:load",
@@ -3064,6 +3080,26 @@ py_strict_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/platform:_pywrap_tf2",
         "//tensorflow/python/platform:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_strict_test(
+    name = "flexible_dtypes_test",
+    srcs = ["flexible_dtypes_test.py"],
+    tags = [
+        "no_pip",
+        "no_windows",  # TODO(b/286939592): Enable this test on Windows.
+    ],
+    deps = [
+        ":constant_op",
+        ":dtypes",
+        ":flexible_dtypes",
+        ":ops",
+        ":weak_tensor",
+        "//tensorflow/python/ops:variables",
+        "//tensorflow/python/platform:client_testlib",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

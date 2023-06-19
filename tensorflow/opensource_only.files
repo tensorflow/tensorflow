@@ -11,6 +11,7 @@ tensorflow/compiler/mlir/tfrt/transforms/tpu_passes.h:
 tensorflow/compiler/xla/glob_lit_test.bzl:
 tensorflow/compiler/xla/mlir_hlo/WORKSPACE:
 tensorflow/compiler/xla/stream_executor/build_defs.bzl:
+tensorflow/core/example/BUILD:
 tensorflow/core/platform/default/build_config/BUILD:
 tensorflow/core/platform/distribute:.bzl
 tensorflow/core/tfrt/mla/mla_test_utils.h:

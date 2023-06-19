@@ -517,19 +517,20 @@ xla::StatusOr<xla::ExecutionOutput> TPUExecute(
 
   SE_DeviceMemoryBase* device_memory_addrs = nullptr;
   size_t device_memory_addrs_count;
-  auto device_memory_cleanup = absl::MakeCleanup([&device_memory_addrs]() {
-    if (device_memory_addrs != nullptr) {
-      stream_executor::tpu::OpsApiFn()->SE_DeviceMemoryBase_FreeArrayFn(
-          device_memory_addrs);
-    }
-  });
+  auto device_memory_cleanup =
+      absl::MakeCleanup([device_memory_addrs, node_context]() {
+        if (device_memory_addrs != nullptr) {
+          stream_executor::tpu::OpsApiFn()
+              ->TpuExecute_FreeTpuEmbeddingMemoryAllocationsFn(
+                  node_context->device_ordinal(), device_memory_addrs);
+        }
+      });
 
-  SE_StreamExecutor executor{stream->parent()};
   StatusHelper status;
   stream_executor::tpu::OpsApiFn()
-      ->TpuExecute_GetTpuEmbeddingMemoryWordAddressesFn(
-          &executor, &device_memory_addrs, &device_memory_addrs_count,
-          status.c_status);
+      ->TpuExecute_GetTpuEmbeddingMemoryAllocationsFn(
+          node_context->device_ordinal(), &device_memory_addrs,
+          &device_memory_addrs_count, status.c_status);
   if (!status.ok()) {
     return status.status();
   }

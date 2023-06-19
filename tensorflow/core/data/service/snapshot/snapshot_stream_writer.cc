@@ -104,6 +104,7 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Finished writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   completed_ = true;
+  iterator_ = nullptr;  // Reclaims iterator resources.
 }
 
 Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {
@@ -321,6 +322,8 @@ Status SnapshotStreamWriter::DeleteCheckpoints() {
   if (params_.test_only_keep_temp_files) {
     return OkStatus();
   }
+  LOG(INFO) << "Deleting tf.data snapshot checkpoints directory: "
+            << params_.CheckpointsDirectory();
   if (params_.env->FileExists(params_.CheckpointsDirectory()).ok()) {
     int64_t undeleted_files, undeleted_dirs;
     return params_.env->DeleteRecursively(params_.CheckpointsDirectory(),

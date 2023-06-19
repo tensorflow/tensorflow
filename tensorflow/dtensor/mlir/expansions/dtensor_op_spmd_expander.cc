@@ -121,19 +121,6 @@ StatusOr<mlir::Operation*> ExpandRelayoutOp(RelayoutOp relayout,
     return absl::InternalError(
         "output layout of Relayout op after layout propagation does not match "
         "layout specified by Relayout op.");
-
-  if (input_layout == output_layout) {
-    // Input of RelayoutOp must be output value from DTensorLayout operation
-    // as layout propagation adds DTensorLayout op for each tensor values.
-    // Replace with identity op.
-    mlir::OpBuilder builder(relayout);
-    mlir::TF::IdentityOp op = builder.create<mlir::TF::IdentityOp>(
-        relayout.getLoc(), relayout.getInput().getType(), relayout.getInput());
-    relayout.getOutput().replaceAllUsesWith(op.getOutput());
-    relayout.erase();
-    return op.getOperation();
-  }
-
   auto value_or_status =
       EmitRelayout(relayout.getInput(), input_layout, output_layout);
   if (!value_or_status.ok())

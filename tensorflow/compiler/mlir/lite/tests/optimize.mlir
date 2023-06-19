@@ -2912,6 +2912,24 @@ func.func @dontReplaceOneHotFullyConnectedWithLookupBadBias(%arg: tensor<2xi32>)
   // CHECK: return %[[RES]] : tensor<2x5xf32>
 }
 
+// CHECK-LABEL: replaceOneHotFullyConnectedWithLookupWithDynamicIndexShapeRank1
+func.func @replaceOneHotFullyConnectedWithLookupWithDynamicIndexShapeRank1(%arg: tensor<?xi32>) -> tensor<?x5xf32> {
+  %depth = arith.constant dense<3> : tensor<i32>
+  %on = arith.constant dense<1.0> : tensor<f32>
+  %off = arith.constant dense<0.0> : tensor<f32>
+  %filter = arith.constant dense<[[7.0, 11.0, 13.0], [17.0, 19.0, 23.0], [29.0, 31.0, 37.0], [41.0, 43.0, 47.0], [53.0, 59.0, 61.0]]> : tensor<5x3xf32>
+  %bias = "tfl.no_value"() {value} : () -> none
+
+  %tmp = "tfl.one_hot"(%arg, %depth, %on, %off) {axis = -1 : i32} : (tensor<?xi32>, tensor<i32>, tensor<f32>, tensor<f32>) -> tensor<?x3xf32>
+  %result = "tfl.fully_connected"(%tmp, %filter, %bias) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<?x3xf32>, tensor<5x3xf32>, none) -> tensor<?x5xf32>
+
+  func.return %result : tensor<?x5xf32>
+
+  // CHECK: %[[CST:.*]] = arith.constant dense<{{\[\[}}7.000000e+00, 1.700000e+01, 2.900000e+01, 4.100000e+01, 5.300000e+01], [1.100000e+01, 1.900000e+01, 3.100000e+01, 4.300000e+01, 5.900000e+01], [1.300000e+01, 2.300000e+01, 3.700000e+01, 4.700000e+01, 6.100000e+01]]> : tensor<3x5xf32>
+  // CHECK: %[[RES:.*]] = "tfl.embedding_lookup"(%arg0, %[[CST]]) : (tensor<?xi32>, tensor<3x5xf32>) -> tensor<?x5xf32>
+  // CHECK: return %[[RES]] : tensor<?x5xf32>
+}
+
 // CHECK-LABEL:   func @optimizeTopK(
 // CHECK-SAME:                        %[[ARG:.*]]: tensor<3x10xf32>) -> (tensor<3x5xf32>, tensor<3x5xi32>) {
 // CHECK:           %[[K:.*]] = arith.constant dense<5> : tensor<i32>
@@ -3413,4 +3431,25 @@ func.func @fuseHardSwishJAX(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes 
   %3 = tfl.div %2, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
   %4 = tfl.mul %arg0, %3 {fused_activation_function = "NONE"} : tensor<10xf32>
   return %4 : tensor<10xf32>
+}
+// CHECK-LABEL:   func @fuseLeakyRelu
+func.func @fuseLeakyRelu(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK: "tfl.leaky_relu"
+  %cst = arith.constant dense<0.000000e+00> : tensor<10xf32>
+  %cst_0 = arith.constant dense<[0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977]> : tensor<10xf32>
+  %0 = tfl.greater_equal(%arg0, %cst) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  %1 = tfl.mul %arg0, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
+  %2 = "tfl.select"(%0, %arg0, %1) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %2 : tensor<10xf32>
+}
+
+// CHECK-LABEL:   func @fuseLeakyReluNotSplat
+func.func @fuseLeakyReluNotSplat(%arg0: tensor<10xf32>) -> tensor<10xf32> attributes {tf.entry_function = {control_outputs = "", inputs = "args_tf_0", outputs = "Identity_1"}} {
+  // CHECK-NOT: "tfl.leaky_relu"
+  %cst = arith.constant dense<0.000000e+00> : tensor<10xf32>
+  %cst_0 = arith.constant dense<[0.000000e+00, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977, 0.00999999977]> : tensor<10xf32>
+  %0 = tfl.greater_equal(%arg0, %cst) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xi1>
+  %1 = tfl.mul %arg0, %cst_0 {fused_activation_function = "NONE"} : tensor<10xf32>
+  %2 = "tfl.select"(%0, %arg0, %1) : (tensor<10xi1>, tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
+  return %2 : tensor<10xf32>
 }

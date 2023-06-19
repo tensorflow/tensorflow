@@ -19,9 +19,8 @@ limitations under the License.
 #include <functional>
 
 #include "llvm/IR/Module.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "tensorflow/compiler/xla/hlo/ir/hlo_instructions.h"
+#include "tensorflow/compiler/xla/hlo/ir/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_device_info.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -37,13 +36,13 @@ using tensorflow::AutotuneResult;
 // for 'dot_instr' which is described by an HLO custom call computation.
 // Use tiling and execution parameters from 'config'.
 StatusOr<LaunchDimensions> MatMul(mlir::OpBuilder b,
-                                  const HloDotInstruction* dot_instr,
+                                  const HloComputation* computation,
                                   mlir::triton::FuncOp fn,
                                   const AutotuneResult::TritonGemmKey& config,
                                   int shmem_budget);
 
 using LaunchDimensionsGenerator = std::function<StatusOr<LaunchDimensions>(
-    mlir::OpBuilder, const HloDotInstruction*, mlir::triton::FuncOp,
+    mlir::OpBuilder, const HloComputation*, mlir::triton::FuncOp,
     const AutotuneResult::TritonGemmKey&, int)>;
 
 // Generate Triton IR by running the provided generator, compile it into LLVM IR
