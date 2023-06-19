@@ -3994,11 +3994,11 @@ tsl::Status ROCmFusedMatmulRunner::gemm(Stream* stream,
       DeviceMemoryBase c_data) const {
     blas::Transpose ta = _trans_a ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
     blas::Transpose tb = _trans_b ? blas::Transpose::kTranspose : blas::Transpose::kNoTranspose;
-    return stream->ThenBlasGemm<T>(tb, ta, _n, _m, _k, 
+    return stream->ThenBlasGemm<T,T>(tb, ta, _n, _m, _k,
           (DeviceMemory<T>)b_data, _ldb,
           (DeviceMemory<T>)a_data, _lda, 
           (DeviceMemory<T>*)&c_data, _ldc,
-          blas::kDefaultComputePrecision);
+          NumericOptions{});
 }
 
 template <typename T>
