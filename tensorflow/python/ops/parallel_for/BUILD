@@ -128,13 +128,10 @@ cuda_py_strict_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
     shard_count = 16,
-<<<<<<< HEAD
-=======
     tags = [
         "no_oss",
         "no_rocm",
     ],
->>>>>>> upstream/master
     deps = [
         ":control_flow_ops",
         ":test_util",

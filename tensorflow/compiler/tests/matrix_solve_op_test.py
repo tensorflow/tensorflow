@@ -75,12 +75,7 @@ class MatrixSolveOpTest(xla_test.XLATestCase, parameterized.TestCase):
 if __name__ == "__main__":
   sys_details = sysconfig.get_build_info()
   if sys_details["is_cuda_build"]:
-<<<<<<< HEAD
-    os.environ["XLA_FLAGS"] = ("--xla_gpu_enable_cublaslt=true " +
-                             os.environ.get("XLA_FLAGS", ""))
-=======
     os.environ["XLA_FLAGS"] = (
         "--xla_gpu_enable_cublaslt=true " + os.environ.get("XLA_FLAGS", "")
     )
->>>>>>> upstream/master
   googletest.main()

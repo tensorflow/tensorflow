@@ -1653,12 +1653,8 @@ tf_xla_py_strict_test(
     shard_count = 50,
     tags = [
         "no_cuda_asan",  # times out
-<<<<<<< HEAD
-        "no_pip"  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
-=======
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  #times out
->>>>>>> upstream/master
     ],
     deps = [
         ":xla_test",

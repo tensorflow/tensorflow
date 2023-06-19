@@ -3485,15 +3485,12 @@ tf_kernel_library(
         ":conv_ops_gpu_hdrs",
         ":gpu_utils",
         ":conv_ops",
-<<<<<<< HEAD
         ":matmul_util",
         "//tensorflow/compiler/xla/stream_executor/gpu:gpu_asm_opts",
         "//tensorflow/compiler/xla/stream_executor/gpu:redzone_allocator",
         "//tensorflow/compiler/xla/stream_executor:tf_allocator_adapter",
         "//tensorflow/core/profiler/lib:scoped_annotation",
-=======
         ":numeric_options_utils",
->>>>>>> upstream/master
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/proto:proto_utils",
