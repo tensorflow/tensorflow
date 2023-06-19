@@ -142,7 +142,7 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.evaluate(next_element())
 
   @combinations.generate(test_base.default_test_combinations())
-  def testReadTruncateSnapshot(self):
+  def testReadTruncateSnapshotWithIgnoreErrors(self):
     dataset = dataset_ops.Dataset.from_tensor_slices(["abcd", "1234", "zxcv"])
 
     self.evaluate(dataset.save(self._corrupted_dataset_dir))
@@ -159,6 +159,7 @@ class IOTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     
     dataset2 = dataset_ops.Dataset.load(self._corrupted_dataset_dir, dataset.element_spec)
+    dataset2 = dataset2.ignore_errors()
     self.assertEqual(self.evaluate(dataset2.cardinality()), 1)
 
 
