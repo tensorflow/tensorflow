@@ -33,7 +33,6 @@ cc_library(
         "math_optimization.cc",
     ],
     hdrs = ["passes.h"],
-    copts = if_llvm_x86_available(["-DTF_LLVM_X86_AVAILABLE=1"]),
     compatible_with = get_compatible_with_cloud(),
     defines = if_llvm_x86_available(["TF_LLVM_X86_AVAILABLE=1"]),
     deps = [
