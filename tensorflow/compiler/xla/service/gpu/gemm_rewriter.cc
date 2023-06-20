@@ -608,6 +608,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
   Status HandleConvert(HloInstruction *instr) override {
     HloInstruction *clamp_lower, *clamp_upper, *d_scale, *existing_gemm,
         *binary;
+#if GOOGLE_CUDA
     auto cuda_compute_capability_ =
         std::get<se::CudaComputeCapability>(gpu_version_);
     if (instr->GetModule()
@@ -639,6 +640,7 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
         }
       }
     }
+#endif
     // Attempt to elide the scaling and conversion of the result of an FP8
     // GEMM, including the optional calculation of the maximum of the absolute
     // values before scaling, and adapt the Custom Call.
