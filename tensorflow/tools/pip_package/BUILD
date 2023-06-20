@@ -183,7 +183,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/ops:image_grad_test_base",
     "//tensorflow/python/framework:memory_checker",
     "//tensorflow/python/framework:test_ops",
-    "//tensorflow/python:while_v2",
+    "//tensorflow/python/ops:while_v2",
     "//tensorflow/tools/common:public_api",
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",

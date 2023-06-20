@@ -489,16 +489,6 @@ py_strict_library(
     deps = ["//tensorflow/python/framework:test_lib"],
 )
 
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "while_v2",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:while_v2",
-        "//tensorflow/python/ops:while_v2_indexed_slices_rewriter",
-    ],
-)
-
 py_strict_library(
     name = "gradients",
     tags = ["avoid_dep"],
@@ -525,17 +515,6 @@ py_strict_library(
     deps = [
         "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:nn_impl",
-    ],
-)
-
-# TODO(b/285020435): Update usages and then remove.
-py_strict_library(
-    name = "rnn_cell",
-    tags = ["avoid_dep"],
-    deps = [
-        "//tensorflow/python/ops:rnn_cell",
-        "//tensorflow/python/ops:rnn_cell_impl",
-        "//tensorflow/python/ops:rnn_cell_wrapper_impl",
     ],
 )
 
@@ -1286,19 +1265,6 @@ py_strict_library(
     name = "platform_test",
     srcs_version = "PY3",
     deps = ["//tensorflow/python/platform:test"],
-)
-
-alias(
-    name = "framework_for_generated_wrappers",
-    actual = "//tensorflow/python/framework:for_generated_wrappers",
-    visibility = ["//visibility:public"],
-)
-
-py_strict_library(
-    name = "dtensor",
-    deps = [
-        "//tensorflow/dtensor/python:dtensor",
-    ],
 )
 
 py_strict_library(
