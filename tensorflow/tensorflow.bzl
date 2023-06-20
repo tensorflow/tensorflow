@@ -61,6 +61,8 @@ load(
     "//third_party/llvm_openmp:openmp.bzl",
     "windows_llvm_openmp_linkopts",
 )
+
+# Placeholder: load py rules
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load("@bazel_skylib//rules:common_settings.bzl", "BuildSettingInfo")
 
@@ -2258,6 +2260,7 @@ def tf_custom_op_py_library(
         deps = [],
         **kwargs):
     _ignore = [kernels]
+    _make_tags_mutable(kwargs)
     native.py_library(
         name = name,
         data = dso,
@@ -2484,6 +2487,7 @@ def py_test(deps = [], data = [], kernels = [], exec_properties = None, test_rul
     if not exec_properties:
         exec_properties = tf_exec_properties(kwargs)
 
+    _make_tags_mutable(kwargs)
     test_rule(
         # TODO(jlebar): Ideally we'd use tcmalloc here.,
         deps = select({
@@ -2514,6 +2518,7 @@ def py_binary(name, deps = [], **kwargs):
     )
 
     # Python version placeholder
+    _make_tags_mutable(kwargs)
     native.py_binary(
         name = name,
         deps = select({
@@ -2525,7 +2530,18 @@ def py_binary(name, deps = [], **kwargs):
 
 def pytype_library(name, pytype_deps = [], pytype_srcs = [], **kwargs):
     # Types not enforced in OSS.
+    _make_tags_mutable(kwargs)
     native.py_library(name = name, **kwargs)
+
+# Tensorflow uses rules_python 0.0.1, and in that version of rules_python,
+# the rules require the tags value to be a mutable list because they
+# modify it in-place. Later versions of rules_python don't have this
+# requirement.
+def _make_tags_mutable(kwargs):
+    if "tags" in kwargs and kwargs["tags"] != None:
+        # The value might be a frozen list, which looks just like
+        # a regular list. So always make a copy.
+        kwargs["tags"] = list(kwargs["tags"])
 
 def tf_py_test(
         name,
