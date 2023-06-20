@@ -583,26 +583,22 @@ std::vector<HloInstruction*> GetOutputDefiningDynamicUpdateSlices(
   // computation instead of a LMHLO FusionOp.
   HloInstruction* root = fusion->root_instruction();
 
-  if (root->opcode() == HloOpcode::kDynamicUpdateSlice)
-    return std::vector<HloInstruction*>{root};
+  if (root->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return {root};
+  }
 
-  if (root->opcode() == HloOpcode::kBitcast) {
-    HloInstruction* current = root->mutable_operand(0);
-    while (current->opcode() == HloOpcode::kBitcast)
-      current = current->mutable_operand(0);
-
-    if (current->opcode() == HloOpcode::kDynamicUpdateSlice)
-      return std::vector<HloInstruction*>{current};
-
-    return std::vector<HloInstruction*>{};
+  if (root->opcode() == HloOpcode::kBitcast &&
+      root->operand(0)->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return {root->mutable_operand(0)};
   }
 
   std::vector<HloInstruction*> dus_ops;
 
   if (root->opcode() == HloOpcode::kTuple) {
     for (HloInstruction* operand : root->operands()) {
-      while (operand->opcode() == HloOpcode::kBitcast)
+      while (operand->opcode() == HloOpcode::kBitcast) {
         operand = operand->mutable_operand(0);
+      }
 
       if (operand->opcode() == HloOpcode::kDynamicUpdateSlice) {
         dus_ops.push_back(operand);
@@ -666,9 +662,14 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     auto operand = dus.getOperand();
     // A bitcast separating a fusion input from a dynamic slice update can be
     // treated as a no-op.
-    auto bitcast =
-        mlir::dyn_cast<mlir::mhlo::BitcastOp>(operand.getDefiningOp());
-    if (bitcast) {
+    if (auto bitcast =
+            mlir::dyn_cast<mlir::mhlo::BitcastOp>(operand.getDefiningOp())) {
+      // We require that the parameter being updated and the bitcast is only
+      // ever read by the dynamic slice update, since we otherwise risk a race
+      // condition when updating the parameter inplace.
+      if (!bitcast->hasOneUse()) {
+        return false;
+      }
       operand = bitcast.getOperand();
     }
 
@@ -694,6 +695,27 @@ bool CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
     if (dus.getUpdate().getType().cast<mlir::ShapedType>().getShape() !=
         update_shape) {
       return false;
+    }
+
+    // Dynamic slice updates should have a single path to the root---this to
+    // avoid allowing a dynamic slice update to depend on another, as this would
+    // not be guaranteed to work with the current codegen.
+    if (!dus->hasOneUse()) {
+      return false;
+    }
+
+    // Since the direct consumer of an output dynamic slice update may be a
+    // bitcast, we also check that this bitcast is used a single time.
+    // This property is also important because reads and writes on the parameter
+    // to be updated are done using the shape and layout of the dynamic slice
+    // update. This is a valid approach only if a subsequent bitcast is not read
+    // by any other op within the fusion---as this may result in codegen
+    // accessing elements using the wrong physical layout.
+    if (auto bitcast =
+            mlir::dyn_cast<mlir::mhlo::BitcastOp>(*dus->getUsers().begin())) {
+      if (!bitcast->hasOneUse()) {
+        return false;
+      }
     }
 
     auto maybe_lhs = GetAllocationSlice(parameter.getMemref(), allocations);

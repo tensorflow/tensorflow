@@ -36,6 +36,9 @@ namespace nvptx {
 std::string CantFindCudaMessage(absl::string_view msg,
                                 absl::string_view xla_gpu_cuda_data_dir);
 
+// Get path to NVVM libdevice file.
+std::string LibDevicePath(absl::string_view xla_gpu_cuda_data_dir);
+
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
 // be changed.

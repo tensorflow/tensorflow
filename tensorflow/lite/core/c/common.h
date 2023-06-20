@@ -1192,6 +1192,7 @@ typedef struct TfLiteOpaqueDelegateBuilder {
   int64_t flags;
 } TfLiteOpaqueDelegateBuilder;
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Creates an opaque delegate and returns its address.  The opaque delegate will
 // behave according to the provided 'opaque_delegate_builder'.  The lifetime of
 // the objects pointed to by any of the fields within the
@@ -1208,6 +1209,7 @@ TfLiteOpaqueDelegate* TfLiteOpaqueDelegateCreate(
 // Deletes the provided opaque 'delegate'.  This function has no effect if the
 // 'delegate' is a null pointer.
 void TfLiteOpaqueDelegateDelete(TfLiteOpaqueDelegate* delegate);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Returns a pointer to the data associated with the provided opaque 'delegate'.
 //

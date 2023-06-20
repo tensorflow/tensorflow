@@ -1722,13 +1722,12 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
   }
 
   // We need to make sure that the fusion parameter is accessed in the same
-  // iteration order as the fusion output. Also, there should not be two fusion
-  // outputs that consume the fusion parameter, because we do not want to share
-  // the same fusion operand with two different fusion outputs. To make sure
+  // iteration order as the fusion output. Also, there should not be any other
+  // fusion output that accesses it in a different iteration order. To make sure
   // that the iteration order is the same, we only allow ops on the path from
   // fusion parameter to fusion output which are elementwise (no copy) or
-  // bitcast or a dynamic update slice with the first operand being on this
-  // path.
+  // bitcast or an elementwise dynamic update slice (i.e. with the first operand
+  // being on this path).
   HloInstruction* fusion_param =
       user->fused_parameter(user->operand_index(operand));
   HloInstruction* output = user->fused_expression_root();
@@ -1745,23 +1744,17 @@ std::optional<bool> GpuCompiler::FusionCanShareBufferHint(
     q.pop();
     if (hlo_operand == output) {
       found_path_to_output = true;
-      // The output should have at most 1 user: the tuple op (in case of a
-      // multi-output fusion)
-      if (hlo_operand->user_count() > 1) {
-        return false;
-      }
-      continue;
+      // We still need to process the users of 'hlo_operand'. There can be other
+      // users in addition to the tuple user.
     }
     for (HloInstruction* hlo : hlo_operand->users()) {
       if (visited.contains(hlo)) {
         continue;
       }
-      // This check also catches the case that we reach a different fusion
-      // output, as that fusion output would have a tuple op as user, which we
-      // do not allow here.
       if ((!hlo->IsElementwiseOnOperand(hlo->operand_index(hlo_operand)) ||
            hlo->opcode() == HloOpcode::kCopy) &&
-          hlo->opcode() != HloOpcode::kBitcast) {
+          hlo->opcode() != HloOpcode::kBitcast &&
+          hlo->opcode() != HloOpcode::kTuple) {
         return false;
       }
       visited.insert(hlo);

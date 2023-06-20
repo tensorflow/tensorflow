@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"  // from @llvm-project
 #include "mlir/Dialect/Arith/IR/Arith.h"  // from @llvm-project
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -376,6 +377,7 @@ static void RegisterMlirInputDialects(mlir::DialectRegistry& registry) {
   registry
       .insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
               mlir::TF::TensorFlowDialect, mlir::stablehlo::StablehloDialect>();
+  mlir::func::registerAllExtensions(registry);
 }
 
 static void RegisterGraphInputDialects(mlir::DialectRegistry& registry) {

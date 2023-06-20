@@ -46,6 +46,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/gpu_utils.h"
+#include "tensorflow/core/kernels/numeric_options_utils.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
@@ -525,7 +526,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(
@@ -619,12 +620,11 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
           }
         }
 
-        OP_REQUIRES_OK(context,
-                       stream->ThenBlasGemm(
-                           blas_transpose_b, blas_transpose_a, n, m, k,
-                           *(b_ptrs[0]), adj_y || trans_y ? k : n, *(a_ptrs[0]),
-                           adj_x || trans_x ? m : k, c_ptrs[0], n,
-                           se::blas::kDefaultComputePrecision));
+        OP_REQUIRES_OK(context, stream->ThenBlasGemm(
+                                    blas_transpose_b, blas_transpose_a, n, m, k,
+                                    *(b_ptrs[0]), adj_y || trans_y ? k : n,
+                                    *(a_ptrs[0]), adj_x || trans_x ? m : k,
+                                    c_ptrs[0], n, GetNumericOptions()));
       } else if (use_strided_batched) {
         OP_REQUIRES_OK(
             context, stream->ThenBlasGemmStridedBatched(
@@ -633,7 +633,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                          adj_y || trans_y ? k : n, b_stride, *a_ptrs[0],
                          adj_x || trans_x ? m : k, a_stride,
                          static_cast<Coefficient>(0.0), c_ptrs[0], n, c_stride,
-                         batch_size, se::blas::kDefaultComputePrecision));
+                         batch_size, GetNumericOptions()));
       } else {
         BlasScratchAllocator scratch_allocator(context);
         bool blas_launch_status =
@@ -643,7 +643,7 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
                     static_cast<Coefficient>(1.0), b_ptrs,
                     adj_y || trans_y ? k : n, a_ptrs, adj_x || trans_x ? m : k,
                     static_cast<Coefficient>(0.0), c_ptrs, n, batch_size,
-                    &scratch_allocator)
+                    GetNumericOptions(), &scratch_allocator)
                 .ok();
         if (!blas_launch_status) {
           context->SetStatus(errors::Internal(

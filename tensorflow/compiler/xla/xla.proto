@@ -531,7 +531,9 @@ message DebugOptions {
   // kernel on GPU.
   bool xla_gpu_enable_experimental_block_size = 214;
 
-  // Next id: 219
+  bool xla_gpu_exhaustive_tiling_search = 219;
+
+  // Next id: 220
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -556,6 +558,7 @@ message ShardableValueUpdatePairProto {
 // will have an effect on every platform.
 //
 // When adding new fields, keep in mind that boolean fields default to false.
+// Next id: 22.
 message ExecutionOptions {
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
@@ -642,11 +645,17 @@ message ExecutionOptions {
 
   // The list of input/output pairs in the main program that could be sharded.
   repeated ShardableValueUpdatePairProto shardable_value_update_pairs = 20;
+
+  // Profiling data for feedback directed optimizations. Note that this is not
+  // the only way to feed FDO data into the compiler and individual backends
+  // may choose to get FDO data by other means.
+  bytes fdo_profile = 21;
 }
 
 // Serialization of HloModuleConfig. See the C++ class definition for
 // descriptions of each field.
 // There are no guarantees of backwards or forwards compatibility.
+// Next id: 32.
 message HloModuleConfigProto {
   enum FusionConfigCollection {
     OFF = 0;       // Do not collect configuration.
@@ -697,6 +706,7 @@ message HloModuleConfigProto {
   repeated bool allow_spmd_sharding_propagation_to_output = 27;
   map<string, int64> analysis_allowance_map = 28;
   xla.PrecisionConfig.Precision matrix_unit_operand_precision = 29;
+  bytes fdo_profile = 31;
 }
 
 message HloModuleProtoWithConfig {

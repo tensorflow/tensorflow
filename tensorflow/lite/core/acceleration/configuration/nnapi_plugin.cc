@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,20 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Defines the GpuTimer type - the CUDA-specific implementation of the generic
-// StreamExecutor Timer interface.
+// This file implements the TFLite Delegate Plugin for the NNAPI Delegate.
 
-#ifndef TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
-#define TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
+#include "tensorflow/lite/core/acceleration/configuration/nnapi_plugin.h"
 
-#include "tensorflow/compiler/xla/stream_executor/gpu/gpu_timer.h"
+namespace tflite {
+namespace delegates {
 
-namespace stream_executor {
-namespace cuda {
+TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(NnapiPlugin, NnapiPlugin::New);
 
-using CUDATimer = gpu::GpuTimer;
-
-}  // namespace cuda
-}  // namespace stream_executor
-
-#endif  // TENSORFLOW_COMPILER_XLA_STREAM_EXECUTOR_CUDA_CUDA_TIMER_H_
+}  // namespace delegates
+}  // namespace tflite

@@ -196,6 +196,7 @@ cc_library(
         "//tensorflow/compiler/xla/pjrt:pjrt_executable",
         "@com_google_absl//absl/status",
     ],
+    alwayslink = True,
 )
 
 xla_cc_test(

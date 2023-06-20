@@ -35,6 +35,8 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -593,7 +595,9 @@ SavedModelImpl::LoadSavedModel(Options options,
   options.graph_execution_options.compile_options.saved_model_dir =
       saved_model_dir;
 
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  mlir::MLIRContext context(registry);
 
   // Step 1: Import saved model from a proto to an MLIR module.
   const auto import_start_time = absl::Now();
@@ -1044,7 +1048,10 @@ StatusOr<JoinedSignature> JoinSignatures(
 StatusOr<std::reference_wrapper<const SavedModelImpl::LoadingResult>>
 SavedModelImpl::LoadJoinedSignature(const JoinedSignature& joined_signature) {
   // Step 1: Import the combined subgraph from proto to an MLIR module.
-  mlir::MLIRContext context;
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  mlir::MLIRContext context(registry);
+
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportSubgraph(&context, joined_signature.input_nodes,
                                   joined_signature.output_nodes,

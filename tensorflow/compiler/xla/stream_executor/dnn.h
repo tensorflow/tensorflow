@@ -2292,8 +2292,9 @@ class DnnSupport {
                       dnn::RnnDirectionMode direction_mode,
                       dnn::RnnMode rnn_mode, dnn::DataType data_type,
                       const dnn::AlgorithmConfig& algorithm_config,
-                      float dropout, uint64_t seed,
-                      ScratchAllocator* state_allocator, bool use_padded_io) {
+                      const NumericOptions& numeric_options, float dropout,
+                      uint64_t seed, ScratchAllocator* state_allocator,
+                      bool use_padded_io) {
     return tsl::Status(absl::StatusCode::kUnimplemented,
                        "createRnnDescriptor is unimplemented");
   }

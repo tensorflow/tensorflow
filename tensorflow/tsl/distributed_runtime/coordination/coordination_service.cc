@@ -18,17 +18,16 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <iterator>
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
@@ -174,7 +173,7 @@ class CoordinationServiceStandaloneImpl : public CoordinationServiceInterface {
       const absl::flat_hash_map<CoordinatedTask, bool, CoordinatedTaskHash,
                                 CoordinatedTaskEqual>& tasks_at_barrier,
       int64_t cluster_size);
-  bool isRecoverableJob(const absl::string_view task_name) const;
+  bool isRecoverableJob(absl::string_view task_name) const;
 
   class TaskState {
    public:
@@ -403,7 +402,8 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
                 status = MakeCoordinationError(errors::Unavailable(
                     "Task ", task_name,
                     " heartbeat timeout. This indicates that the remote task "
-                    "has failed, got preempted, or crashed unexpectedly."));
+                    "has failed, got preempted, or crashed unexpectedly. Check "
+                    "the task logs for an earlier error to debug further."));
                 SetTaskError(task_name, status);
               }
             }
@@ -415,10 +415,12 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
               // connection, so shut down service instead. Note: we cannot
               // destroy the thread within its own function. However, this
               // thread will be destroyed once the function returns.
-              LOG(ERROR) << "Stopping coordination service as heartbeat has "
-                            "timed out for "
-                         << stale_task_names[0]
-                         << " and there is no service-to-client connection";
+              LOG(ERROR)
+                  << "Stopping coordination service as the following tasks are "
+                     "unhealthy (stopped sending heartbeats):\n"
+                  << absl::StrJoin(stale_task_names, "\n")
+                  << "\nCheck the task logs for an earlier error to debug "
+                     "further.";
               Stop(/*shut_staleness_thread=*/false);
               return;
             }
@@ -468,7 +470,7 @@ void CoordinationServiceStandaloneImpl::StartCheckStaleness() {
             // thread will be destroyed once the function returns.
             LOG(ERROR)
                 << "Stopping coordination service as shutdown barrier "
-                   "timed out and there is no service-to-client connection.";
+                   "timed out. Check the task logs for an earlier error.";
             Stop(/*shut_staleness_thread=*/false);
           }
           // Reset this for the next barrier check.
@@ -715,7 +717,10 @@ Status CoordinationServiceStandaloneImpl::RecordHeartbeat(
     mutex_lock l(state_mu_);
     if (!cluster_state_.contains(task_name)) {
       return MakeCoordinationError(errors::InvalidArgument(
-          "Unexpected task request with task_name=", task_name));
+          "Unexpected heartbeat request from task: ", task_name,
+          ". This usually implies an earlier error that caused coordination "
+          "service to shut down before the workers disconnect. Check the task "
+          "leader's logs for an earlier error to debug the root cause."));
     }
     if (!cluster_state_[task_name]->GetStatus().ok()) {
       return cluster_state_[task_name]->GetStatus();
@@ -1159,10 +1164,12 @@ void CoordinationServiceStandaloneImpl::PassBarrier(
     if (result.ok()) {
       LOG(INFO) << "Shutdown barrier in coordination service has passed.";
     } else {
-      LOG(ERROR) << "Shutdown barrier in coordination service has failed: "
+      LOG(ERROR) << "Shutdown barrier in coordination service has failed:\n"
                  << result
-                 << ". This suggests that at least one worker did not complete "
-                    "its job, or was too slow/hanging in its execution.";
+                 << "\nThis suggests that the workers are out of sync. Either "
+                    "at least one worker is too fast in its execution / "
+                    "crashed early or too slow / hanging. Check the logs for "
+                    "an earlier error to identify the root cause.";
     }
     Status shutdown_error = MakeCoordinationError(errors::Internal(
         absl::StrCat("Shutdown barrier has been passed with status: '",

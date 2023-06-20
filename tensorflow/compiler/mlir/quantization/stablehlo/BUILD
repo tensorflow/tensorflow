@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_cloud")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 load("//tensorflow/compiler/mlir/quantization/stablehlo:internal_visibility_allowlist.bzl", "internal_visibility_allowlist")
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
@@ -11,6 +11,7 @@ package_group(
     packages = [
         "//tensorflow/compiler/mlir/lite/...",
         "//tensorflow/compiler/mlir/quantization/...",
+        "//tensorflow/compiler/mlir/tf2xla/transforms/...",
         "//tensorflow/lite/...",
         "//third_party/cloud_tpu/inference_converter/...",  # TPU Inference Converter V1
     ] + internal_visibility_allowlist(),
@@ -107,6 +108,23 @@ cc_library(
     deps = [
         ":quantization_options_proto_cc",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "math_utils",
+    srcs = ["utils/math_utils.cc"],
+    hdrs = ["utils/math_utils.h"],
+    compatible_with = get_compatible_with_cloud(),
+    deps = ["@llvm-project//mlir:Support"],
+)
+
+tf_cc_test(
+    name = "math_utils_test",
+    srcs = ["utils/math_utils_test.cc"],
+    deps = [
+        ":math_utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

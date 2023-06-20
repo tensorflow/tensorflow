@@ -111,7 +111,7 @@ DeviceTopology = _xla.DeviceTopology
 
 
 def make_tfrt_tpu_c_api_device_topology(
-    topology_name: Optional[str] = None, **kwargs
+    topology_name: str = '', **kwargs
 ) -> DeviceTopology:
   """Creates a PJRT C API TopologyDescription."""
 
@@ -119,13 +119,7 @@ def make_tfrt_tpu_c_api_device_topology(
     raise NotImplementedError(
         'make_tfrt_tpu_c_api_device_topology only works with the pjrt c-api.'
     )
-  if topology_name is not None or kwargs:
-    raise NotImplementedError(
-        'Unsupported arguments to'
-        ' make_tfrt_tpu_c_api_device_topology(topology_name=%s, %s)'
-        % (repr(topology_name), repr(kwargs))
-    )
-  return _xla.get_default_c_api_topology('tpu')
+  return _xla.get_default_c_api_topology('tpu', topology_name, dict(**kwargs))
 
 
 def pjrt_plugin_loaded(plugin_name: str) -> bool:
@@ -183,18 +177,6 @@ def make_tpu_client(use_pjrt_c_api: bool = False):
         f'got {max_inflight_computations}') from e
   return _xla.get_tpu_client(
       max_inflight_computations=max_inflight_computations)
-
-
-def make_plugin_device_client():
-  """Returns a plugin device client."""
-  try:
-    return _xla.get_plugin_device_client()
-  except AttributeError as e:
-    raise AttributeError(
-        'xla_extension has no attributes named get_plugin_device_client. '
-        'Compile TensorFlow with '
-        '//tensorflow/compiler/xla/python:enable_plugin_device set to true '
-        '(defaults to false) to enable this.') from e
 
 
 class OpMetadata:

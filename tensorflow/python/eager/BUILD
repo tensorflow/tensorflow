@@ -1033,6 +1033,7 @@ py_strict_library(
         ":lift_to_graph",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/core/function/polymorphism:function_type",
+        "//tensorflow/python/eager/polymorphic_function:atomic_function",
         "//tensorflow/python/framework",
         "//tensorflow/python/framework:composite_tensor",
         "//tensorflow/python/framework:func_graph",

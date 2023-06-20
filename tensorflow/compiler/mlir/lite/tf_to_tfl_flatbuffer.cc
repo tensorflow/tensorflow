@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
@@ -302,6 +303,10 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     std::optional<tensorflow::Session*> session, std::string* result) {
   // Explicitly disable dumping Op details on failures.
   module.getContext()->printOpOnDiagnostic(false);
+
+  mlir::DialectRegistry registry;
+  mlir::func::registerAllExtensions(registry);
+  module.getContext()->appendDialectRegistry(registry);
 
   // Register a warning handler only log to std out.
   mlir::ScopedDiagnosticHandler s(

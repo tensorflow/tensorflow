@@ -2225,6 +2225,24 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
 // -----
 
 module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1443 : i32}} {
+  // Test that map_outside_compilation works with 0 inputs to the
+  // _XlaHostComputeMlir op. In this case, %arg0 is not input to the
+  // generated _XlaHostComputeMlir.
+  // CHECK-LABEL: func @map_outside_compilation_0_inputs
+  func.func @map_outside_compilation_0_inputs(%arg0 : tensor<2xi64>) -> () {
+    // CHECK:             "tf._XlaHostComputeMlir"()
+    "tf_device.cluster"() ({
+      %1 = "tf.OpA"(%arg0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2xi64>) -> tensor<2xi64>
+      "tf.OpB"(%1) : (tensor<2xi64>) -> ()
+      tf_device.return
+    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
+    return
+  }
+}
+
+// -----
+
+module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"}, tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 1443 : i32}} {
 
   // Test that map_outside_compilation's inputs are not unranked.
   func.func @map_outside_compilation_must_be_ranked() -> () {
@@ -2265,18 +2283,6 @@ module attributes {tf.devices = {"/job:localhost/replica:0/task:0/device:CPU:0",
       %0 = "tf.OpA"() : () -> tensor<2xi64>
       // expected-error @+1 {{should have an explicit sharding}}
       %1 = "tf.OpB"(%0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2xi64>) -> tensor<2xi64>
-      tf_device.return
-    }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
-    return
-  }
-
-  // Test that map_outside_compilation has at least 1 input to the
-  // _XlaHostComputeMlir op. In this case, %arg0 is not input to the
-  // generated _XlaHostComputeMlir.
-  func.func @map_outside_compilation_preceeding_op(%arg0 : tensor<2xi64>) -> () {
-    "tf_device.cluster"() ({
-      // expected-error @+1 {{should have at least one input}}
-      %1 = "tf.OpB"(%arg0) {_xla_map_outside_compilation = "0", _xla_outside_compilation = "from_launch"} : (tensor<2xi64>) -> tensor<2xi64>
       tf_device.return
     }) {_xla_compile_device_type = "TPU", computation_shape = [], device = "", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], host_compute_core = [], num_cores_per_replica = 2 : i64, padding_map = [], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01*\02\08\01", use_spmd_for_xla_partitioning = true, use_tpu = true} : () -> ()
     return

@@ -207,17 +207,17 @@ class CpuExecutable : public Executable {
   int64_t SizeOfGeneratedCodeInBytes() const override;
 
   StatusOr<std::string_view> GetObjFile() const {
-    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
     return xla_runtime_executable_->GetObjFile();
   }
 
   StatusOr<std::string_view> GetMlirModule() const {
-    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
     return xla_runtime_executable_->GetMlirModule();
   }
 
   StatusOr<XlaFrameworkMapping> GetXlaFrameworkMapping() const {
-    if (!IsXlaRuntime()) return InternalError("Not an XLA Runtime executable");
+    if (!IsXlaRuntime()) return Unimplemented("Not an XLA Runtime executable");
     return xla_runtime_executable_->xla_framework_mapping();
   }
 

@@ -1599,6 +1599,7 @@ py_strict_library(
     srcs = ["weak_tensor.py"],
     srcs_version = "PY3",
     deps = [
+        ":composite_tensor_gradient",
         ":dtypes",
         ":errors",
         ":extension_type",
@@ -1623,6 +1624,7 @@ tf_py_strict_test(
         ":tensor_spec",
         ":test_lib",
         ":weak_tensor",
+        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/module",
         "//tensorflow/python/platform:test",

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/device_options.h"
 #include "tensorflow/compiler/xla/stream_executor/event.h"
 #include "tensorflow/compiler/xla/stream_executor/host/host_stream.h"
-#include "tensorflow/compiler/xla/stream_executor/host/host_timer.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel.h"
 #include "tensorflow/compiler/xla/stream_executor/kernel_spec.h"
 #include "tensorflow/compiler/xla/stream_executor/launch_dim.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/stream_executor/stream.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor.h"
 #include "tensorflow/compiler/xla/stream_executor/stream_executor_internal.h"
-#include "tensorflow/compiler/xla/stream_executor/timer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace stream_executor {
@@ -148,11 +146,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
   void DeallocateStream(Stream *stream) override {}
   bool CreateStreamDependency(Stream *dependent, Stream *other) override;
 
-  bool AllocateTimer(Timer *timer) override { return true; }
-  void DeallocateTimer(Timer *timer) override {}
-  bool StartTimer(Stream *stream, Timer *timer) override;
-  bool StopTimer(Stream *stream, Timer *timer) override;
-
   tsl::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return 1; }
@@ -191,10 +184,6 @@ class XlaInterpreterExecutor : public internal::StreamExecutorInterface {
       override {
     return std::unique_ptr<internal::StreamInterface>(
         new host::HostStream(/*thread_stack_size=*/0));
-  }
-
-  std::unique_ptr<internal::TimerInterface> GetTimerImplementation() override {
-    return std::unique_ptr<internal::TimerInterface>(new host::HostTimer());
   }
 
  private:

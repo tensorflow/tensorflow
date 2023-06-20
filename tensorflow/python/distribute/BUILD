@@ -2628,6 +2628,7 @@ tpu_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/ops:control_flow_ops",
         "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:nn",
         "//tensorflow/python/ops:random_ops",
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:variable_scope",

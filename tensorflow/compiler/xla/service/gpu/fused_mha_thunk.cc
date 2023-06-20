@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/hlo/ir/hlo_casting_utils.h"

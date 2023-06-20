@@ -35,8 +35,13 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"  // from @llvm-project
+#include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinDialect.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
+#include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tfrt/jit/tf_jitrt_request_context.h"
@@ -577,7 +582,9 @@ GraphExecutor::ImportAndCompileClientGraph(
     const GraphExecutor::ClientGraph& client_graph) {
   // Step 1 of loading: Import the client graph from proto to an MLIR module.
   auto import_start_time = absl::Now();
-  auto context = std::make_unique<mlir::MLIRContext>();
+  mlir::DialectRegistry registry;
+  RegisterMlirDialect(registry);
+  auto context = std::make_unique<mlir::MLIRContext>(registry);
   ASSIGN_OR_RETURN_IN_IMPORT(
       auto module, ImportClientGraphToMlirModule(client_graph, context.get()));
   // TODO(b/278143179): Upload module w/o control flow.
@@ -941,6 +948,11 @@ tensorflow::Status GraphExecutor::CompileGraph(
              output_tensor_names, target_tensor_names,
              /*work_queue=*/nullptr, graph_name)
       .status();
+}
+
+void RegisterMlirDialect(mlir::DialectRegistry& registry) {
+  registry.insert<mlir::BuiltinDialect, mlir::func::FuncDialect>();
+  mlir::RegisterAllTensorFlowDialects(registry);
 }
 
 }  // namespace tfrt_stub

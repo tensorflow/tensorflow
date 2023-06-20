@@ -48,6 +48,16 @@
         Equal, NotEqual, Greater, GreaterEqual, LessEqual, Less.
 
 # Bug Fixes and Other Changes
+
+* `tf.py_function` and `tf.numpy_function` can now be used as function
+   decorators for clearer code:
+   ```
+   @tf.py_function(Tout=tf.float32)
+   def my_fun(x):
+     print("This always executes eagerly.")
+     return x+1
+   ```
+
 * `tf.lite`
     * Strided_Slice now supports `UINT32`.
 * <SIMILAR TO ABOVE SECTION, BUT FOR OTHER IMPORTANT CHANGES / BUG FIXES>

@@ -212,10 +212,10 @@ ENTRY e {
 }
 )";
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out_computation (
-// CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: "block_m":
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/5e-3, /*arel=*/5e-3}));
@@ -236,10 +236,10 @@ ENTRY e {
 )";
 
   CheckTritonAutotuning(hlo, R"(
-// CHECK:   %triton_gemm_out_computation (
-// CHECK:   ROOT %out.1 = f16[128,6144]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-// CHECK:   ROOT %triton_gemm_out = f16[128,6144]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
-// CHECK-SAME: "block_m":
+// CHECK: ENTRY
+// CHECK: ROOT
+// CHECK-SAME: kCustom
+// CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo, ErrorSpec{/*aabs=*/1e-2, /*arel=*/1e-2}));
@@ -264,8 +264,11 @@ ENTRY e {
 
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: reduce
-; CHECK: fusion(%p0, %p1), kind=kCustom
-; CHECK: ROOT %fusion.1
+; CHECK: ENTRY
+; CHECK-NEXT: parameter
+; CHECK-NEXT: parameter
+; CHECK-NEXT: kCustom
+; CHECK-NEXT: kLoop
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/0.5, /*arel=*/1e-1}));
@@ -315,6 +318,36 @@ ENTRY e {
 
 INSTANTIATE_TEST_SUITE_P(TritonAutotunerLevelSweep, TritonAutotunerLevelTest,
                          ::testing::Range(0, 5));
+
+class TritonAutotunerExhaustiveTest : public TritonAutotunerTest {
+ public:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_gpu_enable_triton_gemm(true);
+    debug_options.set_xla_gpu_exhaustive_tiling_search(true);
+    return debug_options;
+  }
+};
+
+TEST_F(TritonAutotunerExhaustiveTest, DISABLED_CompileOnly) {
+  const std::string hlo = R"(
+HloModule module
+
+ENTRY e {
+  x = s8[16,16] parameter(0)
+  c = f16[16,16] convert(x)
+  y = f16[16,16] parameter(1)
+  ROOT out = f16[16,16] dot(c, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  CheckTritonAutotuning(hlo, R"(
+// CHECK:   %triton_gemm_out_computation (
+// CHECK:   ROOT %out.1 = f16[16,16]{1,0} dot(%c.1, %parameter_1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+// CHECK:   ROOT %triton_gemm_out = f16[16,16]{1,0} fusion(%x, %y), kind=kCustom, calls=%triton_gemm_out_computation
+// CHECK-SAME: "block_m":
+)");
+}
 
 }  // namespace
 }  // namespace gpu

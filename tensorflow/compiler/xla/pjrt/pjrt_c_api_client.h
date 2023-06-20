@@ -540,7 +540,8 @@ StatusOr<std::unique_ptr<PjRtClient>> GetCApiClient(
     const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
 StatusOr<std::unique_ptr<PjRtTopologyDescription>> GetCApiTopology(
-    absl::string_view device_type);
+    absl::string_view device_type, absl::string_view topology_name,
+    const absl::flat_hash_map<std::string, PjRtValueType>& create_options = {});
 
 }  // namespace xla
 

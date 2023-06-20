@@ -24,4 +24,6 @@ def jpeg_copts():
 
 def minibenchmark_visibility_allowlist():
     """Returns a list of packages that can depend on mini_benchmark."""
-    return []
+    return [
+        "//tensorflow/lite/tools/benchmark/experimental/delegate_performance:__subpackages__",
+    ]

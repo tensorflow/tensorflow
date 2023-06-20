@@ -4602,6 +4602,9 @@ PrecisionConfig* HloInstruction::mutable_precision_config() {
   if (auto* dot = DynCast<HloDotInstruction>(this)) {
     return dot->mutable_precision_config();
   }
+  if (auto* custom_call = DynCast<HloCustomCallInstruction>(this)) {
+    return custom_call->mutable_precision_config();
+  }
   LOG(FATAL) << "Unimplemented method.";
 }
 

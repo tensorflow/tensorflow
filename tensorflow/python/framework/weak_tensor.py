@@ -20,6 +20,7 @@ from typing import Optional
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import extension_type
@@ -34,38 +35,53 @@ _ALLOWED_WEAK_DTYPES = (
 )
 
 
+class WeakTensorGradient(composite_tensor_gradient.CompositeTensorGradient):
+  """CompositeTensorGradient for WeakTensor."""
+
+  def get_gradient_components(self, weak_tensor):
+    return weak_tensor.tensor
+
+  def replace_gradient_components(self, weak_tensor, component_grads):
+    return weak_tensor._type_spec._from_components([component_grads])  # pylint: disable=protected-access
+
+
 # TODO(b/285024542): Modify the isinstance() checks to include WeakTensor.
 # instance.
 class WeakTensor(extension_type.ExtensionType):
-  """A simple wrapper of weakly typed Tensor.
+  """A weakly typed Tensor.
 
-  Contains a normal Tensor.
+  A simple wrapper class that contains a normal Tensor.
 
   A "weak" type means that its dtype is temporarily inferred by the system,
   and could defer to other dtypes.
 
   i.g. weak f64 + f16 => f16
 
-  This information is used to determine tf-numpy dtype promotion behavior.
+  This information is used for auto dtype conversion.
   """
 
   # __name__ is required for serialization in SavedModel.
   __name__ = "tf.WeakTensor"
   tensor: ops.Tensor
 
-  def __init__(self, tensor):
-    if tensor.dtype not in _ALLOWED_WEAK_DTYPES:
+  def __validate__(self):
+    if self.tensor.dtype not in _ALLOWED_WEAK_DTYPES:
       raise TypeError(
-          f"{tensor.dtype} not allowed "
+          f"{self.tensor.dtype} not allowed "
           f"as a weak type. The allowed types are {_ALLOWED_WEAK_DTYPES}."
       )
-    self.tensor = tensor
 
   def __str__(self):
-    return f"{str(self.tensor)} weakly typed"
+    return self._format_weak_tensor(is_repr=False)
 
   def __repr__(self):
-    return f"{repr(self.tensor)} weakly typed"
+    return self._format_weak_tensor(is_repr=True)
+
+  def _format_weak_tensor(self, is_repr):
+    tensor_str = self.tensor.__repr__() if is_repr else self.tensor.__str__()
+    closing_char = tensor_str[len(tensor_str) - 1]
+    last_index = tensor_str.rfind(closing_char)
+    return tensor_str[:last_index] + ", weak=True" + closing_char
 
   def __getattr__(self, *args, **kwargs):
     # Fallback to `__getattr__` if `__getattribute__` fails, so that we can
@@ -122,7 +138,7 @@ class WeakTensor(extension_type.ExtensionType):
   def __tf_tensor__(
       self, dtype: Optional[dtypes.DType] = None, name: Optional[str] = None
   ):
-    return self.tensor.__tf_tensor__(self, dtype=dtype, name=name)
+    return self.tensor.__tf_tensor__(dtype=dtype, name=name)
 
   def __format__(self, format_spec):
     return f"{self.tensor.__format__(format_spec)} weakly typed"
@@ -153,6 +169,8 @@ class WeakTensor(extension_type.ExtensionType):
   @property
   def shape(self):
     return self.tensor.shape
+
+  __composite_gradient__ = WeakTensorGradient()
 
 
 class _WeakTensorIterator(object):

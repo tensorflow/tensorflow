@@ -1007,6 +1007,7 @@ filegroup(
 cc_library(
     name = "portable_tensorflow_lib_lite",
     srcs = if_mobile([":mobile_srcs"]),
+    hdrs = if_mobile(["//tensorflow/core/config:flags_headers_filegroup"]),
     copts = tf_copts(android_optimization_level_override = None) + tf_opts_nortti_if_lite_protos() + if_ios(["-Os"]),
     defines = ["SUPPORT_SELECTIVE_REGISTRATION"] + select({
                   "//tensorflow:chromiumos": ["IS_MOBILE_PLATFORM"],
@@ -2018,6 +2019,7 @@ transitive_hdrs(
 )
 
 # copybara:uncomment_begin(google-only)
+# # TODO(b/287346201): Look into replacing usages of this target.
 # py_proto_library(
 #     name = "protos_all_py_pb2",
 #     has_services = 0,

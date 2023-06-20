@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,14 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements the TFLite Delegate Plugin for the NNAPI Delegate.
+#include "tensorflow/compiler/mlir/tf2xla/transforms/legalization_op_config.h"
 
-#include "tensorflow/lite/acceleration/configuration/nnapi_plugin.h"
+namespace mlir {
+namespace mhlo {
 
-namespace tflite {
-namespace delegates {
+bool IsLegalizedWithMlir(Operation& op) { return false; }
 
-TFLITE_REGISTER_DELEGATE_FACTORY_FUNCTION(NnapiPlugin, NnapiPlugin::New);
-
-}  // namespace delegates
-}  // namespace tflite
+}  // namespace mhlo
+}  // namespace mlir

@@ -104,6 +104,7 @@ void SnapshotStreamWriter::WriteSnapshotAndLog() TF_LOCKS_EXCLUDED(mu_) {
   LOG(INFO) << "Finished writing distributed tf.data snapshot stream: "
             << params_.DebugString();
   completed_ = true;
+  iterator_ = nullptr;  // Reclaims iterator resources.
 }
 
 Status SnapshotStreamWriter::WriteSnapshot() TF_LOCKS_EXCLUDED(mu_) {

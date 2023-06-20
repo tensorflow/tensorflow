@@ -237,15 +237,15 @@ class TracingCompiler:
         return_annotation=output_type
     )
 
-    concrete_function = concrete_function_lib.ConcreteFunction(
+    concrete_function = concrete_function_lib.ConcreteFunction.from_func_graph(
         traced_func_graph,
+        traced_func_type,
         self._function_attributes,
         # Tell the ConcreteFunction to clean up its graph once it goes out of
         # scope. This is not the default behavior since it gets used in some
         # places (like Keras) where the FuncGraph lives longer than the
         # ConcreteFunction.
         shared_func_graph=False,
-        function_type=traced_func_type
     )
 
     transform.call_concrete_function_callbacks(concrete_function)

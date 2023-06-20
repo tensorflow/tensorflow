@@ -157,12 +157,12 @@ ENTRY entry {
   mlir::MLIRContext mlir_context;
 
   tensorflow::AutotuneResult::TritonGemmKey config;
-  config.set_block_m(512);
-  config.set_block_n(512);
+  config.set_block_m(16);
+  config.set_block_n(32);
   config.set_block_k(512);
   config.set_split_k(1);
-  config.set_num_stages(1);
-  config.set_num_warps(2);
+  config.set_num_stages(4);
+  config.set_num_warps(8);
   EXPECT_THAT(
       TritonWrapper("test_fn", triton_dot_computation,
                     se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
@@ -170,12 +170,13 @@ ENTRY entry {
                     dev_info, config, &llvm_module, &MatMul, mlir_context),
       tsl::testing::StatusIs(
           tsl::error::RESOURCE_EXHAUSTED,
-          absl::StrFormat("Requires too much shared memory: 1310720 > %d",
+          absl::StrFormat("Requires too much shared memory: 294912 > %d",
                           dev_info.shared_memory_per_block_optin)));
 
   config.set_block_m(64);
   config.set_block_n(128);
   config.set_block_k(128);
+  config.set_num_stages(1);
   TF_ASSERT_OK_AND_ASSIGN(
       const LaunchDimensions launch_dimensions,
       TritonWrapper("test_fn", triton_dot_computation,
@@ -527,6 +528,65 @@ ENTRY e {
 )");
 }
 
+// This tests the complexity heuristics in TritonWrapper.
+TEST_F(TritonGemmTest, FailForTooComplexTiling) {
+  const std::string kHloText = R"(
+HloModule module, is_scheduled=true
+
+triton_gemm_dot {
+  p0 = s8[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  c0 = f32[1024,1024] convert(p0)
+  ROOT dot.0 = f32[1024,1024] dot(c0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = s8[1024,1024] parameter(0)
+  p1 = f32[1024,1024] parameter(1)
+  ROOT r = f32[1024,1024] fusion(p0, p1),
+    kind=kCustom, calls=triton_gemm_dot
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  const HloComputation* triton_dot_computation =
+      hlo_module->entry_computation()
+          ->root_instruction()
+          ->fused_instructions_computation();
+  const GpuDeviceInfo dev_info = TestGpuDeviceInfo::RTXA6000DeviceInfo();
+  llvm::LLVMContext llvm_ctx;
+  llvm::Module llvm_module("module", llvm_ctx);
+  mlir::MLIRContext mlir_context;
+
+  // Fails if the tiling is too complex.
+  tensorflow::AutotuneResult::TritonGemmKey config;
+  config.set_block_m(512);
+  config.set_block_n(512);
+  config.set_block_k(32);
+  config.set_split_k(1);
+  config.set_num_stages(1);
+  config.set_num_warps(2);
+  EXPECT_THAT(
+      TritonWrapper("test_fn", triton_dot_computation,
+                    se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
+                                              /*minor=*/0},
+                    dev_info, config, &llvm_module, &MatMul, mlir_context),
+      tsl::testing::StatusIs(
+          tsl::error::RESOURCE_EXHAUSTED,
+          "Tiling complexity heuristic exceeded: 147456 > 9000"));
+
+  // Succeeds if the tiling is not too complex.
+  config.set_block_m(32);
+  config.set_block_n(32);
+  config.set_block_k(32);
+  TF_CHECK_OK(
+      TritonWrapper("test_fn", triton_dot_computation,
+                    se::CudaComputeCapability{se::CudaComputeCapability::AMPERE,
+                                              /*minor=*/0},
+                    dev_info, config, &llvm_module, &MatMul, mlir_context)
+          .status());
+}
+
 class TritonGemmTestAny : public TritonGemmTest {
  public:
   DebugOptions GetDebugOptionsForTest() override {
@@ -548,9 +608,9 @@ ENTRY e {
 })";
 
   MatchOptimizedHlo(hlo_text, R"(
-; CHECK: fusion(%p0, %p1)
+; CHECK: fusion
 ; CHECK-SAME: kind=kCustom
-; CHECK-SAME: "block_m":
+; CHECK-SAME: block_m
 )");
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -1054,7 +1114,7 @@ TEST_F(CompareTest, SplitKBatch) {
           se::CudaComputeCapability::AMPERE)) {
     GTEST_SKIP() << "No BF16 before Ampere.";
   }
-  const std::string hlo_text_ref = R"(
+  const std::string kHloTextRef = R"(
 HloModule m, is_scheduled=true
 
 triton_gemm_dot.24 {
@@ -1074,7 +1134,7 @@ ENTRY e {
     backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":1,"num_stages":2,"num_warps":8}}
 })";
 
-  const std::string hlo_text_splitk = R"(
+  const std::string kHloTextSplitK = R"(
 HloModule m, is_scheduled=true
 
 triton_gemm_dot {
@@ -1085,7 +1145,7 @@ triton_gemm_dot {
   parameter_0 = f32[1,5,700,800]{3,2,1,0} parameter(0)
   bitcast.2 = f32[5,700,800]{2,1,0} bitcast(parameter_0)
   bitcast.1 = f32[5,700,8,100]{3,2,1,0} bitcast(bitcast.2)
-  ROOT dot = f32[5,8,128,700]{3,2,1,0} dot(bitcast, bitcast.1), lhs_batch_dims={2,0}, lhs_contracting_dims={1}, rhs_batch_dims={0,2}, rhs_contracting_dims={3}
+  ROOT dot = f32[8,5,128,700]{3,2,1,0} dot(bitcast, bitcast.1), lhs_batch_dims={0,2}, lhs_contracting_dims={1}, rhs_batch_dims={2,0}, rhs_contracting_dims={3}
 }
 
 add {
@@ -1097,14 +1157,14 @@ add {
 ENTRY e {
   tmp_3 = f32[1,5,700,800]{3,2,1,0} parameter(0)
   tmp_0 = bf16[1,1,800,5,128]{4,3,2,1,0} parameter(1)
-  triton_gemm_dot.24 = f32[5,8,128,700]{3,2,1,0} fusion(tmp_3, tmp_0),
+  triton_gemm_dot.24 = f32[8,5,128,700]{3,2,1,0} fusion(tmp_3, tmp_0),
     kind=kCustom, calls=triton_gemm_dot,
     backend_config={kind: "__triton_gemm", triton_gemm_config: {"block_m":64,"block_n":32,"block_k":64,"split_k":8,"num_stages":1,"num_warps":4}}
   constant = f32[] constant(0)
-  ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={1}, to_apply=add
+  ROOT reduce = f32[5,128,700]{2,1,0} reduce(triton_gemm_dot.24, constant), dimensions={0}, to_apply=add
 })";
 
-  EXPECT_TRUE(RunAndCompareTwoModules(hlo_text_ref, hlo_text_splitk,
+  EXPECT_TRUE(RunAndCompareTwoModules(kHloTextRef, kHloTextSplitK,
                                       ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3},
                                       /*run_hlo_passes=*/false));
 }

@@ -484,9 +484,8 @@ def load_function_def_library(library,
         func_graph.structured_outputs,
         func_graph.function_captures.capture_types,
     )
-    func = function_lib.ConcreteFunction(
-        func_graph, attrs=fdef.attr, function_type=function_type
-    )
+    func = function_lib.ConcreteFunction.from_func_graph(
+        func_graph, function_type, attrs=fdef.attr)
     if wrapper_function:
       func = wrapper_function(func)
     func.add_to_graph(graph)

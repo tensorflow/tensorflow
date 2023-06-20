@@ -233,7 +233,6 @@ xla_cc_binary(
 xla_cc_test(
     name = "hlo_extractor_test",
     srcs = ["hlo_extractor_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_extractor",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -261,7 +260,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_slicer_test",
     srcs = ["hlo_slicer_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_slicer",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
@@ -322,7 +320,6 @@ xla_cc_test(
         "data/add.hlo",
         ":interactive_graphviz",
     ],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:subprocess",
@@ -355,7 +352,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_module_loader_test",
     srcs = ["hlo_module_loader_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_module_loader",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -464,7 +460,6 @@ xla_cc_test(
         "data/must_alias_with_sharding.hlo",
         ":run_hlo_module",
     ],
-    tags = ["nomsan"],
     deps = [
         "//tensorflow/tsl/platform:path",
         "//tensorflow/tsl/platform:subprocess",
@@ -493,7 +488,6 @@ cc_library(
 xla_cc_test(
     name = "hlo_control_flow_flattening_test",
     srcs = ["hlo_control_flow_flattening_test.cc"],
-    tags = ["nomsan"],
     deps = [
         ":hlo_control_flow_flattening",
         "//tensorflow/compiler/xla/hlo/utils:hlo_matchers",

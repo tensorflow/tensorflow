@@ -5,6 +5,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_copts_extra")
 load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
 load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
+load("//tensorflow:strict.default.bzl", "py_strict_test")
 
 def register_extension_info(**kwargs):
     pass
@@ -150,8 +151,11 @@ def tflite_linkopts_no_undefined():
     """
     return if_oss(
         select({
+            # macOS/iOS linker uses "--undefined error" instead of "--no-undefined".
             "//tensorflow:ios": [
-                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
+            "//tensorflow:macos": [
                 "-Wl,-undefined,error",
             ],
             "//conditions:default": ["-Wl,--no-undefined"],
@@ -165,7 +169,9 @@ def tflite_linkopts_no_undefined():
             "//tools/cpp:msan_build": [],
             "//tools/cpp:tsan_build": [],
             "//tensorflow:ios": [
-                # iOS linker uses "--undefined error" instead of "--no-undefined".
+                "-Wl,-undefined,error",
+            ],
+            "//tensorflow:macos": [
                 "-Wl,-undefined,error",
             ],
             "//conditions:default": ["-Wl,--no-undefined"],
@@ -402,18 +408,28 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "medium"):
+def gen_model_coverage_test(
+        src,
+        name,
+        data,
+        failure_type,
+        tags,
+        size = "medium",
+        extra_deps = None):
     """Generates Python test targets for testing TFLite models.
 
     Args:
       src: Main source file.
-      model_name: Name of the model to test (must be also listed in the 'data'
+      name: Name of the model to test (must be also listed in the 'data'
         dependencies)
       data: List of BUILD targets linking the data.
       failure_type: List of failure types (none, toco, crash, inference, evaluation)
         expected for the corresponding combinations of op sets
         ("TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS").
       tags: List of strings of additional tags.
+      size: String determining test size for filtering and resource allocation.
+      extra_deps: List of dependencies needed only by the specific src as opposed to the generic
+        dependencies listed below.
     """
     i = 0
     for target_op_sets in ["TFLITE_BUILTINS", "TFLITE_BUILTINS,SELECT_TF_OPS", "SELECT_TF_OPS"]:
@@ -422,15 +438,26 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
             args.append("--failure_type=%s" % failure_type[i])
         i = i + 1
 
+        # Construct list of dependencies
+        full_deps = [
+            "//third_party/py/tensorflow",
+            "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
+            "//tensorflow/lite/python:lite",
+            "//tensorflow/python/framework:errors",
+            "//tensorflow/python/platform:client_testlib",
+        ] + flex_dep(target_op_sets)
+        if extra_deps:
+            full_deps += extra_deps
+
         # Avoid coverage timeouts for large/enormous tests.
         coverage_tags = ["nozapfhahn"] if size in ["large", "enormous"] else []
-        native.py_test(
-            name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
+        py_strict_test(
+            name = "model_coverage_test_%s_%s" % (name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
             size = size,
             args = [
-                "--model_name=%s" % model_name,
+                "--model_name=%s" % name,
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
@@ -445,12 +472,7 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "m
                 "nomsan",
                 "notsan",
             ] + tags + coverage_tags,
-            deps = [
-                "//third_party/py/tensorflow",
-                "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
-                "//tensorflow/lite/python:lite",
-                "//tensorflow/python/platform:client_testlib",
-            ] + flex_dep(target_op_sets),
+            deps = full_deps,
         )
 
 def tflite_custom_cc_library(
