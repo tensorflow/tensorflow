@@ -98,10 +98,10 @@ ENTRY main {
 // CHECK:   %broadcast.9 = u64[10,2]{1,0} broadcast(u64[] %constant.8), dimensions={}
 // CHECK:   %iota.7 = u64[10,2]{1,0} iota(), iota_dimension=1
 // CHECK:   %multiply.10 = u64[10,2]{1,0} multiply(u64[10,2]{1,0} %broadcast.9, u64[10,2]{1,0} %iota.7)
-// CHECK:   %shift-right-logical.11 = u64[10,2]{1,0} shift-right-logical(u64[10,2]{1,0} %bitcast-convert.6, u64[10,2]{1,0} %multiply.10)
-// CHECK:   %constant.12 = u64[] constant(4294967295)
-// CHECK:   %broadcast.13 = u64[10,2]{1,0} broadcast(u64[] %constant.12), dimensions={}
-// CHECK:   %and.14 = u64[10,2]{1,0} and(u64[10,2]{1,0} %shift-right-logical.11, u64[10,2]{1,0} %broadcast.13)
+// CHECK:   %shift-right-logical{{\.?[0-9]*}} = u64[10,2]{1,0} shift-right-logical(u64[10,2]{1,0} %bitcast-convert.6, u64[10,2]{1,0} %multiply.10)
+// CHECK:   %constant{{\.?[0-9]*}} = u64[] constant(4294967295)
+// CHECK:   %broadcast.13 = u64[10,2]{1,0} broadcast(u64[] %constant{{\.?[0-9]*}}), dimensions={}
+// CHECK:   %and.14 = u64[10,2]{1,0} and(u64[10,2]{1,0} %shift-right-logical{{\.?[0-9]*}}, u64[10,2]{1,0} %broadcast.13)
 // CHECK:   %convert.15 = u32[10,2]{1,0} convert(u64[10,2]{1,0} %and.14)
 // CHECK:   ROOT %bitcast-convert.16 = s32[10,2]{1,0} bitcast-convert(u32[10,2]{1,0} %convert.15)
 // CHECK: }
