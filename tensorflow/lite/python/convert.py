@@ -413,12 +413,10 @@ Alternative, use virtualenv.""")
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
   # make the temporaries and close and delete them explicitly.
-  conversion_filename, model_filename, input_filename, output_filename = (
-      None,
-      None,
-      None,
-      None,
-  )
+  conversion_filename: str = None
+  model_filename: str = None
+  input_filename: str = None
+  output_filename: str = None
   try:
     # Build all input files
     with _tempfile.NamedTemporaryFile(
