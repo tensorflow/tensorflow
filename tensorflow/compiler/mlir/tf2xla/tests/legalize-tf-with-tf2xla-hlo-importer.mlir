@@ -685,6 +685,23 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     func.return %1 : tensor<6x3xf32>
   }
 
+  // CHECK-LABEL: func @matrix_diag_part_v3
+  // CHECK-SAME: %[[ARG:.*]]: tensor<7x140x128xi32>
+  func.func @matrix_diag_part_v3(%arg0: tensor<7x140x128xi32>) -> tensor<7x22x128xi32> {
+    %0 = mhlo.constant dense<42> : tensor<i32>  // padding value
+    %1 = mhlo.constant dense<[-10, 11]> : tensor<2xi32>  // k
+    // CHECK: mhlo.iota
+    // CHECK: mhlo.reshape
+    // CHECK: mhlo.concatenate
+    // CHECK: mhlo.gather
+    // CHECK: mhlo.broadcast
+    // CHECK: mhlo.select
+    %2 = "tf.MatrixDiagPartV3"(%arg0, %1, %0) {
+        T = i32, align = "RIGHT_LEFT"
+    } : (tensor<7x140x128xi32>, tensor<2xi32>, tensor<i32>) -> tensor<7x22x128xi32>
+    func.return %2: tensor<7x22x128xi32>
+  }
+
   // CHECK-LABEL: func @xla_call_module
   func.func @xla_call_module(%arg0: tensor<f32>) -> tensor<*xf32> {
     // Equivalent to the following:

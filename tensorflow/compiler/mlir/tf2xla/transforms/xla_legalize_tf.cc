@@ -738,6 +738,9 @@ const llvm::DenseSet<mlir::TypeID> &MlirPreferredOps() {
     TypeID::get<TF::ModOp>(),
     TypeID::get<TF::ConcatV2Op>(),
 
+    // MatrixDiagPartV3 should use the MLIR implementation due to performance.
+    TypeID::get<TF::MatrixDiagPartV3Op>(),
+
     // Ops that are legalized in the old bridge using MlirXlaOpKernel
     TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AtanOp>(),
