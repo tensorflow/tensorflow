@@ -244,6 +244,7 @@ tf_py_strict_test(
     deps = [
         ":test_base",
         "//tensorflow/python/data/experimental/ops:distributed_save_op",
+        "//tensorflow/python/data/experimental/service:_pywrap_snapshot_utils",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:test_mode",
