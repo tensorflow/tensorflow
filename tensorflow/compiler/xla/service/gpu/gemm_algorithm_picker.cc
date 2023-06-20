@@ -72,7 +72,7 @@ se::RedzoneAllocator CreateRedzoneAllocator(
 
 // Returns the index (into `algorithms`) of the fastest algorithm.
 template <typename AlgoT>
-StatusOr<std::optional<size_t>> GetBestAlgorithm(
+StatusOr<AutotuneResult> GetBestAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     std::optional<std::string_view> gemm_str,
     const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
@@ -175,7 +175,8 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
   if (best.ok()) {
     for (size_t i = 0; i < results.size(); ++i) {
       if (best->gemm().algorithm() == results[i].gemm().algorithm()) {
-        return {i};
+        best->mutable_gemm()->set_algorithm(i);
+        return best;
       }
     }
     return InternalError("unknown best algorithm");
@@ -184,10 +185,11 @@ StatusOr<std::optional<size_t>> GetBestAlgorithm(
   LOG(WARNING) << "Failed to find best cuBLAS algorithm, GEMM performance "
                   "might be suboptimal: "
                << best.status();
-  return {std::nullopt};
+  best->clear_gemm();
+  return best;
 }
 
-StatusOr<std::optional<size_t>> GetBestBlasAlgorithm(
+StatusOr<AutotuneResult> GetBestBlasAlgorithm(
     se::Stream* stream, se::RedzoneAllocator& allocator,
     std::optional<std::string_view> gemm_str,
     const AutotuneConfig& autotune_config, se::DeviceMemoryBase lhs_buffer,
@@ -197,13 +199,10 @@ StatusOr<std::optional<size_t>> GetBestBlasAlgorithm(
     double beta,
     const std::function<StatusOr<se::blas::ProfileResult>(
         const se::blas::AlgorithmType&)>& run_benchmark) {
-  TF_ASSIGN_OR_RETURN(
-      std::optional<size_t> result,
-      GetBestAlgorithm<se::blas::AlgorithmType>(
-          stream, allocator, gemm_str, autotune_config, lhs_buffer, rhs_buffer,
-          output_buffer, algorithms, output_shape, hlo_module_config, beta,
-          run_benchmark));
-  return result;
+  return GetBestAlgorithm<se::blas::AlgorithmType>(
+      stream, allocator, gemm_str, autotune_config, lhs_buffer, rhs_buffer,
+      output_buffer, algorithms, output_shape, hlo_module_config, beta,
+      run_benchmark);
 }
 
 namespace {
@@ -254,16 +253,16 @@ StatusOr<se::DeviceMemoryBase> CreateBuffer(se::RedzoneAllocator& allocator,
 
 static absl::Mutex autotune_cache_mu(absl::kConstInit);
 static auto& autotune_cache ABSL_GUARDED_BY(autotune_cache_mu) =
-    *new absl::flat_hash_map<AutotuneCacheKey,
-                             std::optional<se::blas::AlgorithmType>>();
+    *new AutotuneCacheMap();
 static int64_t autotune_cache_hits ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 static int64_t autotune_cache_misses ABSL_GUARDED_BY(autotune_cache_mu) = 0;
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA)
 
-StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
-    const HloInstruction* gemm, const GemmBackendConfig& gemm_config,
-    se::DeviceMemoryAllocator* allocator, se::Stream* stream) {
+StatusOr<AutotuneResult> DoGemmAutotune(const HloInstruction* gemm,
+                                        const GemmBackendConfig& gemm_config,
+                                        se::DeviceMemoryAllocator* allocator,
+                                        se::Stream* stream) {
   VLOG(3) << "Starting autotune of GemmThunk " << gemm->ToString();
 
   auto key = AutotuneCacheKeyFromInstruction(
@@ -280,9 +279,6 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
 
     if (it != autotune_cache.end()) {
       autotune_cache_hits++;
-      VLOG(4) << "Autotuning cache hit, using algorithm: "
-              << (it->second.has_value() ? absl::StrCat(*(it->second))
-                                         : "<generic>");
       return it->second;
     }
     VLOG(4) << "Autotuning cache miss";
@@ -317,7 +313,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
       CreateBuffer(buffer_allocator, output_shape, autotune_config, rng_state));
 
   HloModuleConfig& hlo_module_config = gemm->GetModule()->config();
-  std::optional<se::blas::AlgorithmType> best_algorithm;
+  AutotuneResult best_algorithm;
   if (IsCublasLtMatmul(*gemm)) {
     bool has_matrix_bias = config.beta != 0.;
 
@@ -356,7 +352,7 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
         plan.GetAlgorithms(stream));
 
     TF_ASSIGN_OR_RETURN(
-        std::optional<size_t> best_algorithm_idx,
+        best_algorithm,
         GetBestAlgorithm<se::cuda::BlasLt::MatmulAlgorithm>(
             stream, buffer_allocator, gemm->ToString(), autotune_config,
             lhs_buffer, rhs_buffer, output_buffer, algorithms, output_shape,
@@ -373,14 +369,11 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                   scratch_allocator, &profile_result));
               return std::move(profile_result);
             }));
-
-    TF_RET_CHECK(best_algorithm_idx) << "failed to auto-tune cublas_lt matmul";
-    best_algorithm = *best_algorithm_idx;
   } else {
     std::vector<se::blas::AlgorithmType> algorithms;
     TF_RET_CHECK(stream->parent()->GetBlasGemmAlgorithms(stream, &algorithms));
 
-    TF_ASSIGN_OR_RETURN(std::optional<size_t> best_algorithm_idx,
+    TF_ASSIGN_OR_RETURN(best_algorithm,
                         GetBestBlasAlgorithm(
                             stream, buffer_allocator, gemm->ToString(),
                             autotune_config, lhs_buffer, rhs_buffer,
@@ -402,8 +395,10 @@ StatusOr<std::optional<se::blas::AlgorithmType>> DoGemmAutotune(
                                           stream, algorithm, &profile_result));
                               return std::move(profile_result);
                             }));
-
-    if (best_algorithm_idx) best_algorithm = algorithms[*best_algorithm_idx];
+    if (best_algorithm.has_gemm()) {
+      int alg_idx = best_algorithm.gemm().algorithm();
+      best_algorithm.mutable_gemm()->set_algorithm(algorithms[alg_idx]);
+    }
   }
 
   // Insert our result into the cache.  After we released the lock on
@@ -426,7 +421,7 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr, DeviceConfig config) {
   GemmBackendConfig gemm_config =
       instr->backend_config<GemmBackendConfig>().value();
 
-  TF_ASSIGN_OR_RETURN(std::optional<se::blas::AlgorithmType> gemm_algorithm,
+  TF_ASSIGN_OR_RETURN(AutotuneResult gemm_algorithm,
                       DoGemmAutotune(instr, gemm_config, allocator, stream));
 
   // We update instruction->backend_config(); if no algorithms are supported,
@@ -435,12 +430,12 @@ StatusOr<bool> RunOnInstruction(HloInstruction* instr, DeviceConfig config) {
 
   // We only set the 'algorithm' field on non-Ampere architectures, as for
   // Ampere it's ignored in any case.
-  if (gemm_algorithm &&
+  if (gemm_algorithm.has_gemm() &&
       !executor->GetDeviceDescription().cuda_compute_capability().IsAtLeast(
           se::CudaComputeCapability::AMPERE)) {
-    VLOG(4) << "GEMM autotuning picked algorithm " << *gemm_algorithm << " for "
-            << instr->name();
-    updated_config.set_selected_algorithm(*gemm_algorithm);
+    VLOG(4) << "GEMM autotuning picked algorithm "
+            << gemm_algorithm.DebugString() << " for " << instr->name();
+    updated_config.set_selected_algorithm(gemm_algorithm.gemm().algorithm());
   }
   TF_RETURN_IF_ERROR(instr->set_backend_config(updated_config));
   return updated_config.SerializeAsString() != gemm_config.SerializeAsString();
@@ -456,13 +451,10 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
   auto key = AutotuneCacheKeyFromInstruction(gemm, config.model_str);
 
   // Load selected algorithm from the autotune cache.
-  std::optional<se::blas::AlgorithmType> algorithm;
+  AutotuneResult algorithm;
   {
     absl::MutexLock lock(&autotune_cache_mu);
     if (auto it = autotune_cache.find(key); it != autotune_cache.end()) {
-      VLOG(4) << "AOT autotuning cache hit, using algorithm: "
-              << (it->second.has_value() ? absl::StrCat(*(it->second))
-                                         : "<generic>");
       algorithm = it->second;
     }
     VLOG(4) << "AOT autotuning cache miss";
@@ -476,8 +468,8 @@ StatusOr<bool> RunOnInstruction(HloInstruction* gemm, DevicelessConfig config) {
   // We only set the 'algorithm' field on non-Ampere architectures, as for
   // Ampere it's ignored in any case.
   if (!capability.IsAtLeast(se::CudaComputeCapability::AMPERE)) {
-    if (algorithm) {
-      updated_config.set_selected_algorithm(*algorithm);
+    if (algorithm.has_gemm()) {
+      updated_config.set_selected_algorithm(algorithm.gemm().algorithm());
     } else {
       updated_config.set_selected_algorithm(se::blas::kRuntimeAutotuning);
     }
@@ -518,39 +510,13 @@ void GemmAlgorithmPicker::ClearAutotuneResults() {
 
 Status GemmAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
   absl::MutexLock lock(&autotune_cache_mu);
-
-  for (const auto& [k, result] : autotune_cache) {
-    // For now, we don't cache "failed to autotune" results, because we don't
-    // have a good way to represent them in the proto.
-    if (!result.has_value()) continue;
-
-    const auto& [model_str, hlo] = k;
-    auto& entry = *results->add_dots();
-    entry.set_device(model_str);
-    entry.set_hlo(hlo);
-    entry.mutable_result()->mutable_gemm()->set_algorithm(*result);
-  }
-
-  // Sort the results so they're deterministic.
-  std::sort(results->mutable_dots()->pointer_begin(),
-            results->mutable_dots()->pointer_end(),
-            [](const auto* a, const auto* b) {
-              return std::make_pair(absl::string_view(a->device()),
-                                    absl::string_view(a->hlo())) <
-                     std::make_pair(absl::string_view(b->device()),
-                                    absl::string_view(b->hlo()));
-            });
-  return OkStatus();
+  return SerializeAutotuneResults(autotune_cache, results);
 }
 
 Status GemmAlgorithmPicker::LoadAutotuneResults(
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& result : results.dots()) {
-    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
-        result.result().gemm().algorithm();
-  }
-  return OkStatus();
+  return ::xla::gpu::LoadAutotuneResults(autotune_cache, results);
 }
 
 StatusOr<bool> GemmAlgorithmPicker::Run(

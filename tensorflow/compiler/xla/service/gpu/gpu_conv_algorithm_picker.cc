@@ -335,35 +335,13 @@ void GpuConvAlgorithmPicker::ClearAutotuneResults() {
 
 Status GpuConvAlgorithmPicker::WriteAutotuneResults(AutotuneResults* results) {
   absl::MutexLock lock(&autotune_cache_mu);
-
-  for (const auto& [k, result] : autotune_cache) {
-    const auto& [model_str, hlo] = k;
-    auto& entry = *results->add_convs();
-    entry.set_device(model_str);
-    entry.set_hlo(hlo);
-    *entry.mutable_result() = result;
-  }
-
-  // Sort the results so they're deterministic.
-  std::sort(results->mutable_convs()->pointer_begin(),
-            results->mutable_convs()->pointer_end(),
-            [](const auto* a, const auto* b) {
-              return std::make_pair(absl::string_view(a->device()),
-                                    absl::string_view(a->hlo())) <
-                     std::make_pair(absl::string_view(b->device()),
-                                    absl::string_view(b->hlo()));
-            });
-  return OkStatus();
+  return SerializeAutotuneResults(autotune_cache, results);
 }
 
 Status GpuConvAlgorithmPicker::LoadAutotuneResults(
     const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& result : results.convs()) {
-    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
-        result.result();
-  }
-  return OkStatus();
+  return ::xla::gpu::LoadAutotuneResults(autotune_cache, results);
 }
 
 bool ShouldInitConvData(const HloModuleConfig& hlo_module_config) {

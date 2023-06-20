@@ -985,36 +985,13 @@ StatusOr<bool> TritonAutotuner::Run(
 }
 
 Status TritonAutotuner::WriteAutotuneResults(AutotuneResults* results) {
-  // TODO(anlunx): Remove duplication with gpu_conv_algorithm_picker.
   absl::MutexLock lock(&autotune_cache_mu);
-
-  for (const auto& [k, result] : autotune_cache) {
-    const auto& [model_str, hlo] = k;
-    auto& entry = *results->add_dots();
-    entry.set_device(model_str);
-    entry.set_hlo(hlo);
-    *entry.mutable_result() = result;
-  }
-
-  // Sort the results so that they're deterministic.
-  std::sort(results->mutable_dots()->pointer_begin(),
-            results->mutable_dots()->pointer_end(),
-            [](const auto* a, const auto* b) {
-              return std::make_pair(absl::string_view(a->device()),
-                                    absl::string_view(a->hlo())) <
-                     std::make_pair(absl::string_view(b->device()),
-                                    absl::string_view(b->hlo()));
-            });
-  return OkStatus();
+  return SerializeAutotuneResults(autotune_cache, results);
 }
 
 Status TritonAutotuner::LoadAutotuneResults(const AutotuneResults& results) {
   absl::MutexLock lock(&autotune_cache_mu);
-  for (const auto& result : results.convs()) {
-    autotune_cache[std::make_tuple(result.device(), result.hlo())] =
-        result.result();
-  }
-  return OkStatus();
+  return ::xla::gpu::LoadAutotuneResults(autotune_cache, results);
 }
 
 void TritonAutotuner::ClearAutotuneResults() {

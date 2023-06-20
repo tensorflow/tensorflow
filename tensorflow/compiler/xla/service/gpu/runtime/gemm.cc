@@ -73,7 +73,7 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
       gpu_lock->UpgradeToWriterMutexLock();
 
   TF_ASSIGN_OR_RETURN(
-      auto best_algorithm_idx,
+      AutotuneResult best_algorithm,
       GetBestBlasAlgorithm(
           stream, buffer_allocator, /*gemm_str=*/std::nullopt, autotune_config,
           lhs, rhs, out, algorithms, output_shape, HloModuleConfig(), beta,
@@ -90,8 +90,8 @@ Status DoRuntimeAutotuning(se::Stream* stream, GemmConfig& config,
             return std::move(profile_result);
           }));
 
-  if (best_algorithm_idx.has_value()) {
-    config.algorithm = algorithms[best_algorithm_idx.value()];
+  if (best_algorithm.has_gemm()) {
+    config.algorithm = algorithms[best_algorithm.gemm().algorithm()];
     return OkStatus();
   } else {
     return InternalError("Runtime autotuning failed to select an algorithm");

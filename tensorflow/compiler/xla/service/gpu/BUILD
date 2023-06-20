@@ -1252,7 +1252,7 @@ cc_library(
 
 cc_library(
     name = "gpu_serializable_autotuner",
-    srcs = [],
+    srcs = ["gpu_serializable_autotuner.cc"],
     hdrs = ["gpu_serializable_autotuner.h"],
     deps = [
         "//tensorflow/compiler/xla:autotune_results_proto_cc",

@@ -1144,7 +1144,7 @@ cc_library(
         ":statusor",
         "//tensorflow/compiler/xla/service/gpu:gemm_algorithm_picker",
         "//tensorflow/compiler/xla/service/gpu:gpu_conv_algorithm_picker",
-    ]),
+    ]) + ["//tensorflow/compiler/xla/service/gpu:triton_autotuner"],
 )
 
 cc_library(

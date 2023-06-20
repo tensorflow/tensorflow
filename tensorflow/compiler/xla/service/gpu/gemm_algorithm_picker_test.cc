@@ -67,8 +67,8 @@ ENTRY main {
 
   AutotuneResults results;
   TF_ASSERT_OK(GemmAlgorithmPicker::WriteAutotuneResults(&results));
-  ASSERT_EQ(results.dots_size(), 1);
-  auto& result = *results.mutable_dots(0)->mutable_result();
+  ASSERT_EQ(results.results_size(), 1);
+  auto& result = *results.mutable_results(0)->mutable_result();
   int64_t old_algo_id = result.algorithm().algo_id();
   int64_t new_algo_id = old_algo_id + 1;
   result.mutable_gemm()->set_algorithm(new_algo_id);
@@ -129,8 +129,8 @@ ENTRY main {
 
   AutotuneResults results;
   TF_ASSERT_OK(GemmAlgorithmPicker::WriteAutotuneResults(&results));
-  ASSERT_EQ(results.dots_size(), 1);
-  auto& result = *results.mutable_dots(0)->mutable_result();
+  ASSERT_EQ(results.results_size(), 1);
+  auto& result = *results.mutable_results(0)->mutable_result();
   int64_t old_algo_id = result.algorithm().algo_id();
   int64_t new_algo_id = old_algo_id + 1;
   result.mutable_gemm()->set_algorithm(new_algo_id);

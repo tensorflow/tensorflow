@@ -64,8 +64,8 @@ ENTRY main {
 
   AutotuneResults results;
   TF_ASSERT_OK(GpuConvAlgorithmPicker::WriteAutotuneResults(&results));
-  ASSERT_EQ(results.convs_size(), 1);
-  auto& result = *results.mutable_convs(0)->mutable_result();
+  ASSERT_EQ(results.results_size(), 1);
+  auto& result = *results.mutable_results(0)->mutable_result();
   int64_t old_scratch_bytes = result.scratch_bytes();
   int64_t new_scratch_bytes = old_scratch_bytes + 1;
   result.set_scratch_bytes(new_scratch_bytes);
