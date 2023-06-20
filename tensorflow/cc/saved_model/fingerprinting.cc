@@ -48,9 +48,18 @@ const int kFingerprintProducer = 1;
 namespace {
 
 uint64 HashSavedModel(const SavedModel& saved_model) {
-  std::string saved_model_string;
-  SerializeToStringDeterministic(saved_model, &saved_model_string);
-  return tensorflow::Fingerprint64(saved_model_string);
+  std::string saved_model_serialized;
+  {
+    // Local scope guarantees coded stream will be trimmed (ensures
+    // serialization determinism).
+    // Unfortunately the saving process itself isn't deterministic, so the
+    // checksum may still change since the saved_model proto may be different.
+    google::protobuf::io::StringOutputStream stream(&saved_model_serialized);
+    google::protobuf::io::CodedOutputStream output(&stream);
+    output.SetSerializationDeterministic(true);
+    saved_model.SerializeToCodedStream(&output);
+  }
+  return tensorflow::Fingerprint64(saved_model_serialized);
 }
 
 uint64 RegularizeAndHashSignatureDefs(
@@ -62,10 +71,17 @@ uint64 RegularizeAndHashSignatureDefs(
                                signature_def_map.end());
   uint64 result_hash = 0;
   for (const auto& item : sorted_signature_defs) {
-    std::string signature_def_string;
-    SerializeToStringDeterministic(item.second, &signature_def_string);
+    result_hash =
+        FingerprintCat64(result_hash, tensorflow::Fingerprint64(item.first));
+    std::string signature_def_serialized;
+    {
+      google::protobuf::io::StringOutputStream stream(&signature_def_serialized);
+      google::protobuf::io::CodedOutputStream output(&stream);
+      output.SetSerializationDeterministic(true);
+      item.second.SerializeToCodedStream(&output);
+    }
     result_hash = FingerprintCat64(
-        result_hash, tensorflow::Fingerprint64(signature_def_string));
+        result_hash, tensorflow::Fingerprint64(signature_def_serialized));
   }
   return result_hash;
 }
@@ -92,12 +108,17 @@ StatusOr<uint64> RegularizeAndHashSavedObjectGraph(
                                    tensorflow::Fingerprint64(absl::StripSuffix(
                                        function_name, std::to_string(uid))));
     // Hash the serialized concrete function.
-    std::string concrete_function_string;
-    SerializeToStringDeterministic(
-        object_graph_def.concrete_functions().at(function_name),
-        &concrete_function_string);
+    std::string concrete_function_serialized;
+    {
+      google::protobuf::io::StringOutputStream stream(&concrete_function_serialized);
+      google::protobuf::io::CodedOutputStream output(&stream);
+      output.SetSerializationDeterministic(true);
+      object_graph_def.concrete_functions()
+          .at(function_name)
+          .SerializeToCodedStream(&output);
+    }
     result_hash = FingerprintCat64(
-        result_hash, tensorflow::Fingerprint64(concrete_function_string));
+        result_hash, tensorflow::Fingerprint64(concrete_function_serialized));
   }
   // TODO(b/241294832): Complete canonicalization of `object_graph_def.nodes`.
   return result_hash;
