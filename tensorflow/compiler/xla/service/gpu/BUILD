@@ -2924,13 +2924,10 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":cublas_cudnn",
-        ":ir_emission_utils",
         ":matmul_utils",
         "//tensorflow/compiler/xla:comparison_util",
-        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:permutation_util",
         "//tensorflow/compiler/xla/hlo/ir:hlo",
-        "//tensorflow/compiler/xla/service:hlo_creation_utils",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/stream_executor:stream_executor_headers",
