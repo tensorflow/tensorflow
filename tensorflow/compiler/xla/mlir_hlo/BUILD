@@ -1157,7 +1157,6 @@ cc_library(
     deps = [
         ":map_stablehlo_to_hlo_op",
         ":mlir_hlo",
-        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
